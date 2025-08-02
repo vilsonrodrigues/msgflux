@@ -22,7 +22,7 @@ def apply_xml_tags(tag_id: str, content: str, output_id: Optional[str] = None) -
     return f"<{tag_id}>\n{content}\n</{output_id}>"
 
 
-def _xml_to_typed_value(element: ET.Element) -> Any:
+def _xml_to_typed_value(element) -> Any:
     """Convert an XML element to a Python value based on type."""
     dtype_attr = element.attrib.get(
         "dtype", "str"
