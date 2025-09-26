@@ -31,7 +31,6 @@ from msgflux.utils.inspect import get_filename, get_mime_type
 from msgflux.utils.msgspec import StructFactory, is_optional_field, msgspec_dumps
 from msgflux.utils.validation import is_subclass_of
 from msgflux.utils.xml import apply_xml_tags
-from msgflux.tools.formatter import format_tools_from_schemas
 
 
 class Agent(Module):
@@ -81,7 +80,7 @@ class Agent(Module):
         response_mode: Optional[str] = "plain_response",
         tools: Optional[List[Callable]] = None,
         tool_choice: Optional[str] = None,
-        injected_kwargs: Optional[str] = None,
+        vars: Optional[str] = None,
         response_template: Optional[str] = None,
         fixed_messages: Optional[List[Mapping[str, Any]]] = None,
         signature: Optional[Union[str, Signature]] = None,
@@ -148,7 +147,7 @@ class Agent(Module):
             What the response should be.
             * `plain_response` (default): Returns the final agent response directly.
             * other: Write on field in Message object.
-        injected_kwargs:
+        vars:
             Field of the Message object that will be the inputs to templates and tools.
         tools:
             A list of callable objects.
@@ -156,7 +155,7 @@ class Agent(Module):
             By default the model will determine when and how many tools to use.
             You can force specific behavior with the tool_choice parameter.
                 1. auto:
-                    (Default) Call zero, one, or multiple functions. tool_choice: "auto"
+                    Call zero, one, or multiple functions. tool_choice: "auto"
                 2. required:
                     Call one or more functions. tool_choice: "required"
                 3. Forced Function:
@@ -238,7 +237,7 @@ class Agent(Module):
         self._set_response_template(response_template)
         self._set_task_multimodal_inputs(task_multimodal_inputs)
         self._set_task_inputs(task_inputs)
-        self._set_injected_kwargs(injected_kwargs)
+        self._set_vars(vars)
         self._set_tool_choice(tool_choice)
         self._set_tools(tools)
         self._set_verbose(verbose)
@@ -256,12 +255,12 @@ class Agent(Module):
         model_state: List[Mapping[str, Any]],
         prefilling: Optional[str] = None,
         model_preference: Optional[str] = None,
-        injected_kwargs: Optional[Mapping[str, Any]] = None,
+        vars: Optional[Mapping[str, Any]] = None,
     ) -> Union[ModelResponse, ModelStreamResponse]:
-        if injected_kwargs is None:
-            injected_kwargs = {}
+        if vars is None:
+            vars = {}
         model_execution_params = self._prepare_model_execution(
-            model_state, prefilling, model_preference, injected_kwargs
+            model_state, prefilling, model_preference, vars
         )
         if self.input_guardrail:
             self._execute_input_guardrail(model_execution_params)
@@ -276,10 +275,10 @@ class Agent(Module):
         model_state: List[Mapping[str, Any]],
         prefilling: Optional[str] = None,
         model_preference: Optional[str] = None,
-        injected_kwargs: Optional[Mapping[str, Any]] = None,
+        vars: Optional[Mapping[str, Any]] = None,
     ) -> Mapping[str, Any]:
-        if injected_kwargs is None:
-            injected_kwargs = {}
+        if vars is None:
+            vars = {}
         agent_state = []
 
         if self.fixed_messages:
@@ -287,20 +286,24 @@ class Agent(Module):
 
         agent_state.extend(model_state)
 
-        system_prompt = self._get_system_prompt(injected_kwargs)
+        system_prompt = self._get_system_prompt(vars)
 
         tool_schemas = self.tool_library.get_tool_json_schemas()
         if not tool_schemas:
             tool_schemas = None
 
+        tool_choice = self.tool_choice
+
         if is_subclass_of(self.generation_schema, ToolFlowControl) and tool_schemas:
             tools_template = self.generation_schema.tools_template
-            flow_control_tools = format_tools_from_schemas(tools_template, tool_schemas)
+            inputs = {"tool_schemas": tool_schemas, "tool_choice": tool_choice}
+            flow_control_tools = self._format_template(inputs, tools_template)
             if system_prompt:
                 system_prompt = flow_control_tools + "\n\n" + system_prompt
             else:
                 system_prompt = flow_control_tools
             tool_schemas = None  # Disable tool_schemas to controlflow preference
+            tool_choice = None  # Disable tool_choice to controlflow preference
 
         model_execution_params = dotdict(
             {
@@ -309,7 +312,7 @@ class Agent(Module):
                 "prefilling": prefilling,
                 "stream": self.stream,
                 "tool_schemas": tool_schemas,
-                "tool_choice": self.tool_choice,
+                "tool_choice": tool_choice,
                 "generation_schema": self.generation_schema,
                 "typed_parser": self.typed_parser,
             }
@@ -341,17 +344,17 @@ class Agent(Module):
         model_response: Union[ModelResponse, ModelStreamResponse],
         model_state: List[Mapping[str, Any]],
         model_preference: Optional[str] = None,
-        injected_kwargs: Optional[Mapping[str, Any]] = None,
+        vars: Optional[Mapping[str, Any]] = None,
     ) -> Union[str, Mapping[str, str], Message, ModelStreamResponse]:
-        if injected_kwargs is None:
-            injected_kwargs = {}
+        if vars is None:
+            vars = {}
         if "tool_call" in model_response.response_type:
             model_response, model_state = self._process_tool_call_response(
-                model_response, model_state, model_preference, injected_kwargs
+                model_response, model_state, model_preference, vars
             )
         elif is_subclass_of(self.generation_schema, ToolFlowControl):
             model_response, model_state = self._process_tool_flow_control_response(
-                model_response, model_state, model_preference, injected_kwargs
+                model_response, model_state, model_preference, vars
             )
 
         if isinstance(model_response, (ModelResponse, ModelStreamResponse)):        
@@ -363,7 +366,7 @@ class Agent(Module):
 
         if response_type in self._supported_outputs:
             response = self._prepare_response(
-                raw_response, response_type, model_state, message, injected_kwargs
+                raw_response, response_type, model_state, message, vars
             )
             return response
         else:
@@ -374,13 +377,13 @@ class Agent(Module):
         model_response: Union[ModelResponse, ModelStreamResponse],
         model_state: Mapping[str, Any],
         model_preference: Optional[str] = None,
-        injected_kwargs: Optional[Mapping[str, Any]] = None,
+        vars: Optional[Mapping[str, Any]] = None,
     ) -> Tuple[Union[str, Mapping[str, Any], ModelStreamResponse], Mapping[str, Any]]:
         """Handle the fields returned by `ReAct`. If the fields are different,
         you must rewrite this function.
         """
-        if injected_kwargs is None:
-            injected_kwargs = {}
+        if vars is None:
+            vars = {}
 
         while True:
             raw_response = self._extract_raw_response(model_response)
@@ -402,7 +405,7 @@ class Agent(Module):
 
                 tool_callings = [(act.id, act.name, act.arguments) for act in actions]
                 tool_results = self._process_tool_call(
-                    tool_callings, model_state, injected_kwargs
+                    tool_callings, model_state, vars
                 )
 
                 if tool_results.return_directly:    
@@ -437,15 +440,15 @@ class Agent(Module):
         model_response: Union[ModelResponse, ModelStreamResponse],
         model_state: Optional[Mapping[str, Any]],
         model_preference: Optional[str] = None,
-        injected_kwargs: Optional[Mapping[str, Any]] = None,
+        vars: Optional[Mapping[str, Any]] = None,
     ) -> Tuple[Union[str, Mapping[str, Any], ModelStreamResponse], Mapping[str, Any]]:
         """ToolCall example: [{'role': 'assistant', 'tool_responses': [{'id': 'call_1YL',
         'type': 'function', 'function': {'arguments': '{"order_id":"order_12345"}',
         'name': 'get_delivery_date'}}]}, {'role': 'tool', 'tool_call_id': 'call_HA',
         'content': '2024-10-15'}].
         """
-        if injected_kwargs is None:
-            injected_kwargs = {}
+        if vars is None:
+            vars = {}
         while True:
             if model_response.response_type == "tool_call":
                 raw_response = self._extract_raw_response(model_response)
@@ -458,7 +461,7 @@ class Agent(Module):
 
                 tool_callings = raw_response.get_calls()
                 tool_results = self._process_tool_call(
-                    tool_callings, model_state, injected_kwargs
+                    tool_callings, model_state, vars
                 )
 
                 if tool_results.return_directly:    
@@ -487,18 +490,18 @@ class Agent(Module):
         self,
         tool_callings: Mapping[str, Any],
         model_state: List[Mapping[str, Any]],
-        injected_kwargs: Optional[Mapping[str, Any]] = None,
+        vars: Optional[Mapping[str, Any]] = None,
     ) -> ToolResponses:
         if self.verbose:       
             for call in tool_callings:
                 repr = f"[{self.name}][tool_call] {call[1]}: {call[2]}"
                 cprint(repr, bc="br2", ls="b")   
-        if injected_kwargs is None:
-            injected_kwargs = {}            
+        if vars is None:
+            vars = {}            
         tool_results = self.tool_library(
             tool_callings=tool_callings,
             model_state=model_state,
-            injected_kwargs=injected_kwargs,
+            vars=vars,
         )
         if self.verbose:
             repr = f"[{self.name}][tool_responses]"
@@ -517,20 +520,28 @@ class Agent(Module):
         response_type: str,
         model_state: List[Mapping[str, Any]],
         message: Union[str, Mapping[str, Any], Message],
-        injected_kwargs: Optional[Mapping[str, Any]] = None,
+        vars: Optional[Mapping[str, Any]] = None,
     ) -> Union[str, Mapping[str, Any], ModelStreamResponse]:
-        formated_response = None
+        formatted_response = None
         if not isinstance(raw_response, ModelStreamResponse):          
-            if "text_generation" in response_type or "structured" in response_type:
+            if response_type == "text_generation" or "structured" in response_type:
                 if self.verbose:
-                    cprint(f"[{self.name}][response] {raw_response}", bc="y", ls="b")                  
+                    cprint(f"[{self.name}][response] {raw_response}", bc="y", ls="b")                
                 if self.output_guardrail:
                     self._execute_output_guardrail(raw_response)
                 if self.response_template:
-                    if isinstance(raw_response, dict) and injected_kwargs is not None:
-                        raw_response.update(injected_kwargs)
-                    formated_response = self._format_response_template(raw_response)
-        response = formated_response or raw_response
+                    if isinstance(raw_response, str):
+                        pre_response = self._format_response_template(vars)
+                        formatted_response = self._format_template(
+                            raw_response, pre_response
+                        )
+                    elif isinstance(raw_response, dict):
+                        raw_response.update(vars)
+                        formatted_response = self._format_response_template(
+                            raw_response
+                         )
+        
+        response = formatted_response or raw_response
         if self.return_model_state:
             if response_type == "tool_responses":
                 response.model_state = model_state
@@ -553,26 +564,26 @@ class Agent(Module):
     ) -> Mapping[str, Any]:
         """Prepare model input in ChatML format and execution params."""
         # Runtime params to templates
-        injected_kwargs = kwargs.pop("injected_kwargs", {})
+        vars = kwargs.pop("vars", {})
         if (
-            not injected_kwargs
+            not vars
             and isinstance(message, Message)
-            and self.injected_kwargs is not None
+            and self.vars is not None
         ):
-            injected_kwargs = message.get(self.injected_kwargs, {})
-        if injected_kwargs:
-            injected_kwargs = dotdict(injected_kwargs)
+            vars = message.get(self.vars, {})
+        if vars:
+            vars = dotdict(vars)
 
         task_messages = kwargs.pop("task_messages", None)
         if (
             task_messages is None
             and isinstance(message, Message)
-            and self.injected_kwargs is not None
+            and self.vars is not None
         ):
             task_messages = self._get_content_from_message(self.task_messages, message)
 
         content = self._process_task_inputs(
-            message, injected_kwargs=injected_kwargs, **kwargs
+            message, vars=vars, **kwargs
         )
 
         if content is None and task_messages is None:
@@ -595,15 +606,20 @@ class Agent(Module):
         return {
             "model_state": model_state,
             "model_preference": model_preference,
-            "injected_kwargs": injected_kwargs,
+            "vars": vars,
         }
 
     def _process_task_inputs(
-        self, message: Union[str, Message, Mapping[str, str]], **kwargs
+        self,
+        message: Union[str, Message, Mapping[str, str]],
+        vars: Optional[Mapping[str, Any]] = None,
+        **kwargs
     ) -> Optional[Union[str, Mapping[str, Any]]]:
         content = ""
 
-        context_content = self._context_manager(message, **kwargs)
+        context_content = self._context_manager(
+            message, vars=vars, **kwargs
+        )
         if context_content:
             content += context_content
 
@@ -616,22 +632,25 @@ class Agent(Module):
             return None
 
         if self.task_template:
-            if task_inputs:
-                task_content = self._format_task_template(task_inputs)
+            if task_inputs:       
+                if isinstance(task_inputs, str):
+                    pre_task = self._format_task_template(vars)
+                    task_content = self._format_template(task_inputs, pre_task)
+                elif isinstance(task_inputs, dict):
+                    task_inputs.update(vars)
+                    task_content = self._format_task_template(task_inputs)
             # It's possible to use `task_template` as the default task message
             # if no `task_inputs` is selected. This can be useful for multimodal
             # models that require a text message to be sent along with the data
             else:
-                task_content = self.task_template
+                if vars:
+                    task_content = self._format_task_template(vars)
+                else:
+                    task_content = self.task_template
         else:
             task_content = task_inputs
-
-        # TODO: if dict AND no template, converte to string 
-
-        if kwargs.get("injected_kwargs", None):
-            task_content = self._format_template(
-                kwargs["injected_kwargs"], task_content
-            )
+            if isinstance(task_content, Mapping): # dict -> str
+                task_content = "\n".join(f"{k}: {v}" for k, v in task_content.items())
 
         task_content = apply_xml_tags("task", task_content)
         content += task_content
@@ -644,7 +663,10 @@ class Agent(Module):
         return content
 
     def _context_manager( # noqa: C901
-        self, message: Union[str, Message, Mapping[str, str]], **kwargs
+        self,
+        message: Union[str, Message, Mapping[str, str]],
+        vars: Optional[Mapping[str, Any]] = None,
+        **kwargs
     ) -> Optional[str]:
         """Mount context."""
         context_content = ""
@@ -661,9 +683,18 @@ class Agent(Module):
 
         if context_inputs is not None:
             if self.context_inputs_template:
-                msg_context = self._format_template(
-                    context_inputs, self.context_inputs_template
-                )
+                if isinstance(context_inputs, Mapping):                
+                    context_inputs.update(vars)
+                    msg_context = self._format_template(
+                        context_inputs, self.context_inputs_template
+                    )
+                else:
+                    pre_msg_context = self._format_template(
+                        vars, self.context_inputs_template
+                    )
+                    msg_context = self._format_template(
+                        context_inputs, pre_msg_context
+                    )                                    
             elif isinstance(context_inputs, str):
                 msg_context = context_inputs
             elif isinstance(context_inputs, list):
@@ -671,15 +702,18 @@ class Agent(Module):
                     str(v) for v in context_inputs if v is not None
                 )
             elif isinstance(context_inputs, dict):
-                msg_context = "\n\n".join(str(v) for v in context_inputs.values())
-            context_content += "\n\n" + msg_context
+                msg_context = "\n".join(
+                    f"{k}: {v if not isinstance(v, list) else ', '.join(v)}"
+                    for k, v in context_inputs.items()
+                )
+            context_content += msg_context
 
         if context_content:
-            if kwargs.get("injected_kwargs", None):
+            if kwargs.get("vars", None):
                 context_content = self._format_template(
-                    kwargs["injected_kwargs"], context_content
+                    kwargs["vars"], context_content
                 )
-            return apply_xml_tags("context", context_content)
+            return apply_xml_tags("context", context_content) + "\n\n"
         return None
 
     def _process_task_multimodal_inputs(
@@ -878,12 +912,6 @@ class Agent(Module):
 
     def _set_tool_choice(self, tool_choice: Optional[str] = None):
         if isinstance(tool_choice, str) or tool_choice is None:
-            if isinstance(tool_choice, str):
-                if tool_choice not in ["auto", "required"]:
-                    tool_choice = {
-                        "type": "function",
-                        "function": {"name": tool_choice},
-                    }
             self.register_buffer("tool_choice", tool_choice)
         else:
             raise TypeError(
@@ -1000,13 +1028,13 @@ class Agent(Module):
                 f"given `{type(system_extra_message)}`"
             )
 
-    def _set_injected_kwargs(self, injected_kwargs: Optional[str] = None):
-        if isinstance(injected_kwargs, str) or injected_kwargs is None:
-            self.register_buffer("injected_kwargs", injected_kwargs)
+    def _set_vars(self, vars: Optional[str] = None):
+        if isinstance(vars, str) or vars is None:
+            self.register_buffer("vars", vars)
         else:
             raise TypeError(
-                "`injected_kwargs` requires a string or None "
-                f"given `{type(injected_kwargs)}`"
+                "`vars` requires a string or None "
+                f"given `{type(vars)}`"
             )
 
     def _set_typed_parser(self, typed_parser: Optional[str] = None):
@@ -1090,7 +1118,7 @@ class Agent(Module):
             self._set_generation_schema(fused_output_struct or signature_output_struct)
 
             # system message
-            if (
+            if ( # TODO revisar
                 system_message is None
                 and
                 hasattr(generation_schema, "system_message")
@@ -1110,7 +1138,7 @@ class Agent(Module):
             self._set_examples(examples)
 
     def _get_system_prompt(
-        self, injected_kwargs: Optional[Mapping[str, Any]] = None
+        self, vars: Optional[Mapping[str, Any]] = None
     ) -> str:
         """Render the system prompt using the Jinja template.
         Returns an empty string if no segments are provided.
@@ -1131,6 +1159,6 @@ class Agent(Module):
             template_inputs, SYSTEM_PROMPT_TEMPLATE
         )
 
-        if injected_kwargs:  # Runtime inputs to system template
-            system_prompt = self._format_template(injected_kwargs, system_prompt)
+        if vars:  # Runtime inputs to system template
+            system_prompt = self._format_template(vars, system_prompt)
         return system_prompt

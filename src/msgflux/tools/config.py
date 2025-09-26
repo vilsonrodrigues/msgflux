@@ -7,11 +7,12 @@ from msgflux.dotdict import dotdict
 
 def tool_config(
     *,
-    return_direct: Optional[bool] = False,
-    handoff: Optional[bool] = False,
+    return_direct: Optional[bool] = False,    
     call_as_response: Optional[bool] = False,
-    background: Optional[bool] = False,    
-    inject_kwargs: Optional[Union[bool, List[str]]] = False,
+    background: Optional[bool] = False,
+    inject_model_state: Optional[bool] = False,
+    inject_vars: Optional[Union[bool, List[str]]] = False,
+    handoff: Optional[bool] = False,
     name_override: Optional[str] = None,
 ) -> Callable:
     """Decorator to inject meta-properties into a function or class instance.
@@ -25,19 +26,25 @@ def tool_config(
         return_direct:
             If True, the tool will return its output directly without additional
             processing.
-        handoff:
-            If True, indicates that this function will receive the `model_state`
-            from the Agent.
         call_as_response:
             If True, returns the tool call as its result. This property requires
             `return_direct = True` and will automatically change it to True if it
             is passed as false.
-        inject_kwargs:
-            Indicates if the tool should receive kwargs. If True, the tool receives all
-            kwargs. If a list of kwargs is passed, only those kwargs will be passed.
         background:
             If True, the tool will be executed in the background and a message
-            that the task has been scheduled will be the response to the model.            
+            that the task has been scheduled will be the response to the model.
+        inject_model_state:
+            If true, the tool automatically sets `inject_model_state` and `return_direct`
+            to `True`. Additionally, the tool will be renamed to `transfer_to_<name>`.
+            Any input parameters for this tool will be removed. The tool will **only**
+            receive `model_state` as a parameter.
+        inject_vars:
+            Indicates if the tool should receive vars. If True, the tool receives all
+            vars as a named argument `vars`. If a list of vars is passed, only those
+            vars will be passed.
+        handoff:
+            If True, indicates that this function will receive the `model_state`
+            from the Agent.
         name_override:
             A custom name to override the default tool name derived from the function
             or class. If not provided, the original name is used.
@@ -48,28 +55,33 @@ def tool_config(
 
     Raises:
         ValueError:
-           `background=True` is not compatible with `return_direct=True`,
-           `call_as_response=True` and `handoff=True`.
+           `background=True` is not compatible with `return_direct=True` and
+           `call_as_response=True`.
         ValueError:
-           `inject_kwargs=True` is not compatible with `call_as_response=True`.
+           `inject_vars=True` is not compatible with `call_as_response=True`.
     """
 
     def decorator(f):
         _return_direct = return_direct  # Local copy
-
-        if background is True and (return_direct is True or handoff is True):
-            raise ValueError(
-                "`background=True` is not compatible with `return_direct=True`"
-                ", `call_as_response=True` and `handoff=True`"
-            )
-
-        if inject_kwargs is not False and call_as_response is True:
-            raise ValueError(
-                "`inject_kwargs=True` is not compatible with `call_as_response=True`"
-            )
+        _inject_model_state = inject_model_state  # Local copy
 
         if call_as_response is True and _return_direct is False:
             _return_direct = True
+
+        if handoff:
+            _return_direct = True
+            _inject_model_state = True
+
+        if background and (_return_direct or call_as_response):
+            raise ValueError(
+                "`background=True` is not compatible with `return_direct=True`"
+                " and `call_as_response=True`."
+            )
+
+        if inject_vars is not False and call_as_response is True:
+            raise ValueError(
+                "`inject_vars` is not compatible with `call_as_response=True`"
+            )
 
         tool_config = {
             "tool_config": dotdict(
@@ -77,7 +89,8 @@ def tool_config(
                     "background": background,
                     "call_as_response": call_as_response,
                     "handoff": handoff,
-                    "inject_kwargs": inject_kwargs,
+                    "inject_model_state": _inject_model_state,
+                    "inject_vars": inject_vars,
                     "return_direct": _return_direct,
                 }
             )

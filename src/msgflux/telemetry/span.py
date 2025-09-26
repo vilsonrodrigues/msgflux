@@ -127,13 +127,13 @@ def instrument_tool_library_call(forward):
         self,
         tool_callings: List[Tuple[str, str, Any]],
         model_state: Optional[List[Dict[str, Any]]] = None,
-        injected_kwargs: Optional[Dict[str, Any]] = None,
+        vars: Optional[Dict[str, Any]] = None,
     ):
-        if injected_kwargs is None:
-            injected_kwargs = {}
+        if vars is None:
+            vars = {}
         with self._spans.tool_usage(tool_callings) as span:
             tool_execution_result = forward(
-                self, tool_callings, model_state, injected_kwargs
+                self, tool_callings, model_state, vars
             )
             if envs.telemetry_capture_tool_call_responses:
                 span.set_attribute(

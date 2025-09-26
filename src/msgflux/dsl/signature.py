@@ -181,7 +181,7 @@ class Signature(metaclass=_SignatureMeta):
         elif hasattr(dtype_obj, "__name__"):
             return dtype_obj.__name__
         else:
-            return str(dtype_obj)
+            return repr(dtype_obj)
 
     @classmethod
     def _get_inputs(cls) -> Dict[str, str]:
@@ -285,7 +285,7 @@ class SignatureFactory:
             # Expose ONLY the outputs for JSON-based. If fused with another Struct
             # (e.g ReAct) it will be passed as 'response_format' to the model client.
             # This removes duplication.
-            expected_outputs += "Your task outputs are:" + "\n\n"
+            ##expected_outputs += "Your task outputs are:" + "\n\n" TODO depreciado
             for i, output_info in enumerate(outputs_info, 1):
                 part = f"{i}. `{output_info.name}` ({output_info.dtype})"
                 if output_info.desc:

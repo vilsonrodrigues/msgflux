@@ -12,6 +12,7 @@ from msgflux.nn.modules.module import Module
 from msgflux.telemetry.span import instrument_tool_library_call
 from msgflux.utils.chat import generate_tool_json_schema
 from msgflux.utils.convert import convert_camel_to_snake_case
+from msgflux.utils.inspect import fn_has_parameters
 from msgflux.utils.tenacity import tool_retry
 
 
@@ -87,8 +88,8 @@ def _convert_module_to_nn_tool(impl: Callable) -> ToolBase: # noqa: C901
             getattr(impl, "__annotations__", None)
             or
             getattr(impl.__call__, "__annotations__", None)            
-        )
-        if annotations is None:        
+        )        
+        if fn_has_parameters(impl.__call__) and annotations is None:       
             raise NotImplementedError(
                 "To transform a class in `nn.Tool` is necessary "
                 "to implement annotations of types hint in "
@@ -111,9 +112,9 @@ def _convert_module_to_nn_tool(impl: Callable) -> ToolBase: # noqa: C901
                 "is necessary to implement a docstring"
             )
 
-        if hasattr(impl, "__annotations__"):
-            annotations = impl.__annotations__
-        else:
+        annotations = impl.__annotations__
+        
+        if fn_has_parameters(impl) and annotations is None:
             raise NotImplementedError(
                 "To transform a function into a `nn.Tool` "
                 "is necessary to implement parameters "
@@ -227,7 +228,7 @@ class ToolLibrary(Module):
         self,
         tool_callings: List[Tuple[str, str, Any]],
         model_state: Optional[List[Dict[str, Any]]] = None,
-        injected_kwargs: Optional[Dict[str, Any]] = None,
+        vars: Optional[Dict[str, Any]] = None,
     ) -> ToolResponses:
         """Executes tool calls with logic for `handoff`, `return_direct`.
 
@@ -239,15 +240,18 @@ class ToolLibrary(Module):
                     ('322', 'tool_name2', '')]
             model_state:
                 The current state of the Agent for the `handoff` functionality.
-            injected_kwargs:
+            vars:
                 Extra kwargs to be used in tools.
 
         Returns:
             ToolResponses:
                 Structured object containing all tool call results.
         """
-        if injected_kwargs is None:
-            injected_kwargs = {}
+        if model_state is None:
+            vars = {}
+
+        if vars is None:
+            vars = {}
 
         prepared_calls = []
         call_metadata = []
@@ -270,23 +274,23 @@ class ToolLibrary(Module):
             tool = self.library[tool_name]
             config = self.tool_configs.get(tool_name, {})
 
-            inject_kwargs = config.get("inject_kwargs", False)
-            if inject_kwargs is not False:
-                if not injected_kwargs:
+            inject_vars = config.get("inject_vars", False)
+            if inject_vars != False:
+                if not inject_vars:
                     raise ValueError(
-                        f"The tool `{tool_name}` expects injected parameters "
-                        f"(`{inject_kwargs}`), but none were provided."
+                        f"The tool `{tool_name}` expects injected vars "
+                        f"(`{inject_vars}`), but none were provided."
                     )
-                if isinstance(inject_kwargs, list):
-                    for key in inject_kwargs:
-                        if key not in injected_kwargs:
+                if isinstance(inject_vars, list):
+                    for key in inject_vars:
+                        if key not in vars:
                             raise ValueError(
                                 f"The tool `{tool_name}` requires the injected "
                                 f"parameter `{key}`, but it was not found."
                             )
-                        tool_params[key] = injected_kwargs[key]
-                elif inject_kwargs is True:
-                    tool_params.update(injected_kwargs)
+                        tool_params[key] = vars[key]
+                elif inject_vars == True:
+                    tool_params["vars"] = vars
 
             if config.get("background", False):
                 return_directly = False
@@ -316,7 +320,7 @@ class ToolLibrary(Module):
 
             if config.get("handoff", False):  # Add model_state
                 tool_params["task_messages"] = model_state
-                tool_params["message"] = None
+                #tool_params["message"] = None
 
             if not config.get("return_direct", False):
                 return_directly = False

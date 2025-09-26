@@ -28,13 +28,13 @@ class GroqChatCompletion(_BaseGroq, OpenAIChatCompletion):
     """Groq Chat Completion."""
 
     def _adapt_params(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        extra_body = params.get("extra_body", {})
         params["max_completion_tokens"] = params.pop("max_tokens")
         if params["tool_choice"] is None:
             if params["tools"] is not None:
                 params["tool_choice"] = "auto"
             else:
                 params["tool_choice"] = "none"
-        extra_body = {}        
         if self.sampling_run_params.get("reasoning_effort", None):            
             extra_body["reasoning_format"] = "parsed"
         params["extra_body"] = extra_body

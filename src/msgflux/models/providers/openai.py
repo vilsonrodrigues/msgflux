@@ -132,6 +132,7 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
         temperature: Optional[float] = None,
         top_p: Optional[float] = None,
         stop: Optional[Union[str, List[str]]] = None,
+        parallel_tool_calls: Optional[bool] = True,
         modalities: Optional[List[str]] = None,
         audio: Optional[Dict[str, str]] = None,
         verbosity: Optional[str] = None,        
@@ -174,6 +175,8 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
             sampling, where the model considers the results of the tokens
             with top_p probability mass. So 0.1 means only the tokens
             comprising the top 10% probability mass are considered.
+        parallel_tool_calls:
+            If True, enable parallel tool calls.            
         modalities:
             Types of output you would like the model to generate.
             Can be: ["text"], ["audio"] or ["text", "audio"].
@@ -186,7 +189,7 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
             supported values are low, medium, and high.
         web_search_options:
             This tool searches the web for relevant results to use in a response.
-            OpenAI-only.
+            OpenAI and OpenRouter only.
         verbose:
             If True, Prints the model output to the console before it is transformed
             into typed structured output.
@@ -215,6 +218,7 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
             sampling_run_params["reasoning_effort"] = reasoning_effort
         self.sampling_run_params = sampling_run_params
         self.enable_thinking = enable_thinking
+        self.parallel_tool_calls = parallel_tool_calls
         self.reasoning_in_tool_call = reasoning_in_tool_call
         self.validate_typed_parser_output = validate_typed_parser_output
         self.return_reasoning = return_reasoning
@@ -232,17 +236,12 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
         return params
 
     def _execute(self, **kwargs):
-        if kwargs.get("tool_schemas"):
-            kwargs["parallel_tool_calls"] = True
         prefilling = kwargs.pop("prefilling")
         if prefilling:
             kwargs.get("messages").append({"role": "assistant", "content": prefilling})
         params = {**kwargs, **self.sampling_run_params}
         adapted_params = self._adapt_params(params)
-        model_output = self.client.chat.completions.create(
-            model=self.model_id,
-            **adapted_params,
-        )
+        model_output = self.client.chat.completions.create(**adapted_params)
         return model_output
 
     def _generate(self, **kwargs: Mapping[str, Any]) -> ModelResponse:
@@ -444,8 +443,7 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
                     2. required:
                         Call one or more functions.
                     3. Forced Tool:
-                        Call exactly one specific tool e.g:
-                        {"type": "function", "function": {"name": "get_weather"}}
+                        Call exactly one specific tool e.g: "get_weather".
             typed_parser:
                 Converts the model raw output into a typed-dict. Supported parser:
                 `typed_xml`.
@@ -461,17 +459,25 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
         if isinstance(system_prompt, str):            
             messages.insert(0, ChatBlock.system(system_prompt))
 
+        if isinstance(tool_choice, str):
+            if tool_choice not in ["auto", "required", "none"]:
+                tool_choice = {
+                    "type": "function",
+                    "function": {"name": tool_choice},
+                }
+
         generation_params = {
             "messages": messages,
             "prefilling": prefilling,
             "tool_choice": tool_choice,
             "tools": tool_schemas,
+            "model": self.model_id
         }
 
-        if stream is True:
-            if generation_schema is not None:
-                raise ValueError("`generation_schema` is not `stream=True` compatible")
+        if tool_schemas:
+            generation_params["parallel_tool_calls"] = self.parallel_tool_calls
 
+        if stream is True:
             if typed_parser is not None:
                 raise ValueError("`typed_parser` is not `stream=True` compatible")
 

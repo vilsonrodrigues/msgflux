@@ -3,7 +3,13 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from typing import Callable
 
-import uvloop
+try:
+    import platform
+    import uvloop
+    if platform.python_implementation() != "PyPy":
+        asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
+except ImportError:
+    pass
 
 from msgflux.envs import envs
 
@@ -11,7 +17,7 @@ from msgflux.envs import envs
 class AsyncWorker:
     def __init__(self):
         """Initializes a worker with its own event loop in a separate thread."""
-        self.loop = uvloop.new_event_loop()
+        self.loop = asyncio.new_event_loop()
         self.thread = threading.Thread(target=self.loop.run_forever)
         self.thread.start()
 

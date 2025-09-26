@@ -522,9 +522,7 @@ class Module:
         self, content: Union[str, Dict[str, Any]], raw_template: str
     ) -> str:
         if isinstance(content, str):
-            # Convert jinja to string format template
-            template = raw_template.replace("{{ }}", "{}").replace("{{}}", "{}")
-            rendered = template.format(content)
+            rendered = raw_template.format(content)
         elif isinstance(content, dict):
             template = Template(raw_template)
             rendered = template.render(content)

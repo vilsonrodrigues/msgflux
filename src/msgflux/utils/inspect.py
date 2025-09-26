@@ -2,7 +2,17 @@ import inspect
 import mimetypes
 import os
 from pathlib import Path
+from typing import Callable
 from urllib.parse import urlparse
+
+
+def fn_has_parameters(fn: Callable) -> bool:
+    sig = inspect.signature(fn)
+    for param in sig.parameters.values():
+        # Ignore *args and **kwargs
+        if param.kind not in (param.VAR_POSITIONAL, param.VAR_KEYWORD):
+            return True
+    return False
 
 
 def get_mime_type(source: str) -> str: # noqa: C901

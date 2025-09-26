@@ -24,6 +24,7 @@ Optional fields may be omitted.
 """
 
 REACT_TOOLS_TEMPLATE = """
+{% set tool_choice = tool_choice or "auto" %}
 You are a function calling AI model. You may call one or more functions
 to assist with the user query. Don't make assumptions about what values
 to plug into functions. Here are the available tools:
@@ -43,15 +44,16 @@ to plug into functions. Here are the available tools:
 {%- endfor %}
 {%- endmacro %}
 
-{%- for tool in tools %}
+{%- for tool in tool_schemas %}
 <tool>{{ tool['function']['name'] }}
 {{ tool['function']['description'] }}
 {{ render_properties(tool['function']['parameters']['properties']) }}
 </tool>
 {%- endfor %}
 
-For each function call return a encoded json object with function name
-and arguments.
+Tool choice: {{ tool_choice }}
+
+For each function call return a encoded json object with function name and arguments.
 """
 
 
