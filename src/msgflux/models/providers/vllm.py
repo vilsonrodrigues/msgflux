@@ -70,7 +70,7 @@ class VLLMTextReranker(JinaAITextReranker, _BaseVLLM):
 class VLLMTextClassifier(_BaseVLLM, HTTPXModelClient, TextClassifierModel):
     """vLLM Text Score."""
 
-    url_path = "/classify"
+    endpoint = "/classify"
 
     def __init__(self, model_id: str, base_url: Optional[str] = None):
         super().__init__()

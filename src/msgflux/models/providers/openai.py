@@ -2,9 +2,7 @@ import base64
 import tempfile
 from contextlib import contextmanager
 from os import getenv
-from typing import (
-    Any, Dict, List, Literal, Mapping, Optional, Union, get_origin
-)
+from typing import Any, Dict, List, Literal, Mapping, Optional, Union
 
 import msgspec
 
@@ -24,7 +22,7 @@ except ImportError:
 
 from msgflux.dotdict import dotdict
 from msgflux.dsl.typed_parsers import typed_parser_registry
-from msgflux.exceptions import KeyExhaustedError, TypedParserNotFoundError
+from msgflux.exceptions import TypedParserNotFoundError
 from msgflux.models.base import BaseModel
 from msgflux.models.registry import register_model
 from msgflux.models.response import ModelResponse, ModelStreamResponse
@@ -32,6 +30,7 @@ from msgflux.models.tool_call_agg import ToolCallAggregator
 from msgflux.models.types import (
     ChatCompletionModel,
     ImageTextToImageModel,
+    ImageTextToVideoModel,
     ModerationModel,
     SpeechToTextModel,
     TextEmbedderModel,
@@ -74,46 +73,14 @@ class _BaseOpenAI(BaseModel):
 
     def _get_api_key(self):
         """Load API keys from environment variable."""
-        keys = getenv("OPENAI_API_KEY")
-        if not keys:
+        key = getenv("OPENAI_API_KEY")
+        if not key:
             raise ValueError(
                 "The OpenAI key is not available. Please set `OPENAI_API_KEY`"
             )
-        self._api_key = [key.strip() for key in keys.split(",")]
+        self._api_key = key
         if not self._api_key:
-            raise ValueError("No valid API keys found")
-
-    def _set_next_api_key(self):
-        """Set the next API key in the rotation."""
-        if self.current_key_index >= len(self._api_key) - 1:
-            raise KeyExhaustedError("All API keys have been exhausted")
-        self.current_key_index += 1
-        self.client.api_key = self._api_key[self.current_key_index]
-
-    def _execute_with_retry(self, **kwargs):
-        """Execute the model with the current API key and handle retries."""
-        try:
-            return self._execute(**kwargs)
-        except (openai.RateLimitError, openai.APIError):
-            # Try the next API key
-            self._set_next_api_key()
-            # Recursively try again with the new key
-            return self._execute_with_retry(**kwargs)
-        except Exception as e:
-            # For other exceptions, we might want to retry with the same key
-            raise e
-
-    def _execute_model(self, **kwargs):
-        """Main method to execute the model with automatic key rotation and retries."""
-        # Set the initial API key
-        self.client.api_key = self._api_key[self.current_key_index]
-
-        try:
-            return self._execute_with_retry(**kwargs)
-        except KeyExhaustedError as e:
-            # Reset the key index for future calls
-            self.current_key_index = 0
-            raise e
+            raise ValueError("No valid API key found")
 
 @register_model
 class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
@@ -229,13 +196,9 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
     def _adapt_params(self, params: Dict[str, Any]) -> Dict[str, Any]:
         if self.provider in "openai":
             params["max_completion_tokens"] = params.pop("max_tokens")
-            tools = params.get("tools", None)
-            if tools: # OpenAI supports 'strict' mode to tools
-                for tool in tools:
-                    tool["function"]["strict"] = True
         return params
 
-    def _execute(self, **kwargs):
+    def _execute_model(self, **kwargs):
         prefilling = kwargs.pop("prefilling")
         if prefilling:
             kwargs.get("messages").append({"role": "assistant", "content": prefilling})
@@ -401,7 +364,7 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
         if aggregator.tool_calls:
             if reasoning_tool_call:
                 aggregator.reasoning = reasoning_tool_call
-            stream_response.add(aggregator)
+            stream_response.data = aggregator # For tool calls save as 'data'
             stream_response.first_chunk_event.set()
 
         stream_response.set_metadata(metadata)
@@ -538,29 +501,7 @@ class OpenAITextToSpeech(_BaseOpenAI, TextToSpeechModel):
         self._get_api_key()
 
     @contextmanager
-    def _execute_with_retry(self, **kwargs):
-        while True:
-            try:
-                with self._execute(**kwargs) as result:
-                    yield result
-                break
-            except (openai.RateLimitError, openai.APIError):
-                self._set_next_api_key()
-            except Exception as e:
-                raise e
-
-    @contextmanager
     def _execute_model(self, **kwargs):
-        self.client.api_key = self._api_key[self.current_key_index]
-        try:
-            with self._execute_with_retry(**kwargs) as result:
-                yield result
-        except KeyExhaustedError as e:
-            self.current_key_index = 0
-            raise e
-
-    @contextmanager
-    def _execute(self, **kwargs):
         with self.client.audio.speech.with_streaming_response.create(
             model=self.model_id, **kwargs, **self.sampling_run_params
         ) as model_output:
@@ -635,21 +576,12 @@ class OpenAITextToImage(_BaseOpenAI, TextToImageModel):
         self,
         *,
         model_id: str,
-        size: Optional[str] = "auto",
-        quality: Optional[str] = "auto",
-        background: Optional[Literal["transparent", "opaque", "auto"]] = None,
         moderation: Optional[Literal["auto", "low"]] = None,
         base_url: Optional[str] = None,
     ):
         """Args:
         model_id:
             Model ID in provider.
-        size:
-            The size of the generated images.
-        quality:
-            The quality of the image that will be generated.
-        background:
-            Allows to set transparency for the background of the generated image(s).
         moderation:
             Control the content-moderation level for images generated.
         base_url:
@@ -658,33 +590,26 @@ class OpenAITextToImage(_BaseOpenAI, TextToImageModel):
         super().__init__()
         self.model_id = model_id
         self.sampling_params = {"base_url": base_url or self._get_base_url()}
-        self.sampling_run_params = {
-            "size": size,
-            "quality": quality,
-            "background": background,
-        }
+        sampling_run_params = {}
         if moderation:
-            self.sampling_run_params["moderation"] = moderation
+            sampling_run_params["moderation"] = moderation
+        self.sampling_run_params = sampling_run_params
         self._initialize()
         self._get_api_key()
 
-    def _execute(self, **kwargs):
-        model_output = self.client.images.generate(
-            model=self.model_id, **kwargs, **self.sampling_run_params
-        )
+    def _execute_model(self, **kwargs):
+        model_output = self.client.images.generate(**kwargs, **self.sampling_run_params)
         return model_output
 
     def _get_metadata(self, model_output):
         metadata = dotdict(
-            {
-                "usage": model_output.usage.to_dict(),
-                "details": {
-                    "size": model_output.size,
-                    "quality": model_output.quality,
-                    "output_format": model_output.output_format,
-                    "background": model_output.background,
-                },
-            }
+            usage=model_output.usage.to_dict(),
+            details=dict(
+                size=model_output.size,
+                quality=model_output.quality,
+                output_format=model_output.output_format,
+                background=model_output.background,
+            )            
         )
         return metadata
 
@@ -718,6 +643,9 @@ class OpenAITextToImage(_BaseOpenAI, TextToImageModel):
         *,
         response_format: Optional[Literal["url", "base64"]] = None,
         n: Optional[int] = 1,
+        size: Optional[str] = "auto",
+        quality: Optional[str] = "auto",
+        background: Optional[Literal["transparent", "opaque", "auto"]] = None,        
     ) -> ModelResponse:
         """Args:
         prompt:
@@ -726,8 +654,21 @@ class OpenAITextToImage(_BaseOpenAI, TextToImageModel):
             Format in which images are returned.
         n:
             The number of images to generate.
+        size:
+            The size of the generated images.
+        quality:
+            The quality of the image that will be generated.
+        background:
+            Allows to set transparency for the background of the generated image(s).            
         """
-        generation_params = dotdict(n=n, prompt=prompt)
+        generation_params = dotdict(
+            prompt=prompt,
+            n=n,
+            size=size,
+            quality=quality,
+            background=background,
+            model=self.model_id
+        )
 
         if response_format is not None:
             if response_format == "base64":
@@ -741,10 +682,8 @@ class OpenAITextToImage(_BaseOpenAI, TextToImageModel):
 class OpenAIImageTextToImage(OpenAITextToImage, ImageTextToImageModel):
     """OpenAI Image Edit."""
 
-    def _execute(self, **kwargs):
-        model_output = self.client.images.edit(
-            model=self.model_id, **kwargs, **self.sampling_run_params
-        )
+    def _execute_model(self, **kwargs):
+        model_output = self.client.images.edit(**kwargs, **self.sampling_run_params)
         return model_output
 
     def _prepare_inputs(self, image, mask):
@@ -781,7 +720,7 @@ class OpenAIImageTextToImage(OpenAITextToImage, ImageTextToImageModel):
         n:
             The number of images to generate.
         """
-        generation_params = dotdict(prompt=prompt, n=n)
+        generation_params = dotdict(prompt=prompt, n=n, model=self.model_id)
 
         if response_format is not None:
             if response_format == "base64":
@@ -818,9 +757,9 @@ class OpenAISpeechToText(_BaseOpenAI, SpeechToTextModel):
         self._initialize()
         self._get_api_key()
 
-    def _execute(self, **kwargs):
+    def _execute_model(self, **kwargs):
         model_output = self.client.audio.transcriptions.create(
-            model=self.model_id, **kwargs, **self.sampling_run_params
+            **kwargs, **self.sampling_run_params
         )
         return model_output
 
@@ -840,18 +779,13 @@ class OpenAISpeechToText(_BaseOpenAI, SpeechToTextModel):
                 transcript["text"] = model_output.text
             if model_output.words:
                 words = [
-                    {"word": w.word, "start": w.start, "end": w.end}
+                    dict(word=w.word, start=w.start, end=w.end)
                     for w in model_output.words
                 ]
                 transcript["words"] = words
             if model_output.segment:
                 segments = [
-                    {
-                        "id": seg.id,
-                        "start": seg.start,
-                        "end": seg.end,
-                        "text": seg.text,
-                    }
+                    dict(id=seg.id, start=seg.start, end=seg.end, text=seg.text)
                     for seg in model_output.segments
                 ]
                 transcript["segments"] = segments
@@ -913,13 +847,14 @@ class OpenAISpeechToText(_BaseOpenAI, SpeechToTextModel):
             ISO-639-1 (e.g. en) format will improve accuracy and latency.
         """
         file = encode_data_to_bytes(data)
-        params = {
-            "file": file,
-            "language": language,
-            "response_format": response_format,
-            "timestamp_granularities": timestamp_granularities,
-            "prompt": prompt,
-        }
+        params = dict(
+            file=file,
+            language=language,
+            response_format=response_format,
+            timestamp_granularities=timestamp_granularities,
+            prompt=prompt,
+            model=self.model_id
+        )
         if stream:
             stream_response = ModelStreamResponse()
             params["stream_response"] = stream_response
@@ -957,11 +892,9 @@ class OpenAITextEmbedder(_BaseOpenAI, TextEmbedderModel):
         self._initialize()
         self._get_api_key()
 
-    def _execute(self, **kwargs):
-        model_output = self.client.embeddings.create(
-            model=self.model_id,
-            **kwargs,
-            **self.sampling_run_params,
+    def _execute_model(self, **kwargs):
+        model_output = self.client.embeddings.create(            
+            **kwargs, **self.sampling_run_params,
         )
         return model_output
 
@@ -984,7 +917,7 @@ class OpenAITextEmbedder(_BaseOpenAI, TextEmbedderModel):
         data:
             Input text to embed.
         """
-        response = self._generate(input=data)
+        response = self._generate(input=data, model=self.model_id)
         return response
 
 @register_model
@@ -1009,11 +942,8 @@ class OpenAIModeration(_BaseOpenAI, ModerationModel):
         self._initialize()
         self._get_api_key()
 
-    def _execute(self, **kwargs):
-        model_output = self.client.moderations.create(
-            model=self.model_id,
-            **kwargs,
-        )
+    def _execute_model(self, **kwargs):
+        model_output = self.client.moderations.create(**kwargs)
         return model_output
 
     def _generate(self, **kwargs):
@@ -1036,5 +966,5 @@ class OpenAIModeration(_BaseOpenAI, ModerationModel):
             an array of strings, or an array of multi-modal input
             objects similar to other models.
         """
-        response = self._generate(input=data)
+        response = self._generate(input=data, model=self.model_id)
         return response

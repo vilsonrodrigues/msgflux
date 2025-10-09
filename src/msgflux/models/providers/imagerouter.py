@@ -2,70 +2,40 @@ from os import getenv
 from typing import List, Optional, Union
 
 from msgflux.models.httpx import HTTPXModelClient
+from msgflux.models.providers.openai import OpenAITextToImage
 from msgflux.models.registry import register_model
 from msgflux.models.response import ModelResponse
 from msgflux.models.types import (
-    ImageClassifierModel,
-    ImageEmbedderModel,
-    TextClassifierModel,
-    TextEmbedderModel,
-    TextRerankerModel,
+    ImageTextToImageModel,
+    ImageTextToVideoModel,    
+    TextToImageModel,
+    TextToVideoModel
 )
 from msgflux.utils.tenacity import model_retry
 
 
-class _BaseJinaAI:
-    """Configurations to use JinaAI models."""
+class _BaseImageRouter:
+    """Configurations to use ImageRouter models."""
 
-    provider: str = "jinaai"
+    provider: str = "imagerouter"
 
     def _get_base_url(self):
-        base_url = getenv("JINAAI_BASE_URL", "https://api.jina.ai/v1")
+        default_url = "https://api.imagerouter.io/v1/openai"
+        base_url = getenv("IMAGEROUTER_BASE_URL", default_url)
         if base_url is None:
-            raise ValueError("Please set `JINAAI_BASE_URL`")
+            raise ValueError("Please set `IMAGEROUTER_BASE_URL`")
         return base_url
 
     def _get_api_key(self):
         """Load API keys from environment variable."""
-        keys = getenv("JINAAI_API_KEY")
+        keys = getenv("IMAGEROUTER_API_KEY")
         self._api_key = [key.strip() for key in keys.split(",")]
         if not self._api_key:
             raise ValueError("No valid API keys found")
 
 @register_model
-class JinaAITextReranker(_BaseJinaAI, HTTPXModelClient, TextRerankerModel):
-    """JinaAI Text Reranker."""
-
-    endpoint = "/rerank"
-
-    def __init__(self, model_id: str, base_url: Optional[str] = None):
-        """Args:
-        model_id:
-            Model ID in provider.
-        base_url:
-            URL to model provider.
-        """
-        super().__init__()
-        self.model_id = model_id
-        self.sampling_params = {"base_url": base_url or self._get_base_url()}
-
-    def _generate(self, **kwargs):
-        response = ModelResponse()
-        response.set_response_type("text_reranked")
-        model_output = self._execute(**kwargs)
-        response.add(model_output["results"])
-        return response
-
-    @model_retry
-    def __call__(self, query: str, documents: List[str]) -> ModelResponse:
-        """Args:
-        query:
-            Reference text to search for similar.
-        documents:
-            A list of documents to be ranked.
-        """
-        response = self._generate(query=query, documents=documents)
-        return response
+class ImageRouterTextToImage(_BaseImageRouter, OpenAITextToImage, TextToImageModel):
+    """ImageRouter Text to Image."""
 
 @register_model
 class JinaAITextEmbedder(TextEmbedderModel, HTTPXModelClient, _BaseJinaAI):

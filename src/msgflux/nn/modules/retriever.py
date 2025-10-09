@@ -120,11 +120,7 @@ class Retriever(Module):
         self, queries: List[Union[str, List[float]]]
     ) -> Dict[str, Any]:
         retriever_execution_params = dotdict(
-            {
-                "queries": queries,
-                "top_k": self.top_k,
-                "return_score": self.return_score,
-            }
+            queries=queries, top_k=self.top_k, return_score=self.return_score
         )
         if self.threshold:
             retriever_execution_params.threshold = self.threshold
@@ -160,7 +156,7 @@ class Retriever(Module):
     ) -> Dict[str, Union[str, List[str]]]:
         if len(queries) == 1:
             queries = queries[0]
-        model_execution_params = dotdict({"data": queries})
+        model_execution_params = dotdict(data=queries)
         if isinstance(self.model, ModelGateway) and model_preference is not None:
             model_execution_params.model_preference = model_preference
         return model_execution_params

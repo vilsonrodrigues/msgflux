@@ -73,11 +73,7 @@ class Speaker(Module):
         self, data: str, model_preference: Optional[str] = None
     ) -> Dict[str, Union[str, bool]]:
         model_execution_params = dotdict(
-            {
-                "data": data,
-                "response_format": self.response_format,
-                "prompt": self.prompt,
-            }
+            data=data, response_format=self.response_format, prompt=self.prompt
         )
         if self.stream:
             model_execution_params.stream = self.stream

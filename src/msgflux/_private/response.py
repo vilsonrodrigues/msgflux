@@ -33,6 +33,7 @@ class StreamResponse(CoreResponse):
 
     def __init__(self):
         self.first_chunk_event = asyncio.Event()
+        self.data = None
         self.queue = asyncio.Queue()
         self.metadata = None
         self.response_type = None

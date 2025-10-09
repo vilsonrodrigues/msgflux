@@ -92,41 +92,31 @@ def tool_config(
                     "inject_model_state": _inject_model_state,
                     "inject_vars": inject_vars,
                     "return_direct": _return_direct,
+                    "name_overridden": name_override
                 }
             )
         }
         if isinstance(f, (FunctionType, MethodType)):
-            return decorate_function(f, name_override, tool_config)
+            return decorate_function(f, tool_config)            
         if isinstance(f, type):  # Not initialized class
             f = f()  # Init class
-        return decorate_instance(f, name_override, tool_config)
+        return decorate_instance(f, tool_config)
 
     return decorator
 
 
 def decorate_function(
-    func: Union[FunctionType, MethodType],
-    override_name: str,
-    tool_config: Dict[str, Union[bool, str]],
+    func: Union[FunctionType, MethodType], tool_config: Dict[str, Union[bool, str]],
 ) -> Union[FunctionType, MethodType]:
     @wraps(func)
     def wrapper(*args, **kwargs):
         return func(*args, **kwargs)
-
-    if override_name:
-        wrapper.__name__ = override_name
-        wrapper.__qualname__ = override_name
-
     wrapper.__dict__.update(tool_config)
     return wrapper
 
 
 def decorate_instance(
-    instance: Callable, override_name: str, tool_config: Dict[str, Union[bool, str]]
+    instance: Callable, tool_config: Dict[str, Union[bool, str]]
 ) -> Callable:
-    if override_name:
-        instance.__name__ = override_name
-        instance.__qualname__ = override_name
-
     instance.__dict__.update(tool_config)
     return instance

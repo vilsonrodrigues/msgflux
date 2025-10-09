@@ -197,13 +197,13 @@ class Agent(Module):
                 raise ValueError("`typed_parser` is not `stream=True` compatible")
 
         if signature is not None:
-            signature_params = dotdict({
-                    "signature": signature,
-                    "examples": examples,
-                    "instructions": instructions,
-                    "system_message": system_message,
-                    "typed_parser": typed_parser,
-            })
+            signature_params = dotdict(
+                signature=signature,
+                examples=examples,
+                instructions=instructions,
+                system_message=system_message,
+                typed_parser=typed_parser
+            )
             if generation_schema is not None:
                 signature_params.generation_schema = generation_schema
             self._set_signature(**signature_params)
@@ -253,14 +253,13 @@ class Agent(Module):
     def _execute_model(
         self,
         model_state: List[Mapping[str, Any]],
+        vars: Mapping[str, Any],
         prefilling: Optional[str] = None,
         model_preference: Optional[str] = None,
-        vars: Optional[Mapping[str, Any]] = None,
     ) -> Union[ModelResponse, ModelStreamResponse]:
-        if vars is None:
-            vars = {}
         model_execution_params = self._prepare_model_execution(
-            model_state, prefilling, model_preference, vars
+            model_state=model_state, prefilling=prefilling,
+            model_preference=model_preference, vars=vars
         )
         if self.input_guardrail:
             self._execute_input_guardrail(model_execution_params)
@@ -273,12 +272,11 @@ class Agent(Module):
     def _prepare_model_execution(
         self,
         model_state: List[Mapping[str, Any]],
+        vars: Mapping[str, Any],        
         prefilling: Optional[str] = None,
         model_preference: Optional[str] = None,
-        vars: Optional[Mapping[str, Any]] = None,
     ) -> Mapping[str, Any]:
-        if vars is None:
-            vars = {}
+        # model_state, prefilling, model_preference, vars
         agent_state = []
 
         if self.fixed_messages:
@@ -306,16 +304,14 @@ class Agent(Module):
             tool_choice = None  # Disable tool_choice to controlflow preference
 
         model_execution_params = dotdict(
-            {
-                "messages": agent_state,
-                "system_prompt": system_prompt or None,
-                "prefilling": prefilling,
-                "stream": self.stream,
-                "tool_schemas": tool_schemas,
-                "tool_choice": tool_choice,
-                "generation_schema": self.generation_schema,
-                "typed_parser": self.typed_parser,
-            }
+            messages=agent_state,
+            system_prompt=system_prompt or None,
+            prefilling=prefilling,
+            stream=self.stream,
+            tool_schemas=tool_schemas,
+            tool_choice=tool_choice,
+            generation_schema=self.generation_schema,
+            typed_parser=self.typed_parser,
         )
 
         if model_preference:
@@ -326,8 +322,8 @@ class Agent(Module):
     def _prepare_input_guardrail_execution(
         self, model_execution_params: Mapping[str, Any]
     ) -> Mapping[str, Any]:
-        model_state = model_execution_params.get("model_state")
-        last_message = model_state[-1]
+        messages = model_execution_params.get("messages")
+        last_message = messages[-1]
         if isinstance(last_message.get("content"), list):
             if last_message.get("content")[0]["type"] == "image_url":
                 data = [last_message]
@@ -343,18 +339,16 @@ class Agent(Module):
         message: Union[str, Mapping[str, str], Message],
         model_response: Union[ModelResponse, ModelStreamResponse],
         model_state: List[Mapping[str, Any]],
+        vars: Mapping[str, Any],        
         model_preference: Optional[str] = None,
-        vars: Optional[Mapping[str, Any]] = None,
     ) -> Union[str, Mapping[str, str], Message, ModelStreamResponse]:
-        if vars is None:
-            vars = {}
         if "tool_call" in model_response.response_type:
             model_response, model_state = self._process_tool_call_response(
-                model_response, model_state, model_preference, vars
+                model_response, model_state, vars, model_preference
             )
         elif is_subclass_of(self.generation_schema, ToolFlowControl):
             model_response, model_state = self._process_tool_flow_control_response(
-                model_response, model_state, model_preference, vars
+                model_response, model_state, vars, model_preference
             )
 
         if isinstance(model_response, (ModelResponse, ModelStreamResponse)):        
@@ -376,15 +370,12 @@ class Agent(Module):
         self,
         model_response: Union[ModelResponse, ModelStreamResponse],
         model_state: Mapping[str, Any],
+        vars: Mapping[str, Any],        
         model_preference: Optional[str] = None,
-        vars: Optional[Mapping[str, Any]] = None,
     ) -> Tuple[Union[str, Mapping[str, Any], ModelStreamResponse], Mapping[str, Any]]:
         """Handle the fields returned by `ReAct`. If the fields are different,
         you must rewrite this function.
         """
-        if vars is None:
-            vars = {}
-
         while True:
             raw_response = self._extract_raw_response(model_response)
 
@@ -401,17 +392,15 @@ class Agent(Module):
                     cprint(repr, bc="br2", ls="b")
 
                 for act in actions:
-                    act.id = str(uuid4())  # Add tool_id                
+                    act.id = str(uuid4())  # Add tool_id              
 
                 tool_callings = [(act.id, act.name, act.arguments) for act in actions]
-                tool_results = self._process_tool_call(
-                    tool_callings, model_state, vars
-                )
+                tool_results = self._process_tool_call(tool_callings, model_state, vars)
 
                 if tool_results.return_directly:    
                     tool_calls = tool_results.to_dict().pop("return_directly")
                     tool_calls["reasoning"] = reasoning                    
-                    tool_responses = dotdict({"tool_responses": tool_calls})
+                    tool_responses = dotdict(tool_responses=tool_calls)
                     # TODO converter tool calls em tool call msgs
                     return tool_responses, model_state
 
@@ -433,42 +422,39 @@ class Agent(Module):
             model_response = self._execute_model(
                 model_state=model_state,
                 model_preference=model_preference,
+                vars=vars                
             )
 
     def _process_tool_call_response(
         self,
-        model_response: Union[ModelResponse, ModelStreamResponse],
-        model_state: Optional[Mapping[str, Any]],
-        model_preference: Optional[str] = None,
-        vars: Optional[Mapping[str, Any]] = None,
+        model_response: Union[ModelResponse, ModelStreamResponse],  
+        model_state: Mapping[str, Any],
+        vars: Mapping[str, Any],        
+        model_preference: Optional[str] = None
     ) -> Tuple[Union[str, Mapping[str, Any], ModelStreamResponse], Mapping[str, Any]]:
         """ToolCall example: [{'role': 'assistant', 'tool_responses': [{'id': 'call_1YL',
         'type': 'function', 'function': {'arguments': '{"order_id":"order_12345"}',
         'name': 'get_delivery_date'}}]}, {'role': 'tool', 'tool_call_id': 'call_HA',
         'content': '2024-10-15'}].
         """
-        if vars is None:
-            vars = {}
         while True:
-            if model_response.response_type == "tool_call":
-                raw_response = self._extract_raw_response(model_response)
+            if model_response.response_type == "tool_call":                
+                raw_response = model_response.data
                 reasoning = raw_response.reasoning
              
-                if self.verbose:                    
+                if self.verbose:         
                     if reasoning:
                         repr = f"[{self.name}][tool_calls_reasoning] {reasoning}"
                         cprint(repr, bc="br2", ls="b")
 
                 tool_callings = raw_response.get_calls()
-                tool_results = self._process_tool_call(
-                    tool_callings, model_state, vars
-                )
+                tool_results = self._process_tool_call(tool_callings, model_state, vars)
 
                 if tool_results.return_directly:    
                     tool_calls = tool_results.to_dict()
                     tool_calls.pop("return_directly")
                     tool_calls["reasoning"] = reasoning
-                    tool_responses = dotdict({"tool_responses": tool_calls})
+                    tool_responses = dotdict(tool_responses=tool_calls)
                     return tool_responses, model_state
 
                 id_results = {
@@ -484,20 +470,19 @@ class Agent(Module):
             model_response = self._execute_model(
                 model_state=model_state,
                 model_preference=model_preference,
+                vars=vars
             )
 
     def _process_tool_call(
         self,
         tool_callings: Mapping[str, Any],
         model_state: List[Mapping[str, Any]],
-        vars: Optional[Mapping[str, Any]] = None,
+        vars: Mapping[str, Any],
     ) -> ToolResponses:
         if self.verbose:       
             for call in tool_callings:
                 repr = f"[{self.name}][tool_call] {call[1]}: {call[2]}"
-                cprint(repr, bc="br2", ls="b")   
-        if vars is None:
-            vars = {}            
+                cprint(repr, bc="br2", ls="b")  
         tool_results = self.tool_library(
             tool_callings=tool_callings,
             model_state=model_state,
@@ -520,7 +505,7 @@ class Agent(Module):
         response_type: str,
         model_state: List[Mapping[str, Any]],
         message: Union[str, Mapping[str, Any], Message],
-        vars: Optional[Mapping[str, Any]] = None,
+        vars: Mapping[str, Any],
     ) -> Union[str, Mapping[str, Any], ModelStreamResponse]:
         formatted_response = None
         if not isinstance(raw_response, ModelStreamResponse):          
@@ -539,14 +524,14 @@ class Agent(Module):
                         raw_response.update(vars)
                         formatted_response = self._format_response_template(
                             raw_response
-                         )
+                        )
         
         response = formatted_response or raw_response
         if self.return_model_state:
             if response_type == "tool_responses":
                 response.model_state = model_state
             else:
-                response = dotdict({"response": response, "model_state": model_state})
+                response = dotdict(model_response=response, model_state=model_state)
         return self._define_response_mode(response, message)
 
     def _prepare_output_guardrail_execution(
@@ -563,7 +548,6 @@ class Agent(Module):
         self, message: Union[str, Message, Mapping[str, str]], **kwargs
     ) -> Mapping[str, Any]:
         """Prepare model input in ChatML format and execution params."""
-        # Runtime params to templates
         vars = kwargs.pop("vars", {})
         if (
             not vars
@@ -571,8 +555,6 @@ class Agent(Module):
             and self.vars is not None
         ):
             vars = message.get(self.vars, {})
-        if vars:
-            vars = dotdict(vars)
 
         task_messages = kwargs.pop("task_messages", None)
         if (
@@ -582,9 +564,7 @@ class Agent(Module):
         ):
             task_messages = self._get_content_from_message(self.task_messages, message)
 
-        content = self._process_task_inputs(
-            message, vars=vars, **kwargs
-        )
+        content = self._process_task_inputs(message, vars=vars, **kwargs)
 
         if content is None and task_messages is None:
             raise ValueError("No data was detected to make the model input")
@@ -612,14 +592,12 @@ class Agent(Module):
     def _process_task_inputs(
         self,
         message: Union[str, Message, Mapping[str, str]],
-        vars: Optional[Mapping[str, Any]] = None,
+        vars: Mapping[str, Any],
         **kwargs
     ) -> Optional[Union[str, Mapping[str, Any]]]:
         content = ""
 
-        context_content = self._context_manager(
-            message, vars=vars, **kwargs
-        )
+        context_content = self._context_manager(message, vars=vars, **kwargs)
         if context_content:
             content += context_content
 
@@ -665,7 +643,7 @@ class Agent(Module):
     def _context_manager( # noqa: C901
         self,
         message: Union[str, Message, Mapping[str, str]],
-        vars: Optional[Mapping[str, Any]] = None,
+        vars: Mapping[str, Any],
         **kwargs
     ) -> Optional[str]:
         """Mount context."""
@@ -709,10 +687,8 @@ class Agent(Module):
             context_content += msg_context
 
         if context_content:
-            if kwargs.get("vars", None):
-                context_content = self._format_template(
-                    kwargs["vars"], context_content
-                )
+            if vars:
+                context_content = self._format_template(vars, context_content)
             return apply_xml_tags("context", context_content) + "\n\n"
         return None
 
@@ -1143,21 +1119,19 @@ class Agent(Module):
         """Render the system prompt using the Jinja template.
         Returns an empty string if no segments are provided.
         """
-        template_inputs = {
-            "system_message": self.system_message.data,
-            "instructions": self.instructions.data,
-            "expected_output": self.expected_output.data,
-            "examples": self.examples.data,
-            "system_extra_message": self.system_extra_message,
-        }
+        template_inputs = dotdict(
+            system_message=self.system_message.data,
+            instructions=self.instructions.data,
+            expected_output=self.expected_output.data,
+            examples=self.examples.data,
+            system_extra_message=self.system_extra_message,
+        )
 
         if self.include_date:
             now = datetime.now(tz=timezone.utc)
-            template_inputs["current_date"] = now.strftime("%m/%d/%Y")
+            template_inputs.current_date = now.strftime("%m/%d/%Y")
 
-        system_prompt = self._format_template(
-            template_inputs, SYSTEM_PROMPT_TEMPLATE
-        )
+        system_prompt = self._format_template(template_inputs, SYSTEM_PROMPT_TEMPLATE)
 
         if vars:  # Runtime inputs to system template
             system_prompt = self._format_template(vars, system_prompt)

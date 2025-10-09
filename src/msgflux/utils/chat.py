@@ -296,44 +296,47 @@ def response_format_from_msgspec_struct(
     return response_format
 
 
-# TODO tirar e deixar como um tutorial
-def chatml_to_steps_format(
-    model_state: List[Dict[str, Any]], response: Union[str, Dict[str, Any]]
-) -> Dict[str, Any]:
-    steps = []
-    pending_tool_calls = {}
+def hint_to_schema(type_hint) -> dict:
+    """Converte um type hint para um fragmento JSON Schema."""
+    origin = get_origin(type_hint)
 
-    for message in model_state:
-        if message["role"] == "user" and "content" in message:
-            steps.append({"task": message["content"]})
+    if origin is None:
+        if type_hint is str:
+            return {"type": "string"}
+        if type_hint is int:
+            return {"type": "integer"}
+        if type_hint is float:
+            return {"type": "number"}
+        if type_hint is bool:
+            return {"type": "boolean"}
+        if type_hint is Any:
+            raise TypeError("Unsupported type in Tool: Any")
+        if type_hint is dict or type_hint is Dict:
+            raise TypeError("Unsupported type in Tool: Dict")
 
-        elif message["role"] == "assistant" and "content" in message:
-            steps.append({"assistant": message["content"]})
+    # List / list[T]
+    if origin in (list, List):
+        args = get_args(type_hint)
+        items_schema = hint_to_schema(args[0]) if args else {}
+        return {"type": "array", "items": items_schema}
 
-        elif message.get("tool_calls"):
-            # Iterates over all function calls in the `tool_calls` list
-            for tool_call in message["tool_calls"]:
-                fn_call_entry = {
-                    "id": tool_call["id"],
-                    "name": tool_call["function"]["name"],
-                    "arguments": tool_call["function"]["arguments"],
-                    "results": None,  # To be updated when the answer is found
-                }
-                # Add each function call separately
-                steps.append({"tool_call": fn_call_entry})
-                pending_tool_calls[tool_call["id"]] = fn_call_entry
+    # Literal
+    if origin is Literal:
+        return {"enum": list(get_args(type_hint))}
 
-        elif message["role"] == "tool" and message.get("tool_call_id"):
-            # Check if there is a corresponding function call pending
-            tool_call_id = message["tool_call_id"]
-            if tool_call_id in pending_tool_calls:
-                # Update the result of the corresponding function call
-                pending_tool_calls[tool_call_id]["result"] = message.get("content", "")
+    # Union (includes Optional)
+    if origin is Union:
+        args = get_args(type_hint)
+        has_none = any(a is type(None) for a in args)
+        non_none_args = [a for a in args if a is not type(None)]
+        schemas = [hint_to_schema(a) for a in non_none_args]
+        if len(schemas) == 1:
+            base = schemas[0]
+            return {"anyOf": [base, {"type": "null"}]} if has_none else base
+        anyof = schemas + ([{"type": "null"}] if has_none else [])
+        return {"anyOf": anyof}
 
-    if response:
-        steps.append({"assistant": response})
-
-    return steps
+    raise TypeError(f"Unsupported type in Tool: `{type_hint}`")
 
 
 def clean_docstring(docstring: str) -> str:
@@ -451,7 +454,7 @@ def generate_json_schema(cls: type) -> Dict[str, Any]:
 
     Returns:
         JSON schema for the class
-    """
+    """    
     name = cls.get_module_name()
     description = cls.get_module_description()
     clean_description = clean_docstring(description)
@@ -465,31 +468,44 @@ def generate_json_schema(cls: type) -> Dict[str, Any]:
         if param == "return":
             continue
 
-        prop_schema = {"type": "string"}  # Default as string
-
-        # Check if enum is defined via typing.Literal
-        if get_origin(type_hint) is Literal:
-            prop_schema["enum"] = list(get_args(type_hint))
+        prop_schema = hint_to_schema(type_hint)
 
         # Add parameter description if available
         if param in param_descriptions:
             prop_schema["description"] = param_descriptions[param]
 
-        # Mark as required unless Union (i.e., Optional) or default present in annotations structure
-        if get_origin(type_hint) is not Union:
+        # Decide whether it is required:
+        # It is only NOT required when the Union contains None (i.e., Optional)
+        origin = get_origin(type_hint)
+        is_optional = False
+        if origin is Union:
+            args = get_args(type_hint)
+            if any(a is type(None) for a in args):
+                is_optional = True
+
+        if not is_optional:
             required.append(param)
 
         properties[param] = prop_schema
 
-    json_schema = {
-        "name": name,
-        "description": clean_description or f"Function for {name}",
-        "parameters": {
+    if not properties:
+        parameters = {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": False,
+        }
+    else:
+        parameters = {
             "type": "object",
             "properties": properties,
             "required": required,
             "additionalProperties": False,
-        },
+        }
+
+    json_schema = {
+        "name": name,
+        "description": clean_description or f"Function for {name}",
+        "parameters": parameters,
         "strict": True,
     }
 

@@ -724,17 +724,17 @@ class Module:
         guardrail_params = self._prepare_input_guardrail_execution(
             model_execution_params
         )
-        guardrail_response = self.input_guardrail(guardrail_params)
+        guardrail_response = self.input_guardrail(**guardrail_params)
 
         if isinstance(guardrail_response, ModelResponse):
             guardrail_response = self._extract_raw_response(guardrail_response)
 
         if not guardrail_response["safe"]:
-            raise UnsafeUserInputError()
+            raise UnsafeUserInputError()  # TODO
 
     def _execute_output_guardrail(self, model_response: Dict[str, Any]):
         guardrail_params = self._prepare_output_guardrail_execution(model_response)
-        guardrail_response = self.output_guardrail(guardrail_params)
+        guardrail_response = self.output_guardrail(**guardrail_params)
 
         if isinstance(guardrail_response, ModelResponse):
             guardrail_response = self._extract_raw_response(guardrail_response)

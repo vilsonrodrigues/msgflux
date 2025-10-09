@@ -12,14 +12,17 @@ from .models.gateway import ModelGateway
 from .models import Model
 from .telemetry.span import instrument
 from .utils.chat import ChatBlock, ChatML
+from .utils.console import cprint
 from .utils.inspect import get_fn_name
-from .utils.msgspec import load, save
+from .utils.msgspec import load, msgspec_dumps, save
 from .tools.config import tool_config
+
 
 __all__ = [
     "Audio",
     "ChatBlock",
     "ChatML",
+    "cprint",
     "DB",
     "Example",
     "Image",
@@ -35,6 +38,7 @@ __all__ = [
     "inline",
     "instrument",
     "load",
+    "msgspec_dumps",
     "response_cache",
     "save",
     "set_envs",

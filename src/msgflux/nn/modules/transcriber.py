@@ -95,14 +95,12 @@ class Transcriber(Module):
         self, data: Union[str, bytes], model_preference: Optional[str] = None
     ) -> Dict[str, Any]:
         model_execution_params = dotdict(
-            {
-                "data": data,
-                "language": self.language,
-                "response_format": self.response_format,
-                "timestamp_granularities": self.timestamp_granularities,
-                "prompt": self.prompt,
-                "stream": self.stream,
-            }
+            data=data,
+            language=self.language,
+            response_format=self.response_format,
+            timestamp_granularities=self.timestamp_granularities,
+            prompt=self.prompt,
+            stream=self.stream
         )
         if isinstance(self.model, ModelGateway) and model_preference is not None:
             model_execution_params.model_preference = model_preference

@@ -1,7 +1,7 @@
 import inspect
 from dataclasses import asdict, dataclass, field
 from functools import partial
-from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Iterator, List, Mapping, Optional, Union, Tuple
 
 import msgspec
 
@@ -59,6 +59,8 @@ def _convert_module_to_nn_tool(impl: Callable) -> ToolBase: # noqa: C901
     """Convert a callable in nn.Tool."""
     tool_config = impl.__dict__.get("tool_config", dotdict())
 
+    name_overridden = tool_config.pop("name_overridden", None)
+
     # Case 1: Uninitialized or initialized class
     if inspect.isclass(impl) or callable(impl):
         if not callable(impl):
@@ -88,15 +90,23 @@ def _convert_module_to_nn_tool(impl: Callable) -> ToolBase: # noqa: C901
             getattr(impl, "__annotations__", None)
             or
             getattr(impl.__call__, "__annotations__", None)            
-        )        
-        if fn_has_parameters(impl.__call__) and annotations is None:       
-            raise NotImplementedError(
-                "To transform a class in `nn.Tool` is necessary "
-                "to implement annotations of types hint in "
-                "`self.annotations`, `self.__annotations__` or in `def __call__`"
-            )
+        )
+        if annotations is None:
+            if fn_has_parameters(impl.__call__):
+                raise NotImplementedError(
+                    "To transform a class in `nn.Tool` is necessary "
+                    "to implement annotations of types hint in "
+                    "`self.annotations`, `self.__annotations__` or in `def __call__`"
+                )
+            annotations = {}
 
-        raw_name = (getattr(impl, "name", None) or getattr(impl, "__name__", None))
+        raw_name = (
+            name_overridden
+            or
+            getattr(impl, "name", None)
+            or
+            getattr(impl, "__name__", None)
+        )
         name = convert_camel_to_snake_case(raw_name)
 
         if inspect.isclass(impl):
@@ -114,14 +124,16 @@ def _convert_module_to_nn_tool(impl: Callable) -> ToolBase: # noqa: C901
 
         annotations = impl.__annotations__
         
-        if fn_has_parameters(impl) and annotations is None:
-            raise NotImplementedError(
-                "To transform a function into a `nn.Tool` "
-                "is necessary to implement parameters "
-                "annotations of types hint "
-            )
+        if annotations is None:
+            if fn_has_parameters(impl):
+                raise NotImplementedError(
+                    "To transform a function into a `nn.Tool` "
+                    "is necessary to implement parameters "
+                    "annotations of types hint "
+                )
+            annotations = {}
 
-        name = impl.__name__
+        name = name_overridden or impl.__name__
 
     else:
         raise ValueError(
@@ -228,7 +240,7 @@ class ToolLibrary(Module):
         self,
         tool_callings: List[Tuple[str, str, Any]],
         model_state: Optional[List[Dict[str, Any]]] = None,
-        vars: Optional[Dict[str, Any]] = None,
+        vars: Optional[Mapping[str, Any]] = None,
     ) -> ToolResponses:
         """Executes tool calls with logic for `handoff`, `return_direct`.
 
@@ -248,7 +260,7 @@ class ToolLibrary(Module):
                 Structured object containing all tool call results.
         """
         if model_state is None:
-            vars = {}
+            model_state = {}
 
         if vars is None:
             vars = {}
@@ -308,40 +320,37 @@ class ToolLibrary(Module):
 
             if config.get("call_as_response", False):  # return function call as response
                 tool_calls.append(
-                    ToolCall(
-                        id=tool_id,
-                        name=tool_name,
-                        parameters=tool_params,
-                        result=None  # intentionally left None
-                    )
+                    ToolCall(id=tool_id, name=tool_name, parameters=tool_params)
                 )
                 return_directly = True
                 continue
 
-            if config.get("handoff", False):  # Add model_state
+            if config.get("inject_model_state", False):  # Add model_state
                 tool_params["task_messages"] = model_state
-                #tool_params["message"] = None
 
             if not config.get("return_direct", False):
                 return_directly = False
 
-            if tool_params:
-                prepared_calls.append(partial(tool, **tool_params))
-            else:
-                prepared_calls.append(partial(tool, None))
+            tool_params = tool_params or {}
+            prepared_calls.append(partial(tool, **tool_params))
 
             call_metadata.append(
-                dotdict({"id": tool_id, "name": tool_name, "config": config, "params": tool_params})
+                dotdict(id=tool_id, name=tool_name, config=config, params=tool_params)
             )
 
-        if prepared_calls:                     
+        if prepared_calls:
             results = F.scatter_gather(prepared_calls)
             for meta, result in zip(call_metadata, results):
+                if isinstance(meta.params, dict):
+                    parameters = meta.params.to_dict()
+                    parameters.pop("vars", None)        
+                else:
+                    parameters = None
                 tool_calls.append(
                     ToolCall(
                         id=meta.id,
                         name=meta.name,
-                        parameters=meta.params.to_dict(),
+                        parameters=parameters,
                         result=result,
                     )
                 )

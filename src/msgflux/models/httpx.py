@@ -31,7 +31,7 @@ class HTTPXModelClient(BaseModel):
         params = {"model": self.model_id, **kwargs}
         if hasattr(self, "sampling_run_params"):
             params.update(self.sampling_run_params)
-        url = self.sampling_params["base_url"] + self.url_path
+        url = self.sampling_params["base_url"] + self.endpoint
         headers = self.headers
         if hasattr(self, "_api_key"):
             headers["Authorization"] = (

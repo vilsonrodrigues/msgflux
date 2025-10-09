@@ -1,13 +1,6 @@
 from typing import List, Optional, Tuple
 
 
-# Temporary
-class KeyExhaustedError(Exception):
-    """Exception raised when all API keys have been tried and failed."""
-
-    pass
-
-
 class ToolCallTimeOutError(Exception):
     pass
 
