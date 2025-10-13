@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - main
-      - feature/init  # Deploy docs from this branch too
+      - init  # Deploy docs from this branch too
   pull_request:
 
 permissions:
@@ -44,7 +44,7 @@ jobs:
         run: uv run --group doc mkdocs build --clean --strict
 
       - name: Deploy to GitHub Pages
-        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/feature/init')
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/init')
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
