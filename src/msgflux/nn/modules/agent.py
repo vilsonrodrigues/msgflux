@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 from typing import (
-    Any, Callable, List, Mapping, Optional, Union, Tuple, Type, cast
+    Any, Callable, List, Literal, Mapping, Optional, Union, Tuple, Type, cast
 )
 
 import msgspec
@@ -86,6 +86,7 @@ class Agent(Module):
         verbose: Optional[bool] = False,
         description: Optional[str] = None,
         annotations: Optional[Mapping[str, type]] = None,
+        image_detail: Optional[Literal["high", "low"]] = None,
     ):
         """Args:
         name:
@@ -113,12 +114,14 @@ class Agent(Module):
         task_inputs:
             Field of the Message object that will be the input to the task.
         task_multimodal_inputs:
-            Map datatype (image, file, audio) to field of the Message object.
+            Map datatype (image, video, audio, file) to field of the Message object.
             !!! example
                 # single audio
                 task_multimodal_inputs={"audio": "audio.user"}
                 # multi image
                 task_multimodal_inputs={"image": ["images.user", "image.mask"]}
+                # single video
+                task_multimodal_inputs={"video": "video.path"}
         task_messages:
             Field of the Message object that will be a list of chats in
             ChatML format.
@@ -176,6 +179,9 @@ class Agent(Module):
             The Agent description. It's useful when using an agent-as-a-tool.
         annotations
             Define the input and output annotations to use the agent-as-a-function.
+        image_detail:
+            Controls the detail level for image processing.
+            "high" enables detailed patch analysis, "low" uses lower resolution.
         """
         if annotations is None:
             annotations = {"message": str, "return": str}
@@ -239,6 +245,7 @@ class Agent(Module):
         self._set_tool_choice(tool_choice)
         self._set_tools(tools)
         self._set_verbose(verbose)
+        self._set_image_detail(image_detail)
 
     def forward(
         self, message: Optional[Union[str, Mapping[str, Any], Message]] = None, **kwargs
@@ -923,7 +930,7 @@ class Agent(Module):
     def _process_task_multimodal_inputs(
         self, message: Union[str, Message, Mapping[str, str]], **kwargs
     ) -> Optional[List[Mapping[str, Any]]]:
-        """Processes multimodal inputs (image, audio, file) via kwargs or message.
+        """Processes multimodal inputs (image, audio, video, file) via kwargs or message.
         Returns a list of multimodal content in ChatML format.
         """
         multimodal_paths = None
@@ -940,10 +947,10 @@ class Agent(Module):
 
         content = []
 
-        # TODO: video
         formatters = {
             "image": self._format_image_input,
             "audio": self._format_audio_input,
+            "video": self._format_video_input,
             "file": self._format_file_input,
         }
 
@@ -971,9 +978,30 @@ class Agent(Module):
             mime_type = get_mime_type(image_source)
             if not mime_type.startswith("image/"):
                 mime_type = "image/jpeg"  # Fallback
-            encoded_image = f"data:{mime_type};base64,{encoded_image}"        
+            encoded_image = f"data:{mime_type};base64,{encoded_image}"
 
-        return ChatBlock.image(encoded_image)
+        return ChatBlock.image(encoded_image, detail=self.image_detail)
+
+    def _format_video_input(self, video_source: str) -> Optional[Mapping[str, Any]]:
+        """Formats the video input for the model."""
+        # Check if it's a URL
+        if video_source.startswith("http://") or video_source.startswith("https://"):
+            return ChatBlock.video(video_source)
+
+        # Otherwise, encode as base64
+        encoded_video = self._prepare_data_uri(video_source, force_encode=True)
+
+        if not encoded_video:
+            return None
+
+        # Get MIME type or use mp4 as fallback
+        mime_type = get_mime_type(video_source)
+        if not mime_type.startswith("video/"):
+            mime_type = "video/mp4"  # Fallback
+
+        video_data_uri = f"data:{mime_type};base64,{encoded_video}"
+
+        return ChatBlock.video(video_data_uri)
 
     def _format_audio_input(self, audio_source: str) -> Optional[Mapping[str, Any]]:
         """Formats the audio input for the model."""
@@ -1332,6 +1360,17 @@ class Agent(Module):
 
             # examples
             self._set_examples(examples)
+
+    def _set_image_detail(
+        self, image_detail: Optional[Literal["high", "low"]] = None
+    ):
+        if image_detail in ("high", "low", None):
+            self.register_buffer("image_detail", image_detail)
+        else:
+            raise ValueError(
+                "`image_detail` must be 'high', 'low' or None "
+                f"given `{image_detail}`"
+            )
 
     def _get_system_prompt(
         self, vars: Optional[Mapping[str, Any]] = None

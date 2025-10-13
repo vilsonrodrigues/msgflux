@@ -41,8 +41,24 @@ class Image:
 
 class Audio:
     """Represents an audio input or output in a model signature.
-    
+
     Can hold metadata in the future (e.g., sample rate, channels).
+    """
+    pass
+
+
+class File:
+    """Represents a file input or output in a model signature.
+
+    Can hold metadata in the future (e.g., file type, size).
+    """
+    pass
+
+
+class Video:
+    """Represents a video input or output in a model signature.
+
+    Can hold metadata in the future (e.g., duration, resolution, fps).
     """
     pass
 
@@ -304,9 +320,30 @@ class SignatureFactory:
     ) -> str:
         task_template = ""
         for input_info in inputs_info:
-            if input_info.dtype in ["Audio", "Image"]:
-                part = apply_xml_tags(input_info.dtype, input_info.name)
+            # Check if the field is Optional
+            is_optional = input_info.dtype.startswith("Optional[")
+
+            # Generate the content
+            if input_info.dtype in ["Audio", "Image", "File", "Video"]:
+                content = apply_xml_tags(input_info.dtype, input_info.name)
             else:
-                part = apply_xml_tags(input_info.name, f"{{{{ {input_info.name} }}}}")
+                # Extract base type if Optional
+                base_dtype = input_info.dtype
+                if is_optional:
+                    # Remove "Optional[" prefix and "]" suffix
+                    base_dtype = input_info.dtype[9:-1]
+
+                # Check if base type is multimodal
+                if base_dtype in ["Audio", "Image", "File", "Video"]:
+                    content = apply_xml_tags(base_dtype, input_info.name)
+                else:
+                    content = apply_xml_tags(input_info.name, f"{{{{ {input_info.name} }}}}")
+
+            # Wrap with Jinja conditional if Optional
+            if is_optional:
+                part = f"{{% if {input_info.name} %}}\n{content}\n{{% endif %}}"
+            else:
+                part = content
+
             task_template += part + "\n"
         return task_template.strip()

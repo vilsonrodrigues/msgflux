@@ -101,20 +101,22 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
         *,
         max_tokens: Optional[int] = None,
         reasoning_effort: Optional[str] = None,
-        enable_thinking: Optional[bool] = None, 
+        enable_thinking: Optional[bool] = None,
         return_reasoning: Optional[bool] = False,
         reasoning_in_tool_call: Optional[bool] = True,
-        validate_typed_parser_output: Optional[bool] = False,        
+        validate_typed_parser_output: Optional[bool] = False,
         temperature: Optional[float] = None,
         top_p: Optional[float] = None,
         stop: Optional[Union[str, List[str]]] = None,
         parallel_tool_calls: Optional[bool] = True,
         modalities: Optional[List[str]] = None,
         audio: Optional[Dict[str, str]] = None,
-        verbosity: Optional[str] = None,        
+        verbosity: Optional[str] = None,
         web_search_options: Optional[Dict[str, Any]] = None,
         verbose: Optional[bool] = False,
-        base_url: Optional[str] = None,        
+        base_url: Optional[str] = None,
+        context_length: Optional[int] = None,
+        reasoning_max_tokens: Optional[int] = None,
     ):
         """Args:
         model_id:
@@ -170,10 +172,16 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
             If True, Prints the model output to the console before it is transformed
             into typed structured output.
         base_url:
-            URL to model provider.            
+            URL to model provider.
+        context_length:
+            The maximum context length supported by the model.
+        reasoning_max_tokens:
+            Maximum number of tokens for reasoning/thinking.
         """
         super().__init__()
         self.model_id = model_id
+        self.context_length = context_length
+        self.reasoning_max_tokens = reasoning_max_tokens
         self.sampling_params = {"base_url": base_url or self._get_base_url()}
         sampling_run_params = {"max_tokens": max_tokens}
         if temperature:

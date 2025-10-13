@@ -97,16 +97,27 @@ class ChatBlock(metaclass=ChatBlockMeta):
 
     @staticmethod
     def image(
-        url: Union[str, List[str]]
+        url: Union[str, List[str]],
+        detail: Optional[Literal["high", "low"]] = None
     ) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
         if isinstance(url, list):
-            return [{
-                "type": "image_url",
-                "image_url": {"url": u}
-            } for u in url]
+            image_blocks = []
+            for u in url:
+                image_url_dict = {"url": u}
+                if detail is not None:
+                    image_url_dict["detail"] = detail
+                image_blocks.append({
+                    "type": "image_url",
+                    "image_url": image_url_dict
+                })
+            return image_blocks
+
+        image_url_dict = {"url": url}
+        if detail is not None:
+            image_url_dict["detail"] = detail
         return {
             "type": "image_url",
-            "image_url": {"url": url}
+            "image_url": image_url_dict
         }
 
     @staticmethod
