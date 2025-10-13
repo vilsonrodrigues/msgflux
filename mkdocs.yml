@@ -101,17 +101,17 @@ nav:
         - module.md      
     - ⇄ Dependency Management: dependency-management.md
     - API Reference:
-        Models:
+      - Models:
           - api-reference/models/model.md
           - api-reference/models/model_gateway.md
           - Types:
               - ChatCompletion: api-reference/models/types/chat_completion.md
-        DataBases:
+      - DataBases:
           - api-reference/databases/database.md
           - Types:
               - KV: api-reference/databases/types/kv.md
               - Vector: api-reference/databases/types/vector.md
-        nn:
+      - nn:
           - api-reference/nn/functional.md
           - api-reference/nn/modules/agent.md          
     - Changelog: changelog.md
