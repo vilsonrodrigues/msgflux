@@ -20,7 +20,7 @@
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.21">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.22">
     
     
       
@@ -28,7 +28,7 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.2a3383ac.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.84d31ad4.min.css">
       
         
         <link rel="stylesheet" href="../../assets/stylesheets/palette.06af60db.min.css">
@@ -2132,53 +2132,53 @@ base_url:
 
             <details class="quote">
               <summary>Source code in <code>src/msgflux/models/providers/openai.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-846">846</a></span>
-<span class="normal"><a href="#__codelineno-0-847">847</a></span>
-<span class="normal"><a href="#__codelineno-0-848">848</a></span>
-<span class="normal"><a href="#__codelineno-0-849">849</a></span>
-<span class="normal"><a href="#__codelineno-0-850">850</a></span>
-<span class="normal"><a href="#__codelineno-0-851">851</a></span>
-<span class="normal"><a href="#__codelineno-0-852">852</a></span>
-<span class="normal"><a href="#__codelineno-0-853">853</a></span>
-<span class="normal"><a href="#__codelineno-0-854">854</a></span>
-<span class="normal"><a href="#__codelineno-0-855">855</a></span>
-<span class="normal"><a href="#__codelineno-0-856">856</a></span>
-<span class="normal"><a href="#__codelineno-0-857">857</a></span>
-<span class="normal"><a href="#__codelineno-0-858">858</a></span>
-<span class="normal"><a href="#__codelineno-0-859">859</a></span>
-<span class="normal"><a href="#__codelineno-0-860">860</a></span>
-<span class="normal"><a href="#__codelineno-0-861">861</a></span>
-<span class="normal"><a href="#__codelineno-0-862">862</a></span>
-<span class="normal"><a href="#__codelineno-0-863">863</a></span>
-<span class="normal"><a href="#__codelineno-0-864">864</a></span>
-<span class="normal"><a href="#__codelineno-0-865">865</a></span>
-<span class="normal"><a href="#__codelineno-0-866">866</a></span>
-<span class="normal"><a href="#__codelineno-0-867">867</a></span>
-<span class="normal"><a href="#__codelineno-0-868">868</a></span>
-<span class="normal"><a href="#__codelineno-0-869">869</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-846" name="__codelineno-0-846"></a><span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
-<a id="__codelineno-0-847" name="__codelineno-0-847"></a>    <span class="bp">self</span><span class="p">,</span>
-<a id="__codelineno-0-848" name="__codelineno-0-848"></a>    <span class="o">*</span><span class="p">,</span>
-<a id="__codelineno-0-849" name="__codelineno-0-849"></a>    <span class="n">model_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-<a id="__codelineno-0-850" name="__codelineno-0-850"></a>    <span class="n">moderation</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;auto&quot;</span><span class="p">,</span> <span class="s2">&quot;low&quot;</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-851" name="__codelineno-0-851"></a>    <span class="n">base_url</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-852" name="__codelineno-0-852"></a><span class="p">):</span>
-<a id="__codelineno-0-853" name="__codelineno-0-853"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Args:</span>
-<a id="__codelineno-0-854" name="__codelineno-0-854"></a><span class="sd">    model_id:</span>
-<a id="__codelineno-0-855" name="__codelineno-0-855"></a><span class="sd">        Model ID in provider.</span>
-<a id="__codelineno-0-856" name="__codelineno-0-856"></a><span class="sd">    moderation:</span>
-<a id="__codelineno-0-857" name="__codelineno-0-857"></a><span class="sd">        Control the content-moderation level for images generated.</span>
-<a id="__codelineno-0-858" name="__codelineno-0-858"></a><span class="sd">    base_url:</span>
-<a id="__codelineno-0-859" name="__codelineno-0-859"></a><span class="sd">        URL to model provider.</span>
-<a id="__codelineno-0-860" name="__codelineno-0-860"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-861" name="__codelineno-0-861"></a>    <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
-<a id="__codelineno-0-862" name="__codelineno-0-862"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">model_id</span> <span class="o">=</span> <span class="n">model_id</span>
-<a id="__codelineno-0-863" name="__codelineno-0-863"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">sampling_params</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;base_url&quot;</span><span class="p">:</span> <span class="n">base_url</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_base_url</span><span class="p">()}</span>
-<a id="__codelineno-0-864" name="__codelineno-0-864"></a>    <span class="n">sampling_run_params</span> <span class="o">=</span> <span class="p">{}</span>
-<a id="__codelineno-0-865" name="__codelineno-0-865"></a>    <span class="k">if</span> <span class="n">moderation</span><span class="p">:</span>
-<a id="__codelineno-0-866" name="__codelineno-0-866"></a>        <span class="n">sampling_run_params</span><span class="p">[</span><span class="s2">&quot;moderation&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">moderation</span>
-<a id="__codelineno-0-867" name="__codelineno-0-867"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">sampling_run_params</span> <span class="o">=</span> <span class="n">sampling_run_params</span>
-<a id="__codelineno-0-868" name="__codelineno-0-868"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_initialize</span><span class="p">()</span>
-<a id="__codelineno-0-869" name="__codelineno-0-869"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_get_api_key</span><span class="p">()</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-898">898</a></span>
+<span class="normal"><a href="#__codelineno-0-899">899</a></span>
+<span class="normal"><a href="#__codelineno-0-900">900</a></span>
+<span class="normal"><a href="#__codelineno-0-901">901</a></span>
+<span class="normal"><a href="#__codelineno-0-902">902</a></span>
+<span class="normal"><a href="#__codelineno-0-903">903</a></span>
+<span class="normal"><a href="#__codelineno-0-904">904</a></span>
+<span class="normal"><a href="#__codelineno-0-905">905</a></span>
+<span class="normal"><a href="#__codelineno-0-906">906</a></span>
+<span class="normal"><a href="#__codelineno-0-907">907</a></span>
+<span class="normal"><a href="#__codelineno-0-908">908</a></span>
+<span class="normal"><a href="#__codelineno-0-909">909</a></span>
+<span class="normal"><a href="#__codelineno-0-910">910</a></span>
+<span class="normal"><a href="#__codelineno-0-911">911</a></span>
+<span class="normal"><a href="#__codelineno-0-912">912</a></span>
+<span class="normal"><a href="#__codelineno-0-913">913</a></span>
+<span class="normal"><a href="#__codelineno-0-914">914</a></span>
+<span class="normal"><a href="#__codelineno-0-915">915</a></span>
+<span class="normal"><a href="#__codelineno-0-916">916</a></span>
+<span class="normal"><a href="#__codelineno-0-917">917</a></span>
+<span class="normal"><a href="#__codelineno-0-918">918</a></span>
+<span class="normal"><a href="#__codelineno-0-919">919</a></span>
+<span class="normal"><a href="#__codelineno-0-920">920</a></span>
+<span class="normal"><a href="#__codelineno-0-921">921</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-898" name="__codelineno-0-898"></a><span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+<a id="__codelineno-0-899" name="__codelineno-0-899"></a>    <span class="bp">self</span><span class="p">,</span>
+<a id="__codelineno-0-900" name="__codelineno-0-900"></a>    <span class="o">*</span><span class="p">,</span>
+<a id="__codelineno-0-901" name="__codelineno-0-901"></a>    <span class="n">model_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<a id="__codelineno-0-902" name="__codelineno-0-902"></a>    <span class="n">moderation</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;auto&quot;</span><span class="p">,</span> <span class="s2">&quot;low&quot;</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-903" name="__codelineno-0-903"></a>    <span class="n">base_url</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-904" name="__codelineno-0-904"></a><span class="p">):</span>
+<a id="__codelineno-0-905" name="__codelineno-0-905"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Args:</span>
+<a id="__codelineno-0-906" name="__codelineno-0-906"></a><span class="sd">    model_id:</span>
+<a id="__codelineno-0-907" name="__codelineno-0-907"></a><span class="sd">        Model ID in provider.</span>
+<a id="__codelineno-0-908" name="__codelineno-0-908"></a><span class="sd">    moderation:</span>
+<a id="__codelineno-0-909" name="__codelineno-0-909"></a><span class="sd">        Control the content-moderation level for images generated.</span>
+<a id="__codelineno-0-910" name="__codelineno-0-910"></a><span class="sd">    base_url:</span>
+<a id="__codelineno-0-911" name="__codelineno-0-911"></a><span class="sd">        URL to model provider.</span>
+<a id="__codelineno-0-912" name="__codelineno-0-912"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-913" name="__codelineno-0-913"></a>    <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+<a id="__codelineno-0-914" name="__codelineno-0-914"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">model_id</span> <span class="o">=</span> <span class="n">model_id</span>
+<a id="__codelineno-0-915" name="__codelineno-0-915"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">sampling_params</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;base_url&quot;</span><span class="p">:</span> <span class="n">base_url</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_base_url</span><span class="p">()}</span>
+<a id="__codelineno-0-916" name="__codelineno-0-916"></a>    <span class="n">sampling_run_params</span> <span class="o">=</span> <span class="p">{}</span>
+<a id="__codelineno-0-917" name="__codelineno-0-917"></a>    <span class="k">if</span> <span class="n">moderation</span><span class="p">:</span>
+<a id="__codelineno-0-918" name="__codelineno-0-918"></a>        <span class="n">sampling_run_params</span><span class="p">[</span><span class="s2">&quot;moderation&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">moderation</span>
+<a id="__codelineno-0-919" name="__codelineno-0-919"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">sampling_run_params</span> <span class="o">=</span> <span class="n">sampling_run_params</span>
+<a id="__codelineno-0-920" name="__codelineno-0-920"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_initialize</span><span class="p">()</span>
+<a id="__codelineno-0-921" name="__codelineno-0-921"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_get_api_key</span><span class="p">()</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>

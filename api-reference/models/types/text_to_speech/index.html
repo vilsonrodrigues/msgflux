@@ -16,7 +16,7 @@
       
       
       <link rel="icon" href="../../../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.21">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.22">
     
     
       
@@ -24,7 +24,7 @@
       
     
     
-      <link rel="stylesheet" href="../../../../assets/stylesheets/main.2a3383ac.min.css">
+      <link rel="stylesheet" href="../../../../assets/stylesheets/main.84d31ad4.min.css">
       
         
         <link rel="stylesheet" href="../../../../assets/stylesheets/palette.06af60db.min.css">
@@ -2121,59 +2121,7 @@
 
               <details class="quote">
                 <summary>Source code in <code>src/msgflux/models/providers/openai.py</code></summary>
-                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-674">674</a></span>
-<span class="normal"><a href="#__codelineno-0-675">675</a></span>
-<span class="normal"><a href="#__codelineno-0-676">676</a></span>
-<span class="normal"><a href="#__codelineno-0-677">677</a></span>
-<span class="normal"><a href="#__codelineno-0-678">678</a></span>
-<span class="normal"><a href="#__codelineno-0-679">679</a></span>
-<span class="normal"><a href="#__codelineno-0-680">680</a></span>
-<span class="normal"><a href="#__codelineno-0-681">681</a></span>
-<span class="normal"><a href="#__codelineno-0-682">682</a></span>
-<span class="normal"><a href="#__codelineno-0-683">683</a></span>
-<span class="normal"><a href="#__codelineno-0-684">684</a></span>
-<span class="normal"><a href="#__codelineno-0-685">685</a></span>
-<span class="normal"><a href="#__codelineno-0-686">686</a></span>
-<span class="normal"><a href="#__codelineno-0-687">687</a></span>
-<span class="normal"><a href="#__codelineno-0-688">688</a></span>
-<span class="normal"><a href="#__codelineno-0-689">689</a></span>
-<span class="normal"><a href="#__codelineno-0-690">690</a></span>
-<span class="normal"><a href="#__codelineno-0-691">691</a></span>
-<span class="normal"><a href="#__codelineno-0-692">692</a></span>
-<span class="normal"><a href="#__codelineno-0-693">693</a></span>
-<span class="normal"><a href="#__codelineno-0-694">694</a></span>
-<span class="normal"><a href="#__codelineno-0-695">695</a></span>
-<span class="normal"><a href="#__codelineno-0-696">696</a></span>
-<span class="normal"><a href="#__codelineno-0-697">697</a></span>
-<span class="normal"><a href="#__codelineno-0-698">698</a></span>
-<span class="normal"><a href="#__codelineno-0-699">699</a></span>
-<span class="normal"><a href="#__codelineno-0-700">700</a></span>
-<span class="normal"><a href="#__codelineno-0-701">701</a></span>
-<span class="normal"><a href="#__codelineno-0-702">702</a></span>
-<span class="normal"><a href="#__codelineno-0-703">703</a></span>
-<span class="normal"><a href="#__codelineno-0-704">704</a></span>
-<span class="normal"><a href="#__codelineno-0-705">705</a></span>
-<span class="normal"><a href="#__codelineno-0-706">706</a></span>
-<span class="normal"><a href="#__codelineno-0-707">707</a></span>
-<span class="normal"><a href="#__codelineno-0-708">708</a></span>
-<span class="normal"><a href="#__codelineno-0-709">709</a></span>
-<span class="normal"><a href="#__codelineno-0-710">710</a></span>
-<span class="normal"><a href="#__codelineno-0-711">711</a></span>
-<span class="normal"><a href="#__codelineno-0-712">712</a></span>
-<span class="normal"><a href="#__codelineno-0-713">713</a></span>
-<span class="normal"><a href="#__codelineno-0-714">714</a></span>
-<span class="normal"><a href="#__codelineno-0-715">715</a></span>
-<span class="normal"><a href="#__codelineno-0-716">716</a></span>
-<span class="normal"><a href="#__codelineno-0-717">717</a></span>
-<span class="normal"><a href="#__codelineno-0-718">718</a></span>
-<span class="normal"><a href="#__codelineno-0-719">719</a></span>
-<span class="normal"><a href="#__codelineno-0-720">720</a></span>
-<span class="normal"><a href="#__codelineno-0-721">721</a></span>
-<span class="normal"><a href="#__codelineno-0-722">722</a></span>
-<span class="normal"><a href="#__codelineno-0-723">723</a></span>
-<span class="normal"><a href="#__codelineno-0-724">724</a></span>
-<span class="normal"><a href="#__codelineno-0-725">725</a></span>
-<span class="normal"><a href="#__codelineno-0-726">726</a></span>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-726">726</a></span>
 <span class="normal"><a href="#__codelineno-0-727">727</a></span>
 <span class="normal"><a href="#__codelineno-0-728">728</a></span>
 <span class="normal"><a href="#__codelineno-0-729">729</a></span>
@@ -2287,173 +2235,225 @@
 <span class="normal"><a href="#__codelineno-0-837">837</a></span>
 <span class="normal"><a href="#__codelineno-0-838">838</a></span>
 <span class="normal"><a href="#__codelineno-0-839">839</a></span>
-<span class="normal"><a href="#__codelineno-0-840">840</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-674" name="__codelineno-0-674"></a><span class="nd">@register_model</span>
-<a id="__codelineno-0-675" name="__codelineno-0-675"></a><span class="k">class</span><span class="w"> </span><span class="nc">OpenAITextToSpeech</span><span class="p">(</span><span class="n">_BaseOpenAI</span><span class="p">,</span> <span class="n">TextToSpeechModel</span><span class="p">):</span>
-<a id="__codelineno-0-676" name="__codelineno-0-676"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;OpenAI Text to Speech.&quot;&quot;&quot;</span>
-<a id="__codelineno-0-677" name="__codelineno-0-677"></a>
-<a id="__codelineno-0-678" name="__codelineno-0-678"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
-<a id="__codelineno-0-679" name="__codelineno-0-679"></a>        <span class="bp">self</span><span class="p">,</span>
-<a id="__codelineno-0-680" name="__codelineno-0-680"></a>        <span class="n">model_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-<a id="__codelineno-0-681" name="__codelineno-0-681"></a>        <span class="n">voice</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;alloy&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-682" name="__codelineno-0-682"></a>        <span class="n">speed</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="mf">1.0</span><span class="p">,</span>
-<a id="__codelineno-0-683" name="__codelineno-0-683"></a>        <span class="n">base_url</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-684" name="__codelineno-0-684"></a>    <span class="p">):</span>
-<a id="__codelineno-0-685" name="__codelineno-0-685"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Args:</span>
-<a id="__codelineno-0-686" name="__codelineno-0-686"></a><span class="sd">        model_id:</span>
-<a id="__codelineno-0-687" name="__codelineno-0-687"></a><span class="sd">            Model ID in provider.</span>
-<a id="__codelineno-0-688" name="__codelineno-0-688"></a><span class="sd">        voice:</span>
-<a id="__codelineno-0-689" name="__codelineno-0-689"></a><span class="sd">            The voice to use when generating the audio.</span>
-<a id="__codelineno-0-690" name="__codelineno-0-690"></a><span class="sd">        speed:</span>
-<a id="__codelineno-0-691" name="__codelineno-0-691"></a><span class="sd">            the speed of the generated audio. Select a value</span>
-<a id="__codelineno-0-692" name="__codelineno-0-692"></a><span class="sd">            from 0.25 to 4.0. 1.0 is the default.</span>
-<a id="__codelineno-0-693" name="__codelineno-0-693"></a><span class="sd">        base_url:</span>
-<a id="__codelineno-0-694" name="__codelineno-0-694"></a><span class="sd">            URL to model provider.</span>
-<a id="__codelineno-0-695" name="__codelineno-0-695"></a><span class="sd">        &quot;&quot;&quot;</span>
-<a id="__codelineno-0-696" name="__codelineno-0-696"></a>        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
-<a id="__codelineno-0-697" name="__codelineno-0-697"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">model_id</span> <span class="o">=</span> <span class="n">model_id</span>
-<a id="__codelineno-0-698" name="__codelineno-0-698"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">sampling_params</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;base_url&quot;</span><span class="p">:</span> <span class="n">base_url</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_base_url</span><span class="p">()}</span>
-<a id="__codelineno-0-699" name="__codelineno-0-699"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">sampling_run_params</span> <span class="o">=</span> <span class="p">{</span>
-<a id="__codelineno-0-700" name="__codelineno-0-700"></a>            <span class="s2">&quot;voice&quot;</span><span class="p">:</span> <span class="n">voice</span><span class="p">,</span>
-<a id="__codelineno-0-701" name="__codelineno-0-701"></a>            <span class="s2">&quot;speed&quot;</span><span class="p">:</span> <span class="n">speed</span><span class="p">,</span>
-<a id="__codelineno-0-702" name="__codelineno-0-702"></a>        <span class="p">}</span>
-<a id="__codelineno-0-703" name="__codelineno-0-703"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_initialize</span><span class="p">()</span>
-<a id="__codelineno-0-704" name="__codelineno-0-704"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_get_api_key</span><span class="p">()</span>
-<a id="__codelineno-0-705" name="__codelineno-0-705"></a>
-<a id="__codelineno-0-706" name="__codelineno-0-706"></a>    <span class="nd">@contextmanager</span>
-<a id="__codelineno-0-707" name="__codelineno-0-707"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_execute_model</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-<a id="__codelineno-0-708" name="__codelineno-0-708"></a>        <span class="k">with</span> <span class="bp">self</span><span class="o">.</span><span class="n">client</span><span class="o">.</span><span class="n">audio</span><span class="o">.</span><span class="n">speech</span><span class="o">.</span><span class="n">with_streaming_response</span><span class="o">.</span><span class="n">create</span><span class="p">(</span>
-<a id="__codelineno-0-709" name="__codelineno-0-709"></a>            <span class="n">model</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">model_id</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span> <span class="o">**</span><span class="bp">self</span><span class="o">.</span><span class="n">sampling_run_params</span>
-<a id="__codelineno-0-710" name="__codelineno-0-710"></a>        <span class="p">)</span> <span class="k">as</span> <span class="n">model_output</span><span class="p">:</span>
-<a id="__codelineno-0-711" name="__codelineno-0-711"></a>            <span class="k">yield</span> <span class="n">model_output</span>
-<a id="__codelineno-0-712" name="__codelineno-0-712"></a>
-<a id="__codelineno-0-713" name="__codelineno-0-713"></a>    <span class="nd">@asynccontextmanager</span>
-<a id="__codelineno-0-714" name="__codelineno-0-714"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">_aexecute_model</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-<a id="__codelineno-0-715" name="__codelineno-0-715"></a>        <span class="k">async</span> <span class="k">with</span> <span class="bp">self</span><span class="o">.</span><span class="n">aclient</span><span class="o">.</span><span class="n">audio</span><span class="o">.</span><span class="n">speech</span><span class="o">.</span><span class="n">with_streaming_response</span><span class="o">.</span><span class="n">create</span><span class="p">(</span>
-<a id="__codelineno-0-716" name="__codelineno-0-716"></a>            <span class="n">model</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">model_id</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span> <span class="o">**</span><span class="bp">self</span><span class="o">.</span><span class="n">sampling_run_params</span>
-<a id="__codelineno-0-717" name="__codelineno-0-717"></a>        <span class="p">)</span> <span class="k">as</span> <span class="n">model_output</span><span class="p">:</span>
-<a id="__codelineno-0-718" name="__codelineno-0-718"></a>            <span class="k">yield</span> <span class="n">model_output</span>
-<a id="__codelineno-0-719" name="__codelineno-0-719"></a>
-<a id="__codelineno-0-720" name="__codelineno-0-720"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_generate</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-<a id="__codelineno-0-721" name="__codelineno-0-721"></a>        <span class="n">response</span> <span class="o">=</span> <span class="n">ModelResponse</span><span class="p">()</span>
-<a id="__codelineno-0-722" name="__codelineno-0-722"></a>
-<a id="__codelineno-0-723" name="__codelineno-0-723"></a>        <span class="k">with</span> <span class="bp">self</span><span class="o">.</span><span class="n">_execute_model</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="k">as</span> <span class="n">model_output</span><span class="p">:</span>
-<a id="__codelineno-0-724" name="__codelineno-0-724"></a>            <span class="k">with</span> <span class="n">tempfile</span><span class="o">.</span><span class="n">NamedTemporaryFile</span><span class="p">(</span>
-<a id="__codelineno-0-725" name="__codelineno-0-725"></a>                <span class="n">suffix</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;.</span><span class="si">{</span><span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;response_format&#39;</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">delete</span><span class="o">=</span><span class="kc">False</span>
-<a id="__codelineno-0-726" name="__codelineno-0-726"></a>            <span class="p">)</span> <span class="k">as</span> <span class="n">temp_file</span><span class="p">:</span>
-<a id="__codelineno-0-727" name="__codelineno-0-727"></a>                <span class="n">temp_file_path</span> <span class="o">=</span> <span class="n">temp_file</span><span class="o">.</span><span class="n">name</span>
-<a id="__codelineno-0-728" name="__codelineno-0-728"></a>                <span class="n">model_output</span><span class="o">.</span><span class="n">stream_to_file</span><span class="p">(</span><span class="n">temp_file_path</span><span class="p">)</span>
+<span class="normal"><a href="#__codelineno-0-840">840</a></span>
+<span class="normal"><a href="#__codelineno-0-841">841</a></span>
+<span class="normal"><a href="#__codelineno-0-842">842</a></span>
+<span class="normal"><a href="#__codelineno-0-843">843</a></span>
+<span class="normal"><a href="#__codelineno-0-844">844</a></span>
+<span class="normal"><a href="#__codelineno-0-845">845</a></span>
+<span class="normal"><a href="#__codelineno-0-846">846</a></span>
+<span class="normal"><a href="#__codelineno-0-847">847</a></span>
+<span class="normal"><a href="#__codelineno-0-848">848</a></span>
+<span class="normal"><a href="#__codelineno-0-849">849</a></span>
+<span class="normal"><a href="#__codelineno-0-850">850</a></span>
+<span class="normal"><a href="#__codelineno-0-851">851</a></span>
+<span class="normal"><a href="#__codelineno-0-852">852</a></span>
+<span class="normal"><a href="#__codelineno-0-853">853</a></span>
+<span class="normal"><a href="#__codelineno-0-854">854</a></span>
+<span class="normal"><a href="#__codelineno-0-855">855</a></span>
+<span class="normal"><a href="#__codelineno-0-856">856</a></span>
+<span class="normal"><a href="#__codelineno-0-857">857</a></span>
+<span class="normal"><a href="#__codelineno-0-858">858</a></span>
+<span class="normal"><a href="#__codelineno-0-859">859</a></span>
+<span class="normal"><a href="#__codelineno-0-860">860</a></span>
+<span class="normal"><a href="#__codelineno-0-861">861</a></span>
+<span class="normal"><a href="#__codelineno-0-862">862</a></span>
+<span class="normal"><a href="#__codelineno-0-863">863</a></span>
+<span class="normal"><a href="#__codelineno-0-864">864</a></span>
+<span class="normal"><a href="#__codelineno-0-865">865</a></span>
+<span class="normal"><a href="#__codelineno-0-866">866</a></span>
+<span class="normal"><a href="#__codelineno-0-867">867</a></span>
+<span class="normal"><a href="#__codelineno-0-868">868</a></span>
+<span class="normal"><a href="#__codelineno-0-869">869</a></span>
+<span class="normal"><a href="#__codelineno-0-870">870</a></span>
+<span class="normal"><a href="#__codelineno-0-871">871</a></span>
+<span class="normal"><a href="#__codelineno-0-872">872</a></span>
+<span class="normal"><a href="#__codelineno-0-873">873</a></span>
+<span class="normal"><a href="#__codelineno-0-874">874</a></span>
+<span class="normal"><a href="#__codelineno-0-875">875</a></span>
+<span class="normal"><a href="#__codelineno-0-876">876</a></span>
+<span class="normal"><a href="#__codelineno-0-877">877</a></span>
+<span class="normal"><a href="#__codelineno-0-878">878</a></span>
+<span class="normal"><a href="#__codelineno-0-879">879</a></span>
+<span class="normal"><a href="#__codelineno-0-880">880</a></span>
+<span class="normal"><a href="#__codelineno-0-881">881</a></span>
+<span class="normal"><a href="#__codelineno-0-882">882</a></span>
+<span class="normal"><a href="#__codelineno-0-883">883</a></span>
+<span class="normal"><a href="#__codelineno-0-884">884</a></span>
+<span class="normal"><a href="#__codelineno-0-885">885</a></span>
+<span class="normal"><a href="#__codelineno-0-886">886</a></span>
+<span class="normal"><a href="#__codelineno-0-887">887</a></span>
+<span class="normal"><a href="#__codelineno-0-888">888</a></span>
+<span class="normal"><a href="#__codelineno-0-889">889</a></span>
+<span class="normal"><a href="#__codelineno-0-890">890</a></span>
+<span class="normal"><a href="#__codelineno-0-891">891</a></span>
+<span class="normal"><a href="#__codelineno-0-892">892</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-726" name="__codelineno-0-726"></a><span class="nd">@register_model</span>
+<a id="__codelineno-0-727" name="__codelineno-0-727"></a><span class="k">class</span><span class="w"> </span><span class="nc">OpenAITextToSpeech</span><span class="p">(</span><span class="n">_BaseOpenAI</span><span class="p">,</span> <span class="n">TextToSpeechModel</span><span class="p">):</span>
+<a id="__codelineno-0-728" name="__codelineno-0-728"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;OpenAI Text to Speech.&quot;&quot;&quot;</span>
 <a id="__codelineno-0-729" name="__codelineno-0-729"></a>
-<a id="__codelineno-0-730" name="__codelineno-0-730"></a>            <span class="n">response</span><span class="o">.</span><span class="n">set_response_type</span><span class="p">(</span><span class="s2">&quot;audio_generation&quot;</span><span class="p">)</span>
-<a id="__codelineno-0-731" name="__codelineno-0-731"></a>            <span class="n">response</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">temp_file_path</span><span class="p">)</span>
-<a id="__codelineno-0-732" name="__codelineno-0-732"></a>
-<a id="__codelineno-0-733" name="__codelineno-0-733"></a>        <span class="k">return</span> <span class="n">response</span>
-<a id="__codelineno-0-734" name="__codelineno-0-734"></a>
-<a id="__codelineno-0-735" name="__codelineno-0-735"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">_agenerate</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-<a id="__codelineno-0-736" name="__codelineno-0-736"></a>        <span class="n">response</span> <span class="o">=</span> <span class="n">ModelResponse</span><span class="p">()</span>
-<a id="__codelineno-0-737" name="__codelineno-0-737"></a>
-<a id="__codelineno-0-738" name="__codelineno-0-738"></a>        <span class="k">async</span> <span class="k">with</span> <span class="bp">self</span><span class="o">.</span><span class="n">_aexecute_model</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="k">as</span> <span class="n">model_output</span><span class="p">:</span>
-<a id="__codelineno-0-739" name="__codelineno-0-739"></a>            <span class="k">with</span> <span class="n">tempfile</span><span class="o">.</span><span class="n">NamedTemporaryFile</span><span class="p">(</span>
-<a id="__codelineno-0-740" name="__codelineno-0-740"></a>                <span class="n">suffix</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;.</span><span class="si">{</span><span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;response_format&#39;</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">delete</span><span class="o">=</span><span class="kc">False</span>
-<a id="__codelineno-0-741" name="__codelineno-0-741"></a>            <span class="p">)</span> <span class="k">as</span> <span class="n">temp_file</span><span class="p">:</span>
-<a id="__codelineno-0-742" name="__codelineno-0-742"></a>                <span class="n">temp_file_path</span> <span class="o">=</span> <span class="n">temp_file</span><span class="o">.</span><span class="n">name</span>
-<a id="__codelineno-0-743" name="__codelineno-0-743"></a>                <span class="k">await</span> <span class="n">model_output</span><span class="o">.</span><span class="n">astream_to_file</span><span class="p">(</span><span class="n">temp_file_path</span><span class="p">)</span>
-<a id="__codelineno-0-744" name="__codelineno-0-744"></a>
-<a id="__codelineno-0-745" name="__codelineno-0-745"></a>            <span class="n">response</span><span class="o">.</span><span class="n">set_response_type</span><span class="p">(</span><span class="s2">&quot;audio_generation&quot;</span><span class="p">)</span>
-<a id="__codelineno-0-746" name="__codelineno-0-746"></a>            <span class="n">response</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">temp_file_path</span><span class="p">)</span>
-<a id="__codelineno-0-747" name="__codelineno-0-747"></a>
-<a id="__codelineno-0-748" name="__codelineno-0-748"></a>        <span class="k">return</span> <span class="n">response</span>
-<a id="__codelineno-0-749" name="__codelineno-0-749"></a>
-<a id="__codelineno-0-750" name="__codelineno-0-750"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_stream_generate</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-<a id="__codelineno-0-751" name="__codelineno-0-751"></a>        <span class="n">stream_response</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">&quot;stream_response&quot;</span><span class="p">)</span>
-<a id="__codelineno-0-752" name="__codelineno-0-752"></a>        <span class="n">stream_response</span><span class="o">.</span><span class="n">set_response_type</span><span class="p">(</span><span class="s2">&quot;audio_generation&quot;</span><span class="p">)</span>
-<a id="__codelineno-0-753" name="__codelineno-0-753"></a>
-<a id="__codelineno-0-754" name="__codelineno-0-754"></a>        <span class="k">with</span> <span class="bp">self</span><span class="o">.</span><span class="n">_execute_model</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="k">as</span> <span class="n">model_output</span><span class="p">:</span>
-<a id="__codelineno-0-755" name="__codelineno-0-755"></a>            <span class="k">for</span> <span class="n">chunk</span> <span class="ow">in</span> <span class="n">model_output</span><span class="o">.</span><span class="n">iter_bytes</span><span class="p">(</span><span class="n">chunk_size</span><span class="o">=</span><span class="mi">1024</span><span class="p">):</span>
-<a id="__codelineno-0-756" name="__codelineno-0-756"></a>                <span class="n">stream_response</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">chunk</span><span class="p">)</span>
-<a id="__codelineno-0-757" name="__codelineno-0-757"></a>                <span class="k">if</span> <span class="ow">not</span> <span class="n">stream_response</span><span class="o">.</span><span class="n">first_chunk_event</span><span class="o">.</span><span class="n">is_set</span><span class="p">():</span>
-<a id="__codelineno-0-758" name="__codelineno-0-758"></a>                    <span class="n">stream_response</span><span class="o">.</span><span class="n">first_chunk_event</span><span class="o">.</span><span class="n">set</span><span class="p">()</span>
-<a id="__codelineno-0-759" name="__codelineno-0-759"></a>
-<a id="__codelineno-0-760" name="__codelineno-0-760"></a>        <span class="n">stream_response</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>
-<a id="__codelineno-0-761" name="__codelineno-0-761"></a>
-<a id="__codelineno-0-762" name="__codelineno-0-762"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">_astream_generate</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-<a id="__codelineno-0-763" name="__codelineno-0-763"></a>        <span class="n">stream_response</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">&quot;stream_response&quot;</span><span class="p">)</span>
-<a id="__codelineno-0-764" name="__codelineno-0-764"></a>        <span class="n">stream_response</span><span class="o">.</span><span class="n">set_response_type</span><span class="p">(</span><span class="s2">&quot;audio_generation&quot;</span><span class="p">)</span>
-<a id="__codelineno-0-765" name="__codelineno-0-765"></a>
-<a id="__codelineno-0-766" name="__codelineno-0-766"></a>        <span class="k">async</span> <span class="k">with</span> <span class="bp">self</span><span class="o">.</span><span class="n">_aexecute_model</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="k">as</span> <span class="n">model_output</span><span class="p">:</span>
-<a id="__codelineno-0-767" name="__codelineno-0-767"></a>            <span class="k">async</span> <span class="k">for</span> <span class="n">chunk</span> <span class="ow">in</span> <span class="n">model_output</span><span class="o">.</span><span class="n">aiter_bytes</span><span class="p">(</span><span class="n">chunk_size</span><span class="o">=</span><span class="mi">1024</span><span class="p">):</span>
-<a id="__codelineno-0-768" name="__codelineno-0-768"></a>                <span class="n">stream_response</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">chunk</span><span class="p">)</span>
-<a id="__codelineno-0-769" name="__codelineno-0-769"></a>                <span class="k">if</span> <span class="ow">not</span> <span class="n">stream_response</span><span class="o">.</span><span class="n">first_chunk_event</span><span class="o">.</span><span class="n">is_set</span><span class="p">():</span>
-<a id="__codelineno-0-770" name="__codelineno-0-770"></a>                    <span class="n">stream_response</span><span class="o">.</span><span class="n">first_chunk_event</span><span class="o">.</span><span class="n">set</span><span class="p">()</span>
+<a id="__codelineno-0-730" name="__codelineno-0-730"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+<a id="__codelineno-0-731" name="__codelineno-0-731"></a>        <span class="bp">self</span><span class="p">,</span>
+<a id="__codelineno-0-732" name="__codelineno-0-732"></a>        <span class="n">model_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<a id="__codelineno-0-733" name="__codelineno-0-733"></a>        <span class="n">voice</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;alloy&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-734" name="__codelineno-0-734"></a>        <span class="n">speed</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="mf">1.0</span><span class="p">,</span>
+<a id="__codelineno-0-735" name="__codelineno-0-735"></a>        <span class="n">base_url</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-736" name="__codelineno-0-736"></a>    <span class="p">):</span>
+<a id="__codelineno-0-737" name="__codelineno-0-737"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Args:</span>
+<a id="__codelineno-0-738" name="__codelineno-0-738"></a><span class="sd">        model_id:</span>
+<a id="__codelineno-0-739" name="__codelineno-0-739"></a><span class="sd">            Model ID in provider.</span>
+<a id="__codelineno-0-740" name="__codelineno-0-740"></a><span class="sd">        voice:</span>
+<a id="__codelineno-0-741" name="__codelineno-0-741"></a><span class="sd">            The voice to use when generating the audio.</span>
+<a id="__codelineno-0-742" name="__codelineno-0-742"></a><span class="sd">        speed:</span>
+<a id="__codelineno-0-743" name="__codelineno-0-743"></a><span class="sd">            the speed of the generated audio. Select a value</span>
+<a id="__codelineno-0-744" name="__codelineno-0-744"></a><span class="sd">            from 0.25 to 4.0. 1.0 is the default.</span>
+<a id="__codelineno-0-745" name="__codelineno-0-745"></a><span class="sd">        base_url:</span>
+<a id="__codelineno-0-746" name="__codelineno-0-746"></a><span class="sd">            URL to model provider.</span>
+<a id="__codelineno-0-747" name="__codelineno-0-747"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-748" name="__codelineno-0-748"></a>        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+<a id="__codelineno-0-749" name="__codelineno-0-749"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">model_id</span> <span class="o">=</span> <span class="n">model_id</span>
+<a id="__codelineno-0-750" name="__codelineno-0-750"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">sampling_params</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;base_url&quot;</span><span class="p">:</span> <span class="n">base_url</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_base_url</span><span class="p">()}</span>
+<a id="__codelineno-0-751" name="__codelineno-0-751"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">sampling_run_params</span> <span class="o">=</span> <span class="p">{</span>
+<a id="__codelineno-0-752" name="__codelineno-0-752"></a>            <span class="s2">&quot;voice&quot;</span><span class="p">:</span> <span class="n">voice</span><span class="p">,</span>
+<a id="__codelineno-0-753" name="__codelineno-0-753"></a>            <span class="s2">&quot;speed&quot;</span><span class="p">:</span> <span class="n">speed</span><span class="p">,</span>
+<a id="__codelineno-0-754" name="__codelineno-0-754"></a>        <span class="p">}</span>
+<a id="__codelineno-0-755" name="__codelineno-0-755"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_initialize</span><span class="p">()</span>
+<a id="__codelineno-0-756" name="__codelineno-0-756"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_get_api_key</span><span class="p">()</span>
+<a id="__codelineno-0-757" name="__codelineno-0-757"></a>
+<a id="__codelineno-0-758" name="__codelineno-0-758"></a>    <span class="nd">@contextmanager</span>
+<a id="__codelineno-0-759" name="__codelineno-0-759"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_execute_model</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<a id="__codelineno-0-760" name="__codelineno-0-760"></a>        <span class="k">with</span> <span class="bp">self</span><span class="o">.</span><span class="n">client</span><span class="o">.</span><span class="n">audio</span><span class="o">.</span><span class="n">speech</span><span class="o">.</span><span class="n">with_streaming_response</span><span class="o">.</span><span class="n">create</span><span class="p">(</span>
+<a id="__codelineno-0-761" name="__codelineno-0-761"></a>            <span class="n">model</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">model_id</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span> <span class="o">**</span><span class="bp">self</span><span class="o">.</span><span class="n">sampling_run_params</span>
+<a id="__codelineno-0-762" name="__codelineno-0-762"></a>        <span class="p">)</span> <span class="k">as</span> <span class="n">model_output</span><span class="p">:</span>
+<a id="__codelineno-0-763" name="__codelineno-0-763"></a>            <span class="k">yield</span> <span class="n">model_output</span>
+<a id="__codelineno-0-764" name="__codelineno-0-764"></a>
+<a id="__codelineno-0-765" name="__codelineno-0-765"></a>    <span class="nd">@asynccontextmanager</span>
+<a id="__codelineno-0-766" name="__codelineno-0-766"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">_aexecute_model</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<a id="__codelineno-0-767" name="__codelineno-0-767"></a>        <span class="k">async</span> <span class="k">with</span> <span class="bp">self</span><span class="o">.</span><span class="n">aclient</span><span class="o">.</span><span class="n">audio</span><span class="o">.</span><span class="n">speech</span><span class="o">.</span><span class="n">with_streaming_response</span><span class="o">.</span><span class="n">create</span><span class="p">(</span>
+<a id="__codelineno-0-768" name="__codelineno-0-768"></a>            <span class="n">model</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">model_id</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span> <span class="o">**</span><span class="bp">self</span><span class="o">.</span><span class="n">sampling_run_params</span>
+<a id="__codelineno-0-769" name="__codelineno-0-769"></a>        <span class="p">)</span> <span class="k">as</span> <span class="n">model_output</span><span class="p">:</span>
+<a id="__codelineno-0-770" name="__codelineno-0-770"></a>            <span class="k">yield</span> <span class="n">model_output</span>
 <a id="__codelineno-0-771" name="__codelineno-0-771"></a>
-<a id="__codelineno-0-772" name="__codelineno-0-772"></a>        <span class="n">stream_response</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>
-<a id="__codelineno-0-773" name="__codelineno-0-773"></a>
-<a id="__codelineno-0-774" name="__codelineno-0-774"></a>    <span class="nd">@model_retry</span>
-<a id="__codelineno-0-775" name="__codelineno-0-775"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__call__</span><span class="p">(</span>
-<a id="__codelineno-0-776" name="__codelineno-0-776"></a>        <span class="bp">self</span><span class="p">,</span>
-<a id="__codelineno-0-777" name="__codelineno-0-777"></a>        <span class="n">data</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-<a id="__codelineno-0-778" name="__codelineno-0-778"></a>        <span class="o">*</span><span class="p">,</span>
-<a id="__codelineno-0-779" name="__codelineno-0-779"></a>        <span class="n">stream</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
-<a id="__codelineno-0-780" name="__codelineno-0-780"></a>        <span class="n">prompt</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-781" name="__codelineno-0-781"></a>        <span class="n">response_format</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span>
-<a id="__codelineno-0-782" name="__codelineno-0-782"></a>            <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;mp3&quot;</span><span class="p">,</span> <span class="s2">&quot;opus&quot;</span><span class="p">,</span> <span class="s2">&quot;aac&quot;</span><span class="p">,</span> <span class="s2">&quot;flac&quot;</span><span class="p">,</span> <span class="s2">&quot;wav&quot;</span><span class="p">,</span> <span class="s2">&quot;pcm&quot;</span><span class="p">]</span>
-<a id="__codelineno-0-783" name="__codelineno-0-783"></a>        <span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;opus&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-784" name="__codelineno-0-784"></a>    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Union</span><span class="p">[</span><span class="n">ModelResponse</span><span class="p">,</span> <span class="n">ModelStreamResponse</span><span class="p">]:</span>
-<a id="__codelineno-0-785" name="__codelineno-0-785"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Args:</span>
-<a id="__codelineno-0-786" name="__codelineno-0-786"></a><span class="sd">        data:</span>
-<a id="__codelineno-0-787" name="__codelineno-0-787"></a><span class="sd">            The text to generate audio for.</span>
-<a id="__codelineno-0-788" name="__codelineno-0-788"></a><span class="sd">        stream:</span>
-<a id="__codelineno-0-789" name="__codelineno-0-789"></a><span class="sd">            Whether generation should be in streaming mode.</span>
-<a id="__codelineno-0-790" name="__codelineno-0-790"></a><span class="sd">        prompt:</span>
-<a id="__codelineno-0-791" name="__codelineno-0-791"></a><span class="sd">            Control the voice of your generated audio with additional instructions.</span>
-<a id="__codelineno-0-792" name="__codelineno-0-792"></a><span class="sd">        response_format:</span>
-<a id="__codelineno-0-793" name="__codelineno-0-793"></a><span class="sd">            The format to audio in.</span>
-<a id="__codelineno-0-794" name="__codelineno-0-794"></a><span class="sd">        &quot;&quot;&quot;</span>
-<a id="__codelineno-0-795" name="__codelineno-0-795"></a>        <span class="n">params</span> <span class="o">=</span> <span class="n">dotdict</span><span class="p">({</span><span class="s2">&quot;input&quot;</span><span class="p">:</span> <span class="n">data</span><span class="p">,</span> <span class="s2">&quot;response_format&quot;</span><span class="p">:</span> <span class="n">response_format</span><span class="p">})</span>
-<a id="__codelineno-0-796" name="__codelineno-0-796"></a>        <span class="k">if</span> <span class="n">prompt</span><span class="p">:</span>
-<a id="__codelineno-0-797" name="__codelineno-0-797"></a>            <span class="n">params</span><span class="o">.</span><span class="n">instructions</span> <span class="o">=</span> <span class="n">prompt</span>
-<a id="__codelineno-0-798" name="__codelineno-0-798"></a>        <span class="k">if</span> <span class="n">stream</span><span class="p">:</span>
-<a id="__codelineno-0-799" name="__codelineno-0-799"></a>            <span class="n">stream_response</span> <span class="o">=</span> <span class="n">ModelStreamResponse</span><span class="p">()</span>
-<a id="__codelineno-0-800" name="__codelineno-0-800"></a>            <span class="n">params</span><span class="o">.</span><span class="n">stream_response</span> <span class="o">=</span> <span class="n">stream_response</span>
-<a id="__codelineno-0-801" name="__codelineno-0-801"></a>            <span class="n">F</span><span class="o">.</span><span class="n">background_task</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_stream_generate</span><span class="p">,</span> <span class="o">**</span><span class="n">params</span><span class="p">)</span>
-<a id="__codelineno-0-802" name="__codelineno-0-802"></a>            <span class="n">F</span><span class="o">.</span><span class="n">wait_for_event</span><span class="p">(</span><span class="n">stream_response</span><span class="o">.</span><span class="n">first_chunk_event</span><span class="p">)</span>
-<a id="__codelineno-0-803" name="__codelineno-0-803"></a>            <span class="k">return</span> <span class="n">stream_response</span>
-<a id="__codelineno-0-804" name="__codelineno-0-804"></a>        <span class="k">else</span><span class="p">:</span>
-<a id="__codelineno-0-805" name="__codelineno-0-805"></a>            <span class="n">response</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_generate</span><span class="p">(</span><span class="o">**</span><span class="n">params</span><span class="p">)</span>
-<a id="__codelineno-0-806" name="__codelineno-0-806"></a>            <span class="k">return</span> <span class="n">response</span>
-<a id="__codelineno-0-807" name="__codelineno-0-807"></a>
-<a id="__codelineno-0-808" name="__codelineno-0-808"></a>    <span class="nd">@model_retry</span>
-<a id="__codelineno-0-809" name="__codelineno-0-809"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">acall</span><span class="p">(</span>
-<a id="__codelineno-0-810" name="__codelineno-0-810"></a>        <span class="bp">self</span><span class="p">,</span>
-<a id="__codelineno-0-811" name="__codelineno-0-811"></a>        <span class="n">data</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-<a id="__codelineno-0-812" name="__codelineno-0-812"></a>        <span class="o">*</span><span class="p">,</span>
-<a id="__codelineno-0-813" name="__codelineno-0-813"></a>        <span class="n">stream</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
-<a id="__codelineno-0-814" name="__codelineno-0-814"></a>        <span class="n">prompt</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-815" name="__codelineno-0-815"></a>        <span class="n">response_format</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span>
-<a id="__codelineno-0-816" name="__codelineno-0-816"></a>            <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;mp3&quot;</span><span class="p">,</span> <span class="s2">&quot;opus&quot;</span><span class="p">,</span> <span class="s2">&quot;aac&quot;</span><span class="p">,</span> <span class="s2">&quot;flac&quot;</span><span class="p">,</span> <span class="s2">&quot;wav&quot;</span><span class="p">,</span> <span class="s2">&quot;pcm&quot;</span><span class="p">]</span>
-<a id="__codelineno-0-817" name="__codelineno-0-817"></a>        <span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;opus&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-818" name="__codelineno-0-818"></a>    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Union</span><span class="p">[</span><span class="n">ModelResponse</span><span class="p">,</span> <span class="n">ModelStreamResponse</span><span class="p">]:</span>
-<a id="__codelineno-0-819" name="__codelineno-0-819"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Async version of __call__. Args:</span>
-<a id="__codelineno-0-820" name="__codelineno-0-820"></a><span class="sd">        data:</span>
-<a id="__codelineno-0-821" name="__codelineno-0-821"></a><span class="sd">            The text to generate audio for.</span>
-<a id="__codelineno-0-822" name="__codelineno-0-822"></a><span class="sd">        stream:</span>
-<a id="__codelineno-0-823" name="__codelineno-0-823"></a><span class="sd">            Whether generation should be in streaming mode.</span>
-<a id="__codelineno-0-824" name="__codelineno-0-824"></a><span class="sd">        prompt:</span>
-<a id="__codelineno-0-825" name="__codelineno-0-825"></a><span class="sd">            Control the voice of your generated audio with additional instructions.</span>
-<a id="__codelineno-0-826" name="__codelineno-0-826"></a><span class="sd">        response_format:</span>
-<a id="__codelineno-0-827" name="__codelineno-0-827"></a><span class="sd">            The format to audio in.</span>
-<a id="__codelineno-0-828" name="__codelineno-0-828"></a><span class="sd">        &quot;&quot;&quot;</span>
-<a id="__codelineno-0-829" name="__codelineno-0-829"></a>        <span class="n">params</span> <span class="o">=</span> <span class="n">dotdict</span><span class="p">({</span><span class="s2">&quot;input&quot;</span><span class="p">:</span> <span class="n">data</span><span class="p">,</span> <span class="s2">&quot;response_format&quot;</span><span class="p">:</span> <span class="n">response_format</span><span class="p">})</span>
-<a id="__codelineno-0-830" name="__codelineno-0-830"></a>        <span class="k">if</span> <span class="n">prompt</span><span class="p">:</span>
-<a id="__codelineno-0-831" name="__codelineno-0-831"></a>            <span class="n">params</span><span class="o">.</span><span class="n">instructions</span> <span class="o">=</span> <span class="n">prompt</span>
-<a id="__codelineno-0-832" name="__codelineno-0-832"></a>        <span class="k">if</span> <span class="n">stream</span><span class="p">:</span>
-<a id="__codelineno-0-833" name="__codelineno-0-833"></a>            <span class="n">stream_response</span> <span class="o">=</span> <span class="n">ModelStreamResponse</span><span class="p">()</span>
-<a id="__codelineno-0-834" name="__codelineno-0-834"></a>            <span class="n">params</span><span class="o">.</span><span class="n">stream_response</span> <span class="o">=</span> <span class="n">stream_response</span>
-<a id="__codelineno-0-835" name="__codelineno-0-835"></a>            <span class="k">await</span> <span class="n">F</span><span class="o">.</span><span class="n">abackground_task</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_astream_generate</span><span class="p">,</span> <span class="o">**</span><span class="n">params</span><span class="p">)</span>
-<a id="__codelineno-0-836" name="__codelineno-0-836"></a>            <span class="k">await</span> <span class="n">F</span><span class="o">.</span><span class="n">await_for_event</span><span class="p">(</span><span class="n">stream_response</span><span class="o">.</span><span class="n">first_chunk_event</span><span class="p">)</span>
-<a id="__codelineno-0-837" name="__codelineno-0-837"></a>            <span class="k">return</span> <span class="n">stream_response</span>
-<a id="__codelineno-0-838" name="__codelineno-0-838"></a>        <span class="k">else</span><span class="p">:</span>
-<a id="__codelineno-0-839" name="__codelineno-0-839"></a>            <span class="n">response</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_agenerate</span><span class="p">(</span><span class="o">**</span><span class="n">params</span><span class="p">)</span>
-<a id="__codelineno-0-840" name="__codelineno-0-840"></a>            <span class="k">return</span> <span class="n">response</span>
+<a id="__codelineno-0-772" name="__codelineno-0-772"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_generate</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<a id="__codelineno-0-773" name="__codelineno-0-773"></a>        <span class="n">response</span> <span class="o">=</span> <span class="n">ModelResponse</span><span class="p">()</span>
+<a id="__codelineno-0-774" name="__codelineno-0-774"></a>
+<a id="__codelineno-0-775" name="__codelineno-0-775"></a>        <span class="k">with</span> <span class="bp">self</span><span class="o">.</span><span class="n">_execute_model</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="k">as</span> <span class="n">model_output</span><span class="p">:</span>
+<a id="__codelineno-0-776" name="__codelineno-0-776"></a>            <span class="k">with</span> <span class="n">tempfile</span><span class="o">.</span><span class="n">NamedTemporaryFile</span><span class="p">(</span>
+<a id="__codelineno-0-777" name="__codelineno-0-777"></a>                <span class="n">suffix</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;.</span><span class="si">{</span><span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;response_format&#39;</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">delete</span><span class="o">=</span><span class="kc">False</span>
+<a id="__codelineno-0-778" name="__codelineno-0-778"></a>            <span class="p">)</span> <span class="k">as</span> <span class="n">temp_file</span><span class="p">:</span>
+<a id="__codelineno-0-779" name="__codelineno-0-779"></a>                <span class="n">temp_file_path</span> <span class="o">=</span> <span class="n">temp_file</span><span class="o">.</span><span class="n">name</span>
+<a id="__codelineno-0-780" name="__codelineno-0-780"></a>                <span class="n">model_output</span><span class="o">.</span><span class="n">stream_to_file</span><span class="p">(</span><span class="n">temp_file_path</span><span class="p">)</span>
+<a id="__codelineno-0-781" name="__codelineno-0-781"></a>
+<a id="__codelineno-0-782" name="__codelineno-0-782"></a>            <span class="n">response</span><span class="o">.</span><span class="n">set_response_type</span><span class="p">(</span><span class="s2">&quot;audio_generation&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-783" name="__codelineno-0-783"></a>            <span class="n">response</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">temp_file_path</span><span class="p">)</span>
+<a id="__codelineno-0-784" name="__codelineno-0-784"></a>
+<a id="__codelineno-0-785" name="__codelineno-0-785"></a>        <span class="k">return</span> <span class="n">response</span>
+<a id="__codelineno-0-786" name="__codelineno-0-786"></a>
+<a id="__codelineno-0-787" name="__codelineno-0-787"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">_agenerate</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<a id="__codelineno-0-788" name="__codelineno-0-788"></a>        <span class="n">response</span> <span class="o">=</span> <span class="n">ModelResponse</span><span class="p">()</span>
+<a id="__codelineno-0-789" name="__codelineno-0-789"></a>
+<a id="__codelineno-0-790" name="__codelineno-0-790"></a>        <span class="k">async</span> <span class="k">with</span> <span class="bp">self</span><span class="o">.</span><span class="n">_aexecute_model</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="k">as</span> <span class="n">model_output</span><span class="p">:</span>
+<a id="__codelineno-0-791" name="__codelineno-0-791"></a>            <span class="k">with</span> <span class="n">tempfile</span><span class="o">.</span><span class="n">NamedTemporaryFile</span><span class="p">(</span>
+<a id="__codelineno-0-792" name="__codelineno-0-792"></a>                <span class="n">suffix</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;.</span><span class="si">{</span><span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;response_format&#39;</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">delete</span><span class="o">=</span><span class="kc">False</span>
+<a id="__codelineno-0-793" name="__codelineno-0-793"></a>            <span class="p">)</span> <span class="k">as</span> <span class="n">temp_file</span><span class="p">:</span>
+<a id="__codelineno-0-794" name="__codelineno-0-794"></a>                <span class="n">temp_file_path</span> <span class="o">=</span> <span class="n">temp_file</span><span class="o">.</span><span class="n">name</span>
+<a id="__codelineno-0-795" name="__codelineno-0-795"></a>                <span class="k">await</span> <span class="n">model_output</span><span class="o">.</span><span class="n">astream_to_file</span><span class="p">(</span><span class="n">temp_file_path</span><span class="p">)</span>
+<a id="__codelineno-0-796" name="__codelineno-0-796"></a>
+<a id="__codelineno-0-797" name="__codelineno-0-797"></a>            <span class="n">response</span><span class="o">.</span><span class="n">set_response_type</span><span class="p">(</span><span class="s2">&quot;audio_generation&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-798" name="__codelineno-0-798"></a>            <span class="n">response</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">temp_file_path</span><span class="p">)</span>
+<a id="__codelineno-0-799" name="__codelineno-0-799"></a>
+<a id="__codelineno-0-800" name="__codelineno-0-800"></a>        <span class="k">return</span> <span class="n">response</span>
+<a id="__codelineno-0-801" name="__codelineno-0-801"></a>
+<a id="__codelineno-0-802" name="__codelineno-0-802"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_stream_generate</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<a id="__codelineno-0-803" name="__codelineno-0-803"></a>        <span class="n">stream_response</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">&quot;stream_response&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-804" name="__codelineno-0-804"></a>        <span class="n">stream_response</span><span class="o">.</span><span class="n">set_response_type</span><span class="p">(</span><span class="s2">&quot;audio_generation&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-805" name="__codelineno-0-805"></a>
+<a id="__codelineno-0-806" name="__codelineno-0-806"></a>        <span class="k">with</span> <span class="bp">self</span><span class="o">.</span><span class="n">_execute_model</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="k">as</span> <span class="n">model_output</span><span class="p">:</span>
+<a id="__codelineno-0-807" name="__codelineno-0-807"></a>            <span class="k">for</span> <span class="n">chunk</span> <span class="ow">in</span> <span class="n">model_output</span><span class="o">.</span><span class="n">iter_bytes</span><span class="p">(</span><span class="n">chunk_size</span><span class="o">=</span><span class="mi">1024</span><span class="p">):</span>
+<a id="__codelineno-0-808" name="__codelineno-0-808"></a>                <span class="n">stream_response</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">chunk</span><span class="p">)</span>
+<a id="__codelineno-0-809" name="__codelineno-0-809"></a>                <span class="k">if</span> <span class="ow">not</span> <span class="n">stream_response</span><span class="o">.</span><span class="n">first_chunk_event</span><span class="o">.</span><span class="n">is_set</span><span class="p">():</span>
+<a id="__codelineno-0-810" name="__codelineno-0-810"></a>                    <span class="n">stream_response</span><span class="o">.</span><span class="n">first_chunk_event</span><span class="o">.</span><span class="n">set</span><span class="p">()</span>
+<a id="__codelineno-0-811" name="__codelineno-0-811"></a>
+<a id="__codelineno-0-812" name="__codelineno-0-812"></a>        <span class="n">stream_response</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>
+<a id="__codelineno-0-813" name="__codelineno-0-813"></a>
+<a id="__codelineno-0-814" name="__codelineno-0-814"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">_astream_generate</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<a id="__codelineno-0-815" name="__codelineno-0-815"></a>        <span class="n">stream_response</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">&quot;stream_response&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-816" name="__codelineno-0-816"></a>        <span class="n">stream_response</span><span class="o">.</span><span class="n">set_response_type</span><span class="p">(</span><span class="s2">&quot;audio_generation&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-817" name="__codelineno-0-817"></a>
+<a id="__codelineno-0-818" name="__codelineno-0-818"></a>        <span class="k">async</span> <span class="k">with</span> <span class="bp">self</span><span class="o">.</span><span class="n">_aexecute_model</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="k">as</span> <span class="n">model_output</span><span class="p">:</span>
+<a id="__codelineno-0-819" name="__codelineno-0-819"></a>            <span class="k">async</span> <span class="k">for</span> <span class="n">chunk</span> <span class="ow">in</span> <span class="n">model_output</span><span class="o">.</span><span class="n">aiter_bytes</span><span class="p">(</span><span class="n">chunk_size</span><span class="o">=</span><span class="mi">1024</span><span class="p">):</span>
+<a id="__codelineno-0-820" name="__codelineno-0-820"></a>                <span class="n">stream_response</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">chunk</span><span class="p">)</span>
+<a id="__codelineno-0-821" name="__codelineno-0-821"></a>                <span class="k">if</span> <span class="ow">not</span> <span class="n">stream_response</span><span class="o">.</span><span class="n">first_chunk_event</span><span class="o">.</span><span class="n">is_set</span><span class="p">():</span>
+<a id="__codelineno-0-822" name="__codelineno-0-822"></a>                    <span class="n">stream_response</span><span class="o">.</span><span class="n">first_chunk_event</span><span class="o">.</span><span class="n">set</span><span class="p">()</span>
+<a id="__codelineno-0-823" name="__codelineno-0-823"></a>
+<a id="__codelineno-0-824" name="__codelineno-0-824"></a>        <span class="n">stream_response</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>
+<a id="__codelineno-0-825" name="__codelineno-0-825"></a>
+<a id="__codelineno-0-826" name="__codelineno-0-826"></a>    <span class="nd">@model_retry</span>
+<a id="__codelineno-0-827" name="__codelineno-0-827"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__call__</span><span class="p">(</span>
+<a id="__codelineno-0-828" name="__codelineno-0-828"></a>        <span class="bp">self</span><span class="p">,</span>
+<a id="__codelineno-0-829" name="__codelineno-0-829"></a>        <span class="n">data</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<a id="__codelineno-0-830" name="__codelineno-0-830"></a>        <span class="o">*</span><span class="p">,</span>
+<a id="__codelineno-0-831" name="__codelineno-0-831"></a>        <span class="n">stream</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<a id="__codelineno-0-832" name="__codelineno-0-832"></a>        <span class="n">prompt</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-833" name="__codelineno-0-833"></a>        <span class="n">response_format</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span>
+<a id="__codelineno-0-834" name="__codelineno-0-834"></a>            <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;mp3&quot;</span><span class="p">,</span> <span class="s2">&quot;opus&quot;</span><span class="p">,</span> <span class="s2">&quot;aac&quot;</span><span class="p">,</span> <span class="s2">&quot;flac&quot;</span><span class="p">,</span> <span class="s2">&quot;wav&quot;</span><span class="p">,</span> <span class="s2">&quot;pcm&quot;</span><span class="p">]</span>
+<a id="__codelineno-0-835" name="__codelineno-0-835"></a>        <span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;opus&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-836" name="__codelineno-0-836"></a>    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Union</span><span class="p">[</span><span class="n">ModelResponse</span><span class="p">,</span> <span class="n">ModelStreamResponse</span><span class="p">]:</span>
+<a id="__codelineno-0-837" name="__codelineno-0-837"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Args:</span>
+<a id="__codelineno-0-838" name="__codelineno-0-838"></a><span class="sd">        data:</span>
+<a id="__codelineno-0-839" name="__codelineno-0-839"></a><span class="sd">            The text to generate audio for.</span>
+<a id="__codelineno-0-840" name="__codelineno-0-840"></a><span class="sd">        stream:</span>
+<a id="__codelineno-0-841" name="__codelineno-0-841"></a><span class="sd">            Whether generation should be in streaming mode.</span>
+<a id="__codelineno-0-842" name="__codelineno-0-842"></a><span class="sd">        prompt:</span>
+<a id="__codelineno-0-843" name="__codelineno-0-843"></a><span class="sd">            Control the voice of your generated audio with additional instructions.</span>
+<a id="__codelineno-0-844" name="__codelineno-0-844"></a><span class="sd">        response_format:</span>
+<a id="__codelineno-0-845" name="__codelineno-0-845"></a><span class="sd">            The format to audio in.</span>
+<a id="__codelineno-0-846" name="__codelineno-0-846"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-847" name="__codelineno-0-847"></a>        <span class="n">params</span> <span class="o">=</span> <span class="n">dotdict</span><span class="p">({</span><span class="s2">&quot;input&quot;</span><span class="p">:</span> <span class="n">data</span><span class="p">,</span> <span class="s2">&quot;response_format&quot;</span><span class="p">:</span> <span class="n">response_format</span><span class="p">})</span>
+<a id="__codelineno-0-848" name="__codelineno-0-848"></a>        <span class="k">if</span> <span class="n">prompt</span><span class="p">:</span>
+<a id="__codelineno-0-849" name="__codelineno-0-849"></a>            <span class="n">params</span><span class="o">.</span><span class="n">instructions</span> <span class="o">=</span> <span class="n">prompt</span>
+<a id="__codelineno-0-850" name="__codelineno-0-850"></a>        <span class="k">if</span> <span class="n">stream</span><span class="p">:</span>
+<a id="__codelineno-0-851" name="__codelineno-0-851"></a>            <span class="n">stream_response</span> <span class="o">=</span> <span class="n">ModelStreamResponse</span><span class="p">()</span>
+<a id="__codelineno-0-852" name="__codelineno-0-852"></a>            <span class="n">params</span><span class="o">.</span><span class="n">stream_response</span> <span class="o">=</span> <span class="n">stream_response</span>
+<a id="__codelineno-0-853" name="__codelineno-0-853"></a>            <span class="n">F</span><span class="o">.</span><span class="n">background_task</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_stream_generate</span><span class="p">,</span> <span class="o">**</span><span class="n">params</span><span class="p">)</span>
+<a id="__codelineno-0-854" name="__codelineno-0-854"></a>            <span class="n">F</span><span class="o">.</span><span class="n">wait_for_event</span><span class="p">(</span><span class="n">stream_response</span><span class="o">.</span><span class="n">first_chunk_event</span><span class="p">)</span>
+<a id="__codelineno-0-855" name="__codelineno-0-855"></a>            <span class="k">return</span> <span class="n">stream_response</span>
+<a id="__codelineno-0-856" name="__codelineno-0-856"></a>        <span class="k">else</span><span class="p">:</span>
+<a id="__codelineno-0-857" name="__codelineno-0-857"></a>            <span class="n">response</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_generate</span><span class="p">(</span><span class="o">**</span><span class="n">params</span><span class="p">)</span>
+<a id="__codelineno-0-858" name="__codelineno-0-858"></a>            <span class="k">return</span> <span class="n">response</span>
+<a id="__codelineno-0-859" name="__codelineno-0-859"></a>
+<a id="__codelineno-0-860" name="__codelineno-0-860"></a>    <span class="nd">@model_retry</span>
+<a id="__codelineno-0-861" name="__codelineno-0-861"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">acall</span><span class="p">(</span>
+<a id="__codelineno-0-862" name="__codelineno-0-862"></a>        <span class="bp">self</span><span class="p">,</span>
+<a id="__codelineno-0-863" name="__codelineno-0-863"></a>        <span class="n">data</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<a id="__codelineno-0-864" name="__codelineno-0-864"></a>        <span class="o">*</span><span class="p">,</span>
+<a id="__codelineno-0-865" name="__codelineno-0-865"></a>        <span class="n">stream</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<a id="__codelineno-0-866" name="__codelineno-0-866"></a>        <span class="n">prompt</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-867" name="__codelineno-0-867"></a>        <span class="n">response_format</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span>
+<a id="__codelineno-0-868" name="__codelineno-0-868"></a>            <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;mp3&quot;</span><span class="p">,</span> <span class="s2">&quot;opus&quot;</span><span class="p">,</span> <span class="s2">&quot;aac&quot;</span><span class="p">,</span> <span class="s2">&quot;flac&quot;</span><span class="p">,</span> <span class="s2">&quot;wav&quot;</span><span class="p">,</span> <span class="s2">&quot;pcm&quot;</span><span class="p">]</span>
+<a id="__codelineno-0-869" name="__codelineno-0-869"></a>        <span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;opus&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-870" name="__codelineno-0-870"></a>    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Union</span><span class="p">[</span><span class="n">ModelResponse</span><span class="p">,</span> <span class="n">ModelStreamResponse</span><span class="p">]:</span>
+<a id="__codelineno-0-871" name="__codelineno-0-871"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Async version of __call__. Args:</span>
+<a id="__codelineno-0-872" name="__codelineno-0-872"></a><span class="sd">        data:</span>
+<a id="__codelineno-0-873" name="__codelineno-0-873"></a><span class="sd">            The text to generate audio for.</span>
+<a id="__codelineno-0-874" name="__codelineno-0-874"></a><span class="sd">        stream:</span>
+<a id="__codelineno-0-875" name="__codelineno-0-875"></a><span class="sd">            Whether generation should be in streaming mode.</span>
+<a id="__codelineno-0-876" name="__codelineno-0-876"></a><span class="sd">        prompt:</span>
+<a id="__codelineno-0-877" name="__codelineno-0-877"></a><span class="sd">            Control the voice of your generated audio with additional instructions.</span>
+<a id="__codelineno-0-878" name="__codelineno-0-878"></a><span class="sd">        response_format:</span>
+<a id="__codelineno-0-879" name="__codelineno-0-879"></a><span class="sd">            The format to audio in.</span>
+<a id="__codelineno-0-880" name="__codelineno-0-880"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-881" name="__codelineno-0-881"></a>        <span class="n">params</span> <span class="o">=</span> <span class="n">dotdict</span><span class="p">({</span><span class="s2">&quot;input&quot;</span><span class="p">:</span> <span class="n">data</span><span class="p">,</span> <span class="s2">&quot;response_format&quot;</span><span class="p">:</span> <span class="n">response_format</span><span class="p">})</span>
+<a id="__codelineno-0-882" name="__codelineno-0-882"></a>        <span class="k">if</span> <span class="n">prompt</span><span class="p">:</span>
+<a id="__codelineno-0-883" name="__codelineno-0-883"></a>            <span class="n">params</span><span class="o">.</span><span class="n">instructions</span> <span class="o">=</span> <span class="n">prompt</span>
+<a id="__codelineno-0-884" name="__codelineno-0-884"></a>        <span class="k">if</span> <span class="n">stream</span><span class="p">:</span>
+<a id="__codelineno-0-885" name="__codelineno-0-885"></a>            <span class="n">stream_response</span> <span class="o">=</span> <span class="n">ModelStreamResponse</span><span class="p">()</span>
+<a id="__codelineno-0-886" name="__codelineno-0-886"></a>            <span class="n">params</span><span class="o">.</span><span class="n">stream_response</span> <span class="o">=</span> <span class="n">stream_response</span>
+<a id="__codelineno-0-887" name="__codelineno-0-887"></a>            <span class="k">await</span> <span class="n">F</span><span class="o">.</span><span class="n">abackground_task</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_astream_generate</span><span class="p">,</span> <span class="o">**</span><span class="n">params</span><span class="p">)</span>
+<a id="__codelineno-0-888" name="__codelineno-0-888"></a>            <span class="k">await</span> <span class="n">F</span><span class="o">.</span><span class="n">await_for_event</span><span class="p">(</span><span class="n">stream_response</span><span class="o">.</span><span class="n">first_chunk_event</span><span class="p">)</span>
+<a id="__codelineno-0-889" name="__codelineno-0-889"></a>            <span class="k">return</span> <span class="n">stream_response</span>
+<a id="__codelineno-0-890" name="__codelineno-0-890"></a>        <span class="k">else</span><span class="p">:</span>
+<a id="__codelineno-0-891" name="__codelineno-0-891"></a>            <span class="n">response</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_agenerate</span><span class="p">(</span><span class="o">**</span><span class="n">params</span><span class="p">)</span>
+<a id="__codelineno-0-892" name="__codelineno-0-892"></a>            <span class="k">return</span> <span class="n">response</span>
 </code></pre></div></td></tr></table></div>
               </details>
 
@@ -2567,71 +2567,71 @@ response_format:
 
             <details class="quote">
               <summary>Source code in <code>src/msgflux/models/providers/openai.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-774">774</a></span>
-<span class="normal"><a href="#__codelineno-0-775">775</a></span>
-<span class="normal"><a href="#__codelineno-0-776">776</a></span>
-<span class="normal"><a href="#__codelineno-0-777">777</a></span>
-<span class="normal"><a href="#__codelineno-0-778">778</a></span>
-<span class="normal"><a href="#__codelineno-0-779">779</a></span>
-<span class="normal"><a href="#__codelineno-0-780">780</a></span>
-<span class="normal"><a href="#__codelineno-0-781">781</a></span>
-<span class="normal"><a href="#__codelineno-0-782">782</a></span>
-<span class="normal"><a href="#__codelineno-0-783">783</a></span>
-<span class="normal"><a href="#__codelineno-0-784">784</a></span>
-<span class="normal"><a href="#__codelineno-0-785">785</a></span>
-<span class="normal"><a href="#__codelineno-0-786">786</a></span>
-<span class="normal"><a href="#__codelineno-0-787">787</a></span>
-<span class="normal"><a href="#__codelineno-0-788">788</a></span>
-<span class="normal"><a href="#__codelineno-0-789">789</a></span>
-<span class="normal"><a href="#__codelineno-0-790">790</a></span>
-<span class="normal"><a href="#__codelineno-0-791">791</a></span>
-<span class="normal"><a href="#__codelineno-0-792">792</a></span>
-<span class="normal"><a href="#__codelineno-0-793">793</a></span>
-<span class="normal"><a href="#__codelineno-0-794">794</a></span>
-<span class="normal"><a href="#__codelineno-0-795">795</a></span>
-<span class="normal"><a href="#__codelineno-0-796">796</a></span>
-<span class="normal"><a href="#__codelineno-0-797">797</a></span>
-<span class="normal"><a href="#__codelineno-0-798">798</a></span>
-<span class="normal"><a href="#__codelineno-0-799">799</a></span>
-<span class="normal"><a href="#__codelineno-0-800">800</a></span>
-<span class="normal"><a href="#__codelineno-0-801">801</a></span>
-<span class="normal"><a href="#__codelineno-0-802">802</a></span>
-<span class="normal"><a href="#__codelineno-0-803">803</a></span>
-<span class="normal"><a href="#__codelineno-0-804">804</a></span>
-<span class="normal"><a href="#__codelineno-0-805">805</a></span>
-<span class="normal"><a href="#__codelineno-0-806">806</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-774" name="__codelineno-0-774"></a><span class="nd">@model_retry</span>
-<a id="__codelineno-0-775" name="__codelineno-0-775"></a><span class="k">def</span><span class="w"> </span><span class="fm">__call__</span><span class="p">(</span>
-<a id="__codelineno-0-776" name="__codelineno-0-776"></a>    <span class="bp">self</span><span class="p">,</span>
-<a id="__codelineno-0-777" name="__codelineno-0-777"></a>    <span class="n">data</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-<a id="__codelineno-0-778" name="__codelineno-0-778"></a>    <span class="o">*</span><span class="p">,</span>
-<a id="__codelineno-0-779" name="__codelineno-0-779"></a>    <span class="n">stream</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
-<a id="__codelineno-0-780" name="__codelineno-0-780"></a>    <span class="n">prompt</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-781" name="__codelineno-0-781"></a>    <span class="n">response_format</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span>
-<a id="__codelineno-0-782" name="__codelineno-0-782"></a>        <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;mp3&quot;</span><span class="p">,</span> <span class="s2">&quot;opus&quot;</span><span class="p">,</span> <span class="s2">&quot;aac&quot;</span><span class="p">,</span> <span class="s2">&quot;flac&quot;</span><span class="p">,</span> <span class="s2">&quot;wav&quot;</span><span class="p">,</span> <span class="s2">&quot;pcm&quot;</span><span class="p">]</span>
-<a id="__codelineno-0-783" name="__codelineno-0-783"></a>    <span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;opus&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-784" name="__codelineno-0-784"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Union</span><span class="p">[</span><span class="n">ModelResponse</span><span class="p">,</span> <span class="n">ModelStreamResponse</span><span class="p">]:</span>
-<a id="__codelineno-0-785" name="__codelineno-0-785"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Args:</span>
-<a id="__codelineno-0-786" name="__codelineno-0-786"></a><span class="sd">    data:</span>
-<a id="__codelineno-0-787" name="__codelineno-0-787"></a><span class="sd">        The text to generate audio for.</span>
-<a id="__codelineno-0-788" name="__codelineno-0-788"></a><span class="sd">    stream:</span>
-<a id="__codelineno-0-789" name="__codelineno-0-789"></a><span class="sd">        Whether generation should be in streaming mode.</span>
-<a id="__codelineno-0-790" name="__codelineno-0-790"></a><span class="sd">    prompt:</span>
-<a id="__codelineno-0-791" name="__codelineno-0-791"></a><span class="sd">        Control the voice of your generated audio with additional instructions.</span>
-<a id="__codelineno-0-792" name="__codelineno-0-792"></a><span class="sd">    response_format:</span>
-<a id="__codelineno-0-793" name="__codelineno-0-793"></a><span class="sd">        The format to audio in.</span>
-<a id="__codelineno-0-794" name="__codelineno-0-794"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-795" name="__codelineno-0-795"></a>    <span class="n">params</span> <span class="o">=</span> <span class="n">dotdict</span><span class="p">({</span><span class="s2">&quot;input&quot;</span><span class="p">:</span> <span class="n">data</span><span class="p">,</span> <span class="s2">&quot;response_format&quot;</span><span class="p">:</span> <span class="n">response_format</span><span class="p">})</span>
-<a id="__codelineno-0-796" name="__codelineno-0-796"></a>    <span class="k">if</span> <span class="n">prompt</span><span class="p">:</span>
-<a id="__codelineno-0-797" name="__codelineno-0-797"></a>        <span class="n">params</span><span class="o">.</span><span class="n">instructions</span> <span class="o">=</span> <span class="n">prompt</span>
-<a id="__codelineno-0-798" name="__codelineno-0-798"></a>    <span class="k">if</span> <span class="n">stream</span><span class="p">:</span>
-<a id="__codelineno-0-799" name="__codelineno-0-799"></a>        <span class="n">stream_response</span> <span class="o">=</span> <span class="n">ModelStreamResponse</span><span class="p">()</span>
-<a id="__codelineno-0-800" name="__codelineno-0-800"></a>        <span class="n">params</span><span class="o">.</span><span class="n">stream_response</span> <span class="o">=</span> <span class="n">stream_response</span>
-<a id="__codelineno-0-801" name="__codelineno-0-801"></a>        <span class="n">F</span><span class="o">.</span><span class="n">background_task</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_stream_generate</span><span class="p">,</span> <span class="o">**</span><span class="n">params</span><span class="p">)</span>
-<a id="__codelineno-0-802" name="__codelineno-0-802"></a>        <span class="n">F</span><span class="o">.</span><span class="n">wait_for_event</span><span class="p">(</span><span class="n">stream_response</span><span class="o">.</span><span class="n">first_chunk_event</span><span class="p">)</span>
-<a id="__codelineno-0-803" name="__codelineno-0-803"></a>        <span class="k">return</span> <span class="n">stream_response</span>
-<a id="__codelineno-0-804" name="__codelineno-0-804"></a>    <span class="k">else</span><span class="p">:</span>
-<a id="__codelineno-0-805" name="__codelineno-0-805"></a>        <span class="n">response</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_generate</span><span class="p">(</span><span class="o">**</span><span class="n">params</span><span class="p">)</span>
-<a id="__codelineno-0-806" name="__codelineno-0-806"></a>        <span class="k">return</span> <span class="n">response</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-826">826</a></span>
+<span class="normal"><a href="#__codelineno-0-827">827</a></span>
+<span class="normal"><a href="#__codelineno-0-828">828</a></span>
+<span class="normal"><a href="#__codelineno-0-829">829</a></span>
+<span class="normal"><a href="#__codelineno-0-830">830</a></span>
+<span class="normal"><a href="#__codelineno-0-831">831</a></span>
+<span class="normal"><a href="#__codelineno-0-832">832</a></span>
+<span class="normal"><a href="#__codelineno-0-833">833</a></span>
+<span class="normal"><a href="#__codelineno-0-834">834</a></span>
+<span class="normal"><a href="#__codelineno-0-835">835</a></span>
+<span class="normal"><a href="#__codelineno-0-836">836</a></span>
+<span class="normal"><a href="#__codelineno-0-837">837</a></span>
+<span class="normal"><a href="#__codelineno-0-838">838</a></span>
+<span class="normal"><a href="#__codelineno-0-839">839</a></span>
+<span class="normal"><a href="#__codelineno-0-840">840</a></span>
+<span class="normal"><a href="#__codelineno-0-841">841</a></span>
+<span class="normal"><a href="#__codelineno-0-842">842</a></span>
+<span class="normal"><a href="#__codelineno-0-843">843</a></span>
+<span class="normal"><a href="#__codelineno-0-844">844</a></span>
+<span class="normal"><a href="#__codelineno-0-845">845</a></span>
+<span class="normal"><a href="#__codelineno-0-846">846</a></span>
+<span class="normal"><a href="#__codelineno-0-847">847</a></span>
+<span class="normal"><a href="#__codelineno-0-848">848</a></span>
+<span class="normal"><a href="#__codelineno-0-849">849</a></span>
+<span class="normal"><a href="#__codelineno-0-850">850</a></span>
+<span class="normal"><a href="#__codelineno-0-851">851</a></span>
+<span class="normal"><a href="#__codelineno-0-852">852</a></span>
+<span class="normal"><a href="#__codelineno-0-853">853</a></span>
+<span class="normal"><a href="#__codelineno-0-854">854</a></span>
+<span class="normal"><a href="#__codelineno-0-855">855</a></span>
+<span class="normal"><a href="#__codelineno-0-856">856</a></span>
+<span class="normal"><a href="#__codelineno-0-857">857</a></span>
+<span class="normal"><a href="#__codelineno-0-858">858</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-826" name="__codelineno-0-826"></a><span class="nd">@model_retry</span>
+<a id="__codelineno-0-827" name="__codelineno-0-827"></a><span class="k">def</span><span class="w"> </span><span class="fm">__call__</span><span class="p">(</span>
+<a id="__codelineno-0-828" name="__codelineno-0-828"></a>    <span class="bp">self</span><span class="p">,</span>
+<a id="__codelineno-0-829" name="__codelineno-0-829"></a>    <span class="n">data</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<a id="__codelineno-0-830" name="__codelineno-0-830"></a>    <span class="o">*</span><span class="p">,</span>
+<a id="__codelineno-0-831" name="__codelineno-0-831"></a>    <span class="n">stream</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<a id="__codelineno-0-832" name="__codelineno-0-832"></a>    <span class="n">prompt</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-833" name="__codelineno-0-833"></a>    <span class="n">response_format</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span>
+<a id="__codelineno-0-834" name="__codelineno-0-834"></a>        <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;mp3&quot;</span><span class="p">,</span> <span class="s2">&quot;opus&quot;</span><span class="p">,</span> <span class="s2">&quot;aac&quot;</span><span class="p">,</span> <span class="s2">&quot;flac&quot;</span><span class="p">,</span> <span class="s2">&quot;wav&quot;</span><span class="p">,</span> <span class="s2">&quot;pcm&quot;</span><span class="p">]</span>
+<a id="__codelineno-0-835" name="__codelineno-0-835"></a>    <span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;opus&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-836" name="__codelineno-0-836"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Union</span><span class="p">[</span><span class="n">ModelResponse</span><span class="p">,</span> <span class="n">ModelStreamResponse</span><span class="p">]:</span>
+<a id="__codelineno-0-837" name="__codelineno-0-837"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Args:</span>
+<a id="__codelineno-0-838" name="__codelineno-0-838"></a><span class="sd">    data:</span>
+<a id="__codelineno-0-839" name="__codelineno-0-839"></a><span class="sd">        The text to generate audio for.</span>
+<a id="__codelineno-0-840" name="__codelineno-0-840"></a><span class="sd">    stream:</span>
+<a id="__codelineno-0-841" name="__codelineno-0-841"></a><span class="sd">        Whether generation should be in streaming mode.</span>
+<a id="__codelineno-0-842" name="__codelineno-0-842"></a><span class="sd">    prompt:</span>
+<a id="__codelineno-0-843" name="__codelineno-0-843"></a><span class="sd">        Control the voice of your generated audio with additional instructions.</span>
+<a id="__codelineno-0-844" name="__codelineno-0-844"></a><span class="sd">    response_format:</span>
+<a id="__codelineno-0-845" name="__codelineno-0-845"></a><span class="sd">        The format to audio in.</span>
+<a id="__codelineno-0-846" name="__codelineno-0-846"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-847" name="__codelineno-0-847"></a>    <span class="n">params</span> <span class="o">=</span> <span class="n">dotdict</span><span class="p">({</span><span class="s2">&quot;input&quot;</span><span class="p">:</span> <span class="n">data</span><span class="p">,</span> <span class="s2">&quot;response_format&quot;</span><span class="p">:</span> <span class="n">response_format</span><span class="p">})</span>
+<a id="__codelineno-0-848" name="__codelineno-0-848"></a>    <span class="k">if</span> <span class="n">prompt</span><span class="p">:</span>
+<a id="__codelineno-0-849" name="__codelineno-0-849"></a>        <span class="n">params</span><span class="o">.</span><span class="n">instructions</span> <span class="o">=</span> <span class="n">prompt</span>
+<a id="__codelineno-0-850" name="__codelineno-0-850"></a>    <span class="k">if</span> <span class="n">stream</span><span class="p">:</span>
+<a id="__codelineno-0-851" name="__codelineno-0-851"></a>        <span class="n">stream_response</span> <span class="o">=</span> <span class="n">ModelStreamResponse</span><span class="p">()</span>
+<a id="__codelineno-0-852" name="__codelineno-0-852"></a>        <span class="n">params</span><span class="o">.</span><span class="n">stream_response</span> <span class="o">=</span> <span class="n">stream_response</span>
+<a id="__codelineno-0-853" name="__codelineno-0-853"></a>        <span class="n">F</span><span class="o">.</span><span class="n">background_task</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_stream_generate</span><span class="p">,</span> <span class="o">**</span><span class="n">params</span><span class="p">)</span>
+<a id="__codelineno-0-854" name="__codelineno-0-854"></a>        <span class="n">F</span><span class="o">.</span><span class="n">wait_for_event</span><span class="p">(</span><span class="n">stream_response</span><span class="o">.</span><span class="n">first_chunk_event</span><span class="p">)</span>
+<a id="__codelineno-0-855" name="__codelineno-0-855"></a>        <span class="k">return</span> <span class="n">stream_response</span>
+<a id="__codelineno-0-856" name="__codelineno-0-856"></a>    <span class="k">else</span><span class="p">:</span>
+<a id="__codelineno-0-857" name="__codelineno-0-857"></a>        <span class="n">response</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_generate</span><span class="p">(</span><span class="o">**</span><span class="n">params</span><span class="p">)</span>
+<a id="__codelineno-0-858" name="__codelineno-0-858"></a>        <span class="k">return</span> <span class="n">response</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -2664,59 +2664,59 @@ base_url:
 
             <details class="quote">
               <summary>Source code in <code>src/msgflux/models/providers/openai.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-678">678</a></span>
-<span class="normal"><a href="#__codelineno-0-679">679</a></span>
-<span class="normal"><a href="#__codelineno-0-680">680</a></span>
-<span class="normal"><a href="#__codelineno-0-681">681</a></span>
-<span class="normal"><a href="#__codelineno-0-682">682</a></span>
-<span class="normal"><a href="#__codelineno-0-683">683</a></span>
-<span class="normal"><a href="#__codelineno-0-684">684</a></span>
-<span class="normal"><a href="#__codelineno-0-685">685</a></span>
-<span class="normal"><a href="#__codelineno-0-686">686</a></span>
-<span class="normal"><a href="#__codelineno-0-687">687</a></span>
-<span class="normal"><a href="#__codelineno-0-688">688</a></span>
-<span class="normal"><a href="#__codelineno-0-689">689</a></span>
-<span class="normal"><a href="#__codelineno-0-690">690</a></span>
-<span class="normal"><a href="#__codelineno-0-691">691</a></span>
-<span class="normal"><a href="#__codelineno-0-692">692</a></span>
-<span class="normal"><a href="#__codelineno-0-693">693</a></span>
-<span class="normal"><a href="#__codelineno-0-694">694</a></span>
-<span class="normal"><a href="#__codelineno-0-695">695</a></span>
-<span class="normal"><a href="#__codelineno-0-696">696</a></span>
-<span class="normal"><a href="#__codelineno-0-697">697</a></span>
-<span class="normal"><a href="#__codelineno-0-698">698</a></span>
-<span class="normal"><a href="#__codelineno-0-699">699</a></span>
-<span class="normal"><a href="#__codelineno-0-700">700</a></span>
-<span class="normal"><a href="#__codelineno-0-701">701</a></span>
-<span class="normal"><a href="#__codelineno-0-702">702</a></span>
-<span class="normal"><a href="#__codelineno-0-703">703</a></span>
-<span class="normal"><a href="#__codelineno-0-704">704</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-678" name="__codelineno-0-678"></a><span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
-<a id="__codelineno-0-679" name="__codelineno-0-679"></a>    <span class="bp">self</span><span class="p">,</span>
-<a id="__codelineno-0-680" name="__codelineno-0-680"></a>    <span class="n">model_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-<a id="__codelineno-0-681" name="__codelineno-0-681"></a>    <span class="n">voice</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;alloy&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-682" name="__codelineno-0-682"></a>    <span class="n">speed</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="mf">1.0</span><span class="p">,</span>
-<a id="__codelineno-0-683" name="__codelineno-0-683"></a>    <span class="n">base_url</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-684" name="__codelineno-0-684"></a><span class="p">):</span>
-<a id="__codelineno-0-685" name="__codelineno-0-685"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Args:</span>
-<a id="__codelineno-0-686" name="__codelineno-0-686"></a><span class="sd">    model_id:</span>
-<a id="__codelineno-0-687" name="__codelineno-0-687"></a><span class="sd">        Model ID in provider.</span>
-<a id="__codelineno-0-688" name="__codelineno-0-688"></a><span class="sd">    voice:</span>
-<a id="__codelineno-0-689" name="__codelineno-0-689"></a><span class="sd">        The voice to use when generating the audio.</span>
-<a id="__codelineno-0-690" name="__codelineno-0-690"></a><span class="sd">    speed:</span>
-<a id="__codelineno-0-691" name="__codelineno-0-691"></a><span class="sd">        the speed of the generated audio. Select a value</span>
-<a id="__codelineno-0-692" name="__codelineno-0-692"></a><span class="sd">        from 0.25 to 4.0. 1.0 is the default.</span>
-<a id="__codelineno-0-693" name="__codelineno-0-693"></a><span class="sd">    base_url:</span>
-<a id="__codelineno-0-694" name="__codelineno-0-694"></a><span class="sd">        URL to model provider.</span>
-<a id="__codelineno-0-695" name="__codelineno-0-695"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-696" name="__codelineno-0-696"></a>    <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
-<a id="__codelineno-0-697" name="__codelineno-0-697"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">model_id</span> <span class="o">=</span> <span class="n">model_id</span>
-<a id="__codelineno-0-698" name="__codelineno-0-698"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">sampling_params</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;base_url&quot;</span><span class="p">:</span> <span class="n">base_url</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_base_url</span><span class="p">()}</span>
-<a id="__codelineno-0-699" name="__codelineno-0-699"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">sampling_run_params</span> <span class="o">=</span> <span class="p">{</span>
-<a id="__codelineno-0-700" name="__codelineno-0-700"></a>        <span class="s2">&quot;voice&quot;</span><span class="p">:</span> <span class="n">voice</span><span class="p">,</span>
-<a id="__codelineno-0-701" name="__codelineno-0-701"></a>        <span class="s2">&quot;speed&quot;</span><span class="p">:</span> <span class="n">speed</span><span class="p">,</span>
-<a id="__codelineno-0-702" name="__codelineno-0-702"></a>    <span class="p">}</span>
-<a id="__codelineno-0-703" name="__codelineno-0-703"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_initialize</span><span class="p">()</span>
-<a id="__codelineno-0-704" name="__codelineno-0-704"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_get_api_key</span><span class="p">()</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-730">730</a></span>
+<span class="normal"><a href="#__codelineno-0-731">731</a></span>
+<span class="normal"><a href="#__codelineno-0-732">732</a></span>
+<span class="normal"><a href="#__codelineno-0-733">733</a></span>
+<span class="normal"><a href="#__codelineno-0-734">734</a></span>
+<span class="normal"><a href="#__codelineno-0-735">735</a></span>
+<span class="normal"><a href="#__codelineno-0-736">736</a></span>
+<span class="normal"><a href="#__codelineno-0-737">737</a></span>
+<span class="normal"><a href="#__codelineno-0-738">738</a></span>
+<span class="normal"><a href="#__codelineno-0-739">739</a></span>
+<span class="normal"><a href="#__codelineno-0-740">740</a></span>
+<span class="normal"><a href="#__codelineno-0-741">741</a></span>
+<span class="normal"><a href="#__codelineno-0-742">742</a></span>
+<span class="normal"><a href="#__codelineno-0-743">743</a></span>
+<span class="normal"><a href="#__codelineno-0-744">744</a></span>
+<span class="normal"><a href="#__codelineno-0-745">745</a></span>
+<span class="normal"><a href="#__codelineno-0-746">746</a></span>
+<span class="normal"><a href="#__codelineno-0-747">747</a></span>
+<span class="normal"><a href="#__codelineno-0-748">748</a></span>
+<span class="normal"><a href="#__codelineno-0-749">749</a></span>
+<span class="normal"><a href="#__codelineno-0-750">750</a></span>
+<span class="normal"><a href="#__codelineno-0-751">751</a></span>
+<span class="normal"><a href="#__codelineno-0-752">752</a></span>
+<span class="normal"><a href="#__codelineno-0-753">753</a></span>
+<span class="normal"><a href="#__codelineno-0-754">754</a></span>
+<span class="normal"><a href="#__codelineno-0-755">755</a></span>
+<span class="normal"><a href="#__codelineno-0-756">756</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-730" name="__codelineno-0-730"></a><span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+<a id="__codelineno-0-731" name="__codelineno-0-731"></a>    <span class="bp">self</span><span class="p">,</span>
+<a id="__codelineno-0-732" name="__codelineno-0-732"></a>    <span class="n">model_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<a id="__codelineno-0-733" name="__codelineno-0-733"></a>    <span class="n">voice</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;alloy&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-734" name="__codelineno-0-734"></a>    <span class="n">speed</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="mf">1.0</span><span class="p">,</span>
+<a id="__codelineno-0-735" name="__codelineno-0-735"></a>    <span class="n">base_url</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-736" name="__codelineno-0-736"></a><span class="p">):</span>
+<a id="__codelineno-0-737" name="__codelineno-0-737"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Args:</span>
+<a id="__codelineno-0-738" name="__codelineno-0-738"></a><span class="sd">    model_id:</span>
+<a id="__codelineno-0-739" name="__codelineno-0-739"></a><span class="sd">        Model ID in provider.</span>
+<a id="__codelineno-0-740" name="__codelineno-0-740"></a><span class="sd">    voice:</span>
+<a id="__codelineno-0-741" name="__codelineno-0-741"></a><span class="sd">        The voice to use when generating the audio.</span>
+<a id="__codelineno-0-742" name="__codelineno-0-742"></a><span class="sd">    speed:</span>
+<a id="__codelineno-0-743" name="__codelineno-0-743"></a><span class="sd">        the speed of the generated audio. Select a value</span>
+<a id="__codelineno-0-744" name="__codelineno-0-744"></a><span class="sd">        from 0.25 to 4.0. 1.0 is the default.</span>
+<a id="__codelineno-0-745" name="__codelineno-0-745"></a><span class="sd">    base_url:</span>
+<a id="__codelineno-0-746" name="__codelineno-0-746"></a><span class="sd">        URL to model provider.</span>
+<a id="__codelineno-0-747" name="__codelineno-0-747"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-748" name="__codelineno-0-748"></a>    <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+<a id="__codelineno-0-749" name="__codelineno-0-749"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">model_id</span> <span class="o">=</span> <span class="n">model_id</span>
+<a id="__codelineno-0-750" name="__codelineno-0-750"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">sampling_params</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;base_url&quot;</span><span class="p">:</span> <span class="n">base_url</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_base_url</span><span class="p">()}</span>
+<a id="__codelineno-0-751" name="__codelineno-0-751"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">sampling_run_params</span> <span class="o">=</span> <span class="p">{</span>
+<a id="__codelineno-0-752" name="__codelineno-0-752"></a>        <span class="s2">&quot;voice&quot;</span><span class="p">:</span> <span class="n">voice</span><span class="p">,</span>
+<a id="__codelineno-0-753" name="__codelineno-0-753"></a>        <span class="s2">&quot;speed&quot;</span><span class="p">:</span> <span class="n">speed</span><span class="p">,</span>
+<a id="__codelineno-0-754" name="__codelineno-0-754"></a>    <span class="p">}</span>
+<a id="__codelineno-0-755" name="__codelineno-0-755"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_initialize</span><span class="p">()</span>
+<a id="__codelineno-0-756" name="__codelineno-0-756"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_get_api_key</span><span class="p">()</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -2759,71 +2759,71 @@ response_format:
 
             <details class="quote">
               <summary>Source code in <code>src/msgflux/models/providers/openai.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-808">808</a></span>
-<span class="normal"><a href="#__codelineno-0-809">809</a></span>
-<span class="normal"><a href="#__codelineno-0-810">810</a></span>
-<span class="normal"><a href="#__codelineno-0-811">811</a></span>
-<span class="normal"><a href="#__codelineno-0-812">812</a></span>
-<span class="normal"><a href="#__codelineno-0-813">813</a></span>
-<span class="normal"><a href="#__codelineno-0-814">814</a></span>
-<span class="normal"><a href="#__codelineno-0-815">815</a></span>
-<span class="normal"><a href="#__codelineno-0-816">816</a></span>
-<span class="normal"><a href="#__codelineno-0-817">817</a></span>
-<span class="normal"><a href="#__codelineno-0-818">818</a></span>
-<span class="normal"><a href="#__codelineno-0-819">819</a></span>
-<span class="normal"><a href="#__codelineno-0-820">820</a></span>
-<span class="normal"><a href="#__codelineno-0-821">821</a></span>
-<span class="normal"><a href="#__codelineno-0-822">822</a></span>
-<span class="normal"><a href="#__codelineno-0-823">823</a></span>
-<span class="normal"><a href="#__codelineno-0-824">824</a></span>
-<span class="normal"><a href="#__codelineno-0-825">825</a></span>
-<span class="normal"><a href="#__codelineno-0-826">826</a></span>
-<span class="normal"><a href="#__codelineno-0-827">827</a></span>
-<span class="normal"><a href="#__codelineno-0-828">828</a></span>
-<span class="normal"><a href="#__codelineno-0-829">829</a></span>
-<span class="normal"><a href="#__codelineno-0-830">830</a></span>
-<span class="normal"><a href="#__codelineno-0-831">831</a></span>
-<span class="normal"><a href="#__codelineno-0-832">832</a></span>
-<span class="normal"><a href="#__codelineno-0-833">833</a></span>
-<span class="normal"><a href="#__codelineno-0-834">834</a></span>
-<span class="normal"><a href="#__codelineno-0-835">835</a></span>
-<span class="normal"><a href="#__codelineno-0-836">836</a></span>
-<span class="normal"><a href="#__codelineno-0-837">837</a></span>
-<span class="normal"><a href="#__codelineno-0-838">838</a></span>
-<span class="normal"><a href="#__codelineno-0-839">839</a></span>
-<span class="normal"><a href="#__codelineno-0-840">840</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-808" name="__codelineno-0-808"></a><span class="nd">@model_retry</span>
-<a id="__codelineno-0-809" name="__codelineno-0-809"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">acall</span><span class="p">(</span>
-<a id="__codelineno-0-810" name="__codelineno-0-810"></a>    <span class="bp">self</span><span class="p">,</span>
-<a id="__codelineno-0-811" name="__codelineno-0-811"></a>    <span class="n">data</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-<a id="__codelineno-0-812" name="__codelineno-0-812"></a>    <span class="o">*</span><span class="p">,</span>
-<a id="__codelineno-0-813" name="__codelineno-0-813"></a>    <span class="n">stream</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
-<a id="__codelineno-0-814" name="__codelineno-0-814"></a>    <span class="n">prompt</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-815" name="__codelineno-0-815"></a>    <span class="n">response_format</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span>
-<a id="__codelineno-0-816" name="__codelineno-0-816"></a>        <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;mp3&quot;</span><span class="p">,</span> <span class="s2">&quot;opus&quot;</span><span class="p">,</span> <span class="s2">&quot;aac&quot;</span><span class="p">,</span> <span class="s2">&quot;flac&quot;</span><span class="p">,</span> <span class="s2">&quot;wav&quot;</span><span class="p">,</span> <span class="s2">&quot;pcm&quot;</span><span class="p">]</span>
-<a id="__codelineno-0-817" name="__codelineno-0-817"></a>    <span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;opus&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-818" name="__codelineno-0-818"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Union</span><span class="p">[</span><span class="n">ModelResponse</span><span class="p">,</span> <span class="n">ModelStreamResponse</span><span class="p">]:</span>
-<a id="__codelineno-0-819" name="__codelineno-0-819"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Async version of __call__. Args:</span>
-<a id="__codelineno-0-820" name="__codelineno-0-820"></a><span class="sd">    data:</span>
-<a id="__codelineno-0-821" name="__codelineno-0-821"></a><span class="sd">        The text to generate audio for.</span>
-<a id="__codelineno-0-822" name="__codelineno-0-822"></a><span class="sd">    stream:</span>
-<a id="__codelineno-0-823" name="__codelineno-0-823"></a><span class="sd">        Whether generation should be in streaming mode.</span>
-<a id="__codelineno-0-824" name="__codelineno-0-824"></a><span class="sd">    prompt:</span>
-<a id="__codelineno-0-825" name="__codelineno-0-825"></a><span class="sd">        Control the voice of your generated audio with additional instructions.</span>
-<a id="__codelineno-0-826" name="__codelineno-0-826"></a><span class="sd">    response_format:</span>
-<a id="__codelineno-0-827" name="__codelineno-0-827"></a><span class="sd">        The format to audio in.</span>
-<a id="__codelineno-0-828" name="__codelineno-0-828"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-829" name="__codelineno-0-829"></a>    <span class="n">params</span> <span class="o">=</span> <span class="n">dotdict</span><span class="p">({</span><span class="s2">&quot;input&quot;</span><span class="p">:</span> <span class="n">data</span><span class="p">,</span> <span class="s2">&quot;response_format&quot;</span><span class="p">:</span> <span class="n">response_format</span><span class="p">})</span>
-<a id="__codelineno-0-830" name="__codelineno-0-830"></a>    <span class="k">if</span> <span class="n">prompt</span><span class="p">:</span>
-<a id="__codelineno-0-831" name="__codelineno-0-831"></a>        <span class="n">params</span><span class="o">.</span><span class="n">instructions</span> <span class="o">=</span> <span class="n">prompt</span>
-<a id="__codelineno-0-832" name="__codelineno-0-832"></a>    <span class="k">if</span> <span class="n">stream</span><span class="p">:</span>
-<a id="__codelineno-0-833" name="__codelineno-0-833"></a>        <span class="n">stream_response</span> <span class="o">=</span> <span class="n">ModelStreamResponse</span><span class="p">()</span>
-<a id="__codelineno-0-834" name="__codelineno-0-834"></a>        <span class="n">params</span><span class="o">.</span><span class="n">stream_response</span> <span class="o">=</span> <span class="n">stream_response</span>
-<a id="__codelineno-0-835" name="__codelineno-0-835"></a>        <span class="k">await</span> <span class="n">F</span><span class="o">.</span><span class="n">abackground_task</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_astream_generate</span><span class="p">,</span> <span class="o">**</span><span class="n">params</span><span class="p">)</span>
-<a id="__codelineno-0-836" name="__codelineno-0-836"></a>        <span class="k">await</span> <span class="n">F</span><span class="o">.</span><span class="n">await_for_event</span><span class="p">(</span><span class="n">stream_response</span><span class="o">.</span><span class="n">first_chunk_event</span><span class="p">)</span>
-<a id="__codelineno-0-837" name="__codelineno-0-837"></a>        <span class="k">return</span> <span class="n">stream_response</span>
-<a id="__codelineno-0-838" name="__codelineno-0-838"></a>    <span class="k">else</span><span class="p">:</span>
-<a id="__codelineno-0-839" name="__codelineno-0-839"></a>        <span class="n">response</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_agenerate</span><span class="p">(</span><span class="o">**</span><span class="n">params</span><span class="p">)</span>
-<a id="__codelineno-0-840" name="__codelineno-0-840"></a>        <span class="k">return</span> <span class="n">response</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-860">860</a></span>
+<span class="normal"><a href="#__codelineno-0-861">861</a></span>
+<span class="normal"><a href="#__codelineno-0-862">862</a></span>
+<span class="normal"><a href="#__codelineno-0-863">863</a></span>
+<span class="normal"><a href="#__codelineno-0-864">864</a></span>
+<span class="normal"><a href="#__codelineno-0-865">865</a></span>
+<span class="normal"><a href="#__codelineno-0-866">866</a></span>
+<span class="normal"><a href="#__codelineno-0-867">867</a></span>
+<span class="normal"><a href="#__codelineno-0-868">868</a></span>
+<span class="normal"><a href="#__codelineno-0-869">869</a></span>
+<span class="normal"><a href="#__codelineno-0-870">870</a></span>
+<span class="normal"><a href="#__codelineno-0-871">871</a></span>
+<span class="normal"><a href="#__codelineno-0-872">872</a></span>
+<span class="normal"><a href="#__codelineno-0-873">873</a></span>
+<span class="normal"><a href="#__codelineno-0-874">874</a></span>
+<span class="normal"><a href="#__codelineno-0-875">875</a></span>
+<span class="normal"><a href="#__codelineno-0-876">876</a></span>
+<span class="normal"><a href="#__codelineno-0-877">877</a></span>
+<span class="normal"><a href="#__codelineno-0-878">878</a></span>
+<span class="normal"><a href="#__codelineno-0-879">879</a></span>
+<span class="normal"><a href="#__codelineno-0-880">880</a></span>
+<span class="normal"><a href="#__codelineno-0-881">881</a></span>
+<span class="normal"><a href="#__codelineno-0-882">882</a></span>
+<span class="normal"><a href="#__codelineno-0-883">883</a></span>
+<span class="normal"><a href="#__codelineno-0-884">884</a></span>
+<span class="normal"><a href="#__codelineno-0-885">885</a></span>
+<span class="normal"><a href="#__codelineno-0-886">886</a></span>
+<span class="normal"><a href="#__codelineno-0-887">887</a></span>
+<span class="normal"><a href="#__codelineno-0-888">888</a></span>
+<span class="normal"><a href="#__codelineno-0-889">889</a></span>
+<span class="normal"><a href="#__codelineno-0-890">890</a></span>
+<span class="normal"><a href="#__codelineno-0-891">891</a></span>
+<span class="normal"><a href="#__codelineno-0-892">892</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-860" name="__codelineno-0-860"></a><span class="nd">@model_retry</span>
+<a id="__codelineno-0-861" name="__codelineno-0-861"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">acall</span><span class="p">(</span>
+<a id="__codelineno-0-862" name="__codelineno-0-862"></a>    <span class="bp">self</span><span class="p">,</span>
+<a id="__codelineno-0-863" name="__codelineno-0-863"></a>    <span class="n">data</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<a id="__codelineno-0-864" name="__codelineno-0-864"></a>    <span class="o">*</span><span class="p">,</span>
+<a id="__codelineno-0-865" name="__codelineno-0-865"></a>    <span class="n">stream</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<a id="__codelineno-0-866" name="__codelineno-0-866"></a>    <span class="n">prompt</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-867" name="__codelineno-0-867"></a>    <span class="n">response_format</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span>
+<a id="__codelineno-0-868" name="__codelineno-0-868"></a>        <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;mp3&quot;</span><span class="p">,</span> <span class="s2">&quot;opus&quot;</span><span class="p">,</span> <span class="s2">&quot;aac&quot;</span><span class="p">,</span> <span class="s2">&quot;flac&quot;</span><span class="p">,</span> <span class="s2">&quot;wav&quot;</span><span class="p">,</span> <span class="s2">&quot;pcm&quot;</span><span class="p">]</span>
+<a id="__codelineno-0-869" name="__codelineno-0-869"></a>    <span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;opus&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-870" name="__codelineno-0-870"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Union</span><span class="p">[</span><span class="n">ModelResponse</span><span class="p">,</span> <span class="n">ModelStreamResponse</span><span class="p">]:</span>
+<a id="__codelineno-0-871" name="__codelineno-0-871"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Async version of __call__. Args:</span>
+<a id="__codelineno-0-872" name="__codelineno-0-872"></a><span class="sd">    data:</span>
+<a id="__codelineno-0-873" name="__codelineno-0-873"></a><span class="sd">        The text to generate audio for.</span>
+<a id="__codelineno-0-874" name="__codelineno-0-874"></a><span class="sd">    stream:</span>
+<a id="__codelineno-0-875" name="__codelineno-0-875"></a><span class="sd">        Whether generation should be in streaming mode.</span>
+<a id="__codelineno-0-876" name="__codelineno-0-876"></a><span class="sd">    prompt:</span>
+<a id="__codelineno-0-877" name="__codelineno-0-877"></a><span class="sd">        Control the voice of your generated audio with additional instructions.</span>
+<a id="__codelineno-0-878" name="__codelineno-0-878"></a><span class="sd">    response_format:</span>
+<a id="__codelineno-0-879" name="__codelineno-0-879"></a><span class="sd">        The format to audio in.</span>
+<a id="__codelineno-0-880" name="__codelineno-0-880"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-881" name="__codelineno-0-881"></a>    <span class="n">params</span> <span class="o">=</span> <span class="n">dotdict</span><span class="p">({</span><span class="s2">&quot;input&quot;</span><span class="p">:</span> <span class="n">data</span><span class="p">,</span> <span class="s2">&quot;response_format&quot;</span><span class="p">:</span> <span class="n">response_format</span><span class="p">})</span>
+<a id="__codelineno-0-882" name="__codelineno-0-882"></a>    <span class="k">if</span> <span class="n">prompt</span><span class="p">:</span>
+<a id="__codelineno-0-883" name="__codelineno-0-883"></a>        <span class="n">params</span><span class="o">.</span><span class="n">instructions</span> <span class="o">=</span> <span class="n">prompt</span>
+<a id="__codelineno-0-884" name="__codelineno-0-884"></a>    <span class="k">if</span> <span class="n">stream</span><span class="p">:</span>
+<a id="__codelineno-0-885" name="__codelineno-0-885"></a>        <span class="n">stream_response</span> <span class="o">=</span> <span class="n">ModelStreamResponse</span><span class="p">()</span>
+<a id="__codelineno-0-886" name="__codelineno-0-886"></a>        <span class="n">params</span><span class="o">.</span><span class="n">stream_response</span> <span class="o">=</span> <span class="n">stream_response</span>
+<a id="__codelineno-0-887" name="__codelineno-0-887"></a>        <span class="k">await</span> <span class="n">F</span><span class="o">.</span><span class="n">abackground_task</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_astream_generate</span><span class="p">,</span> <span class="o">**</span><span class="n">params</span><span class="p">)</span>
+<a id="__codelineno-0-888" name="__codelineno-0-888"></a>        <span class="k">await</span> <span class="n">F</span><span class="o">.</span><span class="n">await_for_event</span><span class="p">(</span><span class="n">stream_response</span><span class="o">.</span><span class="n">first_chunk_event</span><span class="p">)</span>
+<a id="__codelineno-0-889" name="__codelineno-0-889"></a>        <span class="k">return</span> <span class="n">stream_response</span>
+<a id="__codelineno-0-890" name="__codelineno-0-890"></a>    <span class="k">else</span><span class="p">:</span>
+<a id="__codelineno-0-891" name="__codelineno-0-891"></a>        <span class="n">response</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_agenerate</span><span class="p">(</span><span class="o">**</span><span class="n">params</span><span class="p">)</span>
+<a id="__codelineno-0-892" name="__codelineno-0-892"></a>        <span class="k">return</span> <span class="n">response</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>

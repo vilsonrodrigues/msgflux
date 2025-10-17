@@ -16,7 +16,7 @@
       
       
       <link rel="icon" href="../../../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.21">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.22">
     
     
       
@@ -24,7 +24,7 @@
       
     
     
-      <link rel="stylesheet" href="../../../../assets/stylesheets/main.2a3383ac.min.css">
+      <link rel="stylesheet" href="../../../../assets/stylesheets/main.84d31ad4.min.css">
       
         
         <link rel="stylesheet" href="../../../../assets/stylesheets/palette.06af60db.min.css">
@@ -2018,6 +2018,24 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#msgflux.models.providers.openai.OpenAITextEmbedder.cache_size" class="md-nav__link">
+    <span class="md-ellipsis">
+      cache_size
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#msgflux.models.providers.openai.OpenAITextEmbedder.enable_cache" class="md-nav__link">
+    <span class="md-ellipsis">
+      enable_cache
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#msgflux.models.providers.openai.OpenAITextEmbedder.model_id" class="md-nav__link">
     <span class="md-ellipsis">
       model_id
@@ -2121,59 +2139,7 @@
 
               <details class="quote">
                 <summary>Source code in <code>src/msgflux/models/providers/openai.py</code></summary>
-                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-1358">1358</a></span>
-<span class="normal"><a href="#__codelineno-0-1359">1359</a></span>
-<span class="normal"><a href="#__codelineno-0-1360">1360</a></span>
-<span class="normal"><a href="#__codelineno-0-1361">1361</a></span>
-<span class="normal"><a href="#__codelineno-0-1362">1362</a></span>
-<span class="normal"><a href="#__codelineno-0-1363">1363</a></span>
-<span class="normal"><a href="#__codelineno-0-1364">1364</a></span>
-<span class="normal"><a href="#__codelineno-0-1365">1365</a></span>
-<span class="normal"><a href="#__codelineno-0-1366">1366</a></span>
-<span class="normal"><a href="#__codelineno-0-1367">1367</a></span>
-<span class="normal"><a href="#__codelineno-0-1368">1368</a></span>
-<span class="normal"><a href="#__codelineno-0-1369">1369</a></span>
-<span class="normal"><a href="#__codelineno-0-1370">1370</a></span>
-<span class="normal"><a href="#__codelineno-0-1371">1371</a></span>
-<span class="normal"><a href="#__codelineno-0-1372">1372</a></span>
-<span class="normal"><a href="#__codelineno-0-1373">1373</a></span>
-<span class="normal"><a href="#__codelineno-0-1374">1374</a></span>
-<span class="normal"><a href="#__codelineno-0-1375">1375</a></span>
-<span class="normal"><a href="#__codelineno-0-1376">1376</a></span>
-<span class="normal"><a href="#__codelineno-0-1377">1377</a></span>
-<span class="normal"><a href="#__codelineno-0-1378">1378</a></span>
-<span class="normal"><a href="#__codelineno-0-1379">1379</a></span>
-<span class="normal"><a href="#__codelineno-0-1380">1380</a></span>
-<span class="normal"><a href="#__codelineno-0-1381">1381</a></span>
-<span class="normal"><a href="#__codelineno-0-1382">1382</a></span>
-<span class="normal"><a href="#__codelineno-0-1383">1383</a></span>
-<span class="normal"><a href="#__codelineno-0-1384">1384</a></span>
-<span class="normal"><a href="#__codelineno-0-1385">1385</a></span>
-<span class="normal"><a href="#__codelineno-0-1386">1386</a></span>
-<span class="normal"><a href="#__codelineno-0-1387">1387</a></span>
-<span class="normal"><a href="#__codelineno-0-1388">1388</a></span>
-<span class="normal"><a href="#__codelineno-0-1389">1389</a></span>
-<span class="normal"><a href="#__codelineno-0-1390">1390</a></span>
-<span class="normal"><a href="#__codelineno-0-1391">1391</a></span>
-<span class="normal"><a href="#__codelineno-0-1392">1392</a></span>
-<span class="normal"><a href="#__codelineno-0-1393">1393</a></span>
-<span class="normal"><a href="#__codelineno-0-1394">1394</a></span>
-<span class="normal"><a href="#__codelineno-0-1395">1395</a></span>
-<span class="normal"><a href="#__codelineno-0-1396">1396</a></span>
-<span class="normal"><a href="#__codelineno-0-1397">1397</a></span>
-<span class="normal"><a href="#__codelineno-0-1398">1398</a></span>
-<span class="normal"><a href="#__codelineno-0-1399">1399</a></span>
-<span class="normal"><a href="#__codelineno-0-1400">1400</a></span>
-<span class="normal"><a href="#__codelineno-0-1401">1401</a></span>
-<span class="normal"><a href="#__codelineno-0-1402">1402</a></span>
-<span class="normal"><a href="#__codelineno-0-1403">1403</a></span>
-<span class="normal"><a href="#__codelineno-0-1404">1404</a></span>
-<span class="normal"><a href="#__codelineno-0-1405">1405</a></span>
-<span class="normal"><a href="#__codelineno-0-1406">1406</a></span>
-<span class="normal"><a href="#__codelineno-0-1407">1407</a></span>
-<span class="normal"><a href="#__codelineno-0-1408">1408</a></span>
-<span class="normal"><a href="#__codelineno-0-1409">1409</a></span>
-<span class="normal"><a href="#__codelineno-0-1410">1410</a></span>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-1410">1410</a></span>
 <span class="normal"><a href="#__codelineno-0-1411">1411</a></span>
 <span class="normal"><a href="#__codelineno-0-1412">1412</a></span>
 <span class="normal"><a href="#__codelineno-0-1413">1413</a></span>
@@ -2201,87 +2167,207 @@
 <span class="normal"><a href="#__codelineno-0-1435">1435</a></span>
 <span class="normal"><a href="#__codelineno-0-1436">1436</a></span>
 <span class="normal"><a href="#__codelineno-0-1437">1437</a></span>
-<span class="normal"><a href="#__codelineno-0-1438">1438</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-1358" name="__codelineno-0-1358"></a><span class="nd">@register_model</span>
-<a id="__codelineno-0-1359" name="__codelineno-0-1359"></a><span class="k">class</span><span class="w"> </span><span class="nc">OpenAITextEmbedder</span><span class="p">(</span><span class="n">_BaseOpenAI</span><span class="p">,</span> <span class="n">TextEmbedderModel</span><span class="p">):</span>
-<a id="__codelineno-0-1360" name="__codelineno-0-1360"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;OpenAI Text Embedder.&quot;&quot;&quot;</span>
-<a id="__codelineno-0-1361" name="__codelineno-0-1361"></a>
-<a id="__codelineno-0-1362" name="__codelineno-0-1362"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
-<a id="__codelineno-0-1363" name="__codelineno-0-1363"></a>        <span class="bp">self</span><span class="p">,</span>
-<a id="__codelineno-0-1364" name="__codelineno-0-1364"></a>        <span class="o">*</span><span class="p">,</span>
-<a id="__codelineno-0-1365" name="__codelineno-0-1365"></a>        <span class="n">model_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-<a id="__codelineno-0-1366" name="__codelineno-0-1366"></a>        <span class="n">dimensions</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-1367" name="__codelineno-0-1367"></a>        <span class="n">base_url</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-1368" name="__codelineno-0-1368"></a>    <span class="p">):</span>
-<a id="__codelineno-0-1369" name="__codelineno-0-1369"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Args:</span>
-<a id="__codelineno-0-1370" name="__codelineno-0-1370"></a><span class="sd">        model_id:</span>
-<a id="__codelineno-0-1371" name="__codelineno-0-1371"></a><span class="sd">            Model ID in provider.</span>
-<a id="__codelineno-0-1372" name="__codelineno-0-1372"></a><span class="sd">        dimensions:</span>
-<a id="__codelineno-0-1373" name="__codelineno-0-1373"></a><span class="sd">            The number of dimensions the resulting output embeddings should have.</span>
-<a id="__codelineno-0-1374" name="__codelineno-0-1374"></a><span class="sd">        base_url:</span>
-<a id="__codelineno-0-1375" name="__codelineno-0-1375"></a><span class="sd">            URL to model provider.</span>
-<a id="__codelineno-0-1376" name="__codelineno-0-1376"></a><span class="sd">        &quot;&quot;&quot;</span>
-<a id="__codelineno-0-1377" name="__codelineno-0-1377"></a>        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
-<a id="__codelineno-0-1378" name="__codelineno-0-1378"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">model_id</span> <span class="o">=</span> <span class="n">model_id</span>
-<a id="__codelineno-0-1379" name="__codelineno-0-1379"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">sampling_params</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;base_url&quot;</span><span class="p">:</span> <span class="n">base_url</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_base_url</span><span class="p">()}</span>
-<a id="__codelineno-0-1380" name="__codelineno-0-1380"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">sampling_run_params</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;dimensions&quot;</span><span class="p">:</span> <span class="n">dimensions</span><span class="p">}</span>
-<a id="__codelineno-0-1381" name="__codelineno-0-1381"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_initialize</span><span class="p">()</span>
-<a id="__codelineno-0-1382" name="__codelineno-0-1382"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_get_api_key</span><span class="p">()</span>
-<a id="__codelineno-0-1383" name="__codelineno-0-1383"></a>
-<a id="__codelineno-0-1384" name="__codelineno-0-1384"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_execute_model</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-<a id="__codelineno-0-1385" name="__codelineno-0-1385"></a>        <span class="n">model_output</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">client</span><span class="o">.</span><span class="n">embeddings</span><span class="o">.</span><span class="n">create</span><span class="p">(</span>
-<a id="__codelineno-0-1386" name="__codelineno-0-1386"></a>            <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span> <span class="o">**</span><span class="bp">self</span><span class="o">.</span><span class="n">sampling_run_params</span><span class="p">,</span>
-<a id="__codelineno-0-1387" name="__codelineno-0-1387"></a>        <span class="p">)</span>
-<a id="__codelineno-0-1388" name="__codelineno-0-1388"></a>        <span class="k">return</span> <span class="n">model_output</span>
-<a id="__codelineno-0-1389" name="__codelineno-0-1389"></a>
-<a id="__codelineno-0-1390" name="__codelineno-0-1390"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">_aexecute_model</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-<a id="__codelineno-0-1391" name="__codelineno-0-1391"></a>        <span class="n">model_output</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">aclient</span><span class="o">.</span><span class="n">embeddings</span><span class="o">.</span><span class="n">create</span><span class="p">(</span>
-<a id="__codelineno-0-1392" name="__codelineno-0-1392"></a>            <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span> <span class="o">**</span><span class="bp">self</span><span class="o">.</span><span class="n">sampling_run_params</span><span class="p">,</span>
-<a id="__codelineno-0-1393" name="__codelineno-0-1393"></a>        <span class="p">)</span>
-<a id="__codelineno-0-1394" name="__codelineno-0-1394"></a>        <span class="k">return</span> <span class="n">model_output</span>
-<a id="__codelineno-0-1395" name="__codelineno-0-1395"></a>
-<a id="__codelineno-0-1396" name="__codelineno-0-1396"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_generate</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-<a id="__codelineno-0-1397" name="__codelineno-0-1397"></a>        <span class="n">response</span> <span class="o">=</span> <span class="n">ModelResponse</span><span class="p">()</span>
-<a id="__codelineno-0-1398" name="__codelineno-0-1398"></a>        <span class="n">response</span><span class="o">.</span><span class="n">set_response_type</span><span class="p">(</span><span class="s2">&quot;text_embedding&quot;</span><span class="p">)</span>
-<a id="__codelineno-0-1399" name="__codelineno-0-1399"></a>        <span class="n">model_output</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_execute_model</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
-<a id="__codelineno-0-1400" name="__codelineno-0-1400"></a>        <span class="n">embedding</span> <span class="o">=</span> <span class="n">model_output</span><span class="o">.</span><span class="n">data</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">embedding</span>
-<a id="__codelineno-0-1401" name="__codelineno-0-1401"></a>        <span class="n">metadata</span> <span class="o">=</span> <span class="n">dotdict</span><span class="p">({</span><span class="s2">&quot;usage&quot;</span><span class="p">:</span> <span class="n">model_output</span><span class="o">.</span><span class="n">usage</span><span class="o">.</span><span class="n">to_dict</span><span class="p">()})</span>
-<a id="__codelineno-0-1402" name="__codelineno-0-1402"></a>        <span class="n">response</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">embedding</span><span class="p">)</span>
-<a id="__codelineno-0-1403" name="__codelineno-0-1403"></a>        <span class="n">response</span><span class="o">.</span><span class="n">set_metadata</span><span class="p">(</span><span class="n">metadata</span><span class="p">)</span>
-<a id="__codelineno-0-1404" name="__codelineno-0-1404"></a>        <span class="k">return</span> <span class="n">response</span>
-<a id="__codelineno-0-1405" name="__codelineno-0-1405"></a>
-<a id="__codelineno-0-1406" name="__codelineno-0-1406"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">_agenerate</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-<a id="__codelineno-0-1407" name="__codelineno-0-1407"></a>        <span class="n">response</span> <span class="o">=</span> <span class="n">ModelResponse</span><span class="p">()</span>
-<a id="__codelineno-0-1408" name="__codelineno-0-1408"></a>        <span class="n">response</span><span class="o">.</span><span class="n">set_response_type</span><span class="p">(</span><span class="s2">&quot;text_embedding&quot;</span><span class="p">)</span>
-<a id="__codelineno-0-1409" name="__codelineno-0-1409"></a>        <span class="n">model_output</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_aexecute_model</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
-<a id="__codelineno-0-1410" name="__codelineno-0-1410"></a>        <span class="n">embedding</span> <span class="o">=</span> <span class="n">model_output</span><span class="o">.</span><span class="n">data</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">embedding</span>
-<a id="__codelineno-0-1411" name="__codelineno-0-1411"></a>        <span class="n">metadata</span> <span class="o">=</span> <span class="n">dotdict</span><span class="p">({</span><span class="s2">&quot;usage&quot;</span><span class="p">:</span> <span class="n">model_output</span><span class="o">.</span><span class="n">usage</span><span class="o">.</span><span class="n">to_dict</span><span class="p">()})</span>
-<a id="__codelineno-0-1412" name="__codelineno-0-1412"></a>        <span class="n">response</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">embedding</span><span class="p">)</span>
-<a id="__codelineno-0-1413" name="__codelineno-0-1413"></a>        <span class="n">response</span><span class="o">.</span><span class="n">set_metadata</span><span class="p">(</span><span class="n">metadata</span><span class="p">)</span>
-<a id="__codelineno-0-1414" name="__codelineno-0-1414"></a>        <span class="k">return</span> <span class="n">response</span>
-<a id="__codelineno-0-1415" name="__codelineno-0-1415"></a>
-<a id="__codelineno-0-1416" name="__codelineno-0-1416"></a>    <span class="nd">@model_retry</span>
-<a id="__codelineno-0-1417" name="__codelineno-0-1417"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__call__</span><span class="p">(</span>
-<a id="__codelineno-0-1418" name="__codelineno-0-1418"></a>        <span class="bp">self</span><span class="p">,</span>
-<a id="__codelineno-0-1419" name="__codelineno-0-1419"></a>        <span class="n">data</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]],</span>
-<a id="__codelineno-0-1420" name="__codelineno-0-1420"></a>    <span class="p">):</span>
-<a id="__codelineno-0-1421" name="__codelineno-0-1421"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Args:</span>
-<a id="__codelineno-0-1422" name="__codelineno-0-1422"></a><span class="sd">        data:</span>
-<a id="__codelineno-0-1423" name="__codelineno-0-1423"></a><span class="sd">            Input text to embed.</span>
-<a id="__codelineno-0-1424" name="__codelineno-0-1424"></a><span class="sd">        &quot;&quot;&quot;</span>
-<a id="__codelineno-0-1425" name="__codelineno-0-1425"></a>        <span class="n">response</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_generate</span><span class="p">(</span><span class="nb">input</span><span class="o">=</span><span class="n">data</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">model_id</span><span class="p">)</span>
-<a id="__codelineno-0-1426" name="__codelineno-0-1426"></a>        <span class="k">return</span> <span class="n">response</span>
-<a id="__codelineno-0-1427" name="__codelineno-0-1427"></a>
-<a id="__codelineno-0-1428" name="__codelineno-0-1428"></a>    <span class="nd">@model_retry</span>
-<a id="__codelineno-0-1429" name="__codelineno-0-1429"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">acall</span><span class="p">(</span>
-<a id="__codelineno-0-1430" name="__codelineno-0-1430"></a>        <span class="bp">self</span><span class="p">,</span>
-<a id="__codelineno-0-1431" name="__codelineno-0-1431"></a>        <span class="n">data</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]],</span>
-<a id="__codelineno-0-1432" name="__codelineno-0-1432"></a>    <span class="p">):</span>
-<a id="__codelineno-0-1433" name="__codelineno-0-1433"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Async version of __call__. Args:</span>
-<a id="__codelineno-0-1434" name="__codelineno-0-1434"></a><span class="sd">        data:</span>
-<a id="__codelineno-0-1435" name="__codelineno-0-1435"></a><span class="sd">            Input text to embed.</span>
-<a id="__codelineno-0-1436" name="__codelineno-0-1436"></a><span class="sd">        &quot;&quot;&quot;</span>
-<a id="__codelineno-0-1437" name="__codelineno-0-1437"></a>        <span class="n">response</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_agenerate</span><span class="p">(</span><span class="nb">input</span><span class="o">=</span><span class="n">data</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">model_id</span><span class="p">)</span>
-<a id="__codelineno-0-1438" name="__codelineno-0-1438"></a>        <span class="k">return</span> <span class="n">response</span>
+<span class="normal"><a href="#__codelineno-0-1438">1438</a></span>
+<span class="normal"><a href="#__codelineno-0-1439">1439</a></span>
+<span class="normal"><a href="#__codelineno-0-1440">1440</a></span>
+<span class="normal"><a href="#__codelineno-0-1441">1441</a></span>
+<span class="normal"><a href="#__codelineno-0-1442">1442</a></span>
+<span class="normal"><a href="#__codelineno-0-1443">1443</a></span>
+<span class="normal"><a href="#__codelineno-0-1444">1444</a></span>
+<span class="normal"><a href="#__codelineno-0-1445">1445</a></span>
+<span class="normal"><a href="#__codelineno-0-1446">1446</a></span>
+<span class="normal"><a href="#__codelineno-0-1447">1447</a></span>
+<span class="normal"><a href="#__codelineno-0-1448">1448</a></span>
+<span class="normal"><a href="#__codelineno-0-1449">1449</a></span>
+<span class="normal"><a href="#__codelineno-0-1450">1450</a></span>
+<span class="normal"><a href="#__codelineno-0-1451">1451</a></span>
+<span class="normal"><a href="#__codelineno-0-1452">1452</a></span>
+<span class="normal"><a href="#__codelineno-0-1453">1453</a></span>
+<span class="normal"><a href="#__codelineno-0-1454">1454</a></span>
+<span class="normal"><a href="#__codelineno-0-1455">1455</a></span>
+<span class="normal"><a href="#__codelineno-0-1456">1456</a></span>
+<span class="normal"><a href="#__codelineno-0-1457">1457</a></span>
+<span class="normal"><a href="#__codelineno-0-1458">1458</a></span>
+<span class="normal"><a href="#__codelineno-0-1459">1459</a></span>
+<span class="normal"><a href="#__codelineno-0-1460">1460</a></span>
+<span class="normal"><a href="#__codelineno-0-1461">1461</a></span>
+<span class="normal"><a href="#__codelineno-0-1462">1462</a></span>
+<span class="normal"><a href="#__codelineno-0-1463">1463</a></span>
+<span class="normal"><a href="#__codelineno-0-1464">1464</a></span>
+<span class="normal"><a href="#__codelineno-0-1465">1465</a></span>
+<span class="normal"><a href="#__codelineno-0-1466">1466</a></span>
+<span class="normal"><a href="#__codelineno-0-1467">1467</a></span>
+<span class="normal"><a href="#__codelineno-0-1468">1468</a></span>
+<span class="normal"><a href="#__codelineno-0-1469">1469</a></span>
+<span class="normal"><a href="#__codelineno-0-1470">1470</a></span>
+<span class="normal"><a href="#__codelineno-0-1471">1471</a></span>
+<span class="normal"><a href="#__codelineno-0-1472">1472</a></span>
+<span class="normal"><a href="#__codelineno-0-1473">1473</a></span>
+<span class="normal"><a href="#__codelineno-0-1474">1474</a></span>
+<span class="normal"><a href="#__codelineno-0-1475">1475</a></span>
+<span class="normal"><a href="#__codelineno-0-1476">1476</a></span>
+<span class="normal"><a href="#__codelineno-0-1477">1477</a></span>
+<span class="normal"><a href="#__codelineno-0-1478">1478</a></span>
+<span class="normal"><a href="#__codelineno-0-1479">1479</a></span>
+<span class="normal"><a href="#__codelineno-0-1480">1480</a></span>
+<span class="normal"><a href="#__codelineno-0-1481">1481</a></span>
+<span class="normal"><a href="#__codelineno-0-1482">1482</a></span>
+<span class="normal"><a href="#__codelineno-0-1483">1483</a></span>
+<span class="normal"><a href="#__codelineno-0-1484">1484</a></span>
+<span class="normal"><a href="#__codelineno-0-1485">1485</a></span>
+<span class="normal"><a href="#__codelineno-0-1486">1486</a></span>
+<span class="normal"><a href="#__codelineno-0-1487">1487</a></span>
+<span class="normal"><a href="#__codelineno-0-1488">1488</a></span>
+<span class="normal"><a href="#__codelineno-0-1489">1489</a></span>
+<span class="normal"><a href="#__codelineno-0-1490">1490</a></span>
+<span class="normal"><a href="#__codelineno-0-1491">1491</a></span>
+<span class="normal"><a href="#__codelineno-0-1492">1492</a></span>
+<span class="normal"><a href="#__codelineno-0-1493">1493</a></span>
+<span class="normal"><a href="#__codelineno-0-1494">1494</a></span>
+<span class="normal"><a href="#__codelineno-0-1495">1495</a></span>
+<span class="normal"><a href="#__codelineno-0-1496">1496</a></span>
+<span class="normal"><a href="#__codelineno-0-1497">1497</a></span>
+<span class="normal"><a href="#__codelineno-0-1498">1498</a></span>
+<span class="normal"><a href="#__codelineno-0-1499">1499</a></span>
+<span class="normal"><a href="#__codelineno-0-1500">1500</a></span>
+<span class="normal"><a href="#__codelineno-0-1501">1501</a></span>
+<span class="normal"><a href="#__codelineno-0-1502">1502</a></span>
+<span class="normal"><a href="#__codelineno-0-1503">1503</a></span>
+<span class="normal"><a href="#__codelineno-0-1504">1504</a></span>
+<span class="normal"><a href="#__codelineno-0-1505">1505</a></span>
+<span class="normal"><a href="#__codelineno-0-1506">1506</a></span>
+<span class="normal"><a href="#__codelineno-0-1507">1507</a></span>
+<span class="normal"><a href="#__codelineno-0-1508">1508</a></span>
+<span class="normal"><a href="#__codelineno-0-1509">1509</a></span>
+<span class="normal"><a href="#__codelineno-0-1510">1510</a></span>
+<span class="normal"><a href="#__codelineno-0-1511">1511</a></span>
+<span class="normal"><a href="#__codelineno-0-1512">1512</a></span>
+<span class="normal"><a href="#__codelineno-0-1513">1513</a></span>
+<span class="normal"><a href="#__codelineno-0-1514">1514</a></span>
+<span class="normal"><a href="#__codelineno-0-1515">1515</a></span>
+<span class="normal"><a href="#__codelineno-0-1516">1516</a></span>
+<span class="normal"><a href="#__codelineno-0-1517">1517</a></span>
+<span class="normal"><a href="#__codelineno-0-1518">1518</a></span>
+<span class="normal"><a href="#__codelineno-0-1519">1519</a></span>
+<span class="normal"><a href="#__codelineno-0-1520">1520</a></span>
+<span class="normal"><a href="#__codelineno-0-1521">1521</a></span>
+<span class="normal"><a href="#__codelineno-0-1522">1522</a></span>
+<span class="normal"><a href="#__codelineno-0-1523">1523</a></span>
+<span class="normal"><a href="#__codelineno-0-1524">1524</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-1410" name="__codelineno-0-1410"></a><span class="nd">@register_model</span>
+<a id="__codelineno-0-1411" name="__codelineno-0-1411"></a><span class="k">class</span><span class="w"> </span><span class="nc">OpenAITextEmbedder</span><span class="p">(</span><span class="n">_BaseOpenAI</span><span class="p">,</span> <span class="n">TextEmbedderModel</span><span class="p">):</span>
+<a id="__codelineno-0-1412" name="__codelineno-0-1412"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;OpenAI Text Embedder.&quot;&quot;&quot;</span>
+<a id="__codelineno-0-1413" name="__codelineno-0-1413"></a>
+<a id="__codelineno-0-1414" name="__codelineno-0-1414"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+<a id="__codelineno-0-1415" name="__codelineno-0-1415"></a>        <span class="bp">self</span><span class="p">,</span>
+<a id="__codelineno-0-1416" name="__codelineno-0-1416"></a>        <span class="o">*</span><span class="p">,</span>
+<a id="__codelineno-0-1417" name="__codelineno-0-1417"></a>        <span class="n">model_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<a id="__codelineno-0-1418" name="__codelineno-0-1418"></a>        <span class="n">dimensions</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-1419" name="__codelineno-0-1419"></a>        <span class="n">base_url</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-1420" name="__codelineno-0-1420"></a>        <span class="n">enable_cache</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<a id="__codelineno-0-1421" name="__codelineno-0-1421"></a>        <span class="n">cache_size</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="mi">128</span><span class="p">,</span>
+<a id="__codelineno-0-1422" name="__codelineno-0-1422"></a>    <span class="p">):</span>
+<a id="__codelineno-0-1423" name="__codelineno-0-1423"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Args:</span>
+<a id="__codelineno-0-1424" name="__codelineno-0-1424"></a><span class="sd">        model_id:</span>
+<a id="__codelineno-0-1425" name="__codelineno-0-1425"></a><span class="sd">            Model ID in provider.</span>
+<a id="__codelineno-0-1426" name="__codelineno-0-1426"></a><span class="sd">        dimensions:</span>
+<a id="__codelineno-0-1427" name="__codelineno-0-1427"></a><span class="sd">            The number of dimensions the resulting output embeddings should have.</span>
+<a id="__codelineno-0-1428" name="__codelineno-0-1428"></a><span class="sd">        base_url:</span>
+<a id="__codelineno-0-1429" name="__codelineno-0-1429"></a><span class="sd">            URL to model provider.</span>
+<a id="__codelineno-0-1430" name="__codelineno-0-1430"></a><span class="sd">        enable_cache:</span>
+<a id="__codelineno-0-1431" name="__codelineno-0-1431"></a><span class="sd">            If True, enables response caching to avoid redundant API calls.</span>
+<a id="__codelineno-0-1432" name="__codelineno-0-1432"></a><span class="sd">        cache_size:</span>
+<a id="__codelineno-0-1433" name="__codelineno-0-1433"></a><span class="sd">            Maximum number of responses to cache (default: 128).</span>
+<a id="__codelineno-0-1434" name="__codelineno-0-1434"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-1435" name="__codelineno-0-1435"></a>        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+<a id="__codelineno-0-1436" name="__codelineno-0-1436"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">model_id</span> <span class="o">=</span> <span class="n">model_id</span>
+<a id="__codelineno-0-1437" name="__codelineno-0-1437"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">sampling_params</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;base_url&quot;</span><span class="p">:</span> <span class="n">base_url</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_base_url</span><span class="p">()}</span>
+<a id="__codelineno-0-1438" name="__codelineno-0-1438"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">sampling_run_params</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;dimensions&quot;</span><span class="p">:</span> <span class="n">dimensions</span><span class="p">}</span>
+<a id="__codelineno-0-1439" name="__codelineno-0-1439"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">enable_cache</span> <span class="o">=</span> <span class="n">enable_cache</span>
+<a id="__codelineno-0-1440" name="__codelineno-0-1440"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">cache_size</span> <span class="o">=</span> <span class="n">cache_size</span>
+<a id="__codelineno-0-1441" name="__codelineno-0-1441"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_initialize</span><span class="p">()</span>
+<a id="__codelineno-0-1442" name="__codelineno-0-1442"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_get_api_key</span><span class="p">()</span>
+<a id="__codelineno-0-1443" name="__codelineno-0-1443"></a>
+<a id="__codelineno-0-1444" name="__codelineno-0-1444"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_execute_model</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<a id="__codelineno-0-1445" name="__codelineno-0-1445"></a>        <span class="n">model_output</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">client</span><span class="o">.</span><span class="n">embeddings</span><span class="o">.</span><span class="n">create</span><span class="p">(</span>
+<a id="__codelineno-0-1446" name="__codelineno-0-1446"></a>            <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span> <span class="o">**</span><span class="bp">self</span><span class="o">.</span><span class="n">sampling_run_params</span><span class="p">,</span>
+<a id="__codelineno-0-1447" name="__codelineno-0-1447"></a>        <span class="p">)</span>
+<a id="__codelineno-0-1448" name="__codelineno-0-1448"></a>        <span class="k">return</span> <span class="n">model_output</span>
+<a id="__codelineno-0-1449" name="__codelineno-0-1449"></a>
+<a id="__codelineno-0-1450" name="__codelineno-0-1450"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">_aexecute_model</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<a id="__codelineno-0-1451" name="__codelineno-0-1451"></a>        <span class="n">model_output</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">aclient</span><span class="o">.</span><span class="n">embeddings</span><span class="o">.</span><span class="n">create</span><span class="p">(</span>
+<a id="__codelineno-0-1452" name="__codelineno-0-1452"></a>            <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span> <span class="o">**</span><span class="bp">self</span><span class="o">.</span><span class="n">sampling_run_params</span><span class="p">,</span>
+<a id="__codelineno-0-1453" name="__codelineno-0-1453"></a>        <span class="p">)</span>
+<a id="__codelineno-0-1454" name="__codelineno-0-1454"></a>        <span class="k">return</span> <span class="n">model_output</span>
+<a id="__codelineno-0-1455" name="__codelineno-0-1455"></a>
+<a id="__codelineno-0-1456" name="__codelineno-0-1456"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_generate</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<a id="__codelineno-0-1457" name="__codelineno-0-1457"></a>        <span class="c1"># Check cache if enabled</span>
+<a id="__codelineno-0-1458" name="__codelineno-0-1458"></a>        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">enable_cache</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">_response_cache</span><span class="p">:</span>
+<a id="__codelineno-0-1459" name="__codelineno-0-1459"></a>            <span class="n">cache_key</span> <span class="o">=</span> <span class="n">generate_cache_key</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+<a id="__codelineno-0-1460" name="__codelineno-0-1460"></a>            <span class="n">hit</span><span class="p">,</span> <span class="n">cached_response</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_response_cache</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">cache_key</span><span class="p">)</span>
+<a id="__codelineno-0-1461" name="__codelineno-0-1461"></a>            <span class="k">if</span> <span class="n">hit</span><span class="p">:</span>
+<a id="__codelineno-0-1462" name="__codelineno-0-1462"></a>                <span class="k">return</span> <span class="n">cached_response</span>
+<a id="__codelineno-0-1463" name="__codelineno-0-1463"></a>
+<a id="__codelineno-0-1464" name="__codelineno-0-1464"></a>        <span class="n">response</span> <span class="o">=</span> <span class="n">ModelResponse</span><span class="p">()</span>
+<a id="__codelineno-0-1465" name="__codelineno-0-1465"></a>        <span class="n">response</span><span class="o">.</span><span class="n">set_response_type</span><span class="p">(</span><span class="s2">&quot;text_embedding&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-1466" name="__codelineno-0-1466"></a>        <span class="n">model_output</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_execute_model</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+<a id="__codelineno-0-1467" name="__codelineno-0-1467"></a>        <span class="n">embedding</span> <span class="o">=</span> <span class="n">model_output</span><span class="o">.</span><span class="n">data</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">embedding</span>
+<a id="__codelineno-0-1468" name="__codelineno-0-1468"></a>        <span class="n">metadata</span> <span class="o">=</span> <span class="n">dotdict</span><span class="p">({</span><span class="s2">&quot;usage&quot;</span><span class="p">:</span> <span class="n">model_output</span><span class="o">.</span><span class="n">usage</span><span class="o">.</span><span class="n">to_dict</span><span class="p">()})</span>
+<a id="__codelineno-0-1469" name="__codelineno-0-1469"></a>        <span class="n">response</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">embedding</span><span class="p">)</span>
+<a id="__codelineno-0-1470" name="__codelineno-0-1470"></a>        <span class="n">response</span><span class="o">.</span><span class="n">set_metadata</span><span class="p">(</span><span class="n">metadata</span><span class="p">)</span>
+<a id="__codelineno-0-1471" name="__codelineno-0-1471"></a>
+<a id="__codelineno-0-1472" name="__codelineno-0-1472"></a>        <span class="c1"># Store in cache if enabled</span>
+<a id="__codelineno-0-1473" name="__codelineno-0-1473"></a>        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">enable_cache</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">_response_cache</span><span class="p">:</span>
+<a id="__codelineno-0-1474" name="__codelineno-0-1474"></a>            <span class="n">cache_key</span> <span class="o">=</span> <span class="n">generate_cache_key</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+<a id="__codelineno-0-1475" name="__codelineno-0-1475"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">_response_cache</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">cache_key</span><span class="p">,</span> <span class="n">response</span><span class="p">)</span>
+<a id="__codelineno-0-1476" name="__codelineno-0-1476"></a>
+<a id="__codelineno-0-1477" name="__codelineno-0-1477"></a>        <span class="k">return</span> <span class="n">response</span>
+<a id="__codelineno-0-1478" name="__codelineno-0-1478"></a>
+<a id="__codelineno-0-1479" name="__codelineno-0-1479"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">_agenerate</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<a id="__codelineno-0-1480" name="__codelineno-0-1480"></a>        <span class="c1"># Check cache if enabled</span>
+<a id="__codelineno-0-1481" name="__codelineno-0-1481"></a>        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">enable_cache</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">_response_cache</span><span class="p">:</span>
+<a id="__codelineno-0-1482" name="__codelineno-0-1482"></a>            <span class="n">cache_key</span> <span class="o">=</span> <span class="n">generate_cache_key</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+<a id="__codelineno-0-1483" name="__codelineno-0-1483"></a>            <span class="n">hit</span><span class="p">,</span> <span class="n">cached_response</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_response_cache</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">cache_key</span><span class="p">)</span>
+<a id="__codelineno-0-1484" name="__codelineno-0-1484"></a>            <span class="k">if</span> <span class="n">hit</span><span class="p">:</span>
+<a id="__codelineno-0-1485" name="__codelineno-0-1485"></a>                <span class="k">return</span> <span class="n">cached_response</span>
+<a id="__codelineno-0-1486" name="__codelineno-0-1486"></a>
+<a id="__codelineno-0-1487" name="__codelineno-0-1487"></a>        <span class="n">response</span> <span class="o">=</span> <span class="n">ModelResponse</span><span class="p">()</span>
+<a id="__codelineno-0-1488" name="__codelineno-0-1488"></a>        <span class="n">response</span><span class="o">.</span><span class="n">set_response_type</span><span class="p">(</span><span class="s2">&quot;text_embedding&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-1489" name="__codelineno-0-1489"></a>        <span class="n">model_output</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_aexecute_model</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+<a id="__codelineno-0-1490" name="__codelineno-0-1490"></a>        <span class="n">embedding</span> <span class="o">=</span> <span class="n">model_output</span><span class="o">.</span><span class="n">data</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">embedding</span>
+<a id="__codelineno-0-1491" name="__codelineno-0-1491"></a>        <span class="n">metadata</span> <span class="o">=</span> <span class="n">dotdict</span><span class="p">({</span><span class="s2">&quot;usage&quot;</span><span class="p">:</span> <span class="n">model_output</span><span class="o">.</span><span class="n">usage</span><span class="o">.</span><span class="n">to_dict</span><span class="p">()})</span>
+<a id="__codelineno-0-1492" name="__codelineno-0-1492"></a>        <span class="n">response</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">embedding</span><span class="p">)</span>
+<a id="__codelineno-0-1493" name="__codelineno-0-1493"></a>        <span class="n">response</span><span class="o">.</span><span class="n">set_metadata</span><span class="p">(</span><span class="n">metadata</span><span class="p">)</span>
+<a id="__codelineno-0-1494" name="__codelineno-0-1494"></a>
+<a id="__codelineno-0-1495" name="__codelineno-0-1495"></a>        <span class="c1"># Store in cache if enabled</span>
+<a id="__codelineno-0-1496" name="__codelineno-0-1496"></a>        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">enable_cache</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">_response_cache</span><span class="p">:</span>
+<a id="__codelineno-0-1497" name="__codelineno-0-1497"></a>            <span class="n">cache_key</span> <span class="o">=</span> <span class="n">generate_cache_key</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+<a id="__codelineno-0-1498" name="__codelineno-0-1498"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">_response_cache</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">cache_key</span><span class="p">,</span> <span class="n">response</span><span class="p">)</span>
+<a id="__codelineno-0-1499" name="__codelineno-0-1499"></a>
+<a id="__codelineno-0-1500" name="__codelineno-0-1500"></a>        <span class="k">return</span> <span class="n">response</span>
+<a id="__codelineno-0-1501" name="__codelineno-0-1501"></a>
+<a id="__codelineno-0-1502" name="__codelineno-0-1502"></a>    <span class="nd">@model_retry</span>
+<a id="__codelineno-0-1503" name="__codelineno-0-1503"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__call__</span><span class="p">(</span>
+<a id="__codelineno-0-1504" name="__codelineno-0-1504"></a>        <span class="bp">self</span><span class="p">,</span>
+<a id="__codelineno-0-1505" name="__codelineno-0-1505"></a>        <span class="n">data</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]],</span>
+<a id="__codelineno-0-1506" name="__codelineno-0-1506"></a>    <span class="p">):</span>
+<a id="__codelineno-0-1507" name="__codelineno-0-1507"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Args:</span>
+<a id="__codelineno-0-1508" name="__codelineno-0-1508"></a><span class="sd">        data:</span>
+<a id="__codelineno-0-1509" name="__codelineno-0-1509"></a><span class="sd">            Input text to embed.</span>
+<a id="__codelineno-0-1510" name="__codelineno-0-1510"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-1511" name="__codelineno-0-1511"></a>        <span class="n">response</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_generate</span><span class="p">(</span><span class="nb">input</span><span class="o">=</span><span class="n">data</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">model_id</span><span class="p">)</span>
+<a id="__codelineno-0-1512" name="__codelineno-0-1512"></a>        <span class="k">return</span> <span class="n">response</span>
+<a id="__codelineno-0-1513" name="__codelineno-0-1513"></a>
+<a id="__codelineno-0-1514" name="__codelineno-0-1514"></a>    <span class="nd">@model_retry</span>
+<a id="__codelineno-0-1515" name="__codelineno-0-1515"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">acall</span><span class="p">(</span>
+<a id="__codelineno-0-1516" name="__codelineno-0-1516"></a>        <span class="bp">self</span><span class="p">,</span>
+<a id="__codelineno-0-1517" name="__codelineno-0-1517"></a>        <span class="n">data</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]],</span>
+<a id="__codelineno-0-1518" name="__codelineno-0-1518"></a>    <span class="p">):</span>
+<a id="__codelineno-0-1519" name="__codelineno-0-1519"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Async version of __call__. Args:</span>
+<a id="__codelineno-0-1520" name="__codelineno-0-1520"></a><span class="sd">        data:</span>
+<a id="__codelineno-0-1521" name="__codelineno-0-1521"></a><span class="sd">            Input text to embed.</span>
+<a id="__codelineno-0-1522" name="__codelineno-0-1522"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-1523" name="__codelineno-0-1523"></a>        <span class="n">response</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_agenerate</span><span class="p">(</span><span class="nb">input</span><span class="o">=</span><span class="n">data</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">model_id</span><span class="p">)</span>
+<a id="__codelineno-0-1524" name="__codelineno-0-1524"></a>        <span class="k">return</span> <span class="n">response</span>
 </code></pre></div></td></tr></table></div>
               </details>
 
@@ -2294,6 +2380,50 @@
 
 
 
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h3 id="msgflux.models.providers.openai.OpenAITextEmbedder.cache_size" class="doc doc-heading">
+            <span class="doc doc-object-name doc-attribute-name">cache_size</span>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-instance-attribute"><code>instance-attribute</code></small>
+  </span>
+
+</h3>
+<div class="doc-signature highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">cache_size</span> <span class="o">=</span> <span class="n">cache_size</span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h3 id="msgflux.models.providers.openai.OpenAITextEmbedder.enable_cache" class="doc doc-heading">
+            <span class="doc doc-object-name doc-attribute-name">enable_cache</span>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-instance-attribute"><code>instance-attribute</code></small>
+  </span>
+
+</h3>
+<div class="doc-signature highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">enable_cache</span> <span class="o">=</span> <span class="n">enable_cache</span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+    </div>
+
+</div>
 
 <div class="doc doc-object doc-attribute">
 
@@ -2383,27 +2513,27 @@
 
             <details class="quote">
               <summary>Source code in <code>src/msgflux/models/providers/openai.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-1416">1416</a></span>
-<span class="normal"><a href="#__codelineno-0-1417">1417</a></span>
-<span class="normal"><a href="#__codelineno-0-1418">1418</a></span>
-<span class="normal"><a href="#__codelineno-0-1419">1419</a></span>
-<span class="normal"><a href="#__codelineno-0-1420">1420</a></span>
-<span class="normal"><a href="#__codelineno-0-1421">1421</a></span>
-<span class="normal"><a href="#__codelineno-0-1422">1422</a></span>
-<span class="normal"><a href="#__codelineno-0-1423">1423</a></span>
-<span class="normal"><a href="#__codelineno-0-1424">1424</a></span>
-<span class="normal"><a href="#__codelineno-0-1425">1425</a></span>
-<span class="normal"><a href="#__codelineno-0-1426">1426</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-1416" name="__codelineno-0-1416"></a><span class="nd">@model_retry</span>
-<a id="__codelineno-0-1417" name="__codelineno-0-1417"></a><span class="k">def</span><span class="w"> </span><span class="fm">__call__</span><span class="p">(</span>
-<a id="__codelineno-0-1418" name="__codelineno-0-1418"></a>    <span class="bp">self</span><span class="p">,</span>
-<a id="__codelineno-0-1419" name="__codelineno-0-1419"></a>    <span class="n">data</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]],</span>
-<a id="__codelineno-0-1420" name="__codelineno-0-1420"></a><span class="p">):</span>
-<a id="__codelineno-0-1421" name="__codelineno-0-1421"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Args:</span>
-<a id="__codelineno-0-1422" name="__codelineno-0-1422"></a><span class="sd">    data:</span>
-<a id="__codelineno-0-1423" name="__codelineno-0-1423"></a><span class="sd">        Input text to embed.</span>
-<a id="__codelineno-0-1424" name="__codelineno-0-1424"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-1425" name="__codelineno-0-1425"></a>    <span class="n">response</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_generate</span><span class="p">(</span><span class="nb">input</span><span class="o">=</span><span class="n">data</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">model_id</span><span class="p">)</span>
-<a id="__codelineno-0-1426" name="__codelineno-0-1426"></a>    <span class="k">return</span> <span class="n">response</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-1502">1502</a></span>
+<span class="normal"><a href="#__codelineno-0-1503">1503</a></span>
+<span class="normal"><a href="#__codelineno-0-1504">1504</a></span>
+<span class="normal"><a href="#__codelineno-0-1505">1505</a></span>
+<span class="normal"><a href="#__codelineno-0-1506">1506</a></span>
+<span class="normal"><a href="#__codelineno-0-1507">1507</a></span>
+<span class="normal"><a href="#__codelineno-0-1508">1508</a></span>
+<span class="normal"><a href="#__codelineno-0-1509">1509</a></span>
+<span class="normal"><a href="#__codelineno-0-1510">1510</a></span>
+<span class="normal"><a href="#__codelineno-0-1511">1511</a></span>
+<span class="normal"><a href="#__codelineno-0-1512">1512</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-1502" name="__codelineno-0-1502"></a><span class="nd">@model_retry</span>
+<a id="__codelineno-0-1503" name="__codelineno-0-1503"></a><span class="k">def</span><span class="w"> </span><span class="fm">__call__</span><span class="p">(</span>
+<a id="__codelineno-0-1504" name="__codelineno-0-1504"></a>    <span class="bp">self</span><span class="p">,</span>
+<a id="__codelineno-0-1505" name="__codelineno-0-1505"></a>    <span class="n">data</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]],</span>
+<a id="__codelineno-0-1506" name="__codelineno-0-1506"></a><span class="p">):</span>
+<a id="__codelineno-0-1507" name="__codelineno-0-1507"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Args:</span>
+<a id="__codelineno-0-1508" name="__codelineno-0-1508"></a><span class="sd">    data:</span>
+<a id="__codelineno-0-1509" name="__codelineno-0-1509"></a><span class="sd">        Input text to embed.</span>
+<a id="__codelineno-0-1510" name="__codelineno-0-1510"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-1511" name="__codelineno-0-1511"></a>    <span class="n">response</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_generate</span><span class="p">(</span><span class="nb">input</span><span class="o">=</span><span class="n">data</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">model_id</span><span class="p">)</span>
+<a id="__codelineno-0-1512" name="__codelineno-0-1512"></a>    <span class="k">return</span> <span class="n">response</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -2418,7 +2548,14 @@
 
 
 </h3>
-<div class="doc-signature highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">__init__</span><span class="p">(</span><span class="o">*</span><span class="p">,</span> <span class="n">model_id</span><span class="p">,</span> <span class="n">dimensions</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">base_url</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span>
+<div class="doc-signature highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">__init__</span><span class="p">(</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="o">*</span><span class="p">,</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">model_id</span><span class="p">,</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="n">dimensions</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="n">base_url</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    <span class="n">enable_cache</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    <span class="n">cache_size</span><span class="o">=</span><span class="mi">128</span><span class="p">,</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="p">)</span>
 </code></pre></div>
 
     <div class="doc doc-contents ">
@@ -2428,52 +2565,72 @@
 dimensions:
     The number of dimensions the resulting output embeddings should have.
 base_url:
-    URL to model provider.</p>
+    URL to model provider.
+enable_cache:
+    If True, enables response caching to avoid redundant API calls.
+cache_size:
+    Maximum number of responses to cache (default: 128).</p>
 
 
             <details class="quote">
               <summary>Source code in <code>src/msgflux/models/providers/openai.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-1362">1362</a></span>
-<span class="normal"><a href="#__codelineno-0-1363">1363</a></span>
-<span class="normal"><a href="#__codelineno-0-1364">1364</a></span>
-<span class="normal"><a href="#__codelineno-0-1365">1365</a></span>
-<span class="normal"><a href="#__codelineno-0-1366">1366</a></span>
-<span class="normal"><a href="#__codelineno-0-1367">1367</a></span>
-<span class="normal"><a href="#__codelineno-0-1368">1368</a></span>
-<span class="normal"><a href="#__codelineno-0-1369">1369</a></span>
-<span class="normal"><a href="#__codelineno-0-1370">1370</a></span>
-<span class="normal"><a href="#__codelineno-0-1371">1371</a></span>
-<span class="normal"><a href="#__codelineno-0-1372">1372</a></span>
-<span class="normal"><a href="#__codelineno-0-1373">1373</a></span>
-<span class="normal"><a href="#__codelineno-0-1374">1374</a></span>
-<span class="normal"><a href="#__codelineno-0-1375">1375</a></span>
-<span class="normal"><a href="#__codelineno-0-1376">1376</a></span>
-<span class="normal"><a href="#__codelineno-0-1377">1377</a></span>
-<span class="normal"><a href="#__codelineno-0-1378">1378</a></span>
-<span class="normal"><a href="#__codelineno-0-1379">1379</a></span>
-<span class="normal"><a href="#__codelineno-0-1380">1380</a></span>
-<span class="normal"><a href="#__codelineno-0-1381">1381</a></span>
-<span class="normal"><a href="#__codelineno-0-1382">1382</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-1362" name="__codelineno-0-1362"></a><span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
-<a id="__codelineno-0-1363" name="__codelineno-0-1363"></a>    <span class="bp">self</span><span class="p">,</span>
-<a id="__codelineno-0-1364" name="__codelineno-0-1364"></a>    <span class="o">*</span><span class="p">,</span>
-<a id="__codelineno-0-1365" name="__codelineno-0-1365"></a>    <span class="n">model_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-<a id="__codelineno-0-1366" name="__codelineno-0-1366"></a>    <span class="n">dimensions</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-1367" name="__codelineno-0-1367"></a>    <span class="n">base_url</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-1368" name="__codelineno-0-1368"></a><span class="p">):</span>
-<a id="__codelineno-0-1369" name="__codelineno-0-1369"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Args:</span>
-<a id="__codelineno-0-1370" name="__codelineno-0-1370"></a><span class="sd">    model_id:</span>
-<a id="__codelineno-0-1371" name="__codelineno-0-1371"></a><span class="sd">        Model ID in provider.</span>
-<a id="__codelineno-0-1372" name="__codelineno-0-1372"></a><span class="sd">    dimensions:</span>
-<a id="__codelineno-0-1373" name="__codelineno-0-1373"></a><span class="sd">        The number of dimensions the resulting output embeddings should have.</span>
-<a id="__codelineno-0-1374" name="__codelineno-0-1374"></a><span class="sd">    base_url:</span>
-<a id="__codelineno-0-1375" name="__codelineno-0-1375"></a><span class="sd">        URL to model provider.</span>
-<a id="__codelineno-0-1376" name="__codelineno-0-1376"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-1377" name="__codelineno-0-1377"></a>    <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
-<a id="__codelineno-0-1378" name="__codelineno-0-1378"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">model_id</span> <span class="o">=</span> <span class="n">model_id</span>
-<a id="__codelineno-0-1379" name="__codelineno-0-1379"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">sampling_params</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;base_url&quot;</span><span class="p">:</span> <span class="n">base_url</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_base_url</span><span class="p">()}</span>
-<a id="__codelineno-0-1380" name="__codelineno-0-1380"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">sampling_run_params</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;dimensions&quot;</span><span class="p">:</span> <span class="n">dimensions</span><span class="p">}</span>
-<a id="__codelineno-0-1381" name="__codelineno-0-1381"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_initialize</span><span class="p">()</span>
-<a id="__codelineno-0-1382" name="__codelineno-0-1382"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_get_api_key</span><span class="p">()</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-1414">1414</a></span>
+<span class="normal"><a href="#__codelineno-0-1415">1415</a></span>
+<span class="normal"><a href="#__codelineno-0-1416">1416</a></span>
+<span class="normal"><a href="#__codelineno-0-1417">1417</a></span>
+<span class="normal"><a href="#__codelineno-0-1418">1418</a></span>
+<span class="normal"><a href="#__codelineno-0-1419">1419</a></span>
+<span class="normal"><a href="#__codelineno-0-1420">1420</a></span>
+<span class="normal"><a href="#__codelineno-0-1421">1421</a></span>
+<span class="normal"><a href="#__codelineno-0-1422">1422</a></span>
+<span class="normal"><a href="#__codelineno-0-1423">1423</a></span>
+<span class="normal"><a href="#__codelineno-0-1424">1424</a></span>
+<span class="normal"><a href="#__codelineno-0-1425">1425</a></span>
+<span class="normal"><a href="#__codelineno-0-1426">1426</a></span>
+<span class="normal"><a href="#__codelineno-0-1427">1427</a></span>
+<span class="normal"><a href="#__codelineno-0-1428">1428</a></span>
+<span class="normal"><a href="#__codelineno-0-1429">1429</a></span>
+<span class="normal"><a href="#__codelineno-0-1430">1430</a></span>
+<span class="normal"><a href="#__codelineno-0-1431">1431</a></span>
+<span class="normal"><a href="#__codelineno-0-1432">1432</a></span>
+<span class="normal"><a href="#__codelineno-0-1433">1433</a></span>
+<span class="normal"><a href="#__codelineno-0-1434">1434</a></span>
+<span class="normal"><a href="#__codelineno-0-1435">1435</a></span>
+<span class="normal"><a href="#__codelineno-0-1436">1436</a></span>
+<span class="normal"><a href="#__codelineno-0-1437">1437</a></span>
+<span class="normal"><a href="#__codelineno-0-1438">1438</a></span>
+<span class="normal"><a href="#__codelineno-0-1439">1439</a></span>
+<span class="normal"><a href="#__codelineno-0-1440">1440</a></span>
+<span class="normal"><a href="#__codelineno-0-1441">1441</a></span>
+<span class="normal"><a href="#__codelineno-0-1442">1442</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-1414" name="__codelineno-0-1414"></a><span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+<a id="__codelineno-0-1415" name="__codelineno-0-1415"></a>    <span class="bp">self</span><span class="p">,</span>
+<a id="__codelineno-0-1416" name="__codelineno-0-1416"></a>    <span class="o">*</span><span class="p">,</span>
+<a id="__codelineno-0-1417" name="__codelineno-0-1417"></a>    <span class="n">model_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<a id="__codelineno-0-1418" name="__codelineno-0-1418"></a>    <span class="n">dimensions</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-1419" name="__codelineno-0-1419"></a>    <span class="n">base_url</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-1420" name="__codelineno-0-1420"></a>    <span class="n">enable_cache</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<a id="__codelineno-0-1421" name="__codelineno-0-1421"></a>    <span class="n">cache_size</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="mi">128</span><span class="p">,</span>
+<a id="__codelineno-0-1422" name="__codelineno-0-1422"></a><span class="p">):</span>
+<a id="__codelineno-0-1423" name="__codelineno-0-1423"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Args:</span>
+<a id="__codelineno-0-1424" name="__codelineno-0-1424"></a><span class="sd">    model_id:</span>
+<a id="__codelineno-0-1425" name="__codelineno-0-1425"></a><span class="sd">        Model ID in provider.</span>
+<a id="__codelineno-0-1426" name="__codelineno-0-1426"></a><span class="sd">    dimensions:</span>
+<a id="__codelineno-0-1427" name="__codelineno-0-1427"></a><span class="sd">        The number of dimensions the resulting output embeddings should have.</span>
+<a id="__codelineno-0-1428" name="__codelineno-0-1428"></a><span class="sd">    base_url:</span>
+<a id="__codelineno-0-1429" name="__codelineno-0-1429"></a><span class="sd">        URL to model provider.</span>
+<a id="__codelineno-0-1430" name="__codelineno-0-1430"></a><span class="sd">    enable_cache:</span>
+<a id="__codelineno-0-1431" name="__codelineno-0-1431"></a><span class="sd">        If True, enables response caching to avoid redundant API calls.</span>
+<a id="__codelineno-0-1432" name="__codelineno-0-1432"></a><span class="sd">    cache_size:</span>
+<a id="__codelineno-0-1433" name="__codelineno-0-1433"></a><span class="sd">        Maximum number of responses to cache (default: 128).</span>
+<a id="__codelineno-0-1434" name="__codelineno-0-1434"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-1435" name="__codelineno-0-1435"></a>    <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+<a id="__codelineno-0-1436" name="__codelineno-0-1436"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">model_id</span> <span class="o">=</span> <span class="n">model_id</span>
+<a id="__codelineno-0-1437" name="__codelineno-0-1437"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">sampling_params</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;base_url&quot;</span><span class="p">:</span> <span class="n">base_url</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_base_url</span><span class="p">()}</span>
+<a id="__codelineno-0-1438" name="__codelineno-0-1438"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">sampling_run_params</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;dimensions&quot;</span><span class="p">:</span> <span class="n">dimensions</span><span class="p">}</span>
+<a id="__codelineno-0-1439" name="__codelineno-0-1439"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">enable_cache</span> <span class="o">=</span> <span class="n">enable_cache</span>
+<a id="__codelineno-0-1440" name="__codelineno-0-1440"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">cache_size</span> <span class="o">=</span> <span class="n">cache_size</span>
+<a id="__codelineno-0-1441" name="__codelineno-0-1441"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_initialize</span><span class="p">()</span>
+<a id="__codelineno-0-1442" name="__codelineno-0-1442"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_get_api_key</span><span class="p">()</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -2504,27 +2661,27 @@ data:
 
             <details class="quote">
               <summary>Source code in <code>src/msgflux/models/providers/openai.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-1428">1428</a></span>
-<span class="normal"><a href="#__codelineno-0-1429">1429</a></span>
-<span class="normal"><a href="#__codelineno-0-1430">1430</a></span>
-<span class="normal"><a href="#__codelineno-0-1431">1431</a></span>
-<span class="normal"><a href="#__codelineno-0-1432">1432</a></span>
-<span class="normal"><a href="#__codelineno-0-1433">1433</a></span>
-<span class="normal"><a href="#__codelineno-0-1434">1434</a></span>
-<span class="normal"><a href="#__codelineno-0-1435">1435</a></span>
-<span class="normal"><a href="#__codelineno-0-1436">1436</a></span>
-<span class="normal"><a href="#__codelineno-0-1437">1437</a></span>
-<span class="normal"><a href="#__codelineno-0-1438">1438</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-1428" name="__codelineno-0-1428"></a><span class="nd">@model_retry</span>
-<a id="__codelineno-0-1429" name="__codelineno-0-1429"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">acall</span><span class="p">(</span>
-<a id="__codelineno-0-1430" name="__codelineno-0-1430"></a>    <span class="bp">self</span><span class="p">,</span>
-<a id="__codelineno-0-1431" name="__codelineno-0-1431"></a>    <span class="n">data</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]],</span>
-<a id="__codelineno-0-1432" name="__codelineno-0-1432"></a><span class="p">):</span>
-<a id="__codelineno-0-1433" name="__codelineno-0-1433"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Async version of __call__. Args:</span>
-<a id="__codelineno-0-1434" name="__codelineno-0-1434"></a><span class="sd">    data:</span>
-<a id="__codelineno-0-1435" name="__codelineno-0-1435"></a><span class="sd">        Input text to embed.</span>
-<a id="__codelineno-0-1436" name="__codelineno-0-1436"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-1437" name="__codelineno-0-1437"></a>    <span class="n">response</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_agenerate</span><span class="p">(</span><span class="nb">input</span><span class="o">=</span><span class="n">data</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">model_id</span><span class="p">)</span>
-<a id="__codelineno-0-1438" name="__codelineno-0-1438"></a>    <span class="k">return</span> <span class="n">response</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-1514">1514</a></span>
+<span class="normal"><a href="#__codelineno-0-1515">1515</a></span>
+<span class="normal"><a href="#__codelineno-0-1516">1516</a></span>
+<span class="normal"><a href="#__codelineno-0-1517">1517</a></span>
+<span class="normal"><a href="#__codelineno-0-1518">1518</a></span>
+<span class="normal"><a href="#__codelineno-0-1519">1519</a></span>
+<span class="normal"><a href="#__codelineno-0-1520">1520</a></span>
+<span class="normal"><a href="#__codelineno-0-1521">1521</a></span>
+<span class="normal"><a href="#__codelineno-0-1522">1522</a></span>
+<span class="normal"><a href="#__codelineno-0-1523">1523</a></span>
+<span class="normal"><a href="#__codelineno-0-1524">1524</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-1514" name="__codelineno-0-1514"></a><span class="nd">@model_retry</span>
+<a id="__codelineno-0-1515" name="__codelineno-0-1515"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">acall</span><span class="p">(</span>
+<a id="__codelineno-0-1516" name="__codelineno-0-1516"></a>    <span class="bp">self</span><span class="p">,</span>
+<a id="__codelineno-0-1517" name="__codelineno-0-1517"></a>    <span class="n">data</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]],</span>
+<a id="__codelineno-0-1518" name="__codelineno-0-1518"></a><span class="p">):</span>
+<a id="__codelineno-0-1519" name="__codelineno-0-1519"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Async version of __call__. Args:</span>
+<a id="__codelineno-0-1520" name="__codelineno-0-1520"></a><span class="sd">    data:</span>
+<a id="__codelineno-0-1521" name="__codelineno-0-1521"></a><span class="sd">        Input text to embed.</span>
+<a id="__codelineno-0-1522" name="__codelineno-0-1522"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-1523" name="__codelineno-0-1523"></a>    <span class="n">response</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_agenerate</span><span class="p">(</span><span class="nb">input</span><span class="o">=</span><span class="n">data</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">model_id</span><span class="p">)</span>
+<a id="__codelineno-0-1524" name="__codelineno-0-1524"></a>    <span class="k">return</span> <span class="n">response</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
