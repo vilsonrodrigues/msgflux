@@ -241,6 +241,22 @@ class MCPClient:
         if "error" in response:
             raise MCPError(f"Failed to initialize: {response['error']}")
 
+        # Extract session ID from response if available (for HTTP transport)
+        if isinstance(self.transport, HTTPTransport):
+            session_id = None
+
+            # Try to get session ID from response body
+            result = response.get("result", {})
+            session_id = result.get("sessionId") or result.get("session_id")
+
+            # Try meta field as well
+            if not session_id:
+                meta = response.get("meta", {})
+                session_id = meta.get("sessionId") or meta.get("session_id")
+
+            if session_id:
+                self.transport.set_session_id(session_id)
+
         self._initialized = True
 
         # Send initialized notification
@@ -311,7 +327,7 @@ class MCPClient:
         for tool_data in response.get("result", {}).get("tools", []):
             tools.append(MCPTool(
                 name=tool_data["name"],
-                description=tool_data["description"],
+                description=tool_data.get("description", ""),
                 inputSchema=tool_data.get("inputSchema", {})
             ))
 

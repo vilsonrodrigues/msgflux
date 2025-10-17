@@ -25,7 +25,6 @@ from msgflux.protocols.mcp.types import (
 )
 
 
-
 __all__ = [
     # Client
     "MCPClient",
