@@ -1,4 +1,3 @@
-import asyncio
 import base64
 import tempfile
 from contextlib import asynccontextmanager, contextmanager
@@ -1411,6 +1410,8 @@ class OpenAISpeechToText(_BaseOpenAI, SpeechToTextModel):
 class OpenAITextEmbedder(_BaseOpenAI, TextEmbedderModel):
     """OpenAI Text Embedder."""
 
+    batch_support: bool = True
+
     def __init__(
         self,
         *,
@@ -1464,9 +1465,9 @@ class OpenAITextEmbedder(_BaseOpenAI, TextEmbedderModel):
         response = ModelResponse()
         response.set_response_type("text_embedding")
         model_output = self._execute_model(**kwargs)
-        embedding = model_output.data[0].embedding
+        embeddings = [item.embedding for item in model_output.data]
         metadata = dotdict({"usage": model_output.usage.to_dict()})
-        response.add(embedding)
+        response.add(embeddings)
         response.set_metadata(metadata)
 
         # Store in cache if enabled
@@ -1487,9 +1488,9 @@ class OpenAITextEmbedder(_BaseOpenAI, TextEmbedderModel):
         response = ModelResponse()
         response.set_response_type("text_embedding")
         model_output = await self._aexecute_model(**kwargs)
-        embedding = model_output.data[0].embedding
+        embeddings = [item.embedding for item in model_output.data]
         metadata = dotdict({"usage": model_output.usage.to_dict()})
-        response.add(embedding)
+        response.add(embeddings)
         response.set_metadata(metadata)
 
         # Store in cache if enabled

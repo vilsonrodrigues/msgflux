@@ -83,6 +83,7 @@ class HTTPTransport(BaseTransport):
         self.auth = auth
         self._http_client: Optional[httpx.AsyncClient] = None
         self._request_id_counter = 0
+        self._session_id: Optional[str] = None
 
     def _get_next_request_id(self) -> str:
         """Generate next request ID."""
@@ -93,6 +94,9 @@ class HTTPTransport(BaseTransport):
         """Establish HTTP connection with pooling."""
         if self._http_client is not None:
             return
+
+        # Don't generate session ID here - let the server create it during initialize
+        # The session ID will be captured from the initialize response
 
         # Create limits with connection pooling
         limits = httpx.Limits(
@@ -112,14 +116,29 @@ class HTTPTransport(BaseTransport):
             await self._http_client.aclose()
             self._http_client = None
 
-    async def _get_headers(self) -> Dict[str, str]:
+    def set_session_id(self, session_id: str):
+        """Set session ID for subsequent requests."""
+        self._session_id = session_id
+
+    async def _get_headers(self, include_session_id: bool = True) -> Dict[str, str]:
         """Get headers with authentication applied.
+
+        Args:
+            include_session_id: Whether to include session ID in headers (default True)
 
         Returns:
             Headers with auth credentials if auth provider is configured.
         """
-        headers = {"Content-Type": "application/json"}
+        headers = {
+            "Content-Type": "application/json",
+            "Accept": "application/json, text/event-stream"
+        }
         headers.update(self.headers)
+
+        # Add session ID if available and requested
+        if self._session_id and include_session_id:
+            # Use the same header name as FastMCP server expects
+            headers["mcp-session-id"] = self._session_id
 
         # Apply authentication if configured
         if self.auth:
@@ -148,18 +167,45 @@ class HTTPTransport(BaseTransport):
             request_data["params"] = params
 
         try:
-            headers = await self._get_headers()
+            # Don't send session ID on initialize - server will create it
+            headers = await self._get_headers(include_session_id=(method != "initialize"))
+
             response = await self._http_client.post(
-                f"{self.base_url}/",
+                self.base_url,
                 json=request_data,
                 headers=headers
             )
             response.raise_for_status()
-            return response.json()
+
+            # Capture session ID from response headers if present
+            # Try multiple possible header names
+            for header_name in ["mcp-session-id", "MCP-Session-ID", "X-Session-ID", "Session-ID", "X-Session-Id", "Session-Id"]:
+                session_id = response.headers.get(header_name)
+                if session_id:
+                    # Always update session ID if server provides one (server's ID takes precedence)
+                    self._session_id = session_id
+                    break
+
+            # Check Content-Type to handle both JSON and SSE responses
+            content_type = response.headers.get("content-type", "")
+
+            if "text/event-stream" in content_type:
+                # Parse SSE format: data: {...}\n\n
+                text = response.text
+                for line in text.split("\n"):
+                    if line.startswith("data: "):
+                        data_str = line[6:]  # Remove "data: " prefix
+                        return json.loads(data_str)
+                raise MCPError("No data found in SSE response")
+            else:
+                # Regular JSON response
+                return response.json()
         except httpx.TimeoutException:
             raise MCPTimeoutError(f"Request to {method} timed out")
         except httpx.HTTPStatusError as e:
             raise MCPError(f"HTTP error {e.response.status_code}: {e.response.text}")
+        except json.JSONDecodeError as e:
+            raise MCPError(f"Failed to decode JSON response: {e}")
 
     async def send_notification(self, method: str, params: Optional[Dict[str, Any]] = None):
         """Send HTTP notification (fire-and-forget).
@@ -180,7 +226,7 @@ class HTTPTransport(BaseTransport):
         try:
             headers = await self._get_headers()
             await self._http_client.post(
-                f"{self.base_url}/",
+                self.base_url,
                 json=notification_data,
                 headers=headers
             )

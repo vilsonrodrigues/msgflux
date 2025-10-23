@@ -18,47 +18,109 @@ class Predictor(Module):
         name: str,
         model: Union[BaseModel, ModelGateway],
         *,
-        task_inputs: Optional[str] = None,
+        message_fields: Optional[Dict[str, Any]] = None,
         response_mode: Optional[str] = "plain_response",
         response_template: Optional[str] = None,
-        model_preference: Optional[str] = None,
-        execution_kwargs: Optional[Dict[str, Any]] = None,
+        config: Optional[Dict[str, Any]] = None,
     ):
         """Args:
         name:
             Predictor name in snake case format.
         model:
             Predictor Model client.
-        task_inputs:
-            Fields of the Message object that will be the input to the task.
+        message_fields:
+            Dictionary mapping Message field names to their paths in the Message object.
+            Valid keys: "task_inputs", "model_preference"
+            !!! example
+                message_fields={
+                    "task_inputs": "data.input",
+                    "model_preference": "model.preference"
+                }
+
+            Field descriptions:
+            - task_inputs: Field path for task input (str)
+            - model_preference: Field path for model preference (str, only valid with ModelGateway)
         response_mode:
             What the response should be.
             * `plain_response` (default): Returns the final agent response directly.
             * other: Write on field in Message object.
         response_template:
             A Jinja template to format response.
-        model_preference:
-            Fields of the Message object that will be the model preference.
-            This is only valid if the model is of type ModelGateway.
-        execution_kwargs:
-            Extra kwargs to model execution.
+        config:
+            Dictionary with configuration options. Accepts any keys without validation.
+            All parameters will be passed directly to model execution.
+            !!! example
+                config={"temperature": 0.7, "top_k": 50}
         """
         super().__init__()
         self.set_name(name)
         self._set_model(model)
-        self._set_execution_kwargs(execution_kwargs)
-        self._set_model_preference(model_preference)
+        self._set_message_fields(message_fields)
         self._set_response_mode(response_mode)
         self._set_response_template(response_template)
-        self._set_task_inputs(task_inputs)
+        self._set_config(config)
 
     def forward(self, message: Union[Any, Message], **kwargs) -> Any:
+        """Execute the predictor with the given message.
+
+        Args:
+            message: The input message, which can be:
+                - Any: Direct data input for prediction (text, image, audio, etc.)
+                - Message: Message object with fields mapped via message_fields
+            **kwargs: Runtime overrides for message_fields. Can include:
+                - task_inputs: Override field path or direct value
+                - model_preference: Override model preference
+
+        Returns:
+            Prediction results (type depends on model and response_mode)
+
+        Examples:
+            # Direct input
+            predictor("Sample text for classification")
+
+            # Direct image/audio/other data
+            predictor(image_data)
+
+            # Using Message object with message_fields
+            msg = Message(text="Sample text")
+            predictor(msg)
+
+            # Runtime override
+            predictor(msg, task_inputs="custom.data.path")
+        """
         inputs = self._prepare_task(message, **kwargs)
         model_response = self._execute_model(**inputs)
         response = self._process_model_response(model_response, message)
         return response
 
     async def aforward(self, message: Union[Any, Message], **kwargs) -> Any:
+        """Async version of forward. Execute the predictor asynchronously.
+
+        Args:
+            message: The input message, which can be:
+                - Any: Direct data input for prediction (text, image, audio, etc.)
+                - Message: Message object with fields mapped via message_fields
+            **kwargs: Runtime overrides for message_fields. Can include:
+                - task_inputs: Override field path or direct value
+                - model_preference: Override model preference
+
+        Returns:
+            Prediction results (type depends on model and response_mode)
+
+        Examples:
+            # Direct input
+            await predictor.acall("Sample text for classification")
+
+            # Direct image/audio/other data
+            await predictor.acall(image_data)
+
+            # Using Message object with message_fields
+            msg = Message(text="Sample text")
+            await predictor.acall(msg)
+
+            # Runtime override
+            await predictor.acall(msg, task_inputs="custom.data.path")
+        """
         inputs = self._prepare_task(message, **kwargs)
         model_response = await self._aexecute_model(**inputs)
         response = self._process_model_response(model_response, message)
@@ -81,7 +143,7 @@ class Predictor(Module):
     def _prepare_model_execution(
         self, data: Any, model_preference: Optional[str] = None
     ) -> Dict[str, Any]:
-        model_execution_params = dotdict(self.execution_kwargs or {})
+        model_execution_params = dotdict(self.config) if self.config else dotdict()
         model_execution_params.data = data
         if model_preference:
             model_execution_params.model_preference = model_preference
@@ -131,3 +193,25 @@ class Predictor(Module):
             raise TypeError(
                 f"`model` need be a `BaseModel` model, given `{type(model)}`"
             )
+
+    def _set_config(self, config: Optional[Dict[str, Any]] = None):
+        """Set module configuration without key validation.
+
+        Args:
+            config: Dictionary with configuration options.
+                Accepts any keys - all parameters will be passed to model execution.
+
+        Raises:
+            TypeError: If config is not a dict or None
+        """
+        if config is None:
+            self.config = {}
+            return
+
+        if not isinstance(config, dict):
+            raise TypeError(
+                f"`config` must be a dict or None, given `{type(config)}`"
+            )
+
+        # Store config without validation - accepts any keys
+        self.config = config.copy()

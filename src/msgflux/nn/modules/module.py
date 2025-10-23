@@ -531,10 +531,10 @@ class Module:
             return None
 
     def _format_task_template(self, content: Union[str, Dict[str, Any]]) -> str:
-        return self._format_template(content, self.task_template)
+        return self._format_template(content, self.templates.get("task"))
 
     def _format_response_template(self, content: str) -> str:
-        return self._format_template(content, self.response_template)
+        return self._format_template(content, self.templates.get("response"))
 
     def _format_template(
         self, content: Union[str, Dict[str, Any]], raw_template: str
@@ -571,30 +571,6 @@ class Module:
         else:
             raise TypeError(f"`annotations` need be a `dict` given {type(annotations)}")
 
-    def _set_task_template(self, task_template: Optional[str] = None):
-        if isinstance(task_template, str) or task_template is None:
-            if isinstance(task_template, str) and task_template == "":
-                raise ValueError(
-                    f"`task_template` requires a string not empty given {task_template}"
-                )
-            self.register_buffer("task_template", task_template)
-        else:
-            raise TypeError(
-                "`task_template` requires a string or None"
-                f"given `{type(task_template)}`"
-            )
-
-    def _set_response_template(self, response_template: Optional[str] = None):
-        if isinstance(response_template, str) or response_template is None:
-            if isinstance(response_template, str) and response_template == "":
-                raise ValueError("`response_template` cannot be an empty str")
-            self.register_buffer("response_template", response_template)
-        else:
-            raise TypeError(
-                "`response_template` requires a string or None "
-                f"given `{type(response_template)}`"
-            )
-
     def _set_response_mode(self, response_mode: str):
         if isinstance(response_mode, str):
             if response_mode == "":
@@ -611,12 +587,6 @@ class Module:
         else:
             raise TypeError(f"`prompt` need be a str or None given `{type(prompt)}`")
 
-    def _set_stream(self, stream: bool): # noqa: FBT001
-        if isinstance(stream, bool):
-            self.register_buffer("stream", stream)
-        else:
-            raise TypeError(f"`stream` need be a bool given `{type(stream)}`")
-
     def _set_execution_kwargs(self, execution_kwargs: Optional[Dict[str, Any]] = None):
         if isinstance(execution_kwargs, dict) or execution_kwargs is None:
             if isinstance(execution_kwargs, dict):
@@ -627,12 +597,6 @@ class Module:
                 "`execution_kwargs` need be a dict or None "
                 f"given `{type(execution_kwargs)}`"
             )
-
-    def _set_verbose(self, verbose: bool): # noqa: FBT001
-        if isinstance(verbose, bool):
-            super().__setattr__("verbose", verbose)
-        else:
-            raise TypeError(f"`verbose` need be a `bool` given {type(verbose)}")
 
     def _extract_raw_response(
         self, model_response: Union[ModelResponse, ModelStreamResponse]
@@ -646,7 +610,7 @@ class Module:
 
     def _prepare_response(self, raw_response: Any, message: Any) -> Any:
         if not isinstance(raw_response, ModelStreamResponse) and (
-            hasattr(self, "response_template") and self.response_template is not None
+            hasattr(self, "templates") and self.templates.get("response") is not None
         ):
             response = self._format_response_template(raw_response)
         else:
@@ -711,45 +675,196 @@ class Module:
                 f"given `{type(model_preference)}`"
             )
 
-    def _set_input_guardrail(self, input_guardrail: Optional[Callable] = None):
-        if isinstance(input_guardrail, Callable) or input_guardrail is None:
-            if (
-                inspect.isclass(input_guardrail)
-                and hasattr(input_guardrail, "serialize")
-            ) or None:
-                self.register_buffer("input_guardrail", input_guardrail)
-            elif isinstance(input_guardrail, self.__class__):
-                self.input_guardrail = input_guardrail
-            else:
-                super().__setattr__("input_guardrail", input_guardrail)
-        else:
+    def _set_guardrails(self, guardrails: Optional[Dict[str, Callable]] = None):
+        """Set guardrails for input and output execution.
+
+        Args:
+            guardrails: Dictionary mapping guardrail types to callables.
+                Valid keys: "input", "output"
+
+        Raises:
+            TypeError: If guardrails is not a dict or None
+            ValueError: If invalid keys are provided
+        """
+        if guardrails is None:
+            self.guardrails = {}
+            return
+
+        if not isinstance(guardrails, dict):
             raise TypeError(
-                "`input_guardrail` need be a callable or None, "
-                f"given `{type(input_guardrail)}`"
+                f"`guardrails` must be a dict or None, given `{type(guardrails)}`"
             )
 
-    def _set_output_guardrail(self, output_guardrail: Optional[Callable] = None):
-        if isinstance(output_guardrail, Callable) or output_guardrail is None:
-            if (
-                inspect.isclass(output_guardrail)
-                and hasattr(output_guardrail, "serialize")
-            ) or None:
-                self.register_buffer("output_guardrail", output_guardrail)
-            elif isinstance(output_guardrail, self.__class__):
-                self.output_guardrail = output_guardrail
-            else:
-                super().__setattr__("output_guardrail", output_guardrail)
-        else:
-            raise TypeError(
-                "`output_guardrail` need be a callable or None, "
-                f"given `{type(output_guardrail)}`"
+        # Validate keys
+        valid_keys = {"input", "output"}
+        invalid_keys = set(guardrails.keys()) - valid_keys
+        if invalid_keys:
+            raise ValueError(
+                f"Invalid guardrail keys: {invalid_keys}. "
+                f"Valid keys are: {valid_keys}"
             )
+
+        # Validate that all values are callable
+        for key, guardrail in guardrails.items():
+            if not isinstance(guardrail, Callable):
+                raise TypeError(
+                    f"Guardrail for '{key}' must be callable, "
+                    f"given `{type(guardrail)}`"
+                )
+
+        # Store guardrails, registering as buffers if needed
+        self.guardrails = {}
+        for key, guardrail in guardrails.items():
+            if (
+                inspect.isclass(guardrail)
+                and hasattr(guardrail, "serialize")
+            ):
+                self.register_buffer(f"{key}_guardrail", guardrail)
+                self.guardrails[key] = getattr(self, f"{key}_guardrail")
+            elif isinstance(guardrail, self.__class__):
+                setattr(self, f"{key}_guardrail", guardrail)
+                self.guardrails[key] = guardrail
+            else:
+                super().__setattr__(f"{key}_guardrail", guardrail)
+                self.guardrails[key] = guardrail
+
+    def _set_message_fields(
+        self, message_fields: Optional[Dict[str, Any]] = None
+    ):
+        """Set message field mappings.
+
+        Args:
+            message_fields: Dictionary mapping field names to their values.
+                Valid keys: "task_inputs", "task_multimodal_inputs", "model_preference"
+
+        Raises:
+            TypeError: If message_fields is not a dict or None
+            ValueError: If invalid keys are provided
+        """
+        # Define valid keys for base Module class
+        valid_keys = {"task_inputs", "task_multimodal_inputs", "model_preference"}
+
+        if message_fields is None:
+            # Set all fields to None
+            self._set_task_inputs(None)
+            self._set_task_multimodal_inputs(None)
+            self._set_model_preference(None)
+            return
+
+        if not isinstance(message_fields, dict):
+            raise TypeError(
+                f"`message_fields` must be a dict or None, given `{type(message_fields)}`"
+            )
+
+        # Validate keys
+        invalid_keys = set(message_fields.keys()) - valid_keys
+        if invalid_keys:
+            raise ValueError(
+                f"Invalid message_fields keys: {invalid_keys}. "
+                f"Valid keys are: {valid_keys}"
+            )
+
+        # Set each field using its setter, defaulting to None if not provided
+        self._set_task_inputs(message_fields.get("task_inputs"))
+        self._set_task_multimodal_inputs(message_fields.get("task_multimodal_inputs"))
+        self._set_model_preference(message_fields.get("model_preference"))
+
+    def _set_config(
+        self, config: Optional[Dict[str, Any]] = None
+    ):
+        """Set module configuration.
+
+        Args:
+            config: Dictionary with configuration options.
+                Valid keys: "verbose", "return_model_state", "tool_choice",
+                "stream", "image_detail", "include_date"
+
+        Raises:
+            TypeError: If config is not a dict or None
+            ValueError: If invalid keys are provided
+        """
+        # Define valid keys for base Module class
+        valid_keys = {
+            "verbose", "return_model_state", "tool_choice",
+            "stream", "image_detail", "include_date"
+        }
+
+        if config is None:
+            self.config = {}
+            return
+
+        if not isinstance(config, dict):
+            raise TypeError(
+                f"`config` must be a dict or None, given `{type(config)}`"
+            )
+
+        # Validate keys
+        invalid_keys = set(config.keys()) - valid_keys
+        if invalid_keys:
+            raise ValueError(
+                f"Invalid config keys: {invalid_keys}. "
+                f"Valid keys are: {valid_keys}"
+            )
+
+        # Store config
+        self.config = config.copy()
+
+    def _set_templates(
+        self, templates: Optional[Dict[str, str]] = None
+    ):
+        """Set Jinja templates for different workflow stages.
+
+        Args:
+            templates: Dictionary mapping template types to Jinja template strings.
+                Valid keys: "task", "response", "context"
+
+        Raises:
+            TypeError: If templates is not a dict or None
+            ValueError: If invalid keys are provided
+
+        Note:
+            The "context" template applies only to context_inputs, not to context_cache.
+        """
+        # Define valid keys
+        valid_keys = {"task", "response", "context"}
+
+        if templates is None:
+            self.templates = {}
+            return
+
+        if not isinstance(templates, dict):
+            raise TypeError(
+                f"`templates` must be a dict or None, given `{type(templates)}`"
+            )
+
+        # Validate keys
+        invalid_keys = set(templates.keys()) - valid_keys
+        if invalid_keys:
+            raise ValueError(
+                f"Invalid templates keys: {invalid_keys}. "
+                f"Valid keys are: {valid_keys}"
+            )
+
+        # Validate that all values are strings or None
+        for key, template in templates.items():
+            if not isinstance(template, str) and template is not None:
+                raise TypeError(
+                    f"Template '{key}' must be a string or None, "
+                    f"given `{type(template)}`"
+                )
+
+        # Store templates
+        self.templates = templates.copy()
 
     def _execute_input_guardrail(self, model_execution_params: Dict[str, Any]):
+        input_guardrail = self.guardrails.get("input")
+        if not input_guardrail:
+            return
+
         guardrail_params = self._prepare_input_guardrail_execution(
             model_execution_params
         )
-        guardrail_response = self.input_guardrail(**guardrail_params)
+        guardrail_response = input_guardrail(**guardrail_params)
 
         if isinstance(guardrail_response, ModelResponse):
             guardrail_response = self._extract_raw_response(guardrail_response)
@@ -758,18 +873,22 @@ class Module:
             raise UnsafeUserInputError()  # TODO
 
     async def _aexecute_input_guardrail(self, model_execution_params: Dict[str, Any]):
+        input_guardrail = self.guardrails.get("input")
+        if not input_guardrail:
+            return
+
         guardrail_params = self._prepare_input_guardrail_execution(
             model_execution_params
         )
 
         # Check if guardrail has acall method or is a coroutine function
-        if hasattr(self.input_guardrail, 'acall'):
-            guardrail_response = await self.input_guardrail.acall(**guardrail_params)
-        elif inspect.iscoroutinefunction(self.input_guardrail):
-            guardrail_response = await self.input_guardrail(**guardrail_params)
+        if hasattr(input_guardrail, 'acall'):
+            guardrail_response = await input_guardrail.acall(**guardrail_params)
+        elif inspect.iscoroutinefunction(input_guardrail):
+            guardrail_response = await input_guardrail(**guardrail_params)
         else:
             # Fallback to sync call
-            guardrail_response = self.input_guardrail(**guardrail_params)
+            guardrail_response = input_guardrail(**guardrail_params)
 
         if isinstance(guardrail_response, ModelResponse):
             guardrail_response = self._extract_raw_response(guardrail_response)
@@ -778,8 +897,12 @@ class Module:
             raise UnsafeUserInputError()  # TODO
 
     def _execute_output_guardrail(self, model_response: Dict[str, Any]):
+        output_guardrail = self.guardrails.get("output")
+        if not output_guardrail:
+            return
+
         guardrail_params = self._prepare_output_guardrail_execution(model_response)
-        guardrail_response = self.output_guardrail(**guardrail_params)
+        guardrail_response = output_guardrail(**guardrail_params)
 
         if isinstance(guardrail_response, ModelResponse):
             guardrail_response = self._extract_raw_response(guardrail_response)
@@ -788,16 +911,20 @@ class Module:
             raise UnsafeModelResponseError()  # TODO
 
     async def _aexecute_output_guardrail(self, model_response: Dict[str, Any]):
+        output_guardrail = self.guardrails.get("output")
+        if not output_guardrail:
+            return
+
         guardrail_params = self._prepare_output_guardrail_execution(model_response)
 
         # Check if guardrail has acall method or is a coroutine function
-        if hasattr(self.output_guardrail, 'acall'):
-            guardrail_response = await self.output_guardrail.acall(**guardrail_params)
-        elif inspect.iscoroutinefunction(self.output_guardrail):
-            guardrail_response = await self.output_guardrail(**guardrail_params)
+        if hasattr(output_guardrail, 'acall'):
+            guardrail_response = await output_guardrail.acall(**guardrail_params)
+        elif inspect.iscoroutinefunction(output_guardrail):
+            guardrail_response = await output_guardrail(**guardrail_params)
         else:
             # Fallback to sync call
-            guardrail_response = self.output_guardrail(**guardrail_params)
+            guardrail_response = output_guardrail(**guardrail_params)
 
         if isinstance(guardrail_response, ModelResponse):
             guardrail_response = self._extract_raw_response(guardrail_response)

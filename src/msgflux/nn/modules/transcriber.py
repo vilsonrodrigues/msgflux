@@ -16,69 +16,102 @@ class Transcriber(Module):
         name: str,
         model: Union[SpeechToTextModel, ModelGateway],
         *,
-        stream: Optional[bool] = False,
-        task_multimodal_inputs: Optional[Union[str, Dict[str, str]]] = None,
+        message_fields: Optional[Dict[str, Any]] = None,
         response_mode: Optional[str] = "plain_response",
         response_template: Optional[str] = None,
-        language: Optional[str] = None,
         response_format: Optional[str] = "text",
-        timestamp_granularities: Optional[str] = None,
         prompt: Optional[str] = None,
-        model_preference: Optional[str] = None,
+        config: Optional[Dict[str, Any]] = None,
     ):
         """Args:
         name:
             Transcriber name in snake case format.
         model:
             Transcriber Model client.
-        task_multimodal_inputs:
-            Fields of the Message object that will be the multimodal input
-            to the task.
-            !!! example.
+        message_fields:
+            Dictionary mapping Message field names to their paths in the Message object.
+            Valid keys: "task_multimodal_inputs", "model_preference"
+            !!! example
+                message_fields={
+                    "task_multimodal_inputs": "audio.user",
+                    # or dict-based: "task_multimodal_inputs": {"audio": "audio.user"}
+                    "model_preference": "model.preference"
+                }
 
-                task_multimodal_inputs="audio.user" # direct path
-                task_multimodal_inputs={"audio": "audio.user"} # dict-based path
+            Field descriptions:
+            - task_multimodal_inputs: Field path for audio input (str or dict)
+            - model_preference: Field path for model preference (str, only valid with ModelGateway)
         response_mode:
             What the response should be.
             * `plain_response` (default): Returns the final agent response directly.
             * other: Write on field in Message object.
-        language:
-            Spoken language acronym.
         response_format: How the model should format the output. Options:
             * text (default)
             * json
             * srt
             * verbose_json
             * vtt
-        timestamp_granularities:
-            Enable timestamp granularities.
-            Requires `response_format=verbose_json`. Options:
-            * word
-            * segment
-            * None (default)
         prompt:
             Useful for instructing the model to follow some transcript
             generation pattern.
-        model_preference:
-            Field of the Message object that will be the model preference.
-            This is only valid if the model is of type ModelGateway.
+        config:
+            Dictionary with configuration options. Accepts any keys without validation.
+            Common options: "language", "stream", "timestamp_granularities"
+            !!! example
+                config={
+                    "language": "en",
+                    "stream": False,
+                    "timestamp_granularities": "word"
+                }
+
+            Configuration options:
+            - language: Spoken language acronym (str)
+            - stream: Transmit response on-the-fly (bool)
+            - timestamp_granularities: Enable timestamp granularities - "word", "segment", or None
+              (requires response_format=verbose_json)
         """
         super().__init__()
         self.set_name(name)
-        self._set_language(language)
         self._set_model(model)
         self._set_prompt(prompt)
-        self._set_model_preference(model_preference)
+        self._set_message_fields(message_fields)
         self._set_response_format(response_format)
         self._set_response_mode(response_mode)
         self._set_response_template(response_template)
-        self._set_stream(stream)
-        self._set_task_multimodal_inputs(task_multimodal_inputs)
-        self._set_timestamp_granularities(timestamp_granularities)
+        self._set_config(config)
 
     def forward(
         self, message: Union[bytes, str, Dict[str, str], Message], **kwargs
     ) -> Union[str, Dict[str, str], Message, ModelStreamResponse]:
+        """Execute the transcriber with the given message.
+
+        Args:
+            message: The input message, which can be:
+                - bytes: Direct audio bytes to transcribe
+                - str: Audio file path or URL
+                - dict: Audio input as dictionary
+                - Message: Message object with fields mapped via message_fields
+            **kwargs: Runtime overrides for message_fields. Can include:
+                - task_multimodal_inputs: Override multimodal inputs (e.g., "audio.path" or {"audio": "audio.path"})
+                - model_preference: Override model preference
+
+        Returns:
+            Transcribed text (str, dict, Message, or ModelStreamResponse depending on configuration)
+
+        Examples:
+            # Direct file path
+            transcriber("/path/to/audio.wav")
+
+            # Direct audio bytes
+            transcriber(audio_bytes)
+
+            # Using Message object with message_fields
+            msg = Message(audio_path="/path/to/audio.wav")
+            transcriber(msg)
+
+            # Runtime override
+            transcriber(msg, task_multimodal_inputs="custom.audio.path")
+        """
         inputs = self._prepare_task(message, **kwargs)
         model_response = self._execute_model(**inputs)
         response = self._process_model_response(model_response, message)
@@ -87,6 +120,35 @@ class Transcriber(Module):
     async def aforward(
         self, message: Union[bytes, str, Dict[str, str], Message], **kwargs
     ) -> Union[str, Dict[str, str], Message, ModelStreamResponse]:
+        """Async version of forward. Execute the transcriber asynchronously.
+
+        Args:
+            message: The input message, which can be:
+                - bytes: Direct audio bytes to transcribe
+                - str: Audio file path or URL
+                - dict: Audio input as dictionary
+                - Message: Message object with fields mapped via message_fields
+            **kwargs: Runtime overrides for message_fields. Can include:
+                - task_multimodal_inputs: Override multimodal inputs (e.g., "audio.path" or {"audio": "audio.path"})
+                - model_preference: Override model preference
+
+        Returns:
+            Transcribed text (str, dict, Message, or ModelStreamResponse depending on configuration)
+
+        Examples:
+            # Direct file path
+            await transcriber.acall("/path/to/audio.wav")
+
+            # Direct audio bytes
+            await transcriber.acall(audio_bytes)
+
+            # Using Message object with message_fields
+            msg = Message(audio_path="/path/to/audio.wav")
+            await transcriber.acall(msg)
+
+            # Runtime override
+            await transcriber.acall(msg, task_multimodal_inputs="custom.audio.path")
+        """
         inputs = self._prepare_task(message, **kwargs)
         model_response = await self._aexecute_model(**inputs)
         response = self._process_model_response(model_response, message)
@@ -111,11 +173,11 @@ class Transcriber(Module):
     ) -> Dict[str, Any]:
         model_execution_params = dotdict(
             data=data,
-            language=self.language,
+            language=self.config.get("language"),
             response_format=self.response_format,
-            timestamp_granularities=self.timestamp_granularities,
+            timestamp_granularities=self.config.get("timestamp_granularities"),
             prompt=self.prompt,
-            stream=self.stream
+            stream=self.config.get("stream", False)
         )
         if isinstance(self.model, ModelGateway) and model_preference is not None:
             model_execution_params.model_preference = model_preference
@@ -182,30 +244,27 @@ class Transcriber(Module):
                 f"`model` need be a `speech_to_text` model, given `{type(model)}`"
             )
 
-    def _set_language(self, language: Optional[str] = None):
-        if isinstance(language, str) or language is None:
-            self.register_buffer("language", language)
-        else:
+    def _set_config(self, config: Optional[Dict[str, Any]] = None):
+        """Set module configuration without key validation.
+
+        Args:
+            config: Dictionary with configuration options.
+                Accepts any keys - commonly used: "language", "stream", "timestamp_granularities"
+
+        Raises:
+            TypeError: If config is not a dict or None
+        """
+        if config is None:
+            self.config = {}
+            return
+
+        if not isinstance(config, dict):
             raise TypeError(
-                f"`language` need be a `str` or `None` given `{type(language)}"
+                f"`config` must be a dict or None, given `{type(config)}`"
             )
 
-    def _set_timestamp_granularities(self, timestamp_granularities: str):
-        if isinstance(timestamp_granularities, str):
-            supported_granularities = ["word", "segment"]
-            if timestamp_granularities in supported_granularities:
-                timestamp_granularities = [timestamp_granularities]
-            else:
-                raise ValueError(
-                    f"`timestamp_granularities` can be {supported_granularities} "
-                    f"given {timestamp_granularities}"
-                )
-        elif timestamp_granularities is not None:
-            raise TypeError(
-                "`timestamp_granularities` need be a `str` or `None` "
-                f"given `{type(timestamp_granularities)}"
-            )
-        self.register_buffer("timestamp_granularities", timestamp_granularities)
+        # Store config without validation - accepts any keys
+        self.config = config.copy()
 
     def _set_response_format(self, response_format: str):
         supported_formats = ["json", "text", "srt", "verbose_json", "vtt"]

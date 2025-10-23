@@ -16,23 +16,33 @@ class Speaker(Module):
         name: str,
         model: Union[TextToSpeechModel, ModelGateway],
         *,
-        input_guardrail: Optional[Callable] = None,
-        stream: Optional[bool] = False,
-        task_inputs: Optional[str] = None,
+        guardrails: Optional[Dict[str, Callable]] = None,
+        message_fields: Optional[Dict[str, Any]] = None,
         response_mode: Optional[str] = "plain_response",
         response_format: Optional[
             Literal["mp3", "opus", "aac", "flac", "wav", "pcm"]
         ] = "opus",
         prompt: Optional[str] = None,
+        config: Optional[Dict[str, Any]] = None,
     ):
         """Args:
         name:
             Transcriber name in snake case format.
         model:
             Transcriber Model client.
-        task_multimodal_inputs:
-            Fields of the Message object that will be the multimodal input
-            to the task.
+        guardrails:
+            Dictionary mapping guardrail types to callables.
+            Valid keys: "input" (output not supported for Speaker).
+            !!! example
+                guardrails={"input": input_checker}
+        message_fields:
+            Dictionary mapping Message field names to their paths in the Message object.
+            Valid keys: "task_inputs" (other fields not supported for Speaker).
+            !!! example
+                message_fields={"task_inputs": "input.user"}
+
+            Field description:
+            - task_inputs: Field path for task input (str)
         response_mode:
             What the response should be.
             * `plain_response` (default): Returns the final agent response directly.
@@ -41,20 +51,51 @@ class Speaker(Module):
             The format to audio in.
         prompt:
             Useful for instructing the model to follow some speak generation pattern.
+        config:
+            Dictionary with configuration options. Accepts any keys without validation.
+            Common option: "stream"
+            !!! example
+                config={"stream": False}
+
+            Configuration option:
+            - stream: Transmit response on-the-fly (bool)
         """
         super().__init__()
         self.set_name(name)
-        self._set_input_guardrail(input_guardrail)
+        self._set_guardrails(guardrails)
         self._set_model(model)
         self._set_prompt(prompt)
         self._set_response_format(response_format)
         self._set_response_mode(response_mode)
-        self._set_stream(stream)
-        self._set_task_inputs(task_inputs)
+        self._set_message_fields(message_fields)
+        self._set_config(config)
 
     def forward(
         self, message: Union[str, Message], **kwargs
     ) -> Union[bytes, ModelStreamResponse]:
+        """Execute the speaker with the given message.
+
+        Args:
+            message: The input message, which can be:
+                - str: Direct text input to convert to speech
+                - Message: Message object with fields mapped via message_fields
+            **kwargs: Runtime overrides for message_fields. Can include:
+                - task_inputs: Override field path or direct value
+
+        Returns:
+            Audio bytes or ModelStreamResponse if stream=True
+
+        Examples:
+            # Direct string input
+            speaker("Hello world")
+
+            # Using Message object with message_fields
+            msg = Message(text="Hello world")
+            speaker(msg)
+
+            # Runtime override
+            speaker(msg, task_inputs="custom.path")
+        """
         inputs = self._prepare_task(message, **kwargs)
         model_response = self._execute_model(**inputs)
         response = self._process_model_response(model_response, message)
@@ -63,6 +104,29 @@ class Speaker(Module):
     async def aforward(
         self, message: Union[str, Message], **kwargs
     ) -> Union[bytes, ModelStreamResponse]:
+        """Async version of forward. Execute the speaker asynchronously.
+
+        Args:
+            message: The input message, which can be:
+                - str: Direct text input to convert to speech
+                - Message: Message object with fields mapped via message_fields
+            **kwargs: Runtime overrides for message_fields. Can include:
+                - task_inputs: Override field path or direct value
+
+        Returns:
+            Audio bytes or ModelStreamResponse if stream=True
+
+        Examples:
+            # Direct string input
+            await speaker.acall("Hello world")
+
+            # Using Message object with message_fields
+            msg = Message(text="Hello world")
+            await speaker.acall(msg)
+
+            # Runtime override
+            await speaker.acall(msg, task_inputs="custom.path")
+        """
         inputs = self._prepare_task(message, **kwargs)
         model_response = await self._aexecute_model(**inputs)
         response = self._process_model_response(model_response, message)
@@ -72,7 +136,7 @@ class Speaker(Module):
         self, data: str, model_preference: Optional[str] = None
     ) -> Union[ModelResponse, ModelStreamResponse]:
         model_execution_params = self._prepare_model_execution(data, model_preference)
-        if self.input_guardrail is not None:
+        if self.guardrails.get("input"):
             self._execute_input_guardrail(model_execution_params)
         model_response = self.model(**model_execution_params)
         return model_response
@@ -81,7 +145,7 @@ class Speaker(Module):
         self, data: str, model_preference: Optional[str] = None
     ) -> Union[ModelResponse, ModelStreamResponse]:
         model_execution_params = self._prepare_model_execution(data, model_preference)
-        if self.input_guardrail is not None:
+        if self.guardrails.get("input"):
             await self._aexecute_input_guardrail(model_execution_params)
         model_response = await self.model.acall(**model_execution_params)
         return model_response
@@ -92,8 +156,9 @@ class Speaker(Module):
         model_execution_params = dotdict(
             data=data, response_format=self.response_format, prompt=self.prompt
         )
-        if self.stream:
-            model_execution_params.stream = self.stream
+        stream = self.config.get("stream", False)
+        if stream:
+            model_execution_params.stream = stream
         if isinstance(self.model, ModelGateway) and model_preference is not None:
             model_execution_params.model_preference = model_preference
         return model_execution_params
@@ -162,3 +227,25 @@ class Speaker(Module):
             raise TypeError(
                 f"`response_format` need be a str or given `{type(response_format)}"
             )
+
+    def _set_config(self, config: Optional[Dict[str, Any]] = None):
+        """Set module configuration without key validation.
+
+        Args:
+            config: Dictionary with configuration options.
+                Accepts any keys - commonly used: "stream"
+
+        Raises:
+            TypeError: If config is not a dict or None
+        """
+        if config is None:
+            self.config = {}
+            return
+
+        if not isinstance(config, dict):
+            raise TypeError(
+                f"`config` must be a dict or None, given `{type(config)}`"
+            )
+
+        # Store config without validation - accepts any keys
+        self.config = config.copy()

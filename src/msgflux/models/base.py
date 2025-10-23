@@ -6,7 +6,10 @@ from msgflux._private.client import BaseClient
 
 class BaseModel(BaseClient):
     msgflux_type = "model"
-    to_ignore = ["_api_key", "model", "processor", "client", "_response_cache"]
+    to_ignore = [
+        "_api_key", "model", "processor", "client", "aclient", "_response_cache"
+    ]
+    batch_support: bool = False  # Whether model supports batch processing
 
     def instance_type(self) -> Mapping[str, str]:
         return {"model_type": self.model_type}

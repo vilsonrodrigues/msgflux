@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 from typing import (
-    Any, Callable, List, Literal, Mapping, Optional, Union, Tuple, Type, cast
+    Any, Callable, Dict, List, Mapping, Optional, Union, Tuple, Type, cast
 )
 
 import msgspec
@@ -60,34 +60,21 @@ class Agent(Module):
         expected_output: Optional[str] = None,
         examples: Optional[Union[str, List[Union[Example, Mapping[str, Any]]]]] = None,
         system_extra_message: Optional[str] = None,
-        include_date: Optional[bool] = False,
-        stream: Optional[bool] = False,
-        input_guardrail: Optional[Callable] = None,
-        output_guardrail: Optional[Callable] = None,
-        task_inputs: Optional[Union[str, Mapping[str, str]]] = None,
-        task_multimodal_inputs: Optional[Mapping[str, List[str]]] = None,
-        task_messages: Optional[str] = None,
-        task_template: Optional[str] = None,
-        context_inputs: Optional[Union[str, List[str]]] = None,
+        guardrails: Optional[Dict[str, Callable]] = None,
+        message_fields: Optional[Dict[str, Any]] = None,
+        config: Optional[Dict[str, Any]] = None,
+        templates: Optional[Dict[str, str]] = None,
         context_cache: Optional[str] = None,
-        context_inputs_template: Optional[str] = None,
-        model_preference: Optional[str] = None,
         prefilling: Optional[str] = None,
         generation_schema: Optional[msgspec.Struct] = None,
         typed_parser: Optional[str] = None,
         response_mode: Optional[str] = "plain_response",
         tools: Optional[List[Callable]] = None,
-        tool_choice: Optional[str] = None,
         mcp_servers: Optional[List[Mapping[str, Any]]] = None,
-        vars: Optional[str] = None,
-        response_template: Optional[str] = None,
         fixed_messages: Optional[List[Mapping[str, Any]]] = None,
         signature: Optional[Union[str, Signature]] = None,
-        return_model_state: Optional[bool] = False,
-        verbose: Optional[bool] = False,
         description: Optional[str] = None,
         annotations: Optional[Mapping[str, type]] = None,
-        image_detail: Optional[Literal["high", "low"]] = None,
     ):
         """Args:
         name:
@@ -104,39 +91,69 @@ class Agent(Module):
             Examples of inputs, reasoning and outputs.
         system_extra_message:
             An extra message in system prompt.
-        include_date:
-            If True, include the current date in the system prompt.
-        stream:
-            If the response is transmitted on-fly.
-        input_guardrail:
-            Guardrail to input.
-        output_guardrail:
-            Guardrail to output.
-        task_inputs:
-            Field of the Message object that will be the input to the task.
-        task_multimodal_inputs:
-            Map datatype (image, video, audio, file) to field of the Message object.
+        guardrails:
+            Dictionary mapping guardrail types to callables.
+            Valid keys: "input", "output"
             !!! example
-                # single audio
-                task_multimodal_inputs={"audio": "audio.user"}
-                # multi image
-                task_multimodal_inputs={"image": ["images.user", "image.mask"]}
-                # single video
-                task_multimodal_inputs={"video": "video.path"}
-        task_messages:
-            Field of the Message object that will be a list of chats in
-            ChatML format.
-        task_template:
-            A Jinja template to format task.
-        context_inputs:
-            Field of the Message object that will be the context to the task.
+                guardrails={"input": input_checker, "output": output_checker}
+        message_fields:
+            Dictionary mapping Message field names to their paths in the Message object.
+            Valid keys: "task_inputs", "task_multimodal_inputs", "task_messages",
+            "context_inputs", "model_preference", "vars"
+            !!! example
+                message_fields={
+                    "task_inputs": "input.user",
+                    "task_multimodal_inputs": {"audio": "audio.user"},
+                    "task_messages": "messages.history",
+                    "context_inputs": "context.data",
+                    "model_preference": "model.preference",
+                    "vars": "vars.data"
+                }
+
+            Field descriptions:
+            - task_inputs: Field path for task input (str, dict, or tuple)
+            - task_multimodal_inputs: Map datatype (image, video, audio, file) to field paths
+            - task_messages: Field path for list of chats in ChatML format
+            - context_inputs: Field path for context (str or list of str)
+            - model_preference: Field path for model preference (str, only valid with ModelGateway)
+            - vars: Field path for inputs to templates and tools (str)
+        config:
+            Dictionary with configuration options.
+            Valid keys: "verbose", "return_model_state", "tool_choice",
+            "stream", "image_detail", "include_date"
+            !!! example
+                config={
+                    "verbose": True,
+                    "return_model_state": False,
+                    "tool_choice": "auto",
+                    "stream": False,
+                    "image_detail": "high",
+                    "include_date": False
+                }
+
+            Configuration options:
+            - verbose: Print model output and tool calls to console (bool)
+            - return_model_state: Return dict with model_state and response (bool)
+            - tool_choice: Control tool selection ("auto", "required", or function name)
+            - stream: Transmit response on-the-fly (bool)
+            - image_detail: Image processing detail level ("high" or "low")
+            - include_date: Include current date in system prompt (bool)
+        templates:
+            Dictionary mapping template types to Jinja template strings.
+            Valid keys: "task", "response", "context"
+            !!! example
+                templates={
+                    "task": "Who was {{person}}?",
+                    "response": "{{final_answer}}",
+                    "context": "Context: {{context}}"
+                }
+
+            Template descriptions:
+            - task: Formats the task/prompt sent to the model
+            - response: Formats the model's response
+            - context: Formats context_inputs (does NOT apply to context_cache)
         context_cache:
             A fixed context.
-        context_inputs_template:
-            A template to context inputs.
-        model_preference:
-            Field of the Message object that will be the model preference.
-            This is only valid if the model is of type ModelGateway.
         prefilling:
             Forces an initial message from the model. From that message it
             will continue its response from there.
@@ -149,19 +166,8 @@ class Agent(Module):
             What the response should be.
             * `plain_response` (default): Returns the final agent response directly.
             * other: Write on field in Message object.
-        vars:
-            Field of the Message object that will be the inputs to templates and tools.
         tools:
             A list of callable objects.
-        tool_choice:
-            By default the model will determine when and how many tools to use.
-            You can force specific behavior with the tool_choice parameter.
-                1. auto:
-                    Call zero, one, or multiple functions. tool_choice: "auto"
-                2. required:
-                    Call one or more functions. tool_choice: "required"
-                3. Forced Function:
-                    Call exactly one specific function. E.g. "add".
         mcp_servers:
             List of MCP (Model Context Protocol) server configurations.
             Each config should contain:
@@ -179,8 +185,6 @@ class Agent(Module):
                     "include_tools": ["read_file", "write_file"],
                     "tool_config": {"read_file": {"inject_vars": ["context"]}}
                 }]
-        response_template:
-            A Jinja template to format response.
         fixed_messages:
             A fixed list of chats in ChatML format.
         signature:
@@ -188,35 +192,33 @@ class Agent(Module):
             a generation_schema, instructions and examples (both if passed).
             Can be combined with standard generation_schemas like `ReAct` and
             `ChainOfThought`. Can also be combined with `typed_parser`.
-        return_model_state:
-            If True, returns a dictionary containing model_state and response.
-        verbose:
-            If True, prints the model output and tool calls and their responses
-            to the console.
         description:
             The Agent description. It's useful when using an agent-as-a-tool.
         annotations
             Define the input and output annotations to use the agent-as-a-function.
-        image_detail:
-            Controls the detail level for image processing.
-            "high" enables detailed patch analysis, "low" uses lower resolution.
         """
         if annotations is None:
             annotations = {"message": str, "return": str}
         super().__init__()
 
+        # Extract stream from config if provided
+        stream = config.get("execution", {}).get("stream", False) if config else False
+
         if stream is True:
             if generation_schema is not None:
                 raise ValueError("`generation_schema` is not `stream=True` compatible")
 
-            if output_guardrail is not None:
-                raise ValueError("`output_guardrail` is not `stream=True` compatible")
+            if guardrails is not None and "output" in guardrails:
+                raise ValueError("`guardrails['output']` is not `stream=True` compatible")
 
-            if response_template is not None:
-                raise ValueError("`response_template` is not `stream=True` compatible")
+            if templates is not None and templates.get("response") is not None:
+                raise ValueError("`templates['response']` is not `stream=True` compatible")
 
             if typed_parser is not None:
                 raise ValueError("`typed_parser` is not `stream=True` compatible")
+
+        # Extract task_template from templates if provided
+        task_template = templates.get("task") if templates else None
 
         if signature is not None:
             signature_params = dotdict(
@@ -230,44 +232,51 @@ class Agent(Module):
                 signature_params.generation_schema = generation_schema
             self._set_signature(**signature_params)
         else:
-            self._set_typed_parser(typed_parser)            
+            self._set_typed_parser(typed_parser)
             self._set_examples(examples)
             self._set_generation_schema(generation_schema)
-            self._set_expected_output(expected_output)            
+            self._set_expected_output(expected_output)
             self._set_instructions(instructions)
             self._set_system_message(system_message)
-            self._set_task_template(task_template)            
+            self._set_task_template(task_template)
 
         self.set_name(name)
         self.set_description(description)
         self.set_annotations(annotations)
         self._set_context_cache(context_cache)
-        self._set_context_inputs(context_inputs)
-        self._set_context_inputs_template(context_inputs_template)
         self._set_fixed_messages(fixed_messages)
-        self._set_input_guardrail(input_guardrail)
-        self._set_output_guardrail(output_guardrail)
-        self._set_task_messages(task_messages)
+        self._set_guardrails(guardrails)
+        self._set_message_fields(message_fields)
+        self._set_templates(templates)
+        self._set_config(config)
         self._set_model(model)
-        self._set_model_preference(model_preference)
         self._set_prefilling(prefilling)
         self._set_system_extra_message(system_extra_message)
-        self._set_include_date(include_date)
         self._set_response_mode(response_mode)
-        self._set_return_model_state(return_model_state)
-        self._set_stream(stream)
-        self._set_response_template(response_template)
-        self._set_task_multimodal_inputs(task_multimodal_inputs)
-        self._set_task_inputs(task_inputs)
-        self._set_vars(vars)
-        self._set_tool_choice(tool_choice)
         self._set_tools(tools, mcp_servers)
-        self._set_verbose(verbose)
-        self._set_image_detail(image_detail)
 
     def forward(
         self, message: Optional[Union[str, Mapping[str, Any], Message]] = None, **kwargs
     ) -> Union[str, Mapping[str, None], ModelStreamResponse, Message]:
+        """Execute the agent with the given message.
+
+        Args:
+            message: The input message, which can be:
+                - str: Direct task input (used as task_inputs)
+                - Message: Message object with fields mapped via message_fields
+                - dict: Task inputs as a dictionary
+                - None: When using task_template without dynamic inputs
+            **kwargs: Runtime overrides for message_fields. Can include:
+                - task_inputs: Override field path or direct value
+                - task_multimodal_inputs: Override multimodal inputs
+                - task_messages: Override chat messages
+                - context_inputs: Override context
+                - model_preference: Override model preference
+                - vars: Override template/tool variables
+
+        Returns:
+            Agent response (str, Message, or ModelStreamResponse depending on configuration)
+        """
         inputs = self._prepare_task(message, **kwargs)
         model_response = self._execute_model(prefilling=self.prefilling, **inputs)
         response = self._process_model_response(message, model_response, **inputs)
@@ -276,6 +285,7 @@ class Agent(Module):
     async def aforward(
         self, message: Optional[Union[str, Mapping[str, Any], Message]] = None, **kwargs
     ) -> Union[str, Mapping[str, None], ModelStreamResponse, Message]:
+        """Async version of forward."""
         inputs = self._prepare_task(message, **kwargs)
         model_response = await self._aexecute_model(prefilling=self.prefilling, **inputs)
         response = await self._aprocess_model_response(message, model_response, **inputs)
@@ -292,9 +302,9 @@ class Agent(Module):
             model_state=model_state, prefilling=prefilling,
             model_preference=model_preference, vars=vars
         )
-        if self.input_guardrail:
+        if self.guardrails.get("input"):
             self._execute_input_guardrail(model_execution_params)
-        if self.verbose:
+        if self.config.get("verbose", False):
             cprint(f"[{self.name}][call_model]", bc="br1", ls="b")
         model_response = self.model(**model_execution_params)
         return model_response
@@ -310,9 +320,9 @@ class Agent(Module):
             model_state=model_state, prefilling=prefilling,
             model_preference=model_preference, vars=vars
         )
-        if self.input_guardrail:
+        if self.guardrails.get("input"):
             await self._aexecute_input_guardrail(model_execution_params)
-        if self.verbose:
+        if self.config.get("verbose", False):
             cprint(f"[{self.name}][call_model]", bc="br1", ls="b")
         model_response = await self.model.acall(**model_execution_params)
         return model_response
@@ -339,7 +349,7 @@ class Agent(Module):
         if not tool_schemas:
             tool_schemas = None
 
-        tool_choice = self.tool_choice
+        tool_choice = self.config.get("tool_choice")
 
         if is_subclass_of(self.generation_schema, ToolFlowControl) and tool_schemas:
             tools_template = self.generation_schema.tools_template
@@ -356,7 +366,7 @@ class Agent(Module):
             messages=agent_state,
             system_prompt=system_prompt or None,
             prefilling=prefilling,
-            stream=self.stream,
+            stream=self.config.get("stream", False),
             tool_schemas=tool_schemas,
             tool_choice=tool_choice,
             generation_schema=self.generation_schema,
@@ -468,7 +478,7 @@ class Agent(Module):
                 actions = step.actions
                 reasoning = step.thought
 
-                if self.verbose:
+                if self.config.get("verbose", False):
                     repr = f"[{self.name}][tool_calls_reasoning] {reasoning}"
                     cprint(repr, bc="br2", ls="b")
 
@@ -528,7 +538,7 @@ class Agent(Module):
                 actions = step.actions
                 reasoning = step.thought
 
-                if self.verbose:
+                if self.config.get("verbose", False):
                     repr = f"[{self.name}][tool_calls_reasoning] {reasoning}"
                     cprint(repr, bc="br2", ls="b")
 
@@ -583,7 +593,7 @@ class Agent(Module):
                 raw_response = model_response.data
                 reasoning = raw_response.reasoning
 
-                if self.verbose:
+                if self.config.get("verbose", False):
                     if reasoning:
                         repr = f"[{self.name}][tool_calls_reasoning] {reasoning}"
                         cprint(repr, bc="br2", ls="b")
@@ -632,7 +642,7 @@ class Agent(Module):
                 raw_response = model_response.data
                 reasoning = raw_response.reasoning
 
-                if self.verbose:
+                if self.config.get("verbose", False):
                     if reasoning:
                         repr = f"[{self.name}][tool_calls_reasoning] {reasoning}"
                         cprint(repr, bc="br2", ls="b")
@@ -669,7 +679,7 @@ class Agent(Module):
         model_state: List[Mapping[str, Any]],
         vars: Mapping[str, Any],
     ) -> ToolResponses:
-        if self.verbose:
+        if self.config.get("verbose", False):
             for call in tool_callings:
                 repr = f"[{self.name}][tool_call] {call[1]}: {call[2]}"
                 cprint(repr, bc="br2", ls="b")
@@ -678,7 +688,7 @@ class Agent(Module):
             model_state=model_state,
             vars=vars,
         )
-        if self.verbose:
+        if self.config.get("verbose", False):
             repr = f"[{self.name}][tool_responses]"
             if tool_results.return_directly:
                 repr += " return directly"
@@ -696,7 +706,7 @@ class Agent(Module):
         vars: Mapping[str, Any],
     ) -> ToolResponses:
         """Async version of _process_tool_call."""
-        if self.verbose:
+        if self.config.get("verbose", False):
             for call in tool_callings:
                 repr = f"[{self.name}][tool_call] {call[1]}: {call[2]}"
                 cprint(repr, bc="br2", ls="b")
@@ -705,7 +715,7 @@ class Agent(Module):
             model_state=model_state,
             vars=vars,
         )
-        if self.verbose:
+        if self.config.get("verbose", False):
             repr = f"[{self.name}][tool_responses]"
             if tool_results.return_directly:
                 repr += " return directly"
@@ -727,11 +737,11 @@ class Agent(Module):
         formatted_response = None
         if not isinstance(raw_response, ModelStreamResponse):
             if response_type == "text_generation" or "structured" in response_type:
-                if self.verbose:
+                if self.config.get("verbose", False):
                     cprint(f"[{self.name}][response] {raw_response}", bc="y", ls="b")
-                if self.output_guardrail:
+                if self.guardrails.get("output"):
                     self._execute_output_guardrail(raw_response)
-                if self.response_template:
+                if self.templates.get("response"):
                     if isinstance(raw_response, str):
                         pre_response = self._format_response_template(vars)
                         formatted_response = self._format_template(
@@ -744,7 +754,7 @@ class Agent(Module):
                         )
 
         response = formatted_response or raw_response
-        if self.return_model_state:
+        if self.config.get("return_model_state", False):
             if response_type == "tool_responses":
                 response.model_state = model_state
             else:
@@ -763,11 +773,11 @@ class Agent(Module):
         formatted_response = None
         if not isinstance(raw_response, ModelStreamResponse):
             if response_type == "text_generation" or "structured" in response_type:
-                if self.verbose:
+                if self.config.get("verbose", False):
                     cprint(f"[{self.name}][response] {raw_response}", bc="y", ls="b")
-                if self.output_guardrail:
+                if self.guardrails.get("output"):
                     await self._aexecute_output_guardrail(raw_response)
-                if self.response_template:
+                if self.templates.get("response"):
                     if isinstance(raw_response, str):
                         pre_response = self._format_response_template(vars)
                         formatted_response = self._format_template(
@@ -780,7 +790,7 @@ class Agent(Module):
                         )
 
         response = formatted_response or raw_response
-        if self.return_model_state:
+        if self.config.get("return_model_state", False):
             if response_type == "tool_responses":
                 response.model_state = model_state
             else:
@@ -859,11 +869,11 @@ class Agent(Module):
         else:
             task_inputs = message
 
-        if task_inputs is None and self.task_template is None:
+        if task_inputs is None and self.templates.get("task") is None:
             return None
 
-        if self.task_template:
-            if task_inputs:       
+        if self.templates.get("task"):
+            if task_inputs:
                 if isinstance(task_inputs, str):
                     pre_task = self._format_task_template(vars)
                     task_content = self._format_template(task_inputs, pre_task)
@@ -877,7 +887,7 @@ class Agent(Module):
                 if vars:
                     task_content = self._format_task_template(vars)
                 else:
-                    task_content = self.task_template
+                    task_content = self.templates.get("task")
         else:
             task_content = task_inputs
             if isinstance(task_content, Mapping): # dict -> str
@@ -913,15 +923,15 @@ class Agent(Module):
             context_inputs = self._extract_message_values(self.context_inputs, message)
 
         if context_inputs is not None:
-            if self.context_inputs_template:
+            if self.templates.get("context"):
                 if isinstance(context_inputs, Mapping):                
                     context_inputs.update(vars)
                     msg_context = self._format_template(
-                        context_inputs, self.context_inputs_template
+                        context_inputs, self.templates.get("context")
                     )
                 else:
                     pre_msg_context = self._format_template(
-                        vars, self.context_inputs_template
+                        vars, self.templates.get("context")
                     )
                     msg_context = self._format_template(
                         context_inputs, pre_msg_context
@@ -998,7 +1008,7 @@ class Agent(Module):
                 mime_type = "image/jpeg"  # Fallback
             encoded_image = f"data:{mime_type};base64,{encoded_image}"
 
-        return ChatBlock.image(encoded_image, detail=self.image_detail)
+        return ChatBlock.image(encoded_image, detail=self.config.get("image_detail"))
 
     def _format_video_input(self, video_source: str) -> Optional[Mapping[str, Any]]:
         """Formats the video input for the model."""
@@ -1101,16 +1111,6 @@ class Agent(Module):
                 f"given `{type(context_cache)}`"
             )
 
-    def _set_context_inputs_template(
-        self, context_inputs_template: Optional[str] = None
-    ):
-        if isinstance(context_inputs_template, str) or context_inputs_template is None:
-            self.register_buffer("context_inputs_template", context_inputs_template)
-        else:
-            raise TypeError(
-                "`context_inputs_template` requires a string or None"
-                f"given `{type(context_inputs_template)}`"
-            )
 
     def _set_prefilling(self, prefilling: Optional[str] = None):
         if isinstance(prefilling, str) or prefilling is None:
@@ -1168,14 +1168,6 @@ class Agent(Module):
                 f"`model` need be a `chat completion` model, given `{type(model)}`"
             )
 
-    def _set_tool_choice(self, tool_choice: Optional[str] = None):
-        if isinstance(tool_choice, str) or tool_choice is None:
-            self.register_buffer("tool_choice", tool_choice)
-        else:
-            raise TypeError(
-                f"`tool_choice` need be a str or None given `{type(tool_choice)}`"
-            )
-
     def _set_system_message(self, system_message: Optional[str] = None):
         if isinstance(system_message, str) or system_message is None:
             if (
@@ -1192,14 +1184,6 @@ class Agent(Module):
             raise TypeError(
                 "`system_message` requires a string or None "
                 f"given `{type(system_message)}`"
-            )
-
-    def _set_include_date(self, include_date: Optional[bool] = False): # noqa: FBT001, FBT002
-        if isinstance(include_date, bool):
-            self.register_buffer("include_date", include_date)
-        else:
-            raise TypeError(
-                f"`include_date` requires a bool given `{type(include_date)}`"
             )
 
     def _set_instructions(self, instructions: Optional[str] = None):
@@ -1257,17 +1241,6 @@ class Agent(Module):
                 f"`examples` requires a List[Example] or None given `{type(examples)}`"
             )
 
-    def _set_return_model_state(
-        self, return_model_state: Optional[bool] = False  # noqa: FBT001, FBT002
-    ):
-        if isinstance(return_model_state, bool):
-            self.register_buffer("return_model_state", return_model_state)
-        else:
-            raise TypeError(
-                "`return_model_state` requires a bool "
-                f"given `{type(return_model_state)}`"
-            )
-
     def _set_task_messages(self, task_messages: Optional[str] = None):
         if isinstance(task_messages, str) or task_messages is None:
             self.register_buffer("task_messages", task_messages)
@@ -1294,6 +1267,57 @@ class Agent(Module):
                 "`vars` requires a string or None "
                 f"given `{type(vars)}`"
             )
+
+    def _set_message_fields(
+        self, message_fields: Optional[Dict[str, Any]] = None
+    ):
+        """Set message field mappings for Agent.
+
+        Args:
+            message_fields: Dictionary mapping field names to their values.
+                Valid keys: "task_inputs", "task_multimodal_inputs", "task_messages",
+                "context_inputs", "model_preference", "vars"
+
+        Raises:
+            TypeError: If message_fields is not a dict or None
+            ValueError: If invalid keys are provided
+        """
+        # Define valid keys for Agent class
+        valid_keys = {
+            "task_inputs", "task_multimodal_inputs", "task_messages",
+            "context_inputs", "model_preference", "vars"
+        }
+
+        if message_fields is None:
+            # Set all fields to None
+            self._set_task_inputs(None)
+            self._set_task_multimodal_inputs(None)
+            self._set_model_preference(None)
+            self._set_context_inputs(None)
+            self._set_task_messages(None)
+            self._set_vars(None)
+            return
+
+        if not isinstance(message_fields, dict):
+            raise TypeError(
+                f"`message_fields` must be a dict or None, given `{type(message_fields)}`"
+            )
+
+        # Validate keys
+        invalid_keys = set(message_fields.keys()) - valid_keys
+        if invalid_keys:
+            raise ValueError(
+                f"Invalid message_fields keys: {invalid_keys}. "
+                f"Valid keys are: {valid_keys}"
+            )
+
+        # Set each field using its setter, defaulting to None if not provided
+        self._set_task_inputs(message_fields.get("task_inputs"))
+        self._set_task_multimodal_inputs(message_fields.get("task_multimodal_inputs"))
+        self._set_model_preference(message_fields.get("model_preference"))
+        self._set_context_inputs(message_fields.get("context_inputs"))
+        self._set_task_messages(message_fields.get("task_messages"))
+        self._set_vars(message_fields.get("vars"))
 
     def _set_typed_parser(self, typed_parser: Optional[str] = None):
         if isinstance(typed_parser, str) or typed_parser is None:
@@ -1387,17 +1411,6 @@ class Agent(Module):
             # examples
             self._set_examples(examples)
 
-    def _set_image_detail(
-        self, image_detail: Optional[Literal["high", "low"]] = None
-    ):
-        if image_detail in ("high", "low", None):
-            self.register_buffer("image_detail", image_detail)
-        else:
-            raise ValueError(
-                "`image_detail` must be 'high', 'low' or None "
-                f"given `{image_detail}`"
-            )
-
     def _get_system_prompt(
         self, vars: Optional[Mapping[str, Any]] = None
     ) -> str:
@@ -1412,7 +1425,7 @@ class Agent(Module):
             system_extra_message=self.system_extra_message,
         )
 
-        if self.include_date:
+        if self.config.get("include_date", False):
             now = datetime.now(tz=timezone.utc)
             template_inputs.current_date = now.strftime("%m/%d/%Y")
 

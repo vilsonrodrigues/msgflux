@@ -39,33 +39,35 @@ class MediaMaker(Module):
         name: str,
         model: MEDIA_MODEL_TYPES,
         *,
-        input_guardrail: Optional[Callable] = None,
-        output_guardrail: Optional[Callable] = None,
-        task_inputs: Optional[str] = None,
-        task_multimodal_inputs: Optional[Dict[str, str]] = None,
+        guardrails: Optional[Dict[str, Callable]] = None,
+        message_fields: Optional[Dict[str, Any]] = None,
         response_format: Optional[Literal["base64", "url"]] = None,
         response_mode: Optional[str] = "plain_response",
         negative_prompt: Optional[str] = None,
-        fps: Optional[int] = None,
-        duration_seconds: Optional[int] = None,
-        aspect_ratio: Optional[str] = None,
-        n: Optional[int] = None,
-        execution_kwargs: Optional[Dict[str, Any]] = None,
+        config: Optional[Dict[str, Any]] = None,
     ):
         """Args:
         name:
             Designer name in snake case format.
         model:
             Designer Model client.
-        input_guardrail:
-            Guardrail to input.
-        output_guardrail:
-            Guardrail to output.
-        task_inputs:
-            Fields of the Message object that will be the input to the task.
-        task_multimodal_inputs:
-            Fields of the Message object that will be the multimodal input
-            to the task.
+        guardrails:
+            Dictionary mapping guardrail types to callables.
+            Valid keys: "input", "output"
+            !!! example
+                guardrails={"input": input_checker, "output": output_checker}
+        message_fields:
+            Dictionary mapping Message field names to their paths in the Message object.
+            Valid keys: "task_inputs", "task_multimodal_inputs"
+            !!! example
+                message_fields={
+                    "task_inputs": "prompt.text",
+                    "task_multimodal_inputs": {"image": "image.input"}
+                }
+
+            Field descriptions:
+            - task_inputs: Field path for task input (str)
+            - task_multimodal_inputs: Map datatypes to field paths (dict)
         response_format:
             Data output format.
         response_mode:
@@ -74,40 +76,83 @@ class MediaMaker(Module):
             * other: Write on field in Message object.
         negative_prompt:
             Instructions on what not to have.
-        fps:
-            Number of frames-per-secound in videos.
-        duration_seconds:
-            Video duration in secounds.
-        n:
-            Number of content to generate.
-        aspect_ratio:
-            Aspect ratio to vision content.
-        execution_kwargs:
-            Extra kwargs to model execution.
+        config:
+            Dictionary with configuration options. Accepts any keys without validation.
+            Common options: "fps", "duration_seconds", "aspect_ratio", "n"
+            Any additional parameters will be passed directly to model execution.
+            !!! example
+                config={
+                    "fps": 24,
+                    "duration_seconds": 5,
+                    "aspect_ratio": "16:9",
+                    "n": 1
+                }
         """
         super().__init__()
         self.set_name(name)
-        self._set_aspect_ratio(aspect_ratio)
-        self._set_duration_seconds(duration_seconds)
-        self._set_execution_kwargs(execution_kwargs)
-        self._set_fps(fps)
-        self._set_input_guardrail(input_guardrail)
-        self._set_output_guardrail(output_guardrail)
+        self._set_guardrails(guardrails)
         self._set_model(model)
-        self._set_n(n)
         self._set_negative_prompt(negative_prompt)
         self._set_response_mode(response_mode)
         self._set_response_format(response_format)
-        self._set_task_inputs(task_inputs)
-        self._set_task_multimodal_inputs(task_multimodal_inputs)
+        self._set_message_fields(message_fields)
+        self._set_config(config)
 
     def forward(self, message: Union[str, Message], **kwargs) -> Union[str, Message]:
+        """Execute the media maker with the given message.
+
+        Args:
+            message: The input message, which can be:
+                - str: Direct prompt for media generation
+                - Message: Message object with fields mapped via message_fields
+            **kwargs: Runtime overrides for message_fields. Can include:
+                - task_inputs: Override field path or direct value
+                - task_multimodal_inputs: Override multimodal inputs (e.g., {"image": "path"})
+
+        Returns:
+            Generated media content (str or Message depending on response_mode)
+
+        Examples:
+            # Direct string input
+            media_maker("A beautiful sunset over mountains")
+
+            # Using Message object with message_fields
+            msg = Message(prompt="A beautiful sunset")
+            media_maker(msg)
+
+            # Runtime override with multimodal input
+            media_maker(msg, task_multimodal_inputs={"image": "reference.jpg"})
+        """
         inputs = self._prepare_task(message, **kwargs)
         model_response = self._execute_model(**inputs)
         response = self._process_model_response(model_response, message)
         return response
 
     async def aforward(self, message: Union[str, Message], **kwargs) -> Union[str, Message]:
+        """Async version of forward. Execute the media maker asynchronously.
+
+        Args:
+            message: The input message, which can be:
+                - str: Direct prompt for media generation
+                - Message: Message object with fields mapped via message_fields
+            **kwargs: Runtime overrides for message_fields. Can include:
+                - task_inputs: Override field path or direct value
+                - task_multimodal_inputs: Override multimodal inputs (e.g., {"image": "path"})
+
+        Returns:
+            Generated media content (str or Message depending on response_mode)
+
+        Examples:
+            # Direct string input
+            await media_maker.acall("A beautiful sunset over mountains")
+
+            # Using Message object with message_fields
+            msg = Message(prompt="A beautiful sunset")
+            await media_maker.acall(msg)
+
+            # Runtime override with multimodal input
+            await media_maker.acall(msg, task_multimodal_inputs={"image": "reference.jpg"})
+        """
         inputs = self._prepare_task(message, **kwargs)
         model_response = await self._aexecute_model(**inputs)
         response = self._process_model_response(model_response, message)
@@ -123,7 +168,7 @@ class MediaMaker(Module):
         model_execution_params = self._prepare_model_execution(
             prompt, image, mask, model_preference
         )
-        if self.input_guardrail is not None:
+        if self.guardrails.get("input"):
             self._execute_input_guardrail(model_execution_params)
         model_response = self.model(**model_execution_params)
         return model_response
@@ -138,7 +183,7 @@ class MediaMaker(Module):
         model_execution_params = self._prepare_model_execution(
             prompt, image, mask, model_preference
         )
-        if self.input_guardrail is not None:
+        if self.guardrails.get("input"):
             await self._aexecute_input_guardrail(model_execution_params)
         model_response = await self.model.acall(**model_execution_params)
         return model_response
@@ -150,7 +195,10 @@ class MediaMaker(Module):
         mask: Optional[str] = None,
         model_preference: Optional[str] = None,
     ) -> Dict[str, Any]:
-        model_execution_params = self.execution_kwargs or dotdict()
+        # Start with config (contains fps, duration_seconds, aspect_ratio, n, and any other params)
+        model_execution_params = dotdict(self.config) if self.config else dotdict()
+
+        # Add required parameters
         model_execution_params.prompt = prompt
         if image:
             model_execution_params.image = image
@@ -158,16 +206,9 @@ class MediaMaker(Module):
             model_execution_params.mask = mask
         if model_preference:
             model_execution_params.model_preference = model_preference
-        if self.aspect_ratio:
-            model_execution_params.aspect_ratio = self.aspect_ratio
-        if self.duration_seconds:
-            model_execution_params.duration_seconds = self.duration_seconds
-        if self.fps:
-            model_execution_params.fps = self.fps
-        if self.n:
-            model_execution_params.n = self.n
         if self.negative_prompt:
             model_execution_params.negative_prompt = self.negative_prompt
+
         return model_execution_params
 
     def _prepare_guardrail_execution(
@@ -281,32 +322,24 @@ class MediaMaker(Module):
                 f"`{type(negative_prompt)}`"
             )
 
-    def _set_fps(self, fps: Optional[int] = None):
-        if isinstance(fps, int) or fps is None:
-            self.register_buffer("fps", fps)
-        else:
-            raise TypeError(f"`fps` need be an int or None given `{type(fps)}`")
+    def _set_config(self, config: Optional[Dict[str, Any]] = None):
+        """Set module configuration without key validation.
 
-    def _set_duration_seconds(self, duration_seconds: Optional[int] = None):
-        if isinstance(duration_seconds, int) or duration_seconds is None:
-            self.register_buffer("duration_seconds", duration_seconds)
-        else:
+        Args:
+            config: Dictionary with configuration options.
+                Accepts any keys - all parameters will be passed to model execution.
+
+        Raises:
+            TypeError: If config is not a dict or None
+        """
+        if config is None:
+            self.config = {}
+            return
+
+        if not isinstance(config, dict):
             raise TypeError(
-                "`duration_seconds` need be an int or None given "
-                f"`{type(duration_seconds)}`"
+                f"`config` must be a dict or None, given `{type(config)}`"
             )
 
-    def _set_aspect_ratio(self, aspect_ratio: Optional[str] = None):
-        if isinstance(aspect_ratio, str) or aspect_ratio is None:
-            self.register_buffer("aspect_ratio", aspect_ratio)
-        else:
-            raise TypeError(
-                "`aspect_ratio` need be an str or None given "
-                f"`{type(aspect_ratio)}`"
-            )
-
-    def _set_n(self, n: Optional[int] = None):
-        if isinstance(n, int) or n is None:
-            self.register_buffer("n", n)
-        else:
-            raise TypeError(f"`n` need be an int or None given `{type(n)}`")
+        # Store config without validation - accepts any keys
+        self.config = config.copy()
