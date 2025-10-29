@@ -39,13 +39,15 @@ class Spans:
         message: Optional[Message] = None,  # TODO: pass metadata directly
         encoded_state_dict: Optional[bytes] = None,
     ):
+        from msgflux.telemetry.attributes import MsgTraceAttributes
+
         attributes = {}
-        attributes["msgflux.version"] = msgflux_version
-        attributes["msgflux.workflow.name"] = module_name
+        attributes[MsgTraceAttributes.SERVICE_VERSION] = msgflux_version
+        attributes[MsgTraceAttributes.WORKFLOW_NAME] = module_name
         if message:
-            attributes["msgflux.metadata"] = message.get("metadata")
+            attributes["msgflux.metadata"] = message.get("metadata")  # Framework-specific
         if encoded_state_dict:
-            attributes["msgflux.state_dict"] = encoded_state_dict
+            attributes["msgflux.state_dict"] = encoded_state_dict  # Framework-specific
         if envs.telemetry_capture_platform:
             attributes["platform"] = platform.platform()
             attributes["platform.version"] = platform.version()
@@ -58,21 +60,35 @@ class Spans:
 
     @contextmanager
     def init_module(self, module_name: str):
+        from msgflux.telemetry.attributes import MsgTraceAttributes
+
         attributes = {}
-        attributes["msgflux.nn.module.name"] = module_name
+        attributes[MsgTraceAttributes.MODULE_NAME] = module_name
         span_name = "Module Initialized"
         with self.span_context(span_name, attributes) as span:
             yield span
 
     @contextmanager
     def tool_usage(self, tool_callings: List[Tuple[str, str, Any]]):
+        from msgflux.telemetry.attributes import GenAIAttributes, MsgTraceAttributes
+
+        # Extract first tool name (for span name)
+        first_tool_name = tool_callings[0][1] if tool_callings else "unknown_tool"
+
+        # Prepare tool calls data
         calls = [
             {"id": call[0], "name": call[1], "parameters": call[2]}
             for call in tool_callings
         ]
-        encoded_calls = msgspec.json.encode(calls)
-        attributes = {"msgflux.nn.tool.callings": encoded_calls}
-        with self.span_context("Tool Usage", attributes) as span:
+
+        with self.span_context(f"tool.{first_tool_name}", {}) as span:
+            # Set operation type
+            span.set_attribute(GenAIAttributes.OPERATION_NAME, "tool")
+
+            # Set tool callings for msgtrace UI
+            encoded_calls = msgspec.json.encode(calls)
+            span.set_attribute(MsgTraceAttributes.TOOL_CALLINGS, encoded_calls)
+
             yield span
 
     @asynccontextmanager
@@ -97,13 +113,15 @@ class Spans:
         encoded_state_dict: Optional[bytes] = None,
     ):
         """Async version of init_flow context manager."""
+        from msgflux.telemetry.attributes import MsgTraceAttributes
+
         attributes = {}
-        attributes["msgflux.version"] = msgflux_version
-        attributes["msgflux.workflow.name"] = module_name
+        attributes[MsgTraceAttributes.SERVICE_VERSION] = msgflux_version
+        attributes[MsgTraceAttributes.WORKFLOW_NAME] = module_name
         if message:
-            attributes["msgflux.metadata"] = message.get("metadata")
+            attributes["msgflux.metadata"] = message.get("metadata")  # Framework-specific
         if encoded_state_dict:
-            attributes["msgflux.state_dict"] = encoded_state_dict
+            attributes["msgflux.state_dict"] = encoded_state_dict  # Framework-specific
         if envs.telemetry_capture_platform:
             attributes["platform"] = platform.platform()
             attributes["platform.version"] = platform.version()
@@ -117,8 +135,10 @@ class Spans:
     @asynccontextmanager
     async def ainit_module(self, module_name: str):
         """Async version of init_module context manager."""
+        from msgflux.telemetry.attributes import MsgTraceAttributes
+
         attributes = {}
-        attributes["msgflux.nn.module.name"] = module_name
+        attributes[MsgTraceAttributes.MODULE_NAME] = module_name
         span_name = "Module Initialized"
         async with self.aspan_context(span_name, attributes) as span:
             yield span
@@ -126,13 +146,67 @@ class Spans:
     @asynccontextmanager
     async def atool_usage(self, tool_callings: List[Tuple[str, str, Any]]):
         """Async version of tool_usage context manager."""
+        from msgflux.telemetry.attributes import GenAIAttributes, MsgTraceAttributes
+
+        # Extract first tool name (for span name)
+        first_tool_name = tool_callings[0][1] if tool_callings else "unknown_tool"
+
+        # Prepare tool calls data
         calls = [
             {"id": call[0], "name": call[1], "parameters": call[2]}
             for call in tool_callings
         ]
-        encoded_calls = msgspec.json.encode(calls)
-        attributes = {"msgflux.nn.tool.callings": encoded_calls}
-        async with self.aspan_context("Tool Usage", attributes) as span:
+
+        async with self.aspan_context(f"tool.{first_tool_name}", {}) as span:
+            # Set operation type
+            span.set_attribute(GenAIAttributes.OPERATION_NAME, "tool")
+
+            # Set tool callings for msgtrace UI
+            encoded_calls = msgspec.json.encode(calls)
+            span.set_attribute(MsgTraceAttributes.TOOL_CALLINGS, encoded_calls)
+
+            yield span
+
+    @contextmanager
+    def tool_execution(self, tool_name: str, tool_params: Optional[Dict[str, Any]] = None):
+        """Context manager for individual tool execution spans."""
+        from msgflux.telemetry.attributes import GenAIAttributes, MsgTraceAttributes
+
+        with self.span_context(f"tool.{tool_name}", {}) as span:
+            # Set operation type
+            span.set_attribute(GenAIAttributes.OPERATION_NAME, "tool")
+            span.set_attribute(MsgTraceAttributes.MODULE_NAME, tool_name)
+
+            # Set tool parameters if provided
+            if tool_params:
+                try:
+                    encoded_params = msgspec.json.encode(tool_params)
+                    span.set_attribute("tool.parameters", encoded_params)
+                except (TypeError, ValueError):
+                    # If params can't be encoded, skip
+                    pass
+
+            yield span
+
+    @asynccontextmanager
+    async def atool_execution(self, tool_name: str, tool_params: Optional[Dict[str, Any]] = None):
+        """Async context manager for individual tool execution spans."""
+        from msgflux.telemetry.attributes import GenAIAttributes, MsgTraceAttributes
+
+        async with self.aspan_context(f"tool.{tool_name}", {}) as span:
+            # Set operation type
+            span.set_attribute(GenAIAttributes.OPERATION_NAME, "tool")
+            span.set_attribute(MsgTraceAttributes.MODULE_NAME, tool_name)
+
+            # Set tool parameters if provided
+            if tool_params:
+                try:
+                    encoded_params = msgspec.json.encode(tool_params)
+                    span.set_attribute("tool.parameters", encoded_params)
+                except (TypeError, ValueError):
+                    # If params can't be encoded, skip
+                    pass
+
             yield span
 
 
@@ -228,8 +302,10 @@ def instrument_tool_library_call(forward):
                 self, tool_callings, model_state, vars
             )
             if envs.telemetry_capture_tool_call_responses:
+                from msgflux.telemetry.attributes import MsgTraceAttributes
+                # Capture tool responses for msgtrace UI
                 span.set_attribute(
-                    "msgflux.nn.tool.responses", tool_execution_result.to_json()
+                    MsgTraceAttributes.TOOL_RESPONSES, tool_execution_result.to_json()
                 )
             return tool_execution_result
 
@@ -256,10 +332,78 @@ def ainstrument_tool_library_call(aforward):
                 self, tool_callings, model_state, vars
             )
             if envs.telemetry_capture_tool_call_responses:
+                from msgflux.telemetry.attributes import MsgTraceAttributes
+                # Capture tool responses for msgtrace UI
                 span.set_attribute(
-                    "msgflux.nn.tool.responses", tool_execution_result.to_json()
+                    MsgTraceAttributes.TOOL_RESPONSES, tool_execution_result.to_json()
                 )
             return tool_execution_result
+
+    return wrapper
+
+
+def instrument_tool_execution(forward):
+    """Decorator for synchronous individual tool execution with telemetry."""
+    @wraps(forward)
+    def wrapper(self, *args, **kwargs):
+        # Early return for zero overhead when telemetry is disabled
+        if not envs.telemetry_requires_trace:
+            return forward(self, *args, **kwargs)
+
+        tool_name = getattr(self, 'name', 'unknown_tool')
+
+        with self._spans.tool_execution(tool_name, kwargs) as span:
+            try:
+                result = forward(self, *args, **kwargs)
+
+                # Capture result if enabled
+                if envs.telemetry_capture_tool_call_responses:
+                    try:
+                        encoded_result = msgspec.json.encode(result)
+                        span.set_attribute("tool.result", encoded_result)
+                    except (TypeError, ValueError):
+                        # If result can't be encoded, skip
+                        pass
+
+                span.set_status(Status(StatusCode.OK))
+                return result
+            except Exception as e:
+                span.record_exception(e)
+                span.set_status(Status(StatusCode.ERROR, str(e)))
+                raise
+
+    return wrapper
+
+
+def ainstrument_tool_execution(aforward):
+    """Decorator for asynchronous individual tool execution with telemetry."""
+    @wraps(aforward)
+    async def wrapper(self, *args, **kwargs):
+        # Early return for zero overhead when telemetry is disabled
+        if not envs.telemetry_requires_trace:
+            return await aforward(self, *args, **kwargs)
+
+        tool_name = getattr(self, 'name', 'unknown_tool')
+
+        async with self._spans.atool_execution(tool_name, kwargs) as span:
+            try:
+                result = await aforward(self, *args, **kwargs)
+
+                # Capture result if enabled
+                if envs.telemetry_capture_tool_call_responses:
+                    try:
+                        encoded_result = msgspec.json.encode(result)
+                        span.set_attribute("tool.result", encoded_result)
+                    except (TypeError, ValueError):
+                        # If result can't be encoded, skip
+                        pass
+
+                span.set_status(Status(StatusCode.OK))
+                return result
+            except Exception as e:
+                span.record_exception(e)
+                span.set_status(Status(StatusCode.ERROR, str(e)))
+                raise
 
     return wrapper
 
@@ -271,20 +415,43 @@ def instrument_agent_prepare_model_execution(_prepare_model_execution):
         if not envs.telemetry_requires_trace:
             return _prepare_model_execution(self, *args, **kwargs)
 
-        prefix_span = "msgflux.nn.Agent"
+        from msgflux.telemetry.attributes import set_agent_attributes, MsgTraceAttributes
+
         attributes = {}
-        attributes[f"{prefix_span}.method.name"] = "_prepare_model_execution"
-        with self._spans.span_context("Prepare Model Execution", attributes) as span:
+        attributes["method.name"] = "_prepare_model_execution"
+        with self._spans.span_context("agent.prepare_execution", attributes) as span:
             model_execution_params = _prepare_model_execution(self, *args, **kwargs)
+
+            # Set standardized agent attributes
+            agent_name = getattr(self, 'name', 'unknown_agent')
+            model_name = None
+            provider_name = None
+
+            # Try to extract model and provider from agent
+            if hasattr(self, 'model'):
+                model_obj = self.model
+                model_name = getattr(model_obj, 'model_id', None)
+                provider_name = getattr(model_obj, 'provider', None)
+
+            set_agent_attributes(
+                span,
+                agent_name=agent_name,
+                model=model_name,
+                provider=provider_name,
+            )
+
+            # Optionally capture detailed agent state
             if envs.telemetry_capture_agent_prepare_model_execution:
                 encoded_state = msgspec.json.encode(model_execution_params["messages"])
                 encoded_tool_schemas = msgspec.json.encode(
                     model_execution_params["tool_schemas"]
                 )
                 system_prompt = model_execution_params["system_prompt"] or ""
-                span.set_attribute(f"{prefix_span}.agent_state", encoded_state)
-                span.set_attribute(f"{prefix_span}.system_prompt", system_prompt)
-                span.set_attribute(f"{prefix_span}.tool_schemas", encoded_tool_schemas)
+
+                span.set_attribute(MsgTraceAttributes.AGENT_SYSTEM_PROMPT, system_prompt)
+                span.set_attribute(MsgTraceAttributes.AGENT_TOOLS, encoded_tool_schemas)
+                span.set_attribute("agent.state", encoded_state)  # Internal detail
+
             return model_execution_params
 
     return wrapper

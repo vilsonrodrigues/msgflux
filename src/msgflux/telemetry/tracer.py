@@ -32,19 +32,24 @@ class TracerManager:
                 )
         return None
 
-    def configure_tracer(self):
-        """Configure OpenTelemetry tracer. Thread-safe and idempotent."""
+    def configure_tracer(self, force=False):
+        """Configure OpenTelemetry tracer. Thread-safe and idempotent.
+
+        Args:
+            force: If True, skip the configured check (but still won't override TracerProvider)
+        """
         with self._lock:
-            if self._configured:
+            if self._configured and not force:
                 return
 
             if not envs.telemetry_requires_trace:
-                logger.debug("Tracing disabled, configuring NoOp tracer")
-                no_op_provider = NoOpTracerProvider()
-                trace.set_tracer_provider(no_op_provider)
+                logger.debug("Tracing disabled, using default NoOp tracer")
+                # Don't set a TracerProvider - let OpenTelemetry use its default
+                # This allows reconfiguration later if envs are updated
                 self._tracer = trace.get_tracer("msgflux.telemetry")
-                self._configured = True
-                return
+                # Don't mark as configured if telemetry is disabled, allowing reconfiguration
+                if not force:
+                    return
 
             # Resource and provider setup
             attributes = {SERVICE_NAME: "msgflux-telemetry"}
@@ -70,16 +75,15 @@ class TracerManager:
                 provider.add_span_processor(processor)
                 logger.debug("Configured Console exporter")
             else:
-                # Unknown exporter: warn and fallback to NoOp
+                # Unknown exporter: warn and use console as fallback
                 logger.warning(
                     f"Unknown exporter type `{envs.telemetry_span_exporter_type}` "
-                    "defaulting to NoOp tracer"
+                    "falling back to console exporter"
                 )
-                no_op_provider = NoOpTracerProvider()
-                trace.set_tracer_provider(no_op_provider)
-                self._tracer = trace.get_tracer("msgflux.telemetry")
-                self._configured = True
-                return
+                console_exporter = ConsoleSpanExporter()
+                processor = BatchSpanProcessor(console_exporter)
+                provider.add_span_processor(processor)
+                logger.debug("Configured Console exporter as fallback")
 
             # Finalize provider and cache tracer
             trace.set_tracer_provider(provider)
@@ -92,6 +96,12 @@ class TracerManager:
             if not self._configured:
                 self.configure_tracer()
             return self._tracer
+
+    def reset(self):
+        """Reset the tracer manager to allow reconfiguration."""
+        with self._lock:
+            self._configured = False
+            self._tracer = None
 
 
 # Singleton instance
