@@ -16,7 +16,10 @@ from msgflux.protocols.mcp import (
     MCPClient, convert_mcp_schema_to_tool_schema, filter_tools
 )
 from msgflux.telemetry.span import (
-    ainstrument_tool_library_call, instrument_tool_library_call
+    ainstrument_tool_execution,
+    ainstrument_tool_library_call,
+    instrument_tool_execution,
+    instrument_tool_library_call,
 )
 from msgflux.utils.chat import generate_tool_json_schema
 from msgflux.utils.convert import convert_camel_to_snake_case
@@ -56,14 +59,253 @@ class ToolResponses:
         return next((r for r in self.tool_calls if r.name == tool_name), None)
 
 
-class ToolBase(Module):
+class Tool(Module):
     """Tool is Module type that provide a json schema to tools."""
 
     def get_json_schema(self):
         return generate_tool_json_schema(self)
 
+    def _call_impl(self, *args, **kwargs):
+        """Override Module._call_impl to create tool execution spans instead of generic module spans."""
+        from opentelemetry import trace
+        from msgflux.envs import envs
 
-def _convert_module_to_nn_tool(impl: Callable) -> ToolBase: # noqa: C901
+        # Apply forward hooks
+        if not (self._forward_hooks or self._forward_pre_hooks):
+            result = self._call(*args, **kwargs)
+        else:
+            for hook in self._forward_pre_hooks.values():
+                hook_result = hook(self, args, kwargs)
+                if hook_result is not None:
+                    if isinstance(hook_result, tuple) and len(hook_result) == 2:
+                        args, kwargs = hook_result
+                    else:
+                        raise RuntimeError(
+                            "forward pre-hook must return None or a tuple of (args, kwargs)"
+                        )
+
+            result = self._call(*args, **kwargs)
+
+            for hook in self._forward_hooks.values():
+                hook_result = hook(self, args, kwargs, result)
+                if hook_result is not None:
+                    result = hook_result
+
+        return result
+
+    def _call(self, *args, **kwargs):
+        """Internal call method with tool-specific telemetry."""
+        from opentelemetry import trace
+        from msgflux.envs import envs
+
+        # Early return if telemetry is disabled
+        if not envs.telemetry_requires_trace:
+            return self.forward(*args, **kwargs)
+
+        tool_name = self.get_module_name()
+
+        with self._spans.tool_execution(tool_name, kwargs) as span:
+            try:
+                # Mark as local tool (not MCP)
+                span.set_attribute("mcp.tool.type", "local")
+
+                result = self.forward(*args, **kwargs)
+
+                # Capture result if enabled
+                if envs.telemetry_capture_tool_call_responses:
+                    try:
+                        import msgspec
+                        encoded_result = msgspec.json.encode(result)
+                        span.set_attribute("tool.result", encoded_result)
+                    except (TypeError, ValueError):
+                        # If result can't be encoded, skip
+                        pass
+
+                from opentelemetry.trace import Status, StatusCode
+                span.set_status(Status(StatusCode.OK))
+                return result
+            except Exception as e:
+                from opentelemetry.trace import Status, StatusCode
+                span.record_exception(e)
+                span.set_status(Status(StatusCode.ERROR, str(e)))
+                raise
+
+    async def _acall_impl(self, *args, **kwargs):
+        """Override Module._acall_impl to create tool execution spans instead of generic module spans."""
+        # Apply forward hooks
+        if not (self._forward_hooks or self._forward_pre_hooks):
+            result = await self._acall(*args, **kwargs)
+        else:
+            for hook in self._forward_pre_hooks.values():
+                hook_result = hook(self, args, kwargs)
+                if hook_result is not None:
+                    if isinstance(hook_result, tuple) and len(hook_result) == 2:
+                        args, kwargs = hook_result
+                    else:
+                        raise RuntimeError(
+                            "forward pre-hook must return None or a tuple of (args, kwargs)"
+                        )
+
+            result = await self._acall(*args, **kwargs)
+
+            for hook in self._forward_hooks.values():
+                hook_result = hook(self, args, kwargs, result)
+                if hook_result is not None:
+                    result = hook_result
+
+        return result
+
+    async def _acall(self, *args, **kwargs):
+        """Async internal call method with tool-specific telemetry."""
+        from opentelemetry import trace
+        from msgflux.envs import envs
+
+        # Early return if telemetry is disabled
+        if not envs.telemetry_requires_trace:
+            return await self.aforward(*args, **kwargs)
+
+        tool_name = self.get_module_name()
+
+        async with self._spans.atool_execution(tool_name, kwargs) as span:
+            try:
+                # Mark as local tool (not MCP)
+                span.set_attribute("mcp.tool.type", "local")
+
+                result = await self.aforward(*args, **kwargs)
+
+                # Capture result if enabled
+                if envs.telemetry_capture_tool_call_responses:
+                    try:
+                        import msgspec
+                        encoded_result = msgspec.json.encode(result)
+                        span.set_attribute("tool.result", encoded_result)
+                    except (TypeError, ValueError):
+                        # If result can't be encoded, skip
+                        pass
+
+                from opentelemetry.trace import Status, StatusCode
+                span.set_status(Status(StatusCode.OK))
+                return result
+            except Exception as e:
+                from opentelemetry.trace import Status, StatusCode
+                span.record_exception(e)
+                span.set_status(Status(StatusCode.ERROR, str(e)))
+                raise
+
+
+class MCPTool(Tool):
+    """
+    MCP Tool Proxy - wraps remote MCP tool as a Tool object.
+
+    This allows MCP tools to be treated exactly like local tools,
+    enabling polymorphism and unified telemetry.
+
+    Args:
+        name: Tool name (without namespace prefix)
+        mcp_client: Connected MCP client
+        mcp_tool_info: MCP tool metadata
+        namespace: MCP server namespace
+        config: Optional tool configuration
+
+    Example:
+        >>> mcp_tool = MCPTool(
+        ...     name="read_file",
+        ...     mcp_client=client,
+        ...     mcp_tool_info=tool_info,
+        ...     namespace="filesystem"
+        ... )
+        >>> result = mcp_tool(path="/file.txt")
+    """
+
+    def __init__(
+        self,
+        name: str,
+        mcp_client: Any,  # MCPClient type
+        mcp_tool_info: Any,  # MCPToolInfo type
+        namespace: str,
+        config: Optional[Dict[str, Any]] = None,
+    ):
+        super().__init__()
+
+        # Set full tool name with namespace
+        full_name = f"{namespace}__{name}"
+        self.set_name(full_name)
+
+        # Store MCP-specific data
+        self._mcp_client = mcp_client
+        self._mcp_tool_info = mcp_tool_info
+        self._namespace = namespace
+        self._mcp_tool_name = name
+
+        # Set description from MCP tool info
+        if hasattr(mcp_tool_info, 'description'):
+            self.set_description(mcp_tool_info.description)
+
+        # Store config
+        self.register_buffer("tool_config", config or {})
+
+    def get_json_schema(self) -> Dict[str, Any]:
+        """Convert MCP tool schema to standard tool JSON schema."""
+        return convert_mcp_schema_to_tool_schema(
+            self._mcp_tool_info,
+            self._namespace
+        )
+
+    def forward(self, **kwargs) -> Any:
+        """
+        Execute MCP tool call synchronously.
+
+        Note: This automatically wraps async MCP calls for sync usage.
+        Telemetry is handled by Tool._call().
+        """
+        from msgflux.protocols.mcp import extract_tool_result_text
+
+        # Add MCP-specific telemetry attributes
+        span = trace.get_current_span()
+        if span.is_recording():
+            span.set_attribute("mcp.tool.type", "remote")
+            span.set_attribute("mcp.tool.namespace", self._namespace)
+            span.set_attribute("mcp.tool.name", self._mcp_tool_name)
+
+        # Call MCP tool (wrap async in sync)
+        result = F.wait_for(self._mcp_client.call_tool, self._mcp_tool_name, kwargs)
+
+        # Handle errors
+        if result.isError:
+            error_text = extract_tool_result_text(result)
+            raise RuntimeError(f"MCP tool error: {error_text}")
+
+        # Extract and return result
+        return extract_tool_result_text(result)
+
+    async def aforward(self, **kwargs) -> Any:
+        """
+        Execute MCP tool call asynchronously.
+
+        Telemetry is handled by Tool._acall().
+        """
+        from msgflux.protocols.mcp import extract_tool_result_text
+
+        # Add MCP-specific telemetry attributes
+        span = trace.get_current_span()
+        if span.is_recording():
+            span.set_attribute("mcp.tool.type", "remote")
+            span.set_attribute("mcp.tool.namespace", self._namespace)
+            span.set_attribute("mcp.tool.name", self._mcp_tool_name)
+
+        # Call MCP tool
+        result = await self._mcp_client.call_tool(self._mcp_tool_name, kwargs)
+
+        # Handle errors
+        if result.isError:
+            error_text = extract_tool_result_text(result)
+            raise RuntimeError(f"MCP tool error: {error_text}")
+
+        # Extract and return result
+        return extract_tool_result_text(result)
+
+
+def _convert_module_to_nn_tool(impl: Callable) -> Tool: # noqa: C901
     """Convert a callable in nn.Tool."""
     tool_config = impl.__dict__.get("tool_config", dotdict())
 
@@ -155,7 +397,8 @@ def _convert_module_to_nn_tool(impl: Callable) -> ToolBase: # noqa: C901
     if tool_config.get("background"):
         doc = "This tool will run in the background. \n" + doc
 
-    class Tool(ToolBase):
+    class LocalTool(Tool):
+        """Local tool implementation (non-MCP)."""
         def __init__(self):
             super().__init__()
             self.set_name(name)
@@ -165,12 +408,14 @@ def _convert_module_to_nn_tool(impl: Callable) -> ToolBase: # noqa: C901
             self.impl = impl  # Not a buffer for now
 
         @tool_retry
+        @instrument_tool_execution
         def forward(self, *args, **kwargs):
             if inspect.iscoroutinefunction(self.impl):
                 return F.wait_for(self.impl, *args, **kwargs)
             return self.impl(*args, **kwargs)
 
         @tool_retry
+        @ainstrument_tool_execution
         async def aforward(self, *args, **kwargs):
             # Check if impl has acall method first (for Module instances)
             if hasattr(self.impl, "acall"):
@@ -182,7 +427,7 @@ def _convert_module_to_nn_tool(impl: Callable) -> ToolBase: # noqa: C901
             else:
                 return self.impl(*args, **kwargs)
 
-    return Tool()
+    return LocalTool()
 
 
 class ToolLibrary(Module):
@@ -235,7 +480,7 @@ class ToolLibrary(Module):
             name = (getattr(tool, "name", None) or getattr(tool, "__name__", None))
             if name in self.library.keys():
                 raise ValueError(f"The tool name `{name}` is already in tool library")
-            if not isinstance(tool, ToolBase):
+            if not isinstance(tool, Tool):
                 tool = _convert_module_to_nn_tool(tool)
 
             self.tool_configs[tool.name] = tool.tool_config
@@ -294,15 +539,32 @@ class ToolLibrary(Module):
             exclude_tools = server_config.get("exclude_tools")
             filtered_tools = filter_tools(all_tools, include_tools, exclude_tools)
 
-            # Store client and tools
+            # Create MCPTool for each remote tool
             tool_configs = server_config.get("tool_config", {})
+            for mcp_tool_info in filtered_tools:
+                tool_config = tool_configs.get(mcp_tool_info.name, {})
+
+                # Create MCPTool instance
+                mcp_tool = MCPTool(
+                    name=mcp_tool_info.name,
+                    mcp_client=client,
+                    mcp_tool_info=mcp_tool_info,
+                    namespace=namespace,
+                    config=tool_config
+                )
+
+                # Add to library (will have name like "namespace__tool_name")
+                self.library.update({mcp_tool.name: mcp_tool})
+                self.tool_configs[mcp_tool.name] = mcp_tool.tool_config
+
+            # Also store in mcp_clients for backward compatibility
             self.mcp_clients[namespace] = {
                 "client": client,
                 "tools": filtered_tools,
                 "tool_config": tool_configs
             }
 
-    def get_tools(self) -> Iterator[Dict[str, ToolBase]]:
+    def get_tools(self) -> Iterator[Dict[str, Tool]]:
         return self.library.items()
 
     def get_tool_names(self) -> List[str]:
@@ -347,6 +609,9 @@ class ToolLibrary(Module):
     ) -> ToolResponses:
         """Executes tool calls with logic for `handoff`, `return_direct`.
 
+        REFACTORED: Now uses MCPTool for polymorphism and includes MCP tools
+        in scatter_gather for better parallelism!
+
         Args:
             tool_callings:
                 A list of tuples containing the tool id, name and parameters.
@@ -374,92 +639,7 @@ class ToolLibrary(Module):
         return_directly = True if tool_callings else False
 
         for tool_id, tool_name, tool_params in tool_callings:
-            # Check if it's an MCP tool (has namespace prefix)
-            if "__" in tool_name:
-                namespace, mcp_tool_name = tool_name.split("__", 1)
-
-                if namespace in self.mcp_clients:
-                    # Execute MCP tool
-                    mcp_data = self.mcp_clients[namespace]
-                    client = mcp_data["client"]
-                    tool_config = mcp_data["tool_config"].get(mcp_tool_name, {})
-
-                    # Apply inject_vars if configured
-                    inject_vars = tool_config.get("inject_vars", False)
-                    if inject_vars:
-                        if isinstance(inject_vars, list):
-                            for key in inject_vars:
-                                if key in vars:
-                                    tool_params[key] = vars[key]
-                        elif inject_vars is True:
-                            tool_params["vars"] = vars
-
-                    # Check return_direct config
-                    if not tool_config.get("return_direct", False):
-                        return_directly = False
-
-                    # Call MCP tool
-                    try:
-                        from msgflux.protocols.mcp import extract_tool_result_text
-                        result = F.wait_for(client.call_tool, mcp_tool_name, tool_params)
-
-                        if result.isError:
-                            error_text = extract_tool_result_text(result)
-                            tool_calls.append(
-                                ToolCall(
-                                    id=tool_id,
-                                    name=tool_name,
-                                    parameters=tool_params,
-                                    error=error_text
-                                )
-                            )
-                        else:
-                            result_text = extract_tool_result_text(result)
-                            tool_calls.append(
-                                ToolCall(
-                                    id=tool_id,
-                                    name=tool_name,
-                                    parameters=tool_params,
-                                    result=result_text
-                                )
-                            )
-                    except Exception as e:
-                        error_msg = f"MCP tool execution error: {str(e)}"
-
-                        # Log error
-                        logger.error(
-                            "MCP tool execution failed",
-                            extra={
-                                "tool_id": tool_id,
-                                "tool_name": tool_name,
-                                "namespace": namespace,
-                                "mcp_tool_name": mcp_tool_name,
-                                "error": str(e),
-                                "error_type": type(e).__name__,
-                            },
-                            exc_info=True
-                        )
-
-                        # Record telemetry
-                        span = trace.get_current_span()
-                        if span.is_recording():
-                            span.record_exception(e)
-                            span.set_status(Status(StatusCode.ERROR, error_msg))
-                            span.set_attribute("mcp.tool.error", True)
-                            span.set_attribute("mcp.tool.namespace", namespace)
-                            span.set_attribute("mcp.tool.name", mcp_tool_name)
-
-                        tool_calls.append(
-                            ToolCall(
-                                id=tool_id,
-                                name=tool_name,
-                                parameters=tool_params,
-                                error=error_msg
-                            )
-                        )
-                    continue
-
-            # Local tool execution
+            # POLYMORPHISM: Get tool from library (works for Local and MCP!)
             if tool_name not in self.library:
                 tool_calls.append(
                     ToolCall(
@@ -472,16 +652,13 @@ class ToolLibrary(Module):
                 return_directly = False
                 continue
 
+            # Get tool (polymorphism works for Local and MCP!)
             tool = self.library[tool_name]
             config = self.tool_configs.get(tool_name, {})
 
+            # Handle inject_vars (works for both local and MCP tools)
             inject_vars = config.get("inject_vars", False)
-            if inject_vars != False:
-                if not inject_vars:
-                    raise ValueError(
-                        f"The tool `{tool_name}` expects injected vars "
-                        f"(`{inject_vars}`), but none were provided."
-                    )
+            if inject_vars:
                 if isinstance(inject_vars, list):
                     for key in inject_vars:
                         if key not in vars:
@@ -490,7 +667,7 @@ class ToolLibrary(Module):
                                 f"parameter `{key}`, but it was not found."
                             )
                         tool_params[key] = vars[key]
-                elif inject_vars == True:
+                elif inject_vars is True:
                     tool_params["vars"] = vars
 
             if config.get("background", False):
@@ -606,10 +783,32 @@ class ToolLibrary(Module):
                     if not tool_config.get("return_direct", False):
                         return_directly = False
 
-                    # Call MCP tool asynchronously
+                    # Call MCP tool asynchronously with telemetry
                     try:
                         from msgflux.protocols.mcp import extract_tool_result_text
-                        result = await client.call_tool(mcp_tool_name, tool_params)
+                        from msgflux.envs import envs
+
+                        # Create individual span for MCP tool execution
+                        if envs.telemetry_requires_trace:
+                            async with self._spans.atool_execution(tool_name, tool_params) as mcp_span:
+                                # Add MCP-specific attributes
+                                mcp_span.set_attribute("mcp.tool.namespace", namespace)
+                                mcp_span.set_attribute("mcp.tool.name", mcp_tool_name)
+                                mcp_span.set_attribute("mcp.tool.type", "remote")
+
+                                result = await client.call_tool(mcp_tool_name, tool_params)
+
+                                # Capture result if enabled
+                                if envs.telemetry_capture_tool_call_responses and not result.isError:
+                                    result_text = extract_tool_result_text(result)
+                                    try:
+                                        import msgspec
+                                        encoded_result = msgspec.json.encode(result_text)
+                                        mcp_span.set_attribute("tool.result", encoded_result)
+                                    except (TypeError, ValueError):
+                                        pass
+                        else:
+                            result = await client.call_tool(mcp_tool_name, tool_params)
 
                         if result.isError:
                             error_text = extract_tool_result_text(result)
@@ -680,16 +879,13 @@ class ToolLibrary(Module):
                 return_directly = False
                 continue
 
+            # Get tool (polymorphism works for Local and MCP!)
             tool = self.library[tool_name]
             config = self.tool_configs.get(tool_name, {})
 
+            # Handle inject_vars (works for both local and MCP tools)
             inject_vars = config.get("inject_vars", False)
-            if inject_vars != False:
-                if not inject_vars:
-                    raise ValueError(
-                        f"The tool `{tool_name}` expects injected vars "
-                        f"(`{inject_vars}`), but none were provided."
-                    )
+            if inject_vars:
                 if isinstance(inject_vars, list):
                     for key in inject_vars:
                         if key not in vars:
@@ -698,7 +894,7 @@ class ToolLibrary(Module):
                                 f"parameter `{key}`, but it was not found."
                             )
                         tool_params[key] = vars[key]
-                elif inject_vars == True:
+                elif inject_vars is True:
                     tool_params["vars"] = vars
 
             if config.get("background", False):
