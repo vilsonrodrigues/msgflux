@@ -131,8 +131,8 @@ class JinaAITextReranker(_BaseJinaAI, HTTPXModelClient, TextRerankerModel):
 class JinaAITextEmbedder(TextEmbedderModel, HTTPXModelClient, _BaseJinaAI):
     """JinaAI Text Embedder."""
 
+    batch_support: bool = True
     endpoint: str = "/embeddings"
-    batch_support = True
 
     def __init__(
         self,
@@ -177,10 +177,8 @@ class JinaAITextEmbedder(TextEmbedderModel, HTTPXModelClient, _BaseJinaAI):
         response.set_response_type("text_embedding")
         model_output = self._execute(**kwargs)
         data = model_output["data"]
-        embedding = [item["embedding"] for item in data]
-        if len(embedding) == 1:  # Compatibility
-            embedding = embedding[0]
-        response.add(embedding)
+        embeddings = [item["embedding"] for item in data]
+        response.add(embeddings)
 
         # Store in cache if enabled
         if self.enable_cache and self._response_cache:
@@ -201,10 +199,8 @@ class JinaAITextEmbedder(TextEmbedderModel, HTTPXModelClient, _BaseJinaAI):
         response.set_response_type("text_embedding")
         model_output = await self._aexecute(**kwargs)
         data = model_output["data"]
-        embedding = [item["embedding"] for item in data]
-        if len(embedding) == 1:  # Compatibility
-            embedding = embedding[0]
-        response.add(embedding)
+        embeddings = [item["embedding"] for item in data]
+        response.add(embeddings)
 
         # Store in cache if enabled
         if self.enable_cache and self._response_cache:
@@ -247,8 +243,8 @@ class JinaAITextEmbedder(TextEmbedderModel, HTTPXModelClient, _BaseJinaAI):
 class JinaAIImageEmbedder(ImageEmbedderModel, JinaAITextEmbedder):
     """JinaAI Image Embedder."""
 
+    batch_support: bool = True  # JinaAI supports batch embedding
     endpoint: str = "/embeddings"
-    batch_support = True
 
     def _generate(self, **kwargs):
         # Check cache if enabled
@@ -262,10 +258,8 @@ class JinaAIImageEmbedder(ImageEmbedderModel, JinaAITextEmbedder):
         response.set_response_type("image_embedding")
         model_output = self._execute(**kwargs)
         data = model_output["data"]
-        embedding = [item["embedding"] for item in data]
-        if len(embedding) == 1:  # Compatibility
-            embedding = embedding[0]
-        response.add(embedding)
+        embeddings = [item["embedding"] for item in data]
+        response.add(embeddings)
 
         # Store in cache if enabled
         if self.enable_cache and self._response_cache:
@@ -286,10 +280,8 @@ class JinaAIImageEmbedder(ImageEmbedderModel, JinaAITextEmbedder):
         response.set_response_type("image_embedding")
         model_output = await self._aexecute(**kwargs)
         data = model_output["data"]
-        embedding = [item["embedding"] for item in data]
-        if len(embedding) == 1:  # Compatibility
-            embedding = embedding[0]
-        response.add(embedding)
+        embeddings = [item["embedding"] for item in data]
+        response.add(embeddings)
 
         # Store in cache if enabled
         if self.enable_cache and self._response_cache:
