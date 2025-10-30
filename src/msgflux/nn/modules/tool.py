@@ -66,31 +66,6 @@ class Tool(Module):
     def get_json_schema(self):
         return generate_tool_json_schema(self)
 
-    def _call_impl(self, *args, **kwargs):
-        """Override Module._call_impl to create tool execution spans instead of generic module spans."""
-        # Apply forward hooks
-        if not (self._forward_hooks or self._forward_pre_hooks):
-            result = self._call(*args, **kwargs)
-        else:
-            for hook in self._forward_pre_hooks.values():
-                hook_result = hook(self, args, kwargs)
-                if hook_result is not None:
-                    if isinstance(hook_result, tuple) and len(hook_result) == 2:
-                        args, kwargs = hook_result
-                    else:
-                        raise RuntimeError(
-                            "forward pre-hook must return None or a tuple of (args, kwargs)"
-                        )
-
-            result = self._call(*args, **kwargs)
-
-            for hook in self._forward_hooks.values():
-                hook_result = hook(self, args, kwargs, result)
-                if hook_result is not None:
-                    result = hook_result
-
-        return result
-
     def _call(self, *args, **kwargs):
         """Internal call method with tool-specific telemetry."""
         # Early return if telemetry is disabled
@@ -120,31 +95,6 @@ class Tool(Module):
                 span.record_exception(e)
                 span.set_status(Status(StatusCode.ERROR, str(e)))
                 raise
-
-    async def _acall_impl(self, *args, **kwargs):
-        """Override Module._acall_impl to create tool execution spans instead of generic module spans."""
-        # Apply forward hooks
-        if not (self._forward_hooks or self._forward_pre_hooks):
-            result = await self._acall(*args, **kwargs)
-        else:
-            for hook in self._forward_pre_hooks.values():
-                hook_result = hook(self, args, kwargs)
-                if hook_result is not None:
-                    if isinstance(hook_result, tuple) and len(hook_result) == 2:
-                        args, kwargs = hook_result
-                    else:
-                        raise RuntimeError(
-                            "forward pre-hook must return None or a tuple of (args, kwargs)"
-                        )
-
-            result = await self._acall(*args, **kwargs)
-
-            for hook in self._forward_hooks.values():
-                hook_result = hook(self, args, kwargs, result)
-                if hook_result is not None:
-                    result = hook_result
-
-        return result
 
     async def _acall(self, *args, **kwargs):
         """Async internal call method with tool-specific telemetry."""
