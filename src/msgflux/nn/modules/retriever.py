@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Optional, Union
+from typing import Any, Dict, List, Mapping, Optional, Union
 
 from msgflux.data.dbs.types import VectorDB
 from msgflux.data.retrievers.types import (
@@ -8,12 +8,17 @@ from msgflux.data.retrievers.types import (
 )
 from msgflux.dotdict import dotdict
 from msgflux.message import Message
+from msgflux.models.gateway import ModelGateway
+from msgflux.models.types import (
+    AudioEmbedderModel,
+    ImageEmbedderModel,
+    TextEmbedderModel,
+)
+from msgflux.nn.modules.embedder import Embedder
 from msgflux.nn.modules.module import Module
 
-if TYPE_CHECKING:
-    from msgflux.nn.modules.embedder import Embedder
-
 RETRIVERS = Union[WebRetriever, LexicalRetriever, SemanticRetriever, VectorDB]
+EMBEDDER_MODELS = Union[AudioEmbedderModel, ImageEmbedderModel, TextEmbedderModel, ModelGateway]
 
 
 class Retriever(Module):
@@ -24,10 +29,10 @@ class Retriever(Module):
         name: str,
         retriever: RETRIVERS,
         *,
-        embedder: Optional["Embedder"] = None,
+        model: Optional[Union[EMBEDDER_MODELS, Embedder]] = None,
         message_fields: Optional[Dict[str, Any]] = None,
         response_mode: Optional[str] = "plain_response",
-        response_template: Optional[str] = None,
+        templates: Optional[Dict[str, str]] = None,
         config: Optional[Dict[str, Any]] = None,
     ):
         """Args:
@@ -35,8 +40,10 @@ class Retriever(Module):
             Designer name in snake case format.
         retriever:
             Retriever client.
-        embedder:
-            An Embedder module instance for converting queries to embeddings.
+        model:
+            Embedding model for converting queries to embeddings. Can be either:
+            - Embedder: Custom Embedder instance (for advanced usage with hooks)
+            - EmbedderModel/ModelGateway: Will be auto-wrapped in Embedder
             Optional - only needed for semantic retrieval.
         message_fields:
             Dictionary mapping Message field names to their paths in the Message object.
@@ -50,8 +57,11 @@ class Retriever(Module):
             What the response should be.
             * `plain_response` (default): Returns the final agent response directly.
             * other: Write on field in Message object.
-        response_template:
-            A Jinja template to format response.
+        templates:
+            Dictionary mapping template types to Jinja template strings.
+            Valid keys: "response"
+            !!! example
+                templates={"response": "Results: {{ content }}"}
         config:
             Dictionary with configuration options. Accepts any keys without validation.
             Common options: "top_k", "threshold", "return_score", "dict_key"
@@ -72,10 +82,10 @@ class Retriever(Module):
         super().__init__()
         self.set_name(name)
         self._set_retriever(retriever)
-        self._set_embedder(embedder)
+        self._set_model(model)
         self._set_message_fields(message_fields)
         self._set_response_mode(response_mode)
-        self._set_response_template(response_template)
+        self._set_templates(templates)
         self._set_config(config)
 
     def forward(
@@ -277,28 +287,48 @@ class Retriever(Module):
                 f"`SemanticRetriever` or `VectorDB` instance given `{type(retriever)}`"
             )
 
-    def _set_embedder(self, embedder: Optional["Embedder"] = None):
-        """Set the embedder module for semantic retrieval.
+    def _set_model(self, model: Optional[Union[EMBEDDER_MODELS, Embedder]] = None):
+        """Initialize embedder wrapper.
 
         Args:
-            embedder: An Embedder module instance or None
-
-        Raises:
-            TypeError: If embedder is not an Embedder instance or None
+            model: Can be either:
+                - Embedder: Custom Embedder instance (for advanced usage with hooks)
+                - EmbedderModel/ModelGateway: Will be auto-wrapped in Embedder
+                - None: No embedder (for non-semantic retrieval)
         """
-        if embedder is None:
-            self.register_buffer("embedder", None)
+        if model is None:
+            self.embedder = None
             return
 
-        # Import here to avoid circular dependency
-        from msgflux.nn.modules.embedder import Embedder
-
-        if not isinstance(embedder, Embedder):
-            raise TypeError(
-                f"`embedder` must be an Embedder instance, given `{type(embedder)}`"
+        # Auto-detect: if already Embedder, use directly; otherwise wrap it
+        if isinstance(model, Embedder):
+            self.embedder = model
+        else:
+            # Auto-wrap in Embedder (use retriever name + "_embedder")
+            self.embedder = Embedder(
+                name=f"{self.get_module_name()}_embedder",
+                model=model
             )
 
-        self.register_buffer("embedder", embedder)
+    @property
+    def model(self):
+        """Access underlying model for convenience.
+
+        Returns:
+            The wrapped model instance, or None if no embedder
+        """
+        if self.embedder is None:
+            return None
+        return self.embedder.model
+
+    @model.setter
+    def model(self, value: Optional[Union[EMBEDDER_MODELS, Embedder]]):
+        """Update the retriever's model.
+
+        Args:
+            value: New model (can be EmbedderModel, Embedder, or None)
+        """
+        self._set_model(value)
 
     def _set_config(self, config: Optional[Dict[str, Any]] = None):
         """Set module configuration without key validation.
