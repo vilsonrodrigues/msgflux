@@ -98,23 +98,29 @@ class ChatBlock(metaclass=ChatBlockMeta):
     @staticmethod
     def image(
         url: Union[str, List[str]],
-        detail: Optional[Literal["high", "low"]] = None
+        **kwargs: Any
     ) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
+        """Create image block(s) for chat content.
+
+        Args:
+            url: Image URL or list of URLs
+            **kwargs: Additional parameters to pass to image_url dict.
+                     Common params: detail ("high" or "low"), etc.
+
+        Returns:
+            Image block dict or list of dicts
+        """
         if isinstance(url, list):
             image_blocks = []
             for u in url:
-                image_url_dict = {"url": u}
-                if detail is not None:
-                    image_url_dict["detail"] = detail
+                image_url_dict = {"url": u, **kwargs}
                 image_blocks.append({
                     "type": "image_url",
                     "image_url": image_url_dict
                 })
             return image_blocks
 
-        image_url_dict = {"url": url}
-        if detail is not None:
-            image_url_dict["detail"] = detail
+        image_url_dict = {"url": url, **kwargs}
         return {
             "type": "image_url",
             "image_url": image_url_dict
@@ -122,16 +128,27 @@ class ChatBlock(metaclass=ChatBlockMeta):
 
     @staticmethod
     def video(
-        url: Union[str, List[str]]
+        url: Union[str, List[str]],
+        **kwargs: Any
     ) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
+        """Create video block(s) for chat content.
+
+        Args:
+            url: Video URL or list of URLs
+            **kwargs: Additional parameters to pass to video_url dict.
+                     Can include provider-specific parameters.
+
+        Returns:
+            Video block dict or list of dicts
+        """
         if isinstance(url, list):
             return [{
                 "type": "video_url",
-                "video_url": {"url": u}
+                "video_url": {"url": u, **kwargs}
             } for u in url]
         return {
             "type": "video_url",
-            "video_url": {"url": url}
+            "video_url": {"url": url, **kwargs}
         }
 
     @staticmethod
