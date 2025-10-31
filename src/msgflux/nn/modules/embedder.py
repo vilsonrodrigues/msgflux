@@ -22,13 +22,12 @@ class Embedder(Module):
     """Embedder is a Module that converts data into vector embeddings.
 
     Supports both batch and non-batch models transparently:
-    - Batch models: Passes all data at once for efficient processing
-    - Non-batch models: Uses parallel execution via F.map_gather
+        - Batch models: Passes all data at once for efficient processing
+        - Non-batch models: Uses parallel execution via F.map_gather
     """
 
     def __init__(
         self,
-        name: str,
         model: EMBEDDER_MODELS,
         *,
         message_fields: Optional[Dict[str, Any]] = None,
@@ -36,8 +35,6 @@ class Embedder(Module):
         config: Optional[Dict[str, Any]] = None,
     ):
         """Args:
-        name:
-            Embedder name in snake case format.
         model:
             Embedding model client (supports batch or single).
         message_fields:
@@ -63,7 +60,6 @@ class Embedder(Module):
                 config={"normalize": True, "truncate": True}
         """
         super().__init__()
-        self.set_name(name)
         self._set_model(model)
         self._set_message_fields(message_fields)
         self._set_response_mode(response_mode)
@@ -84,21 +80,7 @@ class Embedder(Module):
                 - model_preference: Override model preference
 
         Returns:
-            Embeddings as list(s) of floats, or Message depending on response_mode
-
-        Examples:
-            # Single text
-            embedding = embedder("Hello world")  # → [0.1, 0.2, ...]
-
-            # Multiple texts (batch)
-            embeddings = embedder(["text1", "text2", "text3"])  # → [[...], [...], [...]]
-
-            # Using Message object
-            msg = Message(texts=["text1", "text2"])
-            embedder(msg)
-
-            # Runtime override
-            embedder(msg, model_preference="fast_model")
+            Embeddings as list(s) of floats, or Message depending on response_mode.
         """
         inputs = self._prepare_task(message, **kwargs)
         embeddings = self._execute_model(**inputs)
@@ -248,17 +230,8 @@ class Embedder(Module):
             )
 
     def _set_config(self, config: Optional[Dict[str, Any]] = None):
-        """Set module configuration without key validation.
-
-        Args:
-            config: Dictionary with configuration options.
-                Accepts any keys - all parameters will be passed to model execution.
-
-        Raises:
-            TypeError: If config is not a dict or None
-        """
         if config is None:
-            self.config = {}
+            self.register_buffer("config", {})
             return
 
         if not isinstance(config, dict):
@@ -266,5 +239,4 @@ class Embedder(Module):
                 f"`config` must be a dict or None, given `{type(config)}`"
             )
 
-        # Store config without validation - accepts any keys
-        self.config = config.copy()
+        self.register_buffer("config", config.copy())

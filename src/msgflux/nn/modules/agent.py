@@ -54,7 +54,7 @@ class Agent(Module):
     def __init__(
         self,
         name: str,
-        model: Union[ChatCompletionModel, ModelGateway],
+        model: Union[ChatCompletionModel, ModelGateway, LM],
         *,
         system_message: Optional[str] = None,
         instructions: Optional[str] = None,
@@ -202,10 +202,14 @@ class Agent(Module):
         """
         if annotations is None:
             annotations = {"message": str, "return": str}
-        super().__init__()
 
-        # Extract stream from config if provided
-        stream = config.get("execution", {}).get("stream", False) if config else False
+        super().__init__()
+        self.set_name(name)
+        self.set_description(description)
+        self.set_annotations(annotations)
+        self._set_config(config)
+
+        stream = config.get("stream", False)
 
         if stream is True:
             if generation_schema is not None:
@@ -220,8 +224,16 @@ class Agent(Module):
             if typed_parser is not None:
                 raise ValueError("`typed_parser` is not `stream=True` compatible")
 
-        # Initialize templates first so _set_signature can override if needed
+        self._set_context_cache(context_cache)
+        self._set_fixed_messages(fixed_messages)
+        self._set_guardrails(guardrails)
+        self._set_message_fields(message_fields)
+        self._set_model(model)
+        self._set_prefilling(prefilling)
+        self._set_system_extra_message(system_extra_message)
+        self._set_response_mode(response_mode)
         self._set_templates(templates)
+        self._set_tools(tools, mcp_servers)
 
         if signature is not None:
             signature_params = dotdict(
@@ -241,20 +253,6 @@ class Agent(Module):
             self._set_expected_output(expected_output)
             self._set_instructions(instructions)
             self._set_system_message(system_message)
-
-        self.set_name(name)
-        self.set_description(description)
-        self.set_annotations(annotations)
-        self._set_context_cache(context_cache)
-        self._set_fixed_messages(fixed_messages)
-        self._set_guardrails(guardrails)
-        self._set_message_fields(message_fields)
-        self._set_config(config)
-        self._set_model(model)
-        self._set_prefilling(prefilling)
-        self._set_system_extra_message(system_extra_message)
-        self._set_response_mode(response_mode)
-        self._set_tools(tools, mcp_servers)
 
     def forward(
         self, message: Optional[Union[str, Mapping[str, Any], Message]] = None, **kwargs
@@ -1162,18 +1160,9 @@ class Agent(Module):
             )
 
     def _set_model(self, model: Union[ChatCompletionModel, ModelGateway, LM]):
-        """Initialize language model wrapper.
-
-        Args:
-            model: Can be either:
-                - ChatCompletionModel/ModelGateway: Will be auto-wrapped in LM
-                - LM: Custom LM instance (for advanced usage with hooks)
-        """
-        # Auto-detect: if already LM, use directly; otherwise wrap it
-        if isinstance(model, LM):
+        if isinstance(model, LM): # If already LM, use directly
             self.lm = model
-        else:
-            # LM will validate model type
+        else: # LM will validate model type
             self.lm = LM(model)
 
     @property
@@ -1280,13 +1269,16 @@ class Agent(Module):
         """Set agent configuration.
 
         Args:
-            config: Dictionary with configuration options.
+            config:
+                Dictionary with configuration options.
                 Valid keys: "verbose", "return_model_state", "tool_choice",
                 "stream", "image_block_kwargs", "video_block_kwargs", "include_date"
 
         Raises:
-            TypeError: If config is not a dict or None
-            ValueError: If invalid keys are provided
+            TypeError:
+                If config is not a dict or None.
+            ValueError:
+                If invalid keys are provided.
         """
         # Define valid keys for Agent
         valid_keys = {
@@ -1296,7 +1288,7 @@ class Agent(Module):
         }
 
         if config is None:
-            self.config = {}
+            self.register_buffer("config", {})
             return
 
         if not isinstance(config, dict):
@@ -1304,7 +1296,6 @@ class Agent(Module):
                 f"`config` must be a dict or None, given `{type(config)}`"
             )
 
-        # Validate keys
         invalid_keys = set(config.keys()) - valid_keys
         if invalid_keys:
             raise ValueError(
@@ -1312,7 +1303,6 @@ class Agent(Module):
                 f"Valid keys are: {valid_keys}"
             )
 
-        # Validate image_block_kwargs if present
         if "image_block_kwargs" in config:
             if not isinstance(config["image_block_kwargs"], dict):
                 raise TypeError(
@@ -1320,7 +1310,6 @@ class Agent(Module):
                     f"given `{type(config['image_block_kwargs'])}`"
                 )
 
-        # Validate video_block_kwargs if present
         if "video_block_kwargs" in config:
             if not isinstance(config["video_block_kwargs"], dict):
                 raise TypeError(
@@ -1328,8 +1317,7 @@ class Agent(Module):
                     f"given `{type(config['video_block_kwargs'])}`"
                 )
 
-        # Store config
-        self.config = config.copy()
+        self.register_buffer("config", config.copy())
 
     def _set_system_extra_message(self, system_extra_message: Optional[str] = None):
         if isinstance(system_extra_message, str) or system_extra_message is None:

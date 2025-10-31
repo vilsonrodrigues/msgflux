@@ -13,7 +13,6 @@ class Speaker(Module):
 
     def __init__(
         self,
-        name: str,
         model: Union[TextToSpeechModel, ModelGateway],
         *,
         guardrails: Optional[Dict[str, Callable]] = None,
@@ -24,10 +23,9 @@ class Speaker(Module):
         ] = "opus",
         prompt: Optional[str] = None,
         config: Optional[Dict[str, Any]] = None,
+        name: Optional[str] = None,  
     ):
         """Args:
-        name:
-            Transcriber name in snake case format.
         model:
             Transcriber Model client.
         guardrails:
@@ -59,9 +57,10 @@ class Speaker(Module):
 
             Configuration option:
             - stream: Transmit response on-the-fly (bool)
+        name:
+            Transcriber name in snake case format.            
         """
         super().__init__()
-        self.set_name(name)
         self._set_guardrails(guardrails)
         self._set_model(model)
         self._set_prompt(prompt)
@@ -69,6 +68,8 @@ class Speaker(Module):
         self._set_response_mode(response_mode)
         self._set_message_fields(message_fields)
         self._set_config(config)
+        if name:
+            self.set_name(name)
 
     def forward(
         self, message: Union[str, Message], **kwargs
@@ -104,29 +105,7 @@ class Speaker(Module):
     async def aforward(
         self, message: Union[str, Message], **kwargs
     ) -> Union[bytes, ModelStreamResponse]:
-        """Async version of forward. Execute the speaker asynchronously.
-
-        Args:
-            message: The input message, which can be:
-                - str: Direct text input to convert to speech
-                - Message: Message object with fields mapped via message_fields
-            **kwargs: Runtime overrides for message_fields. Can include:
-                - task_inputs: Override field path or direct value
-
-        Returns:
-            Audio bytes or ModelStreamResponse if stream=True
-
-        Examples:
-            # Direct string input
-            await speaker.acall("Hello world")
-
-            # Using Message object with message_fields
-            msg = Message(text="Hello world")
-            await speaker.acall(msg)
-
-            # Runtime override
-            await speaker.acall(msg, task_inputs="custom.path")
-        """
+        """Async version of forward. Execute the speaker asynchronously."""
         inputs = self._prepare_task(message, **kwargs)
         model_response = await self._aexecute_model(**inputs)
         response = self._process_model_response(model_response, message)
@@ -229,17 +208,8 @@ class Speaker(Module):
             )
 
     def _set_config(self, config: Optional[Dict[str, Any]] = None):
-        """Set module configuration without key validation.
-
-        Args:
-            config: Dictionary with configuration options.
-                Accepts any keys - commonly used: "stream"
-
-        Raises:
-            TypeError: If config is not a dict or None
-        """
         if config is None:
-            self.config = {}
+            self.register_buffer("config", {})
             return
 
         if not isinstance(config, dict):
@@ -247,5 +217,4 @@ class Speaker(Module):
                 f"`config` must be a dict or None, given `{type(config)}`"
             )
 
-        # Store config without validation - accepts any keys
-        self.config = config.copy()
+        self.register_buffer("config", config.copy())

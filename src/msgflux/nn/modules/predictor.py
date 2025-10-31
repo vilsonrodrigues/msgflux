@@ -15,17 +15,15 @@ class Predictor(Module):
 
     def __init__(
         self,
-        name: str,
         model: Union[BaseModel, ModelGateway],
         *,
         message_fields: Optional[Dict[str, Any]] = None,
         response_mode: Optional[str] = "plain_response",
         response_template: Optional[str] = None,
         config: Optional[Dict[str, Any]] = None,
+        name: Optional[str] = None,        
     ):
         """Args:
-        name:
-            Predictor name in snake case format.
         model:
             Predictor Model client.
         message_fields:
@@ -51,14 +49,17 @@ class Predictor(Module):
             All parameters will be passed directly to model execution.
             !!! example
                 config={"temperature": 0.7, "top_k": 50}
+        name:
+            Predictor name in snake case format.                
         """
         super().__init__()
-        self.set_name(name)
         self._set_model(model)
         self._set_message_fields(message_fields)
         self._set_response_mode(response_mode)
         self._set_response_template(response_template)
         self._set_config(config)
+        if name:
+            self.set_name(name)
 
     def forward(self, message: Union[Any, Message], **kwargs) -> Any:
         """Execute the predictor with the given message.
@@ -73,20 +74,6 @@ class Predictor(Module):
 
         Returns:
             Prediction results (type depends on model and response_mode)
-
-        Examples:
-            # Direct input
-            predictor("Sample text for classification")
-
-            # Direct image/audio/other data
-            predictor(image_data)
-
-            # Using Message object with message_fields
-            msg = Message(text="Sample text")
-            predictor(msg)
-
-            # Runtime override
-            predictor(msg, task_inputs="custom.data.path")
         """
         inputs = self._prepare_task(message, **kwargs)
         model_response = self._execute_model(**inputs)
@@ -94,33 +81,7 @@ class Predictor(Module):
         return response
 
     async def aforward(self, message: Union[Any, Message], **kwargs) -> Any:
-        """Async version of forward. Execute the predictor asynchronously.
-
-        Args:
-            message: The input message, which can be:
-                - Any: Direct data input for prediction (text, image, audio, etc.)
-                - Message: Message object with fields mapped via message_fields
-            **kwargs: Runtime overrides for message_fields. Can include:
-                - task_inputs: Override field path or direct value
-                - model_preference: Override model preference
-
-        Returns:
-            Prediction results (type depends on model and response_mode)
-
-        Examples:
-            # Direct input
-            await predictor.acall("Sample text for classification")
-
-            # Direct image/audio/other data
-            await predictor.acall(image_data)
-
-            # Using Message object with message_fields
-            msg = Message(text="Sample text")
-            await predictor.acall(msg)
-
-            # Runtime override
-            await predictor.acall(msg, task_inputs="custom.data.path")
-        """
+        """Async version of forward. Execute the predictor asynchronously."""
         inputs = self._prepare_task(message, **kwargs)
         model_response = await self._aexecute_model(**inputs)
         response = self._process_model_response(model_response, message)
@@ -195,17 +156,8 @@ class Predictor(Module):
             )
 
     def _set_config(self, config: Optional[Dict[str, Any]] = None):
-        """Set module configuration without key validation.
-
-        Args:
-            config: Dictionary with configuration options.
-                Accepts any keys - all parameters will be passed to model execution.
-
-        Raises:
-            TypeError: If config is not a dict or None
-        """
         if config is None:
-            self.config = {}
+            self.register_buffer("config", {})
             return
 
         if not isinstance(config, dict):
@@ -213,5 +165,4 @@ class Predictor(Module):
                 f"`config` must be a dict or None, given `{type(config)}`"
             )
 
-        # Store config without validation - accepts any keys
-        self.config = config.copy()
+        self.register_buffer("config", config.copy())

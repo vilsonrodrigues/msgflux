@@ -13,7 +13,6 @@ class Transcriber(Module):
 
     def __init__(
         self,
-        name: str,
         model: Union[SpeechToTextModel, ModelGateway],
         *,
         message_fields: Optional[Dict[str, Any]] = None,
@@ -22,10 +21,9 @@ class Transcriber(Module):
         response_format: Optional[str] = "text",
         prompt: Optional[str] = None,
         config: Optional[Dict[str, Any]] = None,
+        name: Optional[str] = None,   
     ):
         """Args:
-        name:
-            Transcriber name in snake case format.
         model:
             Transcriber Model client.
         message_fields:
@@ -69,9 +67,10 @@ class Transcriber(Module):
             - stream: Transmit response on-the-fly (bool)
             - timestamp_granularities: Enable timestamp granularities - "word", "segment", or None
               (requires response_format=verbose_json)
+        name:
+            Transcriber name in snake case format.              
         """
         super().__init__()
-        self.set_name(name)
         self._set_model(model)
         self._set_prompt(prompt)
         self._set_message_fields(message_fields)
@@ -79,6 +78,8 @@ class Transcriber(Module):
         self._set_response_mode(response_mode)
         self._set_response_template(response_template)
         self._set_config(config)
+        if name:
+            self.set_name(name)
 
     def forward(
         self, message: Union[bytes, str, Dict[str, str], Message], **kwargs
@@ -92,25 +93,13 @@ class Transcriber(Module):
                 - dict: Audio input as dictionary
                 - Message: Message object with fields mapped via message_fields
             **kwargs: Runtime overrides for message_fields. Can include:
-                - task_multimodal_inputs: Override multimodal inputs (e.g., "audio.path" or {"audio": "audio.path"})
+                - task_multimodal_inputs: Override multimodal inputs
+                  (e.g., "audio.path" or {"audio": "audio.path"})
                 - model_preference: Override model preference
 
         Returns:
-            Transcribed text (str, dict, Message, or ModelStreamResponse depending on configuration)
-
-        Examples:
-            # Direct file path
-            transcriber("/path/to/audio.wav")
-
-            # Direct audio bytes
-            transcriber(audio_bytes)
-
-            # Using Message object with message_fields
-            msg = Message(audio_path="/path/to/audio.wav")
-            transcriber(msg)
-
-            # Runtime override
-            transcriber(msg, task_multimodal_inputs="custom.audio.path")
+            Transcribed text (str, dict, Message, or ModelStreamResponse depending
+            on configuration).
         """
         inputs = self._prepare_task(message, **kwargs)
         model_response = self._execute_model(**inputs)
@@ -120,35 +109,7 @@ class Transcriber(Module):
     async def aforward(
         self, message: Union[bytes, str, Dict[str, str], Message], **kwargs
     ) -> Union[str, Dict[str, str], Message, ModelStreamResponse]:
-        """Async version of forward. Execute the transcriber asynchronously.
-
-        Args:
-            message: The input message, which can be:
-                - bytes: Direct audio bytes to transcribe
-                - str: Audio file path or URL
-                - dict: Audio input as dictionary
-                - Message: Message object with fields mapped via message_fields
-            **kwargs: Runtime overrides for message_fields. Can include:
-                - task_multimodal_inputs: Override multimodal inputs (e.g., "audio.path" or {"audio": "audio.path"})
-                - model_preference: Override model preference
-
-        Returns:
-            Transcribed text (str, dict, Message, or ModelStreamResponse depending on configuration)
-
-        Examples:
-            # Direct file path
-            await transcriber.acall("/path/to/audio.wav")
-
-            # Direct audio bytes
-            await transcriber.acall(audio_bytes)
-
-            # Using Message object with message_fields
-            msg = Message(audio_path="/path/to/audio.wav")
-            await transcriber.acall(msg)
-
-            # Runtime override
-            await transcriber.acall(msg, task_multimodal_inputs="custom.audio.path")
-        """
+        """Async version of forward. Execute the transcriber asynchronously."""
         inputs = self._prepare_task(message, **kwargs)
         model_response = await self._aexecute_model(**inputs)
         response = self._process_model_response(model_response, message)
@@ -245,17 +206,8 @@ class Transcriber(Module):
             )
 
     def _set_config(self, config: Optional[Dict[str, Any]] = None):
-        """Set module configuration without key validation.
-
-        Args:
-            config: Dictionary with configuration options.
-                Accepts any keys - commonly used: "language", "stream", "timestamp_granularities"
-
-        Raises:
-            TypeError: If config is not a dict or None
-        """
         if config is None:
-            self.config = {}
+            self.register_buffer("config", {})
             return
 
         if not isinstance(config, dict):
@@ -263,8 +215,7 @@ class Transcriber(Module):
                 f"`config` must be a dict or None, given `{type(config)}`"
             )
 
-        # Store config without validation - accepts any keys
-        self.config = config.copy()
+        self.register_buffer("config", config.copy())
 
     def _set_response_format(self, response_format: str):
         supported_formats = ["json", "text", "srt", "verbose_json", "vtt"]

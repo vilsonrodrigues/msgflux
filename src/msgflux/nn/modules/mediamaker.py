@@ -36,7 +36,6 @@ class MediaMaker(Module):
 
     def __init__(
         self,
-        name: str,
         model: MEDIA_MODEL_TYPES,
         *,
         guardrails: Optional[Dict[str, Callable]] = None,
@@ -45,12 +44,11 @@ class MediaMaker(Module):
         response_mode: Optional[str] = "plain_response",
         negative_prompt: Optional[str] = None,
         config: Optional[Dict[str, Any]] = None,
+        name: Optional[str] = None,        
     ):
         """Args:
-        name:
-            Designer name in snake case format.
         model:
-            Designer Model client.
+            MediaMaker Model client.
         guardrails:
             Dictionary mapping guardrail types to callables.
             Valid keys: "input", "output"
@@ -87,9 +85,10 @@ class MediaMaker(Module):
                     "aspect_ratio": "16:9",
                     "n": 1
                 }
+        name:
+            MediaMaker name in snake case format.                
         """
         super().__init__()
-        self.set_name(name)
         self._set_guardrails(guardrails)
         self._set_model(model)
         self._set_negative_prompt(negative_prompt)
@@ -97,6 +96,8 @@ class MediaMaker(Module):
         self._set_response_format(response_format)
         self._set_message_fields(message_fields)
         self._set_config(config)
+        if name:
+            self.set_name(name)
 
     def forward(self, message: Union[str, Message], **kwargs) -> Union[str, Message]:
         """Execute the media maker with the given message.
@@ -110,18 +111,7 @@ class MediaMaker(Module):
                 - task_multimodal_inputs: Override multimodal inputs (e.g., {"image": "path"})
 
         Returns:
-            Generated media content (str or Message depending on response_mode)
-
-        Examples:
-            # Direct string input
-            media_maker("A beautiful sunset over mountains")
-
-            # Using Message object with message_fields
-            msg = Message(prompt="A beautiful sunset")
-            media_maker(msg)
-
-            # Runtime override with multimodal input
-            media_maker(msg, task_multimodal_inputs={"image": "reference.jpg"})
+            Generated media content (str or Message depending on response_mode).
         """
         inputs = self._prepare_task(message, **kwargs)
         model_response = self._execute_model(**inputs)
@@ -129,30 +119,7 @@ class MediaMaker(Module):
         return response
 
     async def aforward(self, message: Union[str, Message], **kwargs) -> Union[str, Message]:
-        """Async version of forward. Execute the media maker asynchronously.
-
-        Args:
-            message: The input message, which can be:
-                - str: Direct prompt for media generation
-                - Message: Message object with fields mapped via message_fields
-            **kwargs: Runtime overrides for message_fields. Can include:
-                - task_inputs: Override field path or direct value
-                - task_multimodal_inputs: Override multimodal inputs (e.g., {"image": "path"})
-
-        Returns:
-            Generated media content (str or Message depending on response_mode)
-
-        Examples:
-            # Direct string input
-            await media_maker.acall("A beautiful sunset over mountains")
-
-            # Using Message object with message_fields
-            msg = Message(prompt="A beautiful sunset")
-            await media_maker.acall(msg)
-
-            # Runtime override with multimodal input
-            await media_maker.acall(msg, task_multimodal_inputs={"image": "reference.jpg"})
-        """
+        """Async version of forward. Execute the media maker asynchronously."""
         inputs = self._prepare_task(message, **kwargs)
         model_response = await self._aexecute_model(**inputs)
         response = self._process_model_response(model_response, message)
@@ -323,17 +290,8 @@ class MediaMaker(Module):
             )
 
     def _set_config(self, config: Optional[Dict[str, Any]] = None):
-        """Set module configuration without key validation.
-
-        Args:
-            config: Dictionary with configuration options.
-                Accepts any keys - all parameters will be passed to model execution.
-
-        Raises:
-            TypeError: If config is not a dict or None
-        """
         if config is None:
-            self.config = {}
+            self.register_buffer("config", {})
             return
 
         if not isinstance(config, dict):
@@ -341,5 +299,4 @@ class MediaMaker(Module):
                 f"`config` must be a dict or None, given `{type(config)}`"
             )
 
-        # Store config without validation - accepts any keys
-        self.config = config.copy()
+        self.register_buffer("config", config.copy())

@@ -26,7 +26,6 @@ class Retriever(Module):
 
     def __init__(
         self,
-        name: str,
         retriever: RETRIVERS,
         *,
         model: Optional[Union[EMBEDDER_MODELS, Embedder]] = None,
@@ -34,10 +33,9 @@ class Retriever(Module):
         response_mode: Optional[str] = "plain_response",
         templates: Optional[Dict[str, str]] = None,
         config: Optional[Dict[str, Any]] = None,
+        name: Optional[str] = None,        
     ):
         """Args:
-        name:
-            Designer name in snake case format.
         retriever:
             Retriever client.
         model:
@@ -78,6 +76,8 @@ class Retriever(Module):
             - threshold: Retriever threshold (float)
             - return_score: If True, return similarity score (bool)
             - dict_key: Help to extract a value from task_inputs if dict (str)
+        name:
+            Retriever name in snake case format.            
         """
         super().__init__()
         self.set_name(name)
@@ -104,20 +104,6 @@ class Retriever(Module):
 
         Returns:
             Retrieved results (str, dict, or Message depending on response_mode)
-
-        Examples:
-            # Direct string query
-            retriever("What is machine learning?")
-
-            # List of queries
-            retriever(["query1", "query2"])
-
-            # Using Message object with message_fields
-            msg = Message(query="What is machine learning?")
-            retriever(msg)
-
-            # Runtime override
-            retriever(msg, task_inputs="custom.query.path")
         """
         inputs = self._prepare_task(message, **kwargs)
         retriever_response = self._execute_retriever(**inputs)
@@ -127,34 +113,7 @@ class Retriever(Module):
     async def aforward(
         self, message: Union[str, List[str], List[Dict[str, Any]], Message], **kwargs
     ) -> Union[str, Dict[str, str], Message]:
-        """Async version of forward. Execute the retriever asynchronously.
-
-        Args:
-            message: The input message, which can be:
-                - str: Direct query string for retrieval
-                - List[str]: List of query strings
-                - List[Dict[str, Any]]: List of query dictionaries
-                - Message: Message object with fields mapped via message_fields
-            **kwargs: Runtime overrides for message_fields. Can include:
-                - task_inputs: Override field path or direct value
-
-        Returns:
-            Retrieved results (str, dict, or Message depending on response_mode)
-
-        Examples:
-            # Direct string query
-            await retriever.acall("What is machine learning?")
-
-            # List of queries
-            await retriever.acall(["query1", "query2"])
-
-            # Using Message object with message_fields
-            msg = Message(query="What is machine learning?")
-            await retriever.acall(msg)
-
-            # Runtime override
-            await retriever.acall(msg, task_inputs="custom.query.path")
-        """
+        """Async version of forward. Execute the retriever asynchronously."""
         inputs = self._prepare_task(message, **kwargs)
         retriever_response = await self._aexecute_retriever(**inputs)
         response = self._prepare_response(retriever_response, message)
@@ -288,27 +247,14 @@ class Retriever(Module):
             )
 
     def _set_model(self, model: Optional[Union[EMBEDDER_MODELS, Embedder]] = None):
-        """Initialize embedder wrapper.
-
-        Args:
-            model: Can be either:
-                - Embedder: Custom Embedder instance (for advanced usage with hooks)
-                - EmbedderModel/ModelGateway: Will be auto-wrapped in Embedder
-                - None: No embedder (for non-semantic retrieval)
-        """
         if model is None:
             self.embedder = None
             return
 
-        # Auto-detect: if already Embedder, use directly; otherwise wrap it
-        if isinstance(model, Embedder):
+        if isinstance(model, Embedder): # If already Embedder, use directly
             self.embedder = model
-        else:
-            # Auto-wrap in Embedder (use retriever name + "_embedder")
-            self.embedder = Embedder(
-                name=f"{self.get_module_name()}_embedder",
-                model=model
-            )
+        else: # Auto-wrap in Embedder
+            self.embedder = Embedder(model=model)
 
     @property
     def model(self):
@@ -323,25 +269,12 @@ class Retriever(Module):
 
     @model.setter
     def model(self, value: Optional[Union[EMBEDDER_MODELS, Embedder]]):
-        """Update the retriever's model.
-
-        Args:
-            value: New model (can be EmbedderModel, Embedder, or None)
-        """
+        """Update the retriever's model."""
         self._set_model(value)
 
     def _set_config(self, config: Optional[Dict[str, Any]] = None):
-        """Set module configuration without key validation.
-
-        Args:
-            config: Dictionary with configuration options.
-                Accepts any keys - commonly used: "top_k", "threshold", "return_score", "dict_key"
-
-        Raises:
-            TypeError: If config is not a dict or None
-        """
         if config is None:
-            self.config = {}
+            self.register_buffer("config", {})
             return
 
         if not isinstance(config, dict):
@@ -349,5 +282,4 @@ class Retriever(Module):
                 f"`config` must be a dict or None, given `{type(config)}`"
             )
 
-        # Store config without validation - accepts any keys
-        self.config = config.copy()
+        self.register_buffer("config", config.copy())
