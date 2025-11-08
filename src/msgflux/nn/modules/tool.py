@@ -17,10 +17,8 @@ from msgflux.protocols.mcp import (
     MCPClient, convert_mcp_schema_to_tool_schema, extract_tool_result_text, filter_tools
 )
 from msgflux.telemetry.span import (
-    ainstrument_tool_execution,
-    ainstrument_tool_library_call,
-    instrument_tool_execution,
-    instrument_tool_library_call,
+    aset_tool_attributes,
+    set_tool_attributes,
 )
 from msgflux.utils.chat import generate_tool_json_schema
 from msgflux.utils.convert import convert_camel_to_snake_case
@@ -59,74 +57,11 @@ class ToolResponses:
         """Retrieve a tool_call by tool name."""
         return next((r for r in self.tool_calls if r.name == tool_name), None)
 
-
 class Tool(Module):
     """Tool is Module type that provide a json schema to tools."""
 
     def get_json_schema(self):
         return generate_tool_json_schema(self)
-
-    def _call(self, *args, **kwargs):
-        """Internal call method with tool-specific telemetry."""
-        # Early return if telemetry is disabled
-        if not envs.telemetry_requires_trace:
-            return self.forward(*args, **kwargs)
-
-        tool_name = self.get_module_name()
-
-        with self._spans.tool_execution(tool_name, kwargs) as span:
-            try:
-                # Mark as local tool (not MCP)
-                span.set_attribute("mcp.tool.type", "local")
-
-                result = self.forward(*args, **kwargs)
-
-                # Capture result if enabled
-                if envs.telemetry_capture_tool_call_responses:
-                    try:
-                        encoded_result = msgspec.json.encode(result)
-                        span.set_attribute("tool.result", encoded_result)
-                    except (TypeError, ValueError):
-                        # If result can't be encoded, skip
-                        pass
-                span.set_status(Status(StatusCode.OK))
-                return result
-            except Exception as e:
-                span.record_exception(e)
-                span.set_status(Status(StatusCode.ERROR, str(e)))
-                raise
-
-    async def _acall(self, *args, **kwargs):
-        """Async internal call method with tool-specific telemetry."""
-        # Early return if telemetry is disabled
-        if not envs.telemetry_requires_trace:
-            return await self.aforward(*args, **kwargs)
-
-        tool_name = self.get_module_name()
-
-        async with self._spans.atool_execution(tool_name, kwargs) as span:
-            try:
-                # Mark as local tool (not MCP)
-                span.set_attribute("mcp.tool.type", "local")
-
-                result = await self.aforward(*args, **kwargs)
-
-                # Capture result if enabled
-                if envs.telemetry_capture_tool_call_responses:
-                    try:
-                        encoded_result = msgspec.json.encode(result)
-                        span.set_attribute("tool.result", encoded_result)
-                    except (TypeError, ValueError):
-                        # If result can't be encoded, skip
-                        pass
-
-                span.set_status(Status(StatusCode.OK))
-                return result
-            except Exception as e:
-                span.record_exception(e)
-                span.set_status(Status(StatusCode.ERROR, str(e)))
-                raise
-
 
 class MCPTool(Tool):
     """
@@ -186,20 +121,9 @@ class MCPTool(Tool):
             self._namespace
         )
 
+    @set_tool_attributes(execution_type="remote", protocol="mcp")
     def forward(self, **kwargs) -> Any:
-        """
-        Execute MCP tool call synchronously.
-
-        Note: This automatically wraps async MCP calls for sync usage.
-        Telemetry is handled by Tool._call().
-        """
-        # Add MCP-specific telemetry attributes
-        span = trace.get_current_span()
-        if span.is_recording():
-            span.set_attribute("mcp.tool.type", "remote")
-            span.set_attribute("mcp.tool.namespace", self._namespace)
-            span.set_attribute("mcp.tool.name", self._mcp_tool_name)
-
+        """Execute MCP tool call."""
         # Call MCP tool (wrap async in sync)
         result = F.wait_for(self._mcp_client.call_tool, self._mcp_tool_name, kwargs)
 
@@ -211,20 +135,9 @@ class MCPTool(Tool):
         # Extract and return result
         return extract_tool_result_text(result)
 
+    @aset_tool_attributes(execution_type="remote", protocol="mcp")
     async def aforward(self, **kwargs) -> Any:
-        """
-        Execute MCP tool call asynchronously.
-
-        Telemetry is handled by Tool._acall().
-        """
-
-        # Add MCP-specific telemetry attributes
-        span = trace.get_current_span()
-        if span.is_recording():
-            span.set_attribute("mcp.tool.type", "remote")
-            span.set_attribute("mcp.tool.namespace", self._namespace)
-            span.set_attribute("mcp.tool.name", self._mcp_tool_name)
-
+        """Execute MCP tool call asynchronously."""
         # Call MCP tool
         result = await self._mcp_client.call_tool(self._mcp_tool_name, kwargs)
 
@@ -235,7 +148,6 @@ class MCPTool(Tool):
 
         # Extract and return result
         return extract_tool_result_text(result)
-
 
 def _convert_module_to_nn_tool(impl: Callable) -> Tool: # noqa: C901
     """Convert a callable in nn.Tool."""
@@ -330,7 +242,7 @@ def _convert_module_to_nn_tool(impl: Callable) -> Tool: # noqa: C901
         doc = "This tool will run in the background. \n" + doc
 
     class LocalTool(Tool):
-        """Local tool implementation (non-MCP)."""
+        """Local tool implementation."""
         def __init__(self):
             super().__init__()
             self.set_name(name)
@@ -340,25 +252,21 @@ def _convert_module_to_nn_tool(impl: Callable) -> Tool: # noqa: C901
             self.impl = impl  # Not a buffer for now
 
         @tool_retry
-        @instrument_tool_execution
-        def forward(self, *args, **kwargs):
+        @set_tool_attributes(execution_type="local")
+        def forward(self, **kwargs):
             if inspect.iscoroutinefunction(self.impl):
-                return F.wait_for(self.impl, *args, **kwargs)
-            return self.impl(*args, **kwargs)
+                return F.wait_for(self.impl, **kwargs)
+            return self.impl(**kwargs)
 
         @tool_retry
-        @ainstrument_tool_execution
+        @aset_tool_attributes(execution_type="local")
         async def aforward(self, *args, **kwargs):
-            # Check if impl has acall method first (for Module instances)
             if hasattr(self.impl, "acall"):
                 return await self.impl.acall(*args, **kwargs)
-            # Then check if it's a coroutine function
             elif inspect.iscoroutinefunction(self.impl):
                 return await self.impl(*args, **kwargs)
             # Fall back to sync call
-            else:
-                return self.impl(*args, **kwargs)
-
+            return self.impl(*args, **kwargs)
     return LocalTool()
 
 
@@ -433,6 +341,7 @@ class ToolLibrary(Module):
     def clear(self):
         self.library.clear()
         self.special_library.clear()
+        # TODO: clean mcp
 
     def _initialize_mcp_clients(self, mcp_servers: List[Dict[str, Any]]):
         """Initialize MCP clients from server configurations."""
@@ -541,7 +450,6 @@ class ToolLibrary(Module):
 
         return schemas
 
-    @instrument_tool_library_call
     def forward(  # noqa: C901
         self,
         tool_callings: List[Tuple[str, str, Any]],
@@ -565,6 +473,8 @@ class ToolLibrary(Module):
             ToolResponses:
                 Structured object containing all tool call results.
         """
+        # TODO capturar no trace quando o modelo erra algo na tool
+        # TODO capturar no trace o tool config
         if model_state is None:
             model_state = {}
 
@@ -635,6 +545,8 @@ class ToolLibrary(Module):
                 return_directly = False
 
             tool_params = tool_params or {}
+            # Add tool_call_id for telemetry
+            tool_params["tool_call_id"] = tool_id
             prepared_calls.append(partial(tool, **tool_params))
 
             call_metadata.append(
@@ -647,6 +559,7 @@ class ToolLibrary(Module):
                 if isinstance(meta.params, dict):
                     parameters = meta.params.to_dict()
                     parameters.pop("vars", None)
+                    parameters.pop("tool_call_id", None)
                 else:
                     parameters = None
                 tool_calls.append(
@@ -660,7 +573,6 @@ class ToolLibrary(Module):
 
         return ToolResponses(return_directly=return_directly, tool_calls=tool_calls)
 
-    @ainstrument_tool_library_call
     async def aforward(  # noqa: C901
         self,
         tool_callings: List[Tuple[str, str, Any]],
@@ -696,110 +608,6 @@ class ToolLibrary(Module):
         return_directly = True if tool_callings else False
 
         for tool_id, tool_name, tool_params in tool_callings:
-            # Check if it's an MCP tool (has namespace prefix)
-            if "__" in tool_name:
-                namespace, mcp_tool_name = tool_name.split("__", 1)
-
-                if namespace in self.mcp_clients:
-                    # Execute MCP tool
-                    mcp_data = self.mcp_clients[namespace]
-                    client = mcp_data["client"]
-                    tool_config = mcp_data["tool_config"].get(mcp_tool_name, {})
-
-                    # Apply inject_vars if configured
-                    inject_vars = tool_config.get("inject_vars", False)
-                    if inject_vars:
-                        if isinstance(inject_vars, list):
-                            for key in inject_vars:
-                                if key in vars:
-                                    tool_params[key] = vars[key]
-                        elif inject_vars is True:
-                            tool_params["vars"] = vars
-
-                    # Check return_direct config
-                    if not tool_config.get("return_direct", False):
-                        return_directly = False
-
-                    # Call MCP tool asynchronously with telemetry
-                    try:                        
-                        # Create individual span for MCP tool execution
-                        if envs.telemetry_requires_trace:
-                            async with self._spans.atool_execution(tool_name, tool_params) as mcp_span:
-                                # Add MCP-specific attributes
-                                mcp_span.set_attribute("mcp.tool.namespace", namespace)
-                                mcp_span.set_attribute("mcp.tool.name", mcp_tool_name)
-                                mcp_span.set_attribute("mcp.tool.type", "remote")
-
-                                result = await client.call_tool(mcp_tool_name, tool_params)
-
-                                # Capture result if enabled
-                                if envs.telemetry_capture_tool_call_responses and not result.isError:
-                                    result_text = extract_tool_result_text(result)
-                                    try:
-                                        encoded_result = msgspec.json.encode(result_text)
-                                        mcp_span.set_attribute("tool.result", encoded_result)
-                                    except (TypeError, ValueError):
-                                        pass
-                        else:
-                            result = await client.call_tool(mcp_tool_name, tool_params)
-
-                        if result.isError:
-                            error_text = extract_tool_result_text(result)
-                            tool_calls.append(
-                                ToolCall(
-                                    id=tool_id,
-                                    name=tool_name,
-                                    parameters=tool_params,
-                                    error=error_text
-                                )
-                            )
-                        else:
-                            result_text = extract_tool_result_text(result)
-                            tool_calls.append(
-                                ToolCall(
-                                    id=tool_id,
-                                    name=tool_name,
-                                    parameters=tool_params,
-                                    result=result_text
-                                )
-                            )
-                    except Exception as e:
-                        error_msg = f"MCP tool execution error: {str(e)}"
-
-                        # Log error
-                        logger.error(
-                            "MCP tool execution failed",
-                            extra={
-                                "tool_id": tool_id,
-                                "tool_name": tool_name,
-                                "namespace": namespace,
-                                "mcp_tool_name": mcp_tool_name,
-                                "error": str(e),
-                                "error_type": type(e).__name__,
-                            },
-                            exc_info=True
-                        )
-
-                        # Record telemetry
-                        span = trace.get_current_span()
-                        if span.is_recording():
-                            span.record_exception(e)
-                            span.set_status(Status(StatusCode.ERROR, error_msg))
-                            span.set_attribute("mcp.tool.error", True)
-                            span.set_attribute("mcp.tool.namespace", namespace)
-                            span.set_attribute("mcp.tool.name", mcp_tool_name)
-
-                        tool_calls.append(
-                            ToolCall(
-                                id=tool_id,
-                                name=tool_name,
-                                parameters=tool_params,
-                                error=error_msg
-                            )
-                        )
-                    continue
-
-            # Local tool execution
             if tool_name not in self.library:
                 tool_calls.append(
                     ToolCall(
@@ -858,6 +666,8 @@ class ToolLibrary(Module):
                 return_directly = False
 
             tool_params = tool_params or {}
+            # Add tool_call_id for telemetry
+            tool_params["tool_call_id"] = tool_id
             prepared_calls.append(partial(tool.acall, **tool_params))
 
             call_metadata.append(
@@ -870,6 +680,7 @@ class ToolLibrary(Module):
                 if isinstance(meta.params, dict):
                     parameters = meta.params.to_dict()
                     parameters.pop("vars", None)
+                    parameters.pop("tool_call_id", None)
                 else:
                     parameters = None
                 tool_calls.append(

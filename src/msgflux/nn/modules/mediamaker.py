@@ -44,7 +44,7 @@ class MediaMaker(Module):
         response_mode: Optional[str] = "plain_response",
         negative_prompt: Optional[str] = None,
         config: Optional[Dict[str, Any]] = None,
-        name: Optional[str] = None,        
+        name: Optional[str] = None,       
     ):
         """Args:
         model:

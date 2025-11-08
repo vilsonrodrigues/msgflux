@@ -1,15 +1,18 @@
 import asyncio
+import hashlib
 import os
 import platform
 from contextlib import asynccontextmanager, contextmanager
 from functools import wraps
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, Optional
 
 import msgspec
+from opentelemetry import trace
 from opentelemetry.trace import SpanKind, Status, StatusCode
 
 from msgflux.envs import envs
-from msgflux.message import Message
+from msgflux.models.response import ModelStreamResponse
+from msgflux.telemetry.attributes import GenAIAttributes, MsgTraceAttributes
 from msgflux.telemetry.tracer import get_tracer
 from msgflux.version import __version__ as msgflux_version
 
@@ -36,59 +39,31 @@ class Spans:
     def init_flow(
         self,
         module_name: str,
-        message: Optional[Message] = None,  # TODO: pass metadata directly
+        module_type: str,
         encoded_state_dict: Optional[bytes] = None,
     ):
-        from msgflux.telemetry.attributes import MsgTraceAttributes
-
         attributes = {}
+        attributes[MsgTraceAttributes.SERVICE_NAME] = "msgflux"
         attributes[MsgTraceAttributes.SERVICE_VERSION] = msgflux_version
-        attributes[MsgTraceAttributes.WORKFLOW_NAME] = module_name
-        if message:
-            attributes["msgflux.metadata"] = message.get("metadata")  # Framework-specific
+        attributes[MsgTraceAttributes.MODULE_NAME] = module_name
+        attributes[MsgTraceAttributes.MODULE_TYPE] = module_type
         if encoded_state_dict:
-            attributes["msgflux.state_dict"] = encoded_state_dict  # Framework-specific
+            attributes["msgflux.state_dict"] = encoded_state_dict
         if envs.telemetry_capture_platform:
-            attributes["platform"] = platform.platform()
-            attributes["platform.version"] = platform.version()
-            attributes["platform.python.version"] = platform.python_version()
-            attributes["platform.num_cpus"] = os.cpu_count()
+            attributes[MsgTraceAttributes.PLATFORM_NAME] = platform.platform()
+            attributes[MsgTraceAttributes.PLATFORM_VERSION] = platform.version()
+            attributes[MsgTraceAttributes.PLATFORM_NUM_CPUS] = os.cpu_count()
+            attributes[MsgTraceAttributes.PLATFORM_PYTHON_VERSION] = platform.python_version()            
 
-        span_name = "Workflow Initialized"
-        with self.span_context(span_name, attributes) as span:
+        with self.span_context(module_name, attributes) as span:
             yield span
 
     @contextmanager
-    def init_module(self, module_name: str):
-        from msgflux.telemetry.attributes import MsgTraceAttributes
-
+    def init_module(self, module_name: str, module_type: str):
         attributes = {}
         attributes[MsgTraceAttributes.MODULE_NAME] = module_name
-        span_name = "Module Initialized"
-        with self.span_context(span_name, attributes) as span:
-            yield span
-
-    @contextmanager
-    def tool_usage(self, tool_callings: List[Tuple[str, str, Any]]):
-        from msgflux.telemetry.attributes import GenAIAttributes, MsgTraceAttributes
-
-        # Extract first tool name (for span name)
-        first_tool_name = tool_callings[0][1] if tool_callings else "unknown_tool"
-
-        # Prepare tool calls data
-        calls = [
-            {"id": call[0], "name": call[1], "parameters": call[2]}
-            for call in tool_callings
-        ]
-
-        with self.span_context(f"tool.{first_tool_name}", {}) as span:
-            # Set operation type
-            span.set_attribute(GenAIAttributes.OPERATION_NAME, "tool")
-
-            # Set tool callings for msgtrace UI
-            encoded_calls = msgspec.json.encode(calls)
-            span.set_attribute(MsgTraceAttributes.TOOL_CALLINGS, encoded_calls)
-
+        attributes[MsgTraceAttributes.MODULE_TYPE] = module_type
+        with self.span_context(module_name, attributes) as span:
             yield span
 
     @asynccontextmanager
@@ -109,106 +84,32 @@ class Spans:
     async def ainit_flow(
         self,
         module_name: str,
-        message: Optional[Message] = None,
+        module_type: str,
         encoded_state_dict: Optional[bytes] = None,
     ):
-        """Async version of init_flow context manager."""
-        from msgflux.telemetry.attributes import MsgTraceAttributes
-
         attributes = {}
+        attributes[MsgTraceAttributes.SERVICE_NAME] = "msgflux"
         attributes[MsgTraceAttributes.SERVICE_VERSION] = msgflux_version
-        attributes[MsgTraceAttributes.WORKFLOW_NAME] = module_name
-        if message:
-            attributes["msgflux.metadata"] = message.get("metadata")  # Framework-specific
+        attributes[MsgTraceAttributes.MODULE_NAME] = module_name
+        attributes[MsgTraceAttributes.MODULE_TYPE] = module_type
         if encoded_state_dict:
-            attributes["msgflux.state_dict"] = encoded_state_dict  # Framework-specific
+            attributes["msgflux.state_dict"] = encoded_state_dict
         if envs.telemetry_capture_platform:
-            attributes["platform"] = platform.platform()
-            attributes["platform.version"] = platform.version()
-            attributes["platform.python.version"] = platform.python_version()
-            attributes["platform.num_cpus"] = os.cpu_count()
+            attributes[MsgTraceAttributes.PLATFORM_NAME] = platform.platform()
+            attributes[MsgTraceAttributes.PLATFORM_VERSION] = platform.version()
+            attributes[MsgTraceAttributes.PLATFORM_NUM_CPUS] = os.cpu_count()
+            attributes[MsgTraceAttributes.PLATFORM_PYTHON_VERSION] = platform.python_version()            
 
-        span_name = "Workflow Initialized"
-        async with self.aspan_context(span_name, attributes) as span:
+        async with self.aspan_context(module_name, attributes) as span:
             yield span
 
     @asynccontextmanager
-    async def ainit_module(self, module_name: str):
-        """Async version of init_module context manager."""
-        from msgflux.telemetry.attributes import MsgTraceAttributes
-
+    async def ainit_module(self, module_name: str, module_type: str):
         attributes = {}
         attributes[MsgTraceAttributes.MODULE_NAME] = module_name
-        span_name = "Module Initialized"
-        async with self.aspan_context(span_name, attributes) as span:
+        attributes[MsgTraceAttributes.MODULE_TYPE] = module_type
+        async with self.aspan_context(module_name, attributes) as span:
             yield span
-
-    @asynccontextmanager
-    async def atool_usage(self, tool_callings: List[Tuple[str, str, Any]]):
-        """Async version of tool_usage context manager."""
-        from msgflux.telemetry.attributes import GenAIAttributes, MsgTraceAttributes
-
-        # Extract first tool name (for span name)
-        first_tool_name = tool_callings[0][1] if tool_callings else "unknown_tool"
-
-        # Prepare tool calls data
-        calls = [
-            {"id": call[0], "name": call[1], "parameters": call[2]}
-            for call in tool_callings
-        ]
-
-        async with self.aspan_context(f"tool.{first_tool_name}", {}) as span:
-            # Set operation type
-            span.set_attribute(GenAIAttributes.OPERATION_NAME, "tool")
-
-            # Set tool callings for msgtrace UI
-            encoded_calls = msgspec.json.encode(calls)
-            span.set_attribute(MsgTraceAttributes.TOOL_CALLINGS, encoded_calls)
-
-            yield span
-
-    @contextmanager
-    def tool_execution(self, tool_name: str, tool_params: Optional[Dict[str, Any]] = None):
-        """Context manager for individual tool execution spans."""
-        from msgflux.telemetry.attributes import GenAIAttributes, MsgTraceAttributes
-
-        with self.span_context(f"tool.{tool_name}", {}) as span:
-            # Set operation type
-            span.set_attribute(GenAIAttributes.OPERATION_NAME, "tool")
-            span.set_attribute(MsgTraceAttributes.MODULE_NAME, tool_name)
-
-            # Set tool parameters if provided
-            if tool_params:
-                try:
-                    encoded_params = msgspec.json.encode(tool_params)
-                    span.set_attribute("tool.parameters", encoded_params)
-                except (TypeError, ValueError):
-                    # If params can't be encoded, skip
-                    pass
-
-            yield span
-
-    @asynccontextmanager
-    async def atool_execution(self, tool_name: str, tool_params: Optional[Dict[str, Any]] = None):
-        """Async context manager for individual tool execution spans."""
-        from msgflux.telemetry.attributes import GenAIAttributes, MsgTraceAttributes
-
-        async with self.aspan_context(f"tool.{tool_name}", {}) as span:
-            # Set operation type
-            span.set_attribute(GenAIAttributes.OPERATION_NAME, "tool")
-            span.set_attribute(MsgTraceAttributes.MODULE_NAME, tool_name)
-
-            # Set tool parameters if provided
-            if tool_params:
-                try:
-                    encoded_params = msgspec.json.encode(tool_params)
-                    span.set_attribute("tool.parameters", encoded_params)
-                except (TypeError, ValueError):
-                    # If params can't be encoded, skip
-                    pass
-
-            yield span
-
 
 spans = Spans()
 
@@ -282,176 +183,162 @@ def instrument(
     return decorator
 
 
-def instrument_tool_library_call(forward):
-    """Decorator for synchronous tool library calls with telemetry."""
-    def wrapper(
-        self,
-        tool_callings: List[Tuple[str, str, Any]],
-        model_state: Optional[List[Dict[str, Any]]] = None,
-        vars: Optional[Dict[str, Any]] = None,
-    ):
-        if vars is None:
-            vars = {}
+def set_tool_attributes(execution_type: str, protocol: Optional[str] = None) -> Callable:
+    """Decorator to set tool telemetry attributes for sync methods."""
+    def decorator(func: Callable) -> Callable:
+        @wraps(func)
+        def wrapper(self, **kwargs):
+            # Extract tool_call_id from kwargs (passed by ToolLibrary)
+            tool_call_id = kwargs.pop("tool_call_id", None)
 
-        # Early return for zero overhead when telemetry is disabled
-        if not envs.telemetry_requires_trace:
-            return forward(self, tool_callings, model_state, vars)
+            span = trace.get_current_span()
+            if span.is_recording():
+                span.set_attribute(GenAIAttributes.OPERATION_NAME, "execute_tool")
+                span.set_attribute(GenAIAttributes.TOOL_NAME, self.name)
+                if hasattr(self, "description") and self.description:
+                    span.set_attribute(GenAIAttributes.TOOL_DESCRIPTION, self.description)
+                span.set_attribute(GenAIAttributes.TOOL_TYPE, "function")
 
-        with self._spans.tool_usage(tool_callings) as span:
-            tool_execution_result = forward(
-                self, tool_callings, model_state, vars
-            )
-            if envs.telemetry_capture_tool_call_responses:
-                from msgflux.telemetry.attributes import MsgTraceAttributes
-                # Capture tool responses for msgtrace UI
-                span.set_attribute(
-                    MsgTraceAttributes.TOOL_RESPONSES, tool_execution_result.to_json()
-                )
-            return tool_execution_result
+                # Set tool call ID if available
+                if tool_call_id:
+                    span.set_attribute(GenAIAttributes.TOOL_CALL_ID, tool_call_id)
 
-    return wrapper
+                # Set arguments (without tool_call_id)
+                try:
+                    encoded_args = msgspec.json.encode(kwargs)
+                    span.set_attribute(GenAIAttributes.TOOL_CALL_ARGS, encoded_args)
+                except (TypeError, ValueError):
+                    pass
 
+                span.set_attribute(MsgTraceAttributes.TOOL_EXECUTION_TYPE, execution_type)
+                if protocol:
+                    span.set_attribute(MsgTraceAttributes.TOOL_PROTOCOL, protocol)
 
-def ainstrument_tool_library_call(aforward):
-    """Decorator for asynchronous tool library calls with telemetry."""
-    async def wrapper(
-        self,
-        tool_callings: List[Tuple[str, str, Any]],
-        model_state: Optional[List[Dict[str, Any]]] = None,
-        vars: Optional[Dict[str, Any]] = None,
-    ):
-        if vars is None:
-            vars = {}
+            # Execute the actual function
+            response = func(self, **kwargs)
 
-        # Early return for zero overhead when telemetry is disabled
-        if not envs.telemetry_requires_trace:
-            return await aforward(self, tool_callings, model_state, vars)
+            # Capture result
+            span = trace.get_current_span()
+            if span.is_recording():
+                try:
+                    if isinstance(response, (str, int, float, bool)):
+                        span.set_attribute(GenAIAttributes.TOOL_CALL_RESULT, str(response))
+                    else:
+                        encoded_response = msgspec.json.encode(response)
+                        span.set_attribute(GenAIAttributes.TOOL_CALL_RESULT, encoded_response)
+                except (TypeError, ValueError):
+                    pass
 
-        async with self._spans.atool_usage(tool_callings) as span:
-            tool_execution_result = await aforward(
-                self, tool_callings, model_state, vars
-            )
-            if envs.telemetry_capture_tool_call_responses:
-                from msgflux.telemetry.attributes import MsgTraceAttributes
-                # Capture tool responses for msgtrace UI
-                span.set_attribute(
-                    MsgTraceAttributes.TOOL_RESPONSES, tool_execution_result.to_json()
-                )
-            return tool_execution_result
-
-    return wrapper
+            return response
+        return wrapper
+    return decorator
 
 
-def instrument_tool_execution(forward):
-    """Decorator for synchronous individual tool execution with telemetry."""
-    @wraps(forward)
+def aset_tool_attributes(execution_type: str, protocol: Optional[str] = None) -> Callable:
+    """Decorator to set tool telemetry attributes for async methods."""
+    def decorator(func: Callable) -> Callable:
+        @wraps(func)
+        async def wrapper(self, *args, **kwargs):
+            # Extract tool_call_id from kwargs (passed by ToolLibrary)
+            tool_call_id = kwargs.pop("tool_call_id", None)
+
+            span = trace.get_current_span()
+            if span.is_recording():
+                span.set_attribute(GenAIAttributes.OPERATION_NAME, "execute_tool")
+                span.set_attribute(GenAIAttributes.TOOL_NAME, self.name)
+                if hasattr(self, "description") and self.description:
+                    span.set_attribute(GenAIAttributes.TOOL_DESCRIPTION, self.description)
+                span.set_attribute(GenAIAttributes.TOOL_TYPE, "function")
+
+                # Set tool call ID if available
+                if tool_call_id:
+                    span.set_attribute(GenAIAttributes.TOOL_CALL_ID, tool_call_id)
+
+                # Set arguments (without tool_call_id)
+                try:
+                    encoded_args = msgspec.json.encode(kwargs)
+                    span.set_attribute(GenAIAttributes.TOOL_CALL_ARGS, encoded_args)
+                except (TypeError, ValueError):
+                    pass
+
+                span.set_attribute(MsgTraceAttributes.TOOL_EXECUTION_TYPE, execution_type)
+                if protocol:
+                    span.set_attribute(MsgTraceAttributes.TOOL_PROTOCOL, protocol)
+
+            # Execute the actual function
+            response = await func(self, *args, **kwargs)
+
+            # Capture result
+            span = trace.get_current_span()
+            if span.is_recording():
+                try:
+                    if isinstance(response, (str, int, float, bool)):
+                        span.set_attribute(GenAIAttributes.TOOL_CALL_RESULT, str(response))
+                    else:
+                        encoded_response = msgspec.json.encode(response)
+                        span.set_attribute(GenAIAttributes.TOOL_CALL_RESULT, encoded_response)
+                except (TypeError, ValueError):
+                    pass
+
+            return response
+        return wrapper
+    return decorator
+
+
+def set_agent_attributes(func: Callable) -> Callable:
+    """Decorator to set agent telemetry attributes for sync methods."""
+    @wraps(func)
     def wrapper(self, *args, **kwargs):
-        # Early return for zero overhead when telemetry is disabled
-        if not envs.telemetry_requires_trace:
-            return forward(self, *args, **kwargs)
+        span = trace.get_current_span()
+        if span.is_recording():
+            # Set agent name
+            if hasattr(self, "name") and self.name:
+                span.set_attribute(GenAIAttributes.AGENT_NAME, self.name)
 
-        tool_name = getattr(self, 'name', 'unknown_tool')
+                # Generate agent ID from name hash
+                agent_id = f"asst_{hashlib.sha256(self.name.encode()).hexdigest()[:24]}"
+                span.set_attribute(GenAIAttributes.AGENT_ID, agent_id)
 
-        with self._spans.tool_execution(tool_name, kwargs) as span:
-            try:
-                result = forward(self, *args, **kwargs)
+            # Set agent description if available
+            if hasattr(self, "description") and self.description:
+                span.set_attribute(GenAIAttributes.AGENT_DESCRIPTION, self.description)
 
-                # Capture result if enabled
-                if envs.telemetry_capture_tool_call_responses:
-                    try:
-                        encoded_result = msgspec.json.encode(result)
-                        span.set_attribute("tool.result", encoded_result)
-                    except (TypeError, ValueError):
-                        # If result can't be encoded, skip
-                        pass
-
-                span.set_status(Status(StatusCode.OK))
-                return result
-            except Exception as e:
-                span.record_exception(e)
-                span.set_status(Status(StatusCode.ERROR, str(e)))
-                raise
+        # Execute the actual function
+        response = func(self, *args, **kwargs)
+        # Capture result
+        span = trace.get_current_span()
+        if span.is_recording() and not isinstance(response, ModelStreamResponse):
+            span.set_attribute(MsgTraceAttributes.AGENT_RESPONSE, response)
+        return response
 
     return wrapper
 
 
-def ainstrument_tool_execution(aforward):
-    """Decorator for asynchronous individual tool execution with telemetry."""
-    @wraps(aforward)
+def aset_agent_attributes(func: Callable) -> Callable:
+    """Decorator to set agent telemetry attributes for async methods."""
+    @wraps(func)
     async def wrapper(self, *args, **kwargs):
-        # Early return for zero overhead when telemetry is disabled
-        if not envs.telemetry_requires_trace:
-            return await aforward(self, *args, **kwargs)
+        span = trace.get_current_span()
+        if span.is_recording():
+            # Set agent name
+            if hasattr(self, "name") and self.name:
+                span.set_attribute(GenAIAttributes.AGENT_NAME, self.name)
 
-        tool_name = getattr(self, 'name', 'unknown_tool')
+                # Generate agent ID from name hash
+                agent_id = f"asst_{hashlib.sha256(self.name.encode()).hexdigest()[:24]}"
+                span.set_attribute(GenAIAttributes.AGENT_ID, agent_id)
 
-        async with self._spans.atool_execution(tool_name, kwargs) as span:
-            try:
-                result = await aforward(self, *args, **kwargs)
+            # Set agent description if available
+            if hasattr(self, "description") and self.description:
+                span.set_attribute(GenAIAttributes.AGENT_DESCRIPTION, self.description)
 
-                # Capture result if enabled
-                if envs.telemetry_capture_tool_call_responses:
-                    try:
-                        encoded_result = msgspec.json.encode(result)
-                        span.set_attribute("tool.result", encoded_result)
-                    except (TypeError, ValueError):
-                        # If result can't be encoded, skip
-                        pass
+        # Execute the actual function
+        response = await func(self, *args, **kwargs)
 
-                span.set_status(Status(StatusCode.OK))
-                return result
-            except Exception as e:
-                span.record_exception(e)
-                span.set_status(Status(StatusCode.ERROR, str(e)))
-                raise
-
-    return wrapper
-
-
-def instrument_agent_prepare_model_execution(_prepare_model_execution):
-    """Decorator for agent model execution preparation with telemetry."""
-    def wrapper(self, *args, **kwargs):
-        # Early return for zero overhead when telemetry is disabled
-        if not envs.telemetry_requires_trace:
-            return _prepare_model_execution(self, *args, **kwargs)
-
-        from msgflux.telemetry.attributes import set_agent_attributes, MsgTraceAttributes
-
-        attributes = {}
-        attributes["method.name"] = "_prepare_model_execution"
-        with self._spans.span_context("agent.prepare_execution", attributes) as span:
-            model_execution_params = _prepare_model_execution(self, *args, **kwargs)
-
-            # Set standardized agent attributes
-            agent_name = getattr(self, 'name', 'unknown_agent')
-            model_name = None
-            provider_name = None
-
-            # Try to extract model and provider from agent
-            if hasattr(self, 'model'):
-                model_obj = self.model
-                model_name = getattr(model_obj, 'model_id', None)
-                provider_name = getattr(model_obj, 'provider', None)
-
-            set_agent_attributes(
-                span,
-                agent_name=agent_name,
-                model=model_name,
-                provider=provider_name,
-            )
-
-            # Optionally capture detailed agent state
-            if envs.telemetry_capture_agent_prepare_model_execution:
-                encoded_state = msgspec.json.encode(model_execution_params["messages"])
-                encoded_tool_schemas = msgspec.json.encode(
-                    model_execution_params["tool_schemas"]
-                )
-                system_prompt = model_execution_params["system_prompt"] or ""
-
-                span.set_attribute(MsgTraceAttributes.AGENT_SYSTEM_PROMPT, system_prompt)
-                span.set_attribute(MsgTraceAttributes.AGENT_TOOLS, encoded_tool_schemas)
-                span.set_attribute("agent.state", encoded_state)  # Internal detail
-
-            return model_execution_params
+        # Capture result
+        span = trace.get_current_span()
+        if span.is_recording() and not isinstance(response, ModelStreamResponse):
+            span.set_attribute(MsgTraceAttributes.AGENT_RESPONSE, response)
+        return response
 
     return wrapper

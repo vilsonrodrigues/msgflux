@@ -11,7 +11,6 @@ try:
     import openai
     from openai import AsyncOpenAI, OpenAI
     from opentelemetry.instrumentation.openai import OpenAIInstrumentor
-
     if not getattr(openai, "_otel_instrumented", False):
         OpenAIInstrumentor().instrument()
         openai._otel_instrumented = True
@@ -233,6 +232,7 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
         params = {**kwargs, **self.sampling_run_params}
         adapted_params = self._adapt_params(params)
         model_output = self.client.chat.completions.create(**adapted_params)
+
         return model_output
 
     async def _aexecute_model(self, **kwargs):
@@ -242,6 +242,7 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
         params = {**kwargs, **self.sampling_run_params}
         adapted_params = self._adapt_params(params)
         model_output = await self.aclient.chat.completions.create(**adapted_params)
+
         return model_output
 
     def _process_model_output(self, model_output, typed_parser=None, generation_schema=None):
@@ -293,7 +294,7 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
                 choice.message.content
                 response.set_response_type(f"{prefix_response_type}structured")
                 parser = typed_parser_registry[typed_parser]
-                response_content = dotdict(parser.parse(choice.message.content))
+                response_content = dotdict(parser.decode(choice.message.content))
                 # Type validation
                 if generation_schema and self.validate_typed_parser_output:
                     encoded_response_content = msgspec.json.encode(response_content)

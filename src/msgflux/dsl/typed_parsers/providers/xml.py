@@ -99,7 +99,7 @@ class TypedXMLParser(BaseTypedParser):
             raise ValueError(f"Unknown dtype: {dtype_attr}")
 
     @classmethod
-    def parse(
+    def decode(
         cls, typed_xml: str, *, extract_root_values: Optional[bool] = True
     ) -> Dict[str, Any]:
         """Converts an XML into a typed dictionary, returning direct values for single tags.
@@ -157,7 +157,7 @@ class TypedXMLParser(BaseTypedParser):
         return result
 
     @classmethod
-    def repr_from_dict(cls, data: Dict[str, Any]) -> str:
+    def encode(cls, data: Dict[str, Any]) -> str:
         """Converts a dictionary into a typed XML string
         without a root tag, formatted readably.
         """

@@ -12,11 +12,11 @@ class BaseTypedParser(ABC):
             raise TypeError(f"{cls.__name__} must define class attribute `template`")
 
     @abstractmethod
-    def parse(self):
+    def decode(self):
         raise NotImplementedError
 
     @abstractmethod
-    def repr_from_dict(self):
+    def encode(self):
         raise NotImplementedError
 
     @abstractmethod

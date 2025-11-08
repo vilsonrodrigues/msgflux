@@ -25,6 +25,7 @@ except ImportError:
     code_to_mermaid = None
 from jinja2 import Template
 from opentelemetry import trace
+from opentelemetry.trace import Status, StatusCode
 
 from msgflux._private.executor import Executor
 from msgflux.dotdict import dotdict
@@ -1364,21 +1365,35 @@ class Module:
 
         return result
 
+    def _execute_with_span(self, module_name_title: str, module_type: str, *args, **kwargs):
+        """Execute forward with module span context.
+
+        This method can be overridden by subclasses to customize span creation
+        without rewriting the entire _call method.
+
+        Args:
+            module_name_title: Module name in title format
+            module_type: Module type (agent, tool, etc.)
+            *args: Arguments to pass to forward
+            **kwargs: Keyword arguments to pass to forward
+
+        Returns:
+            Module output from forward method
+        """
+        with self._spans.init_module(module_name_title, module_type) as span:
+            try:
+                result = self.forward(*args, **kwargs)
+                span.set_status(Status(StatusCode.OK))
+                return result
+            except Exception as e:
+                span.record_exception(e)
+                span.set_status(Status(StatusCode.ERROR, str(e)))
+                raise
+
     def _call(self, *args, **kwargs):
-        # Search for a Message in args and kwargs
-        message = next(
-            (arg for arg in args if isinstance(arg, Message)),
-            next((v for v in kwargs.values() if isinstance(v, Message)), None),
-        )
-
-        if message is not None:
-            # Check if this module has already processed the message
-            # If it is True, skip the module
-            if envs.state_checkpoint and message.in_msg(self.name):
-                return message
-
         module_name = self.get_module_name()
         module_name_title = convert_camel_snake_to_title(module_name)
+        module_type = self._get_name().lower() # Agent, Transcriber, etc.
 
         encoded_state_dict = None
         if envs.telemetry_capture_state_dict:
@@ -1390,13 +1405,18 @@ class Module:
         # If there is no active span or it is not recording, this is the root module
         if current_span is None or not current_span.is_recording():
             with self._spans.init_flow(
-                module_name_title, message, encoded_state_dict
-            ):
-                module_output = self.forward(*args, **kwargs)
+                module_name_title, module_type, encoded_state_dict
+            ) as span:
+                try:
+                    module_output = self.forward(*args, **kwargs)
+                    span.set_status(Status(StatusCode.OK))
+                    return module_output
+                except Exception as e:
+                    span.record_exception(e)
+                    span.set_status(Status(StatusCode.ERROR, str(e)))
+                    raise
         else:
-            with self._spans.init_module(module_name_title):
-                module_output = self.forward(*args, **kwargs)
-        return module_output
+            return self._execute_with_span(module_name_title, module_type, *args, **kwargs)
 
     async def _acall_impl(self, *args, **kwargs):
         if not (self._forward_hooks or self._forward_pre_hooks):
@@ -1421,21 +1441,35 @@ class Module:
 
         return result
 
+    async def _aexecute_with_span(self, module_name_title: str, module_type: str, *args, **kwargs):
+        """Execute aforward with module span context asynchronously.
+
+        This method can be overridden by subclasses to customize span creation
+        without rewriting the entire _acall method.
+
+        Args:
+            module_name_title: Module name in title format
+            module_type: Module type (agent, tool, etc.)
+            *args: Arguments to pass to aforward
+            **kwargs: Keyword arguments to pass to aforward
+
+        Returns:
+            Module output from aforward method
+        """
+        async with self._spans.ainit_module(module_name_title, module_type) as span:
+            try:
+                result = await self.aforward(*args, **kwargs)
+                span.set_status(Status(StatusCode.OK))
+                return result
+            except Exception as e:
+                span.record_exception(e)
+                span.set_status(Status(StatusCode.ERROR, str(e)))
+                raise
+
     async def _acall(self, *args, **kwargs):
-        # Search for a Message in args and kwargs
-        message = next(
-            (arg for arg in args if isinstance(arg, Message)),
-            next((v for v in kwargs.values() if isinstance(v, Message)), None),
-        )
-
-        if message is not None:
-            # Check if this module has already processed the message
-            # If it is True, skip the module
-            if envs.state_checkpoint and message.in_msg(self.name):
-                return message
-
         module_name = self.get_module_name()
         module_name_title = convert_camel_snake_to_title(module_name)
+        module_type = self._get_name().lower() # Agent, Transcriber, etc.
 
         encoded_state_dict = None
         if envs.telemetry_capture_state_dict:
@@ -1446,14 +1480,19 @@ class Module:
         current_span = trace.get_current_span()
         # If there is no active span or it is not recording, this is the root module
         if current_span is None or not current_span.is_recording():
-            with self._spans.init_flow(
-                module_name_title, message, encoded_state_dict
-            ):
-                module_output = await self.aforward(*args, **kwargs)
+            async with self._spans.ainit_flow(
+                module_name_title, module_type, encoded_state_dict
+            ) as span:
+                try:
+                    module_output = await self.aforward(*args, **kwargs)
+                    span.set_status(Status(StatusCode.OK))
+                    return module_output
+                except Exception as e:
+                    span.record_exception(e)
+                    span.set_status(Status(StatusCode.ERROR, str(e)))
+                    raise
         else:
-            with self._spans.init_module(module_name_title):
-                module_output = await self.aforward(*args, **kwargs)
-        return module_output
+            return await self._aexecute_with_span(module_name_title, module_type, *args, **kwargs)
 
     __call__: Callable[..., Any] = _call_impl
 

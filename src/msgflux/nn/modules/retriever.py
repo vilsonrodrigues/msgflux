@@ -33,7 +33,7 @@ class Retriever(Module):
         response_mode: Optional[str] = "plain_response",
         templates: Optional[Dict[str, str]] = None,
         config: Optional[Dict[str, Any]] = None,
-        name: Optional[str] = None,        
+        name: Optional[str] = None,
     ):
         """Args:
         retriever:
@@ -80,13 +80,14 @@ class Retriever(Module):
             Retriever name in snake case format.            
         """
         super().__init__()
-        self.set_name(name)
         self._set_retriever(retriever)
         self._set_model(model)
         self._set_message_fields(message_fields)
         self._set_response_mode(response_mode)
         self._set_templates(templates)
         self._set_config(config)
+        if name:
+            self.set_name(name)
 
     def forward(
         self, message: Union[str, List[str], List[Dict[str, Any]], Message], **kwargs

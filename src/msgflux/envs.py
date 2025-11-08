@@ -51,8 +51,8 @@ class EnvironmentVariables(BaseSettings):
     # This is used for configuring the default logging level
     logging_level: str = "INFO"
 
-    # if set, msgflux_LOGGING_PREFIX will be prepended to all log messages
-    logging_prefix: str = "msgflux_"
+    # if set, MSGFLUX_LOGGING_PREFIX will be prepended to all log messages
+    logging_prefix: str = "MSGFLUX_"
 
     # Trace function calls
     # If set to True, msgflux will trace function calls. Useful for debugging
@@ -62,7 +62,7 @@ class EnvironmentVariables(BaseSettings):
     telemetry_requires_trace: bool = False
 
     # OTLP endpoint
-    telemetry_otlp_endpoint: str = "http://localhost.com:4321"
+    telemetry_otlp_endpoint: str = "http://localhost:8000/api/v1/traces/export"
 
     # Span exporter type
     telemetry_span_exporter_type: Literal["console", "otlp"] = "console"

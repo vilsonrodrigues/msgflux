@@ -23,7 +23,6 @@ from msgflux.nn.modules.lm import LM
 from msgflux.nn.modules.module import Module
 from msgflux.nn.modules.tool import ToolLibrary, ToolResponses
 from msgflux.nn.parameter import Parameter
-from msgflux.telemetry.span import instrument_agent_prepare_model_execution
 from msgflux.utils.chat import ChatBlock, response_format_from_msgspec_struct
 from msgflux.utils.console import cprint
 from msgflux.utils.inspect import get_filename, get_mime_type
@@ -209,7 +208,7 @@ class Agent(Module):
         self.set_annotations(annotations)
         self._set_config(config)
 
-        stream = config.get("stream", False)
+        stream = config.get("stream", False) if config else False
 
         if stream is True:
             if generation_schema is not None:
@@ -326,11 +325,10 @@ class Agent(Module):
         model_response = await self.lm.acall(**model_execution_params)
         return model_response
 
-    @instrument_agent_prepare_model_execution
     def _prepare_model_execution(
         self,
         model_state: List[Mapping[str, Any]],
-        vars: Mapping[str, Any],        
+        vars: Mapping[str, Any],
         prefilling: Optional[str] = None,
         model_preference: Optional[str] = None,
     ) -> Mapping[str, Any]:
@@ -757,7 +755,7 @@ class Agent(Module):
             if response_type == "tool_responses":
                 response.model_state = model_state
             else:
-                response = dotdict(model_response=response, model_state=model_state)
+                response = dotdict(agent_response=response, model_state=model_state)
         return self._define_response_mode(response, message)
 
     async def _aprepare_response(
@@ -1246,7 +1244,7 @@ class Agent(Module):
                 typed_parser_cls = typed_parser_registry.get(self.typed_parser, None)
                 collection = ExampleCollection(examples)
                 if typed_parser_cls is not None:
-                    T = typed_parser_cls.repr_from_dict
+                    T = typed_parser_cls.encode
                 else:
                     T = msgspec_dumps
                 examples = collection.get_formatted(T, T)

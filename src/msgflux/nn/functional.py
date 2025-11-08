@@ -27,7 +27,7 @@ __all__ = [
 ]
 
 
-@instrument("msgflux.nn.F.map_gather")
+@instrument("map_gather")
 def map_gather(
     to_send: Callable,
     *,
@@ -107,7 +107,7 @@ def map_gather(
     return tuple(responses)
 
 
-@instrument("msgflux.nn.F.scatter_gather")
+@instrument("scatter_gather")
 def scatter_gather(
     to_send: List[Callable],
     args_list: Optional[List[Tuple[Any, ...]]] = None,
@@ -198,7 +198,7 @@ def scatter_gather(
     return tuple(responses)
 
 
-@instrument("msgflux.nn.F.msg_scatter_gather")
+@instrument("msg_scatter_gather")
 def msg_scatter_gather(
     to_send: List[Callable],
     messages: List[dotdict],
@@ -250,7 +250,7 @@ def msg_scatter_gather(
     return tuple(messages)
 
 
-@instrument("msgflux.nn.F.bcast_gather")
+@instrument("bcast_gather")
 def bcast_gather(
     to_send: List[Callable], *args, timeout: Optional[float] = None, **kwargs
 ) -> Tuple[Any, ...]:
@@ -307,7 +307,7 @@ def bcast_gather(
     return tuple(responses)
 
 
-@instrument("msgflux.nn.F.msg_bcast_gather")
+@instrument("msg_bcast_gather")
 def msg_bcast_gather(
     to_send: List[Callable],
     message: dotdict,
@@ -350,7 +350,7 @@ def msg_bcast_gather(
     return message
 
 
-@instrument("msgflux.nn.F.wait_for")
+@instrument("wait_for")
 def wait_for(
     to_send: Callable, *args, timeout: Optional[float] = None, **kwargs
 ) -> Any:
@@ -394,7 +394,7 @@ def wait_for(
         return None
 
 
-@instrument("msgflux.nn.F.wait_for_event")
+@instrument("wait_for_event")
 def wait_for_event(event: asyncio.Event) -> None:
     """Waits synchronously for an asyncio.Event to be set.
 
@@ -417,7 +417,7 @@ def wait_for_event(event: asyncio.Event) -> None:
         logger.error(str(e))
 
 
-@instrument("msgflux.nn.F.background_task")
+@instrument("background_task")
 def background_task(to_send: Callable, *args, **kwargs) -> None:
     """Executes a task in the background asynchronously without blocking,
     using the AsyncExecutorPool. This function is "fire-and-forget".
@@ -468,7 +468,7 @@ def background_task(to_send: Callable, *args, **kwargs) -> None:
     future.add_done_callback(log_future)
 
 
-@instrument("msgflux.nn.F.abackground_task")
+@instrument("abackground_task")
 async def abackground_task(to_send: Callable, *args, **kwargs) -> None:
     """Executes an async task in the background without blocking.
     This is a truly async "fire-and-forget" function.
@@ -518,7 +518,7 @@ async def abackground_task(to_send: Callable, *args, **kwargs) -> None:
     asyncio.create_task(run_task())
 
 
-@instrument("msgflux.nn.F.await_for_event")
+@instrument("await_for_event")
 async def await_for_event(event: asyncio.Event) -> None:
     """Waits asynchronously for an asyncio.Event to be set.
 
@@ -549,7 +549,7 @@ async def await_for_event(event: asyncio.Event) -> None:
     await event.wait()
 
 
-@instrument("msgflux.nn.F.amap_gather")
+@instrument("amap_gather")
 async def amap_gather(
     to_send: Callable,
     *,
@@ -613,7 +613,7 @@ async def amap_gather(
     return tuple(results)
 
 
-@instrument("msgflux.nn.F.ascatter_gather")
+@instrument("ascatter_gather")
 async def ascatter_gather(
     to_send: List[Callable],
     args_list: Optional[List[Tuple[Any, ...]]] = None,
@@ -676,7 +676,7 @@ async def ascatter_gather(
     return tuple(results)
 
 
-@instrument("msgflux.nn.F.amsg_bcast_gather")
+@instrument("amsg_bcast_gather")
 async def amsg_bcast_gather(
     to_send: List[Callable],
     message: dotdict,
@@ -719,7 +719,7 @@ async def amsg_bcast_gather(
     tasks = []
     for f in to_send:
         # Check for acall method first, then coroutine function
-        if hasattr(f, 'acall'):
+        if hasattr(f, "acall"):
             tasks.append(f.acall(message))
         elif asyncio.iscoroutinefunction(f):
             tasks.append(f(message))
