@@ -6,15 +6,15 @@ from msgflux.nn.modules.mediamaker import MediaMaker
 from msgflux.nn.modules.module import Module
 from msgflux.nn.modules.retriever import Retriever
 from msgflux.nn.modules.speaker import Speaker
-from msgflux.nn.modules.tool import Tool, ToolLibrary
-
-ToolBase = Tool
+from msgflux.nn.modules.tool import LocalTool, MCPTool, Tool, ToolLibrary
 from msgflux.nn.modules.transcriber import Transcriber
 
 __all__ = [
     "Agent",
     "Embedder",
     "LM",
+    "LocalTool",
+    "MCPTool",
     "MediaMaker",
     "Module",
     "ModuleDict",
@@ -23,7 +23,6 @@ __all__ = [
     "Sequential",
     "Speaker",
     "Tool",
-    "ToolBase",
     "ToolLibrary",
     "Transcriber",
 ]

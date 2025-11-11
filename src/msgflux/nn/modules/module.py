@@ -848,8 +848,9 @@ class Module:
         elif inspect.iscoroutinefunction(input_guardrail):
             guardrail_response = await input_guardrail(**guardrail_params)
         else:
-            # Fallback to sync call
-            guardrail_response = input_guardrail(**guardrail_params)
+            # Fallback to sync call in executor to avoid blocking event loop
+            loop = asyncio.get_event_loop()
+            guardrail_response = await loop.run_in_executor(None, lambda: input_guardrail(**guardrail_params))
 
         if isinstance(guardrail_response, ModelResponse):
             guardrail_response = self._extract_raw_response(guardrail_response)
@@ -884,8 +885,9 @@ class Module:
         elif inspect.iscoroutinefunction(output_guardrail):
             guardrail_response = await output_guardrail(**guardrail_params)
         else:
-            # Fallback to sync call
-            guardrail_response = output_guardrail(**guardrail_params)
+            # Fallback to sync call in executor to avoid blocking event loop
+            loop = asyncio.get_event_loop()
+            guardrail_response = await loop.run_in_executor(None, lambda: output_guardrail(**guardrail_params))
 
         if isinstance(guardrail_response, ModelResponse):
             guardrail_response = self._extract_raw_response(guardrail_response)

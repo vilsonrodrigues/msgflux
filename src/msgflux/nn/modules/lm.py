@@ -1,4 +1,4 @@
-from typing import Any, Union
+from typing import Union
 
 from msgflux.models.gateway import ModelGateway
 from msgflux.models.response import ModelResponse, ModelStreamResponse

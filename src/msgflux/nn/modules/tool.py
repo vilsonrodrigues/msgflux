@@ -1,14 +1,12 @@
+import asyncio
 import inspect
 from dataclasses import asdict, dataclass, field
 from functools import partial
 from typing import Any, Callable, Dict, Iterator, List, Mapping, Optional, Union, Tuple
 
 import msgspec
-from opentelemetry import trace
-from opentelemetry.trace import Status, StatusCode
 
 from msgflux.dotdict import dotdict
-from msgflux.envs import envs
 from msgflux.logger import logger
 from msgflux.nn import functional as F
 from msgflux.nn.modules.container import ModuleDict
@@ -149,6 +147,41 @@ class MCPTool(Tool):
         # Extract and return result
         return extract_tool_result_text(result)
 
+class LocalTool(Tool):
+    """Local tool implementation."""
+    def __init__(
+        self,
+        name: str,
+        description: str,
+        annotations: Dict[str, Any],
+        tool_config: Dict[str, Any],
+        impl: Callable,
+    ):
+        super().__init__()
+        self.set_name(name)
+        self.set_description(description)
+        self.set_annotations(annotations)
+        self.register_buffer("tool_config", tool_config)
+        self.impl = impl  # Not a buffer for now
+
+    @tool_retry
+    @set_tool_attributes(execution_type="local")
+    def forward(self, **kwargs):
+        if inspect.iscoroutinefunction(self.impl):
+            return F.wait_for(self.impl, **kwargs)
+        return self.impl(**kwargs)
+
+    @tool_retry
+    @aset_tool_attributes(execution_type="local")
+    async def aforward(self, *args, **kwargs):
+        if hasattr(self.impl, "acall"):
+            return await self.impl.acall(*args, **kwargs)
+        elif inspect.iscoroutinefunction(self.impl):
+            return await self.impl(*args, **kwargs)
+        # Fall back to sync call in executor to avoid blocking event loop
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, lambda: self.impl(*args, **kwargs))
+
 def _convert_module_to_nn_tool(impl: Callable) -> Tool: # noqa: C901
     """Convert a callable in nn.Tool."""
     tool_config = impl.__dict__.get("tool_config", dotdict())
@@ -168,7 +201,7 @@ def _convert_module_to_nn_tool(impl: Callable) -> Tool: # noqa: C901
             or
             getattr(impl, "__doc__", None)
             or
-            getattr(impl.__call__, "__doc__", None)            
+            getattr(impl.__call__, "__doc__", None)
         )
         if doc is None:
             raise NotImplementedError(
@@ -183,7 +216,7 @@ def _convert_module_to_nn_tool(impl: Callable) -> Tool: # noqa: C901
             or
             getattr(impl, "__annotations__", None)
             or
-            getattr(impl.__call__, "__annotations__", None)            
+            getattr(impl.__call__, "__annotations__", None)
         )
         if annotations is None:
             if fn_has_parameters(impl.__call__):
@@ -217,7 +250,7 @@ def _convert_module_to_nn_tool(impl: Callable) -> Tool: # noqa: C901
             )
 
         annotations = impl.__annotations__
-        
+
         if annotations is None:
             if fn_has_parameters(impl):
                 raise NotImplementedError(
@@ -241,33 +274,13 @@ def _convert_module_to_nn_tool(impl: Callable) -> Tool: # noqa: C901
     if tool_config.get("background"):
         doc = "This tool will run in the background. \n" + doc
 
-    class LocalTool(Tool):
-        """Local tool implementation."""
-        def __init__(self):
-            super().__init__()
-            self.set_name(name)
-            self.set_description(doc)
-            self.set_annotations(annotations)
-            self.register_buffer("tool_config", tool_config)
-            self.impl = impl  # Not a buffer for now
-
-        @tool_retry
-        @set_tool_attributes(execution_type="local")
-        def forward(self, **kwargs):
-            if inspect.iscoroutinefunction(self.impl):
-                return F.wait_for(self.impl, **kwargs)
-            return self.impl(**kwargs)
-
-        @tool_retry
-        @aset_tool_attributes(execution_type="local")
-        async def aforward(self, *args, **kwargs):
-            if hasattr(self.impl, "acall"):
-                return await self.impl.acall(*args, **kwargs)
-            elif inspect.iscoroutinefunction(self.impl):
-                return await self.impl(*args, **kwargs)
-            # Fall back to sync call
-            return self.impl(*args, **kwargs)
-    return LocalTool()
+    return LocalTool(
+        name=name,
+        description=doc,
+        annotations=annotations,
+        tool_config=tool_config,
+        impl=impl,
+    )
 
 
 class ToolLibrary(Module):
