@@ -1601,11 +1601,11 @@ The **task** is separated into 6 variables:
 
 **Guardrails**
 
-Agent has 2 guardrail options:
+Agent supports guardrails via the `guardrails` parameter, which accepts a dictionary:
 
-* **input_guardrail:** Before execution.
+* **guardrails["input"]:** Executed before model execution.
 
-* **output_guardrail:** After execution.
+* **guardrails["output"]:** Executed after model execution.
 
 Both guardians receive a `data` parameter containing a list of conversations in ChatML format.
 
@@ -2186,7 +2186,7 @@ response
 # and where to write the response
 scraper_agent = nn.Agent(
     "scraper", model, tools=[scrape_website], task_template=task_template,
-    task_inputs="content", response_mode="summary", verbose=True
+    message_fields={"task_inputs": "content"}, response_mode="summary", verbose=True
 )
 msg = mf.Message(content=site)
 msg = scraper_agent(msg)
@@ -3351,7 +3351,7 @@ moderation_model = mf.Model.moderation("openai/omni-moderation-latest")
 
 agent = nn.Agent(
     "safe_agent", model,
-    input_guardrail=moderation_model, output_guardrail=moderation_model
+    guardrails={"input": moderation_model, "output": moderation_model}
 )
 
 agent("Can you teach me how to make a bomb?")

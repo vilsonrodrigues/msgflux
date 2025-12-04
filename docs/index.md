@@ -1,52 +1,206 @@
-# ᯓ➤ **msgflux**
+---
+hide:
+  - navigation
+  - toc
+---
 
-![logo](assets/logo.png){ width="300", .center}
+<div class="hero fade-in-up" markdown>
 
-**msgflux** is an open-source framework designed for building multimodal AI applications with ease and flexibility. Our mission is to seamlessly connect models from diverse domains—text, vision, speech, and beyond—into powerful, production-ready workflows.
+# msgFlux { .gradient-text }
 
-``` bash
+**An open-source framework for building multimodal AI applications** { .subtitle }
+
+<p style="margin: 2rem 0;">
+    <a href="quickstart/" class="md-button md-button--primary">
+        :material-rocket-launch: Get Started
+    </a>
+    <a href="learn/models/model/" class="md-button">
+        :material-book-open: Documentation
+    </a>
+</p>
+
+```bash
 pip install msgflux
 ```
 
-msgflux is built on four foundational pillars: **Privacy**, **Simplicity**, **Efficiency**, and **Practicality**.
+</div>
 
-- **Privacy first**: msgflux does not collect or transmit user data. All telemetry is fully controlled by the user and remains local, ensuring data sovereignty and compliance from the ground up.
+---
 
-- **Designed for simplicity**: msgflux introduces core building blocks—**Model**, **DataBase**, **Parser**, and **Retriever**—that provide a unified and intuitive interface to interact with diverse AI resources.
+## :material-shield-check: Core Principles
 
-- **Powered by efficiency**: msgflux leverages high-performance libraries such as **Msgspec**, **Uvloop**, **Jinja**, and **Ray** to deliver fast, scalable, and concurrent applications without compromising flexibility.
+<div class="grid cards" markdown>
 
-- **Practical**: msgflux features a workflow API inspired by `torch.nn`, enabling seamless composition of models and utilities using native Python. This architecture not only supports modular design but also tracks all parameters involved in workflow construction, offering advanced **versioning and reproducibility** out of the box. 
+-   :material-shield-lock:{ .lg .middle } **Privacy First**
 
-In addition to the standard container modules available in *PyTorch*—such as **Sequential**, **ModuleList**, and **ModuleDict**—*msgflux* introduces a set of high-level modules designed to streamline the handling of **multimodal inputs and outputs**. These modules encapsulate common tasks in AI pipelines, making them easy to integrate, compose, and reuse.
+    ---
 
-The new modules include:
+    msgFlux does not collect or transmit user data. All telemetry is fully controlled by the user and remains local, ensuring data sovereignty and compliance.
 
-- **Agent**: A central module that orchestrates multimodal data, instructions, context, tools, generation schemas, and templates. It acts as the cognitive core of complex workflows.
+-   :material-puzzle:{ .lg .middle } **Designed for Simplicity**
 
-- **Speaker**: Converts text into natural-sounding speech, enabling voice-based interactions.
+    ---
 
-- **Transcriber**: Transforms spoken language into text, supporting speech-to-text pipelines.
+    Core building blocks—**Model**, **DataBase**, **Parser**, and **Retriever**—provide a unified and intuitive interface to interact with diverse AI resources.
 
-- **Designer**: Generates visual content from prompts and images, combining textual and visual modalities for tasks like image generation or editing.
+-   :material-lightning-bolt:{ .lg .middle } **Powered by Efficiency**
 
-- **Retriever**: Searches and extracts relevant information based on a set of input queries, ideal for grounding AI models in external knowledge.
+    ---
 
-- **Predictor**: A flexible module designed to wrap predictive models, such as those from scikit-learn or other machine learning libraries, enabling smooth integration into larger workflows.
+    Leverages high-performance libraries like **Msgspec**, **Uvloop**, **Jinja**, and **Ray** for fast, scalable, and concurrent applications.
 
+-   :material-cog:{ .lg .middle } **Practical**
 
-For full documentation visit [mkdocs.org](https://www.mkdocs.org).
+    ---
 
-## Commands
+    Workflow API inspired by `torch.nn`, enabling seamless composition with native Python. Advanced **versioning and reproducibility** out of the box.
 
-* `mkdocs new [dir-name]` - Create a new project.
-* `mkdocs serve` - Start the live-reloading docs server.
-* `mkdocs build` - Build the documentation site.
-* `mkdocs -h` - Print help message and exit.
+</div>
 
-## Project layout
+---
 
-    mkdocs.yml    # The configuration file.
-    docs/
-        index.md  # The documentation homepage.
-        ...       # Other markdown pages, images and other files.
+## :material-cube-outline: High-Level Modules
+
+msgFlux introduces a set of high-level modules designed to streamline **multimodal inputs and outputs**. These modules encapsulate common AI pipeline tasks:
+
+<div class="grid cards" markdown>
+
+-   :material-robot:{ .lg } **Agent**
+
+    ---
+
+    Orchestrates multimodal data, instructions, context, tools, and generation schemas. The cognitive core of complex workflows.
+
+-   :material-microphone:{ .lg } **Speaker**
+
+    ---
+
+    Converts text into natural-sounding speech, enabling voice-based interactions.
+
+-   :material-text-to-speech:{ .lg } **Transcriber**
+
+    ---
+
+    Transforms spoken language into text, supporting speech-to-text pipelines.
+
+-   :material-image-edit:{ .lg } **Designer**
+
+    ---
+
+    Generates visual content from prompts and images, combining textual and visual modalities.
+
+-   :material-database-search:{ .lg } **Retriever**
+
+    ---
+
+    Searches and extracts relevant information based on queries, ideal for grounding models in external knowledge.
+
+-   :material-brain:{ .lg } **Predictor**
+
+    ---
+
+    Wraps predictive models (e.g., scikit-learn) for smooth integration into larger workflows.
+
+</div>
+
+---
+
+## :material-code-braces: Quick Example
+
+=== "Chat Completion"
+
+    ```python
+    from msgflux.models import ChatCompletion
+
+    model = ChatCompletion(provider="openai", model="gpt-4")
+
+    response = model.call(
+        messages=[{"role": "user", "content": "Hello!"}]
+    )
+
+    print(response.content)
+    ```
+
+=== "Text Embeddings"
+
+    ```python
+    from msgflux.models import TextEmbedder
+
+    embedder = TextEmbedder(provider="openai")
+
+    embeddings = embedder.call(
+        texts=["Hello world", "msgFlux is awesome"]
+    )
+
+    print(embeddings.shape)
+    ```
+
+=== "Text-to-Speech"
+
+    ```python
+    from msgflux.models import TextToSpeech
+
+    tts = TextToSpeech(provider="openai")
+
+    audio = tts.call(
+        text="Hello from msgFlux!",
+        voice="alloy"
+    )
+
+    audio.save("output.mp3")
+    ```
+
+=== "Neural Network Module"
+
+    ```python
+    from msgflux.nn import Agent
+
+    agent = Agent(
+        model="gpt-4",
+        instructions="You are a helpful assistant",
+        tools=[search_tool, calculator_tool]
+    )
+
+    result = agent("What's the weather in Paris?")
+    print(result)
+    ```
+
+---
+
+## :material-speedometer: Why msgFlux?
+
+<div class="feature-box" markdown>
+
+### :material-layers-triple: Unified Interface
+
+Work with **text**, **vision**, **speech**, and more through a single, consistent API. No need to learn different SDKs for each provider.
+
+</div>
+
+<div class="feature-box" markdown>
+
+### :material-swap-horizontal: Provider Agnostic
+
+Easily switch between **OpenAI**, **Anthropic**, **Google**, **Mistral**, and more without changing your code structure.
+
+</div>
+
+<div class="feature-box" markdown>
+
+### :material-timer-sand: Production Ready
+
+Built-in support for **async operations**, **retries**, **error handling**, and **observability**. Deploy with confidence.
+
+</div>
+
+---
+
+## :material-rocket-launch-outline: Ready to Build?
+
+<div style="text-align: center; margin: 3rem 0;" markdown>
+
+[Get Started with msgFlux](quickstart/){ .md-button .md-button--primary }
+[Explore Examples](learn/models/model/){ .md-button }
+[View on GitHub :fontawesome-brands-github:](https://github.com/msgflux/msgflux){ .md-button }
+
+</div>
