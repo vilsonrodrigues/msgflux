@@ -1,5 +1,4 @@
-"""
-Profile loader for models.dev API.
+"""Profile loader for models.dev API.
 
 Handles fetching, caching, and deserialization of model profiles.
 """

@@ -7,7 +7,7 @@ from msgflux.dotdict import dotdict
 
 def tool_config(
     *,
-    return_direct: Optional[bool] = False,    
+    return_direct: Optional[bool] = False,
     call_as_response: Optional[bool] = False,
     background: Optional[bool] = False,
     inject_model_state: Optional[bool] = False,
@@ -92,12 +92,12 @@ def tool_config(
                     "inject_model_state": _inject_model_state,
                     "inject_vars": inject_vars,
                     "return_direct": _return_direct,
-                    "name_overridden": name_override
+                    "name_overridden": name_override,
                 }
             )
         }
         if isinstance(f, (FunctionType, MethodType)):
-            return decorate_function(f, tool_config)            
+            return decorate_function(f, tool_config)
         if isinstance(f, type):  # Not initialized class
             f = f()  # Init class
         return decorate_instance(f, tool_config)
@@ -106,11 +106,13 @@ def tool_config(
 
 
 def decorate_function(
-    func: Union[FunctionType, MethodType], tool_config: Dict[str, Union[bool, str]],
+    func: Union[FunctionType, MethodType],
+    tool_config: Dict[str, Union[bool, str]],
 ) -> Union[FunctionType, MethodType]:
     @wraps(func)
     def wrapper(*args, **kwargs):
         return func(*args, **kwargs)
+
     wrapper.__dict__.update(tool_config)
     return wrapper
 

@@ -24,6 +24,7 @@ class _BaseCerebras:
             )
         return key
 
+
 @register_model
 class CerebrasChatCompletion(_BaseCerebras, OpenAIChatCompletion):
     """Cerebras Chat Completion."""

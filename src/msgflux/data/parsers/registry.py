@@ -1,6 +1,6 @@
 from msgflux.data.parsers.base import BaseParser
 
-parser_registry = {} # parser_registry[parser_type][provider] = cls
+parser_registry = {}  # parser_registry[parser_type][provider] = cls
 
 
 def register_parser(cls: type[BaseParser]):

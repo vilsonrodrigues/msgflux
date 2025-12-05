@@ -21,7 +21,7 @@ class Predictor(Module):
         response_mode: Optional[str] = "plain_response",
         response_template: Optional[str] = None,
         config: Optional[Dict[str, Any]] = None,
-        name: Optional[str] = None,        
+        name: Optional[str] = None,
     ):
         """Args:
         model:
@@ -50,7 +50,7 @@ class Predictor(Module):
             !!! example
                 config={"temperature": 0.7, "top_k": 50}
         name:
-            Predictor name in snake case format.                
+            Predictor name in snake case format.
         """
         super().__init__()
         self._set_model(model)
@@ -161,8 +161,6 @@ class Predictor(Module):
             return
 
         if not isinstance(config, dict):
-            raise TypeError(
-                f"`config` must be a dict or None, given `{type(config)}`"
-            )
+            raise TypeError(f"`config` must be a dict or None, given `{type(config)}`")
 
         self.register_buffer("config", config.copy())

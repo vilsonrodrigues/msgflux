@@ -1,5 +1,4 @@
-"""
-Profile registry with lazy loading and background refresh.
+"""Profile registry with lazy loading and background refresh.
 
 Provides singleton access to model profiles with automatic caching.
 """

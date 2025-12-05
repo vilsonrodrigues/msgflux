@@ -84,7 +84,7 @@ class InlineDSL:
             "arrow": r"\s*->\s*",
             "parallel": r"\[(.*?)\]",
             "conditional": r"\{(.*?)\?(.*?)(?:,(.*?))?\}",
-            "while_loop": r"@\{(.*?)\}:\s*((?:[^;]|(?:->|\[.*?\]|\{.*?\}|@\{.*?\}:\s*.*?;))+);", # noqa: E501
+            "while_loop": r"@\{(.*?)\}:\s*((?:[^;]|(?:->|\[.*?\]|\{.*?\}|@\{.*?\}:\s*.*?;))+);",  # noqa: E501
             "identifier": r"[a-zA-Z_][a-zA-Z0-9_]*",
             "comparison": r"([a-zA-Z0-9_.]+)\s*(==|!=|<=|>=|<|>|is not|is)\s*(.*)",
         }
@@ -162,7 +162,7 @@ class InlineDSL:
 
         # Pattern for tokenization that captures logical operators
         # parentheses and expressions
-        token_pattern = r"(\|\||&|!|\(|\)|[^&|!()]+)" # noqa: S105
+        token_pattern = r"(\|\||&|!|\(|\)|[^&|!()]+)"  # noqa: S105
         tokens = re.findall(token_pattern, condition)
 
         # Removes empty tokens and trim
@@ -224,7 +224,7 @@ class InlineDSL:
         else:
             raise ValueError("Expected comparison expression")
 
-    def _evaluate_comparison(self, comparison_str: str, message: dotdict) -> bool: # noqa: C901
+    def _evaluate_comparison(self, comparison_str: str, message: dotdict) -> bool:  # noqa: C901
         """Evaluate a single comparison expression."""
         match = re.match(self.patterns["comparison"], comparison_str.strip())
         if not match:
@@ -373,7 +373,7 @@ class InlineDSL:
 
         return current_message
 
-    def _execute_steps( # noqa: C901
+    def _execute_steps(  # noqa: C901
         self,
         steps: List[Dict[str, Any]],
         modules: Mapping[str, Callable],
@@ -622,7 +622,7 @@ class AsyncInlineDSL(InlineDSL):
                 module = modules.get(step["module"])
                 if not module:
                     raise ValueError(f"Module `{step['module']}` not found.")
-                
+
                 # Check for acall method first, then coroutine function
                 if hasattr(module, "acall"):
                     current_message = await module.acall(current_message)
@@ -648,7 +648,9 @@ class AsyncInlineDSL(InlineDSL):
                         f"in {step['modules']}."
                     )
 
-                current_message = await F.amsg_bcast_gather(parallel_modules, current_message)
+                current_message = await F.amsg_bcast_gather(
+                    parallel_modules, current_message
+                )
 
             elif step["type"] == "conditional":
                 condition_result = self._evaluate_condition(
@@ -664,7 +666,7 @@ class AsyncInlineDSL(InlineDSL):
                         raise ValueError(
                             f"Module `{module_name}` not found in conditional branch."
                         )
-                    
+
                     # Check for acall method first, then coroutine function
                     if hasattr(module, "acall"):
                         current_message = await module.acall(current_message)

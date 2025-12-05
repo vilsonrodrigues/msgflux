@@ -124,7 +124,7 @@ class Sequential(Module):
 
         for module in modules_iter:
             # Check for acall method first, then coroutine function
-            if hasattr(module, 'acall'):
+            if hasattr(module, "acall"):
                 output = await module.acall(output)
             elif asyncio.iscoroutinefunction(module):
                 output = await module(output)

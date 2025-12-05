@@ -15,7 +15,7 @@ def fn_has_parameters(fn: Callable) -> bool:
     return False
 
 
-def get_mime_type(source: str) -> str: # noqa: C901
+def get_mime_type(source: str) -> str:  # noqa: C901
     """Tries to guess the MIME type, with fallback."""
     mime_type, _ = mimetypes.guess_type(source)
     if mime_type:

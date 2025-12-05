@@ -18,7 +18,9 @@ from msgflux.nn.modules.embedder import Embedder
 from msgflux.nn.modules.module import Module
 
 RETRIVERS = Union[WebRetriever, LexicalRetriever, SemanticRetriever, VectorDB]
-EMBEDDER_MODELS = Union[AudioEmbedderModel, ImageEmbedderModel, TextEmbedderModel, ModelGateway]
+EMBEDDER_MODELS = Union[
+    AudioEmbedderModel, ImageEmbedderModel, TextEmbedderModel, ModelGateway
+]
 
 
 class Retriever(Module):
@@ -77,7 +79,7 @@ class Retriever(Module):
             - return_score: If True, return similarity score (bool)
             - dict_key: Help to extract a value from task_inputs if dict (str)
         name:
-            Retriever name in snake case format.            
+            Retriever name in snake case format.
         """
         super().__init__()
         self._set_retriever(retriever)
@@ -155,7 +157,9 @@ class Retriever(Module):
     ) -> List[Dict[str, Any]]:
         queries_embed = None
         if self.embedder:
-            queries_embed = await self.embedder.aforward(queries, model_preference=model_preference)
+            queries_embed = await self.embedder.aforward(
+                queries, model_preference=model_preference
+            )
             # Ensure list format
             if not isinstance(queries_embed[0], list):
                 queries_embed = [queries_embed]
@@ -186,13 +190,12 @@ class Retriever(Module):
         retriever_execution_params = dotdict(
             queries=queries,
             top_k=self.config.get("top_k", 4),
-            return_score=self.config.get("return_score", False)
+            return_score=self.config.get("return_score", False),
         )
         threshold = self.config.get("threshold")
         if threshold:
             retriever_execution_params.threshold = threshold
         return retriever_execution_params
-
 
     def _prepare_task(
         self, message: Union[str, List[str], List[Dict[str, Any]], Message], **kwargs
@@ -233,7 +236,10 @@ class Retriever(Module):
         """
         if self.embedder:
             inputs = self._prepare_task(*args, **kwargs)
-            return {"queries": inputs["queries"], "model_preference": inputs.get("model_preference")}
+            return {
+                "queries": inputs["queries"],
+                "model_preference": inputs.get("model_preference"),
+            }
         return {}
 
     def _set_retriever(self, retriever: RETRIVERS):
@@ -252,9 +258,9 @@ class Retriever(Module):
             self.embedder = None
             return
 
-        if isinstance(model, Embedder): # If already Embedder, use directly
+        if isinstance(model, Embedder):  # If already Embedder, use directly
             self.embedder = model
-        else: # Auto-wrap in Embedder
+        else:  # Auto-wrap in Embedder
             self.embedder = Embedder(model=model)
 
     @property
@@ -279,8 +285,6 @@ class Retriever(Module):
             return
 
         if not isinstance(config, dict):
-            raise TypeError(
-                f"`config` must be a dict or None, given `{type(config)}`"
-            )
+            raise TypeError(f"`config` must be a dict or None, given `{type(config)}`")
 
         self.register_buffer("config", config.copy())

@@ -26,6 +26,7 @@ class _BaseOpenRouter:
             )
         return key
 
+
 @register_model
 class OpenRouterChatCompletion(_BaseOpenRouter, OpenAIChatCompletion):
     """OpenRouter Chat Completion."""
@@ -40,13 +41,13 @@ class OpenRouterChatCompletion(_BaseOpenRouter, OpenAIChatCompletion):
             else:
                 params["tool_choice"] = "none"
 
-        reasoning_effort = params.pop("reasoning_effort", None)      
+        reasoning_effort = params.pop("reasoning_effort", None)
         if reasoning_effort is not None:
             extra_body["reasoning"] = {"effort": reasoning_effort}
 
         # For non-OpenAI models enable web-search plugin
         web_search_options = params.get("web_search_options", None)
-        if web_search_options is not None and not "openai" in params["model"]:
+        if web_search_options is not None and "openai" not in params["model"]:
             params.pop("web_search_options")
             web_pluging = {"id": "web"}
             web_pluging.update(web_search_options)

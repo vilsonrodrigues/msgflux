@@ -15,7 +15,6 @@ from msgflux.data.parsers.types import (
 
 
 class Parser:
-
     @classmethod
     def providers(cls):
         return {k: list(v.keys()) for k, v in parser_registry.items()}

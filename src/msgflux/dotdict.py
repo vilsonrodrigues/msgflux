@@ -3,7 +3,7 @@ from typing import Any, Dict, Optional
 import msgspec
 
 
-class dotdict(dict): # noqa: N801
+class dotdict(dict):  # noqa: N801
     """A dictionary with dot access and nested path support.
 
     dotdict allows you to access and modify values as attributes (e.g., `obj.key`)
@@ -53,9 +53,7 @@ class dotdict(dict): # noqa: N801
         try:
             return self[attr]
         except KeyError as e:
-            raise AttributeError(
-                f"`dotdict` object has no attribute '{attr}'"
-            ) from e
+            raise AttributeError(f"`dotdict` object has no attribute '{attr}'") from e
 
     def __setattr__(self, key: str, value: Any):
         if key.startswith("_"):
@@ -76,9 +74,7 @@ class dotdict(dict): # noqa: N801
         try:
             del self[key]
         except KeyError as e:
-            raise AttributeError(
-                f"`dotdict` object has no attribute `{key}`"
-            ) from e
+            raise AttributeError(f"`dotdict` object has no attribute `{key}`") from e
 
     def _wrap(self, value: Any):
         if isinstance(value, dict):
@@ -98,7 +94,7 @@ class dotdict(dict): # noqa: N801
         try:
             for key in keys:
                 if isinstance(current, list):
-                    key = int(key) # noqa: PLW2901
+                    key = int(key)  # noqa: PLW2901
                 current = current[key]
             return current
         except (KeyError, IndexError, ValueError, TypeError):
@@ -118,7 +114,7 @@ class dotdict(dict): # noqa: N801
         current = self
         for i, key in enumerate(keys):
             if isinstance(current, list):
-                key = int(key) # noqa: PLW2901
+                key = int(key)  # noqa: PLW2901
 
             if i == len(keys) - 1:
                 if isinstance(current, list):
@@ -130,9 +126,8 @@ class dotdict(dict): # noqa: N801
 
             if isinstance(current, list):
                 key_i = int(key)
-                if (
-                    key_i >= len(current)
-                    or not isinstance(current[key_i], (dict, dotdict))
+                if key_i >= len(current) or not isinstance(
+                    current[key_i], (dict, dotdict)
                 ):
                     current[key_i] = dotdict()
                 current = current[key_i]

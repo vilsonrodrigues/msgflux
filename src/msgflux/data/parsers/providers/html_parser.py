@@ -71,9 +71,7 @@ class BeautifulSoupHtmlParser(BaseParser, HtmlParser):
         """Initialize parser state."""
         pass
 
-    def __call__(
-        self, data: Union[str, bytes], **kwargs
-    ) -> ParserResponse:
+    def __call__(self, data: Union[str, bytes], **kwargs) -> ParserResponse:
         """Parse an HTML document.
 
         Args:
@@ -137,7 +135,7 @@ class BeautifulSoupHtmlParser(BaseParser, HtmlParser):
                 content = data
             else:
                 # Load from file path
-                with open(data, "r", encoding="utf-8") as f:
+                with open(data, encoding="utf-8") as f:
                     content = f.read()
         else:
             raise ValueError(f"Unsupported data type: {type(data)}")
@@ -158,19 +156,13 @@ class BeautifulSoupHtmlParser(BaseParser, HtmlParser):
         links = []
         if self.extract_links:
             for link in soup.find_all("a", href=True):
-                links.append({
-                    "text": link.get_text(strip=True),
-                    "url": link["href"]
-                })
+                links.append({"text": link.get_text(strip=True), "url": link["href"]})
 
         # Extract images
         images = []
         if self.extract_images:
             for img in soup.find_all("img", src=True):
-                images.append({
-                    "alt": img.get("alt", ""),
-                    "url": img["src"]
-                })
+                images.append({"alt": img.get("alt", ""), "url": img["src"]})
 
         # Convert to Markdown
         markdown = self._html_to_markdown(soup)
@@ -180,13 +172,15 @@ class BeautifulSoupHtmlParser(BaseParser, HtmlParser):
         title_text = title.get_text(strip=True) if title else None
 
         # Prepare metadata
-        metadata = dotdict({
-            "title": title_text,
-            "num_links": len(links),
-            "num_images": len(images),
-            "extract_links": self.extract_links,
-            "extract_images": self.extract_images,
-        })
+        metadata = dotdict(
+            {
+                "title": title_text,
+                "num_links": len(links),
+                "num_images": len(images),
+                "extract_links": self.extract_links,
+                "extract_images": self.extract_images,
+            }
+        )
 
         return {
             "text": markdown.strip(),
@@ -270,9 +264,7 @@ class BeautifulSoupHtmlParser(BaseParser, HtmlParser):
 
         return result
 
-    async def acall(
-        self, data: Union[str, bytes], **kwargs
-    ) -> ParserResponse:
+    async def acall(self, data: Union[str, bytes], **kwargs) -> ParserResponse:
         """Async version of __call__. Parse an HTML document asynchronously.
 
         Args:
@@ -296,7 +288,9 @@ class BeautifulSoupHtmlParser(BaseParser, HtmlParser):
                 self._validate_file_type(data, [".html", ".htm"])
 
         # Load file asynchronously if it's a string path/URL (but not HTML content)
-        if isinstance(data, str) and not data.startswith(("<!DOCTYPE", "<html", "<?xml")):
+        if isinstance(data, str) and not data.startswith(
+            ("<!DOCTYPE", "<html", "<?xml")
+        ):
             data = await self._aload_file(data)
 
         # Parse the document

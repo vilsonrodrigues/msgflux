@@ -509,7 +509,7 @@ async def abackground_task(to_send: Callable, *args, **kwargs) -> None:
                 await to_send(*args, **kwargs)
             else:
                 # Fall back to running sync function in executor
-                executor = Executor.get_instance() # TODO
+                executor = Executor.get_instance()  # TODO
                 loop = asyncio.get_event_loop()
                 await loop.run_in_executor(None, lambda: to_send(*args, **kwargs))
         except Exception as e:
@@ -728,6 +728,7 @@ async def amsg_bcast_gather(
             # Wrap in coroutine
             async def _run_sync(func, msg):
                 return func(msg)
+
             tasks.append(_run_sync(f, message))
 
     responses = await asyncio.gather(*tasks, return_exceptions=True)

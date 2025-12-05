@@ -1,6 +1,6 @@
 from msgflux.data.retrievers.base import BaseRetriever
 
-retriever_registry = {} # retriever_registry[retriever_type][provider] = cls
+retriever_registry = {}  # retriever_registry[retriever_type][provider] = cls
 
 
 def register_retriever(cls: type[BaseRetriever]):

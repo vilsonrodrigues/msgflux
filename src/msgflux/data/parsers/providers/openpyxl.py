@@ -63,9 +63,7 @@ class OpenPyxlXlsxParser(BaseParser, XlsxParser):
         """Initialize parser state."""
         pass
 
-    def __call__(
-        self, data: Union[str, bytes], **kwargs
-    ) -> ParserResponse:
+    def __call__(self, data: Union[str, bytes], **kwargs) -> ParserResponse:
         """Parse an XLSX document.
 
         Args:
@@ -116,6 +114,7 @@ class OpenPyxlXlsxParser(BaseParser, XlsxParser):
         # Load workbook
         if isinstance(data, bytes):
             from io import BytesIO
+
             workbook = load_workbook(BytesIO(data), data_only=True)
         else:
             workbook = load_workbook(data, data_only=True)
@@ -157,11 +156,13 @@ class OpenPyxlXlsxParser(BaseParser, XlsxParser):
         )
 
         # Prepare metadata
-        metadata = dotdict({
-            "num_sheets": len(workbook.sheetnames),
-            "sheet_names": workbook.sheetnames,
-            "table_format": self.table_format,
-        })
+        metadata = dotdict(
+            {
+                "num_sheets": len(workbook.sheetnames),
+                "sheet_names": workbook.sheetnames,
+                "table_format": self.table_format,
+            }
+        )
 
         return {
             "text": md_content.strip(),
@@ -222,9 +223,7 @@ class OpenPyxlXlsxParser(BaseParser, XlsxParser):
                 return sheet.cell(merged_range.min_row, merged_range.min_col).value
         return cell.value
 
-    def _extract_table_data(
-        self, sheet, start_row: int, end_row: int
-    ) -> List[List]:
+    def _extract_table_data(self, sheet, start_row: int, end_row: int) -> List[List]:
         """Extract table data from sheet.
 
         Args:
@@ -252,8 +251,7 @@ class OpenPyxlXlsxParser(BaseParser, XlsxParser):
         table_data = []
         for row in range(start_row, end_row + 1):
             row_data = [
-                self._get_cell_value(sheet, row, col)
-                for col in range(1, max_col + 1)
+                self._get_cell_value(sheet, row, col) for col in range(1, max_col + 1)
             ]
             table_data.append(row_data)
 
@@ -334,9 +332,7 @@ class OpenPyxlXlsxParser(BaseParser, XlsxParser):
 
         return html
 
-    async def acall(
-        self, data: Union[str, bytes], **kwargs
-    ) -> ParserResponse:
+    async def acall(self, data: Union[str, bytes], **kwargs) -> ParserResponse:
         """Async version of __call__. Parse an XLSX document asynchronously.
 
         Args:

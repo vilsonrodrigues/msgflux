@@ -1,6 +1,7 @@
 """Custom header authentication for MCP."""
 
-from typing import Dict, Callable, Optional
+from typing import Callable, Dict, Optional
+
 from .base import BaseAuth
 
 

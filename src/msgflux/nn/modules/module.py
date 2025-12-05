@@ -19,11 +19,13 @@ from typing import (
 )
 
 import msgspec
+
 try:
     from code2mermaid import code_to_mermaid
 except ImportError:
     code_to_mermaid = None
 from jinja2 import Template
+from msgtrace.sdk import MsgTraceAttributes
 from opentelemetry import trace
 from opentelemetry.trace import Status, StatusCode
 
@@ -38,7 +40,6 @@ from msgflux.models.model import Model
 from msgflux.models.response import ModelResponse, ModelStreamResponse
 from msgflux.nn.parameter import Parameter
 from msgflux.telemetry import Spans
-from msgtrace.sdk import MsgTraceAttributes
 from msgflux.utils.convert import convert_camel_snake_to_title
 from msgflux.utils.encode import encode_data_to_base64
 from msgflux.utils.hooks import RemovableHandle
@@ -57,7 +58,7 @@ __all__ = [
 
 MSGFLUX_DESERIALIZABLE_CLS: Dict[str, Type] = {
     "model": Model,
-    "model_gateway": ModelGateway
+    "model_gateway": ModelGateway,
 }
 
 
@@ -90,7 +91,7 @@ def _addindent(s_, num_spaces: int):
     return s
 
 
-def get_callable_name(callable: Callable) -> str: # noqa: A002
+def get_callable_name(callable: Callable) -> str:  # noqa: A002
     if isinstance(callable, Module):
         return callable.get_module_name()
     elif inspect.isfunction(callable):
@@ -472,7 +473,7 @@ class Module:
     def _get_content_from_message(self, path: str, message: Message):
         content = None
         if isinstance(message, Message):
-            if isinstance(path, tuple): # OR inputs
+            if isinstance(path, tuple):  # OR inputs
                 content = self._get_content_from_or_input(path, message)
             else:
                 content = message.get(path)
@@ -502,7 +503,9 @@ class Module:
         return None
 
     def _prepare_data_uri(
-        self, source: str, force_encode: Optional[bool] = False # noqa: FBT001, FBT002
+        self,
+        source: str,
+        force_encode: Optional[bool] = False,  # noqa: FBT001, FBT002
     ) -> Optional[str]:
         """Prepares a data string (URL or Data URI base64).
         If force_encode=True, always tries to download and encode URL.
@@ -547,7 +550,7 @@ class Module:
         else:
             raise ValueError("Unsupported content type for template formatting")
         rendered = re.sub(r"\n{3,}", "\n\n", rendered).strip()
-        return rendered        
+        return rendered
 
     def set_name(self, name: str):
         if isinstance(name, str):
@@ -700,25 +703,20 @@ class Module:
         invalid_keys = set(guardrails.keys()) - valid_keys
         if invalid_keys:
             raise ValueError(
-                f"Invalid guardrail keys: {invalid_keys}. "
-                f"Valid keys are: {valid_keys}"
+                f"Invalid guardrail keys: {invalid_keys}. Valid keys are: {valid_keys}"
             )
 
         # Validate that all values are callable
         for key, guardrail in guardrails.items():
             if not isinstance(guardrail, Callable):
                 raise TypeError(
-                    f"Guardrail for '{key}' must be callable, "
-                    f"given `{type(guardrail)}`"
+                    f"Guardrail for '{key}' must be callable, given `{type(guardrail)}`"
                 )
 
         # Store guardrails, registering as buffers if needed
         self.guardrails = {}
         for key, guardrail in guardrails.items():
-            if (
-                inspect.isclass(guardrail)
-                and hasattr(guardrail, "serialize")
-            ):
+            if inspect.isclass(guardrail) and hasattr(guardrail, "serialize"):
                 self.register_buffer(f"{key}_guardrail", guardrail)
                 self.guardrails[key] = getattr(self, f"{key}_guardrail")
             elif isinstance(guardrail, self.__class__):
@@ -728,9 +726,7 @@ class Module:
                 super().__setattr__(f"{key}_guardrail", guardrail)
                 self.guardrails[key] = guardrail
 
-    def _set_message_fields(
-        self, message_fields: Optional[Dict[str, Any]] = None
-    ):
+    def _set_message_fields(self, message_fields: Optional[Dict[str, Any]] = None):
         """Set message field mappings.
 
         Args:
@@ -769,10 +765,7 @@ class Module:
         self._set_task_multimodal_inputs(message_fields.get("task_multimodal_inputs"))
         self._set_model_preference(message_fields.get("model_preference"))
 
-
-    def _set_templates(
-        self, templates: Optional[Dict[str, str]] = None
-    ):
+    def _set_templates(self, templates: Optional[Dict[str, str]] = None):
         """Set Jinja templates for different workflow stages.
 
         Args:
@@ -802,8 +795,7 @@ class Module:
         invalid_keys = set(templates.keys()) - valid_keys
         if invalid_keys:
             raise ValueError(
-                f"Invalid templates keys: {invalid_keys}. "
-                f"Valid keys are: {valid_keys}"
+                f"Invalid templates keys: {invalid_keys}. Valid keys are: {valid_keys}"
             )
 
         # Validate that all values are strings or None
@@ -843,14 +835,16 @@ class Module:
         )
 
         # Check if guardrail has acall method or is a coroutine function
-        if hasattr(input_guardrail, 'acall'):
+        if hasattr(input_guardrail, "acall"):
             guardrail_response = await input_guardrail.acall(**guardrail_params)
         elif inspect.iscoroutinefunction(input_guardrail):
             guardrail_response = await input_guardrail(**guardrail_params)
         else:
             # Fallback to sync call in executor to avoid blocking event loop
             loop = asyncio.get_event_loop()
-            guardrail_response = await loop.run_in_executor(None, lambda: input_guardrail(**guardrail_params))
+            guardrail_response = await loop.run_in_executor(
+                None, lambda: input_guardrail(**guardrail_params)
+            )
 
         if isinstance(guardrail_response, ModelResponse):
             guardrail_response = self._extract_raw_response(guardrail_response)
@@ -880,14 +874,16 @@ class Module:
         guardrail_params = self._prepare_output_guardrail_execution(model_response)
 
         # Check if guardrail has acall method or is a coroutine function
-        if hasattr(output_guardrail, 'acall'):
+        if hasattr(output_guardrail, "acall"):
             guardrail_response = await output_guardrail.acall(**guardrail_params)
         elif inspect.iscoroutinefunction(output_guardrail):
             guardrail_response = await output_guardrail(**guardrail_params)
         else:
             # Fallback to sync call in executor to avoid blocking event loop
             loop = asyncio.get_event_loop()
-            guardrail_response = await loop.run_in_executor(None, lambda: output_guardrail(**guardrail_params))
+            guardrail_response = await loop.run_in_executor(
+                None, lambda: output_guardrail(**guardrail_params)
+            )
 
         if isinstance(guardrail_response, ModelResponse):
             guardrail_response = self._extract_raw_response(guardrail_response)
@@ -1367,7 +1363,9 @@ class Module:
 
         return result
 
-    def _execute_with_span(self, module_name_title: str, module_type: str, *args, **kwargs):
+    def _execute_with_span(
+        self, module_name_title: str, module_type: str, *args, **kwargs
+    ):
         """Execute forward with module span context.
 
         This method can be overridden by subclasses to customize span creation
@@ -1397,7 +1395,7 @@ class Module:
     def _call(self, *args, **kwargs):
         module_name = self.get_module_name()
         module_name_title = convert_camel_snake_to_title(module_name)
-        module_type = self._get_name().lower() # Agent, Transcriber, etc.
+        module_type = self._get_name().lower()  # Agent, Transcriber, etc.
 
         encoded_state_dict = None
         if envs.telemetry_capture_state_dict:
@@ -1422,7 +1420,9 @@ class Module:
                     span.set_status(Status(StatusCode.ERROR, str(e)))
                     raise
         else:
-            return self._execute_with_span(module_name_title, module_type, *args, **kwargs)
+            return self._execute_with_span(
+                module_name_title, module_type, *args, **kwargs
+            )
 
     async def _acall_impl(self, *args, **kwargs):
         if not (self._forward_hooks or self._forward_pre_hooks):
@@ -1447,7 +1447,9 @@ class Module:
 
         return result
 
-    async def _aexecute_with_span(self, module_name_title: str, module_type: str, *args, **kwargs):
+    async def _aexecute_with_span(
+        self, module_name_title: str, module_type: str, *args, **kwargs
+    ):
         """Execute aforward with module span context asynchronously.
 
         This method can be overridden by subclasses to customize span creation
@@ -1477,7 +1479,7 @@ class Module:
     async def _acall(self, *args, **kwargs):
         module_name = self.get_module_name()
         module_name_title = convert_camel_snake_to_title(module_name)
-        module_type = self._get_name().lower() # Agent, Transcriber, etc.
+        module_type = self._get_name().lower()  # Agent, Transcriber, etc.
 
         encoded_state_dict = None
         if envs.telemetry_capture_state_dict:
@@ -1502,7 +1504,9 @@ class Module:
                     span.set_status(Status(StatusCode.ERROR, str(e)))
                     raise
         else:
-            return await self._aexecute_with_span(module_name_title, module_type, *args, **kwargs)
+            return await self._aexecute_with_span(
+                module_name_title, module_type, *args, **kwargs
+            )
 
     __call__: Callable[..., Any] = _call_impl
 
@@ -1515,7 +1519,9 @@ class Module:
         if type(self).aforward is _aforward_unimplemented:
             loop = asyncio.get_event_loop()
             executor = Executor.get_instance()
-            return await loop.run_in_executor(executor, lambda: self.__call__(*args, **kwargs))
+            return await loop.run_in_executor(
+                executor, lambda: self.__call__(*args, **kwargs)
+            )
         else:
             # Use native async implementation
             return await self._acall_impl(*args, **kwargs)
@@ -1560,7 +1566,7 @@ class Module:
             f"`{type(self).__name__}` object has no attribute `{name}`"
         )
 
-    def __setattr__(self, name: str, value: Union[Any, "Module"]) -> None: # noqa: C901
+    def __setattr__(self, name: str, value: Union[Any, "Module"]) -> None:  # noqa: C901
         def remove_from(*dicts_or_sets):
             for d in dicts_or_sets:
                 if name in d:
@@ -1794,7 +1800,7 @@ class Module:
         self._load_state_dict_post_hooks[handle.id] = hook
         return handle
 
-    def _load_from_state_dict( # noqa: C901
+    def _load_from_state_dict(  # noqa: C901
         self, state_dict: Dict[str, Any], prefix: Optional[str] = ""
     ) -> None:
         """Loads the module state from a state dict.
@@ -1967,7 +1973,7 @@ class Module:
         prefix: Optional[str] = "",
         *,
         recurse: Optional[bool] = True,
-        remove_duplicate: Optional[bool] = True
+        remove_duplicate: Optional[bool] = True,
     ) -> Iterator[Tuple[str, Any]]:  # TODO docstring
         """Return an iterator over module buffers, yielding both the name of the
             buffer as well as the buffer itself.

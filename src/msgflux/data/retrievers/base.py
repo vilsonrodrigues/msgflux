@@ -54,9 +54,7 @@ class BaseLexical:
 
 class BaseWebSearch:
     def __call__(
-        self,
-        queries: Union[str, List[str]],
-        top_k: Optional[int] = 1
+        self, queries: Union[str, List[str]], top_k: Optional[int] = 1
     ) -> RetrieverResponse:
         """Search web and retrieve results for given queries.
 

@@ -1,8 +1,9 @@
 """Bearer token authentication for MCP."""
 
-from typing import Dict, Optional, Callable, Awaitable
-from .base import BaseAuth
 from datetime import datetime
+from typing import Awaitable, Callable, Dict, Optional
+
+from .base import BaseAuth
 
 
 class BearerTokenAuth(BaseAuth):

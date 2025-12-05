@@ -5,7 +5,7 @@ from msgflux.message import Message
 from msgflux.models.base import BaseModel
 from msgflux.models.gateway import ModelGateway
 from msgflux.models.response import ModelResponse
-from msgflux.models.types import (    
+from msgflux.models.types import (
     ImageTextTo3DModel,
     ImageTextToImageModel,
     TextTo3DModel,
@@ -15,7 +15,6 @@ from msgflux.models.types import (
     VideoTextToVideoModel,
 )
 from msgflux.nn.modules.module import Module
-
 
 MEDIA_MODEL_TYPES = Union[
     ModelGateway,
@@ -44,7 +43,7 @@ class MediaMaker(Module):
         response_mode: Optional[str] = "plain_response",
         negative_prompt: Optional[str] = None,
         config: Optional[Dict[str, Any]] = None,
-        name: Optional[str] = None,       
+        name: Optional[str] = None,
     ):
         """Args:
         model:
@@ -86,7 +85,7 @@ class MediaMaker(Module):
                     "n": 1
                 }
         name:
-            MediaMaker name in snake case format.                
+            MediaMaker name in snake case format.
         """
         super().__init__()
         self._set_guardrails(guardrails)
@@ -118,7 +117,9 @@ class MediaMaker(Module):
         response = self._process_model_response(model_response, message)
         return response
 
-    async def aforward(self, message: Union[str, Message], **kwargs) -> Union[str, Message]:
+    async def aforward(
+        self, message: Union[str, Message], **kwargs
+    ) -> Union[str, Message]:
         """Async version of forward. Execute the media maker asynchronously."""
         inputs = self._prepare_task(message, **kwargs)
         model_response = await self._aexecute_model(**inputs)
@@ -295,8 +296,6 @@ class MediaMaker(Module):
             return
 
         if not isinstance(config, dict):
-            raise TypeError(
-                f"`config` must be a dict or None, given `{type(config)}`"
-            )
+            raise TypeError(f"`config` must be a dict or None, given `{type(config)}`")
 
         self.register_buffer("config", config.copy())

@@ -35,6 +35,7 @@ class _BaseJinaAI:
             )
         return key
 
+
 @register_model
 class JinaAITextReranker(_BaseJinaAI, HTTPXModelClient, TextRerankerModel):
     """JinaAI Text Reranker."""
@@ -63,7 +64,9 @@ class JinaAITextReranker(_BaseJinaAI, HTTPXModelClient, TextRerankerModel):
         self.sampling_params = {"base_url": base_url or self._get_base_url()}
         self.enable_cache = enable_cache
         self.cache_size = cache_size
-        self._response_cache = ResponseCache(maxsize=cache_size) if enable_cache else None
+        self._response_cache = (
+            ResponseCache(maxsize=cache_size) if enable_cache else None
+        )
 
     def _generate(self, **kwargs):
         # Check cache if enabled
@@ -127,6 +130,7 @@ class JinaAITextReranker(_BaseJinaAI, HTTPXModelClient, TextRerankerModel):
         response = await self._agenerate(query=query, documents=documents)
         return response
 
+
 @register_model
 class JinaAITextEmbedder(TextEmbedderModel, HTTPXModelClient, _BaseJinaAI):
     """JinaAI Text Embedder."""
@@ -161,7 +165,9 @@ class JinaAITextEmbedder(TextEmbedderModel, HTTPXModelClient, _BaseJinaAI):
         self.sampling_run_params = {"dimensions": dimensions}
         self.enable_cache = enable_cache
         self.cache_size = cache_size
-        self._response_cache = ResponseCache(maxsize=cache_size) if enable_cache else None
+        self._response_cache = (
+            ResponseCache(maxsize=cache_size) if enable_cache else None
+        )
         self._initialize()
         self._get_api_key()
 
@@ -238,6 +244,7 @@ class JinaAITextEmbedder(TextEmbedderModel, HTTPXModelClient, _BaseJinaAI):
         inputs = [{"text": item} for item in data]
         response = await self._agenerate(input=inputs)
         return response
+
 
 @register_model
 class JinaAIImageEmbedder(ImageEmbedderModel, JinaAITextEmbedder):
@@ -320,6 +327,7 @@ class JinaAIImageEmbedder(ImageEmbedderModel, JinaAITextEmbedder):
         response = await self._agenerate(input=inputs)
         return response
 
+
 @register_model
 class JinaAITextClassifier(TextClassifierModel, HTTPXModelClient, _BaseJinaAI):
     """JinaAI Text Classifier."""
@@ -341,7 +349,9 @@ class JinaAITextClassifier(TextClassifierModel, HTTPXModelClient, _BaseJinaAI):
         self.sampling_run_params = {"labels": labels}
         self.enable_cache = enable_cache
         self.cache_size = cache_size
-        self._response_cache = ResponseCache(maxsize=cache_size) if enable_cache else None
+        self._response_cache = (
+            ResponseCache(maxsize=cache_size) if enable_cache else None
+        )
         self._initialize()
         self._get_api_key()
 
@@ -422,6 +432,7 @@ class JinaAITextClassifier(TextClassifierModel, HTTPXModelClient, _BaseJinaAI):
         inputs = [{"text": item} for item in data]
         response = await self._agenerate(input=inputs)
         return response
+
 
 @register_model
 class JinaAIImageClassifier(JinaAITextClassifier, ImageClassifierModel):

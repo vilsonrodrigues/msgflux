@@ -18,7 +18,6 @@ from msgflux.models.types import (
 
 
 class Model:
-
     @classmethod
     def providers(cls):
         return {k: list(v.keys()) for k, v in model_registry.items()}

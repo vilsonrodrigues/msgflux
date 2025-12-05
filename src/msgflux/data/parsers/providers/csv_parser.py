@@ -66,9 +66,7 @@ class StandardCsvParser(BaseParser, CsvParser):
         """Initialize parser state."""
         pass
 
-    def __call__(
-        self, data: Union[str, bytes], **kwargs
-    ) -> ParserResponse:
+    def __call__(self, data: Union[str, bytes], **kwargs) -> ParserResponse:
         """Parse a CSV/TSV document.
 
         Args:
@@ -124,7 +122,7 @@ class StandardCsvParser(BaseParser, CsvParser):
                 content = file_bytes.decode(self.encoding)
             else:
                 # Load from file path
-                with open(data, "r", encoding=self.encoding) as f:
+                with open(data, encoding=self.encoding) as f:
                     content = f.read()
         else:
             raise ValueError(f"Unsupported data type: {type(data)}")
@@ -136,21 +134,21 @@ class StandardCsvParser(BaseParser, CsvParser):
 
         # Parse CSV
         reader = csv.reader(
-            StringIO(content),
-            delimiter=delimiter,
-            quotechar=self.quotechar
+            StringIO(content), delimiter=delimiter, quotechar=self.quotechar
         )
         rows = list(reader)
 
         if not rows:
             return {
                 "text": "",
-                "metadata": dotdict({
-                    "num_rows": 0,
-                    "num_cols": 0,
-                    "has_header": self.has_header,
-                    "delimiter": delimiter,
-                })
+                "metadata": dotdict(
+                    {
+                        "num_rows": 0,
+                        "num_cols": 0,
+                        "has_header": self.has_header,
+                        "delimiter": delimiter,
+                    }
+                ),
             }
 
         # Extract header if specified
@@ -168,15 +166,17 @@ class StandardCsvParser(BaseParser, CsvParser):
 
         # Prepare metadata
         num_cols = len(rows[0]) if rows else 0
-        metadata = dotdict({
-            "num_rows": len(data_rows),
-            "num_cols": num_cols,
-            "total_rows": len(rows),
-            "has_header": self.has_header,
-            "delimiter": delimiter,
-            "table_format": self.table_format,
-            "encoding": self.encoding,
-        })
+        metadata = dotdict(
+            {
+                "num_rows": len(data_rows),
+                "num_cols": num_cols,
+                "total_rows": len(rows),
+                "has_header": self.has_header,
+                "delimiter": delimiter,
+                "table_format": self.table_format,
+                "encoding": self.encoding,
+            }
+        )
 
         return {
             "text": text_output,
@@ -193,17 +193,17 @@ class StandardCsvParser(BaseParser, CsvParser):
             Detected delimiter character.
         """
         # Get first few lines for detection
-        lines = content.split('\n')[:5]
-        sample = '\n'.join(lines)
+        lines = content.split("\n")[:5]
+        sample = "\n".join(lines)
 
         # Try to detect using csv.Sniffer
         try:
             sniffer = csv.Sniffer()
-            dialect = sniffer.sniff(sample, delimiters=',\t;|')
+            dialect = sniffer.sniff(sample, delimiters=",\t;|")
             return dialect.delimiter
         except Exception:
             # Fallback: count occurrences of common delimiters
-            delimiters = [',', '\t', ';', '|']
+            delimiters = [",", "\t", ";", "|"]
             counts = {d: sample.count(d) for d in delimiters}
             return max(counts, key=counts.get)
 
@@ -240,9 +240,7 @@ class StandardCsvParser(BaseParser, CsvParser):
 
         return "\n".join(lines)
 
-    def _to_html_table(
-        self, header: Optional[List[str]], rows: List[List[str]]
-    ) -> str:
+    def _to_html_table(self, header: Optional[List[str]], rows: List[List[str]]) -> str:
         """Convert data to HTML table format.
 
         Args:
@@ -261,7 +259,7 @@ class StandardCsvParser(BaseParser, CsvParser):
         if header:
             html += "  <thead>\n    <tr>\n"
             for cell in header:
-                html += f"      <th>{str(cell)}</th>\n"
+                html += f"      <th>{cell!s}</th>\n"
             html += "    </tr>\n  </thead>\n"
 
         # Add body
@@ -272,16 +270,14 @@ class StandardCsvParser(BaseParser, CsvParser):
             if header and len(row) < len(header):
                 row = row + [""] * (len(header) - len(row))
             for cell in row:
-                html += f"      <td>{str(cell)}</td>\n"
+                html += f"      <td>{cell!s}</td>\n"
             html += "    </tr>\n"
         html += "  </tbody>\n"
 
         html += "</table>"
         return html
 
-    async def acall(
-        self, data: Union[str, bytes], **kwargs
-    ) -> ParserResponse:
+    async def acall(self, data: Union[str, bytes], **kwargs) -> ParserResponse:
         """Async version of __call__. Parse a CSV document asynchronously.
 
         Args:

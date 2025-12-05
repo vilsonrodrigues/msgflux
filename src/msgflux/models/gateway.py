@@ -213,7 +213,11 @@ class ModelGateway:
 
         # Determine if gateway supports batch processing
         # Only True if ALL models support batch
-        self.batch_support = all(getattr(model, "batch_support", False) for model in models) if models else False
+        self.batch_support = (
+            all(getattr(model, "batch_support", False) for model in models)
+            if models
+            else False
+        )
 
     def _execute_model(
         self, model_preference: Optional[str] = None, **kwargs: Any

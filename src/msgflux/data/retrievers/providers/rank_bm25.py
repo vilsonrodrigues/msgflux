@@ -14,7 +14,7 @@ from msgflux.dotdict import dotdict
 from msgflux.nn import functional as F
 
 
-#@register_retriever
+# @register_retriever
 class RankBM25LexicalRetriever(BaseLexical, BaseRetriever, LexicalRetriever):
     """Rank Okapi BM25 - Best Matching 25 Lexical Retriever."""
 
@@ -57,9 +57,7 @@ class RankBM25LexicalRetriever(BaseLexical, BaseRetriever, LexicalRetriever):
 
         # Filtra por threshold
         filtered_doc_scores = [
-            (doc_id, score)
-            for doc_id, score in enumerate(scores)
-            if score >= threshold
+            (doc_id, score) for doc_id, score in enumerate(scores) if score >= threshold
         ]
 
         # Order by score

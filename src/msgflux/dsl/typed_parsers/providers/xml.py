@@ -9,9 +9,9 @@ except ImportError:
     defused_ET = None
     minidom = None
 
+from msgflux.dotdict import dotdict
 from msgflux.dsl.typed_parsers.base import BaseTypedParser
 from msgflux.dsl.typed_parsers.registry import register_typed_parser
-from msgflux.dotdict import dotdict
 from msgflux.utils.xml import apply_xml_tags
 
 _type_converters = {
@@ -61,7 +61,7 @@ Example of how you can write your response in XML:
         </login_event>
     </login_history>
 </user_profile>
-""" # noqa: E501
+"""  # noqa: E501
 
 
 @register_typed_parser
@@ -79,8 +79,7 @@ class TypedXMLParser(BaseTypedParser):
 
     @classmethod
     def _xml_to_typed_value(cls, element: ET.Element) -> Any:
-        """
-        Convert an XML element to a Python value based on type.
+        """Convert an XML element to a Python value based on type.
         This is a helper method, marked as a classmethod.
         """
         dtype_attr = element.attrib.get("dtype", "str")
@@ -146,13 +145,13 @@ class TypedXMLParser(BaseTypedParser):
                 result[tag] = values[0]
             else:
                 result[tag] = values
-        
+
         if extract_root_values and len(result) == 1:
             result = next(iter(result.values()))
             if not isinstance(result, dict):
-                 # handles case where root has a single, non-dict child
-                 result = {list(root)[0].tag: result}
-        
+                # handles case where root has a single, non-dict child
+                result = {list(root)[0].tag: result}
+
         result = dotdict(result)
         return result
 
@@ -209,16 +208,14 @@ class TypedXMLParser(BaseTypedParser):
             "string": "str",
             "number": "float",
             "integer": "int",
-            "boolean": "bool"
+            "boolean": "bool",
         }
         dtype = dtype_map.get(schema.get("type"), schema.get("type", "any"))
         required = str(name in (required_fields or [])).lower()
 
-        field_el = ET.SubElement(parent, "field", {
-            "name": name,
-            "dtype": dtype,
-            "required": required
-        })
+        field_el = ET.SubElement(
+            parent, "field", {"name": name, "dtype": dtype, "required": required}
+        )
         if "description" in schema:
             field_el.set("description", schema["description"])
 
@@ -230,8 +227,10 @@ class TypedXMLParser(BaseTypedParser):
 
         elif schema.get("type") == "array" and "items" in schema:
             cls._build_compact_field_xml(
-                field_el, f"{name}_item", schema["items"],
-                schema.get("items", {}).get("required", [])
+                field_el,
+                f"{name}_item",
+                schema["items"],
+                schema.get("items", {}).get("required", []),
             )
 
     @classmethod
@@ -253,7 +252,7 @@ class TypedXMLParser(BaseTypedParser):
         try:
             defused_ET.fromstring(xml_str)
             pretty_str = minidom.parseString(xml_str).toprettyxml(indent="  ")
-        except Exception: # Fallback
+        except Exception:  # Fallback
             pretty_str = minidom.parseString(xml_str).toprettyxml(indent="  ")
 
-        return "\n".join(pretty_str.split("\n")[1:]) # remove XML head
+        return "\n".join(pretty_str.split("\n")[1:])  # remove XML head

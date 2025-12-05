@@ -18,6 +18,7 @@ class ParserResponse(BaseResponse):
         >>> print(response.data["images"])  # {"image1.png": <bytes>}
         >>> print(response.metadata)  # {"num_pages": 10, ...}
     """
+
     response_type: Literal[
         "any_parse",
         "email_parse",

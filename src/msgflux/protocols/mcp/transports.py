@@ -3,7 +3,7 @@
 import asyncio
 import json
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 try:
     import httpx
@@ -11,7 +11,9 @@ except ImportError:
     httpx = None
 
 from msgflux.protocols.mcp.exceptions import (
-    MCPConnectionError, MCPError, MCPTimeoutError
+    MCPConnectionError,
+    MCPError,
+    MCPTimeoutError,
 )
 
 if TYPE_CHECKING:
@@ -32,12 +34,16 @@ class BaseTransport(ABC):
         pass
 
     @abstractmethod
-    async def send_request(self, method: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    async def send_request(
+        self, method: str, params: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
         """Send a JSON-RPC request and wait for response."""
         pass
 
     @abstractmethod
-    async def send_notification(self, method: str, params: Optional[Dict[str, Any]] = None):
+    async def send_notification(
+        self, method: str, params: Optional[Dict[str, Any]] = None
+    ):
         """Send a JSON-RPC notification (no response expected)."""
         pass
 
@@ -56,7 +62,7 @@ class HTTPTransport(BaseTransport):
         timeout: float = 30.0,
         headers: Optional[Dict[str, str]] = None,
         pool_limits: Optional[Dict[str, int]] = None,
-        auth: Optional["BaseAuth"] = None
+        auth: Optional["BaseAuth"] = None,
     ):
         """Initialize HTTP transport.
 
@@ -78,7 +84,7 @@ class HTTPTransport(BaseTransport):
         self.headers = headers or {}
         self.pool_limits = pool_limits or {
             "max_connections": 100,
-            "max_keepalive_connections": 20
+            "max_keepalive_connections": 20,
         }
         self.auth = auth
         self._http_client: Optional[httpx.AsyncClient] = None
@@ -101,13 +107,11 @@ class HTTPTransport(BaseTransport):
         # Create limits with connection pooling
         limits = httpx.Limits(
             max_connections=self.pool_limits["max_connections"],
-            max_keepalive_connections=self.pool_limits["max_keepalive_connections"]
+            max_keepalive_connections=self.pool_limits["max_keepalive_connections"],
         )
 
         self._http_client = httpx.AsyncClient(
-            timeout=httpx.Timeout(self.timeout),
-            headers=self.headers,
-            limits=limits
+            timeout=httpx.Timeout(self.timeout), headers=self.headers, limits=limits
         )
 
     async def disconnect(self):
@@ -131,7 +135,7 @@ class HTTPTransport(BaseTransport):
         """
         headers = {
             "Content-Type": "application/json",
-            "Accept": "application/json, text/event-stream"
+            "Accept": "application/json, text/event-stream",
         }
         headers.update(self.headers)
 
@@ -149,7 +153,9 @@ class HTTPTransport(BaseTransport):
 
         return headers
 
-    async def send_request(self, method: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    async def send_request(
+        self, method: str, params: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
         """Send HTTP POST request with JSON-RPC.
 
         Automatically applies authentication and refreshes tokens if needed.
@@ -168,18 +174,25 @@ class HTTPTransport(BaseTransport):
 
         try:
             # Don't send session ID on initialize - server will create it
-            headers = await self._get_headers(include_session_id=(method != "initialize"))
+            headers = await self._get_headers(
+                include_session_id=(method != "initialize")
+            )
 
             response = await self._http_client.post(
-                self.base_url,
-                json=request_data,
-                headers=headers
+                self.base_url, json=request_data, headers=headers
             )
             response.raise_for_status()
 
             # Capture session ID from response headers if present
             # Try multiple possible header names
-            for header_name in ["mcp-session-id", "MCP-Session-ID", "X-Session-ID", "Session-ID", "X-Session-Id", "Session-Id"]:
+            for header_name in [
+                "mcp-session-id",
+                "MCP-Session-ID",
+                "X-Session-ID",
+                "Session-ID",
+                "X-Session-Id",
+                "Session-Id",
+            ]:
                 session_id = response.headers.get(header_name)
                 if session_id:
                     # Always update session ID if server provides one (server's ID takes precedence)
@@ -207,7 +220,9 @@ class HTTPTransport(BaseTransport):
         except json.JSONDecodeError as e:
             raise MCPError(f"Failed to decode JSON response: {e}")
 
-    async def send_notification(self, method: str, params: Optional[Dict[str, Any]] = None):
+    async def send_notification(
+        self, method: str, params: Optional[Dict[str, Any]] = None
+    ):
         """Send HTTP notification (fire-and-forget).
 
         Automatically applies authentication.
@@ -226,9 +241,7 @@ class HTTPTransport(BaseTransport):
         try:
             headers = await self._get_headers()
             await self._http_client.post(
-                self.base_url,
-                json=notification_data,
-                headers=headers
+                self.base_url, json=notification_data, headers=headers
             )
         except Exception:
             # Notifications are fire-and-forget, log but don't raise
@@ -248,7 +261,7 @@ class StdioTransport(BaseTransport):
         args: Optional[list] = None,
         cwd: Optional[str] = None,
         env: Optional[Dict[str, str]] = None,
-        timeout: float = 30.0
+        timeout: float = 30.0,
     ):
         self.command = command
         self.args = args or []
@@ -279,7 +292,7 @@ class StdioTransport(BaseTransport):
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 cwd=self.cwd,
-                env=self.env
+                env=self.env,
             )
 
             # Start background task to read responses
@@ -326,7 +339,7 @@ class StdioTransport(BaseTransport):
                     break
 
                 try:
-                    response = json.loads(line.decode('utf-8').strip())
+                    response = json.loads(line.decode("utf-8").strip())
 
                     # Handle response to a request
                     if "id" in response and response["id"] in self._pending_requests:
@@ -349,7 +362,9 @@ class StdioTransport(BaseTransport):
         except Exception:
             pass
 
-    async def send_request(self, method: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    async def send_request(
+        self, method: str, params: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
         """Send JSON-RPC request via stdin and wait for response."""
         if not self._process or not self._process.stdin:
             raise MCPConnectionError("Transport not connected")
@@ -371,7 +386,7 @@ class StdioTransport(BaseTransport):
         try:
             # Send request (newline-delimited JSON)
             message = json.dumps(request_data) + "\n"
-            self._process.stdin.write(message.encode('utf-8'))
+            self._process.stdin.write(message.encode("utf-8"))
             await self._process.stdin.drain()
 
             # Wait for response with timeout
@@ -385,7 +400,9 @@ class StdioTransport(BaseTransport):
             self._pending_requests.pop(request_id, None)
             raise MCPError(f"Failed to send request: {e}")
 
-    async def send_notification(self, method: str, params: Optional[Dict[str, Any]] = None):
+    async def send_notification(
+        self, method: str, params: Optional[Dict[str, Any]] = None
+    ):
         """Send JSON-RPC notification via stdin (no response expected)."""
         if not self._process or not self._process.stdin:
             raise MCPConnectionError("Transport not connected")
@@ -400,7 +417,7 @@ class StdioTransport(BaseTransport):
 
         try:
             message = json.dumps(notification_data) + "\n"
-            self._process.stdin.write(message.encode('utf-8'))
+            self._process.stdin.write(message.encode("utf-8"))
             await self._process.stdin.drain()
         except Exception:
             # Notifications are fire-and-forget

@@ -3,8 +3,18 @@ import os
 import re
 from collections import OrderedDict
 from typing import (
-    Any, Dict, List, Literal, Mapping, Optional, Set, Union, Tuple, Type,
-    get_args, get_origin
+    Any,
+    Dict,
+    List,
+    Literal,
+    Mapping,
+    Optional,
+    Set,
+    Tuple,
+    Type,
+    Union,
+    get_args,
+    get_origin,
 )
 
 import msgspec
@@ -25,7 +35,7 @@ class StructFactory:
 
     @classmethod
     def from_json_schema(cls, json_schema: Dict[str, Any]) -> msgspec.Struct:
-        self = cls() # Temp instance
+        self = cls()  # Temp instance
         if "$defs" not in json_schema:
             raise ValueError("json_schema must contain definitions in `$defs`")
 
@@ -51,7 +61,9 @@ class StructFactory:
         remaining = set(definitions.keys())
 
         while remaining:
-            ready = [name for name in remaining if dependencies[name].issubset(set(ordered))]
+            ready = [
+                name for name in remaining if dependencies[name].issubset(set(ordered))
+            ]
             if not ready:  # Circular dependency - uses alphabetical order as fallback
                 ready = [min(remaining)]
             for name in ready:
@@ -140,7 +152,9 @@ class StructFactory:
             elif len(types) > 1:
                 if description:
                     union_type = Union[tuple(types)]
-                    annotated_type = Annotated[union_type, Meta(description=description)]
+                    annotated_type = Annotated[
+                        union_type, Meta(description=description)
+                    ]
                     return Optional[annotated_type]
                 else:
                     return Optional[Union[tuple(types)]]
@@ -179,7 +193,9 @@ class StructFactory:
 
             if type_name == "array":
                 if "items" in type_def:
-                    item_type = self._resolve_single_type(type_def["items"], all_definitions)
+                    item_type = self._resolve_single_type(
+                        type_def["items"], all_definitions
+                    )
                     return List[item_type]
                 else:
                     return List[Any]
@@ -266,9 +282,9 @@ class StructFactory:
             return []
 
         for i, char in enumerate(args_str):
-            if char in("[", "{", "(") and not in_quotes:
+            if char in ("[", "{", "(") and not in_quotes:
                 level += 1
-            elif char in("]", "}", ")") and not in_quotes:
+            elif char in ("]", "}", ")") and not in_quotes:
                 level -= 1
                 if level < 0:
                     raise ValueError("Unbalanced brackets in type arguments")
@@ -333,7 +349,9 @@ class StructFactory:
             if base_key in globals().get("type_mapping", {}):
                 base = globals()["type_mapping"][base_key]
             else:
-                raise ValueError(f"Base type not supported: `{base_name}` in `{type_str}`")
+                raise ValueError(
+                    f"Base type not supported: `{base_name}` in `{type_str}`"
+                )
         else:
             base = GENERIC_BASES[base_key]
 
@@ -389,9 +407,15 @@ class StructFactory:
         # Attempt to parameterize any other generic base
         try:
             if parsed_parts:
-                return base[parsed_parts] if len(parsed_parts) > 1 else base[parsed_parts[0]]
+                return (
+                    base[parsed_parts]
+                    if len(parsed_parts) > 1
+                    else base[parsed_parts[0]]
+                )
         except Exception as e:
-            raise ValueError(f"Could not create parameterized type for `{type_str}`: {e}") from e
+            raise ValueError(
+                f"Could not create parameterized type for `{type_str}`: {e}"
+            ) from e
 
         raise ValueError(f"Malformed or unsupported generic: `{type_str}`")
 
@@ -414,7 +438,9 @@ class StructFactory:
             elif char in ("]", "}", ")") and not in_quotes:
                 level -= 1
                 if level < 0:
-                    raise ValueError("Unbalanced nesting near `{signature[current_pos:]}`")
+                    raise ValueError(
+                        "Unbalanced nesting near `{signature[current_pos:]}`"
+                    )
             elif char in ("'", '"'):
                 if in_quotes == char:
                     in_quotes = None
@@ -555,7 +581,7 @@ def struct_to_dict(obj: object):
 def is_optional_field(struct_class: Type[Struct], field_name: str) -> bool:
     """Check if field is Optional."""
     field_type = struct_class.__annotations__.get(field_name)
-    
+
     if field_type is None:
         return False
 
@@ -563,5 +589,5 @@ def is_optional_field(struct_class: Type[Struct], field_name: str) -> bool:
     if origin is Union or origin is Optional:
         args = get_args(field_type)
         return type(None) in args
-    
+
     return False

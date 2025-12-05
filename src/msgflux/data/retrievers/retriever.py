@@ -10,7 +10,6 @@ from msgflux.data.retrievers.types import (
 
 
 class Retriever:
-
     @classmethod
     def providers(cls):
         return {k: list(v.keys()) for k, v in retriever_registry.items()}
@@ -20,7 +19,9 @@ class Retriever:
         return list(retriever_registry.keys())
 
     @classmethod
-    def _get_retriever_class(cls, retriever_type: str, provider: str) -> Type[BaseRetriever]:
+    def _get_retriever_class(
+        cls, retriever_type: str, provider: str
+    ) -> Type[BaseRetriever]:
         if retriever_type not in retriever_registry:
             raise ValueError(f"Retriever type `{retriever_type}` is not supported")
         if provider not in retriever_registry[retriever_type]:

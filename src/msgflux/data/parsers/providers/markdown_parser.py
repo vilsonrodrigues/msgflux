@@ -62,9 +62,7 @@ class StandardMarkdownParser(BaseParser, MarkdownParser):
         """Initialize parser state."""
         pass
 
-    def __call__(
-        self, data: Union[str, bytes], **kwargs
-    ) -> ParserResponse:
+    def __call__(self, data: Union[str, bytes], **kwargs) -> ParserResponse:
         """Parse a Markdown document.
 
         Args:
@@ -132,7 +130,7 @@ class StandardMarkdownParser(BaseParser, MarkdownParser):
                 content = data
             else:
                 # Load from file path
-                with open(data, "r", encoding="utf-8") as f:
+                with open(data, encoding="utf-8") as f:
                     content = f.read()
         else:
             raise ValueError(f"Unsupported data type: {type(data)}")
@@ -161,14 +159,16 @@ class StandardMarkdownParser(BaseParser, MarkdownParser):
         headings = self._extract_headings(content)
 
         # Prepare metadata
-        metadata = dotdict({
-            "has_front_matter": front_matter is not None,
-            "num_code_blocks": len(code_blocks),
-            "num_links": len(links),
-            "num_images": len(images),
-            "num_headings": len(headings),
-            "heading_levels": [h["level"] for h in headings],
-        })
+        metadata = dotdict(
+            {
+                "has_front_matter": front_matter is not None,
+                "num_code_blocks": len(code_blocks),
+                "num_links": len(links),
+                "num_images": len(images),
+                "num_headings": len(headings),
+                "heading_levels": [h["level"] for h in headings],
+            }
+        )
 
         return {
             "text": content.strip(),
@@ -195,11 +195,12 @@ class StandardMarkdownParser(BaseParser, MarkdownParser):
 
         if match:
             front_matter_str = match.group(1)
-            content = content[match.end():]
+            content = content[match.end() :]
 
             # Try to parse YAML
             try:
                 import yaml
+
                 front_matter = yaml.safe_load(front_matter_str)
                 return content, front_matter
             except ImportError:
@@ -215,7 +216,7 @@ class StandardMarkdownParser(BaseParser, MarkdownParser):
 
         if match:
             front_matter_str = match.group(1)
-            content = content[match.end():]
+            content = content[match.end() :]
             return content, {"raw": front_matter_str, "format": "toml"}
 
         return content, None
@@ -236,12 +237,14 @@ class StandardMarkdownParser(BaseParser, MarkdownParser):
         for match in re.finditer(pattern, content, re.DOTALL):
             language = match.group(1) or "text"
             code = match.group(2)
-            code_blocks.append({
-                "language": language,
-                "code": code,
-                "start_pos": match.start(),
-                "end_pos": match.end(),
-            })
+            code_blocks.append(
+                {
+                    "language": language,
+                    "code": code,
+                    "start_pos": match.start(),
+                    "end_pos": match.end(),
+                }
+            )
 
         return code_blocks
 
@@ -259,20 +262,24 @@ class StandardMarkdownParser(BaseParser, MarkdownParser):
         # Match inline links [text](url)
         inline_pattern = r"\[([^\]]+)\]\(([^\)]+)\)"
         for match in re.finditer(inline_pattern, content):
-            links.append({
-                "text": match.group(1),
-                "url": match.group(2),
-                "type": "inline",
-            })
+            links.append(
+                {
+                    "text": match.group(1),
+                    "url": match.group(2),
+                    "type": "inline",
+                }
+            )
 
         # Match reference links [text][ref]
         ref_pattern = r"\[([^\]]+)\]\[([^\]]+)\]"
         for match in re.finditer(ref_pattern, content):
-            links.append({
-                "text": match.group(1),
-                "reference": match.group(2),
-                "type": "reference",
-            })
+            links.append(
+                {
+                    "text": match.group(1),
+                    "reference": match.group(2),
+                    "type": "reference",
+                }
+            )
 
         return links
 
@@ -290,10 +297,12 @@ class StandardMarkdownParser(BaseParser, MarkdownParser):
         # Match inline images ![alt](url)
         pattern = r"!\[([^\]]*)\]\(([^\)]+)\)"
         for match in re.finditer(pattern, content):
-            images.append({
-                "alt": match.group(1),
-                "url": match.group(2),
-            })
+            images.append(
+                {
+                    "alt": match.group(1),
+                    "url": match.group(2),
+                }
+            )
 
         return images
 
@@ -313,16 +322,16 @@ class StandardMarkdownParser(BaseParser, MarkdownParser):
         for match in re.finditer(pattern, content, re.MULTILINE):
             level = len(match.group(1))
             text = match.group(2).strip()
-            headings.append({
-                "level": level,
-                "text": text,
-            })
+            headings.append(
+                {
+                    "level": level,
+                    "text": text,
+                }
+            )
 
         return headings
 
-    async def acall(
-        self, data: Union[str, bytes], **kwargs
-    ) -> ParserResponse:
+    async def acall(self, data: Union[str, bytes], **kwargs) -> ParserResponse:
         """Async version of __call__. Parse a Markdown document asynchronously.
 
         Args:

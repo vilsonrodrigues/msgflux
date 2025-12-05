@@ -2,7 +2,7 @@ import asyncio
 import inspect
 from dataclasses import asdict, dataclass, field
 from functools import partial
-from typing import Any, Callable, Dict, Iterator, List, Mapping, Optional, Union, Tuple
+from typing import Any, Callable, Dict, Iterator, List, Mapping, Optional, Tuple, Union
 
 import msgspec
 
@@ -12,7 +12,10 @@ from msgflux.nn import functional as F
 from msgflux.nn.modules.container import ModuleDict
 from msgflux.nn.modules.module import Module
 from msgflux.protocols.mcp import (
-    MCPClient, convert_mcp_schema_to_tool_schema, extract_tool_result_text, filter_tools
+    MCPClient,
+    convert_mcp_schema_to_tool_schema,
+    extract_tool_result_text,
+    filter_tools,
 )
 from msgflux.telemetry.span import (
     aset_tool_attributes,
@@ -27,6 +30,7 @@ from msgflux.utils.tenacity import tool_retry
 @dataclass
 class ToolCall:
     """Represents the execution of a single tool call."""
+
     id: str
     name: str
     parameters: Dict[str, Any] = field(default_factory=dict)
@@ -37,6 +41,7 @@ class ToolCall:
 @dataclass
 class ToolResponses:
     """Represents the execution of tool calls."""
+
     return_directly: bool
     tool_calls: List[ToolCall] = field(default_factory=list)
 
@@ -55,15 +60,16 @@ class ToolResponses:
         """Retrieve a tool_call by tool name."""
         return next((r for r in self.tool_calls if r.name == tool_name), None)
 
+
 class Tool(Module):
     """Tool is Module type that provide a json schema to tools."""
 
     def get_json_schema(self):
         return generate_tool_json_schema(self)
 
+
 class MCPTool(Tool):
-    """
-    MCP Tool Proxy - wraps remote MCP tool as a Tool object.
+    """MCP Tool Proxy - wraps remote MCP tool as a Tool object.
 
     This allows MCP tools to be treated exactly like local tools,
     enabling polymorphism and unified telemetry.
@@ -114,10 +120,7 @@ class MCPTool(Tool):
 
     def get_json_schema(self) -> Dict[str, Any]:
         """Convert MCP tool schema to standard tool JSON schema."""
-        return convert_mcp_schema_to_tool_schema(
-            self._mcp_tool_info,
-            self._namespace
-        )
+        return convert_mcp_schema_to_tool_schema(self._mcp_tool_info, self._namespace)
 
     @set_tool_attributes(execution_type="remote", protocol="mcp")
     def forward(self, **kwargs) -> Any:
@@ -147,8 +150,10 @@ class MCPTool(Tool):
         # Extract and return result
         return extract_tool_result_text(result)
 
+
 class LocalTool(Tool):
     """Local tool implementation."""
+
     def __init__(
         self,
         name: str,
@@ -182,7 +187,8 @@ class LocalTool(Tool):
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, lambda: self.impl(*args, **kwargs))
 
-def _convert_module_to_nn_tool(impl: Callable) -> Tool: # noqa: C901
+
+def _convert_module_to_nn_tool(impl: Callable) -> Tool:  # noqa: C901
     """Convert a callable in nn.Tool."""
     tool_config = impl.__dict__.get("tool_config", dotdict())
 
@@ -198,10 +204,8 @@ def _convert_module_to_nn_tool(impl: Callable) -> Tool: # noqa: C901
 
         doc = (
             getattr(impl, "description", None)
-            or
-            getattr(impl, "__doc__", None)
-            or
-            getattr(impl.__call__, "__doc__", None)
+            or getattr(impl, "__doc__", None)
+            or getattr(impl.__call__, "__doc__", None)
         )
         if doc is None:
             raise NotImplementedError(
@@ -213,10 +217,8 @@ def _convert_module_to_nn_tool(impl: Callable) -> Tool: # noqa: C901
 
         annotations = (
             getattr(impl, "annotations", None)
-            or
-            getattr(impl, "__annotations__", None)
-            or
-            getattr(impl.__call__, "__annotations__", None)
+            or getattr(impl, "__annotations__", None)
+            or getattr(impl.__call__, "__annotations__", None)
         )
         if annotations is None:
             if fn_has_parameters(impl.__call__):
@@ -229,10 +231,8 @@ def _convert_module_to_nn_tool(impl: Callable) -> Tool: # noqa: C901
 
         raw_name = (
             name_overridden
-            or
-            getattr(impl, "name", None)
-            or
-            getattr(impl, "__name__", None)
+            or getattr(impl, "name", None)
+            or getattr(impl, "__name__", None)
         )
         name = convert_camel_to_snake_case(raw_name)
 
@@ -331,14 +331,14 @@ class ToolLibrary(Module):
                 )
             self.special_library.append(tool)
         else:
-            name = (getattr(tool, "name", None) or getattr(tool, "__name__", None))
+            name = getattr(tool, "name", None) or getattr(tool, "__name__", None)
             if name in self.library.keys():
                 raise ValueError(f"The tool name `{name}` is already in tool library")
             if not isinstance(tool, Tool):
                 tool = _convert_module_to_nn_tool(tool)
 
             # Store tool config (may be empty dict for local tools)
-            self.tool_configs[tool.name] = getattr(tool, 'tool_config', {})
+            self.tool_configs[tool.name] = getattr(tool, "tool_config", {})
 
             self.library.update({tool.name: tool})
 
@@ -372,13 +372,13 @@ class ToolLibrary(Module):
                     args=server_config.get("args"),
                     cwd=server_config.get("cwd"),
                     env=server_config.get("env"),
-                    timeout=server_config.get("timeout", 30.0)
+                    timeout=server_config.get("timeout", 30.0),
                 )
             elif transport_type == "http":
                 client = MCPClient.from_http(
                     base_url=server_config.get("base_url"),
                     timeout=server_config.get("timeout", 30.0),
-                    headers=server_config.get("headers")
+                    headers=server_config.get("headers"),
                 )
             else:
                 raise ValueError(
@@ -407,7 +407,7 @@ class ToolLibrary(Module):
                         mcp_client=client,
                         mcp_tool_info=mcp_tool_info,
                         namespace=namespace,
-                        config=tool_config
+                        config=tool_config,
                     )
 
                     # Add to library (will have name like "namespace__tool_name")
@@ -417,7 +417,7 @@ class ToolLibrary(Module):
                 self.mcp_clients[namespace] = {
                     "client": client,
                     "tools": filtered_tools,
-                    "tool_config": tool_configs
+                    "tool_config": tool_configs,
                 }
 
                 logger.debug(
@@ -426,8 +426,8 @@ class ToolLibrary(Module):
                 )
             except Exception as e:
                 logger.error(
-                    f"Failed to initialize MCP server '{namespace}': {str(e)}",
-                    exc_info=True
+                    f"Failed to initialize MCP server '{namespace}': {e!s}",
+                    exc_info=True,
                 )
                 # Continue with other servers instead of failing completely
 
@@ -506,7 +506,7 @@ class ToolLibrary(Module):
                         id=tool_id,
                         name=tool_name,
                         parameters=tool_params,
-                        error=f"Error: Tool `{tool_name}` not found."
+                        error=f"Error: Tool `{tool_name}` not found.",
                     )
                 )
                 return_directly = False
@@ -539,12 +539,14 @@ class ToolLibrary(Module):
                         name=tool_name,
                         parameters=tool_params,
                         result=f"""The `{tool_name}` tool was started in the background.
-                        This tool will not generate a return"""
+                        This tool will not generate a return""",
                     )
                 )
                 continue
 
-            if config.get("call_as_response", False):  # return function call as response
+            if config.get(
+                "call_as_response", False
+            ):  # return function call as response
                 tool_calls.append(
                     ToolCall(id=tool_id, name=tool_name, parameters=tool_params)
                 )
@@ -627,7 +629,7 @@ class ToolLibrary(Module):
                         id=tool_id,
                         name=tool_name,
                         parameters=tool_params,
-                        error=f"Error: Tool `{tool_name}` not found."
+                        error=f"Error: Tool `{tool_name}` not found.",
                     )
                 )
                 return_directly = False
@@ -660,12 +662,14 @@ class ToolLibrary(Module):
                         name=tool_name,
                         parameters=tool_params,
                         result=f"""The `{tool_name}` tool was started in the background.
-                        This tool will not generate a return"""
+                        This tool will not generate a return""",
                     )
                 )
                 continue
 
-            if config.get("call_as_response", False):  # return function call as response
+            if config.get(
+                "call_as_response", False
+            ):  # return function call as response
                 tool_calls.append(
                     ToolCall(id=tool_id, name=tool_name, parameters=tool_params)
                 )

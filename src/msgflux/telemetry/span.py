@@ -1,5 +1,4 @@
-"""
-msgflux telemetry span - msgtrace-sdk integration.
+"""msgflux telemetry span - msgtrace-sdk integration.
 
 Provides Spans from msgtrace-sdk with msgflux-specific
 tool and agent decorators for detailed telemetry capture.
@@ -17,9 +16,10 @@ from msgflux.envs import envs
 from msgflux.models.response import ModelStreamResponse
 
 
-def set_tool_attributes(execution_type: str, protocol: Optional[str] = None) -> Callable:
-    """
-    Decorator to set detailed tool telemetry attributes for sync methods.
+def set_tool_attributes(
+    execution_type: str, protocol: Optional[str] = None
+) -> Callable:
+    """Decorator to set detailed tool telemetry attributes for sync methods.
 
     This msgflux-specific decorator captures:
     - Tool name, description, type
@@ -93,9 +93,10 @@ def set_tool_attributes(execution_type: str, protocol: Optional[str] = None) -> 
     return decorator
 
 
-def aset_tool_attributes(execution_type: str, protocol: Optional[str] = None) -> Callable:
-    """
-    Decorator to set detailed tool telemetry attributes for async methods.
+def aset_tool_attributes(
+    execution_type: str, protocol: Optional[str] = None
+) -> Callable:
+    """Decorator to set detailed tool telemetry attributes for async methods.
 
     Args:
         execution_type: Execution type ('local' or 'remote')
@@ -162,8 +163,7 @@ def aset_tool_attributes(execution_type: str, protocol: Optional[str] = None) ->
 
 
 def set_agent_attributes(func: Callable) -> Callable:
-    """
-    Decorator to set detailed agent telemetry attributes for sync methods.
+    """Decorator to set detailed agent telemetry attributes for sync methods.
 
     Captures:
     - Agent name and generated ID (hash of name)
@@ -207,8 +207,7 @@ def set_agent_attributes(func: Callable) -> Callable:
 
 
 def aset_agent_attributes(func: Callable) -> Callable:
-    """
-    Decorator to set detailed agent telemetry attributes for async methods.
+    """Decorator to set detailed agent telemetry attributes for async methods.
 
     Args:
         func: Async function to decorate

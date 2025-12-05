@@ -21,8 +21,7 @@ class _BaseSambaNova:
         key = getenv("SAMBANOVA_API_KEY")
         if not key:
             raise ValueError(
-                "The SambaNova API key is not available."
-                "Please set `SAMBANOVA_API_KEY`"
+                "The SambaNova API key is not available.Please set `SAMBANOVA_API_KEY`"
             )
         return key
 

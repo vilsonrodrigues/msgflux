@@ -2,6 +2,7 @@
 
 import base64
 from typing import Dict
+
 from .base import BaseAuth
 
 

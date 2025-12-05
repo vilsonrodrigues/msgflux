@@ -33,7 +33,7 @@ The current date is: {{ current_date }}
 {% endif %}
 </developer_note>
 {% endif %}
-""" # noqa: E501
+"""  # noqa: E501
 
 
 EXPECTED_OUTPUTS_TEMPLATE = """
@@ -50,4 +50,4 @@ Your task outputs are:
 Be consise in choosing your answers.
 {% endif %}
 {% endif %}
-""" # noqa: E501
+"""

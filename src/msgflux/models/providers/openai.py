@@ -11,6 +11,7 @@ try:
     import openai
     from openai import AsyncOpenAI, OpenAI
     from opentelemetry.instrumentation.openai import OpenAIInstrumentor
+
     if not getattr(openai, "_otel_instrumented", False):
         OpenAIInstrumentor().instrument()
         openai._otel_instrumented = True
@@ -24,8 +25,8 @@ from msgflux.dotdict import dotdict
 from msgflux.dsl.typed_parsers import typed_parser_registry
 from msgflux.exceptions import TypedParserNotFoundError
 from msgflux.models.base import BaseModel
-from msgflux.models.profiles import get_model_profile
 from msgflux.models.cache import ResponseCache, generate_cache_key
+from msgflux.models.profiles import get_model_profile
 from msgflux.models.registry import register_model
 from msgflux.models.response import ModelResponse, ModelStreamResponse
 from msgflux.models.tool_call_agg import ToolCallAggregator
@@ -80,7 +81,9 @@ class _BaseOpenAI(BaseModel):
         # Initialize response cache
         cache_size = getattr(self, "cache_size", 128)
         enable_cache = getattr(self, "enable_cache", None)
-        self._response_cache = ResponseCache(maxsize=cache_size) if enable_cache else None
+        self._response_cache = (
+            ResponseCache(maxsize=cache_size) if enable_cache else None
+        )
 
     def _get_base_url(self):
         return None
@@ -102,6 +105,7 @@ class _BaseOpenAI(BaseModel):
             ModelProfile if found, None otherwise
         """
         return get_model_profile(self.model_id, provider_id=self.provider)
+
 
 @register_model
 class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
@@ -153,7 +157,7 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
         reasoning_in_tool_call:
             If True, maintains the reasoning for using the tool call.
         validate_typed_parser_output:
-            If True, use the generation_schema to validate typed parser output.            
+            If True, use the generation_schema to validate typed parser output.
         temperature:
             What sampling temperature to use, between 0 and 2.
             Higher values like 0.8 will make the output more random,
@@ -161,21 +165,21 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
             deterministic.
         stop:
             Up to 4 sequences where the API will stop generating further
-            tokens. The returned text will not contain the stop sequence.            
+            tokens. The returned text will not contain the stop sequence.
         top_p:
             An alternative to sampling with temperature, called nucleus
             sampling, where the model considers the results of the tokens
             with top_p probability mass. So 0.1 means only the tokens
             comprising the top 10% probability mass are considered.
         parallel_tool_calls:
-            If True, enable parallel tool calls.            
+            If True, enable parallel tool calls.
         modalities:
             Types of output you would like the model to generate.
             Can be: ["text"], ["audio"] or ["text", "audio"].
         audio:
             Audio configurations. Define voice and output format.
         verbosity:
-            Constrains the verbosity of the model's response. Lower 
+            Constrains the verbosity of the model's response. Lower
             values will result in more concise responses, while higher
             values will result in more verbose responses. Currently
             supported values are low, medium, and high.
@@ -255,7 +259,9 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
 
         return model_output
 
-    def _process_model_output(self, model_output, typed_parser=None, generation_schema=None):
+    def _process_model_output(
+        self, model_output, typed_parser=None, generation_schema=None
+    ):
         """Shared logic to process model output for both sync and async."""
         response = ModelResponse()
         metadata = dotdict()
@@ -265,9 +271,9 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
         choice = model_output.choices[0]
 
         reasoning = (
-            getattr(choice.message, "reasoning_content", None) or
-            getattr(choice.message, "reasoning", None) or
-            getattr(choice.message, "thinking", None)
+            getattr(choice.message, "reasoning_content", None)
+            or getattr(choice.message, "reasoning", None)
+            or getattr(choice.message, "thinking", None)
         )
 
         reasoning_tool_call = None
@@ -318,9 +324,7 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
                 )
                 response_content = dotdict(struct_to_dict(struct))
             else:
-                response.set_response_type(
-                    f"{prefix_response_type}text_generation"
-                )
+                response.set_response_type(f"{prefix_response_type}text_generation")
                 if reasoning_content is not None:
                     response_content = dotdict({"answer": choice.message.content})
                 else:
@@ -365,12 +369,18 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
             kwargs["response_format"] = response_format
 
         model_output = self._execute_model(**kwargs)
-        response = self._process_model_output(model_output, typed_parser, generation_schema)
+        response = self._process_model_output(
+            model_output, typed_parser, generation_schema
+        )
 
         # Store in cache if enabled
         if self.enable_cache and self._response_cache:
             # Re-add popped values for cache key
-            cache_kwargs = {**kwargs, "typed_parser": typed_parser, "generation_schema": generation_schema}
+            cache_kwargs = {
+                **kwargs,
+                "typed_parser": typed_parser,
+                "generation_schema": generation_schema,
+            }
             cache_key = generate_cache_key(**cache_kwargs)
             self._response_cache.set(cache_key, response)
 
@@ -396,18 +406,26 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
             kwargs["response_format"] = response_format
 
         model_output = await self._aexecute_model(**kwargs)
-        response = self._process_model_output(model_output, typed_parser, generation_schema)
+        response = self._process_model_output(
+            model_output, typed_parser, generation_schema
+        )
 
         # Store in cache if enabled
         if self.enable_cache and self._response_cache:
             # Re-add popped values for cache key
-            cache_kwargs = {**kwargs, "typed_parser": typed_parser, "generation_schema": generation_schema}
+            cache_kwargs = {
+                **kwargs,
+                "typed_parser": typed_parser,
+                "generation_schema": generation_schema,
+            }
             cache_key = generate_cache_key(**cache_kwargs)
             self._response_cache.set(cache_key, response)
 
         return response
 
-    async def _stream_generate(self, **kwargs: Mapping[str, Any]) -> ModelStreamResponse:
+    async def _stream_generate(
+        self, **kwargs: Mapping[str, Any]
+    ) -> ModelStreamResponse:
         aggregator = ToolCallAggregator()
         metadata = dotdict()
 
@@ -421,9 +439,9 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
                 delta = chunk.choices[0].delta
 
                 reasoning_chunk = (
-                    getattr(delta, "reasoning_content", None) or
-                    getattr(delta, "reasoning", None) or
-                    getattr(delta, "thinking", None)
+                    getattr(delta, "reasoning_content", None)
+                    or getattr(delta, "reasoning", None)
+                    or getattr(delta, "thinking", None)
                 )
 
                 if self.reasoning_in_tool_call and reasoning_chunk:
@@ -466,13 +484,15 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
         if aggregator.tool_calls:
             if reasoning_tool_call:
                 aggregator.reasoning = reasoning_tool_call
-            stream_response.data = aggregator # For tool calls save as 'data'
+            stream_response.data = aggregator  # For tool calls save as 'data'
             stream_response.first_chunk_event.set()
 
         stream_response.set_metadata(metadata)
         stream_response.add(None)
 
-    async def _astream_generate(self, **kwargs: Mapping[str, Any]) -> ModelStreamResponse:
+    async def _astream_generate(
+        self, **kwargs: Mapping[str, Any]
+    ) -> ModelStreamResponse:
         aggregator = ToolCallAggregator()
         metadata = dotdict()
 
@@ -486,9 +506,9 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
                 delta = chunk.choices[0].delta
 
                 reasoning_chunk = (
-                    getattr(delta, "reasoning_content", None) or
-                    getattr(delta, "reasoning", None) or
-                    getattr(delta, "thinking", None)
+                    getattr(delta, "reasoning_content", None)
+                    or getattr(delta, "reasoning", None)
+                    or getattr(delta, "thinking", None)
                 )
 
                 if self.reasoning_in_tool_call and reasoning_chunk:
@@ -531,7 +551,7 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
         if aggregator.tool_calls:
             if reasoning_tool_call:
                 aggregator.reasoning = reasoning_tool_call
-            stream_response.data = aggregator # For tool calls save as 'data'
+            stream_response.data = aggregator  # For tool calls save as 'data'
             stream_response.first_chunk_event.set()
 
         stream_response.set_metadata(metadata)
@@ -583,10 +603,10 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
                 Raised if `generation_schema` and `stream=True`.
             ValueError:
                 Raised if `typed_xml=True` and `stream=True`.
-        """        
+        """
         if isinstance(messages, str):
             messages = [ChatBlock.user(messages)]
-        if isinstance(system_prompt, str):            
+        if isinstance(system_prompt, str):
             messages.insert(0, ChatBlock.system(system_prompt))
 
         if isinstance(tool_choice, str):
@@ -601,7 +621,7 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
             "prefilling": prefilling,
             "tool_choice": tool_choice,
             "tools": tool_schemas,
-            "model": self.model_id
+            "model": self.model_id,
         }
 
         if tool_schemas:
@@ -627,7 +647,7 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
                 raise TypedParserNotFoundError(
                     f"Typed parser `{typed_parser}` not found. "
                     f"Available parsers: {available}"
-                )            
+                )
             response = self._generate(
                 **generation_params,
                 typed_parser=typed_parser,
@@ -699,7 +719,7 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
             "prefilling": prefilling,
             "tool_choice": tool_choice,
             "tools": tool_schemas,
-            "model": self.model_id
+            "model": self.model_id,
         }
 
         if tool_schemas:
@@ -732,6 +752,7 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
                 generation_schema=generation_schema,
             )
             return response
+
 
 @register_model
 class OpenAITextToSpeech(_BaseOpenAI, TextToSpeechModel):
@@ -901,6 +922,7 @@ class OpenAITextToSpeech(_BaseOpenAI, TextToSpeechModel):
             response = await self._agenerate(**params)
             return response
 
+
 @register_model
 class OpenAITextToImage(_BaseOpenAI, TextToImageModel):
     """OpenAI Image Generation."""
@@ -935,7 +957,9 @@ class OpenAITextToImage(_BaseOpenAI, TextToImageModel):
         return model_output
 
     async def _aexecute_model(self, **kwargs):
-        model_output = await self.aclient.images.generate(**kwargs, **self.sampling_run_params)
+        model_output = await self.aclient.images.generate(
+            **kwargs, **self.sampling_run_params
+        )
         return model_output
 
     def _get_metadata(self, model_output):
@@ -946,7 +970,7 @@ class OpenAITextToImage(_BaseOpenAI, TextToImageModel):
                 quality=model_output.quality,
                 output_format=model_output.output_format,
                 background=model_output.background,
-            )            
+            ),
         )
         return metadata
 
@@ -1005,7 +1029,7 @@ class OpenAITextToImage(_BaseOpenAI, TextToImageModel):
         n: Optional[int] = 1,
         size: Optional[str] = "auto",
         quality: Optional[str] = "auto",
-        background: Optional[Literal["transparent", "opaque", "auto"]] = None,        
+        background: Optional[Literal["transparent", "opaque", "auto"]] = None,
     ) -> ModelResponse:
         """Args:
         prompt:
@@ -1019,7 +1043,7 @@ class OpenAITextToImage(_BaseOpenAI, TextToImageModel):
         quality:
             The quality of the image that will be generated.
         background:
-            Allows to set transparency for the background of the generated image(s).            
+            Allows to set transparency for the background of the generated image(s).
         """
         generation_params = dotdict(
             prompt=prompt,
@@ -1027,7 +1051,7 @@ class OpenAITextToImage(_BaseOpenAI, TextToImageModel):
             size=size,
             quality=quality,
             background=background,
-            model=self.model_id
+            model=self.model_id,
         )
 
         if response_format is not None:
@@ -1069,7 +1093,7 @@ class OpenAITextToImage(_BaseOpenAI, TextToImageModel):
             size=size,
             quality=quality,
             background=background,
-            model=self.model_id
+            model=self.model_id,
         )
 
         if response_format is not None:
@@ -1080,6 +1104,7 @@ class OpenAITextToImage(_BaseOpenAI, TextToImageModel):
         response = await self._agenerate(**generation_params)
         return response
 
+
 @register_model
 class OpenAIImageTextToImage(OpenAITextToImage, ImageTextToImageModel):
     """OpenAI Image Edit."""
@@ -1089,7 +1114,9 @@ class OpenAIImageTextToImage(OpenAITextToImage, ImageTextToImageModel):
         return model_output
 
     async def _aexecute_model(self, **kwargs):
-        model_output = await self.aclient.images.edit(**kwargs, **self.sampling_run_params)
+        model_output = await self.aclient.images.edit(
+            **kwargs, **self.sampling_run_params
+        )
         return model_output
 
     def _prepare_inputs(self, image, mask):
@@ -1172,6 +1199,7 @@ class OpenAIImageTextToImage(OpenAITextToImage, ImageTextToImageModel):
         inputs = self._prepare_inputs(image, mask)
         response = await self._agenerate(**generation_params, **inputs)
         return response
+
 
 @register_model
 class OpenAISpeechToText(_BaseOpenAI, SpeechToTextModel):
@@ -1349,7 +1377,7 @@ class OpenAISpeechToText(_BaseOpenAI, SpeechToTextModel):
             response_format=response_format,
             timestamp_granularities=timestamp_granularities,
             prompt=prompt,
-            model=self.model_id
+            model=self.model_id,
         )
         if stream:
             stream_response = ModelStreamResponse()
@@ -1404,7 +1432,7 @@ class OpenAISpeechToText(_BaseOpenAI, SpeechToTextModel):
             response_format=response_format,
             timestamp_granularities=timestamp_granularities,
             prompt=prompt,
-            model=self.model_id
+            model=self.model_id,
         )
         if stream:
             stream_response = ModelStreamResponse()
@@ -1416,6 +1444,7 @@ class OpenAISpeechToText(_BaseOpenAI, SpeechToTextModel):
         else:
             response = await self._agenerate(**params)
             return response
+
 
 @register_model
 class OpenAITextEmbedder(_BaseOpenAI, TextEmbedderModel):
@@ -1455,13 +1484,15 @@ class OpenAITextEmbedder(_BaseOpenAI, TextEmbedderModel):
 
     def _execute_model(self, **kwargs):
         model_output = self.client.embeddings.create(
-            **kwargs, **self.sampling_run_params,
+            **kwargs,
+            **self.sampling_run_params,
         )
         return model_output
 
     async def _aexecute_model(self, **kwargs):
         model_output = await self.aclient.embeddings.create(
-            **kwargs, **self.sampling_run_params,
+            **kwargs,
+            **self.sampling_run_params,
         )
         return model_output
 
@@ -1534,6 +1565,7 @@ class OpenAITextEmbedder(_BaseOpenAI, TextEmbedderModel):
         """
         response = await self._agenerate(input=data, model=self.model_id)
         return response
+
 
 @register_model
 class OpenAIModeration(_BaseOpenAI, ModerationModel):

@@ -2,8 +2,8 @@ from typing import Dict, List, Optional, Union
 
 try:
     from docx import Document
-    from docx.text.paragraph import Paragraph
     from docx.table import Table
+    from docx.text.paragraph import Paragraph
 except ImportError:
     Document = None
     Paragraph = None
@@ -67,9 +67,7 @@ class PythonDocxDocxParser(BaseParser, DocxParser):
         """Initialize parser state."""
         pass
 
-    def __call__(
-        self, data: Union[str, bytes], **kwargs
-    ) -> ParserResponse:
+    def __call__(self, data: Union[str, bytes], **kwargs) -> ParserResponse:
         """Parse a DOCX document.
 
         Args:
@@ -123,6 +121,7 @@ class PythonDocxDocxParser(BaseParser, DocxParser):
         # Load document
         if isinstance(data, bytes):
             from io import BytesIO
+
             document = Document(BytesIO(data))
         else:
             document = Document(data)
@@ -135,7 +134,7 @@ class PythonDocxDocxParser(BaseParser, DocxParser):
                     img_data = rel.target_part.blob
                     # Get image extension from content type
                     content_type = rel.target_part.content_type
-                    ext = content_type.split('/')[-1]
+                    ext = content_type.split("/")[-1]
                     if ext == "jpeg":
                         ext = "jpg"
 
@@ -149,7 +148,7 @@ class PythonDocxDocxParser(BaseParser, DocxParser):
         # Process document elements (paragraphs and tables)
         for element in document.element.body:
             # Check if it's a paragraph
-            if element.tag.endswith('p'):
+            if element.tag.endswith("p"):
                 # Find the paragraph object
                 for para in document.paragraphs:
                     if para._element == element:
@@ -159,7 +158,7 @@ class PythonDocxDocxParser(BaseParser, DocxParser):
                         break
 
             # Check if it's a table
-            elif element.tag.endswith('tbl'):
+            elif element.tag.endswith("tbl"):
                 # Find the table object
                 for table in document.tables:
                     if table._element == element:
@@ -174,12 +173,14 @@ class PythonDocxDocxParser(BaseParser, DocxParser):
         )
 
         # Prepare metadata
-        metadata = dotdict({
-            "num_paragraphs": len(document.paragraphs),
-            "num_tables": len(document.tables),
-            "num_images": len(images_dict),
-            "table_format": self.table_format,
-        })
+        metadata = dotdict(
+            {
+                "num_paragraphs": len(document.paragraphs),
+                "num_tables": len(document.tables),
+                "num_images": len(images_dict),
+                "table_format": self.table_format,
+            }
+        )
 
         # Try to extract document metadata if available
         if hasattr(document, "core_properties"):
@@ -280,9 +281,7 @@ class PythonDocxDocxParser(BaseParser, DocxParser):
 
         # Header line
         header_line = (
-            "| "
-            + " | ".join(str(cell) if cell else "" for cell in header)
-            + " |"
+            "| " + " | ".join(str(cell) if cell else "" for cell in header) + " |"
         )
 
         # Separator line
@@ -290,9 +289,7 @@ class PythonDocxDocxParser(BaseParser, DocxParser):
 
         # Data lines
         data_lines = [
-            "| "
-            + " | ".join(str(cell) if cell else "" for cell in row)
-            + " |"
+            "| " + " | ".join(str(cell) if cell else "" for cell in row) + " |"
             for row in rows
         ]
 
@@ -336,9 +333,7 @@ class PythonDocxDocxParser(BaseParser, DocxParser):
 
         return html
 
-    async def acall(
-        self, data: Union[str, bytes], **kwargs
-    ) -> ParserResponse:
+    async def acall(self, data: Union[str, bytes], **kwargs) -> ParserResponse:
         """Async version of __call__. Parse a DOCX document asynchronously.
 
         Args:

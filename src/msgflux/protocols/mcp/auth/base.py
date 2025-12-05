@@ -1,8 +1,8 @@
 """Base authentication provider for MCP."""
 
 from abc import ABC, abstractmethod
-from typing import Dict, Optional, Any
 from datetime import datetime, timedelta
+from typing import Any, Dict, Optional
 
 
 class BaseAuth(ABC):
@@ -77,5 +77,7 @@ class BaseAuth(ABC):
             "type": self.__class__.__name__,
             "expired": self.is_expired(),
             "expires_at": self._expires_at.isoformat() if self._expires_at else None,
-            "last_refresh": self._last_refresh.isoformat() if self._last_refresh else None,
+            "last_refresh": self._last_refresh.isoformat()
+            if self._last_refresh
+            else None,
         }

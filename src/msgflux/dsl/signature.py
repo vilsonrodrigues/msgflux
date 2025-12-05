@@ -33,9 +33,10 @@ class FieldInfo:
 
 class Image:
     """Represents an image input or output in a model signature.
-    
+
     Can hold metadata in the future (e.g., format, resolution).
     """
+
     pass
 
 
@@ -44,6 +45,7 @@ class Audio:
 
     Can hold metadata in the future (e.g., sample rate, channels).
     """
+
     pass
 
 
@@ -52,6 +54,7 @@ class File:
 
     Can hold metadata in the future (e.g., file type, size).
     """
+
     pass
 
 
@@ -60,6 +63,7 @@ class Video:
 
     Can hold metadata in the future (e.g., duration, resolution, fps).
     """
+
     pass
 
 
@@ -273,11 +277,12 @@ class Signature(metaclass=_SignatureMeta):
         }
         return descriptions if descriptions else None
 
-class SignatureFactory:
 
+class SignatureFactory:
     @classmethod
     def get_examples_from_signature(
-        cls, signature_cls: Type[Signature],
+        cls,
+        signature_cls: Type[Signature],
     ) -> Optional[SignatureExamples]:
         if hasattr(signature_cls, "__examples__"):
             return signature_cls.__examples__
@@ -287,7 +292,7 @@ class SignatureFactory:
         cls,
         inputs_info: List[FieldInfo],
         outputs_info: Optional[List[FieldInfo]] = None,
-        typed_parser_cls: Optional[Type[BaseTypedParser]] = None,        
+        typed_parser_cls: Optional[Type[BaseTypedParser]] = None,
     ) -> str:
         expected_inputs = ""
         for i, input_info in enumerate(inputs_info, 1):
@@ -316,7 +321,8 @@ class SignatureFactory:
 
     @classmethod
     def get_task_template_from_signature(
-        cls, inputs_info: List[FieldInfo],
+        cls,
+        inputs_info: List[FieldInfo],
     ) -> str:
         task_template = ""
         for input_info in inputs_info:
@@ -337,7 +343,9 @@ class SignatureFactory:
                 if base_dtype in ["Audio", "Image", "File", "Video"]:
                     content = apply_xml_tags(base_dtype, input_info.name)
                 else:
-                    content = apply_xml_tags(input_info.name, f"{{{{ {input_info.name} }}}}")
+                    content = apply_xml_tags(
+                        input_info.name, f"{{{{ {input_info.name} }}}}"
+                    )
 
             # Wrap with Jinja conditional if Optional
             if is_optional:

@@ -7,9 +7,9 @@ from msgflux.models.registry import register_model
 from msgflux.models.response import ModelResponse
 from msgflux.models.types import (
     ImageTextToImageModel,
-    ImageTextToVideoModel,    
+    ImageTextToVideoModel,
     TextToImageModel,
-    TextToVideoModel
+    TextToVideoModel,
 )
 from msgflux.utils.tenacity import model_retry
 
@@ -35,6 +35,7 @@ class _BaseImageRouter:
                 "Please set `IMAGEROUTER_API_KEY`"
             )
         return key
+
 
 @register_model
 class ImageRouterTextToImage(_BaseImageRouter, OpenAITextToImage, TextToImageModel):

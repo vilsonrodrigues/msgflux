@@ -5,7 +5,9 @@ from typing import Callable
 
 try:
     import platform
+
     import uvloop
+
     if platform.python_implementation() != "PyPy":
         asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 except ImportError:

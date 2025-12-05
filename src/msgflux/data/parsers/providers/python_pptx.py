@@ -63,9 +63,7 @@ class PythonPptxPptxParser(BaseParser, PptxParser):
         """Initialize parser state."""
         pass
 
-    def __call__(
-        self, data: Union[str, bytes], **kwargs
-    ) -> ParserResponse:
+    def __call__(self, data: Union[str, bytes], **kwargs) -> ParserResponse:
         """Parse a PPTX document.
 
         Args:
@@ -119,6 +117,7 @@ class PythonPptxPptxParser(BaseParser, PptxParser):
         # Load presentation
         if isinstance(data, bytes):
             from io import BytesIO
+
             presentation = Presentation(BytesIO(data))
         else:
             presentation = Presentation(data)
@@ -167,10 +166,12 @@ class PythonPptxPptxParser(BaseParser, PptxParser):
         )
 
         # Prepare metadata
-        metadata = dotdict({
-            "num_slides": num_slides,
-            "include_notes": self.include_notes,
-        })
+        metadata = dotdict(
+            {
+                "num_slides": num_slides,
+                "include_notes": self.include_notes,
+            }
+        )
 
         # Try to extract presentation metadata if available
         if hasattr(presentation, "core_properties"):
@@ -195,9 +196,7 @@ class PythonPptxPptxParser(BaseParser, PptxParser):
             "metadata": metadata,
         }
 
-    async def acall(
-        self, data: Union[str, bytes], **kwargs
-    ) -> ParserResponse:
+    async def acall(self, data: Union[str, bytes], **kwargs) -> ParserResponse:
         """Async version of __call__. Parse a PPTX document asynchronously.
 
         Args:

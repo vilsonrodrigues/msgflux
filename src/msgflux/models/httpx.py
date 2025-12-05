@@ -43,7 +43,11 @@ class HTTPXModelClient(BaseModel):
         url = self.sampling_params["base_url"] + self.endpoint
         headers = self.headers
         if hasattr(self, "_api_key"):
-            api_key = self._api_key[self.current_key_index] if isinstance(self._api_key, list) else self._api_key
+            api_key = (
+                self._api_key[self.current_key_index]
+                if isinstance(self._api_key, list)
+                else self._api_key
+            )
             headers["Authorization"] = f"Bearer {api_key}"
         response = self.client.post(url, headers=headers, json=params)
         response.raise_for_status()
@@ -58,7 +62,11 @@ class HTTPXModelClient(BaseModel):
         url = self.sampling_params["base_url"] + self.endpoint
         headers = self.headers
         if hasattr(self, "_api_key"):
-            api_key = self._api_key[self.current_key_index] if isinstance(self._api_key, list) else self._api_key
+            api_key = (
+                self._api_key[self.current_key_index]
+                if isinstance(self._api_key, list)
+                else self._api_key
+            )
             headers["Authorization"] = f"Bearer {api_key}"
         response = await self.aclient.post(url, headers=headers, json=params)
         response.raise_for_status()

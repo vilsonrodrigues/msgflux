@@ -30,7 +30,7 @@ class WikipediaWebRetriever(BaseWebSearch, BaseRetriever, WebRetriever):
         language: Optional[str] = "en",
         summary: Optional[int] = None,
         return_images: Optional[bool] = False,
-        max_return_images: Optional[int] = 5
+        max_return_images: Optional[int] = 5,
     ):
         """Args:
             language:
@@ -75,7 +75,7 @@ class WikipediaWebRetriever(BaseWebSearch, BaseRetriever, WebRetriever):
         if self.summary is not None:
             # Extract specified number of sentences
             sentences = self._extract_sentences(content)
-            summary_text = " ".join(sentences[:self.summary])
+            summary_text = " ".join(sentences[: self.summary])
             return f"{title}\n\n{summary_text}"
         else:
             return f"{title}\n\n{content}"
@@ -128,7 +128,7 @@ class WikipediaWebRetriever(BaseWebSearch, BaseRetriever, WebRetriever):
                     if not any(skip in img_url.lower() for skip in icons):
                         valid_images.append(img_url)
 
-            return valid_images[:self.max_return_images]
+            return valid_images[: self.max_return_images]
 
         except Exception:
             return []
@@ -148,14 +148,9 @@ class WikipediaWebRetriever(BaseWebSearch, BaseRetriever, WebRetriever):
                     # Process content based on summary parameter
                     content = self._process_content(page.content, page.title)
 
-                    result = {
-                        "data": {
-                            "title": page.title,
-                            "content": content
-                        }
-                    }
+                    result = {"data": {"title": page.title, "content": content}}
 
-                    if self.return_images: # Add images if requested
+                    if self.return_images:  # Add images if requested
                         result["images"] = self._get_images(page)
 
                     results.append(result)
@@ -166,12 +161,7 @@ class WikipediaWebRetriever(BaseWebSearch, BaseRetriever, WebRetriever):
                         page = wikipedia.page(e.options[0])
                         content = self._process_content(page.content, page.title)
 
-                        result = {
-                            "data": {
-                                "title": page.title,
-                                "content": content
-                            }
-                        }
+                        result = {"data": {"title": page.title, "content": content}}
 
                         if self.return_images:
                             result["images"] = self._get_images(page)

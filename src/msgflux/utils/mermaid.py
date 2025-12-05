@@ -12,7 +12,7 @@ def plot_mermaid(mermaid_diagram: str):
         raise ImportError(
             "`mermaid` client is not available. "
             "Install with `pip install msgflux[plot]`."
-        )    
+        )
     graph = Graph(
         title="chartflow",
         script=mermaid_diagram,

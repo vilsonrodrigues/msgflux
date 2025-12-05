@@ -1,7 +1,8 @@
 from typing import Type
+
 from msgflux.models.base import BaseModel
 
-model_registry = {} # model_registry[model_type][provider] = cls
+model_registry = {}  # model_registry[model_type][provider] = cls
 
 
 def register_model(cls: Type[BaseModel]):

@@ -24,8 +24,7 @@ class _BaseTogether:
         key = getenv("TOGETHER_API_KEY")
         if not key:
             raise ValueError(
-                "The Together API key is not available."
-                "Please set `TOGETHER_API_KEY`"
+                "The Together API key is not available.Please set `TOGETHER_API_KEY`"
             )
         return key
 
@@ -47,9 +46,11 @@ class TogetherChatCompletion(_BaseTogether, OpenAIChatCompletion):
                 tool["function"]["strict"] = True
         return params
 
+
 @register_model
 class TogetherTextEmbedder(OpenAITextEmbedder, _BaseTogether):
     """Together Text Embedder."""
+
 
 @register_model
 class TogetherTextToSpeech(OpenAITextToSpeech, _BaseTogether):

@@ -1,7 +1,8 @@
 """OAuth2 authentication for MCP."""
 
-from typing import Dict, Optional, Callable, Awaitable, Any
 from datetime import datetime
+from typing import Any, Awaitable, Callable, Dict, Optional
+
 from msgflux.protocols.mcp.auth.base import BaseAuth
 
 

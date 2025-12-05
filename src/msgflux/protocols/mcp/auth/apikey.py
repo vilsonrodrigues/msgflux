@@ -1,6 +1,7 @@
 """API Key authentication for MCP."""
 
 from typing import Dict
+
 from msgflux.protocols.mcp.auth.base import BaseAuth
 
 

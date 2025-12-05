@@ -9,6 +9,7 @@ except ImportError:
     httpx = None
 
 import asyncio
+
 from msgflux._private.client import BaseClient
 
 
@@ -185,8 +186,7 @@ class BaseParser(BaseClient):
             # Read file asynchronously
             loop = asyncio.get_event_loop()
             content = await loop.run_in_executor(
-                None,
-                lambda: open(file_path, "rb").read()
+                None, lambda: open(file_path, "rb").read()
             )
             return content
 
@@ -290,13 +290,15 @@ class BaseParser(BaseClient):
                     # Find last separator to avoid cutting mid-sentence
                     last_sep = overlap_text.rfind(separator)
                     if last_sep > 0:
-                        overlap_text = overlap_text[last_sep + len(separator):]
+                        overlap_text = overlap_text[last_sep + len(separator) :]
 
                     current_chunk = [overlap_text, split] if overlap_text else [split]
                 else:
                     current_chunk = [split]
 
-                current_size = sum(len(s) for s in current_chunk) + len(separator) * (len(current_chunk) - 1)
+                current_size = sum(len(s) for s in current_chunk) + len(separator) * (
+                    len(current_chunk) - 1
+                )
 
             else:
                 # Add to current chunk
@@ -376,7 +378,5 @@ class BaseParser(BaseClient):
             char_chunk_size = max_tokens * 4
             char_overlap = overlap_tokens * 4
             return self.chunk_text(
-                text,
-                chunk_size=char_chunk_size,
-                chunk_overlap=char_overlap
+                text, chunk_size=char_chunk_size, chunk_overlap=char_overlap
             )

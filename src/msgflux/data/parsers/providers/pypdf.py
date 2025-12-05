@@ -63,9 +63,7 @@ class PyPDFPdfParser(BaseParser, PdfParser):
         """Initialize parser state."""
         pass
 
-    def __call__(
-        self, data: Union[str, bytes], **kwargs
-    ) -> ParserResponse:
+    def __call__(self, data: Union[str, bytes], **kwargs) -> ParserResponse:
         """Parse a PDF document.
 
         Args:
@@ -119,6 +117,7 @@ class PyPDFPdfParser(BaseParser, PdfParser):
         # Load PDF
         if isinstance(data, bytes):
             from io import BytesIO
+
             reader = PdfReader(BytesIO(data))
         else:
             reader = PdfReader(data)
@@ -156,10 +155,12 @@ class PyPDFPdfParser(BaseParser, PdfParser):
         )
 
         # Prepare metadata
-        metadata = dotdict({
-            "num_pages": num_pages,
-            "extraction_mode": self.extraction_mode,
-        })
+        metadata = dotdict(
+            {
+                "num_pages": num_pages,
+                "extraction_mode": self.extraction_mode,
+            }
+        )
 
         # Try to extract PDF metadata if available
         if reader.metadata:
@@ -181,9 +182,7 @@ class PyPDFPdfParser(BaseParser, PdfParser):
             "metadata": metadata,
         }
 
-    async def acall(
-        self, data: Union[str, bytes], **kwargs
-    ) -> ParserResponse:
+    async def acall(self, data: Union[str, bytes], **kwargs) -> ParserResponse:
         """Async version of __call__. Parse a PDF document asynchronously.
 
         Args:

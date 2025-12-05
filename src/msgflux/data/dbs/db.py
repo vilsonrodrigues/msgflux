@@ -6,7 +6,6 @@ from msgflux.data.dbs.types import KVDB, VectorDB
 
 
 class DB:
-
     @classmethod
     def providers(cls):
         return {k: list(v.keys()) for k, v in db_registry.items()}

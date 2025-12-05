@@ -16,7 +16,6 @@ class CoreResponse:
 
 
 class BaseResponse(CoreResponse):
-
     def __init__(self):
         self.data = None
         self.metadata = None
@@ -30,7 +29,6 @@ class BaseResponse(CoreResponse):
 
 
 class BaseStreamResponse(CoreResponse):
-
     def __init__(self):
         self.first_chunk_event = asyncio.Event()
         self.data = None

@@ -1,5 +1,4 @@
-"""
-Model profiles from models.dev.
+"""Model profiles from models.dev.
 
 Provides access to model metadata, capabilities, pricing, and limits.
 

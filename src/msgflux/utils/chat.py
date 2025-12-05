@@ -7,8 +7,8 @@ from typing import (
     List,
     Literal,
     Optional,
-    Union,
     Type,
+    Union,
     get_args,
     get_origin,
 )
@@ -27,28 +27,23 @@ class ChatBlockMeta(type):
         cls,
         role: str,
         content: str,
-        media: Optional[Union[List[Dict[str, Any]], Dict[str, Any]]] = None
+        media: Optional[Union[List[Dict[str, Any]], Dict[str, Any]]] = None,
     ) -> Dict[str, Any]:
         role = role.lower()
-        role_map = {
-            "user": cls.user,
-            "assist": cls.assist,
-            "system": cls.system
-        }
+        role_map = {"user": cls.user, "assist": cls.assist, "system": cls.system}
         if role not in role_map:
-            raise ValueError(
-                f"Invalid role `{role}`. Use {', '.join(role_map)}")
+            raise ValueError(f"Invalid role `{role}`. Use {', '.join(role_map)}")
         if role == "user":
             return role_map[role](content, media)
         return role_map[role](content)
 
 
-class ChatBlock(metaclass=ChatBlockMeta):    
+class ChatBlock(metaclass=ChatBlockMeta):
     @classmethod
     def user(
-        cls, 
+        cls,
         content: Union[str, List[Dict[str, Any]]],
-        media: Optional[Union[List[Dict[str, Any]], Dict[str, Any]]] = None
+        media: Optional[Union[List[Dict[str, Any]], Dict[str, Any]]] = None,
     ) -> Dict[str, Any]:
         if media is None:
             return {"role": "user", "content": content}
@@ -60,45 +55,40 @@ class ChatBlock(metaclass=ChatBlockMeta):
         else:
             content_list.append(media)
         return {"role": "user", "content": content_list}
-    
+
     @classmethod
     def assist(cls, content: Any) -> Dict[str, str]:
         if not isinstance(content, str):
             content = msgspec_dumps(content)
         return {"role": "assistant", "content": content}
-    
+
     @classmethod
     def system(cls, content: str) -> Dict[str, str]:
         return {"role": "system", "content": content}
-    
+
     @staticmethod
     def tool_call(id: str, name: str, arguments: str) -> Dict[str, str]:
         return {
-            "id": id,            
+            "id": id,
             "type": "function",
-            "function": {"name": name, "arguments": arguments}
+            "function": {"name": name, "arguments": arguments},
         }
-    
+
     @classmethod
     def assist_tool_calls(cls, tool_calls: List[Dict[str, Any]]) -> Dict[str, Any]:
         return {"role": "assistant", "tool_calls": tool_calls}
 
     @classmethod
     def tool(cls, tool_call_id: str, content: str) -> Dict[str, Any]:
-        return {
-            "role": "tool",
-            "tool_call_id": tool_call_id,
-            "content": content
-        }
+        return {"role": "tool", "tool_call_id": tool_call_id, "content": content}
 
     @staticmethod
-    def text(text: str) ->  Dict[str, str]:
+    def text(text: str) -> Dict[str, str]:
         return {"type": "text", "text": text}
 
     @staticmethod
     def image(
-        url: Union[str, List[str]],
-        **kwargs: Any
+        url: Union[str, List[str]], **kwargs: Any
     ) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
         """Create image block(s) for chat content.
 
@@ -114,22 +104,15 @@ class ChatBlock(metaclass=ChatBlockMeta):
             image_blocks = []
             for u in url:
                 image_url_dict = {"url": u, **kwargs}
-                image_blocks.append({
-                    "type": "image_url",
-                    "image_url": image_url_dict
-                })
+                image_blocks.append({"type": "image_url", "image_url": image_url_dict})
             return image_blocks
 
         image_url_dict = {"url": url, **kwargs}
-        return {
-            "type": "image_url",
-            "image_url": image_url_dict
-        }
+        return {"type": "image_url", "image_url": image_url_dict}
 
     @staticmethod
     def video(
-        url: Union[str, List[str]],
-        **kwargs: Any
+        url: Union[str, List[str]], **kwargs: Any
     ) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
         """Create video block(s) for chat content.
 
@@ -142,28 +125,18 @@ class ChatBlock(metaclass=ChatBlockMeta):
             Video block dict or list of dicts
         """
         if isinstance(url, list):
-            return [{
-                "type": "video_url",
-                "video_url": {"url": u, **kwargs}
-            } for u in url]
-        return {
-            "type": "video_url",
-            "video_url": {"url": url, **kwargs}
-        }
+            return [
+                {"type": "video_url", "video_url": {"url": u, **kwargs}} for u in url
+            ]
+        return {"type": "video_url", "video_url": {"url": url, **kwargs}}
 
     @staticmethod
     def audio(data: str, format: str) -> Dict[str, str]:
-        return {
-            "type": "input_audio",
-            "input_audio": {"data": data, "format": format}
-        }
+        return {"type": "input_audio", "input_audio": {"data": data, "format": format}}
 
     @staticmethod
     def file(filename: str, file_data: str) -> Dict[str, str]:
-        return {
-            "type": "file",
-            "file": {"filename": filename, "file_data": file_data}
-        }
+        return {"type": "file", "file": {"filename": filename, "file_data": file_data}}
 
 
 class ChatML:
@@ -173,9 +146,9 @@ class ChatML:
         self.history = messages if messages is not None else []
 
     def add_user_message(
-        self, 
+        self,
         content: Union[str, Dict[str, Any]],
-        media: Optional[Union[List[Dict[str, Any]], Dict[str, Any]]] = None
+        media: Optional[Union[List[Dict[str, Any]], Dict[str, Any]]] = None,
     ):
         """Adds a message with role `user`."""
         if isinstance(content, dict):
@@ -188,7 +161,7 @@ class ChatML:
             self._add_message(content)
         self._add_message(ChatBlock.assist(content))
 
-    #def add_tool_message(self, content: Union[str, Dict[str, Any]]):
+    # def add_tool_message(self, content: Union[str, Dict[str, Any]]):
     #    """Adds a message with role `tool`."""
     #    self._add_message("tool", content) TODO
 
@@ -224,41 +197,44 @@ complex_arguments_schema = {
                             "anyOf": [
                                 {"type": "string"},
                                 {"type": "integer"},
-                                {"type": "number"}
+                                {"type": "number"},
                             ]
-                        }
-                    }
+                        },
+                    },
                 ]
-            }
+            },
         },
-        {"type": "null"}
+        {"type": "null"},
     ]
 }
+
 
 def response_format_from_msgspec_struct(
     struct_class: Type[msgspec.Struct],
 ) -> Dict[str, Any]:
     """Converts a msgspec.Struct to OpenAI's response_format format."""
+
     def _dereference_schema(schema_node: Any, definitions: Dict[str, Any]) -> Any:
         """Helper function to replace references '$ref'."""
         if isinstance(schema_node, dict):
-            if '$ref' in schema_node:
-                ref_name = schema_node['$ref'].split('/')[-1]
+            if "$ref" in schema_node:
+                ref_name = schema_node["$ref"].split("/")[-1]
                 return _dereference_schema(definitions[ref_name], definitions)
             else:
-                return {key: _dereference_schema(value, definitions) for key, value in schema_node.items()}
+                return {
+                    key: _dereference_schema(value, definitions)
+                    for key, value in schema_node.items()
+                }
         elif isinstance(schema_node, list):
             return [_dereference_schema(item, definitions) for item in schema_node]
         return schema_node
 
     def _add_additional_properties_false(schema_node: Any) -> None:
-        """
-        Recursively traverses the schema and adds
+        """Recursively traverses the schema and adds
         'additionalProperties': False to all objects that have properties.
         Modifies the schema_node "in-place" (directly on the object).
-        """        
+        """
         if isinstance(schema_node, dict):
-            
             if schema_node.get("type") == "object":
                 schema_node["additionalProperties"] = False
             for value in schema_node.values():
@@ -270,7 +246,7 @@ def response_format_from_msgspec_struct(
     def _ensure_all_properties_are_required(schema_node: Any) -> None:
         """It traverses the schema and, for each object, ensures that
         all of its properties are listed under 'required'.
-        """        
+        """
         if isinstance(schema_node, dict):
             if schema_node.get("type") == "object" and "properties" in schema_node:
                 all_property_keys = list(schema_node["properties"].keys())
@@ -292,7 +268,7 @@ def response_format_from_msgspec_struct(
             # Continue the recursive search
             for value in schema_node.values():
                 _find_and_patch_property(value, prop_name, patch_schema)
-                
+
         elif isinstance(schema_node, list):
             for item in schema_node:
                 _find_and_patch_property(item, prop_name, patch_schema)
@@ -318,8 +294,8 @@ def response_format_from_msgspec_struct(
         "json_schema": {
             "name": struct_class.__name__.lower(),
             "schema": inlined_schema,
-            "strict": True
-        }
+            "strict": True,
+        },
     }
     return response_format
 
@@ -384,13 +360,14 @@ def clean_docstring(docstring: str) -> str:
 
     return cleaned
 
+
 def parse_docstring_args(docstring: str) -> Dict[str, str]:
     """Extracts parameter descriptions from the Args section of the docstring.
 
-    Supports: 
-        - name: 
-            multi-line description... 
-        - name: single-line description 
+    Supports:
+        - name:
+            multi-line description...
+        - name: single-line description
         - name (type): description
 
     Args:
@@ -406,11 +383,11 @@ def parse_docstring_args(docstring: str) -> Dict[str, str]:
         return {}
 
     lines = docstring.splitlines()
-    
+
     # find beginning of Args section:
     start = None
     for i, ln in enumerate(lines):
-        if re.match(r'^\s*Args:\s*$', ln):
+        if re.match(r"^\s*Args:\s*$", ln):
             start = i + 1
             break
         # also accepts "Args: text" on the same line (e.g. "Args: param: desc")
@@ -473,6 +450,7 @@ def parse_docstring_args(docstring: str) -> Dict[str, str]:
 
     return param_descriptions
 
+
 def generate_json_schema(cls: type) -> Dict[str, Any]:
     """Generates a JSON schema for a class based on its characteristics.
 
@@ -482,7 +460,7 @@ def generate_json_schema(cls: type) -> Dict[str, Any]:
 
     Returns:
         JSON schema for the class
-    """    
+    """
     name = cls.get_module_name()
     description = cls.get_module_description()
     clean_description = clean_docstring(description)
@@ -539,10 +517,12 @@ def generate_json_schema(cls: type) -> Dict[str, Any]:
 
     return json_schema
 
+
 def generate_tool_json_schema(cls: type) -> Dict[str, Any]:
     tool = generate_json_schema(cls)
     tool_json_schema = {"type": "function", "function": tool}
     return tool_json_schema
+
 
 def adapt_messages_for_vllm_audio(
     messages: List[Dict[str, Any]],

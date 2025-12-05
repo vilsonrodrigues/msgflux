@@ -21,7 +21,7 @@ class Transcriber(Module):
         response_format: Optional[str] = "text",
         prompt: Optional[str] = None,
         config: Optional[Dict[str, Any]] = None,
-        name: Optional[str] = None,   
+        name: Optional[str] = None,
     ):
         """Args:
         model:
@@ -68,7 +68,7 @@ class Transcriber(Module):
             - timestamp_granularities: Enable timestamp granularities - "word", "segment", or None
               (requires response_format=verbose_json)
         name:
-            Transcriber name in snake case format.              
+            Transcriber name in snake case format.
         """
         super().__init__()
         self._set_model(model)
@@ -138,7 +138,7 @@ class Transcriber(Module):
             response_format=self.response_format,
             timestamp_granularities=self.config.get("timestamp_granularities"),
             prompt=self.prompt,
-            stream=self.config.get("stream", False)
+            stream=self.config.get("stream", False),
         )
         if isinstance(self.model, ModelGateway) and model_preference is not None:
             model_execution_params.model_preference = model_preference
@@ -211,9 +211,7 @@ class Transcriber(Module):
             return
 
         if not isinstance(config, dict):
-            raise TypeError(
-                f"`config` must be a dict or None, given `{type(config)}`"
-            )
+            raise TypeError(f"`config` must be a dict or None, given `{type(config)}`")
 
         self.register_buffer("config", config.copy())
 

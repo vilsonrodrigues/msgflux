@@ -23,7 +23,7 @@ class Speaker(Module):
         ] = "opus",
         prompt: Optional[str] = None,
         config: Optional[Dict[str, Any]] = None,
-        name: Optional[str] = None,  
+        name: Optional[str] = None,
     ):
         """Args:
         model:
@@ -58,7 +58,7 @@ class Speaker(Module):
             Configuration option:
             - stream: Transmit response on-the-fly (bool)
         name:
-            Transcriber name in snake case format.            
+            Transcriber name in snake case format.
         """
         super().__init__()
         self._set_guardrails(guardrails)
@@ -213,8 +213,6 @@ class Speaker(Module):
             return
 
         if not isinstance(config, dict):
-            raise TypeError(
-                f"`config` must be a dict or None, given `{type(config)}`"
-            )
+            raise TypeError(f"`config` must be a dict or None, given `{type(config)}`")
 
         self.register_buffer("config", config.copy())

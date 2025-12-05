@@ -4,6 +4,7 @@ class AnyParser:
     This is a generic parser type that attempts to parse any supported
     file format automatically based on file extension or content detection.
     """
+
     parser_type = "any"
 
 
@@ -15,6 +16,7 @@ class EmailParser:
     - Email body (plain text and HTML)
     - Attachments
     """
+
     parser_type = "email"
 
 
@@ -26,6 +28,7 @@ class PdfParser:
     - Images embedded in the PDF
     - Page metadata
     """
+
     parser_type = "pdf"
 
 
@@ -38,6 +41,7 @@ class PptxParser:
     - Speaker notes
     - Slide metadata
     """
+
     parser_type = "pptx"
 
 
@@ -50,6 +54,7 @@ class XlsxParser:
     - Images and charts
     - Cell metadata
     """
+
     parser_type = "xlsx"
 
 
@@ -62,6 +67,7 @@ class DocxParser:
     - Tables (converted to Markdown or HTML)
     - Images embedded in the document
     """
+
     parser_type = "docx"
 
 
@@ -74,6 +80,7 @@ class CsvParser:
     - Header detection
     - Conversion to Markdown or HTML tables
     """
+
     parser_type = "csv"
 
 
@@ -86,6 +93,7 @@ class HtmlParser:
     - Link extraction
     - Conversion to Markdown
     """
+
     parser_type = "html"
 
 
@@ -98,4 +106,5 @@ class MarkdownParser:
     - Link and image references
     - Metadata (front matter)
     """
+
     parser_type = "markdown"

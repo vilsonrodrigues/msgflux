@@ -12,7 +12,6 @@ from msgflux.models.types import (
 from msgflux.nn import functional as F
 from msgflux.nn.modules.module import Module
 
-
 EMBEDDER_MODELS = Union[
     AudioEmbedderModel, ImageEmbedderModel, TextEmbedderModel, ModelGateway
 ]
@@ -235,8 +234,6 @@ class Embedder(Module):
             return
 
         if not isinstance(config, dict):
-            raise TypeError(
-                f"`config` must be a dict or None, given `{type(config)}`"
-            )
+            raise TypeError(f"`config` must be a dict or None, given `{type(config)}`")
 
         self.register_buffer("config", config.copy())

@@ -1,15 +1,19 @@
 """MCP (Model Context Protocol) integration for msgflux."""
+
 from msgflux.protocols.mcp.auth import (
-    BaseAuth,
-    BearerTokenAuth,
     APIKeyAuth,
+    BaseAuth,
     BasicAuth,
-    OAuth2Auth,
+    BearerTokenAuth,
     CustomHeaderAuth,
+    OAuth2Auth,
 )
 from msgflux.protocols.mcp.client import MCPClient
 from msgflux.protocols.mcp.exceptions import (
-    MCPConnectionError, MCPError, MCPTimeoutError, MCPToolError
+    MCPConnectionError,
+    MCPError,
+    MCPTimeoutError,
+    MCPToolError,
 )
 from msgflux.protocols.mcp.integration import (
     convert_mcp_schema_to_tool_schema,
@@ -18,12 +22,17 @@ from msgflux.protocols.mcp.integration import (
 )
 from msgflux.protocols.mcp.loglevels import LogLevel
 from msgflux.protocols.mcp.transports import (
-    BaseTransport, HTTPTransport, StdioTransport
+    BaseTransport,
+    HTTPTransport,
+    StdioTransport,
 )
 from msgflux.protocols.mcp.types import (
-    MCPContent, MCPPrompt, MCPResource, MCPTool, MCPToolResult
+    MCPContent,
+    MCPPrompt,
+    MCPResource,
+    MCPTool,
+    MCPToolResult,
 )
-
 
 __all__ = [
     # Client

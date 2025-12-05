@@ -60,9 +60,7 @@ class StandardEmailParser(BaseParser, EmailParser):
         """Initialize parser state."""
         pass
 
-    def __call__(
-        self, data: Union[str, bytes], **kwargs
-    ) -> ParserResponse:
+    def __call__(self, data: Union[str, bytes], **kwargs) -> ParserResponse:
         """Parse an email document.
 
         Args:
@@ -160,14 +158,20 @@ class StandardEmailParser(BaseParser, EmailParser):
                     continue
 
                 # Extract text body
-                if content_type == "text/plain" and "attachment" not in content_disposition:
+                if (
+                    content_type == "text/plain"
+                    and "attachment" not in content_disposition
+                ):
                     try:
                         plain_body += part.get_content()
                     except Exception:
                         pass
 
                 # Extract HTML body
-                elif content_type == "text/html" and "attachment" not in content_disposition:
+                elif (
+                    content_type == "text/html"
+                    and "attachment" not in content_disposition
+                ):
                     if self.extract_html:
                         try:
                             html_body += part.get_content()
@@ -181,13 +185,17 @@ class StandardEmailParser(BaseParser, EmailParser):
                         try:
                             attachment_data = part.get_payload(decode=True)
                             if self.encode_attachments_base64:
-                                attachment_data = self._encode_image_to_base64(attachment_data)
+                                attachment_data = self._encode_image_to_base64(
+                                    attachment_data
+                                )
 
-                            attachments.append({
-                                "filename": filename,
-                                "content_type": content_type,
-                                "data": attachment_data,
-                            })
+                            attachments.append(
+                                {
+                                    "filename": filename,
+                                    "content_type": content_type,
+                                    "data": attachment_data,
+                                }
+                            )
                         except Exception:
                             pass
         else:
@@ -205,12 +213,14 @@ class StandardEmailParser(BaseParser, EmailParser):
         markdown = self._create_markdown_output(headers, plain_body, html_body)
 
         # Prepare metadata
-        metadata = dotdict({
-            "has_html": bool(html_body),
-            "num_attachments": len(attachments),
-            "is_multipart": msg.is_multipart(),
-            "content_type": msg.get_content_type(),
-        })
+        metadata = dotdict(
+            {
+                "has_html": bool(html_body),
+                "num_attachments": len(attachments),
+                "is_multipart": msg.is_multipart(),
+                "content_type": msg.get_content_type(),
+            }
+        )
 
         return {
             "text": markdown,
@@ -241,7 +251,7 @@ class StandardEmailParser(BaseParser, EmailParser):
         lines.append("")
         lines.append(f"**From:** {headers.get('from', 'N/A')}")
         lines.append(f"**To:** {headers.get('to', 'N/A')}")
-        if headers.get('cc'):
+        if headers.get("cc"):
             lines.append(f"**Cc:** {headers['cc']}")
         lines.append(f"**Subject:** {headers.get('subject', 'N/A')}")
         lines.append(f"**Date:** {headers.get('date', 'N/A')}")
@@ -254,9 +264,7 @@ class StandardEmailParser(BaseParser, EmailParser):
 
         return "\n".join(lines)
 
-    async def acall(
-        self, data: Union[str, bytes], **kwargs
-    ) -> ParserResponse:
+    async def acall(self, data: Union[str, bytes], **kwargs) -> ParserResponse:
         """Async version of __call__. Parse an email document asynchronously.
 
         Args:

@@ -40,6 +40,7 @@ class _BaseVLLM:
         """
         return get_model_profile(self.model_id, provider_id=self.provider)
 
+
 @register_model
 class VLLMChatCompletion(_BaseVLLM, OpenAIChatCompletion):
     """vLLM Chat Completion."""
@@ -59,20 +60,25 @@ class VLLMChatCompletion(_BaseVLLM, OpenAIChatCompletion):
         params["extra_body"] = extra_body
         return params
 
+
 # TODO: moderation based on ChatCompletion
 # llama guard prompt models
+
 
 @register_model
 class VLLMTextEmbedder(OpenAITextEmbedder, _BaseVLLM):
     """vLLM Text Embedder."""
 
+
 @register_model
 class VLLMSpeechToText(OpenAISpeechToText, _BaseVLLM):
     """vLLM Speech to Text."""
 
+
 @register_model
 class VLLMTextReranker(JinaAITextReranker, _BaseVLLM):
     """vLLM Text Reranker."""
+
 
 @register_model
 class VLLMTextClassifier(_BaseVLLM, HTTPXModelClient, TextClassifierModel):

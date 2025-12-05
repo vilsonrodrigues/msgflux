@@ -1,6 +1,6 @@
 from msgflux.data.dbs.base import BaseDB
 
-db_registry = {} # db_registry[db_type][provider] = cls
+db_registry = {}  # db_registry[db_type][provider] = cls
 
 
 def register_db(cls: type[BaseDB]):

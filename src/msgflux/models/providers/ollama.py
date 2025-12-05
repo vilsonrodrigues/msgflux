@@ -31,6 +31,7 @@ class _BaseOllama:
         """
         return get_model_profile(self.model_id, provider_id=self.provider)
 
+
 @register_model
 class OllamaChatCompletion(_BaseOllama, OpenAIChatCompletion):
     """Ollama Chat Completion."""
@@ -43,6 +44,7 @@ class OllamaChatCompletion(_BaseOllama, OpenAIChatCompletion):
 
         params["extra_body"] = extra_body
         return params
+
 
 @register_model
 class OllamaTextEmbedder(OpenAITextEmbedder, _BaseOllama):

@@ -94,7 +94,7 @@ _configure_msgflux_root_logger()
 logger = init_logger(__name__)
 
 
-def _trace_calls(log_path, root_dir, frame, event, arg=None): # noqa: ARG001
+def _trace_calls(log_path, root_dir, frame, event, arg=None):  # noqa: ARG001
     if event in ["call", "return"]:
         # Extract the filename, line number, function name, and the code object
         filename = frame.f_code.co_filename

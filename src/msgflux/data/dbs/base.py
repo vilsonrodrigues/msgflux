@@ -28,6 +28,7 @@ class BaseDB(BaseClient):
         """
         raise NotImplementedError
 
+
 class BaseKV:
     def _single_search(self, query: str) -> str:
         if self.hash_key:
@@ -42,13 +43,13 @@ class BaseKV:
             queries = [queries]
         args_list = [(query,) for query in queries]
         results = F.map_gather(
-            self._single_search, args_list=args_list,
+            self._single_search,
+            args_list=args_list,
         )
         return results
 
     def __call__(self, queries: Union[str, List[str]]) -> DBResponse:
-        """
-        Executes a search in the key-value database for the given query or queries.
+        """Executes a search in the key-value database for the given query or queries.
 
         This method searches the underlying key-value store using the provided query string
         or list of query strings. If a single query is provided, the search result is returned
@@ -83,8 +84,7 @@ class BaseVector:
         threshold: Optional[float] = None,
         return_score: Optional[bool] = False,
     ) -> DBResponse:
-        """
-        Executes a vector similarity search against the vector database.
+        """Executes a vector similarity search against the vector database.
 
         This method searches for the closest vectors to the given query vector(s)
         in the underlying vector store. If a single vector is provided, it is

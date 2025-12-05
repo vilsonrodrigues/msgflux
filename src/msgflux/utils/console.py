@@ -1,6 +1,6 @@
 def cprint(text: str, *, lc=None, bc=None, ls=None, **kwargs):
     """Colored print.
-    
+
     Args:
         lc (str): Line color (foreground).
         bc (str): Background color.

@@ -4,7 +4,6 @@ from msgspec import Struct
 
 from msgflux.generation.control_flow import ToolFlowControl
 
-
 REACT_SYSTEM_MESSAGE = """
 You are an Agent. In each episode, you will be given the task as input.
 And you can see your past trajectory so far.

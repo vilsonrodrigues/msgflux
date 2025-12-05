@@ -25,6 +25,7 @@ class _BaseGroq:
             )
         return key
 
+
 @register_model
 class GroqChatCompletion(_BaseGroq, OpenAIChatCompletion):
     """Groq Chat Completion."""
@@ -37,7 +38,7 @@ class GroqChatCompletion(_BaseGroq, OpenAIChatCompletion):
                 params["tool_choice"] = "auto"
             else:
                 params["tool_choice"] = "none"
-        if self.sampling_run_params.get("reasoning_effort", None):            
+        if self.sampling_run_params.get("reasoning_effort", None):
             extra_body["reasoning_format"] = "parsed"
         params["extra_body"] = extra_body
         return params

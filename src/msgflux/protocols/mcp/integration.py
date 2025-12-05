@@ -6,8 +6,7 @@ from msgflux.protocols.mcp.types import MCPTool
 
 
 def convert_mcp_schema_to_tool_schema(
-    mcp_tool: MCPTool,
-    namespace: Optional[str] = None
+    mcp_tool: MCPTool, namespace: Optional[str] = None
 ) -> Dict[str, Any]:
     """Convert MCP tool schema to msgflux/OpenAI function calling format.
 
@@ -27,8 +26,8 @@ def convert_mcp_schema_to_tool_schema(
         "function": {
             "name": tool_name,
             "description": mcp_tool.description,
-            "parameters": mcp_tool.inputSchema
-        }
+            "parameters": mcp_tool.inputSchema,
+        },
     }
 
     # Ensure parameters has required structure
@@ -44,7 +43,7 @@ def convert_mcp_schema_to_tool_schema(
 def filter_tools(
     tools: List[MCPTool],
     include_tools: Optional[List[str]] = None,
-    exclude_tools: Optional[List[str]] = None
+    exclude_tools: Optional[List[str]] = None,
 ) -> List[MCPTool]:
     """Filter MCP tools based on include/exclude lists.
 
@@ -87,7 +86,7 @@ def extract_tool_result_text(result: Any) -> str:
     Returns:
         Extracted text content
     """
-    from .types import MCPToolResult, MCPContent
+    from .types import MCPContent, MCPToolResult
 
     if isinstance(result, MCPToolResult):
         output = []

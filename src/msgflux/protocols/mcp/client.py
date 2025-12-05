@@ -5,15 +5,21 @@ A lightweight implementation that supports multiple transports (stdio, HTTP/SSE)
 
 import asyncio
 import time
-from typing import Any, Callable, Dict, List, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 from msgflux.protocols.mcp.exceptions import MCPConnectionError, MCPError
 from msgflux.protocols.mcp.loglevels import LogLevel
 from msgflux.protocols.mcp.transports import (
-    BaseTransport, HTTPTransport, StdioTransport
+    BaseTransport,
+    HTTPTransport,
+    StdioTransport,
 )
 from msgflux.protocols.mcp.types import (
-    MCPContent, MCPPrompt, MCPResource, MCPTool, MCPToolResult
+    MCPContent,
+    MCPPrompt,
+    MCPResource,
+    MCPTool,
+    MCPToolResult,
 )
 from msgflux.telemetry import Spans
 
@@ -38,7 +44,7 @@ class MCPClient:
         client_info: Optional[Dict[str, Any]] = None,
         max_retries: int = 3,
         retry_delay: float = 1.0,
-        auto_reconnect: bool = True
+        auto_reconnect: bool = True,
     ):
         """Initialize MCP client with a transport.
 
@@ -52,7 +58,7 @@ class MCPClient:
         self.transport = transport
         self.client_info = client_info or {
             "name": "msgflux-mcp-client",
-            "version": "1.0.0"
+            "version": "1.0.0",
         }
         self.max_retries = max_retries
         self.retry_delay = retry_delay
@@ -76,7 +82,7 @@ class MCPClient:
         client_info: Optional[Dict[str, Any]] = None,
         max_retries: int = 3,
         retry_delay: float = 1.0,
-        auto_reconnect: bool = True
+        auto_reconnect: bool = True,
     ):
         """Create MCP client with stdio transport.
 
@@ -95,18 +101,14 @@ class MCPClient:
             MCPClient instance configured for stdio
         """
         transport = StdioTransport(
-            command=command,
-            args=args,
-            cwd=cwd,
-            env=env,
-            timeout=timeout
+            command=command, args=args, cwd=cwd, env=env, timeout=timeout
         )
         return cls(
             transport=transport,
             client_info=client_info,
             max_retries=max_retries,
             retry_delay=retry_delay,
-            auto_reconnect=auto_reconnect
+            auto_reconnect=auto_reconnect,
         )
 
     @classmethod
@@ -120,7 +122,7 @@ class MCPClient:
         max_retries: int = 3,
         retry_delay: float = 1.0,
         auto_reconnect: bool = True,
-        pool_limits: Optional[Dict[str, int]] = None
+        pool_limits: Optional[Dict[str, int]] = None,
     ):
         """Create MCP client with HTTP transport.
 
@@ -154,14 +156,14 @@ class MCPClient:
             timeout=timeout,
             headers=headers,
             pool_limits=pool_limits,
-            auth=auth
+            auth=auth,
         )
         return cls(
             transport=transport,
             client_info=client_info,
             max_retries=max_retries,
             retry_delay=retry_delay,
-            auto_reconnect=auto_reconnect
+            auto_reconnect=auto_reconnect,
         )
 
     async def __aenter__(self):
@@ -207,7 +209,7 @@ class MCPClient:
 
                 if attempt < self.max_retries - 1:
                     # Exponential backoff
-                    delay = self.retry_delay * (2 ** attempt)
+                    delay = self.retry_delay * (2**attempt)
                     await asyncio.sleep(delay)
                 else:
                     # Max retries reached
@@ -229,11 +231,9 @@ class MCPClient:
             "capabilities": {
                 "logging": {},
                 "sampling": {},
-                "roots": {
-                    "listChanged": True
-                }
+                "roots": {"listChanged": True},
             },
-            "clientInfo": self.client_info
+            "clientInfo": self.client_info,
         }
 
         response = await self.transport.send_request("initialize", params)
@@ -278,13 +278,15 @@ class MCPClient:
 
         resources = []
         for resource_data in response.get("result", {}).get("resources", []):
-            resources.append(MCPResource(
-                uri=resource_data["uri"],
-                name=resource_data["name"],
-                description=resource_data.get("description"),
-                mimeType=resource_data.get("mimeType"),
-                annotations=resource_data.get("annotations")
-            ))
+            resources.append(
+                MCPResource(
+                    uri=resource_data["uri"],
+                    name=resource_data["name"],
+                    description=resource_data.get("description"),
+                    mimeType=resource_data.get("mimeType"),
+                    annotations=resource_data.get("annotations"),
+                )
+            )
 
         self._resources_cache = resources
         return resources
@@ -300,12 +302,14 @@ class MCPClient:
 
         contents = []
         for content_data in response.get("result", {}).get("contents", []):
-            contents.append(MCPContent(
-                type=content_data["type"],
-                text=content_data.get("text"),
-                data=content_data.get("data"),
-                mimeType=content_data.get("mimeType")
-            ))
+            contents.append(
+                MCPContent(
+                    type=content_data["type"],
+                    text=content_data.get("text"),
+                    data=content_data.get("data"),
+                    mimeType=content_data.get("mimeType"),
+                )
+            )
 
         return contents
 
@@ -325,11 +329,13 @@ class MCPClient:
 
         tools = []
         for tool_data in response.get("result", {}).get("tools", []):
-            tools.append(MCPTool(
-                name=tool_data["name"],
-                description=tool_data.get("description", ""),
-                inputSchema=tool_data.get("inputSchema", {})
-            ))
+            tools.append(
+                MCPTool(
+                    name=tool_data["name"],
+                    description=tool_data.get("description", ""),
+                    inputSchema=tool_data.get("inputSchema", {}),
+                )
+            )
 
         self._tools_cache = tools
         return tools
@@ -339,7 +345,7 @@ class MCPClient:
         self,
         name: str,
         arguments: Optional[Dict[str, Any]] = None,
-        progress_callback: Optional[Callable[[float, Optional[str]], None]] = None
+        progress_callback: Optional[Callable[[float, Optional[str]], None]] = None,
     ) -> MCPToolResult:
         """Execute a tool.
 
@@ -354,10 +360,7 @@ class MCPClient:
         await self._ensure_connected()
 
         start_time = time.time()
-        params = {
-            "name": name,
-            "arguments": arguments or {}
-        }
+        params = {"name": name, "arguments": arguments or {}}
 
         response = await self.transport.send_request("tools/call", params)
         duration = time.time() - start_time
@@ -366,25 +369,23 @@ class MCPClient:
             error_msg = response["error"].get("message", str(response["error"]))
             # Return error as MCPToolResult instead of raising
             return MCPToolResult(
-                content=[MCPContent(type="text", text=error_msg)],
-                isError=True
+                content=[MCPContent(type="text", text=error_msg)], isError=True
             )
 
         result = response.get("result", {})
         contents = []
 
         for content_data in result.get("content", []):
-            contents.append(MCPContent(
-                type=content_data["type"],
-                text=content_data.get("text"),
-                data=content_data.get("data"),
-                mimeType=content_data.get("mimeType")
-            ))
+            contents.append(
+                MCPContent(
+                    type=content_data["type"],
+                    text=content_data.get("text"),
+                    data=content_data.get("data"),
+                    mimeType=content_data.get("mimeType"),
+                )
+            )
 
-        return MCPToolResult(
-            content=contents,
-            isError=result.get("isError", False)
-        )
+        return MCPToolResult(content=contents, isError=result.get("isError", False))
 
     # Prompt Methods
     async def list_prompts(self, use_cache: bool = True) -> List[MCPPrompt]:
@@ -399,25 +400,22 @@ class MCPClient:
 
         prompts = []
         for prompt_data in response.get("result", {}).get("prompts", []):
-            prompts.append(MCPPrompt(
-                name=prompt_data["name"],
-                description=prompt_data["description"],
-                arguments=prompt_data.get("arguments")
-            ))
+            prompts.append(
+                MCPPrompt(
+                    name=prompt_data["name"],
+                    description=prompt_data["description"],
+                    arguments=prompt_data.get("arguments"),
+                )
+            )
 
         self._prompts_cache = prompts
         return prompts
 
     async def get_prompt(
-        self,
-        name: str,
-        arguments: Optional[Dict[str, Any]] = None
+        self, name: str, arguments: Optional[Dict[str, Any]] = None
     ) -> List[MCPContent]:
         """Get a prompt with optional arguments."""
-        params = {
-            "name": name,
-            "arguments": arguments or {}
-        }
+        params = {"name": name, "arguments": arguments or {}}
 
         response = await self.transport.send_request("prompts/get", params)
 
@@ -431,12 +429,14 @@ class MCPClient:
                     contents.append(MCPContent(type="text", text=message["content"]))
                 elif isinstance(message["content"], list):
                     for content_data in message["content"]:
-                        contents.append(MCPContent(
-                            type=content_data["type"],
-                            text=content_data.get("text"),
-                            data=content_data.get("data"),
-                            mimeType=content_data.get("mimeType")
-                        ))
+                        contents.append(
+                            MCPContent(
+                                type=content_data["type"],
+                                text=content_data.get("text"),
+                                data=content_data.get("data"),
+                                mimeType=content_data.get("mimeType"),
+                            )
+                        )
 
         return contents
 
@@ -451,4 +451,6 @@ class MCPClient:
 
     async def set_logging_level(self, level: LogLevel):
         """Set server logging level."""
-        await self.transport.send_notification("logging/setLevel", {"level": level.value})
+        await self.transport.send_notification(
+            "logging/setLevel", {"level": level.value}
+        )

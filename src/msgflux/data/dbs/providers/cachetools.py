@@ -1,6 +1,7 @@
 from typing import Any, Dict, List, Optional, Union
 
 import msgspec
+
 try:
     from cachetools import TTLCache
 except ImportError:
@@ -37,7 +38,7 @@ class CacheToolsKVDB(BaseKV, BaseDB, KVDB):
             raise ImportError(
                 "`cachetools` client is not available. Install with "
                 "`pip install cachetools`"
-            )        
+            )
         self.hash_key = hash_key
         self.maxsize = maxsize
         self.ttl = ttl

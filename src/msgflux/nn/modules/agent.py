@@ -1,9 +1,18 @@
 from datetime import datetime, timezone
 from pathlib import Path
-from uuid import uuid4
 from typing import (
-    Any, Callable, Dict, List, Mapping, Optional, Union, Tuple, Type, cast
+    Any,
+    Callable,
+    Dict,
+    List,
+    Mapping,
+    Optional,
+    Tuple,
+    Type,
+    Union,
+    cast,
 )
+from uuid import uuid4
 
 import msgspec
 
@@ -13,7 +22,9 @@ from msgflux.dsl.typed_parsers.registry import typed_parser_registry
 from msgflux.examples import Example, ExampleCollection
 from msgflux.generation.control_flow import ToolFlowControl
 from msgflux.generation.templates import (
-    PromptSpec, EXPECTED_OUTPUTS_TEMPLATE, SYSTEM_PROMPT_TEMPLATE
+    EXPECTED_OUTPUTS_TEMPLATE,
+    SYSTEM_PROMPT_TEMPLATE,
+    PromptSpec,
 )
 from msgflux.message import Message
 from msgflux.models.gateway import ModelGateway
@@ -47,7 +58,7 @@ class Agent(Module):
         "text_generation",
         "audio_generation",
         "audio_text_generation",
-        "tool_responses"
+        "tool_responses",
     ]
 
     def __init__(
@@ -87,7 +98,8 @@ class Agent(Module):
             What the Agent should do.
         expected_output:
             What the response should be like.
-        examples:
+
+        Examples:
             Examples of inputs, reasoning and outputs.
         system_extra_message:
             An extra message in system prompt.
@@ -215,10 +227,14 @@ class Agent(Module):
                 raise ValueError("`generation_schema` is not `stream=True` compatible")
 
             if guardrails is not None and "output" in guardrails:
-                raise ValueError("`guardrails['output']` is not `stream=True` compatible")
+                raise ValueError(
+                    "`guardrails['output']` is not `stream=True` compatible"
+                )
 
             if templates is not None and templates.get("response") is not None:
-                raise ValueError("`templates['response']` is not `stream=True` compatible")
+                raise ValueError(
+                    "`templates['response']` is not `stream=True` compatible"
+                )
 
             if typed_parser is not None:
                 raise ValueError("`typed_parser` is not `stream=True` compatible")
@@ -240,7 +256,7 @@ class Agent(Module):
                 examples=examples,
                 instructions=instructions,
                 system_message=system_message,
-                typed_parser=typed_parser
+                typed_parser=typed_parser,
             )
             if generation_schema is not None:
                 signature_params.generation_schema = generation_schema
@@ -285,8 +301,12 @@ class Agent(Module):
     ) -> Union[str, Mapping[str, None], ModelStreamResponse, Message]:
         """Async version of forward."""
         inputs = self._prepare_task(message, **kwargs)
-        model_response = await self._aexecute_model(prefilling=self.prefilling, **inputs)
-        response = await self._aprocess_model_response(message, model_response, **inputs)
+        model_response = await self._aexecute_model(
+            prefilling=self.prefilling, **inputs
+        )
+        response = await self._aprocess_model_response(
+            message, model_response, **inputs
+        )
         return response
 
     def _execute_model(
@@ -297,8 +317,10 @@ class Agent(Module):
         model_preference: Optional[str] = None,
     ) -> Union[ModelResponse, ModelStreamResponse]:
         model_execution_params = self._prepare_model_execution(
-            model_state=model_state, prefilling=prefilling,
-            model_preference=model_preference, vars=vars
+            model_state=model_state,
+            prefilling=prefilling,
+            model_preference=model_preference,
+            vars=vars,
         )
         if self.guardrails.get("input"):
             self._execute_input_guardrail(model_execution_params)
@@ -315,8 +337,10 @@ class Agent(Module):
         model_preference: Optional[str] = None,
     ) -> Union[ModelResponse, ModelStreamResponse]:
         model_execution_params = self._prepare_model_execution(
-            model_state=model_state, prefilling=prefilling,
-            model_preference=model_preference, vars=vars
+            model_state=model_state,
+            prefilling=prefilling,
+            model_preference=model_preference,
+            vars=vars,
         )
         if self.guardrails.get("input"):
             await self._aexecute_input_guardrail(model_execution_params)
@@ -383,7 +407,7 @@ class Agent(Module):
         if isinstance(last_message.get("content"), list):
             if last_message.get("content")[0]["type"] == "image_url":
                 data = [last_message]
-            else: # audio, file
+            else:  # audio, file
                 data = last_message.get("content")[-1]  # text input
         else:
             data = last_message.get("content")
@@ -435,7 +459,10 @@ class Agent(Module):
                 model_response, model_state, vars, model_preference
             )
         elif is_subclass_of(self.generation_schema, ToolFlowControl):
-            model_response, model_state = await self._aprocess_tool_flow_control_response(
+            (
+                model_response,
+                model_state,
+            ) = await self._aprocess_tool_flow_control_response(
                 model_response, model_state, vars, model_preference
             )
 
@@ -508,9 +535,7 @@ class Agent(Module):
                     model_state.append(ChatBlock.assist(react_state))
 
             model_response = self._execute_model(
-                model_state=model_state,
-                model_preference=model_preference,
-                vars=vars
+                model_state=model_state, model_preference=model_preference, vars=vars
             )
 
     async def _aprocess_tool_flow_control_response(
@@ -543,7 +568,9 @@ class Agent(Module):
                     act.id = str(uuid4())  # Add tool_id
 
                 tool_callings = [(act.id, act.name, act.arguments) for act in actions]
-                tool_results = await self._aprocess_tool_call(tool_callings, model_state, vars)
+                tool_results = await self._aprocess_tool_call(
+                    tool_callings, model_state, vars
+                )
 
                 if tool_results.return_directly:
                     tool_calls = tool_results.to_dict().pop("return_directly")
@@ -568,9 +595,7 @@ class Agent(Module):
                     model_state.append(ChatBlock.assist(react_state))
 
             model_response = await self._aexecute_model(
-                model_state=model_state,
-                model_preference=model_preference,
-                vars=vars
+                model_state=model_state, model_preference=model_preference, vars=vars
             )
 
     def _process_tool_call_response(
@@ -578,7 +603,7 @@ class Agent(Module):
         model_response: Union[ModelResponse, ModelStreamResponse],
         model_state: Mapping[str, Any],
         vars: Mapping[str, Any],
-        model_preference: Optional[str] = None
+        model_preference: Optional[str] = None,
     ) -> Tuple[Union[str, Mapping[str, Any], ModelStreamResponse], Mapping[str, Any]]:
         """ToolCall example: [{'role': 'assistant', 'tool_responses': [{'id': 'call_1YL',
         'type': 'function', 'function': {'arguments': '{"order_id":"order_12345"}',
@@ -616,9 +641,7 @@ class Agent(Module):
                 return model_response, model_state
 
             model_response = self._execute_model(
-                model_state=model_state,
-                model_preference=model_preference,
-                vars=vars
+                model_state=model_state, model_preference=model_preference, vars=vars
             )
 
     async def _aprocess_tool_call_response(
@@ -626,7 +649,7 @@ class Agent(Module):
         model_response: Union[ModelResponse, ModelStreamResponse],
         model_state: Mapping[str, Any],
         vars: Mapping[str, Any],
-        model_preference: Optional[str] = None
+        model_preference: Optional[str] = None,
     ) -> Tuple[Union[str, Mapping[str, Any], ModelStreamResponse], Mapping[str, Any]]:
         """Async version of _process_tool_call_response.
         ToolCall example: [{'role': 'assistant', 'tool_responses': [{'id': 'call_1YL',
@@ -645,7 +668,9 @@ class Agent(Module):
                         cprint(repr, bc="br2", ls="b")
 
                 tool_callings = raw_response.get_calls()
-                tool_results = await self._aprocess_tool_call(tool_callings, model_state, vars)
+                tool_results = await self._aprocess_tool_call(
+                    tool_callings, model_state, vars
+                )
 
                 if tool_results.return_directly:
                     tool_calls = tool_results.to_dict()
@@ -665,9 +690,7 @@ class Agent(Module):
                 return model_response, model_state
 
             model_response = await self._aexecute_model(
-                model_state=model_state,
-                model_preference=model_preference,
-                vars=vars
+                model_state=model_state, model_preference=model_preference, vars=vars
             )
 
     def _process_tool_call(
@@ -809,11 +832,7 @@ class Agent(Module):
     ) -> Mapping[str, Any]:
         """Prepare model input in ChatML format and execution params."""
         vars = kwargs.pop("vars", {})
-        if (
-            not vars
-            and isinstance(message, Message)
-            and self.vars is not None
-        ):
+        if not vars and isinstance(message, Message) and self.vars is not None:
             vars = message.get(self.vars, {})
 
         task_messages = kwargs.pop("task_messages", None)
@@ -829,7 +848,7 @@ class Agent(Module):
         if content is None and task_messages is None:
             raise ValueError("No data was detected to make the model input")
 
-        if content is not None:            
+        if content is not None:
             chat_content = [ChatBlock.user(content)]
             if task_messages is None:
                 model_state = chat_content
@@ -853,7 +872,7 @@ class Agent(Module):
         self,
         message: Union[str, Message, Mapping[str, str]],
         vars: Mapping[str, Any],
-        **kwargs
+        **kwargs,
     ) -> Optional[Union[str, Mapping[str, Any]]]:
         content = ""
 
@@ -880,31 +899,30 @@ class Agent(Module):
             # It's possible to use `task_template` as the default task message
             # if no `task_inputs` is selected. This can be useful for multimodal
             # models that require a text message to be sent along with the data
+            elif vars:
+                task_content = self._format_task_template(vars)
             else:
-                if vars:
-                    task_content = self._format_task_template(vars)
-                else:
-                    task_content = self.templates.get("task")
+                task_content = self.templates.get("task")
         else:
             task_content = task_inputs
-            if isinstance(task_content, Mapping): # dict -> str
+            if isinstance(task_content, Mapping):  # dict -> str
                 task_content = "\n".join(f"{k}: {v}" for k, v in task_content.items())
 
         task_content = apply_xml_tags("task", task_content)
         content += task_content
-        content = content.strip() # Remove whitespace
+        content = content.strip()  # Remove whitespace
 
         multimodal_content = self._process_task_multimodal_inputs(message, **kwargs)
-        if multimodal_content:            
+        if multimodal_content:
             multimodal_content.append(ChatBlock.text(content))
             return multimodal_content
         return content
 
-    def _context_manager( # noqa: C901
+    def _context_manager(  # noqa: C901
         self,
         message: Union[str, Message, Mapping[str, str]],
         vars: Mapping[str, Any],
-        **kwargs
+        **kwargs,
     ) -> Optional[str]:
         """Mount context."""
         context_content = ""
@@ -921,7 +939,7 @@ class Agent(Module):
 
         if context_inputs is not None:
             if self.templates.get("context"):
-                if isinstance(context_inputs, Mapping):                
+                if isinstance(context_inputs, Mapping):
                     context_inputs.update(vars)
                     msg_context = self._format_template(
                         context_inputs, self.templates.get("context")
@@ -930,15 +948,11 @@ class Agent(Module):
                     pre_msg_context = self._format_template(
                         vars, self.templates.get("context")
                     )
-                    msg_context = self._format_template(
-                        context_inputs, pre_msg_context
-                    )                                    
+                    msg_context = self._format_template(context_inputs, pre_msg_context)
             elif isinstance(context_inputs, str):
                 msg_context = context_inputs
             elif isinstance(context_inputs, list):
-                msg_context = " ".join(
-                    str(v) for v in context_inputs if v is not None
-                )
+                msg_context = " ".join(str(v) for v in context_inputs if v is not None)
             elif isinstance(context_inputs, dict):
                 msg_context = "\n".join(
                     f"{k}: {v if not isinstance(v, list) else ', '.join(v)}"
@@ -1005,13 +1019,17 @@ class Agent(Module):
                 mime_type = "image/jpeg"  # Fallback
             encoded_image = f"data:{mime_type};base64,{encoded_image}"
 
-        return ChatBlock.image(encoded_image, **self.config.get("image_block_kwargs", {}))
+        return ChatBlock.image(
+            encoded_image, **self.config.get("image_block_kwargs", {})
+        )
 
     def _format_video_input(self, video_source: str) -> Optional[Mapping[str, Any]]:
         """Formats the video input for the model."""
         # Check if it's a URL
         if video_source.startswith("http://") or video_source.startswith("https://"):
-            return ChatBlock.video(video_source, **self.config.get("video_block_kwargs", {}))
+            return ChatBlock.video(
+                video_source, **self.config.get("video_block_kwargs", {})
+            )
 
         # Otherwise, encode as base64
         encoded_video = self._prepare_data_uri(video_source, force_encode=True)
@@ -1026,7 +1044,9 @@ class Agent(Module):
 
         video_data_uri = f"data:{mime_type};base64,{encoded_video}"
 
-        return ChatBlock.video(video_data_uri, **self.config.get("video_block_kwargs", {}))
+        return ChatBlock.video(
+            video_data_uri, **self.config.get("video_block_kwargs", {})
+        )
 
     def _format_audio_input(self, audio_source: str) -> Optional[Mapping[str, Any]]:
         """Formats the audio input for the model."""
@@ -1047,7 +1067,7 @@ class Agent(Module):
         # Use suffix like 'format' if available, otherwise extract from mime type
         audio_format = (
             audio_format_suffix if audio_format_suffix else mime_type.split("/")[-1]
-        )        
+        )
 
         return ChatBlock.audio(base64_audio, audio_format)
 
@@ -1108,7 +1128,6 @@ class Agent(Module):
                 f"given `{type(context_cache)}`"
             )
 
-
     def _set_prefilling(self, prefilling: Optional[str] = None):
         if isinstance(prefilling, str) or prefilling is None:
             self.register_buffer("prefilling", prefilling)
@@ -1120,12 +1139,10 @@ class Agent(Module):
     def _set_tools(
         self,
         tools: Optional[List[Callable]] = None,
-        mcp_servers: Optional[List[Mapping[str, Any]]] = None
+        mcp_servers: Optional[List[Mapping[str, Any]]] = None,
     ):
         self.tool_library = ToolLibrary(
-            self.get_module_name(),
-            tools or [],
-            mcp_servers=mcp_servers
+            self.get_module_name(), tools or [], mcp_servers=mcp_servers
         )
 
     def _set_fixed_messages(
@@ -1145,10 +1162,8 @@ class Agent(Module):
     def _set_generation_schema(
         self, generation_schema: Optional[msgspec.Struct] = None
     ):
-        if (
-            generation_schema is None 
-            or
-            is_subclass_of(generation_schema, msgspec.Struct)
+        if generation_schema is None or is_subclass_of(
+            generation_schema, msgspec.Struct
         ):
             self.register_buffer("generation_schema", generation_schema)
         else:
@@ -1158,9 +1173,9 @@ class Agent(Module):
             )
 
     def _set_model(self, model: Union[ChatCompletionModel, ModelGateway, LM]):
-        if isinstance(model, LM): # If already LM, use directly
+        if isinstance(model, LM):  # If already LM, use directly
             self.lm = model
-        else: # LM will validate model type
+        else:  # LM will validate model type
             self.lm = LM(model)
 
     @property
@@ -1185,13 +1200,14 @@ class Agent(Module):
         if isinstance(system_message, str) or system_message is None:
             if (
                 hasattr(self.generation_schema, "system_message")
-                and 
-                self.generation_schema.system_message is not None
+                and self.generation_schema.system_message is not None
             ):
                 if system_message is None:
                     system_message = self.generation_schema.system_message
                 else:
-                    system_message = self.generation_schema.system_message + system_message
+                    system_message = (
+                        self.generation_schema.system_message + system_message
+                    )
             self.system_message = Parameter(system_message, PromptSpec.SYSTEM_MESSAGE)
         else:
             raise TypeError(
@@ -1213,10 +1229,10 @@ class Agent(Module):
             )
 
     def _set_expected_output(self, expected_output: Optional[str] = None):
-        if isinstance(expected_output, str) or expected_output is None: # TODO
+        if isinstance(expected_output, str) or expected_output is None:  # TODO
             expected_output_temp = ""
             if expected_output:
-               expected_output_temp += expected_output
+                expected_output_temp += expected_output
             typed_parser_cls = typed_parser_registry.get(self.typed_parser, None)
             if typed_parser_cls is not None:  # Schema as expected output
                 response_format = response_format_from_msgspec_struct(
@@ -1228,7 +1244,7 @@ class Agent(Module):
                 expected_output_temp += rendered
             self.expected_output = Parameter(
                 expected_output_temp or None, PromptSpec.EXPECTED_OUTPUT
-            )            
+            )
         else:
             raise TypeError(
                 "`expected_output` requires a string or None "
@@ -1237,7 +1253,7 @@ class Agent(Module):
 
     def _set_examples(
         self,
-        examples: Optional[Union[str, List[Union[Example, Mapping[str, Any]]]]] = None
+        examples: Optional[Union[str, List[Union[Example, Mapping[str, Any]]]]] = None,
     ):
         if isinstance(examples, (str, list)) or examples is None:
             if isinstance(examples, list):
@@ -1280,9 +1296,14 @@ class Agent(Module):
         """
         # Define valid keys for Agent
         valid_keys = {
-            "verbose", "return_model_state", "tool_choice",
-            "stream", "image_block_kwargs", "video_block_kwargs", "include_date",
-            "execution"  # Added for execution settings
+            "verbose",
+            "return_model_state",
+            "tool_choice",
+            "stream",
+            "image_block_kwargs",
+            "video_block_kwargs",
+            "include_date",
+            "execution",  # Added for execution settings
         }
 
         if config is None:
@@ -1290,15 +1311,12 @@ class Agent(Module):
             return
 
         if not isinstance(config, dict):
-            raise TypeError(
-                f"`config` must be a dict or None, given `{type(config)}`"
-            )
+            raise TypeError(f"`config` must be a dict or None, given `{type(config)}`")
 
         invalid_keys = set(config.keys()) - valid_keys
         if invalid_keys:
             raise ValueError(
-                f"Invalid config keys: {invalid_keys}. "
-                f"Valid keys are: {valid_keys}"
+                f"Invalid config keys: {invalid_keys}. Valid keys are: {valid_keys}"
             )
 
         if "image_block_kwargs" in config:
@@ -1330,14 +1348,9 @@ class Agent(Module):
         if isinstance(vars, str) or vars is None:
             self.register_buffer("vars", vars)
         else:
-            raise TypeError(
-                "`vars` requires a string or None "
-                f"given `{type(vars)}`"
-            )
+            raise TypeError(f"`vars` requires a string or None given `{type(vars)}`")
 
-    def _set_message_fields(
-        self, message_fields: Optional[Dict[str, Any]] = None
-    ):
+    def _set_message_fields(self, message_fields: Optional[Dict[str, Any]] = None):
         """Set message field mappings for Agent.
 
         Args:
@@ -1351,8 +1364,12 @@ class Agent(Module):
         """
         # Define valid keys for Agent class
         valid_keys = {
-            "task_inputs", "task_multimodal_inputs", "task_messages",
-            "context_inputs", "model_preference", "vars"
+            "task_inputs",
+            "task_multimodal_inputs",
+            "task_messages",
+            "context_inputs",
+            "model_preference",
+            "vars",
         }
 
         if message_fields is None:
@@ -1390,8 +1407,7 @@ class Agent(Module):
         if isinstance(typed_parser, str) or typed_parser is None:
             if (
                 isinstance(typed_parser, str)
-                and 
-                typed_parser not in typed_parser_registry
+                and typed_parser not in typed_parser_registry
             ):
                 raise ValueError(
                     f"`typed_parser` supports only `{typed_parser_registry.keys()}`"
@@ -1399,7 +1415,9 @@ class Agent(Module):
                 )
             self.register_buffer("typed_parser", typed_parser)
         else:
-            raise TypeError(f"`typed_parser` requires a str given `{type(typed_parser)}`")
+            raise TypeError(
+                f"`typed_parser` requires a str given `{type(typed_parser)}`"
+            )
 
     def _set_signature(
         self,
@@ -1412,7 +1430,6 @@ class Agent(Module):
         typed_parser: Optional[str] = None,
     ):
         if signature is not None:
-
             typed_parser_cls = typed_parser_registry.get(typed_parser, None)
 
             examples = examples or []
@@ -1424,7 +1441,7 @@ class Agent(Module):
                 inputs_info = StructFactory._parse_annotations(input_str_signature)
                 outputs_info = StructFactory._parse_annotations(output_str_signature)
             elif issubclass(signature, Signature):
-                output_str_signature = signature.get_str_signature().split("->")[-1]                
+                output_str_signature = signature.get_str_signature().split("->")[-1]
                 inputs_info = signature.get_inputs_info()
                 outputs_info = signature.get_outputs_info()
                 output_descriptions = signature.get_output_descriptions()
@@ -1460,10 +1477,12 @@ class Agent(Module):
             if generation_schema is not None:
                 signature_as_type = cast(Type[msgspec.Struct], signature_output_struct)
                 if is_optional_field(generation_schema, "final_answer"):
-                    signature_as_type = Optional[signature_output_struct] # type: ignore
-                class Output(generation_schema):  
-                    final_answer: signature_as_type # type: ignore
-                fused_output_struct = Output                
+                    signature_as_type = Optional[signature_output_struct]  # type: ignore
+
+                class Output(generation_schema):
+                    final_answer: signature_as_type  # type: ignore
+
+                fused_output_struct = Output
             self._set_generation_schema(fused_output_struct or signature_output_struct)
 
             # system message
@@ -1472,15 +1491,13 @@ class Agent(Module):
             # expected output
             expected_output = SignatureFactory.get_expected_output_from_signature(
                 inputs_info, outputs_info, typed_parser_cls
-            )   
+            )
             self._set_expected_output(expected_output)
 
             # examples
             self._set_examples(examples)
 
-    def _get_system_prompt(
-        self, vars: Optional[Mapping[str, Any]] = None
-    ) -> str:
+    def _get_system_prompt(self, vars: Optional[Mapping[str, Any]] = None) -> str:
         """Render the system prompt using the Jinja template.
         Returns an empty string if no segments are provided.
         """

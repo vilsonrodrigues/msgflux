@@ -1,5 +1,6 @@
 from typing import List, Optional
-from msgspec import Struct, Meta
+
+from msgspec import Meta, Struct
 from typing_extensions import Annotated
 
 

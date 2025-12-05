@@ -1,5 +1,4 @@
-"""
-Model profile data structures.
+"""Model profile data structures.
 
 Provides dataclasses for model and provider profiles from models.dev.
 """
@@ -73,8 +72,7 @@ class ModelCost:
             Total cost in USD
         """
         cost = (
-            input_tokens * self.input_per_token
-            + output_tokens * self.output_per_token
+            input_tokens * self.input_per_token + output_tokens * self.output_per_token
         )
         if cached_tokens > 0 and self.cache_read_per_token:
             cost += cached_tokens * self.cache_read_per_token

@@ -24,12 +24,12 @@ from msgflux.data.parsers.providers.python_docx import PythonDocxDocxParser
 from msgflux.data.parsers.providers.python_pptx import PythonPptxPptxParser
 
 __all__ = [
-    "PyPDFPdfParser",
-    "OpenPyxlXlsxParser",
-    "PythonPptxPptxParser",
-    "PythonDocxDocxParser",
-    "StandardCsvParser",
     "BeautifulSoupHtmlParser",
-    "StandardMarkdownParser",
+    "OpenPyxlXlsxParser",
+    "PyPDFPdfParser",
+    "PythonDocxDocxParser",
+    "PythonPptxPptxParser",
+    "StandardCsvParser",
     "StandardEmailParser",
+    "StandardMarkdownParser",
 ]
