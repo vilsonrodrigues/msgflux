@@ -304,10 +304,9 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
             response_content = aggregator
         elif choice.message.content:
             if (typed_parser or generation_schema) and self.verbose:
-                repr = f"[{self.model_id}][raw_response] {choice.message.content}"
-                cprint(repr, lc="r", ls="b")
+                repr_str = f"[{self.model_id}][raw_response] {choice.message.content}"
+                cprint(repr_str, lc="r", ls="b")
             if typed_parser is not None:
-                choice.message.content
                 response.set_response_type(f"{prefix_response_type}structured")
                 parser = typed_parser_registry[typed_parser]
                 response_content = dotdict(parser.decode(choice.message.content))
@@ -965,12 +964,12 @@ class OpenAITextToImage(_BaseOpenAI, TextToImageModel):
     def _get_metadata(self, model_output):
         metadata = dotdict(
             usage=model_output.usage.to_dict(),
-            details=dict(
-                size=model_output.size,
-                quality=model_output.quality,
-                output_format=model_output.output_format,
-                background=model_output.background,
-            ),
+            details={
+                "size": model_output.size,
+                "quality": model_output.quality,
+                "output_format": model_output.output_format,
+                "background": model_output.background,
+            },
         )
         return metadata
 
@@ -1255,13 +1254,13 @@ class OpenAISpeechToText(_BaseOpenAI, SpeechToTextModel):
                 transcript["text"] = model_output.text
             if model_output.words:
                 words = [
-                    dict(word=w.word, start=w.start, end=w.end)
+                    {"word": w.word, "start": w.start, "end": w.end}
                     for w in model_output.words
                 ]
                 transcript["words"] = words
             if model_output.segment:
                 segments = [
-                    dict(id=seg.id, start=seg.start, end=seg.end, text=seg.text)
+                    {"id": seg.id, "start": seg.start, "end": seg.end, "text": seg.text}
                     for seg in model_output.segments
                 ]
                 transcript["segments"] = segments
@@ -1286,13 +1285,13 @@ class OpenAISpeechToText(_BaseOpenAI, SpeechToTextModel):
                 transcript["text"] = model_output.text
             if model_output.words:
                 words = [
-                    dict(word=w.word, start=w.start, end=w.end)
+                    {"word": w.word, "start": w.start, "end": w.end}
                     for w in model_output.words
                 ]
                 transcript["words"] = words
             if model_output.segment:
                 segments = [
-                    dict(id=seg.id, start=seg.start, end=seg.end, text=seg.text)
+                    {"id": seg.id, "start": seg.start, "end": seg.end, "text": seg.text}
                     for seg in model_output.segments
                 ]
                 transcript["segments"] = segments

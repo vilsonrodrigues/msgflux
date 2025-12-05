@@ -36,15 +36,13 @@ from msgflux.models.profiles.registry import (
 )
 
 __all__ = [
-    # Data structures
-    "ModelProfile",
-    "ProviderProfile",
     "ModelCapabilities",
-    "ModelModalities",
     "ModelCost",
     "ModelLimits",
-    # Registry functions
+    "ModelModalities",
+    "ModelProfile",
+    "ProviderProfile",
+    "ensure_profiles_loaded",
     "get_model_profile",
     "get_provider_profile",
-    "ensure_profiles_loaded",
 ]
