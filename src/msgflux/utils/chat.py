@@ -67,9 +67,9 @@ class ChatBlock(metaclass=ChatBlockMeta):
         return {"role": "system", "content": content}
 
     @staticmethod
-    def tool_call(id: str, name: str, arguments: str) -> Dict[str, str]:
+    def tool_call(tool_id: str, name: str, arguments: str) -> Dict[str, str]:
         return {
-            "id": id,
+            "id": tool_id,
             "type": "function",
             "function": {"name": name, "arguments": arguments},
         }
@@ -131,8 +131,8 @@ class ChatBlock(metaclass=ChatBlockMeta):
         return {"type": "video_url", "video_url": {"url": url, **kwargs}}
 
     @staticmethod
-    def audio(data: str, format: str) -> Dict[str, str]:
-        return {"type": "input_audio", "input_audio": {"data": data, "format": format}}
+    def audio(data: str, audio_format: str) -> Dict[str, str]:
+        return {"type": "input_audio", "input_audio": {"data": data, "format": audio_format}}
 
     @staticmethod
     def file(filename: str, file_data: str) -> Dict[str, str]:

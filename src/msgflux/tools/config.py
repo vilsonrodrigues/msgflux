@@ -34,8 +34,9 @@ def tool_config(
             If True, the tool will be executed in the background and a message
             that the task has been scheduled will be the response to the model.
         inject_model_state:
-            If true, the tool automatically sets `inject_model_state` and `return_direct`
-            to `True`. Additionally, the tool will be renamed to `transfer_to_<name>`.
+            If true, the tool automatically sets `inject_model_state` and
+            `return_direct` to `True`. Additionally, the tool will be
+            renamed to `transfer_to_<name>`.
             Any input parameters for this tool will be removed. The tool will **only**
             receive `model_state` as a parameter.
         inject_vars:

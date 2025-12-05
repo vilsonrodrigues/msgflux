@@ -247,7 +247,8 @@ class StructFactory:
 
     @classmethod
     def _parse_literal_args(cls, args_str: str) -> Tuple:
-        """Parse arguments inside Literal[...] robustly, respecting quotes and nested structures."""
+        """Parse arguments inside Literal[...] robustly, respecting quotes
+        and nested structures."""
         try:
             # split respecting nested brackets and quotes
             parts = cls._split_args(args_str)
