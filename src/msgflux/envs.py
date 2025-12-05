@@ -93,6 +93,9 @@ class EnvironmentVariables(BaseSettings):
     # HTTPX max retries
     httpx_max_retries: int = 5
 
+    # Model profiles cache TTL in seconds (24 hours default)
+    profile_cache_ttl: int = 86400
+
 
 envs = EnvironmentVariables()
 

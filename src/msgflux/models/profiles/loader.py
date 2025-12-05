@@ -10,6 +10,7 @@ import time
 from pathlib import Path
 from typing import Dict, Optional
 
+from msgflux.envs import envs
 from msgflux.models.profiles.base import (
     ModelCapabilities,
     ModelCost,
@@ -47,7 +48,7 @@ class ProfileLoader:
 
     API_URL = "https://models.dev/api.json"
     CACHE_FILE = get_cache_dir() / "model_profiles.json"
-    CACHE_TTL = int(os.environ.get("MSGFLUX_PROFILE_CACHE_TTL", "86400"))  # 24h
+    CACHE_TTL = envs.profile_cache_ttl
 
     @staticmethod
     def is_cache_valid() -> bool:

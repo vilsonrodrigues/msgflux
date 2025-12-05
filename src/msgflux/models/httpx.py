@@ -8,6 +8,7 @@ except Exception as e:
     ) from e
 from msgflux.envs import envs
 from msgflux.models.base import BaseModel
+from msgflux.models.profiles import ensure_profiles_loaded
 from msgflux.utils.tenacity import model_retry
 
 
@@ -32,7 +33,6 @@ class HTTPXModelClient(BaseModel):
         )
 
         # Trigger lazy load of model profiles in background
-        from msgflux.models.profiles import ensure_profiles_loaded
         ensure_profiles_loaded(background=True)
 
     @model_retry
