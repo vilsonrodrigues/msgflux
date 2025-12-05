@@ -1152,7 +1152,7 @@ requires-dist = [
     { name = "httpx", marker = "extra == 'httpx'", specifier = ">=0.28.1" },
     { name = "jinja2", specifier = ">=3.1.6" },
     { name = "mermaid-py", marker = "extra == 'plot'", specifier = ">=0.8.0" },
-    { name = "msgspec-ext", specifier = ">=0.1.0" },
+    { name = "msgspec-ext", specifier = ">=0.5.0" },
     { name = "msgtrace-sdk", specifier = ">=1.1.0" },
     { name = "openai", marker = "extra == 'openai'", specifier = ">=1.97.1" },
     { name = "opentelemetry-instrumentation-google-genai", marker = "extra == 'google'", specifier = ">=0.3b0" },
@@ -1227,15 +1227,14 @@ wheels = [
 
 [[package]]
 name = "msgspec-ext"
-version = "0.1.0"
+version = "0.5.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "msgspec" },
-    { name = "python-dotenv" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/87/e0/01cb73aa6aea860aec88e4feba333aab8e890c08127b48a21f365474369d/msgspec_ext-0.1.0.tar.gz", hash = "sha256:504190fd703eebf9e0596b935bdb206b79dc9423a725237c80453bb2c031b3b1", size = 5825, upload-time = "2025-07-26T06:45:36.396Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/27/eb/8c607e97c9293e7fbc9170ddaff1f3d9f70a59f0a0fb4d798cbae7acf44e/msgspec_ext-0.5.0.tar.gz", hash = "sha256:a4f83b3afbf34feb9f0b42485410cbbf5c045644386bce1b308e8cd4ce3a24b0", size = 375548, upload-time = "2025-12-03T18:09:00.649Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/0d/59/38109c91dc3b8048bf666c52e8faf5370ae309b2cf08aeabef404252221c/msgspec_ext-0.1.0-py3-none-any.whl", hash = "sha256:c0b936eee348224910603205936c64e3842ef3d75fa01cbfce72c70eae30276d", size = 4744, upload-time = "2025-07-26T06:45:35.05Z" },
+    { url = "https://files.pythonhosted.org/packages/23/a0/f114ec438956b1e51338f8cf316fb076b5326b25ac669b7838e6431c7a35/msgspec_ext-0.5.0-py3-none-any.whl", hash = "sha256:59f84d15a66f8fdf4d83e621083838dedd19893047d3b1ec0c7b9559e31b8f89", size = 20921, upload-time = "2025-12-03T18:08:59.065Z" },
 ]
 
 [[package]]
