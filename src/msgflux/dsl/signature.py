@@ -143,7 +143,8 @@ class Signature(metaclass=_SignatureMeta):
         # Get the signature in string format
         print(CheckCitationFaithfulness.get_str_signature())
         # Output:
-        # "context: str, text: str -> faithfulness: bool, evidence: dict[str, list[str]]"
+        # "context: str, text: str -> faithfulness: bool,
+        #  evidence: dict[str, list[str]]"
 
         # Get input descriptions
         print(CheckCitationFaithfulness.get_input_descriptions())
