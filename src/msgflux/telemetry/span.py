@@ -1,7 +1,7 @@
 """
 msgflux telemetry span - msgtrace-sdk integration.
 
-Provides Spans class from msgtrace-sdk with msgflux-specific
+Provides Spans from msgtrace-sdk with msgflux-specific
 tool and agent decorators for detailed telemetry capture.
 """
 
@@ -10,35 +10,11 @@ from functools import wraps
 from typing import Callable, Optional
 
 import msgspec
+from msgtrace.sdk import MsgTraceAttributes
 from opentelemetry import trace
-
-# Import base Spans from msgtrace-sdk
-from msgtrace.sdk import Spans as MsgTraceSpans
 
 from msgflux.envs import envs
 from msgflux.models.response import ModelStreamResponse
-from msgflux.telemetry.attributes import MsgTraceAttributes
-
-
-# Re-export Spans from msgtrace-sdk
-class Spans(MsgTraceSpans):
-    """
-    Extended Spans class with msgflux-specific decorators.
-
-    Inherits all context managers and decorators from msgtrace-sdk:
-    - span_context, init_flow, init_module
-    - aspan_context, ainit_flow, ainit_module
-    - instrument, ainstrument
-    - set_tool_attributes, set_agent_attributes
-
-    Adds msgflux-specific decorators for detailed tool and agent telemetry.
-    """
-
-    pass
-
-
-# Create singleton instance for convenience
-spans = Spans()
 
 
 def set_tool_attributes(execution_type: str, protocol: Optional[str] = None) -> Callable:

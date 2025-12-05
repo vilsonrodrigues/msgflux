@@ -38,7 +38,7 @@ from msgflux.models.model import Model
 from msgflux.models.response import ModelResponse, ModelStreamResponse
 from msgflux.nn.parameter import Parameter
 from msgflux.telemetry import Spans
-from msgflux.telemetry.attributes import MsgTraceAttributes
+from msgtrace.sdk import MsgTraceAttributes
 from msgflux.utils.convert import convert_camel_snake_to_title
 from msgflux.utils.encode import encode_data_to_base64
 from msgflux.utils.hooks import RemovableHandle
