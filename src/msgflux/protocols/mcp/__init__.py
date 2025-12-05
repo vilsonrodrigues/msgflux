@@ -35,33 +35,27 @@ from msgflux.protocols.mcp.types import (
 )
 
 __all__ = [
-    # Client
-    "MCPClient",
-    # Transports
-    "BaseTransport",
-    "HTTPTransport",
-    "StdioTransport",
-    # Types
-    "MCPTool",
-    "MCPResource",
-    "MCPPrompt",
-    "MCPContent",
-    "MCPToolResult",
-    # Exceptions
-    "MCPError",
-    "MCPConnectionError",
-    "MCPTimeoutError",
-    "MCPToolError",
-    # Authentication
-    "BaseAuth",
-    "BearerTokenAuth",
     "APIKeyAuth",
+    "BaseAuth",
+    "BaseTransport",
     "BasicAuth",
-    "OAuth2Auth",
+    "BearerTokenAuth",
     "CustomHeaderAuth",
-    # Utilities
+    "HTTPTransport",
     "LogLevel",
+    "MCPClient",
+    "MCPConnectionError",
+    "MCPContent",
+    "MCPError",
+    "MCPPrompt",
+    "MCPResource",
+    "MCPTimeoutError",
+    "MCPTool",
+    "MCPToolError",
+    "MCPToolResult",
+    "OAuth2Auth",
+    "StdioTransport",
     "convert_mcp_schema_to_tool_schema",
-    "filter_tools",
     "extract_tool_result_text",
+    "filter_tools",
 ]

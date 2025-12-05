@@ -135,7 +135,8 @@ class MCPClient:
             max_retries: Maximum connection retry attempts
             retry_delay: Initial delay between retries
             auto_reconnect: Enable automatic reconnection
-            pool_limits: Connection pool limits (max_connections, max_keepalive_connections)
+            pool_limits: Connection pool limits (max_connections,
+                max_keepalive_connections)
 
         Returns:
             MCPClient instance configured for HTTP
@@ -204,7 +205,6 @@ class MCPClient:
                 self._last_error = None
                 return
             except Exception as e:
-                last_exception = e
                 self._last_error = e
 
                 if attempt < self.max_retries - 1:
