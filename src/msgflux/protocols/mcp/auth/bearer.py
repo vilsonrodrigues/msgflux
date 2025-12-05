@@ -34,7 +34,7 @@ class BearerTokenAuth(BaseAuth):
         token: str,
         expires_in: Optional[int] = None,
         refresh_callback: Optional[Callable[[], Awaitable[str]]] = None,
-        token_type: str = "Bearer",
+        token_type: str = "Bearer"  # noqa: S107,
     ):
         """Initialize bearer token authentication.
 
@@ -78,9 +78,9 @@ class BearerTokenAuth(BaseAuth):
             new_token = await self._refresh_callback()
             if new_token:
                 self._token = new_token
-                self._last_refresh = datetime.now()
+                self._last_refresh = datetime.now()  # noqa: DTZ005
                 return True
-        except Exception:
+        except Exception:  # noqa: S110
             pass
 
         return False

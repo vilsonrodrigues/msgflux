@@ -164,7 +164,7 @@ class StandardEmailParser(BaseParser, EmailParser):
                 ):
                     try:
                         plain_body += part.get_content()
-                    except Exception:
+                    except Exception:  # noqa: S110
                         pass
 
                 # Extract HTML body
@@ -175,7 +175,7 @@ class StandardEmailParser(BaseParser, EmailParser):
                     if self.extract_html:
                         try:
                             html_body += part.get_content()
-                        except Exception:
+                        except Exception:  # noqa: S110
                             pass
 
                 # Extract attachments
@@ -196,7 +196,7 @@ class StandardEmailParser(BaseParser, EmailParser):
                                     "data": attachment_data,
                                 }
                             )
-                        except Exception:
+                        except Exception:  # noqa: S110
                             pass
         else:
             # Handle simple messages

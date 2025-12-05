@@ -202,7 +202,7 @@ class FAISSVectorDB(BaseVector, BaseDB, VectorDB):
         # Load metadata
         metadata_path = os.path.join(directory, "metadata.pkl")
         with open(metadata_path, "rb") as f:
-            metadata = pickle.load(f)
+            metadata = pickle.load(f)  # noqa: S301
 
         # Create instance
         instance = cls(

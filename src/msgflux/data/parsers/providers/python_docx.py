@@ -141,7 +141,7 @@ class PythonDocxDocxParser(BaseParser, DocxParser):
                     img_name = f"image_{image_counter}.{ext}"
                     images_dict[img_name] = img_data
                     image_counter += 1
-                except Exception:
+                except Exception:  # noqa: S110
                     # Skip images that can't be extracted
                     pass
 

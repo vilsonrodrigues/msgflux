@@ -243,7 +243,7 @@ class HTTPTransport(BaseTransport):
             await self._http_client.post(
                 self.base_url, json=notification_data, headers=headers
             )
-        except Exception:
+        except Exception:  # noqa: S110
             # Notifications are fire-and-forget, log but don't raise
             pass
 
@@ -359,7 +359,7 @@ class StdioTransport(BaseTransport):
 
         except asyncio.CancelledError:
             pass
-        except Exception:
+        except Exception:  # noqa: S110
             pass
 
     async def send_request(
@@ -419,6 +419,6 @@ class StdioTransport(BaseTransport):
             message = json.dumps(notification_data) + "\n"
             self._process.stdin.write(message.encode("utf-8"))
             await self._process.stdin.drain()
-        except Exception:
+        except Exception:  # noqa: S110
             # Notifications are fire-and-forget
             pass
