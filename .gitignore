@@ -77,11 +77,6 @@ _build/
 /docs/
 /examples/
 
-# CI/CD (managed separately, only gh-pages needed)
-.github/workflows/ci.yml
-.github/workflows/publish.yml
-.github/dependabot.yml
-
 # Tests (work in progress)
 /tests/
 
