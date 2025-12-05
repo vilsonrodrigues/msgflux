@@ -346,7 +346,7 @@ class BaseParser(BaseClient):
             ... )
         """
         try:
-            import tiktoken
+            import tiktoken  # noqa: PLC0415
 
             encoding = tiktoken.get_encoding(encoding_name)
 

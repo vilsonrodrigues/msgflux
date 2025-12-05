@@ -199,7 +199,7 @@ class StandardMarkdownParser(BaseParser, MarkdownParser):
 
             # Try to parse YAML
             try:
-                import yaml
+                import yaml  # noqa: PLC0415
 
                 front_matter = yaml.safe_load(front_matter_str)
                 return content, front_matter

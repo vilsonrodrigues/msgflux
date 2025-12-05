@@ -116,7 +116,7 @@ class PyPDFPdfParser(BaseParser, PdfParser):
 
         # Load PDF
         if isinstance(data, bytes):
-            from io import BytesIO
+            from io import BytesIO  # noqa: PLC0415
 
             reader = PdfReader(BytesIO(data))
         else:

@@ -2,7 +2,8 @@
 
 from typing import Any, Dict, List, Optional
 
-from msgflux.protocols.mcp.types import MCPTool
+from msgflux.dsl.typed_parsers.registry import typed_parser_registry
+from msgflux.protocols.mcp.types import MCPContent, MCPTool, MCPToolResult
 
 
 def convert_mcp_schema_to_tool_schema(
@@ -86,8 +87,6 @@ def extract_tool_result_text(result: Any) -> str:
     Returns:
         Extracted text content
     """
-    from .types import MCPContent, MCPToolResult
-
     if isinstance(result, MCPToolResult):
         output = []
         for content in result.content:

@@ -113,7 +113,7 @@ class OpenPyxlXlsxParser(BaseParser, XlsxParser):
         """
         # Load workbook
         if isinstance(data, bytes):
-            from io import BytesIO
+            from io import BytesIO  # noqa: PLC0415
 
             workbook = load_workbook(BytesIO(data), data_only=True)
         else:

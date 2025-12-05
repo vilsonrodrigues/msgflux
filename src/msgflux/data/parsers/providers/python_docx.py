@@ -120,7 +120,7 @@ class PythonDocxDocxParser(BaseParser, DocxParser):
 
         # Load document
         if isinstance(data, bytes):
-            from io import BytesIO
+            from io import BytesIO  # noqa: PLC0415
 
             document = Document(BytesIO(data))
         else:

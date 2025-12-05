@@ -6,8 +6,10 @@ Provides singleton access to model profiles with automatic caching.
 import threading
 from typing import Dict, Optional
 
+from msgflux.logger import logger
 from msgflux.models.profiles.base import ModelProfile, ProviderProfile
 from msgflux.models.profiles.loader import ProfileLoader
+from msgflux.nn.functional import background_task
 
 
 class ProfileRegistry:
@@ -144,8 +146,6 @@ class ProfileRegistry:
             # Cache miss/expired - need to fetch
             if background:
                 self._loading = True
-                from msgflux.nn.functional import background_task
-
                 background_task(self._fetch_and_cache)
             else:
                 self._fetch_and_cache()
@@ -159,8 +159,6 @@ class ProfileRegistry:
                 ProfileLoader.save_to_cache(profiles)
         except Exception as e:
             # Log error but don't crash
-            from msgflux.logger import logger
-
             logger.error(f"Failed to fetch model profiles: {e}")
         finally:
             self._loading = False

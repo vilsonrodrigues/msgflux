@@ -116,7 +116,7 @@ class PythonPptxPptxParser(BaseParser, PptxParser):
 
         # Load presentation
         if isinstance(data, bytes):
-            from io import BytesIO
+            from io import BytesIO  # noqa: PLC0415
 
             presentation = Presentation(BytesIO(data))
         else:
