@@ -24,6 +24,7 @@ from msgflux.dotdict import dotdict
 from msgflux.dsl.typed_parsers import typed_parser_registry
 from msgflux.exceptions import TypedParserNotFoundError
 from msgflux.models.base import BaseModel
+from msgflux.models.profiles import get_model_profile
 from msgflux.models.cache import ResponseCache, generate_cache_key
 from msgflux.models.registry import register_model
 from msgflux.models.response import ModelResponse, ModelStreamResponse
@@ -92,6 +93,15 @@ class _BaseOpenAI(BaseModel):
                 "The OpenAI key is not available. Please set `OPENAI_API_KEY`"
             )
         return key
+
+    @property
+    def profile(self):
+        """Get model profile from registry.
+
+        Returns:
+            ModelProfile if found, None otherwise
+        """
+        return get_model_profile(self.model_id, provider_id=self.provider)
 
 @register_model
 class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):

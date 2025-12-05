@@ -1,6 +1,7 @@
 from os import getenv
 from typing import Any, Dict
 
+from msgflux.models.profiles import get_model_profile
 from msgflux.models.providers.openai import OpenAIChatCompletion, OpenAITextEmbedder
 from msgflux.models.registry import register_model
 
@@ -20,6 +21,15 @@ class _BaseOllama:
         """Load API keys from environment variable."""
         key = getenv("OLLAMA_API_KEY", "ollama")
         return key
+
+    @property
+    def profile(self):
+        """Get model profile from registry.
+
+        Returns:
+            ModelProfile if found, None otherwise
+        """
+        return get_model_profile(self.model_id, provider_id=self.provider)
 
 @register_model
 class OllamaChatCompletion(_BaseOllama, OpenAIChatCompletion):

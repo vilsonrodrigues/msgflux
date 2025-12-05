@@ -31,6 +31,10 @@ class HTTPXModelClient(BaseModel):
             transport=httpx.AsyncHTTPTransport(retries=envs.httpx_max_retries),
         )
 
+        # Trigger lazy load of model profiles in background
+        from msgflux.models.profiles import ensure_profiles_loaded
+        ensure_profiles_loaded(background=True)
+
     @model_retry
     def _execute(self, **kwargs):
         params = {"model": self.model_id, **kwargs}

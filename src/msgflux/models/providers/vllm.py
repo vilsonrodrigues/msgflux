@@ -2,6 +2,7 @@ from os import getenv
 from typing import Any, Dict, List, Optional, Union
 
 from msgflux.models.httpx import HTTPXModelClient
+from msgflux.models.profiles import get_model_profile
 from msgflux.models.providers.jinaai import JinaAITextReranker
 from msgflux.models.providers.openai import (
     OpenAIChatCompletion,
@@ -29,6 +30,15 @@ class _BaseVLLM:
         """Load API keys from environment variable."""
         key = getenv("VLLM_API_KEY", "vllm")
         return key
+
+    @property
+    def profile(self):
+        """Get model profile from registry.
+
+        Returns:
+            ModelProfile if found, None otherwise
+        """
+        return get_model_profile(self.model_id, provider_id=self.provider)
 
 @register_model
 class VLLMChatCompletion(_BaseVLLM, OpenAIChatCompletion):
