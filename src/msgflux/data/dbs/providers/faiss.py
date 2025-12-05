@@ -116,7 +116,7 @@ class FAISSVectorDB(BaseVector, BaseDB, VectorDB):
         self.index.add(embeddings)
         self.documents.extend(documents)
 
-    def _search(
+    def _search(  # noqa: C901
         self,
         queries: Union[List[List[float]], "np.ndarray"],
         top_k: Optional[int] = 4,

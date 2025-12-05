@@ -102,7 +102,7 @@ class PythonDocxDocxParser(BaseParser, DocxParser):
 
         return response
 
-    def _parse(self, data: Union[str, bytes]) -> Dict[str, any]:
+    def _parse(self, data: bytes) -> List[Dict[str, Any]]:  # noqa: C901
         """Parse DOCX and extract content.
 
         Args:

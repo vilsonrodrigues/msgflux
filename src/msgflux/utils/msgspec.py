@@ -421,7 +421,7 @@ class StructFactory:
         raise ValueError(f"Malformed or unsupported generic: `{type_str}`")
 
     @classmethod
-    def _parse_annotations(cls, signature: str) -> List[Any]:
+    def _parse_annotations(cls, signature: str) -> List[Any]:  # noqa: C901
         fields = []
         current_pos = 0
         level = 0

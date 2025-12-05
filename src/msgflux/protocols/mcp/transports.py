@@ -153,7 +153,7 @@ class HTTPTransport(BaseTransport):
 
         return headers
 
-    async def send_request(
+    async def send_request(  # noqa: C901
         self, method: str, params: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """Send HTTP POST request with JSON-RPC.

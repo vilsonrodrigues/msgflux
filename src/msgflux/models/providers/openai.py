@@ -259,7 +259,7 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
 
         return model_output
 
-    def _process_model_output(
+    def _process_model_output(  # noqa: C901
         self, model_output, typed_parser=None, generation_schema=None
     ):
         """Shared logic to process model output for both sync and async."""
@@ -422,7 +422,7 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
 
         return response
 
-    async def _stream_generate(
+    async def _stream_generate(  # noqa: C901
         self, **kwargs: Mapping[str, Any]
     ) -> ModelStreamResponse:
         aggregator = ToolCallAggregator()
@@ -489,7 +489,7 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
         stream_response.set_metadata(metadata)
         stream_response.add(None)
 
-    async def _astream_generate(
+    async def _astream_generate(  # noqa: C901
         self, **kwargs: Mapping[str, Any]
     ) -> ModelStreamResponse:
         aggregator = ToolCallAggregator()

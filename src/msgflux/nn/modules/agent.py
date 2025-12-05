@@ -868,7 +868,7 @@ class Agent(Module):
             "vars": vars,
         }
 
-    def _process_task_inputs(
+    def _process_task_inputs(  # noqa: C901
         self,
         message: Union[str, Message, Mapping[str, str]],
         vars: Mapping[str, Any],

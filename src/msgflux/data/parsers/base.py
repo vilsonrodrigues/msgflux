@@ -195,7 +195,7 @@ class BaseParser(BaseClient):
             "Expected str (path/URL), bytes, or BytesIO"
         )
 
-    def chunk_text(
+    def chunk_text(  # noqa: C901
         self,
         text: str,
         chunk_size: int = 1000,

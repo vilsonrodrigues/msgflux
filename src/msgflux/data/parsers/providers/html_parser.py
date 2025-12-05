@@ -108,7 +108,7 @@ class BeautifulSoupHtmlParser(BaseParser, HtmlParser):
 
         return response
 
-    def _parse(self, data: Union[str, bytes]) -> Dict[str, any]:
+    def _parse(self, data: bytes) -> List[Dict[str, Any]]:  # noqa: C901
         """Parse HTML and extract content.
 
         Args:
@@ -189,7 +189,7 @@ class BeautifulSoupHtmlParser(BaseParser, HtmlParser):
             "metadata": metadata,
         }
 
-    def _html_to_markdown(self, soup: "BeautifulSoup") -> str:
+    def _html_to_markdown(self, html_content: str) -> str:  # noqa: C901
         """Convert BeautifulSoup object to Markdown.
 
         Args:

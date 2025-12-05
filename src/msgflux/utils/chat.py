@@ -209,7 +209,7 @@ complex_arguments_schema = {
 }
 
 
-def response_format_from_msgspec_struct(
+def response_format_from_msgspec_struct(  # noqa: C901
     struct_class: Type[msgspec.Struct],
 ) -> Dict[str, Any]:
     """Converts a msgspec.Struct to OpenAI's response_format format."""
@@ -300,7 +300,7 @@ def response_format_from_msgspec_struct(
     return response_format
 
 
-def hint_to_schema(type_hint) -> dict:
+def hint_to_schema(type_hint) -> dict:  # noqa: C901
     """Converte um type hint para um fragmento JSON Schema."""
     origin = get_origin(type_hint)
 
@@ -361,7 +361,7 @@ def clean_docstring(docstring: str) -> str:
     return cleaned
 
 
-def parse_docstring_args(docstring: str) -> Dict[str, str]:
+def parse_docstring_args(docstring: str) -> Dict[str, str]:  # noqa: C901
     """Extracts parameter descriptions from the Args section of the docstring.
 
     Supports:

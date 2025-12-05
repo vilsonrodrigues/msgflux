@@ -16,7 +16,7 @@ from msgflux.envs import envs
 from msgflux.models.response import ModelStreamResponse
 
 
-def set_tool_attributes(
+def set_tool_attributes(  # noqa: C901
     execution_type: str, protocol: Optional[str] = None
 ) -> Callable:
     """Decorator to set detailed tool telemetry attributes for sync methods.
@@ -93,7 +93,7 @@ def set_tool_attributes(
     return decorator
 
 
-def aset_tool_attributes(
+def aset_tool_attributes(  # noqa: C901
     execution_type: str, protocol: Optional[str] = None
 ) -> Callable:
     """Decorator to set detailed tool telemetry attributes for async methods.

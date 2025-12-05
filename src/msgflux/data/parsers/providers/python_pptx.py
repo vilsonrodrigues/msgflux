@@ -98,7 +98,7 @@ class PythonPptxPptxParser(BaseParser, PptxParser):
 
         return response
 
-    def _parse(self, data: Union[str, bytes]) -> Dict[str, any]:
+    def _parse(self, data: bytes) -> List[Dict[str, Any]]:  # noqa: C901
         """Parse PPTX and extract content.
 
         Args:
