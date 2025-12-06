@@ -1,4 +1,3 @@
-import email
 from email import policy
 from email.parser import BytesParser
 from typing import Dict, List, Optional, Union

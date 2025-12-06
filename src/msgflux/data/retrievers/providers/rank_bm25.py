@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Mapping, Optional, Union
+from typing import Any, Dict, List, Mapping, Optional
 
 try:
     import numpy as np
@@ -8,7 +8,6 @@ except ImportError:
     np = None
 
 from msgflux.data.retrievers.base import BaseLexical, BaseRetriever
-from msgflux.data.retrievers.registry import register_retriever
 from msgflux.data.retrievers.types import LexicalRetriever
 from msgflux.dotdict import dotdict
 from msgflux.nn import functional as F

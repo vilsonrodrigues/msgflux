@@ -2,8 +2,7 @@
 
 from typing import Any, Dict, List, Optional
 
-from msgflux.dsl.typed_parsers.registry import typed_parser_registry
-from msgflux.protocols.mcp.types import MCPContent, MCPTool, MCPToolResult
+from msgflux.protocols.mcp.types import MCPTool, MCPToolResult
 
 
 def convert_mcp_schema_to_tool_schema(

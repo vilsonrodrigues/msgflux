@@ -1,7 +1,7 @@
 """Base authentication provider for MCP."""
 
 from abc import ABC, abstractmethod
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any, Dict, Optional
 
 
