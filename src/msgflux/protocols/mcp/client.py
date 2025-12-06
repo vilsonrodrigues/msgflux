@@ -348,7 +348,7 @@ class MCPClient:
         self,
         name: str,
         arguments: Optional[Dict[str, Any]] = None,
-        progress_callback: Optional[Callable[[float, Optional[str]], None]] = None,
+        _progress_callback: Optional[Callable[[float, Optional[str]], None]] = None,
     ) -> MCPToolResult:
         """Execute a tool.
 

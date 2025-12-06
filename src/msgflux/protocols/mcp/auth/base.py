@@ -1,7 +1,7 @@
 """Base authentication provider for MCP."""
 
 from abc import ABC, abstractmethod
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Dict, Optional
 
 
@@ -45,7 +45,7 @@ class BaseAuth(ABC):
         Args:
             expires_in: Number of seconds until expiration.
         """
-        self._expires_at = datetime.now()  # noqa: DTZ005 + timedelta(seconds=expires_in)
+        self._expires_at = datetime.now() + timedelta(seconds=expires_in)  # noqa: DTZ005
 
     async def refresh_if_needed(self) -> bool:
         """Refresh authentication if expired.

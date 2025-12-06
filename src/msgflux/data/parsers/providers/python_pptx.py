@@ -63,7 +63,7 @@ class PythonPptxPptxParser(BaseParser, PptxParser):
         """Initialize parser state."""
         pass
 
-    def __call__(self, data: Union[str, bytes], **kwargs) -> ParserResponse:
+    def __call__(self, data: Union[str, bytes], **_kwargs) -> ParserResponse:
         """Parse a PPTX document.
 
         Args:
@@ -196,7 +196,7 @@ class PythonPptxPptxParser(BaseParser, PptxParser):
             "metadata": metadata,
         }
 
-    async def acall(self, data: Union[str, bytes], **kwargs) -> ParserResponse:
+    async def acall(self, data: Union[str, bytes], **_kwargs) -> ParserResponse:
         """Async version of __call__. Parse a PPTX document asynchronously.
 
         Args:

@@ -63,7 +63,7 @@ class OpenPyxlXlsxParser(BaseParser, XlsxParser):
         """Initialize parser state."""
         pass
 
-    def __call__(self, data: Union[str, bytes], **kwargs) -> ParserResponse:
+    def __call__(self, data: Union[str, bytes], **_kwargs) -> ParserResponse:
         """Parse an XLSX document.
 
         Args:
@@ -332,7 +332,7 @@ class OpenPyxlXlsxParser(BaseParser, XlsxParser):
 
         return html
 
-    async def acall(self, data: Union[str, bytes], **kwargs) -> ParserResponse:
+    async def acall(self, data: Union[str, bytes], **_kwargs) -> ParserResponse:
         """Async version of __call__. Parse an XLSX document asynchronously.
 
         Args:

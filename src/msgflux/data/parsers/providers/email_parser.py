@@ -59,7 +59,7 @@ class StandardEmailParser(BaseParser, EmailParser):
         """Initialize parser state."""
         pass
 
-    def __call__(self, data: Union[str, bytes], **kwargs) -> ParserResponse:
+    def __call__(self, data: Union[str, bytes], **_kwargs) -> ParserResponse:
         """Parse an email document.
 
         Args:
@@ -231,7 +231,7 @@ class StandardEmailParser(BaseParser, EmailParser):
         }
 
     def _create_markdown_output(
-        self, headers: Dict, plain_body: str, html_body: str
+        self, headers: Dict, plain_body: str, _html_body: str
     ) -> str:
         """Create Markdown formatted output from email content.
 
@@ -263,7 +263,7 @@ class StandardEmailParser(BaseParser, EmailParser):
 
         return "\n".join(lines)
 
-    async def acall(self, data: Union[str, bytes], **kwargs) -> ParserResponse:
+    async def acall(self, data: Union[str, bytes], **_kwargs) -> ParserResponse:
         """Async version of __call__. Parse an email document asynchronously.
 
         Args:

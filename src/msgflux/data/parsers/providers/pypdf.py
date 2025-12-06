@@ -63,7 +63,7 @@ class PyPDFPdfParser(BaseParser, PdfParser):
         """Initialize parser state."""
         pass
 
-    def __call__(self, data: Union[str, bytes], **kwargs) -> ParserResponse:
+    def __call__(self, data: Union[str, bytes], **_kwargs) -> ParserResponse:
         """Parse a PDF document.
 
         Args:
@@ -182,7 +182,7 @@ class PyPDFPdfParser(BaseParser, PdfParser):
             "metadata": metadata,
         }
 
-    async def acall(self, data: Union[str, bytes], **kwargs) -> ParserResponse:
+    async def acall(self, data: Union[str, bytes], **_kwargs) -> ParserResponse:
         """Async version of __call__. Parse a PDF document asynchronously.
 
         Args:

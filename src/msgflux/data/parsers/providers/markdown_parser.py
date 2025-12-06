@@ -62,7 +62,7 @@ class StandardMarkdownParser(BaseParser, MarkdownParser):
         """Initialize parser state."""
         pass
 
-    def __call__(self, data: Union[str, bytes], **kwargs) -> ParserResponse:
+    def __call__(self, data: Union[str, bytes], **_kwargs) -> ParserResponse:
         """Parse a Markdown document.
 
         Args:
@@ -331,7 +331,7 @@ class StandardMarkdownParser(BaseParser, MarkdownParser):
 
         return headings
 
-    async def acall(self, data: Union[str, bytes], **kwargs) -> ParserResponse:
+    async def acall(self, data: Union[str, bytes], **_kwargs) -> ParserResponse:
         """Async version of __call__. Parse a Markdown document asynchronously.
 
         Args:

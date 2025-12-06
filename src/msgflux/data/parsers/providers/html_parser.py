@@ -71,7 +71,7 @@ class BeautifulSoupHtmlParser(BaseParser, HtmlParser):
         """Initialize parser state."""
         pass
 
-    def __call__(self, data: Union[str, bytes], **kwargs) -> ParserResponse:
+    def __call__(self, data: Union[str, bytes], **_kwargs) -> ParserResponse:
         """Parse an HTML document.
 
         Args:
@@ -189,7 +189,7 @@ class BeautifulSoupHtmlParser(BaseParser, HtmlParser):
             "metadata": metadata,
         }
 
-    def _html_to_markdown(self, html_content: str) -> str:  # noqa: C901
+    def _html_to_markdown(self, _html_content: str) -> str:  # noqa: C901
         """Convert BeautifulSoup object to Markdown.
 
         Args:
@@ -264,7 +264,7 @@ class BeautifulSoupHtmlParser(BaseParser, HtmlParser):
 
         return result
 
-    async def acall(self, data: Union[str, bytes], **kwargs) -> ParserResponse:
+    async def acall(self, data: Union[str, bytes], **_kwargs) -> ParserResponse:
         """Async version of __call__. Parse an HTML document asynchronously.
 
         Args:

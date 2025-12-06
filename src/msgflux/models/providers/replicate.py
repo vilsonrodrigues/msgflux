@@ -74,6 +74,8 @@ class ReplicateImageTextToImage(_BaseReplicate, ImageTextToImageModel):
         sampling_run_params = {}
         if moderation:
             sampling_run_params["moderation"] = moderation
+        if go_fast:
+            sampling_run_params["go_fast"] = go_fast
         self.sampling_run_params = sampling_run_params
         self._initialize()
         self._get_api_key()
