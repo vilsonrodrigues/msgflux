@@ -37,7 +37,8 @@ class Predictor(Module):
 
             Field descriptions:
             - task_inputs: Field path for task input (str)
-            - model_preference: Field path for model preference (str, only valid with ModelGateway)
+            - model_preference: Field path for model preference (str, only valid
+              with ModelGateway)
         response_mode:
             What the response should be.
             * `plain_response` (default): Returns the final agent response directly.

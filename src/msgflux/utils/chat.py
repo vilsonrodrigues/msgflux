@@ -132,7 +132,10 @@ class ChatBlock(metaclass=ChatBlockMeta):
 
     @staticmethod
     def audio(data: str, audio_format: str) -> Dict[str, str]:
-        return {"type": "input_audio", "input_audio": {"data": data, "format": audio_format}}
+        return {
+            "type": "input_audio",
+            "input_audio": {"data": data, "format": audio_format},
+        }
 
     @staticmethod
     def file(filename: str, file_data: str) -> Dict[str, str]:

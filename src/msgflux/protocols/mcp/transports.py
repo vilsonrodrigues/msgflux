@@ -195,7 +195,8 @@ class HTTPTransport(BaseTransport):
             ]:
                 session_id = response.headers.get(header_name)
                 if session_id:
-                    # Always update session ID if server provides one (server's ID takes precedence)
+                    # Always update session ID if server provides one
+                    # (server's ID takes precedence)
                     self._session_id = session_id
                     break
 

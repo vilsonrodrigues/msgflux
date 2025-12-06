@@ -124,10 +124,12 @@ class Agent(Module):
 
             Field descriptions:
             - task_inputs: Field path for task input (str, dict, or tuple)
-            - task_multimodal_inputs: Map datatype (image, video, audio, file) to field paths
+            - task_multimodal_inputs: Map datatype (image, video, audio, file)
+              to field paths
             - task_messages: Field path for list of chats in ChatML format
             - context_inputs: Field path for context (str or list of str)
-            - model_preference: Field path for model preference (str, only valid with ModelGateway)
+            - model_preference: Field path for model preference (str, only valid
+              with ModelGateway)
             - vars: Field path for inputs to templates and tools (str)
         config:
             Dictionary with configuration options.
@@ -149,8 +151,10 @@ class Agent(Module):
             - return_model_state: Return dict with model_state and response (bool)
             - tool_choice: Control tool selection ("auto", "required", or function name)
             - stream: Transmit response on-the-fly (bool)
-            - image_block_kwargs: Dict of kwargs to pass to ChatBlock.image (e.g., {"detail": "high"})
-            - video_block_kwargs: Dict of kwargs to pass to ChatBlock.video (e.g., {"format": "mp4"})
+            - image_block_kwargs: Dict of kwargs to pass to ChatBlock.image
+              (e.g., {"detail": "high"})
+            - video_block_kwargs: Dict of kwargs to pass to ChatBlock.video
+              (e.g., {"format": "mp4"})
             - include_date: Include current date in system prompt (bool)
         templates:
             Dictionary mapping template types to Jinja template strings.
@@ -289,7 +293,8 @@ class Agent(Module):
                 - vars: Override template/tool variables
 
         Returns:
-            Agent response (str, Message, or ModelStreamResponse depending on configuration)
+            Agent response (str, Message, or ModelStreamResponse depending on
+            configuration)
         """
         inputs = self._prepare_task(message, **kwargs)
         model_response = self._execute_model(prefilling=self.prefilling, **inputs)
@@ -605,7 +610,8 @@ class Agent(Module):
         vars: Mapping[str, Any],
         model_preference: Optional[str] = None,
     ) -> Tuple[Union[str, Mapping[str, Any], ModelStreamResponse], Mapping[str, Any]]:
-        """ToolCall example: [{'role': 'assistant', 'tool_responses': [{'id': 'call_1YL',
+        """ToolCall example:
+        [{'role': 'assistant', 'tool_responses': [{'id': 'call_1YL',
         'type': 'function', 'function': {'arguments': '{"order_id":"order_12345"}',
         'name': 'get_delivery_date'}}]}, {'role': 'tool', 'tool_call_id': 'call_HA',
         'content': '2024-10-15'}].
@@ -969,7 +975,8 @@ class Agent(Module):
     def _process_task_multimodal_inputs(
         self, message: Union[str, Message, Mapping[str, str]], **kwargs
     ) -> Optional[List[Mapping[str, Any]]]:
-        """Processes multimodal inputs (image, audio, video, file) via kwargs or message.
+        """Processes multimodal inputs (image, audio, video, file) via kwargs or
+        message.
         Returns a list of multimodal content in ChatML format.
         """
         multimodal_paths = None
@@ -1384,7 +1391,8 @@ class Agent(Module):
 
         if not isinstance(message_fields, dict):
             raise TypeError(
-                f"`message_fields` must be a dict or None, given `{type(message_fields)}`"
+                f"`message_fields` must be a dict or None, given "
+                f"`{type(message_fields)}`"
             )
 
         # Validate keys

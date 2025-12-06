@@ -211,7 +211,8 @@ class PyPDFPdfParser(BaseParser, PdfParser):
         if isinstance(data, str):
             data = await self._aload_file(data)
 
-        # Parse the document (parsing itself is synchronous, but we loaded the file async)
+        # Parse the document (parsing itself is synchronous,
+        # but we loaded the file async)
         result = self._parse(data)
 
         # Create response

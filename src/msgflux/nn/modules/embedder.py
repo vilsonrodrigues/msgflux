@@ -46,8 +46,10 @@ class Embedder(Module):
                 }
 
             Field descriptions:
-            - task_inputs: Field path for input data (str, list of str, or other data types)
-            - model_preference: Field path for model preference (str, only valid with ModelGateway)
+            - task_inputs: Field path for input data (str, list of str, or other
+              data types)
+            - model_preference: Field path for model preference (str, only valid
+              with ModelGateway)
         response_mode:
             What the response should be.
             * `plain_response` (default): Returns embeddings directly.
@@ -126,7 +128,8 @@ class Embedder(Module):
                 self._prepare_model_execution, model_preference=model_preference
             )
             distributed_params = list(map(prepare_execution, data_list))
-            # map_gather requires args_list (list of tuples) - use empty tuples since we only have kwargs
+            # map_gather requires args_list (list of tuples) - use empty tuples
+            # since we only have kwargs
             args_list = [()] * len(data_list)
             responses = F.map_gather(
                 self.model, args_list=args_list, kwargs_list=distributed_params
@@ -170,7 +173,8 @@ class Embedder(Module):
                 self._prepare_model_execution, model_preference=model_preference
             )
             distributed_params = list(map(prepare_execution, data_list))
-            # amap_gather requires args_list (list of tuples) - use empty tuples since we only have kwargs
+            # amap_gather requires args_list (list of tuples) - use empty tuples
+            # since we only have kwargs
             args_list = [()] * len(data_list)
             responses = await F.amap_gather(
                 self.model.acall, args_list=args_list, kwargs_list=distributed_params

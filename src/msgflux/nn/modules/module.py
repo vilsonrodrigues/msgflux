@@ -749,7 +749,8 @@ class Module:
 
         if not isinstance(message_fields, dict):
             raise TypeError(
-                f"`message_fields` must be a dict or None, given `{type(message_fields)}`"
+                f"`message_fields` must be a dict or None, given "
+                f"`{type(message_fields)}`"
             )
 
         # Validate keys

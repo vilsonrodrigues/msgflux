@@ -21,7 +21,8 @@ class BaseLexical:
         threshold: Optional[float] = 0.0,
         return_score: Optional[bool] = False,
     ) -> RetrieverResponse:
-        """Retrieve the most relevant documents for one or multiple queries using BM25 ranking.
+        """Retrieve the most relevant documents for one or multiple queries
+        using BM25 ranking.
 
         Args:
             queries:
@@ -35,8 +36,10 @@ class BaseLexical:
 
         Returns:
             RetrieverResponse:
-                A response object containing the search results for each query. Each result
-                includes the document text, and optionally the BM25 score if `return_score`
+                A response object containing the search results for each query.
+                Each result
+                includes the document text, and optionally the BM25 score if
+                `return_score`
                 is True.
 
         Raises:

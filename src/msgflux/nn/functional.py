@@ -632,7 +632,8 @@ async def ascatter_gather(
 
     Args:
         to_send:
-            List of callable objects (e.g. async functions or `Module` instances with acall).
+            List of callable objects (e.g. async functions or `Module` instances
+            with acall).
         args_list:
             Each tuple contains the positional arguments for the corresponding callable
             in `to_send`. If `None`, no positional arguments are passed unless specified
@@ -686,7 +687,8 @@ async def amsg_bcast_gather(
 
     Args:
         to_send:
-            List of callable objects (e.g. async functions or `Module` instances with acall).
+            List of callable objects (e.g. async functions or `Module` instances
+            with acall).
         message:
             Instance of `msgflux.dotdict` to broadcast.
 

@@ -38,7 +38,8 @@ class Transcriber(Module):
 
             Field descriptions:
             - task_multimodal_inputs: Field path for audio input (str or dict)
-            - model_preference: Field path for model preference (str, only valid with ModelGateway)
+            - model_preference: Field path for model preference (str, only valid
+              with ModelGateway)
         response_mode:
             What the response should be.
             * `plain_response` (default): Returns the final agent response directly.
@@ -65,7 +66,8 @@ class Transcriber(Module):
             Configuration options:
             - language: Spoken language acronym (str)
             - stream: Transmit response on-the-fly (bool)
-            - timestamp_granularities: Enable timestamp granularities - "word", "segment", or None
+            - timestamp_granularities: Enable timestamp granularities - "word",
+              "segment", or None
               (requires response_format=verbose_json)
         name:
             Transcriber name in snake case format.

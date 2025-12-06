@@ -594,7 +594,8 @@ class ToolLibrary(Module):
         model_state: Optional[List[Dict[str, Any]]] = None,
         vars: Optional[Mapping[str, Any]] = None,
     ) -> ToolResponses:
-        """Async version of forward. Executes tool calls with logic for `handoff`, `return_direct`.
+        """Async version of forward. Executes tool calls with logic for
+        `handoff`, `return_direct`.
 
         Args:
             tool_callings:

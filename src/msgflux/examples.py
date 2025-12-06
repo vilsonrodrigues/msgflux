@@ -38,7 +38,8 @@ class Example:
         input_transformer: Optional[callable] = None,
         output_transformer: Optional[callable] = None,
     ) -> "Example":
-        """Retorna uma nova instância do Example com inputs/outputs transformados para string.
+        """Retorna uma nova instância do Example com inputs/outputs
+        transformados para string.
 
         Args:
             input_transformer: Função para transformar input dict em string

@@ -107,7 +107,8 @@ class MediaMaker(Module):
                 - Message: Message object with fields mapped via message_fields
             **kwargs: Runtime overrides for message_fields. Can include:
                 - task_inputs: Override field path or direct value
-                - task_multimodal_inputs: Override multimodal inputs (e.g., {"image": "path"})
+                - task_multimodal_inputs: Override multimodal inputs
+                  (e.g., {"image": "path"})
 
         Returns:
             Generated media content (str or Message depending on response_mode).
@@ -163,7 +164,8 @@ class MediaMaker(Module):
         mask: Optional[str] = None,
         model_preference: Optional[str] = None,
     ) -> Dict[str, Any]:
-        # Start with config (contains fps, duration_seconds, aspect_ratio, n, and any other params)
+        # Start with config (contains fps, duration_seconds, aspect_ratio, n,
+        # and any other params)
         model_execution_params = dotdict(self.config) if self.config else dotdict()
 
         # Add required parameters
