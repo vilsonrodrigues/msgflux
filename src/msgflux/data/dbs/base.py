@@ -117,7 +117,7 @@ class BaseVector:
         Raises:
             ValueError: If the query vectors are not in a supported format or are empty.
         """
-        results = self._search(queries, top_k, threshold, return_score)
+        results = self._search(queries, top_k, threshold, return_score=return_score)
         response = DBResponse()
         response.set_response_type("vector_search")
         response.add(results)

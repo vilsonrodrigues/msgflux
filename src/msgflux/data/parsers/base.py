@@ -120,7 +120,7 @@ class BaseParser(BaseClient):
         return base64.b64encode(image_data).decode("utf-8")
 
     def _prepare_images_dict(
-        self, images: Dict[str, bytes], encode_base64: bool = False
+        self, images: Dict[str, bytes], *, encode_base64: bool = False
     ) -> Dict[str, Union[bytes, str]]:
         """Prepare images dictionary for response.
 

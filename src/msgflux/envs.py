@@ -101,6 +101,7 @@ envs = EnvironmentVariables()
 
 
 def configure_msgtrace_env(
+    *,
     enabled: Optional[bool] = True,
     otlp_endpoint: Optional[str] = "http://localhost:8000/api/v1/traces/export",
     exporter: Optional[Literal["console", "otlp"]] = "otlp",

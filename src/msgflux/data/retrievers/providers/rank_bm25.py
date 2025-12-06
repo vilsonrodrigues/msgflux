@@ -73,7 +73,7 @@ class RankBM25LexicalRetriever(BaseLexical, BaseRetriever, LexicalRetriever):
         return results
 
     def _search(
-        self, queries: List[str], top_k: int, threshold: float, return_score: bool
+        self, queries: List[str], top_k: int, threshold: float, *, return_score: bool
     ) -> List[List[Mapping[str, Any]]]:
         if not self.bm25:
             return [[] for _ in queries]

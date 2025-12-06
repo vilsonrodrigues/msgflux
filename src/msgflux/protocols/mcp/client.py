@@ -44,6 +44,7 @@ class MCPClient:
         client_info: Optional[Dict[str, Any]] = None,
         max_retries: int = 3,
         retry_delay: float = 1.0,
+        *,
         auto_reconnect: bool = True,
     ):
         """Initialize MCP client with a transport.
@@ -82,6 +83,7 @@ class MCPClient:
         client_info: Optional[Dict[str, Any]] = None,
         max_retries: int = 3,
         retry_delay: float = 1.0,
+        *,
         auto_reconnect: bool = True,
     ):
         """Create MCP client with stdio transport.
@@ -121,6 +123,7 @@ class MCPClient:
         client_info: Optional[Dict[str, Any]] = None,
         max_retries: int = 3,
         retry_delay: float = 1.0,
+        *,
         auto_reconnect: bool = True,
         pool_limits: Optional[Dict[str, int]] = None,
     ):
@@ -264,7 +267,7 @@ class MCPClient:
 
     # Resource Methods
     @Spans.ainstrument(attributes={"mcp.operation": "list_resources"})
-    async def list_resources(self, use_cache: bool = True) -> List[MCPResource]:
+    async def list_resources(self, *, use_cache: bool = True) -> List[MCPResource]:
         """List available resources."""
         await self._ensure_connected()
 
@@ -315,7 +318,7 @@ class MCPClient:
 
     # Tool Methods
     @Spans.ainstrument(attributes={"mcp.operation": "list_tools"})
-    async def list_tools(self, use_cache: bool = True) -> List[MCPTool]:
+    async def list_tools(self, *, use_cache: bool = True) -> List[MCPTool]:
         """List available tools."""
         await self._ensure_connected()
 
@@ -388,7 +391,7 @@ class MCPClient:
         return MCPToolResult(content=contents, isError=result.get("isError", False))
 
     # Prompt Methods
-    async def list_prompts(self, use_cache: bool = True) -> List[MCPPrompt]:
+    async def list_prompts(self, *, use_cache: bool = True) -> List[MCPPrompt]:
         """List available prompts."""
         if use_cache and self._prompts_cache is not None:
             return self._prompts_cache

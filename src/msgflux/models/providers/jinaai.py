@@ -46,6 +46,7 @@ class JinaAITextReranker(_BaseJinaAI, HTTPXModelClient, TextRerankerModel):
         self,
         model_id: str,
         base_url: Optional[str] = None,
+        *,
         enable_cache: Optional[bool] = False,
         cache_size: Optional[int] = 128,
     ):
@@ -340,6 +341,7 @@ class JinaAITextClassifier(TextClassifierModel, HTTPXModelClient, _BaseJinaAI):
         model_id,
         labels: List[str],
         base_url: Optional[str] = None,
+        *,
         enable_cache: Optional[bool] = False,
         cache_size: Optional[int] = 128,
     ):

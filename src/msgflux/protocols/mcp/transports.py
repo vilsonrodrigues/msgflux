@@ -124,7 +124,7 @@ class HTTPTransport(BaseTransport):
         """Set session ID for subsequent requests."""
         self._session_id = session_id
 
-    async def _get_headers(self, include_session_id: bool = True) -> Dict[str, str]:
+    async def _get_headers(self, *, include_session_id: bool = True) -> Dict[str, str]:
         """Get headers with authentication applied.
 
         Args:

@@ -118,7 +118,7 @@ class ProfileRegistry:
 
         return self._profiles.get(provider_id)
 
-    def ensure_loaded(self, background: bool = True):
+    def ensure_loaded(self, *, background: bool = True):
         """Ensure profiles are loaded.
 
         Args:
@@ -127,7 +127,7 @@ class ProfileRegistry:
         if self._profiles is None:
             self._load_profiles(background=background)
 
-    def _load_profiles(self, background: bool = True):
+    def _load_profiles(self, *, background: bool = True):
         """Load profiles from cache or fetch from API.
 
         Args:
@@ -196,7 +196,7 @@ def get_provider_profile(provider_id: str) -> Optional[ProviderProfile]:
     return _registry.get_provider_profile(provider_id)
 
 
-def ensure_profiles_loaded(background: bool = True):
+def ensure_profiles_loaded(*, background: bool = True):
     """Ensure profiles are loaded (module-level convenience function).
 
     Args:

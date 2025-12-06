@@ -121,6 +121,7 @@ class FAISSVectorDB(BaseVector, BaseDB, VectorDB):
         queries: Union[List[List[float]], "np.ndarray"],
         top_k: Optional[int] = 4,
         threshold: Optional[float] = None,
+        *,
         return_score: Optional[bool] = False,
     ) -> List[List[Dict]]:
         if len(np.array(queries).shape) == 1:

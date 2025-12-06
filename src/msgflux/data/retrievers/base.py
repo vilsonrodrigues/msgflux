@@ -48,7 +48,7 @@ class BaseLexical:
         """
         if isinstance(queries, str):
             queries = [queries]
-        results = self._search(queries, top_k, threshold, return_score)
+        results = self._search(queries, top_k, threshold, return_score=return_score)
         response = RetrieverResponse()
         response.set_response_type("lexical_search")
         response.add(results)
