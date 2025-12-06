@@ -313,7 +313,7 @@ class StructFactory:
             raise ValueError("The type string cannot be empty.")
 
         # map textual base names to typing objects
-        GENERIC_BASES = {
+        generic_bases = {
             "list": List,
             "dict": Dict,
             "tuple": Tuple,
@@ -331,8 +331,8 @@ class StructFactory:
         # simple (non-generic) form
         if "[" not in type_str:
             key = type_str.lower()
-            if key in GENERIC_BASES:
-                return GENERIC_BASES[key]
+            if key in generic_bases:
+                return generic_bases[key]
             # fallback to global type_mapping if it exists
             if key in globals().get("type_mapping", {}):
                 return globals()["type_mapping"][key]
@@ -345,7 +345,7 @@ class StructFactory:
         base_name, inner = m.groups()
         base_key = base_name.strip().lower()
 
-        if base_key not in GENERIC_BASES:
+        if base_key not in generic_bases:
             # try to resolve via type_mapping
             if base_key in globals().get("type_mapping", {}):
                 base = globals()["type_mapping"][base_key]
@@ -354,7 +354,7 @@ class StructFactory:
                     f"Base type not supported: `{base_name}` in `{type_str}`"
                 )
         else:
-            base = GENERIC_BASES[base_key]
+            base = generic_bases[base_key]
 
         # Literal[...] special handling
         if base is Literal:

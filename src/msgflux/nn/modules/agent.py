@@ -1267,10 +1267,10 @@ class Agent(Module):
                 typed_parser_cls = typed_parser_registry.get(self.typed_parser, None)
                 collection = ExampleCollection(examples)
                 if typed_parser_cls is not None:
-                    T = typed_parser_cls.encode
+                    serialize_func = typed_parser_cls.encode
                 else:
-                    T = msgspec_dumps
-                examples = collection.get_formatted(T, T)
+                    serialize_func = msgspec_dumps
+                examples = collection.get_formatted(serialize_func, serialize_func)
             self.examples = Parameter(examples, PromptSpec.EXAMPLES)
         else:
             raise TypeError(
