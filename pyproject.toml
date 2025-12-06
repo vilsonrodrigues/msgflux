@@ -162,13 +162,10 @@ ignore = [
 ]
 unfixable = ["F401"]
 
-[tool.ruff.lint.isort]
-known-first-party = ["msgflux"]
-
-[tool.ruff.lint.flake8-tidy-imports]
-ban-relative-imports = "all"
-
 [tool.ruff.lint.per-file-ignores]
+# Allow vars parameter name in agent and tool modules (core library feature)
+"src/msgflux/nn/modules/agent.py" = ["A001","A002"]
+"src/msgflux/nn/modules/tool.py" = ["A001","A002"]
 "tests/**/*" = [
   "D",
   "PLR0911",
@@ -181,3 +178,8 @@ ban-relative-imports = "all"
   "S107",
   "TID252",
 ]
+[tool.ruff.lint.isort]
+known-first-party = ["msgflux"]
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "all"

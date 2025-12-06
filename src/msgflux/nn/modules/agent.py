@@ -508,8 +508,8 @@ class Agent(Module):
                 reasoning = step.thought
 
                 if self.config.get("verbose", False):
-                    repr = f"[{self.name}][tool_calls_reasoning] {reasoning}"
-                    cprint(repr, bc="br2", ls="b")
+                    repr_str = f"[{self.name}][tool_calls_reasoning] {reasoning}"
+                    cprint(repr_str, bc="br2", ls="b")
 
                 for act in actions:
                     act.id = str(uuid4())  # Add tool_id
@@ -566,8 +566,8 @@ class Agent(Module):
                 reasoning = step.thought
 
                 if self.config.get("verbose", False):
-                    repr = f"[{self.name}][tool_calls_reasoning] {reasoning}"
-                    cprint(repr, bc="br2", ls="b")
+                    repr_str = f"[{self.name}][tool_calls_reasoning] {reasoning}"
+                    cprint(repr_str, bc="br2", ls="b")
 
                 for act in actions:
                     act.id = str(uuid4())  # Add tool_id
@@ -623,8 +623,8 @@ class Agent(Module):
 
                 if self.config.get("verbose", False):
                     if reasoning:
-                        repr = f"[{self.name}][tool_calls_reasoning] {reasoning}"
-                        cprint(repr, bc="br2", ls="b")
+                        repr_str = f"[{self.name}][tool_calls_reasoning] {reasoning}"
+                        cprint(repr_str, bc="br2", ls="b")
 
                 tool_callings = raw_response.get_calls()
                 tool_results = self._process_tool_call(tool_callings, model_state, vars)
@@ -670,8 +670,8 @@ class Agent(Module):
 
                 if self.config.get("verbose", False):
                     if reasoning:
-                        repr = f"[{self.name}][tool_calls_reasoning] {reasoning}"
-                        cprint(repr, bc="br2", ls="b")
+                        repr_str = f"[{self.name}][tool_calls_reasoning] {reasoning}"
+                        cprint(repr_str, bc="br2", ls="b")
 
                 tool_callings = raw_response.get_calls()
                 tool_results = await self._aprocess_tool_call(
@@ -707,22 +707,22 @@ class Agent(Module):
     ) -> ToolResponses:
         if self.config.get("verbose", False):
             for call in tool_callings:
-                repr = f"[{self.name}][tool_call] {call[1]}: {call[2]}"
-                cprint(repr, bc="br2", ls="b")
+                repr_str = f"[{self.name}][tool_call] {call[1]}: {call[2]}"
+                cprint(repr_str, bc="br2", ls="b")
         tool_results = self.tool_library(
             tool_callings=tool_callings,
             model_state=model_state,
             vars=vars,
         )
         if self.config.get("verbose", False):
-            repr = f"[{self.name}][tool_responses]"
+            repr_str = f"[{self.name}][tool_responses]"
             if tool_results.return_directly:
-                repr += " return directly"
-            cprint(repr, bc="br1", ls="b")
+                repr_str += " return directly"
+            cprint(repr_str, bc="br1", ls="b")
             for call in tool_results.tool_calls:
                 result = call.result or call.error or ""
-                repr = f"[{self.name}][tool_response] {call.name}: {result}"
-                cprint(repr, ls="b")
+                repr_str = f"[{self.name}][tool_response] {call.name}: {result}"
+                cprint(repr_str, ls="b")
         return tool_results
 
     async def _aprocess_tool_call(
@@ -734,22 +734,22 @@ class Agent(Module):
         """Async version of _process_tool_call."""
         if self.config.get("verbose", False):
             for call in tool_callings:
-                repr = f"[{self.name}][tool_call] {call[1]}: {call[2]}"
-                cprint(repr, bc="br2", ls="b")
+                repr_str = f"[{self.name}][tool_call] {call[1]}: {call[2]}"
+                cprint(repr_str, bc="br2", ls="b")
         tool_results = await self.tool_library.acall(
             tool_callings=tool_callings,
             model_state=model_state,
             vars=vars,
         )
         if self.config.get("verbose", False):
-            repr = f"[{self.name}][tool_responses]"
+            repr_str = f"[{self.name}][tool_responses]"
             if tool_results.return_directly:
-                repr += " return directly"
-            cprint(repr, bc="br1", ls="b")
+                repr_str += " return directly"
+            cprint(repr_str, bc="br1", ls="b")
             for call in tool_results.tool_calls:
                 result = call.result or call.error or ""
-                repr = f"[{self.name}][tool_response] {call.name}: {result}"
-                cprint(repr, ls="b")
+                repr_str = f"[{self.name}][tool_response] {call.name}: {result}"
+                cprint(repr_str, ls="b")
         return tool_results
 
     def _prepare_response(
