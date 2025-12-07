@@ -41,7 +41,7 @@ class StandardCsvParser(BaseParser, CsvParser):
         encoding: Optional[str] = "utf-8",
         quotechar: Optional[str] = '"',
     ):
-        """Initialize CSV parser.
+        r"""Initialize CSV parser.
 
         Args:
             delimiter:

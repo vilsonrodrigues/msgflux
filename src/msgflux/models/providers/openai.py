@@ -1370,14 +1370,14 @@ class OpenAISpeechToText(_BaseOpenAI, SpeechToTextModel):
             ISO-639-1 (e.g. en) format will improve accuracy and latency.
         """
         file = encode_data_to_bytes(data)
-        params = dict(
-            file=file,
-            language=language,
-            response_format=response_format,
-            timestamp_granularities=timestamp_granularities,
-            prompt=prompt,
-            model=self.model_id,
-        )
+        params = {
+            "file": file,
+            "language": language,
+            "response_format": response_format,
+            "timestamp_granularities": timestamp_granularities,
+            "prompt": prompt,
+            "model": self.model_id,
+        }
         if stream:
             stream_response = ModelStreamResponse()
             params["stream_response"] = stream_response
@@ -1425,14 +1425,14 @@ class OpenAISpeechToText(_BaseOpenAI, SpeechToTextModel):
             ISO-639-1 (e.g. en) format will improve accuracy and latency.
         """
         file = encode_data_to_bytes(data)
-        params = dict(
-            file=file,
-            language=language,
-            response_format=response_format,
-            timestamp_granularities=timestamp_granularities,
-            prompt=prompt,
-            model=self.model_id,
-        )
+        params = {
+            "file": file,
+            "language": language,
+            "response_format": response_format,
+            "timestamp_granularities": timestamp_granularities,
+            "prompt": prompt,
+            "model": self.model_id,
+        }
         if stream:
             stream_response = ModelStreamResponse()
             params["stream_response"] = stream_response
