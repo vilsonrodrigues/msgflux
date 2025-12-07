@@ -52,4 +52,4 @@ def cprint(text: str, *, lc=None, bc=None, ls=None, **kwargs):
     prefix = f"\033[{';'.join(codes)}m" if codes else ""
     suffix = "\033[0m"
 
-    print(f"{prefix}{text}{suffix}", **kwargs)
+    print(f"{prefix}{text}{suffix}", **kwargs)  # noqa: T201
