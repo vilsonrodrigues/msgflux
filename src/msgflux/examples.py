@@ -105,9 +105,9 @@ class ExampleCollection:
         self,
         inputs: Union[str, Mapping[str, Any]],
         labels: Union[str, Mapping[str, Any]],
-        title: str = None,
-        reasoning: str = None,
-        topic: str = None,
+        title: Optional[str] = None,
+        reasoning: Optional[str] = None,
+        topic: Optional[str] = None,
     ):
         """Add an example to the collection."""
         example = Example(
