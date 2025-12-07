@@ -214,12 +214,12 @@ class HTTPTransport(BaseTransport):
             else:
                 # Regular JSON response
                 return response.json()
-        except httpx.TimeoutException:
-            raise MCPTimeoutError(f"Request to {method} timed out")
+        except httpx.TimeoutException as e:
+            raise MCPTimeoutError(f"Request to {method} timed out") from e
         except httpx.HTTPStatusError as e:
-            raise MCPError(f"HTTP error {e.response.status_code}: {e.response.text}")
+            raise MCPError(f"HTTP error {e.response.status_code}: {e.response.text}") from e
         except json.JSONDecodeError as e:
-            raise MCPError(f"Failed to decode JSON response: {e}")
+            raise MCPError(f"Failed to decode JSON response: {e}") from e
 
     async def send_notification(
         self, method: str, params: Optional[Dict[str, Any]] = None
@@ -300,7 +300,7 @@ class StdioTransport(BaseTransport):
             self._read_task = asyncio.create_task(self._read_responses())
 
         except Exception as e:
-            raise MCPConnectionError(f"Failed to start MCP server: {e}")
+            raise MCPConnectionError(f"Failed to start MCP server: {e}") from e
 
     async def disconnect(self):
         """Terminate subprocess and cleanup."""
@@ -396,10 +396,10 @@ class StdioTransport(BaseTransport):
 
         except asyncio.TimeoutError:
             self._pending_requests.pop(request_id, None)
-            raise MCPTimeoutError(f"Request to {method} timed out")
+            raise MCPTimeoutError(f"Request to {method} timed out") from None
         except Exception as e:
             self._pending_requests.pop(request_id, None)
-            raise MCPError(f"Failed to send request: {e}")
+            raise MCPError(f"Failed to send request: {e}") from e
 
     async def send_notification(
         self, method: str, params: Optional[Dict[str, Any]] = None
