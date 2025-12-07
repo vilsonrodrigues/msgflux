@@ -9,7 +9,6 @@ from typing import Dict, Optional
 from msgflux.logger import logger
 from msgflux.models.profiles.base import ModelProfile, ProviderProfile
 from msgflux.models.profiles.loader import ProfileLoader
-from msgflux.nn.functional import background_task
 
 
 class ProfileRegistry:
@@ -146,6 +145,9 @@ class ProfileRegistry:
             # Cache miss/expired - need to fetch
             if background:
                 self._loading = True
+                # Lazy import to avoid circular dependency
+                from msgflux.nn.functional import background_task  # noqa: PLC0415
+
                 background_task(self._fetch_and_cache)
             else:
                 self._fetch_and_cache()

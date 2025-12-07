@@ -10,9 +10,9 @@ from msgflux.nn.modules.tool import LocalTool, MCPTool, Tool, ToolLibrary
 from msgflux.nn.modules.transcriber import Transcriber
 
 __all__ = [
-    "LM",
     "Agent",
     "Embedder",
+    "LM",
     "LocalTool",
     "MCPTool",
     "MediaMaker",
