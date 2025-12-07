@@ -1409,12 +1409,12 @@ class Module:
         current_span = trace.get_current_span()
         # If there is no active span or it is not recording, this is the root module
         if current_span is None or not current_span.is_recording():
-            with Spans.init_flow(
-                module_name_title, module_type, encoded_state_dict
-            ) as span:
+            with Spans.init_flow(module_name_title) as span:
                 try:
                     MsgTraceAttributes.set_module_name(module_name_title)
                     MsgTraceAttributes.set_module_type(module_type)
+                    if envs.telemetry_capture_state_dict and encoded_state_dict:
+                        MsgTraceAttributes.set_custom("module.state_dict", encoded_state_dict)
                     module_output = self.forward(*args, **kwargs)
                     span.set_status(Status(StatusCode.OK))
                     return module_output
@@ -1493,12 +1493,12 @@ class Module:
         current_span = trace.get_current_span()
         # If there is no active span or it is not recording, this is the root module
         if current_span is None or not current_span.is_recording():
-            async with Spans.ainit_flow(
-                module_name_title, module_type, encoded_state_dict
-            ) as span:
+            async with Spans.ainit_flow(module_name_title) as span:
                 try:
                     MsgTraceAttributes.set_module_name(module_name_title)
                     MsgTraceAttributes.set_module_type(module_type)
+                    if envs.telemetry_capture_state_dict and encoded_state_dict:
+                        MsgTraceAttributes.set_custom("module.state_dict", encoded_state_dict)
                     module_output = await self.aforward(*args, **kwargs)
                     span.set_status(Status(StatusCode.OK))
                     return module_output

@@ -100,29 +100,5 @@ class EnvironmentVariables(BaseSettings):
 envs = EnvironmentVariables()
 
 
-def configure_msgtrace_env(
-    *,
-    enabled: Optional[bool] = True,
-    otlp_endpoint: Optional[str] = "http://localhost:8000/api/v1/traces/export",
-    exporter: Optional[Literal["console", "otlp"]] = "otlp",
-    service_name: Optional[str] = "msgflux",
-    capture_platform: Optional[bool] = True,
-):
-    """Configure msgtrace-sdk environment variables.
 
-    This is a convenience function for users to quickly configure
-    msgtrace-sdk. Users can also configure msgtrace-sdk directly
-    using MSGTRACE_* environment variables.
 
-    Args:
-        enabled: Enable telemetry tracking
-        otlp_endpoint: OTLP endpoint URL
-        exporter: Exporter type ("otlp" or "console")
-        service_name: Service name for telemetry
-        capture_platform: Capture platform details (CPU, OS, Python version)
-    """
-    os.environ["MSGTRACE_TELEMETRY_ENABLED"] = "true" if enabled else "false"
-    os.environ["MSGTRACE_OTLP_ENDPOINT"] = otlp_endpoint
-    os.environ["MSGTRACE_EXPORTER"] = exporter
-    os.environ["MSGTRACE_SERVICE_NAME"] = service_name
-    os.environ["MSGTRACE_CAPTURE_PLATFORM"] = "true" if capture_platform else "false"
