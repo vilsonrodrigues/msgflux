@@ -51,7 +51,7 @@ class RankBM25LexicalRetriever(BaseLexical, BaseRetriever, LexicalRetriever):
         self.bm25 = BM25Okapi(self.tokenized_corpus, k1=self.k1, b=self.b)
 
     def _search_single(
-        self, query: str, top_k: int, threshold: float, return_score: bool
+        self, query: str, top_k: int, threshold: float, *, return_score: bool
     ) -> List[Mapping[str, Any]]:
         tokenized_query = self._tokenize(query)
         scores = self.bm25.get_scores(tokenized_query)
@@ -78,8 +78,13 @@ class RankBM25LexicalRetriever(BaseLexical, BaseRetriever, LexicalRetriever):
     ) -> List[List[Mapping[str, Any]]]:
         if not self.bm25:
             return [[] for _ in queries]
-        args_list = [(query, top_k, threshold, return_score) for query in queries]
-        results = list(F.map_gather(self._search_single, args_list=args_list))
+        args_list = [(query, top_k, threshold) for query in queries]
+        kwargs_list = [{"return_score": return_score} for _ in queries]
+        results = list(
+            F.map_gather(
+                self._search_single, args_list=args_list, kwargs_list=kwargs_list
+            )
+        )
         return results
 
     def get_score_statistics(self, query: str) -> Dict[str, float]:
