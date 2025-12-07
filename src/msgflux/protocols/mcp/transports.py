@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import logging
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
@@ -15,6 +16,8 @@ from msgflux.protocols.mcp.exceptions import (
     MCPError,
     MCPTimeoutError,
 )
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from msgflux.protocols.mcp.auth.base import BaseAuth
@@ -353,11 +356,13 @@ class StdioTransport(BaseTransport):
                     # Handle notifications from server (ignore for now)
                     # Could be extended to handle server notifications
 
-                except json.JSONDecodeError:
+                except json.JSONDecodeError as e:
                     # Invalid JSON, skip
+                    logger.debug(f"Invalid JSON response: {e}")
                     continue
-                except Exception:
+                except Exception as e:
                     # Error processing response
+                    logger.debug(f"Error processing response: {e}")
                     continue
 
         except asyncio.CancelledError:
