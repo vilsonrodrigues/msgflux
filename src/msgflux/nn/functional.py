@@ -514,7 +514,7 @@ async def abackground_task(to_send: Callable, *args, **kwargs) -> None:
         except Exception as e:
             logger.error(f"Async background task error: {e!s}", exc_info=True)
 
-    asyncio.create_task(run_task())
+    asyncio.create_task(run_task())  # noqa: RUF006
 
 
 @Spans.ainstrument()

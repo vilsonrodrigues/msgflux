@@ -2,7 +2,6 @@
 
 import asyncio
 import json
-import logging
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
@@ -11,13 +10,13 @@ try:
 except ImportError:
     httpx = None
 
+from msgflux.logger import logger
+
 from msgflux.protocols.mcp.exceptions import (
     MCPConnectionError,
     MCPError,
     MCPTimeoutError,
 )
-
-logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from msgflux.protocols.mcp.auth.base import BaseAuth
