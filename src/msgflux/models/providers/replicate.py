@@ -82,7 +82,7 @@ class ReplicateImageTextToImage(_BaseReplicate, ImageTextToImageModel):
 
     def _generate(self, **kwargs):
         response = ModelResponse()
-        response_format = kwargs.pop("response_format")
+        kwargs.pop("response_format")
         model_output = self._execute_model(**kwargs)
         response.set_response_type("image_generation")
         # base64.b64encode(f.read()).decode("utf-8")
@@ -90,7 +90,7 @@ class ReplicateImageTextToImage(_BaseReplicate, ImageTextToImageModel):
 
     async def _agenerate(self, **kwargs):
         response = ModelResponse()
-        response_format = kwargs.pop("response_format")
+        kwargs.pop("response_format")
         model_output = await self._aexecute_model(**kwargs)
         response.set_response_type("image_generation")
         # base64.b64encode(f.read()).decode("utf-8")

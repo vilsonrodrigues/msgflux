@@ -198,8 +198,6 @@ class MCPClient:
 
     async def _connect_with_retry(self):
         """Connect with exponential backoff retry logic."""
-        last_exception = None
-
         for attempt in range(self.max_retries):
             try:
                 self._connection_attempts = attempt + 1
@@ -362,11 +360,9 @@ class MCPClient:
         """
         await self._ensure_connected()
 
-        start_time = time.time()
         params = {"name": name, "arguments": arguments or {}}
 
         response = await self.transport.send_request("tools/call", params)
-        duration = time.time() - start_time
 
         if "error" in response:
             error_msg = response["error"].get("message", str(response["error"]))

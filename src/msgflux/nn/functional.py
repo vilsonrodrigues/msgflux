@@ -509,7 +509,6 @@ async def abackground_task(to_send: Callable, *args, **kwargs) -> None:
                 await to_send(*args, **kwargs)
             else:
                 # Fall back to running sync function in executor
-                executor = Executor.get_instance()  # TODO
                 loop = asyncio.get_event_loop()
                 await loop.run_in_executor(None, lambda: to_send(*args, **kwargs))
         except Exception as e:
