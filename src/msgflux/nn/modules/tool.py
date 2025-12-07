@@ -293,7 +293,9 @@ class ToolLibrary(Module):
         special_tools: Optional[List[str]] = None,
         mcp_servers: Optional[List[Dict[str, Any]]] = None,
     ):
-        """Args:
+        """Initialize the ToolLibrary.
+
+        Args:
         name:
             Library name.
         tools:

@@ -33,7 +33,9 @@ class Embedder(Module):
         response_mode: Optional[str] = "plain_response",
         config: Optional[Dict[str, Any]] = None,
     ):
-        """Args:
+        """Initialize the Embedder module.
+
+        Args:
         model:
             Embedding model client (supports batch or single).
         message_fields:

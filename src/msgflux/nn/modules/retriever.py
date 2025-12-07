@@ -37,7 +37,9 @@ class Retriever(Module):
         config: Optional[Dict[str, Any]] = None,
         name: Optional[str] = None,
     ):
-        """Args:
+        """Initialize the Retriever module.
+
+        Args:
         retriever:
             Retriever client.
         model:

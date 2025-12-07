@@ -23,7 +23,9 @@ class Predictor(Module):
         config: Optional[Dict[str, Any]] = None,
         name: Optional[str] = None,
     ):
-        """Args:
+        """Initialize the Predictor module.
+
+        Args:
         model:
             Predictor Model client.
         message_fields:

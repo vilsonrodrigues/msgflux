@@ -45,7 +45,9 @@ class MediaMaker(Module):
         config: Optional[Dict[str, Any]] = None,
         name: Optional[str] = None,
     ):
-        """Args:
+        """Initialize the MediaMaker module.
+
+        Args:
         model:
             MediaMaker Model client.
         guardrails:

@@ -23,7 +23,9 @@ class Transcriber(Module):
         config: Optional[Dict[str, Any]] = None,
         name: Optional[str] = None,
     ):
-        """Args:
+        """Initialize the Transcriber module.
+
+        Args:
         model:
             Transcriber Model client.
         message_fields:

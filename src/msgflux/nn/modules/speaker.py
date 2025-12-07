@@ -25,7 +25,9 @@ class Speaker(Module):
         config: Optional[Dict[str, Any]] = None,
         name: Optional[str] = None,
     ):
-        """Args:
+        """Initialize the Speaker module.
+
+        Args:
         model:
             Transcriber Model client.
         guardrails:

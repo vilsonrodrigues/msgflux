@@ -11,7 +11,6 @@ except ImportError:
     httpx = None
 
 from msgflux.logger import logger
-
 from msgflux.protocols.mcp.exceptions import (
     MCPConnectionError,
     MCPError,
