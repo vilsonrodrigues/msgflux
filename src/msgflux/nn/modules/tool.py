@@ -559,13 +559,13 @@ class ToolLibrary(Module):
             if not config.get("return_direct", False):
                 return_directly = False
 
-            tool_params = tool_params or {}
+            final_tool_params = tool_params or {}
             # Add tool_call_id for telemetry
-            tool_params["tool_call_id"] = tool_id
-            prepared_calls.append(partial(tool, **tool_params))
+            final_tool_params["tool_call_id"] = tool_id
+            prepared_calls.append(partial(tool, **final_tool_params))
 
             call_metadata.append(
-                dotdict(id=tool_id, name=tool_name, config=config, params=tool_params)
+                dotdict(id=tool_id, name=tool_name, config=config, params=final_tool_params)
             )
 
         if prepared_calls:
@@ -683,13 +683,13 @@ class ToolLibrary(Module):
             if not config.get("return_direct", False):
                 return_directly = False
 
-            tool_params = tool_params or {}
+            final_tool_params = tool_params or {}
             # Add tool_call_id for telemetry
-            tool_params["tool_call_id"] = tool_id
-            prepared_calls.append(partial(tool.acall, **tool_params))
+            final_tool_params["tool_call_id"] = tool_id
+            prepared_calls.append(partial(tool.acall, **final_tool_params))
 
             call_metadata.append(
-                dotdict(id=tool_id, name=tool_name, config=config, params=tool_params)
+                dotdict(id=tool_id, name=tool_name, config=config, params=final_tool_params)
             )
 
         if prepared_calls:

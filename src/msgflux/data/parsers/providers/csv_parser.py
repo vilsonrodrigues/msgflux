@@ -233,9 +233,12 @@ class StandardCsvParser(BaseParser, CsvParser):
         # Add data rows
         for row in rows:
             # Pad row if necessary
-            if header and len(row) < len(header):
-                row = row + [""] * (len(header) - len(row))
-            row_line = "| " + " | ".join(str(cell) for cell in row) + " |"
+            padded_row = (
+                row + [""] * (len(header) - len(row))
+                if header and len(row) < len(header)
+                else row
+            )
+            row_line = "| " + " | ".join(str(cell) for cell in padded_row) + " |"
             lines.append(row_line)
 
         return "\n".join(lines)
@@ -267,9 +270,12 @@ class StandardCsvParser(BaseParser, CsvParser):
         for row in rows:
             html += "    <tr>\n"
             # Pad row if necessary
-            if header and len(row) < len(header):
-                row = row + [""] * (len(header) - len(row))
-            for cell in row:
+            padded_row = (
+                row + [""] * (len(header) - len(row))
+                if header and len(row) < len(header)
+                else row
+            )
+            for cell in padded_row:
                 html += f"      <td>{cell!s}</td>\n"
             html += "    </tr>\n"
         html += "  </tbody>\n"
