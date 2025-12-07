@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 try:
     from bs4 import BeautifulSoup
@@ -189,7 +189,7 @@ class BeautifulSoupHtmlParser(BaseParser, HtmlParser):
             "metadata": metadata,
         }
 
-    def _html_to_markdown(self, _html_content: str) -> str:  # noqa: C901
+    def _html_to_markdown(self, soup) -> str:  # noqa: C901
         """Convert BeautifulSoup object to Markdown.
 
         Args:

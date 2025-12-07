@@ -22,8 +22,10 @@ import msgspec
 
 try:
     from code2mermaid import code_to_mermaid
+    from mermaid import Mermaid
 except ImportError:
     code_to_mermaid = None
+    Mermaid = None
 from jinja2 import Template
 from msgtrace.sdk import MsgTraceAttributes
 from opentelemetry import trace
@@ -438,7 +440,7 @@ class Module:
         orientation: Optional[str] = "TD",
         *,
         remove_self: Optional[bool] = True,
-    ) -> "Mermaid":
+    ) -> Mermaid:
         """Generates and renders a Mermaid diagram of the `forward` method.
 
         This method extracts the source code of the `forward` method and converts

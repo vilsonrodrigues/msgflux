@@ -201,7 +201,7 @@ class FAISSVectorDB(BaseVector, BaseDB, VectorDB):
             FAISSVectorDB instance
         """
         # Load metadata
-        metadata_path = os.path.join(directory, "metadata.pkl")
+        metadata_path = os.path.join(path, "metadata.pkl")
         with open(metadata_path, "rb") as f:
             metadata = pickle.load(f)  # noqa: S301
 
@@ -211,7 +211,7 @@ class FAISSVectorDB(BaseVector, BaseDB, VectorDB):
         )
 
         # Load FAISS index
-        index_path = os.path.join(directory, "faiss_index.bin")
+        index_path = os.path.join(path, "faiss_index.bin")
         instance.index = faiss.read_index(index_path)
 
         # Restore metadata
