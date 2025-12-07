@@ -83,13 +83,13 @@ class ReplicateImageTextToImage(_BaseReplicate, ImageTextToImageModel):
     def _generate(self, **kwargs):
         response = ModelResponse()
         kwargs.pop("response_format")
-        model_output = self._execute_model(**kwargs)
+        self._execute_model(**kwargs)
         response.set_response_type("image_generation")
 
     async def _agenerate(self, **kwargs):
         response = ModelResponse()
         kwargs.pop("response_format")
-        model_output = await self._aexecute_model(**kwargs)
+        await self._aexecute_model(**kwargs)
         response.set_response_type("image_generation")
 
     @model_retry
