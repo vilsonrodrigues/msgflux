@@ -287,7 +287,7 @@ class StdioTransport(BaseTransport):
             return
 
         try:
-            full_command = [self.command] + self.args
+            full_command = [self.command, *self.args]
 
             self._process = await asyncio.create_subprocess_exec(
                 *full_command,
