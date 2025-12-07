@@ -156,6 +156,7 @@ ignore = [
   "N817",    # Allow CamelCase imports that are aliased as acronyms.
   "TID252",  # Allow relative imports
   "RUF012",  # Allow mutable class attributes should not be annotated
+  "RUF022",  # Allow __all__ sorting different from isort (we use runtime check)
   "UP006",   # Allow List instead list to type hyint  
   "UP007",   # Allow `from typing import Optional` instead of `X | None`  
   "UP035",   # Allow `from typing import Sequence` instead of `Sequence[X]`
