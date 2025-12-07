@@ -565,7 +565,12 @@ class ToolLibrary(Module):
             prepared_calls.append(partial(tool, **final_tool_params))
 
             call_metadata.append(
-                dotdict(id=tool_id, name=tool_name, config=config, params=final_tool_params)
+                dotdict(
+                    id=tool_id,
+                    name=tool_name,
+                    config=config,
+                    params=final_tool_params,
+                )
             )
 
         if prepared_calls:
@@ -689,7 +694,12 @@ class ToolLibrary(Module):
             prepared_calls.append(partial(tool.acall, **final_tool_params))
 
             call_metadata.append(
-                dotdict(id=tool_id, name=tool_name, config=config, params=final_tool_params)
+                dotdict(
+                    id=tool_id,
+                    name=tool_name,
+                    config=config,
+                    params=final_tool_params,
+                )
             )
 
         if prepared_calls:

@@ -217,7 +217,9 @@ class HTTPTransport(BaseTransport):
         except httpx.TimeoutException as e:
             raise MCPTimeoutError(f"Request to {method} timed out") from e
         except httpx.HTTPStatusError as e:
-            raise MCPError(f"HTTP error {e.response.status_code}: {e.response.text}") from e
+            status_code = e.response.status_code
+            error_text = e.response.text
+            raise MCPError(f"HTTP error {status_code}: {error_text}") from e
         except json.JSONDecodeError as e:
             raise MCPError(f"Failed to decode JSON response: {e}") from e
 
