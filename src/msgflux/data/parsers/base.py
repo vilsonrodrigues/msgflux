@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import pathlib
 from io import BytesIO
@@ -7,8 +8,6 @@ try:
     import httpx
 except ImportError:
     httpx = None
-
-import asyncio
 
 from msgflux._private.client import BaseClient
 
