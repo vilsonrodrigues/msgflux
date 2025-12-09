@@ -38,7 +38,6 @@ Docstring as Parameter:
     ...
     >>> class MyAgent(Agent):
     ...     '''An agent that helps with coding tasks'''
-    ...     name = "coding_helper"
     ...
     >>> agent = MyAgent()
     >>> print(agent.description)  # "An agent that helps with coding tasks"
@@ -46,11 +45,32 @@ Docstring as Parameter:
     >>> # Explicit attribute takes precedence over docstring
     >>> class MyAgent2(Agent):
     ...     '''This is ignored'''
-    ...     name = "helper2"
     ...     description = "Explicit description"
     ...
     >>> agent2 = MyAgent2()
     >>> print(agent2.description)  # "Explicit description"
+
+Class Name as Parameter:
+    Classes can configure AutoParams to use the class name as a parameter value
+    by setting the _autoparams_use_classname_for class attribute.
+
+    >>> class Agent(metaclass=AutoParams):
+    ...     _autoparams_use_classname_for = "name"
+    ...     def __init__(self, name):
+    ...         self.name = name
+    ...
+    >>> class SuperAgent(Agent):
+    ...     pass
+    ...
+    >>> agent = SuperAgent()
+    >>> print(agent.name)  # "SuperAgent"
+    >>>
+    >>> # Explicit attribute takes precedence over class name
+    >>> class CustomAgent(Agent):
+    ...     name = "my_custom_agent"
+    ...
+    >>> agent2 = CustomAgent()
+    >>> print(agent2.name)  # "my_custom_agent"
 """
 
 from typing import Any, Dict
@@ -81,12 +101,16 @@ class AutoParams(type):
         # Collect auto params from base classes
         inherited_params = {}
         docstring_param_name = None
+        classname_param_name = None
         for base in bases:
             if hasattr(base, "_auto_params"):
                 inherited_params.update(base._auto_params)
             # Check if base class wants to use docstring as a parameter
             if hasattr(base, "_autoparams_use_docstring_for"):
                 docstring_param_name = base._autoparams_use_docstring_for
+            # Check if base class wants to use class name as a parameter
+            if hasattr(base, "_autoparams_use_classname_for"):
+                classname_param_name = base._autoparams_use_classname_for
 
         # Capture all non-callable and non-special attributes from this class
         class_params = {
@@ -96,6 +120,11 @@ class AutoParams(type):
             and not callable(v)
             and not isinstance(v, (classmethod, staticmethod))
         }
+
+        # Handle class name as parameter if configured
+        if classname_param_name and classname_param_name not in class_params:
+            # Use the class name being created
+            class_params[classname_param_name] = name
 
         # Handle docstring as parameter if configured
         if docstring_param_name and "__doc__" in namespace and namespace["__doc__"]:

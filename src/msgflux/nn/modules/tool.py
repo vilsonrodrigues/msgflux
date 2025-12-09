@@ -23,7 +23,6 @@ from msgflux.telemetry.span import (
     set_tool_attributes,
 )
 from msgflux.utils.chat import generate_tool_json_schema
-from msgflux.utils.convert import convert_camel_to_snake_case
 from msgflux.utils.inspect import fn_has_parameters
 from msgflux.utils.tenacity import tool_retry
 
@@ -230,12 +229,11 @@ def _convert_module_to_nn_tool(impl: Callable) -> Tool:  # noqa: C901
                 )
             annotations = {}
 
-        raw_name = (
+        name = (
             name_overridden
             or getattr(impl, "name", None)
             or getattr(impl, "__name__", None)
         )
-        name = convert_camel_to_snake_case(raw_name)
 
         if inspect.isclass(impl):
             impl = impl()  # Initialized

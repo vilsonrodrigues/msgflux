@@ -54,6 +54,8 @@ class Agent(Module, metaclass=AutoParams):
 
     # Configure AutoParams to use docstring as 'description' parameter
     _autoparams_use_docstring_for = "description"
+    # Configure AutoParams to use class name as 'name' parameter
+    _autoparams_use_classname_for = "name"
 
     _supported_outputs: List[str] = [
         "reasoning_structured",

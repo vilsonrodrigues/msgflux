@@ -218,11 +218,9 @@ def test_autoparams_agent_docstring_as_description():
 
     class MyAgent(Agent):
         """My custom agent that helps with coding"""
-        name = "coding_helper"
 
     class MyAgentWithExplicit(Agent):
         """This docstring is ignored"""
-        name = "explicit_helper"
         description = "Explicit description"
 
     # Create mock model
@@ -236,3 +234,69 @@ def test_autoparams_agent_docstring_as_description():
     # Test with explicit description (takes precedence)
     agent2 = MyAgentWithExplicit(model=mock_model)
     assert agent2.description == "Explicit description"
+
+
+def test_autoparams_classname_as_parameter():
+    """Test that class name can be used as a parameter value."""
+
+    class BaseClass(metaclass=AutoParams):
+        _autoparams_use_classname_for = "name"
+
+        def __init__(self, name):
+            self.name = name
+
+    class SuperAgent(BaseClass):
+        pass
+
+    class CustomAgent(BaseClass):
+        name = "my_custom_name"
+
+    # Test with class name
+    obj1 = SuperAgent()
+    assert obj1.name == "SuperAgent"
+
+    # Test with explicit name (takes precedence)
+    obj2 = CustomAgent()
+    assert obj2.name == "my_custom_name"
+
+
+def test_autoparams_agent_classname_as_name():
+    """Test that Agent uses class name as name when not provided."""
+
+    class SuperAgent(Agent):
+        """A super agent"""
+
+    class CustomAgent(Agent):
+        """A custom agent"""
+        name = "explicit_name"
+
+    # Create mock model
+    mock_model = Mock()
+    mock_model.model_type = "chat_completion"
+
+    # Test with class name
+    agent1 = SuperAgent(model=mock_model)
+    assert agent1.name == "SuperAgent"
+    assert agent1.description == "A super agent"
+
+    # Test with explicit name (takes precedence)
+    agent2 = CustomAgent(model=mock_model)
+    assert agent2.name == "explicit_name"
+    assert agent2.description == "A custom agent"
+
+
+def test_autoparams_agent_both_features():
+    """Test Agent with both classname and docstring features."""
+
+    class MyAwesomeAgent(Agent):
+        """This agent is awesome at solving problems"""
+
+    # Create mock model
+    mock_model = Mock()
+    mock_model.model_type = "chat_completion"
+
+    agent = MyAwesomeAgent(model=mock_model)
+
+    # Both features should work together
+    assert agent.name == "MyAwesomeAgent"  # From class name
+    assert agent.description == "This agent is awesome at solving problems"  # From docstring
