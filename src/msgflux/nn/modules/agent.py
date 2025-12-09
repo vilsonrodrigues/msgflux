@@ -165,18 +165,22 @@ class Agent(Module, metaclass=AutoParams):
               (bool). Format: "Weekday, Month DD, YYYY" (e.g., "Monday, December 09, 2025")
         templates:
             Dictionary mapping template types to Jinja template strings.
-            Valid keys: "task", "response", "context"
+            Valid keys: "task", "response", "context", "system_prompt"
             !!! example
                 templates={
                     "task": "Who was {{person}}?",
                     "response": "{{final_answer}}",
-                    "context": "Context: {{context}}"
+                    "context": "Context: {{context}}",
+                    "system_prompt": "Custom system prompt: {% if system_message %}{{ system_message }}{% endif %}"
                 }
 
             Template descriptions:
             - task: Formats the task/prompt sent to the model
             - response: Formats the model's response
             - context: Formats context_inputs (does NOT apply to context_cache)
+            - system_prompt: Overrides the default system prompt template. If not provided,
+              uses SYSTEM_PROMPT_TEMPLATE. Available variables: system_message, instructions,
+              expected_output, examples, system_extra_message, current_date (if include_date=True)
         context_cache:
             A fixed context.
         prefilling:
@@ -1537,8 +1541,17 @@ class Agent(Module, metaclass=AutoParams):
             # Format: "Monday, December 09, 2025"
             template_inputs.current_date = now.strftime("%A, %B %d, %Y")
 
-        system_prompt = self._format_template(template_inputs, SYSTEM_PROMPT_TEMPLATE)
+        system_prompt = self._format_template(template_inputs, self.system_prompt_template)
 
         if vars:  # Runtime inputs to system template
             system_prompt = self._format_template(vars, system_prompt)
         return system_prompt
+
+    @property
+    def system_prompt_template(self) -> str:
+        """Get the system prompt template.
+
+        Returns the custom template if provided in templates dict,
+        otherwise returns the default SYSTEM_PROMPT_TEMPLATE.
+        """
+        return self.templates.get("system_prompt", SYSTEM_PROMPT_TEMPLATE)
