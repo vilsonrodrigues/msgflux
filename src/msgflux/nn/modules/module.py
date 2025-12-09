@@ -43,7 +43,7 @@ from msgflux.models.response import ModelResponse, ModelStreamResponse
 from msgflux.nn.parameter import Parameter
 from msgflux.telemetry import Spans
 from msgflux.utils.convert import convert_camel_snake_to_title
-from msgflux.utils.encode import encode_data_to_base64
+from msgflux.utils.encode import aencode_data_to_base64, encode_data_to_base64
 from msgflux.utils.hooks import RemovableHandle
 from msgflux.utils.mermaid import plot_mermaid
 from msgflux.utils.msgspec import StructFactory
@@ -531,6 +531,38 @@ class Module:
         # Need to encode (either local or force_encode=True for URL)
         try:
             return encode_data_to_base64(source)
+        except Exception as e:
+            logger.error(f"Failed to encode source {source}: {e}")
+            return None
+
+    async def _aprepare_data_uri(
+        self,
+        source: str,
+        force_encode: Optional[bool] = False,  # noqa: FBT001, FBT002
+    ) -> Optional[str]:
+        """Async version of _prepare_data_uri.
+        Prepares a data string (URL or Data URI base64).
+        If force_encode=True, always tries to download and encode URL.
+        Otherwise, keeps the URL if it is HTTP and not base64.
+        Returns None in case of encoding/download error.
+        """
+        if not source:
+            return None
+
+        if is_base64(source):
+            # If it is already base64, assume it is ready (no prefix)
+            # Prefix will be added by formatter if needed
+            return source
+
+        is_url = source.startswith("http")
+
+        if is_url and not force_encode:
+            # Keep the URL as is if you don't force the encoding
+            return source
+
+        # Need to encode (either local or force_encode=True for URL)
+        try:
+            return await aencode_data_to_base64(source)
         except Exception as e:
             logger.error(f"Failed to encode source {source}: {e}")
             return None

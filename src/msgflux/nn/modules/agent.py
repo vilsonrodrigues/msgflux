@@ -316,7 +316,7 @@ class Agent(Module, metaclass=AutoParams):
         self, message: Optional[Union[str, Mapping[str, Any], Message]] = None, **kwargs
     ) -> Union[str, Mapping[str, None], ModelStreamResponse, Message]:
         """Async version of forward."""
-        inputs = self._prepare_task(message, **kwargs)
+        inputs = await self._aprepare_task(message, **kwargs)
         model_response = await self._aexecute_model(
             prefilling=self.prefilling, **inputs
         )
@@ -885,6 +885,49 @@ class Agent(Module, metaclass=AutoParams):
             "vars": vars,
         }
 
+    async def _aprepare_task(
+        self, message: Union[str, Message, Mapping[str, str]], **kwargs
+    ) -> Mapping[str, Any]:
+        """Async version of _prepare_task.
+        Prepare model input in ChatML format and execution params.
+        """
+        vars = kwargs.pop("vars", {})
+        if not vars and isinstance(message, Message) and self.vars is not None:
+            vars = message.get(self.vars, {})
+
+        task_messages = kwargs.pop("task_messages", None)
+        if (
+            task_messages is None
+            and isinstance(message, Message)
+            and self.vars is not None
+        ):
+            task_messages = self._get_content_from_message(self.task_messages, message)
+
+        content = await self._aprocess_task_inputs(message, vars=vars, **kwargs)
+
+        if content is None and task_messages is None:
+            raise ValueError("No data was detected to make the model input")
+
+        if content is not None:
+            chat_content = [ChatBlock.user(content)]
+            if task_messages is None:
+                model_state = chat_content
+            else:
+                task_messages.extend(chat_content)
+                model_state = task_messages
+        else:
+            model_state = task_messages
+
+        model_preference = kwargs.pop("model_preference", None)
+        if model_preference is None and isinstance(message, Message):
+            model_preference = self.get_model_preference_from_message(message)
+
+        return {
+            "model_state": model_state,
+            "model_preference": model_preference,
+            "vars": vars,
+        }
+
     def _process_task_inputs(  # noqa: C901
         self,
         message: Union[str, Message, Mapping[str, str]],
@@ -930,6 +973,59 @@ class Agent(Module, metaclass=AutoParams):
         content = content.strip()  # Remove whitespace
 
         multimodal_content = self._process_task_multimodal_inputs(message, **kwargs)
+        if multimodal_content:
+            multimodal_content.append(ChatBlock.text(content))
+            return multimodal_content
+        return content
+
+    async def _aprocess_task_inputs(  # noqa: C901
+        self,
+        message: Union[str, Message, Mapping[str, str]],
+        vars: Mapping[str, Any],
+        **kwargs,
+    ) -> Optional[Union[str, Mapping[str, Any]]]:
+        """Async version of _process_task_inputs."""
+        content = ""
+
+        context_content = self._context_manager(message, vars=vars, **kwargs)
+        if context_content:
+            content += context_content
+
+        if isinstance(message, Message):
+            task_inputs = self._extract_message_values(self.task_inputs, message)
+        else:
+            task_inputs = message
+
+        if task_inputs is None and self.templates.get("task") is None:
+            return None
+
+        if self.templates.get("task"):
+            if task_inputs:
+                if isinstance(task_inputs, str):
+                    pre_task = self._format_task_template(vars)
+                    task_content = self._format_template(task_inputs, pre_task)
+                elif isinstance(task_inputs, dict):
+                    task_inputs.update(vars)
+                    task_content = self._format_task_template(task_inputs)
+            # It's possible to use `task_template` as the default task message
+            # if no `task_inputs` is selected. This can be useful for multimodal
+            # models that require a text message to be sent along with the data
+            elif vars:
+                task_content = self._format_task_template(vars)
+            else:
+                task_content = self.templates.get("task")
+        else:
+            task_content = task_inputs
+            if isinstance(task_content, Mapping):  # dict -> str
+                task_content = "\n".join(f"{k}: {v}" for k, v in task_content.items())
+
+        task_content = apply_xml_tags("task", task_content)
+        content += task_content
+        content = content.strip()  # Remove whitespace
+
+        multimodal_content = await self._aprocess_task_multimodal_inputs(
+            message, **kwargs
+        )
         if multimodal_content:
             multimodal_content.append(ChatBlock.text(content))
             return multimodal_content
@@ -1023,6 +1119,46 @@ class Agent(Module, metaclass=AutoParams):
 
         return content
 
+    async def _aprocess_task_multimodal_inputs(
+        self, message: Union[str, Message, Mapping[str, str]], **kwargs
+    ) -> Optional[List[Mapping[str, Any]]]:
+        """Async version of _process_task_multimodal_inputs.
+        Processes multimodal inputs (image, audio, video, file) via kwargs or message.
+        Returns a list of multimodal content in ChatML format.
+        """
+        multimodal_paths = None
+        task_multimodal_inputs = kwargs.get("task_multimodal_inputs", None)
+        if task_multimodal_inputs is not None:
+            multimodal_paths = task_multimodal_inputs
+        elif isinstance(message, Message) and self.task_multimodal_inputs is not None:
+            multimodal_paths = self._extract_message_values(
+                self.task_multimodal_inputs, message
+            )
+
+        if multimodal_paths is None:
+            return None
+
+        content = []
+
+        formatters = {
+            "image": self._aformat_image_input,
+            "audio": self._aformat_audio_input,
+            "video": self._aformat_video_input,
+            "file": self._aformat_file_input,
+        }
+
+        for media_type, formatter in formatters.items():
+            media_sources = multimodal_paths.get(media_type, [])
+            if not isinstance(media_sources, list):
+                media_sources = [media_sources]
+            for media_source in media_sources:
+                if media_source is not None:
+                    formatted_input = await formatter(media_source)
+                    if formatted_input:
+                        content.append(formatted_input)
+
+        return content
+
     def _format_image_input(self, image_source: str) -> Optional[Mapping[str, Any]]:
         """Formats the image input for the model."""
         encoded_image = self._prepare_data_uri(image_source, force_encode=False)
@@ -1092,6 +1228,97 @@ class Agent(Module, metaclass=AutoParams):
     def _format_file_input(self, file_source: str) -> Optional[Mapping[str, Any]]:
         """Formats the file input for the model."""
         base64_file = self._prepare_data_uri(file_source, force_encode=True)
+
+        if not base64_file:
+            return None
+
+        filename = get_filename(file_source)
+        mime_type = get_mime_type(file_source)
+
+        if mime_type == "application/octet-stream" and filename.lower().endswith(
+            ".pdf"
+        ):
+            mime_type = "application/pdf"
+
+        file_data_uri = f"data:{mime_type};base64,{base64_file}"
+
+        return ChatBlock.file(filename, file_data_uri)
+
+    async def _aformat_image_input(
+        self, image_source: str
+    ) -> Optional[Mapping[str, Any]]:
+        """Async version of _format_image_input."""
+        encoded_image = await self._aprepare_data_uri(image_source, force_encode=False)
+
+        if not encoded_image:
+            return None
+
+        if not encoded_image.startswith("http"):
+            # Try to guess from the original source
+            mime_type = get_mime_type(image_source)
+            if not mime_type.startswith("image/"):
+                mime_type = "image/jpeg"  # Fallback
+            encoded_image = f"data:{mime_type};base64,{encoded_image}"
+
+        return ChatBlock.image(
+            encoded_image, **self.config.get("image_block_kwargs", {})
+        )
+
+    async def _aformat_video_input(
+        self, video_source: str
+    ) -> Optional[Mapping[str, Any]]:
+        """Async version of _format_video_input."""
+        # Check if it's a URL
+        if video_source.startswith("http://") or video_source.startswith("https://"):
+            return ChatBlock.video(
+                video_source, **self.config.get("video_block_kwargs", {})
+            )
+
+        # Otherwise, encode as base64
+        encoded_video = await self._aprepare_data_uri(video_source, force_encode=True)
+
+        if not encoded_video:
+            return None
+
+        # Get MIME type or use mp4 as fallback
+        mime_type = get_mime_type(video_source)
+        if not mime_type.startswith("video/"):
+            mime_type = "video/mp4"  # Fallback
+
+        video_data_uri = f"data:{mime_type};base64,{encoded_video}"
+
+        return ChatBlock.video(
+            video_data_uri, **self.config.get("video_block_kwargs", {})
+        )
+
+    async def _aformat_audio_input(
+        self, audio_source: str
+    ) -> Optional[Mapping[str, Any]]:
+        """Async version of _format_audio_input."""
+        base64_audio = await self._aprepare_data_uri(audio_source, force_encode=True)
+
+        if not base64_audio:
+            return None
+
+        audio_format_suffix = Path(audio_source).suffix.lstrip(".")
+        mime_type = get_mime_type(audio_source)
+        if not mime_type.startswith("audio/"):
+            # If MIME type is not audio, use suffix or fallback
+            audio_format_for_uri = (
+                audio_format_suffix if audio_format_suffix else "mpeg"
+            )  # fallback
+            mime_type = f"audio/{audio_format_for_uri}"
+
+        # Use suffix like 'format' if available, otherwise extract from mime type
+        audio_format = (
+            audio_format_suffix if audio_format_suffix else mime_type.split("/")[-1]
+        )
+
+        return ChatBlock.audio(base64_audio, audio_format)
+
+    async def _aformat_file_input(self, file_source: str) -> Optional[Mapping[str, Any]]:
+        """Async version of _format_file_input."""
+        base64_file = await self._aprepare_data_uri(file_source, force_encode=True)
 
         if not base64_file:
             return None
