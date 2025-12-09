@@ -1487,9 +1487,17 @@ class Agent(Module):
                 if is_optional_field(generation_schema, "final_answer"):
                     signature_as_type = Optional[signature_output_struct]  # type: ignore
 
-                class Output(generation_schema):
-                    final_answer: signature_as_type  # type: ignore
+                # Merge parent annotations with new final_answer annotation
+                merged_annotations = {
+                    **generation_schema.__annotations__,
+                    'final_answer': signature_as_type
+                }
 
+                Output = type(
+                    "Output",
+                    (generation_schema,),
+                    {"__annotations__": merged_annotations}
+                )
                 fused_output_struct = Output
             self._set_generation_schema(fused_output_struct or signature_output_struct)
 

@@ -77,9 +77,6 @@ _build/
 /docs/
 /examples/
 
-# Tests (work in progress)
-/tests/
-
 # MCP documentation (to be moved to /docs later)
 src/msgflux/protocols/mcp/*.md
 
