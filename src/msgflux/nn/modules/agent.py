@@ -161,7 +161,8 @@ class Agent(Module, metaclass=AutoParams):
               (e.g., {"detail": "high"})
             - video_block_kwargs: Dict of kwargs to pass to ChatBlock.video
               (e.g., {"format": "mp4"})
-            - include_date: Include current date in system prompt (bool)
+            - include_date: Include current date with weekday in system prompt
+              (bool). Format: "Weekday, Month DD, YYYY" (e.g., "Monday, December 09, 2025")
         templates:
             Dictionary mapping template types to Jinja template strings.
             Valid keys: "task", "response", "context"
@@ -1533,7 +1534,8 @@ class Agent(Module, metaclass=AutoParams):
 
         if self.config.get("include_date", False):
             now = datetime.now(tz=timezone.utc)
-            template_inputs.current_date = now.strftime("%m/%d/%Y")
+            # Format: "Monday, December 09, 2025"
+            template_inputs.current_date = now.strftime("%A, %B %d, %Y")
 
         system_prompt = self._format_template(template_inputs, SYSTEM_PROMPT_TEMPLATE)
 
