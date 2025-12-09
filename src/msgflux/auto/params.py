@@ -3,7 +3,7 @@
 This module provides a metaclass that automatically captures class attributes
 and uses them as default parameter values for __init__ methods.
 
-Example:
+Basic Example:
     >>> from msgflux.auto import AutoParams
     >>>
     >>> class Model(metaclass=AutoParams):
@@ -25,6 +25,32 @@ Example:
     >>> m2 = MyModel(learning_rate=0.01, batch_size=64)
     >>> print(m2.learning_rate)  # 0.01
     >>> print(m2.epochs)  # 100 (still uses default)
+
+Docstring as Parameter:
+    Classes can configure AutoParams to use their docstring as a parameter value
+    by setting the _autoparams_use_docstring_for class attribute.
+
+    >>> class Agent(metaclass=AutoParams):
+    ...     _autoparams_use_docstring_for = "description"
+    ...     def __init__(self, name, description=None):
+    ...         self.name = name
+    ...         self.description = description
+    ...
+    >>> class MyAgent(Agent):
+    ...     '''An agent that helps with coding tasks'''
+    ...     name = "coding_helper"
+    ...
+    >>> agent = MyAgent()
+    >>> print(agent.description)  # "An agent that helps with coding tasks"
+    >>>
+    >>> # Explicit attribute takes precedence over docstring
+    >>> class MyAgent2(Agent):
+    ...     '''This is ignored'''
+    ...     name = "helper2"
+    ...     description = "Explicit description"
+    ...
+    >>> agent2 = MyAgent2()
+    >>> print(agent2.description)  # "Explicit description"
 """
 
 from typing import Any, Dict
@@ -54,9 +80,13 @@ class AutoParams(type):
         """
         # Collect auto params from base classes
         inherited_params = {}
+        docstring_param_name = None
         for base in bases:
             if hasattr(base, "_auto_params"):
                 inherited_params.update(base._auto_params)
+            # Check if base class wants to use docstring as a parameter
+            if hasattr(base, "_autoparams_use_docstring_for"):
+                docstring_param_name = base._autoparams_use_docstring_for
 
         # Capture all non-callable and non-special attributes from this class
         class_params = {
@@ -66,6 +96,12 @@ class AutoParams(type):
             and not callable(v)
             and not isinstance(v, (classmethod, staticmethod))
         }
+
+        # Handle docstring as parameter if configured
+        if docstring_param_name and "__doc__" in namespace and namespace["__doc__"]:
+            # Only use docstring if the parameter isn't already defined
+            if docstring_param_name not in class_params:
+                class_params[docstring_param_name] = namespace["__doc__"]
 
         # Merge inherited params with class params (class params take precedence)
         all_params = {**inherited_params, **class_params}

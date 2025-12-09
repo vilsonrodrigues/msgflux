@@ -179,3 +179,60 @@ def test_autoparams_class_attribute_access():
 
     # Instances should also have access to _auto_params via the class
     assert m._auto_params == Model._auto_params
+
+
+def test_autoparams_docstring_as_parameter():
+    """Test that docstring can be used as a parameter value."""
+
+    class BaseClass(metaclass=AutoParams):
+        _autoparams_use_docstring_for = "description"
+
+        def __init__(self, description=None):
+            self.description = description
+
+    class WithDocstring(BaseClass):
+        """This is my description from docstring"""
+
+    class WithExplicitDescription(BaseClass):
+        """This docstring is ignored"""
+        description = "Explicit description wins"
+
+    class WithoutDocstring(BaseClass):
+        pass
+
+    # Test with docstring
+    obj1 = WithDocstring()
+    assert obj1.description == "This is my description from docstring"
+
+    # Test with explicit description (takes precedence over docstring)
+    obj2 = WithExplicitDescription()
+    assert obj2.description == "Explicit description wins"
+
+    # Test without docstring
+    obj3 = WithoutDocstring()
+    assert obj3.description is None
+
+
+def test_autoparams_agent_docstring_as_description():
+    """Test that Agent uses docstring as description."""
+
+    class MyAgent(Agent):
+        """My custom agent that helps with coding"""
+        name = "coding_helper"
+
+    class MyAgentWithExplicit(Agent):
+        """This docstring is ignored"""
+        name = "explicit_helper"
+        description = "Explicit description"
+
+    # Create mock model
+    mock_model = Mock()
+    mock_model.model_type = "chat_completion"
+
+    # Test with docstring
+    agent1 = MyAgent(model=mock_model)
+    assert agent1.description == "My custom agent that helps with coding"
+
+    # Test with explicit description (takes precedence)
+    agent2 = MyAgentWithExplicit(model=mock_model)
+    assert agent2.description == "Explicit description"

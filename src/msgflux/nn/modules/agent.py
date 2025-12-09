@@ -52,6 +52,9 @@ class Agent(Module, metaclass=AutoParams):
     An Agent can handle multimodal inputs and outputs.
     """
 
+    # Configure AutoParams to use docstring as 'description' parameter
+    _autoparams_use_docstring_for = "description"
+
     _supported_outputs: List[str] = [
         "reasoning_structured",
         "reasoning_text_generation",
