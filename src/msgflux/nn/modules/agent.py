@@ -1537,8 +1537,17 @@ class Agent(Module, metaclass=AutoParams):
             # Format: "Monday, December 09, 2025"
             template_inputs.current_date = now.strftime("%A, %B %d, %Y")
 
-        system_prompt = self._format_template(template_inputs, SYSTEM_PROMPT_TEMPLATE)
+        system_prompt = self._format_template(template_inputs, self.system_prompt_template)
 
         if vars:  # Runtime inputs to system template
             system_prompt = self._format_template(vars, system_prompt)
         return system_prompt
+
+    @property
+    def system_prompt_template(self) -> str:
+        """Get the system prompt template.
+
+        Returns the custom template if provided in templates dict,
+        otherwise returns the default SYSTEM_PROMPT_TEMPLATE.
+        """
+        return self.templates.get("system_prompt", SYSTEM_PROMPT_TEMPLATE)
