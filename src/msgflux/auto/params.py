@@ -113,12 +113,13 @@ class AutoParams(type):
                 classname_param_name = base._autoparams_use_classname_for
 
         # Capture all non-callable and non-special attributes from this class
+        # Exclude properties, classmethods, and staticmethods
         class_params = {
             k: v
             for k, v in namespace.items()
             if not k.startswith("_")
             and not callable(v)
-            and not isinstance(v, (classmethod, staticmethod))
+            and not isinstance(v, (classmethod, staticmethod, property))
         }
 
         # Handle class name as parameter if configured
