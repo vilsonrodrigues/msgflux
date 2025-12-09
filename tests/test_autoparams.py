@@ -1,0 +1,181 @@
+"""Tests for AutoParams metaclass functionality."""
+
+from unittest.mock import Mock
+
+from msgflux.auto import AutoParams
+from msgflux.nn.modules import Agent, LM, Predictor
+
+
+def test_autoparams_basic_example():
+    """Test AutoParams with a basic example class."""
+
+    class Model(metaclass=AutoParams):
+        def __init__(self, learning_rate, batch_size, epochs):
+            self.learning_rate = learning_rate
+            self.batch_size = batch_size
+            self.epochs = epochs
+
+    class MyModel(Model):
+        learning_rate = 0.001
+        batch_size = 32
+        epochs = 100
+
+    # Test with all defaults
+    m = MyModel()
+    assert m.learning_rate == 0.001
+    assert m.batch_size == 32
+    assert m.epochs == 100
+
+    # Test with partial override
+    m2 = MyModel(learning_rate=0.01, batch_size=64)
+    assert m2.learning_rate == 0.01
+    assert m2.batch_size == 64
+    assert m2.epochs == 100  # Still uses default
+
+
+def test_autoparams_with_agent():
+    """Test that Agent works with AutoParams for optional parameters."""
+
+    # Create a custom agent class with default parameters
+    # Note: We only set params that don't conflict with Agent's internal state
+    class MyAssistant(Agent):
+        name = "assistant"
+        response_mode = "plain_response"
+
+    # Create a mock model
+    mock_model = Mock()
+    mock_model.model_type = "chat_completion"
+
+    # Instantiate with defaults
+    agent = MyAssistant(model=mock_model)
+
+    # Check that defaults were applied
+    assert agent.name == "assistant"
+
+    # Test that AutoParams is working by checking _auto_params
+    assert hasattr(MyAssistant, "_auto_params")
+    assert "name" in MyAssistant._auto_params
+    assert MyAssistant._auto_params["name"] == "assistant"
+
+
+def test_autoparams_inheritance():
+    """Test that AutoParams works with multi-level inheritance."""
+
+    class BaseModel(metaclass=AutoParams):
+        def __init__(self, a, b, c):
+            self.a = a
+            self.b = b
+            self.c = c
+
+    class MiddleModel(BaseModel):
+        a = 1
+        b = 2
+
+    class FinalModel(MiddleModel):
+        c = 3
+
+    # FinalModel should inherit a and b from MiddleModel
+    m = FinalModel()
+    assert m.a == 1
+    assert m.b == 2
+    assert m.c == 3
+
+    # Can override inherited values
+    m2 = FinalModel(a=10, b=20)
+    assert m2.a == 10
+    assert m2.b == 20
+    assert m2.c == 3
+
+
+def test_autoparams_with_lm():
+    """Test that LM works with AutoParams."""
+
+    # LM only has one required param (model), so we can test with AutoParams
+    mock_model = Mock()
+    mock_model.model_type = "chat_completion"
+
+    lm = LM(model=mock_model)
+    assert lm.model == mock_model
+
+    # Custom LM with autoparams
+    class MyLM(LM):
+        pass
+
+    lm2 = MyLM(model=mock_model)
+    assert lm2.model == mock_model
+
+
+def test_autoparams_does_not_capture_methods():
+    """Test that AutoParams only captures non-callable attributes."""
+
+    class Model(metaclass=AutoParams):
+        param1 = "value1"
+        param2 = 42
+
+        def method(self):
+            return "method"
+
+        @classmethod
+        def class_method(cls):
+            return "class_method"
+
+        def __init__(self, param1, param2):
+            self.param1 = param1
+            self.param2 = param2
+
+    # Methods should not be in _auto_params
+    assert "method" not in Model._auto_params
+    assert "class_method" not in Model._auto_params
+
+    # Only non-callable attributes
+    assert "param1" in Model._auto_params
+    assert "param2" in Model._auto_params
+
+    # Test instantiation
+    m = Model()
+    assert m.param1 == "value1"
+    assert m.param2 == 42
+
+
+def test_autoparams_does_not_capture_private_attrs():
+    """Test that AutoParams ignores private/special attributes."""
+
+    class Model(metaclass=AutoParams):
+        public_param = "public"
+        _private_param = "private"
+        __special_param = "special"
+
+        def __init__(self, public_param):
+            self.public_param = public_param
+
+    # Only public params should be captured
+    assert "public_param" in Model._auto_params
+    assert "_private_param" not in Model._auto_params
+    assert "__special_param" not in Model._auto_params
+
+    m = Model()
+    assert m.public_param == "public"
+
+
+def test_autoparams_class_attribute_access():
+    """Test that _auto_params is accessible on the class."""
+
+    class Model(metaclass=AutoParams):
+        param1 = "value1"
+        param2 = 42
+
+        def __init__(self, param1, param2):
+            self.param1 = param1
+            self.param2 = param2
+
+    # _auto_params should be accessible on the class
+    assert hasattr(Model, "_auto_params")
+    assert Model._auto_params == {"param1": "value1", "param2": 42}
+
+    # Test instantiation
+    m = Model()
+    assert m.param1 == "value1"
+    assert m.param2 == 42
+
+    # Instances should also have access to _auto_params via the class
+    assert m._auto_params == Model._auto_params

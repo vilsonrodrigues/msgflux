@@ -1,5 +1,6 @@
 from typing import Any, Dict, Mapping, Optional, Union
 
+from msgflux.auto import AutoParams
 from msgflux.dotdict import dotdict
 from msgflux.message import Message
 from msgflux.models.gateway import ModelGateway
@@ -8,7 +9,7 @@ from msgflux.models.types import SpeechToTextModel
 from msgflux.nn.modules.module import Module
 
 
-class Transcriber(Module):
+class Transcriber(Module, metaclass=AutoParams):
     """Transcriber is a Module type that uses language models to transcribe audios."""
 
     def __init__(

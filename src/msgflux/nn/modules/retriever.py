@@ -1,5 +1,6 @@
 from typing import Any, Dict, List, Mapping, Optional, Union
 
+from msgflux.auto import AutoParams
 from msgflux.data.dbs.types import VectorDB
 from msgflux.data.retrievers.types import (
     LexicalRetriever,
@@ -23,7 +24,7 @@ EMBEDDER_MODELS = Union[
 ]
 
 
-class Retriever(Module):
+class Retriever(Module, metaclass=AutoParams):
     """Retriever is a Module type that uses information retrivers."""
 
     def __init__(

@@ -1,5 +1,6 @@
 from typing import Any, Callable, Dict, Literal, Mapping, Optional, Union
 
+from msgflux.auto import AutoParams
 from msgflux.dotdict import dotdict
 from msgflux.message import Message
 from msgflux.models.base import BaseModel
@@ -28,7 +29,7 @@ MEDIA_MODEL_TYPES = Union[
 ]
 
 
-class MediaMaker(Module):
+class MediaMaker(Module, metaclass=AutoParams):
     """MediaMaker is a Module type that uses generative
     models to create content.
     """

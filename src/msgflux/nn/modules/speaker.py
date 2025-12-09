@@ -1,5 +1,6 @@
 from typing import Any, Callable, Dict, Literal, Mapping, Optional, Union
 
+from msgflux.auto import AutoParams
 from msgflux.dotdict import dotdict
 from msgflux.message import Message
 from msgflux.models.gateway import ModelGateway
@@ -8,7 +9,7 @@ from msgflux.models.types import TextToSpeechModel
 from msgflux.nn.modules.module import Module
 
 
-class Speaker(Module):
+class Speaker(Module, metaclass=AutoParams):
     """Speaker is a Module type that uses language models to transform text in speak."""
 
     def __init__(

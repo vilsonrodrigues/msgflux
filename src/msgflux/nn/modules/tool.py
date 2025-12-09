@@ -6,6 +6,7 @@ from typing import Any, Callable, Dict, Iterator, List, Mapping, Optional, Tuple
 
 import msgspec
 
+from msgflux.auto import AutoParams
 from msgflux.dotdict import dotdict
 from msgflux.logger import logger
 from msgflux.nn import functional as F
@@ -283,7 +284,7 @@ def _convert_module_to_nn_tool(impl: Callable) -> Tool:  # noqa: C901
     )
 
 
-class ToolLibrary(Module):
+class ToolLibrary(Module, metaclass=AutoParams):
     """ToolLibrary is a Module type that manage tool calls over the tool library."""
 
     def __init__(

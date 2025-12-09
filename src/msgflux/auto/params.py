@@ -1,0 +1,102 @@
+"""AutoParams metaclass for automatic parameter management.
+
+This module provides a metaclass that automatically captures class attributes
+and uses them as default parameter values for __init__ methods.
+
+Example:
+    >>> from msgflux.auto import AutoParams
+    >>>
+    >>> class Model(metaclass=AutoParams):
+    ...     def __init__(self, learning_rate, batch_size, epochs):
+    ...         self.learning_rate = learning_rate
+    ...         self.batch_size = batch_size
+    ...         self.epochs = epochs
+    ...
+    >>> class MyModel(Model):
+    ...     learning_rate = 0.001
+    ...     batch_size = 32
+    ...     epochs = 100
+    ...
+    >>> # Uses default values from class attributes
+    >>> m = MyModel()
+    >>> print(m.learning_rate)  # 0.001
+    >>>
+    >>> # Partial override
+    >>> m2 = MyModel(learning_rate=0.01, batch_size=64)
+    >>> print(m2.learning_rate)  # 0.01
+    >>> print(m2.epochs)  # 100 (still uses default)
+"""
+
+from typing import Any, Dict
+
+
+class AutoParams(type):
+    """Metaclass that captures class attributes and uses them as default parameters.
+
+    This metaclass automatically captures all non-callable, non-special attributes
+    defined in a class and makes them available as default parameter values when
+    instantiating the class.
+
+    The captured parameters are stored in the class's _auto_params attribute and
+    are automatically merged with any parameters passed during instantiation.
+    """
+
+    def __new__(mcls, name: str, bases: tuple, namespace: Dict[str, Any]):
+        """Create a new class with auto parameter management.
+
+        Args:
+            name: Name of the class being created
+            bases: Base classes
+            namespace: Class namespace dictionary
+
+        Returns:
+            The newly created class with _auto_params attribute
+        """
+        # Collect auto params from base classes
+        inherited_params = {}
+        for base in bases:
+            if hasattr(base, "_auto_params"):
+                inherited_params.update(base._auto_params)
+
+        # Capture all non-callable and non-special attributes from this class
+        class_params = {
+            k: v
+            for k, v in namespace.items()
+            if not k.startswith("_")
+            and not callable(v)
+            and not isinstance(v, (classmethod, staticmethod))
+        }
+
+        # Merge inherited params with class params (class params take precedence)
+        all_params = {**inherited_params, **class_params}
+
+        # Store the merged params in the namespace
+        namespace["_auto_params"] = all_params
+
+        return super().__new__(mcls, name, bases, namespace)
+
+    def __call__(cls, *args, **kwargs):
+        """Instantiate the class with auto parameters.
+
+        Merges the class's _auto_params with the provided kwargs, with kwargs
+        taking precedence. This allows for partial or complete override of
+        default parameters.
+
+        Args:
+            *args: Positional arguments to pass to __init__
+            **kwargs: Keyword arguments to pass to __init__
+
+        Returns:
+            Instance of the class
+        """
+        # Start with auto params
+        all_kwargs = dict(cls._auto_params) if hasattr(cls, "_auto_params") else {}
+
+        # Override with user-provided kwargs
+        all_kwargs.update(kwargs)
+
+        # Instantiate normally
+        return super().__call__(*args, **all_kwargs)
+
+
+__all__ = ["AutoParams"]

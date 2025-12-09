@@ -34,6 +34,7 @@ from msgflux.nn.modules.lm import LM
 from msgflux.nn.modules.module import Module
 from msgflux.nn.modules.tool import ToolLibrary, ToolResponses
 from msgflux.nn.parameter import Parameter
+from msgflux.auto import AutoParams
 from msgflux.utils.chat import ChatBlock, response_format_from_msgspec_struct
 from msgflux.utils.console import cprint
 from msgflux.utils.inspect import get_filename, get_mime_type
@@ -42,7 +43,7 @@ from msgflux.utils.validation import is_subclass_of
 from msgflux.utils.xml import apply_xml_tags
 
 
-class Agent(Module):
+class Agent(Module, metaclass=AutoParams):
     """Agent is a Module type that uses language models to solve tasks.
 
     An Agent can perform actions in an environment using tools calls.

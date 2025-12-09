@@ -1,5 +1,6 @@
 from typing import Any, Dict, Mapping, Optional, Union
 
+from msgflux.auto import AutoParams
 from msgflux.dotdict import dotdict
 from msgflux.message import Message
 from msgflux.models.base import BaseModel
@@ -8,7 +9,7 @@ from msgflux.models.response import ModelResponse
 from msgflux.nn.modules.module import Module
 
 
-class Predictor(Module):
+class Predictor(Module, metaclass=AutoParams):
     """Predictor is a generic Module type that uses Classifier, Regressors,
     Detectors and Segmenters to generate insights above data.
     """

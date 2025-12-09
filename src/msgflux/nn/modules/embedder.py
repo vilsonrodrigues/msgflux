@@ -1,6 +1,7 @@
 from functools import partial
 from typing import Any, Dict, List, Mapping, Optional, Union
 
+from msgflux.auto import AutoParams
 from msgflux.dotdict import dotdict
 from msgflux.message import Message
 from msgflux.models.gateway import ModelGateway
@@ -17,7 +18,7 @@ EMBEDDER_MODELS = Union[
 ]
 
 
-class Embedder(Module):
+class Embedder(Module, metaclass=AutoParams):
     """Embedder is a Module that converts data into vector embeddings.
 
     Supports both batch and non-batch models transparently:
