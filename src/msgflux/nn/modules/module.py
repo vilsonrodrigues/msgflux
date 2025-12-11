@@ -1581,19 +1581,39 @@ class Module:
         if "_non_persistent_buffers_set" not in self.__dict__:
             self._non_persistent_buffers_set = set()
 
+    def __getattribute__(self, name: str) -> Union[Any, "Module"]:
+        # Don't intercept special attributes or private attributes
+        if name.startswith("_"):
+            return super().__getattribute__(name)
+
+        # Check if this is a registered parameter, buffer, or module
+        # These should take priority over class attributes
+        try:
+            _dict = super().__getattribute__("__dict__")
+
+            if "_parameters" in _dict:
+                _parameters = _dict["_parameters"]
+                if name in _parameters:
+                    return _parameters[name]
+
+            if "_buffers" in _dict:
+                _buffers = _dict["_buffers"]
+                if name in _buffers:
+                    return _buffers[name]
+
+            if "_modules" in _dict:
+                _modules = _dict["_modules"]
+                if name in _modules:
+                    return _modules[name]
+        except AttributeError:
+            pass
+
+        # Fall back to normal attribute access
+        return super().__getattribute__(name)
+
     def __getattr__(self, name: str) -> Union[Any, "Module"]:
-        if "_parameters" in self.__dict__:
-            _parameters = self.__dict__["_parameters"]
-            if name in _parameters:
-                return _parameters[name]
-        if "_buffers" in self.__dict__:
-            _buffers = self.__dict__["_buffers"]
-            if name in _buffers:
-                return _buffers[name]
-        if "_modules" in self.__dict__:
-            modules = self.__dict__["_modules"]
-            if name in modules:
-                return modules[name]
+        # This is now only called when attribute truly doesn't exist
+        # (after __getattribute__ doesn't find it)
         raise AttributeError(
             f"`{type(self).__name__}` object has no attribute `{name}`"
         )

@@ -215,6 +215,17 @@ def _convert_module_to_nn_tool(impl: Callable) -> Tool:  # noqa: C901
                 "a docstring in the class or in `def __call__`"
             )
 
+        name = (
+            name_overridden
+            or getattr(impl, "name", None)
+            or getattr(impl, "__name__", None)
+        )
+
+        # Instantiate class first if needed, so we can get instance attributes
+        if inspect.isclass(impl):
+            impl = impl()  # Initialized
+
+        # Now extract annotations (after instantiation for classes)
         annotations = (
             getattr(impl, "annotations", None)
             or getattr(impl, "__annotations__", None)
@@ -228,15 +239,6 @@ def _convert_module_to_nn_tool(impl: Callable) -> Tool:  # noqa: C901
                     "`self.annotations`, `self.__annotations__` or in `def __call__`"
                 )
             annotations = {}
-
-        name = (
-            name_overridden
-            or getattr(impl, "name", None)
-            or getattr(impl, "__name__", None)
-        )
-
-        if inspect.isclass(impl):
-            impl = impl()  # Initialized
 
     # Case 2: Function
     elif inspect.isfunction(impl) or inspect.iscoroutinefunction(impl):

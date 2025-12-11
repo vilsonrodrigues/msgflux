@@ -11,6 +11,7 @@ from typing import (
     Type,
     Union,
     cast,
+    get_type_hints,
 )
 from uuid import uuid4
 
@@ -18,7 +19,11 @@ import msgspec
 
 from msgflux.auto import AutoParams
 from msgflux.dotdict import dotdict
-from msgflux.dsl.signature import Signature, SignatureFactory
+from msgflux.dsl.signature import (
+    Signature,
+    SignatureFactory,
+    generate_annotations_from_signature,
+)
 from msgflux.dsl.typed_parsers.registry import typed_parser_registry
 from msgflux.examples import Example, ExampleCollection
 from msgflux.generation.control_flow import ToolFlowControl
@@ -238,10 +243,26 @@ class Agent(Module, metaclass=AutoParams):
         if annotations is None:
             annotations = {"message": str, "return": str}
 
+        # Validate that signature and custom annotations are not both provided
+        if signature is not None and annotations != {"message": str, "return": str}:
+            raise ValueError(
+                "Cannot specify both 'signature' and custom 'annotations'. "
+                "When using a signature, annotations are generated automatically "
+                "from the signature inputs. Remove the 'annotations' parameter."
+            )
+
         super().__init__()
         self.set_name(name)
         self.set_description(description)
-        self.set_annotations(annotations)
+
+        # Only set annotations if signature is not provided
+        # (signature will set annotations automatically in _set_signature)
+        if signature is None:
+            self.set_annotations(annotations)
+        else:
+            # Set default temporarily, will be overridden by _set_signature
+            self.set_annotations({"message": str, "return": str})
+
         self._set_config(config)
 
         stream = config.get("stream", False) if config else False
@@ -886,7 +907,7 @@ class Agent(Module, metaclass=AutoParams):
         guardrail_params = {"data": data}
         return guardrail_params
 
-    def _prepare_task(  # noqa: C901
+    def _prepare_task(
         self, message: Optional[Union[str, Message, Mapping[str, Any]]] = None, **kwargs
     ) -> Mapping[str, Any]:
         """Prepare model input in ChatML format and execution params."""
@@ -964,7 +985,7 @@ class Agent(Module, metaclass=AutoParams):
             "vars": vars,
         }
 
-    async def _aprepare_task(  # noqa: C901
+    async def _aprepare_task(
         self, message: Optional[Union[str, Message, Mapping[str, Any]]] = None, **kwargs
     ) -> Mapping[str, Any]:
         """Async version of _prepare_task.
@@ -1044,7 +1065,7 @@ class Agent(Module, metaclass=AutoParams):
             "vars": vars,
         }
 
-    def _process_task_inputs(  # noqa: C901
+    def _process_task_inputs(
         self,
         message: Union[str, Message, Mapping[str, Any]],
         vars: Mapping[str, Any],
@@ -1094,7 +1115,7 @@ class Agent(Module, metaclass=AutoParams):
             return multimodal_content
         return content
 
-    async def _aprocess_task_inputs(  # noqa: C901
+    async def _aprocess_task_inputs(
         self,
         message: Union[str, Message, Mapping[str, Any]],
         vars: Mapping[str, Any],
@@ -1147,7 +1168,7 @@ class Agent(Module, metaclass=AutoParams):
             return multimodal_content
         return content
 
-    def _context_manager(  # noqa: C901
+    def _context_manager(
         self,
         message: Union[str, Message, Mapping[str, Any]],
         vars: Mapping[str, Any],
@@ -1874,6 +1895,12 @@ class Agent(Module, metaclass=AutoParams):
 
             # examples
             self._set_examples(examples)
+
+            # Generate and set annotations from signature inputs
+            generated_annotations = generate_annotations_from_signature(
+                inputs_info, signature
+            )
+            self.set_annotations(generated_annotations)
 
     def _get_system_prompt(self, vars: Optional[Mapping[str, Any]] = None) -> str:
         """Render the system prompt using the Jinja template.
