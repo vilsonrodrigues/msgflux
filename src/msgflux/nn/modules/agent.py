@@ -16,6 +16,7 @@ from uuid import uuid4
 
 import msgspec
 
+from msgflux.auto import AutoParams
 from msgflux.dotdict import dotdict
 from msgflux.dsl.signature import Signature, SignatureFactory
 from msgflux.dsl.typed_parsers.registry import typed_parser_registry
@@ -34,7 +35,6 @@ from msgflux.nn.modules.lm import LM
 from msgflux.nn.modules.module import Module
 from msgflux.nn.modules.tool import ToolLibrary, ToolResponses
 from msgflux.nn.parameter import Parameter
-from msgflux.auto import AutoParams
 from msgflux.utils.chat import ChatBlock, response_format_from_msgspec_struct
 from msgflux.utils.console import cprint
 from msgflux.utils.inspect import get_filename, get_mime_type
@@ -1316,7 +1316,9 @@ class Agent(Module, metaclass=AutoParams):
 
         return ChatBlock.audio(base64_audio, audio_format)
 
-    async def _aformat_file_input(self, file_source: str) -> Optional[Mapping[str, Any]]:
+    async def _aformat_file_input(
+        self, file_source: str
+    ) -> Optional[Mapping[str, Any]]:
         """Async version of _format_file_input."""
         base64_file = await self._aprepare_data_uri(file_source, force_encode=True)
 
@@ -1728,13 +1730,13 @@ class Agent(Module, metaclass=AutoParams):
                 # Merge parent annotations with new final_answer annotation
                 merged_annotations = {
                     **generation_schema.__annotations__,
-                    'final_answer': signature_as_type
+                    "final_answer": signature_as_type,
                 }
 
                 Output = type(
                     "Output",
                     (generation_schema,),
-                    {"__annotations__": merged_annotations}
+                    {"__annotations__": merged_annotations},
                 )
                 fused_output_struct = Output
             self._set_generation_schema(fused_output_struct or signature_output_struct)
@@ -1768,7 +1770,9 @@ class Agent(Module, metaclass=AutoParams):
             # Format: "Monday, December 09, 2025"
             template_inputs.current_date = now.strftime("%A, %B %d, %Y")
 
-        system_prompt = self._format_template(template_inputs, self.system_prompt_template)
+        system_prompt = self._format_template(
+            template_inputs, self.system_prompt_template
+        )
 
         if vars:  # Runtime inputs to system template
             system_prompt = self._format_template(vars, system_prompt)

@@ -1,9 +1,11 @@
 """Tests for msgflux.models.model module."""
 
-import pytest
 from unittest.mock import patch
-from msgflux.models.model import Model
+
+import pytest
+
 from msgflux.models.base import BaseModel
+from msgflux.models.model import Model
 
 
 class MockProvider(BaseModel):
@@ -58,17 +60,22 @@ class TestModel:
         """Test error when model type is not supported."""
         mock_registry.__contains__ = lambda self, key: False
 
-        with pytest.raises(ValueError, match="Model type `invalid_type` is not supported"):
+        with pytest.raises(
+            ValueError, match="Model type `invalid_type` is not supported"
+        ):
             Model._get_model_class("invalid_type", "some_provider")
 
     @patch("msgflux.models.model.model_registry")
     def test_get_model_class_invalid_provider(self, mock_registry):
         """Test error when provider is not registered."""
-        mock_registry.__getitem__ = lambda self, key: {} if key == "chat_completion" else {}
+        mock_registry.__getitem__ = (
+            lambda self, key: {} if key == "chat_completion" else {}
+        )
         mock_registry.__contains__ = lambda self, key: key == "chat_completion"
 
         with pytest.raises(
-            ValueError, match="Provider `invalid_provider` not registered for type `chat_completion`"
+            ValueError,
+            match="Provider `invalid_provider` not registered for type `chat_completion`",
         ):
             Model._get_model_class("chat_completion", "invalid_provider")
 
@@ -88,7 +95,9 @@ class TestModel:
         assert model.model_id == "test-model"
         assert model.custom_param == "test_value"
 
-    @pytest.mark.skip(reason="from_serialized requires complex __setstate__/__getstate__ implementation")
+    @pytest.mark.skip(
+        reason="from_serialized requires complex __setstate__/__getstate__ implementation"
+    )
     @patch("msgflux.models.model.model_registry")
     def test_from_serialized(self, mock_registry):
         """Test deserializing a model from state."""
@@ -138,7 +147,11 @@ class TestModel:
     @patch("msgflux.models.model.model_registry")
     def test_model_types_method(self, mock_registry):
         """Test model_types method returns list of types."""
-        mock_registry.keys = lambda: ["chat_completion", "text_embedder", "text_to_image"]
+        mock_registry.keys = lambda: [
+            "chat_completion",
+            "text_embedder",
+            "text_to_image",
+        ]
 
         model_types = Model.model_types()
         assert "chat_completion" in model_types

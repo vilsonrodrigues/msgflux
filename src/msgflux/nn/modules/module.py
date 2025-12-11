@@ -1017,7 +1017,7 @@ class Module:
             raise KeyError("parameter name can't contain '.'")
         elif name == "":
             raise KeyError("parameter name can't be empty string")
-        elif hasattr(self, name) and name not in self._parameters:
+        elif name in self.__dict__ and name not in self._parameters:
             raise KeyError(f"attribute '{name}' already exists")
         elif param is None:
             self._parameters[name] = None
@@ -1047,7 +1047,7 @@ class Module:
             raise TypeError(f"{type(module)} is not a Module subclass")
         elif not isinstance(name, str):
             raise TypeError(f"module name should be a string. Got {type(name)}")
-        elif hasattr(self, name) and name not in self._modules:
+        elif name in self.__dict__ and name not in self._modules:
             raise KeyError(f"attribute `{name}` already exists")
         elif "." in name:
             raise KeyError(f"module name can't contain '.', got: {name}")
@@ -1439,7 +1439,9 @@ class Module:
                     MsgTraceAttributes.set_module_name(module_name_title)
                     MsgTraceAttributes.set_module_type(module_type)
                     if envs.telemetry_capture_state_dict and encoded_state_dict:
-                        MsgTraceAttributes.set_custom("module.state_dict", encoded_state_dict)
+                        MsgTraceAttributes.set_custom(
+                            "module.state_dict", encoded_state_dict
+                        )
                     module_output = self.forward(*args, **kwargs)
                     span.set_status(Status(StatusCode.OK))
                     return module_output
@@ -1523,7 +1525,9 @@ class Module:
                     MsgTraceAttributes.set_module_name(module_name_title)
                     MsgTraceAttributes.set_module_type(module_type)
                     if envs.telemetry_capture_state_dict and encoded_state_dict:
-                        MsgTraceAttributes.set_custom("module.state_dict", encoded_state_dict)
+                        MsgTraceAttributes.set_custom(
+                            "module.state_dict", encoded_state_dict
+                        )
                     module_output = await self.aforward(*args, **kwargs)
                     span.set_status(Status(StatusCode.OK))
                     return module_output

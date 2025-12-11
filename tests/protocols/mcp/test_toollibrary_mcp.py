@@ -13,7 +13,9 @@ class TestToolLibraryMCPIntegration:
     @patch("msgflux.protocols.mcp.MCPClient")
     @patch("msgflux.protocols.mcp.filter_tools")
     @patch("msgflux.nn.modules.tool.F")
-    def test_initialize_stdio_mcp_clients(self, mock_F, mock_filter_tools, mock_mcp_client):
+    def test_initialize_stdio_mcp_clients(
+        self, mock_F, mock_filter_tools, mock_mcp_client
+    ):
         """Test initializing ToolLibrary with stdio MCP server."""
         from msgflux.nn.modules.tool import ToolLibrary
 
@@ -26,7 +28,7 @@ class TestToolLibraryMCPIntegration:
         # Mock tools
         mock_tools = [
             MCPTool(name="read_file", description="Read file", inputSchema={}),
-            MCPTool(name="write_file", description="Write file", inputSchema={})
+            MCPTool(name="write_file", description="Write file", inputSchema={}),
         ]
         mock_filter_tools.return_value = mock_tools
 
@@ -40,7 +42,7 @@ class TestToolLibraryMCPIntegration:
                 "name": "fs",
                 "transport": "stdio",
                 "command": "mcp-server-fs",
-                "args": ["--flag"]
+                "args": ["--flag"],
             }
         ]
 
@@ -59,7 +61,9 @@ class TestToolLibraryMCPIntegration:
     @patch("msgflux.protocols.mcp.MCPClient")
     @patch("msgflux.protocols.mcp.filter_tools")
     @patch("msgflux.nn.modules.tool.F")
-    def test_initialize_http_mcp_clients(self, mock_F, mock_filter_tools, mock_mcp_client):
+    def test_initialize_http_mcp_clients(
+        self, mock_F, mock_filter_tools, mock_mcp_client
+    ):
         """Test initializing ToolLibrary with HTTP MCP server."""
         from msgflux.nn.modules.tool import ToolLibrary
 
@@ -78,7 +82,7 @@ class TestToolLibraryMCPIntegration:
                 "name": "api",
                 "transport": "http",
                 "base_url": "http://localhost:8080",
-                "headers": {"Auth": "token"}
+                "headers": {"Auth": "token"},
             }
         ]
 
@@ -104,7 +108,7 @@ class TestToolLibraryMCPIntegration:
         all_tools = [
             MCPTool(name="read_file", description="Read", inputSchema={}),
             MCPTool(name="write_file", description="Write", inputSchema={}),
-            MCPTool(name="delete_file", description="Delete", inputSchema={})
+            MCPTool(name="delete_file", description="Delete", inputSchema={}),
         ]
 
         # filter_tools should be called and return filtered list
@@ -114,13 +118,16 @@ class TestToolLibraryMCPIntegration:
         # Mock F.wait_for to handle different calls
         def wait_for_mock(func_or_coro, *args, **kwargs):
             # Check if it's the connect call or list_tools call
-            if hasattr(func_or_coro, '__name__') and func_or_coro.__name__ == 'connect':
+            if hasattr(func_or_coro, "__name__") and func_or_coro.__name__ == "connect":
                 return None
-            elif hasattr(func_or_coro, '__name__') and func_or_coro.__name__ == 'list_tools':
+            elif (
+                hasattr(func_or_coro, "__name__")
+                and func_or_coro.__name__ == "list_tools"
+            ):
                 return all_tools
             # Default: try to call it if it's a mock
-            if hasattr(func_or_coro, '__call__'):
-                return all_tools if 'list_tools' in str(func_or_coro) else None
+            if callable(func_or_coro):
+                return all_tools if "list_tools" in str(func_or_coro) else None
             return None
 
         mock_F.wait_for.side_effect = wait_for_mock
@@ -130,7 +137,7 @@ class TestToolLibraryMCPIntegration:
                 "name": "fs",
                 "transport": "stdio",
                 "command": "mcp-server-fs",
-                "include_tools": ["read_file", "write_file"]
+                "include_tools": ["read_file", "write_file"],
             }
         ]
 
@@ -160,16 +167,14 @@ class TestToolLibraryMCPIntegration:
 
         mock_F.wait_for.side_effect = [None, mock_tools]
 
-        tool_config = {
-            "read_file": {"inject_vars": ["context"], "return_direct": True}
-        }
+        tool_config = {"read_file": {"inject_vars": ["context"], "return_direct": True}}
 
         mcp_servers = [
             {
                 "name": "fs",
                 "transport": "stdio",
                 "command": "mcp-server-fs",
-                "tool_config": tool_config
+                "tool_config": tool_config,
             }
         ]
 
@@ -192,19 +197,13 @@ class TestToolLibraryMCPIntegration:
 
         mock_tools = [
             MCPTool(name="read_file", description="Read", inputSchema={}),
-            MCPTool(name="write_file", description="Write", inputSchema={})
+            MCPTool(name="write_file", description="Write", inputSchema={}),
         ]
         mock_filter_tools.return_value = mock_tools
 
         mock_F.wait_for.side_effect = [None, mock_tools]
 
-        mcp_servers = [
-            {
-                "name": "fs",
-                "transport": "stdio",
-                "command": "mcp-server-fs"
-            }
-        ]
+        mcp_servers = [{"name": "fs", "transport": "stdio", "command": "mcp-server-fs"}]
 
         library = ToolLibrary(name="test", tools=[], mcp_servers=mcp_servers)
 
@@ -229,9 +228,7 @@ class TestToolLibraryMCPIntegration:
         mock_client_instance.list_tools = AsyncMock()
         mock_mcp_client.from_stdio.return_value = mock_client_instance
 
-        mock_tools = [
-            MCPTool(name="read_file", description="Read", inputSchema={})
-        ]
+        mock_tools = [MCPTool(name="read_file", description="Read", inputSchema={})]
         mock_filter_tools.return_value = mock_tools
 
         mock_F.wait_for.side_effect = [None, mock_tools]
@@ -239,16 +236,10 @@ class TestToolLibraryMCPIntegration:
         # Mock schema conversion
         mock_convert_schema.return_value = {
             "type": "function",
-            "function": {"name": "fs__read_file", "description": "Read"}
+            "function": {"name": "fs__read_file", "description": "Read"},
         }
 
-        mcp_servers = [
-            {
-                "name": "fs",
-                "transport": "stdio",
-                "command": "mcp-server-fs"
-            }
-        ]
+        mcp_servers = [{"name": "fs", "transport": "stdio", "command": "mcp-server-fs"}]
 
         library = ToolLibrary(name="test", tools=[], mcp_servers=mcp_servers)
 
@@ -274,7 +265,7 @@ class TestToolLibraryMCPIntegration:
         mcp_servers = [
             {
                 "transport": "stdio",
-                "command": "mcp-server-fs"
+                "command": "mcp-server-fs",
                 # Missing "name" field
             }
         ]
@@ -287,11 +278,7 @@ class TestToolLibraryMCPIntegration:
         from msgflux.nn.modules.tool import ToolLibrary
 
         mcp_servers = [
-            {
-                "name": "test",
-                "transport": "invalid_transport",
-                "command": "test"
-            }
+            {"name": "test", "transport": "invalid_transport", "command": "test"}
         ]
 
         with pytest.raises(ValueError, match="Unknown transport type"):

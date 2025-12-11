@@ -40,10 +40,7 @@ class TestMCPClient:
         """Test MCPClient initialization."""
         transport = MockTransport()
         client = MCPClient(
-            transport=transport,
-            max_retries=5,
-            retry_delay=2.0,
-            auto_reconnect=True
+            transport=transport, max_retries=5, retry_delay=2.0, auto_reconnect=True
         )
 
         assert client.transport is transport
@@ -67,7 +64,7 @@ class TestMCPClient:
         transport.responses["initialize"] = {
             "jsonrpc": "2.0",
             "id": "1",
-            "result": {"capabilities": {}}
+            "result": {"capabilities": {}},
         }
 
         client = MCPClient(transport=transport)
@@ -83,7 +80,7 @@ class TestMCPClient:
         transport.responses["initialize"] = {
             "jsonrpc": "2.0",
             "id": "1",
-            "result": {"capabilities": {}}
+            "result": {"capabilities": {}},
         }
 
         client = MCPClient(transport=transport, max_retries=3)
@@ -110,7 +107,7 @@ class TestMCPClient:
         transport.responses["initialize"] = {
             "jsonrpc": "2.0",
             "id": "1",
-            "result": {"capabilities": {}}
+            "result": {"capabilities": {}},
         }
 
         client = MCPClient(transport=transport, max_retries=5, retry_delay=0.01)
@@ -144,7 +141,7 @@ class TestMCPClient:
         transport.responses["initialize"] = {
             "jsonrpc": "2.0",
             "id": "1",
-            "result": {"capabilities": {}}
+            "result": {"capabilities": {}},
         }
 
         client = MCPClient(transport=transport)
@@ -161,7 +158,7 @@ class TestMCPClient:
         transport.responses["initialize"] = {
             "jsonrpc": "2.0",
             "id": "1",
-            "result": {"capabilities": {}}
+            "result": {"capabilities": {}},
         }
         transport.responses["tools/list"] = {
             "jsonrpc": "2.0",
@@ -171,15 +168,15 @@ class TestMCPClient:
                     {
                         "name": "read_file",
                         "description": "Read a file",
-                        "inputSchema": {"type": "object"}
+                        "inputSchema": {"type": "object"},
                     },
                     {
                         "name": "write_file",
                         "description": "Write a file",
-                        "inputSchema": {"type": "object"}
-                    }
+                        "inputSchema": {"type": "object"},
+                    },
                 ]
-            }
+            },
         }
 
         client = MCPClient(transport=transport)
@@ -198,12 +195,14 @@ class TestMCPClient:
         transport.responses["initialize"] = {
             "jsonrpc": "2.0",
             "id": "1",
-            "result": {"capabilities": {}}
+            "result": {"capabilities": {}},
         }
         transport.responses["tools/list"] = {
             "jsonrpc": "2.0",
             "id": "2",
-            "result": {"tools": [{"name": "test", "description": "Test", "inputSchema": {}}]}
+            "result": {
+                "tools": [{"name": "test", "description": "Test", "inputSchema": {}}]
+            },
         }
 
         client = MCPClient(transport=transport)
@@ -225,17 +224,15 @@ class TestMCPClient:
         transport.responses["initialize"] = {
             "jsonrpc": "2.0",
             "id": "1",
-            "result": {"capabilities": {}}
+            "result": {"capabilities": {}},
         }
         transport.responses["tools/call"] = {
             "jsonrpc": "2.0",
             "id": "3",
             "result": {
-                "content": [
-                    {"type": "text", "text": "File content here"}
-                ],
-                "isError": False
-            }
+                "content": [{"type": "text", "text": "File content here"}],
+                "isError": False,
+            },
         }
 
         client = MCPClient(transport=transport)
@@ -255,12 +252,12 @@ class TestMCPClient:
         transport.responses["initialize"] = {
             "jsonrpc": "2.0",
             "id": "1",
-            "result": {"capabilities": {}}
+            "result": {"capabilities": {}},
         }
         transport.responses["tools/call"] = {
             "jsonrpc": "2.0",
             "id": "3",
-            "error": {"message": "File not found"}
+            "error": {"message": "File not found"},
         }
 
         client = MCPClient(transport=transport)
@@ -279,12 +276,15 @@ class TestMCPClient:
         transport.responses["initialize"] = {
             "jsonrpc": "2.0",
             "id": "1",
-            "result": {"capabilities": {}}
+            "result": {"capabilities": {}},
         }
         transport.responses["tools/call"] = {
             "jsonrpc": "2.0",
             "id": "2",
-            "result": {"content": [{"type": "text", "text": "Success"}], "isError": False}
+            "result": {
+                "content": [{"type": "text", "text": "Success"}],
+                "isError": False,
+            },
         }
 
         client = MCPClient(transport=transport, auto_reconnect=True)
@@ -303,7 +303,7 @@ class TestMCPClient:
         transport.responses["initialize"] = {
             "jsonrpc": "2.0",
             "id": "1",
-            "result": {"capabilities": {}}
+            "result": {"capabilities": {}},
         }
 
         async with MCPClient(transport=transport) as client:
@@ -320,7 +320,7 @@ class TestMCPClient:
             args=["--flag"],
             max_retries=5,
             retry_delay=2.0,
-            auto_reconnect=False
+            auto_reconnect=False,
         )
 
         assert client.max_retries == 5
@@ -333,7 +333,7 @@ class TestMCPClient:
         client = MCPClient.from_http(
             base_url="http://localhost:8080",
             max_retries=3,
-            pool_limits={"max_connections": 50, "max_keepalive_connections": 10}
+            pool_limits={"max_connections": 50, "max_keepalive_connections": 10},
         )
 
         assert client.max_retries == 3
@@ -346,13 +346,9 @@ class TestMCPClient:
         transport.responses["initialize"] = {
             "jsonrpc": "2.0",
             "id": "1",
-            "result": {"capabilities": {}}
+            "result": {"capabilities": {}},
         }
-        transport.responses["ping"] = {
-            "jsonrpc": "2.0",
-            "id": "2",
-            "result": {}
-        }
+        transport.responses["ping"] = {"jsonrpc": "2.0", "id": "2", "result": {}}
 
         client = MCPClient(transport=transport)
         await client.connect()
@@ -367,7 +363,7 @@ class TestMCPClient:
         transport.responses["initialize"] = {
             "jsonrpc": "2.0",
             "id": "1",
-            "result": {"capabilities": {}}
+            "result": {"capabilities": {}},
         }
         transport.responses["resources/list"] = {
             "jsonrpc": "2.0",
@@ -377,10 +373,10 @@ class TestMCPClient:
                     {
                         "uri": "file:///test.txt",
                         "name": "test_file",
-                        "description": "A test file"
+                        "description": "A test file",
                     }
                 ]
-            }
+            },
         }
 
         client = MCPClient(transport=transport)

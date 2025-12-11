@@ -42,11 +42,11 @@ class TestCacheKeyGeneration:
         """Test cache key with nested dict values."""
         key1 = generate_cache_key(
             messages=[{"role": "user", "content": "Hello"}],
-            tool_schemas=[{"name": "get_weather", "parameters": {"type": "object"}}]
+            tool_schemas=[{"name": "get_weather", "parameters": {"type": "object"}}],
         )
         key2 = generate_cache_key(
             messages=[{"role": "user", "content": "Hello"}],
-            tool_schemas=[{"name": "get_weather", "parameters": {"type": "object"}}]
+            tool_schemas=[{"name": "get_weather", "parameters": {"type": "object"}}],
         )
         assert key1 == key2
 
@@ -172,7 +172,7 @@ class TestResponseCache:
         complex_obj = {
             "data": [1, 2, 3],
             "metadata": {"key": "value"},
-            "nested": {"deep": {"value": 42}}
+            "nested": {"deep": {"value": 42}},
         }
 
         cache.set("complex", complex_obj)
@@ -198,7 +198,7 @@ class TestCacheIntegration:
 
     @pytest.mark.skipif(
         True,  # Skip by default as it requires OpenAI API key
-        reason="Integration test requires OpenAI API key"
+        reason="Integration test requires OpenAI API key",
     )
     def test_model_cache_integration(self):
         """Test cache integration with actual model."""

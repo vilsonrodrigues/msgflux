@@ -8,15 +8,19 @@ This test validates:
 4. Multiple provider-specific parameters can be passed
 """
 
-import pytest
 from unittest.mock import MagicMock
-from msgflux.utils.chat import ChatBlock
+
+import pytest
+
 from msgflux.nn.modules.agent import Agent
+from msgflux.utils.chat import ChatBlock
 
 
 def test_chatblock_video_with_kwargs():
     """Test that ChatBlock.video accepts kwargs."""
-    result = ChatBlock.video("https://example.com/video.mp4", format="mp4", quality="high")
+    result = ChatBlock.video(
+        "https://example.com/video.mp4", format="mp4", quality="high"
+    )
 
     assert result["type"] == "video_url"
     assert result["video_url"]["url"] == "https://example.com/video.mp4"
@@ -32,7 +36,7 @@ def test_chatblock_video_with_multiple_kwargs():
         format="mp4",
         resolution="1920x1080",
         provider_param="value",
-        custom_option=123
+        custom_option=123,
     )
 
     assert result["video_url"]["format"] == "mp4"
@@ -68,14 +72,12 @@ def test_chatblock_video_without_kwargs():
 def test_agent_config_with_video_block_kwargs():
     """Test that Agent accepts video_block_kwargs in config."""
     model = MagicMock()
-    model.model_type = 'chat_completion'
+    model.model_type = "chat_completion"
 
     agent = Agent(
-        name='test_agent',
+        name="test_agent",
         model=model,
-        config={
-            "video_block_kwargs": {"format": "mp4", "quality": "high"}
-        }
+        config={"video_block_kwargs": {"format": "mp4", "quality": "high"}},
     )
 
     assert "video_block_kwargs" in agent.config
@@ -87,15 +89,15 @@ def test_agent_config_with_video_block_kwargs():
 def test_agent_config_video_block_kwargs_validation():
     """Test that Agent validates video_block_kwargs type."""
     model = MagicMock()
-    model.model_type = 'chat_completion'
+    model.model_type = "chat_completion"
 
     with pytest.raises(TypeError) as exc_info:
         Agent(
-            name='test_agent',
+            name="test_agent",
             model=model,
             config={
                 "video_block_kwargs": "invalid_type"  # Should be dict
-            }
+            },
         )
 
     assert "video_block_kwargs" in str(exc_info.value)
@@ -106,14 +108,12 @@ def test_agent_config_video_block_kwargs_validation():
 def test_agent_format_video_input_uses_video_block_kwargs():
     """Test that Agent._format_video_input passes video_block_kwargs to ChatBlock.video."""
     model = MagicMock()
-    model.model_type = 'chat_completion'
+    model.model_type = "chat_completion"
 
     agent = Agent(
-        name='test_agent',
+        name="test_agent",
         model=model,
-        config={
-            "video_block_kwargs": {"format": "mp4", "provider_specific": "param"}
-        }
+        config={"video_block_kwargs": {"format": "mp4", "provider_specific": "param"}},
     )
 
     # Test with URL (first case)
@@ -127,18 +127,17 @@ def test_agent_format_video_input_uses_video_block_kwargs():
     result = agent._format_video_input("test.mp4")
     assert result["video_url"]["format"] == "mp4"
     assert result["video_url"]["provider_specific"] == "param"
-    print("✓ Test 7b passed: Agent._format_video_input (file) passes video_block_kwargs")
+    print(
+        "✓ Test 7b passed: Agent._format_video_input (file) passes video_block_kwargs"
+    )
 
 
 def test_agent_without_video_block_kwargs():
     """Test that Agent works without video_block_kwargs (empty dict default)."""
     model = MagicMock()
-    model.model_type = 'chat_completion'
+    model.model_type = "chat_completion"
 
-    agent = Agent(
-        name='test_agent',
-        model=model
-    )
+    agent = Agent(name="test_agent", model=model)
 
     result = agent._format_video_input("https://example.com/video.mp4")
     assert result["video_url"]["url"] == "https://example.com/video.mp4"
@@ -149,24 +148,26 @@ def test_agent_without_video_block_kwargs():
 def test_agent_with_both_image_and_video_kwargs():
     """Test that Agent can have both image_block_kwargs and video_block_kwargs."""
     model = MagicMock()
-    model.model_type = 'chat_completion'
+    model.model_type = "chat_completion"
 
     agent = Agent(
-        name='test_agent',
+        name="test_agent",
         model=model,
         config={
             "image_block_kwargs": {"detail": "high"},
-            "video_block_kwargs": {"format": "mp4", "quality": "1080p"}
-        }
+            "video_block_kwargs": {"format": "mp4", "quality": "1080p"},
+        },
     )
 
     assert agent.config["image_block_kwargs"]["detail"] == "high"
     assert agent.config["video_block_kwargs"]["format"] == "mp4"
     assert agent.config["video_block_kwargs"]["quality"] == "1080p"
-    print("✓ Test 9 passed: Agent supports both image_block_kwargs and video_block_kwargs")
+    print(
+        "✓ Test 9 passed: Agent supports both image_block_kwargs and video_block_kwargs"
+    )
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_chatblock_video_with_kwargs()
     test_chatblock_video_with_multiple_kwargs()
     test_chatblock_video_with_list_urls()

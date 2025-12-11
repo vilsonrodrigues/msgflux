@@ -1,8 +1,9 @@
 """Tests for msgflux.models.registry module."""
 
 import pytest
-from msgflux.models.registry import register_model, model_registry
+
 from msgflux.models.base import BaseModel
+from msgflux.models.registry import model_registry, register_model
 
 
 class ValidModel(BaseModel):
@@ -97,14 +98,16 @@ class TestRegisterModel:
     def test_register_model_without_type(self):
         """Test that registering a model without model_type raises ValueError."""
         with pytest.raises(
-            ValueError, match="InvalidModelNoType must define `model_type` and `provider`"
+            ValueError,
+            match="InvalidModelNoType must define `model_type` and `provider`",
         ):
             register_model(InvalidModelNoType)
 
     def test_register_model_without_provider(self):
         """Test that registering a model without provider raises ValueError."""
         with pytest.raises(
-            ValueError, match="InvalidModelNoProvider must define `model_type` and `provider`"
+            ValueError,
+            match="InvalidModelNoProvider must define `model_type` and `provider`",
         ):
             register_model(InvalidModelNoProvider)
 

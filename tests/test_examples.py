@@ -1,4 +1,5 @@
 import pytest
+
 from msgflux.examples import Example, ExampleCollection
 
 
@@ -32,10 +33,10 @@ class TestExample:
 
     def test_to_xml(self, simple_example):
         xml = simple_example.to_xml(1)
-        assert '<example id=1>' in xml
-        assert '<input>\ninput\n</input>' in xml
-        assert '<output>\nlabel\n</output>' in xml
-        assert '</example>' in xml
+        assert "<example id=1>" in xml
+        assert "<input>\ninput\n</input>" in xml
+        assert "<output>\nlabel\n</output>" in xml
+        assert "</example>" in xml
 
     def test_to_xml_with_all_fields(self):
         example = Example(
@@ -48,7 +49,7 @@ class TestExample:
         xml = example.to_xml(1)
         assert 'title="title"' in xml
         assert 'topic="topic"' in xml
-        assert '<reasoning>\nreasoning\n</reasoning>' in xml
+        assert "<reasoning>\nreasoning\n</reasoning>" in xml
 
 
 @pytest.fixture
@@ -94,8 +95,8 @@ class TestExampleCollection:
         assert len(dict_collection.get_examples_needing_transform()) == 2
 
     def test_transform(self, dict_collection):
-        input_transformer = lambda x: str(x['in'])
-        output_transformer = lambda x: str(x['out'])
+        input_transformer = lambda x: str(x["in"])
+        output_transformer = lambda x: str(x["out"])
         transformed = dict_collection.transform(input_transformer, output_transformer)
         assert transformed.get_examples()[0].inputs == "1"
         assert transformed.get_examples()[0].labels == "1"

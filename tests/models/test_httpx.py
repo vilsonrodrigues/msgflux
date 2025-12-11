@@ -1,7 +1,8 @@
 """Tests for msgflux.models.httpx module."""
 
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
+
 import pytest
-from unittest.mock import Mock, patch, MagicMock, AsyncMock
 
 
 class TestHTTPXModelClientImport:
@@ -11,6 +12,7 @@ class TestHTTPXModelClientImport:
         """Test that HTTPXModelClient imports correctly when httpx is available."""
         try:
             from msgflux.models.httpx import HTTPXModelClient
+
             # If we get here, imports worked
             assert True
         except ImportError as e:
@@ -32,6 +34,7 @@ class TestHTTPXModelClient:
 
         class ConcreteHTTPXClient(HTTPXModelClient):
             """Concrete implementation for testing."""
+
             model_type = "test_model"
             provider = "test_provider"
 
@@ -60,7 +63,7 @@ class TestHTTPXModelClient:
             yield {
                 "httpx": mock_httpx,
                 "client": mock_client,
-                "async_client": mock_async_client
+                "async_client": mock_async_client,
             }
 
     def test_httpx_client_initialization(self, concrete_httpx_client, mock_httpx):

@@ -34,7 +34,7 @@ class BearerTokenAuth(BaseAuth):
         token: str,
         expires_in: Optional[int] = None,
         refresh_callback: Optional[Callable[[], Awaitable[str]]] = None,
-        token_type: str = "Bearer"  # noqa: S107,
+        token_type: str = "Bearer",  # noqa: S107,
     ):
         """Initialize bearer token authentication.
 

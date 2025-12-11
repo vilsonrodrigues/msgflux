@@ -1,14 +1,15 @@
 """Tests for MCP authentication providers."""
 
-import pytest
 from datetime import datetime, timedelta
 
+import pytest
+
 from msgflux.protocols.mcp.auth import (
-    BearerTokenAuth,
     APIKeyAuth,
     BasicAuth,
-    OAuth2Auth,
+    BearerTokenAuth,
     CustomHeaderAuth,
+    OAuth2Auth,
 )
 
 
@@ -47,13 +48,11 @@ class TestBearerTokenAuth:
     @pytest.mark.asyncio
     async def test_refresh_with_callback(self):
         """Test token refresh with callback."""
+
         async def refresh_callback():
             return "refreshed-token"
 
-        auth = BearerTokenAuth(
-            token="old-token",
-            refresh_callback=refresh_callback
-        )
+        auth = BearerTokenAuth(token="old-token", refresh_callback=refresh_callback)
 
         # Set expiration to past (expired)
         auth.set_expiration(-10)  # Expired 10 seconds ago
@@ -93,9 +92,7 @@ class TestAPIKeyAuth:
     def test_with_prefix(self):
         """Test API key with prefix."""
         auth = APIKeyAuth(
-            api_key="my-key",
-            header_name="Authorization",
-            key_prefix="ApiKey"
+            api_key="my-key", header_name="Authorization", key_prefix="ApiKey"
         )
         headers = {}
 
@@ -128,6 +125,7 @@ class TestBasicAuth:
 
         # Decode and verify
         import base64
+
         encoded = result["Authorization"][6:]  # Skip "Basic "
         decoded = base64.b64decode(encoded).decode()
         assert decoded == "user:pass"
@@ -140,6 +138,7 @@ class TestBasicAuth:
         headers = auth.apply_auth({})
 
         import base64
+
         encoded = headers["Authorization"][6:]
         decoded = base64.b64decode(encoded).decode()
         assert decoded == "new-user:new-pass"
@@ -160,6 +159,7 @@ class TestOAuth2Auth:
     @pytest.mark.asyncio
     async def test_refresh_with_callback(self):
         """Test OAuth2 token refresh."""
+
         async def refresh_callback(refresh_token):
             assert refresh_token == "refresh-123"
             return {
@@ -172,7 +172,7 @@ class TestOAuth2Auth:
             access_token="old-access",
             refresh_token="refresh-123",
             expires_in=0,  # Expired
-            refresh_callback=refresh_callback
+            refresh_callback=refresh_callback,
         )
 
         result = await auth.refresh()
@@ -185,9 +185,7 @@ class TestOAuth2Auth:
         """Test updating OAuth2 tokens."""
         auth = OAuth2Auth(access_token="old-token")
         auth.update_tokens(
-            access_token="new-access",
-            refresh_token="new-refresh",
-            expires_in=7200
+            access_token="new-access", refresh_token="new-refresh", expires_in=7200
         )
 
         headers = auth.apply_auth({})
@@ -201,10 +199,12 @@ class TestCustomHeaderAuth:
 
     def test_static_headers(self):
         """Test static custom headers."""
-        auth = CustomHeaderAuth(headers={
-            "X-Custom-1": "value1",
-            "X-Custom-2": "value2",
-        })
+        auth = CustomHeaderAuth(
+            headers={
+                "X-Custom-1": "value1",
+                "X-Custom-2": "value2",
+            }
+        )
         headers = {"Content-Type": "application/json"}
 
         result = auth.apply_auth(headers)
@@ -231,12 +231,12 @@ class TestCustomHeaderAuth:
 
     def test_callback_overrides_static(self):
         """Test that callback overrides static headers."""
+
         def get_headers():
             return {"X-Dynamic": "from-callback"}
 
         auth = CustomHeaderAuth(
-            headers={"X-Static": "value"},
-            headers_callback=get_headers
+            headers={"X-Static": "value"}, headers_callback=get_headers
         )
 
         result = auth.apply_auth({})

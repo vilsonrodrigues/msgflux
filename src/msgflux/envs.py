@@ -1,5 +1,5 @@
 import os
-from typing import Any, Literal, Optional
+from typing import Any
 
 from msgspec_ext import BaseSettings, SettingsConfigDict
 
@@ -98,7 +98,3 @@ class EnvironmentVariables(BaseSettings):
 
 
 envs = EnvironmentVariables()
-
-
-
-
