@@ -1,5 +1,6 @@
 from msgflux.utils.xml import apply_xml_tags
 
+
 def test_apply_xml_tags():
     assert apply_xml_tags("tag", "content") == "<tag>\ncontent\n</tag>"
 

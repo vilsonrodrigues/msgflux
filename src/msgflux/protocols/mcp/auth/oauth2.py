@@ -45,7 +45,7 @@ class OAuth2Auth(BaseAuth):
         refresh_token: Optional[str] = None,
         expires_in: Optional[int] = None,
         refresh_callback: Optional[Callable[[str], Awaitable[Dict[str, Any]]]] = None,
-        token_type: str = "Bearer"  # noqa: S107,
+        token_type: str = "Bearer",  # noqa: S107,
     ):
         """Initialize OAuth2 authentication.
 

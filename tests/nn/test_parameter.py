@@ -1,6 +1,7 @@
 """Tests for msgflux.nn.parameter module."""
 
 import pytest
+
 from msgflux.nn.parameter import Parameter
 
 

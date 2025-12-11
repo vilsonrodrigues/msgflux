@@ -1,4 +1,5 @@
 import pytest
+
 from msgflux.utils.imports import import_dependencies, import_module_from_lib
 
 

@@ -1,6 +1,7 @@
 """Tests for msgflux.models.base module."""
 
 import pytest
+
 from msgflux.models.base import BaseModel
 
 
@@ -58,6 +59,7 @@ class TestBaseModel:
     def test_initialize_method_abstract(self):
         """Test that _initialize is abstract and cannot instantiate without it."""
         with pytest.raises(TypeError, match="Can't instantiate abstract class"):
+
             class IncompleteModel(BaseModel):
                 model_type = "incomplete"
                 provider = "test"
@@ -107,7 +109,9 @@ class TestBaseModel:
         assert restored.model_id == "test-model-456"
         assert restored.client == "initialized_client"
 
-    @pytest.mark.skip(reason="acall has issues with uvloop and asyncio.wait - needs fix in main code")
+    @pytest.mark.skip(
+        reason="acall has issues with uvloop and asyncio.wait - needs fix in main code"
+    )
     @pytest.mark.asyncio
     async def test_acall(self):
         """Test async call interface."""

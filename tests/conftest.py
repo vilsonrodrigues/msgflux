@@ -1,7 +1,8 @@
 """Shared fixtures for msgflux tests."""
 
-import pytest
 from typing import Any, Dict
+
+import pytest
 
 
 @pytest.fixture

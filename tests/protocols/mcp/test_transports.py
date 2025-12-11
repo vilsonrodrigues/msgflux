@@ -6,7 +6,11 @@ from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 
-from msgflux.protocols.mcp.exceptions import MCPConnectionError, MCPError, MCPTimeoutError
+from msgflux.protocols.mcp.exceptions import (
+    MCPConnectionError,
+    MCPError,
+    MCPTimeoutError,
+)
 from msgflux.protocols.mcp.transports import HTTPTransport, StdioTransport
 
 
@@ -19,7 +23,7 @@ class TestHTTPTransport:
         transport = HTTPTransport(
             base_url="http://localhost:8080",
             timeout=30.0,
-            headers={"Authorization": "Bearer token"}
+            headers={"Authorization": "Bearer token"},
         )
 
         assert transport.base_url == "http://localhost:8080"
@@ -31,7 +35,7 @@ class TestHTTPTransport:
         """Test initialization with custom pool limits."""
         transport = HTTPTransport(
             base_url="http://localhost:8080",
-            pool_limits={"max_connections": 50, "max_keepalive_connections": 10}
+            pool_limits={"max_connections": 50, "max_keepalive_connections": 10},
         )
 
         assert transport.pool_limits["max_connections"] == 50
@@ -68,7 +72,11 @@ class TestHTTPTransport:
         """Test sending JSON-RPC request."""
         mock_client = AsyncMock()
         mock_response = AsyncMock()
-        mock_response.json.return_value = {"jsonrpc": "2.0", "id": "1", "result": {"tools": []}}
+        mock_response.json.return_value = {
+            "jsonrpc": "2.0",
+            "id": "1",
+            "result": {"tools": []},
+        }
         mock_client.post.return_value = mock_response
 
         mock_httpx.AsyncClient.return_value = mock_client
@@ -130,7 +138,7 @@ class TestStdioTransport:
             command="mcp-server",
             args=["--arg1", "value1"],
             cwd="/workspace",
-            timeout=30.0
+            timeout=30.0,
         )
 
         assert transport.command == "mcp-server"

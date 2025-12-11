@@ -49,8 +49,7 @@ def test_encode_data_to_base64(mock_requests_get, temp_file):
     assert encode_data_to_base64("not a path or url") == "not a path or url"
     assert base64.b64decode(encode_data_to_base64(temp_file)) == b"hello world"
     assert (
-        base64.b64decode(encode_data_to_base64("http://example.com"))
-        == b"hello world"
+        base64.b64decode(encode_data_to_base64("http://example.com")) == b"hello world"
     )
 
 

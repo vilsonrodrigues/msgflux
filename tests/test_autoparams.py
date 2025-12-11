@@ -3,7 +3,7 @@
 from unittest.mock import Mock
 
 from msgflux.auto import AutoParams
-from msgflux.nn.modules import Agent, LM, Predictor
+from msgflux.nn.modules import LM, Agent, Predictor
 
 
 def test_autoparams_basic_example():
@@ -195,6 +195,7 @@ def test_autoparams_docstring_as_parameter():
 
     class WithExplicitDescription(BaseClass):
         """This docstring is ignored"""
+
         description = "Explicit description wins"
 
     class WithoutDocstring(BaseClass):
@@ -221,6 +222,7 @@ def test_autoparams_agent_docstring_as_description():
 
     class MyAgentWithExplicit(Agent):
         """This docstring is ignored"""
+
         description = "Explicit description"
 
     # Create mock model
@@ -268,6 +270,7 @@ def test_autoparams_agent_classname_as_name():
 
     class CustomAgent(Agent):
         """A custom agent"""
+
         name = "explicit_name"
 
     # Create mock model
@@ -299,4 +302,6 @@ def test_autoparams_agent_both_features():
 
     # Both features should work together
     assert agent.name == "MyAwesomeAgent"  # From class name
-    assert agent.description == "This agent is awesome at solving problems"  # From docstring
+    assert (
+        agent.description == "This agent is awesome at solving problems"
+    )  # From docstring

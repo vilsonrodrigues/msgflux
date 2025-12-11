@@ -1,6 +1,7 @@
 """Unit tests for ToolFlowControl class."""
 
 import pytest
+
 from msgflux.tools import ToolFlowControl
 
 
@@ -15,10 +16,14 @@ class TestToolFlowControl:
     def test_toolflowcontrol_has_docstring(self):
         """Test that ToolFlowControl has appropriate documentation."""
         assert ToolFlowControl.__doc__ is not None
-        assert "Base class for creating custom tool flow controls" in ToolFlowControl.__doc__
+        assert (
+            "Base class for creating custom tool flow controls"
+            in ToolFlowControl.__doc__
+        )
 
     def test_toolflowcontrol_inheritance(self):
         """Test that custom classes can inherit from ToolFlowControl."""
+
         class CustomFlowControl(ToolFlowControl):
             def __init__(self):
                 super().__init__()
@@ -31,12 +36,15 @@ class TestToolFlowControl:
 
     def test_toolflowcontrol_multiple_inheritance(self):
         """Test that ToolFlowControl works with multiple inheritance."""
+
         class ReActControl(ToolFlowControl):
             """ReAct generation schema control."""
+
             schema_name = "ReAct"
 
         class ChainOfThoughtControl(ToolFlowControl):
             """Chain of Thought generation schema control."""
+
             schema_name = "CoT"
 
         react = ReActControl()
@@ -49,6 +57,7 @@ class TestToolFlowControl:
 
     def test_toolflowcontrol_method_addition(self):
         """Test that custom methods can be added to ToolFlowControl subclasses."""
+
         class CustomControl(ToolFlowControl):
             def process(self, data):
                 return f"Processed: {data}"
@@ -58,6 +67,7 @@ class TestToolFlowControl:
 
     def test_toolflowcontrol_state_management(self):
         """Test that ToolFlowControl subclasses can manage state."""
+
         class StatefulControl(ToolFlowControl):
             def __init__(self):
                 super().__init__()
@@ -79,6 +89,7 @@ class TestToolFlowControl:
 
     def test_toolflowcontrol_callable_subclass(self):
         """Test that ToolFlowControl subclasses can be callable."""
+
         class CallableControl(ToolFlowControl):
             def __call__(self, *args, **kwargs):
                 return f"Called with args: {args}, kwargs: {kwargs}"
@@ -90,6 +101,7 @@ class TestToolFlowControl:
 
     def test_toolflowcontrol_with_properties(self):
         """Test that ToolFlowControl subclasses can have properties."""
+
         class PropertyControl(ToolFlowControl):
             def __init__(self):
                 super().__init__()
@@ -110,6 +122,7 @@ class TestToolFlowControl:
 
     def test_toolflowcontrol_with_class_variables(self):
         """Test that ToolFlowControl subclasses can have class variables."""
+
         class ConfiguredControl(ToolFlowControl):
             default_timeout = 30
             max_retries = 3
@@ -124,6 +137,7 @@ class TestToolFlowControl:
 
     def test_toolflowcontrol_isolation(self):
         """Test that different ToolFlowControl instances are isolated."""
+
         class CounterControl(ToolFlowControl):
             def __init__(self):
                 super().__init__()

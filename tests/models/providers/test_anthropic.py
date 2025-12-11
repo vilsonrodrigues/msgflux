@@ -1,8 +1,9 @@
 """Tests for msgflux.models.providers.anthropic module."""
 
-import pytest
-from unittest.mock import Mock, patch, MagicMock
 import os
+from unittest.mock import MagicMock, Mock, patch
+
+import pytest
 
 
 class TestAnthropicProviderImport:
@@ -12,6 +13,7 @@ class TestAnthropicProviderImport:
         """Test that Anthropic provider imports correctly when dependencies are available."""
         try:
             from msgflux.models.providers.anthropic import AnthropicChatCompletion
+
             # If we get here, imports worked
             assert True
         except ImportError:
@@ -39,8 +41,12 @@ class TestAnthropicChatCompletion:
     @pytest.fixture
     def mock_anthropic_client(self):
         """Mock Anthropic client."""
-        with patch("msgflux.models.providers.anthropic.Anthropic") as mock_client, \
-             patch("msgflux.models.providers.anthropic.AsyncAnthropic") as mock_async_client:
+        with (
+            patch("msgflux.models.providers.anthropic.Anthropic") as mock_client,
+            patch(
+                "msgflux.models.providers.anthropic.AsyncAnthropic"
+            ) as mock_async_client,
+        ):
             yield mock_client, mock_async_client
 
     def test_chat_completion_initialization(self, mock_anthropic_client):
@@ -99,7 +105,10 @@ class TestAnthropicChatCompletion:
             thinking_in_tool_call=True,
         )
 
-        assert model.sampling_run_params.get("thinking") == {"type": "enabled", "budget_tokens": 10000}
+        assert model.sampling_run_params.get("thinking") == {
+            "type": "enabled",
+            "budget_tokens": 10000,
+        }
         assert model.return_thinking is True
         assert model.thinking_in_tool_call is True
 
@@ -177,8 +186,12 @@ class TestAnthropicBaseURL:
     @pytest.fixture
     def mock_anthropic_client(self):
         """Mock Anthropic client."""
-        with patch("msgflux.models.providers.anthropic.Anthropic") as mock_client, \
-             patch("msgflux.models.providers.anthropic.AsyncAnthropic") as mock_async_client:
+        with (
+            patch("msgflux.models.providers.anthropic.Anthropic") as mock_client,
+            patch(
+                "msgflux.models.providers.anthropic.AsyncAnthropic"
+            ) as mock_async_client,
+        ):
             yield mock_client, mock_async_client
 
     def test_chat_completion_custom_base_url(self, mock_anthropic_client):

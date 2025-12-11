@@ -1,7 +1,8 @@
 """Tests for msgflux.models.providers.vllm module."""
 
+from unittest.mock import MagicMock, Mock, patch
+
 import pytest
-from unittest.mock import Mock, patch, MagicMock
 
 
 class TestVLLMProviderImport:
@@ -12,11 +13,12 @@ class TestVLLMProviderImport:
         try:
             from msgflux.models.providers.vllm import (
                 VLLMChatCompletion,
-                VLLMTextEmbedder,
                 VLLMSpeechToText,
-                VLLMTextReranker,
                 VLLMTextClassifier,
+                VLLMTextEmbedder,
+                VLLMTextReranker,
             )
+
             # If we get here, imports worked
             assert True
         except ImportError:
@@ -48,8 +50,10 @@ class TestVLLMChatCompletion:
     @pytest.fixture
     def mock_openai_client(self):
         """Mock OpenAI client."""
-        with patch("msgflux.models.providers.openai.OpenAI") as mock_client, \
-             patch("msgflux.models.providers.openai.AsyncOpenAI") as mock_async_client:
+        with (
+            patch("msgflux.models.providers.openai.OpenAI") as mock_client,
+            patch("msgflux.models.providers.openai.AsyncOpenAI") as mock_async_client,
+        ):
             yield mock_client, mock_async_client
 
     def test_chat_completion_initialization(self, mock_openai_client):
@@ -100,10 +104,7 @@ class TestVLLMChatCompletion:
 
         model = VLLMChatCompletion(model_id="llama-3")
 
-        params = {
-            "messages": [],
-            "response_format": {"type": "json_object"}
-        }
+        params = {"messages": [], "response_format": {"type": "json_object"}}
 
         adapted = model._adapt_params(params)
 
@@ -117,10 +118,7 @@ class TestVLLMChatCompletion:
 
         from msgflux.models.providers.vllm import VLLMChatCompletion
 
-        model = VLLMChatCompletion(
-            model_id="llama-3",
-            enable_thinking=True
-        )
+        model = VLLMChatCompletion(model_id="llama-3", enable_thinking=True)
 
         params = {"messages": []}
         adapted = model._adapt_params(params)
@@ -142,8 +140,10 @@ class TestVLLMTextEmbedder:
     @pytest.fixture
     def mock_openai_client(self):
         """Mock OpenAI client."""
-        with patch("msgflux.models.providers.openai.OpenAI") as mock_client, \
-             patch("msgflux.models.providers.openai.AsyncOpenAI") as mock_async_client:
+        with (
+            patch("msgflux.models.providers.openai.OpenAI") as mock_client,
+            patch("msgflux.models.providers.openai.AsyncOpenAI") as mock_async_client,
+        ):
             yield mock_client, mock_async_client
 
     def test_text_embedder_initialization(self, mock_openai_client):
@@ -182,8 +182,10 @@ class TestVLLMSpeechToText:
     @pytest.fixture
     def mock_openai_client(self):
         """Mock OpenAI client."""
-        with patch("msgflux.models.providers.openai.OpenAI") as mock_client, \
-             patch("msgflux.models.providers.openai.AsyncOpenAI") as mock_async_client:
+        with (
+            patch("msgflux.models.providers.openai.OpenAI") as mock_client,
+            patch("msgflux.models.providers.openai.AsyncOpenAI") as mock_async_client,
+        ):
             yield mock_client, mock_async_client
 
     def test_speech_to_text_initialization(self, mock_openai_client):
@@ -211,8 +213,10 @@ class TestVLLMTextClassifier:
     @pytest.fixture
     def mock_httpx_client(self):
         """Mock HTTPX client."""
-        with patch("msgflux.models.httpx.httpx.Client") as mock_client, \
-             patch("msgflux.models.httpx.httpx.AsyncClient") as mock_async_client:
+        with (
+            patch("msgflux.models.httpx.httpx.Client") as mock_client,
+            patch("msgflux.models.httpx.httpx.AsyncClient") as mock_async_client,
+        ):
             yield mock_client, mock_async_client
 
     def test_text_classifier_initialization(self, mock_httpx_client):
@@ -271,8 +275,10 @@ class TestVLLMBaseURL:
     @pytest.fixture
     def mock_openai_client(self):
         """Mock OpenAI client."""
-        with patch("msgflux.models.providers.openai.OpenAI") as mock_client, \
-             patch("msgflux.models.providers.openai.AsyncOpenAI") as mock_async_client:
+        with (
+            patch("msgflux.models.providers.openai.OpenAI") as mock_client,
+            patch("msgflux.models.providers.openai.AsyncOpenAI") as mock_async_client,
+        ):
             yield mock_client, mock_async_client
 
     def test_default_base_url(self, mock_openai_client, monkeypatch):

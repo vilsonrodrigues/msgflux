@@ -1,4 +1,5 @@
 import base64
+
 from msgflux.utils.validation import is_base64, is_builtin_type, is_subclass_of
 
 

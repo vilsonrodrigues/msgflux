@@ -8,10 +8,12 @@ This test validates:
 4. Backward compatibility is maintained (detail parameter still works via kwargs)
 """
 
-import pytest
 from unittest.mock import MagicMock
-from msgflux.utils.chat import ChatBlock
+
+import pytest
+
 from msgflux.nn.modules.agent import Agent
+from msgflux.utils.chat import ChatBlock
 
 
 def test_chatblock_image_with_detail_kwarg():
@@ -30,7 +32,7 @@ def test_chatblock_image_with_multiple_kwargs():
         "https://example.com/image.jpg",
         detail="low",
         custom_param="value",
-        another_param=123
+        another_param=123,
     )
 
     assert result["image_url"]["detail"] == "low"
@@ -65,14 +67,12 @@ def test_chatblock_image_without_kwargs():
 def test_agent_config_with_image_block_kwargs():
     """Test that Agent accepts image_block_kwargs in config."""
     model = MagicMock()
-    model.model_type = 'chat_completion'
+    model.model_type = "chat_completion"
 
     agent = Agent(
-        name='test_agent',
+        name="test_agent",
         model=model,
-        config={
-            "image_block_kwargs": {"detail": "high", "custom": "value"}
-        }
+        config={"image_block_kwargs": {"detail": "high", "custom": "value"}},
     )
 
     assert "image_block_kwargs" in agent.config
@@ -84,15 +84,15 @@ def test_agent_config_with_image_block_kwargs():
 def test_agent_config_image_block_kwargs_validation():
     """Test that Agent validates image_block_kwargs type."""
     model = MagicMock()
-    model.model_type = 'chat_completion'
+    model.model_type = "chat_completion"
 
     with pytest.raises(TypeError) as exc_info:
         Agent(
-            name='test_agent',
+            name="test_agent",
             model=model,
             config={
                 "image_block_kwargs": "invalid_type"  # Should be dict
-            }
+            },
         )
 
     assert "image_block_kwargs" in str(exc_info.value)
@@ -103,14 +103,12 @@ def test_agent_config_image_block_kwargs_validation():
 def test_agent_format_image_input_uses_image_block_kwargs():
     """Test that Agent._format_image_input passes image_block_kwargs to ChatBlock.image."""
     model = MagicMock()
-    model.model_type = 'chat_completion'
+    model.model_type = "chat_completion"
 
     agent = Agent(
-        name='test_agent',
+        name="test_agent",
         model=model,
-        config={
-            "image_block_kwargs": {"detail": "low", "provider_specific": "param"}
-        }
+        config={"image_block_kwargs": {"detail": "low", "provider_specific": "param"}},
     )
 
     # Mock the _prepare_data_uri to return a simple URL
@@ -120,22 +118,22 @@ def test_agent_format_image_input_uses_image_block_kwargs():
 
     assert result["image_url"]["detail"] == "low"
     assert result["image_url"]["provider_specific"] == "param"
-    print("✓ Test 7 passed: Agent._format_image_input passes image_block_kwargs correctly")
+    print(
+        "✓ Test 7 passed: Agent._format_image_input passes image_block_kwargs correctly"
+    )
 
 
 def test_backward_compatibility_detail_in_image_block_kwargs():
     """Test backward compatibility: detail parameter works via image_block_kwargs."""
     model = MagicMock()
-    model.model_type = 'chat_completion'
+    model.model_type = "chat_completion"
 
     # Old way would be: config={"image_detail": "high"}
     # New way is: config={"image_block_kwargs": {"detail": "high"}}
     agent = Agent(
-        name='test_agent',
+        name="test_agent",
         model=model,
-        config={
-            "image_block_kwargs": {"detail": "high"}
-        }
+        config={"image_block_kwargs": {"detail": "high"}},
     )
 
     agent._prepare_data_uri = MagicMock(return_value="https://example.com/image.jpg")
@@ -148,12 +146,9 @@ def test_backward_compatibility_detail_in_image_block_kwargs():
 def test_agent_without_image_block_kwargs():
     """Test that Agent works without image_block_kwargs (empty dict default)."""
     model = MagicMock()
-    model.model_type = 'chat_completion'
+    model.model_type = "chat_completion"
 
-    agent = Agent(
-        name='test_agent',
-        model=model
-    )
+    agent = Agent(name="test_agent", model=model)
 
     agent._prepare_data_uri = MagicMock(return_value="https://example.com/image.jpg")
     result = agent._format_image_input("test.jpg")
@@ -164,7 +159,7 @@ def test_agent_without_image_block_kwargs():
     print("✓ Test 9 passed: Agent works without image_block_kwargs")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_chatblock_image_with_detail_kwarg()
     test_chatblock_image_with_multiple_kwargs()
     test_chatblock_image_with_list_urls()
@@ -177,8 +172,14 @@ if __name__ == '__main__':
 
     print("\n✅ All tests passed! Refactoring validated successfully.")
     print("\nSummary of changes:")
-    print("  1. ChatBlock.image now accepts **kwargs instead of specific detail parameter")
-    print("  2. Agent config now accepts 'image_block_kwargs' dict instead of 'image_detail'")
+    print(
+        "  1. ChatBlock.image now accepts **kwargs instead of specific detail parameter"
+    )
+    print(
+        "  2. Agent config now accepts 'image_block_kwargs' dict instead of 'image_detail'"
+    )
     print("  3. image_block_kwargs are properly validated (must be dict)")
-    print("  4. Any kwargs can be passed to image blocks (flexible for different providers)")
+    print(
+        "  4. Any kwargs can be passed to image blocks (flexible for different providers)"
+    )
     print("  5. Backward compatibility maintained: detail works via image_block_kwargs")

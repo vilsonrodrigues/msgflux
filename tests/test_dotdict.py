@@ -1,7 +1,8 @@
 """Tests for msgflux.dotdict module."""
 
-import pytest
 import msgspec
+import pytest
+
 from msgflux.dotdict import dotdict
 
 
@@ -50,14 +51,7 @@ class TestDotdictInitialization:
 
     def test_init_nested_dict(self):
         """Test initializing with nested dictionary."""
-        data = {
-            "user": {
-                "name": "Eve",
-                "profile": {
-                    "age": 28
-                }
-            }
-        }
+        data = {"user": {"name": "Eve", "profile": {"age": 28}}}
         d = dotdict(data)
 
         assert isinstance(d["user"], dotdict)
@@ -66,12 +60,7 @@ class TestDotdictInitialization:
 
     def test_init_with_list_of_dicts(self):
         """Test initializing with list containing dictionaries."""
-        data = {
-            "items": [
-                {"name": "item1"},
-                {"name": "item2"}
-            ]
-        }
+        data = {"items": [{"name": "item1"}, {"name": "item2"}]}
         d = dotdict(data)
 
         assert isinstance(d["items"], list)
@@ -98,13 +87,7 @@ class TestDotNotationAccess:
 
     def test_getattr_nested(self):
         """Test nested attribute access."""
-        d = dotdict({
-            "user": {
-                "profile": {
-                    "name": "Henry"
-                }
-            }
-        })
+        d = dotdict({"user": {"profile": {"name": "Henry"}}})
 
         assert d.user.profile.name == "Henry"
 
@@ -228,13 +211,7 @@ class TestWrap:
     def test_wrap_nested_dict(self):
         """Test wrapping nested dictionaries."""
         d = dotdict()
-        data = {
-            "level1": {
-                "level2": {
-                    "value": 42
-                }
-            }
-        }
+        data = {"level1": {"level2": {"value": 42}}}
         wrapped = d._wrap(data)
 
         assert isinstance(wrapped, dotdict)
@@ -281,26 +258,14 @@ class TestGetPath:
 
     def test_get_nested_path(self):
         """Test getting value with nested path."""
-        d = dotdict({
-            "user": {
-                "profile": {
-                    "name": "Victor",
-                    "age": 35
-                }
-            }
-        })
+        d = dotdict({"user": {"profile": {"name": "Victor", "age": 35}}})
 
         assert d.get("user.profile.name") == "Victor"
         assert d.get("user.profile.age") == 35
 
     def test_get_path_with_list_index(self):
         """Test getting value from list using index in path."""
-        d = dotdict({
-            "items": [
-                {"name": "first"},
-                {"name": "second"}
-            ]
-        })
+        d = dotdict({"items": [{"name": "first"}, {"name": "second"}]})
 
         assert d.get("items.0.name") == "first"
         assert d.get("items.1.name") == "second"
@@ -328,17 +293,7 @@ class TestGetPath:
 
     def test_get_deep_nested_path(self):
         """Test getting deeply nested path."""
-        d = dotdict({
-            "a": {
-                "b": {
-                    "c": {
-                        "d": {
-                            "value": "deep"
-                        }
-                    }
-                }
-            }
-        })
+        d = dotdict({"a": {"b": {"c": {"d": {"value": "deep"}}}}})
 
         assert d.get("a.b.c.d.value") == "deep"
 
@@ -496,13 +451,7 @@ class TestToDict:
 
     def test_to_dict_nested(self):
         """Test converting nested dotdict to regular dict."""
-        d = dotdict({
-            "user": {
-                "profile": {
-                    "name": "Karen"
-                }
-            }
-        })
+        d = dotdict({"user": {"profile": {"name": "Karen"}}})
         result = d.to_dict()
 
         assert isinstance(result, dict)
@@ -513,12 +462,7 @@ class TestToDict:
 
     def test_to_dict_with_list(self):
         """Test converting dotdict with lists to regular dict."""
-        d = dotdict({
-            "items": [
-                {"name": "item1"},
-                {"name": "item2"}
-            ]
-        })
+        d = dotdict({"items": [{"name": "item1"}, {"name": "item2"}]})
         result = d.to_dict()
 
         assert isinstance(result["items"], list)
@@ -527,13 +471,9 @@ class TestToDict:
 
     def test_to_dict_preserves_primitives(self):
         """Test to_dict preserves primitive values."""
-        d = dotdict({
-            "string": "text",
-            "number": 42,
-            "float": 3.14,
-            "bool": True,
-            "none": None
-        })
+        d = dotdict(
+            {"string": "text", "number": 42, "float": 3.14, "bool": True, "none": None}
+        )
         result = d.to_dict()
 
         assert result["string"] == "text"
@@ -557,14 +497,7 @@ class TestToJson:
 
     def test_to_json_nested(self):
         """Test JSON serialization of nested dotdict."""
-        d = dotdict({
-            "user": {
-                "name": "Monica",
-                "settings": {
-                    "theme": "dark"
-                }
-            }
-        })
+        d = dotdict({"user": {"name": "Monica", "settings": {"theme": "dark"}}})
         json_bytes = d.to_json()
         decoded = msgspec.json.decode(json_bytes)
 
@@ -573,10 +506,7 @@ class TestToJson:
 
     def test_to_json_with_list(self):
         """Test JSON serialization with lists."""
-        d = dotdict({
-            "items": [1, 2, 3],
-            "objects": [{"key": "value"}]
-        })
+        d = dotdict({"items": [1, 2, 3], "objects": [{"key": "value"}]})
         json_bytes = d.to_json()
         decoded = msgspec.json.decode(json_bytes)
 
@@ -695,22 +625,14 @@ class TestEdgeCases:
 
     def test_nested_list_of_lists(self):
         """Test handling nested lists."""
-        d = dotdict({
-            "matrix": [
-                [1, 2, 3],
-                [4, 5, 6]
-            ]
-        })
+        d = dotdict({"matrix": [[1, 2, 3], [4, 5, 6]]})
 
         assert d["matrix"][0][1] == 2
         assert d.get("matrix.0.1") == 2  # List indices in path work for multiple levels
 
     def test_special_characters_in_keys(self):
         """Test keys with special characters."""
-        d = dotdict({
-            "key-with-dash": "value1",
-            "key_with_underscore": "value2"
-        })
+        d = dotdict({"key-with-dash": "value1", "key_with_underscore": "value2"})
 
         assert d["key-with-dash"] == "value1"
         assert d["key_with_underscore"] == "value2"

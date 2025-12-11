@@ -30,7 +30,7 @@ class dotdict(dict):  # noqa: N801
         notation (e.g., `obj.api_key` or `obj['api_key']`). The hiding only affects
         `.get()` method and string representations.
 
-        Example:
+    Example:
             >>> d = dotdict(
             ...     {"api_key": "secret", "username": "john"},
             ...     hidden_keys=["api_key"]

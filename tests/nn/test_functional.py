@@ -1,9 +1,11 @@
 """Tests for msgflux.nn.functional module."""
 
-import pytest
 import asyncio
-from msgflux.nn import functional as F
+
+import pytest
+
 from msgflux.dotdict import dotdict
+from msgflux.nn import functional as F
 
 
 class TestMapGather:
@@ -11,6 +13,7 @@ class TestMapGather:
 
     def test_map_gather_basic(self):
         """Test basic map_gather functionality."""
+
         def add(x, y):
             return x + y
 
@@ -19,13 +22,14 @@ class TestMapGather:
 
     def test_map_gather_with_kwargs(self):
         """Test map_gather with kwargs_list."""
+
         def multiply(x, y=2):
             return x * y
 
         results = F.map_gather(
             multiply,
             args_list=[(1,), (3,), (5,)],
-            kwargs_list=[{'y': 3}, {'y': 4}, {'y': 5}]
+            kwargs_list=[{"y": 3}, {"y": 4}, {"y": 5}],
         )
         assert results == (3, 12, 25)
 
@@ -36,6 +40,7 @@ class TestMapGather:
 
     def test_map_gather_empty_args_list(self):
         """Test map_gather raises ValueError for empty args_list."""
+
         def dummy(x):
             return x
 
@@ -44,6 +49,7 @@ class TestMapGather:
 
     def test_map_gather_mismatched_kwargs_list(self):
         """Test map_gather raises ValueError for mismatched kwargs_list length."""
+
         def dummy(x, y=1):
             return x + y
 
@@ -51,7 +57,7 @@ class TestMapGather:
             F.map_gather(
                 dummy,
                 args_list=[(1,), (2,)],
-                kwargs_list=[{'y': 2}]  # Length mismatch
+                kwargs_list=[{"y": 2}],  # Length mismatch
             )
 
 
@@ -60,6 +66,7 @@ class TestScatterGather:
 
     def test_scatter_gather_basic(self):
         """Test basic scatter_gather functionality."""
+
         def add(x, y):
             return x + y
 
@@ -74,6 +81,7 @@ class TestScatterGather:
 
     def test_scatter_gather_with_kwargs(self):
         """Test scatter_gather with kwargs."""
+
         def add(x, y):
             return x + y
 
@@ -82,7 +90,7 @@ class TestScatterGather:
 
         callables = [add, multiply, add]
         args = [(1,), (), (10,)]
-        kwargs = [{'y': 2}, {'x': 3, 'y': 3}, {'y': 20}]
+        kwargs = [{"y": 2}, {"x": 3, "y": 3}, {"y": 20}]
 
         results = F.scatter_gather(callables, args_list=args, kwargs_list=kwargs)
         assert results == (3, 9, 30)
@@ -98,6 +106,7 @@ class TestBcastGather:
 
     def test_bcast_gather_basic(self):
         """Test basic bcast_gather functionality."""
+
         def square(x):
             return x * x
 
@@ -109,6 +118,7 @@ class TestBcastGather:
 
     def test_bcast_gather_with_kwargs(self):
         """Test bcast_gather with kwargs."""
+
         def multiply(x, y=1):
             return x * y
 
@@ -126,23 +136,25 @@ class TestMsgScatterGather:
 
     def test_msg_scatter_gather_basic(self):
         """Test basic msg_scatter_gather functionality."""
+
         def add_field_a(msg):
-            msg['field_a'] = 'value_a'
+            msg["field_a"] = "value_a"
             return msg
 
         def add_field_b(msg):
-            msg['field_b'] = 'value_b'
+            msg["field_b"] = "value_b"
             return msg
 
         messages = [dotdict(), dotdict()]
         results = F.msg_scatter_gather([add_field_a, add_field_b], messages)
 
         assert len(results) == 2
-        assert results[0]['field_a'] == 'value_a'
-        assert results[1]['field_b'] == 'value_b'
+        assert results[0]["field_a"] == "value_a"
+        assert results[1]["field_b"] == "value_b"
 
     def test_msg_scatter_gather_invalid_messages(self):
         """Test msg_scatter_gather raises TypeError for invalid messages."""
+
         def dummy(msg):
             return msg
 
@@ -151,6 +163,7 @@ class TestMsgScatterGather:
 
     def test_msg_scatter_gather_length_mismatch(self):
         """Test msg_scatter_gather raises ValueError for length mismatch."""
+
         def dummy(msg):
             return msg
 
@@ -163,22 +176,24 @@ class TestMsgBcastGather:
 
     def test_msg_bcast_gather_basic(self):
         """Test basic msg_bcast_gather functionality."""
+
         def add_field_a(msg):
-            msg['field_a'] = 'value_a'
+            msg["field_a"] = "value_a"
             return msg
 
         def add_field_b(msg):
-            msg['field_b'] = 'value_b'
+            msg["field_b"] = "value_b"
             return msg
 
         message = dotdict()
         result = F.msg_bcast_gather([add_field_a, add_field_b], message)
 
-        assert result['field_a'] == 'value_a'
-        assert result['field_b'] == 'value_b'
+        assert result["field_a"] == "value_a"
+        assert result["field_b"] == "value_b"
 
     def test_msg_bcast_gather_invalid_message(self):
         """Test msg_bcast_gather raises TypeError for invalid message."""
+
         def dummy(msg):
             return msg
 
@@ -196,6 +211,7 @@ class TestWaitFor:
 
     def test_wait_for_basic(self):
         """Test basic wait_for functionality."""
+
         def square(x):
             return x * x
 
@@ -221,6 +237,7 @@ class TestBackgroundTask:
         F.background_task(append_value, 42)
         # Give it a moment to execute
         import time
+
         time.sleep(0.1)
 
         assert 42 in results
@@ -246,6 +263,7 @@ class TestAsyncFunctions:
     @pytest.mark.asyncio
     async def test_amap_gather_basic(self):
         """Test basic amap_gather functionality."""
+
         async def add(x, y):
             return x + y
 
@@ -261,6 +279,7 @@ class TestAsyncFunctions:
     @pytest.mark.asyncio
     async def test_ascatter_gather_basic(self):
         """Test basic ascatter_gather functionality."""
+
         async def add(x, y):
             return x + y
 
@@ -282,23 +301,25 @@ class TestAsyncFunctions:
     @pytest.mark.asyncio
     async def test_amsg_bcast_gather_basic(self):
         """Test basic amsg_bcast_gather functionality."""
+
         async def add_field_a(msg):
-            msg['field_a'] = 'value_a'
+            msg["field_a"] = "value_a"
             return msg
 
         async def add_field_b(msg):
-            msg['field_b'] = 'value_b'
+            msg["field_b"] = "value_b"
             return msg
 
         message = dotdict()
         result = await F.amsg_bcast_gather([add_field_a, add_field_b], message)
 
-        assert result['field_a'] == 'value_a'
-        assert result['field_b'] == 'value_b'
+        assert result["field_a"] == "value_a"
+        assert result["field_b"] == "value_b"
 
     @pytest.mark.asyncio
     async def test_amsg_bcast_gather_invalid_message(self):
         """Test amsg_bcast_gather raises TypeError for invalid message."""
+
         async def dummy(msg):
             return msg
 

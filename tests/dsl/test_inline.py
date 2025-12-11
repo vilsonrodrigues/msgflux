@@ -1,12 +1,11 @@
-
 import pytest
+
 from msgflux.dotdict import dotdict
-from msgflux.dsl.inline import inline, ainline
+from msgflux.dsl.inline import ainline, inline
 
 
 @pytest.fixture
 def modules():
-
     def prep(msg: dotdict) -> dotdict:
         msg["output"] = {"agent": "xpto", "score": 10, "status": "success"}
         msg["counter"] = 0
@@ -39,7 +38,6 @@ def modules():
 
 @pytest.fixture
 def async_modules():
-
     async def prep(msg: dotdict) -> dotdict:
         msg["output"] = {"agent": "xpto", "score": 10, "status": "success"}
         msg["counter"] = 0

@@ -1,14 +1,15 @@
+from typing import Dict, List, Optional
 
 import pytest
-from typing import List, Dict, Optional
+
 from msgflux.dsl.signature import (
-    Signature,
+    Audio,
+    FieldInfo,
+    Image,
     InputField,
     OutputField,
-    FieldInfo,
+    Signature,
     SignatureFactory,
-    Image,
-    Audio,
 )
 
 
@@ -18,7 +19,7 @@ class TestSignature(Signature):
     name: str = InputField(desc="The name of the user.")
     age: int = InputField()
     image: Image = InputField(desc="User's profile picture.")
-    
+
     output_name: str = OutputField(desc="The processed name.")
     output_age: int = OutputField()
     output_audio: Audio = OutputField(desc="Generated audio output.")
@@ -62,7 +63,9 @@ def test_get_outputs_info():
         name="output_audio", dtype="Audio", desc="Generated audio output."
     )
     assert outputs_info[3] == FieldInfo(name="is_adult", dtype="bool", desc=None)
-    assert outputs_info[4] == FieldInfo(name="metadata", dtype="Dict[str, str]", desc=None)
+    assert outputs_info[4] == FieldInfo(
+        name="metadata", dtype="Dict[str, str]", desc=None
+    )
     assert outputs_info[5] == FieldInfo(name="tags", dtype="List[str]", desc=None)
     assert outputs_info[6] == FieldInfo(
         name="optional_field", dtype="Optional[str]", desc=None
@@ -106,4 +109,3 @@ def test_signature_factory_get_expected_output_from_signature():
     assert "6. `tags` (List[str])" in output
     assert "7. `optional_field` (Optional[str])" in output
     assert "Write an encoded JSON." in output
-

@@ -1,7 +1,8 @@
 """Test for creating msgspec.Struct subclasses using type()."""
 
-import msgspec
 from typing import Optional
+
+import msgspec
 
 
 def test_struct_inheritance_with_type():
@@ -19,9 +20,9 @@ def test_struct_inheritance_with_type():
 
     # Test 1: Create Output class using type() with final_answer attribute
     Output = type(
-        'Output',
+        "Output",
         (GenerationSchema,),
-        {'__annotations__': {'final_answer': SignatureOutput}}
+        {"__annotations__": {"final_answer": SignatureOutput}},
     )
 
     # Verify the Output class has the correct structure
@@ -29,20 +30,18 @@ def test_struct_inheritance_with_type():
     assert issubclass(Output, msgspec.Struct)
 
     # Verify annotations - only explicitly defined ones appear in __annotations__
-    assert 'final_answer' in Output.__annotations__
-    assert Output.__annotations__['final_answer'] == SignatureOutput
+    assert "final_answer" in Output.__annotations__
+    assert Output.__annotations__["final_answer"] == SignatureOutput
 
     # Inherited annotations are not in Output.__annotations__ but the class still has them
     # They are accessible through the parent class
-    assert 'reasoning' in GenerationSchema.__annotations__
-    assert 'action' in GenerationSchema.__annotations__
+    assert "reasoning" in GenerationSchema.__annotations__
+    assert "action" in GenerationSchema.__annotations__
 
     # Test instantiation
     signature_instance = SignatureOutput(result=42, message="Success")
     output_instance = Output(
-        reasoning="Because it works",
-        action="test",
-        final_answer=signature_instance
+        reasoning="Because it works", action="test", final_answer=signature_instance
     )
 
     assert output_instance.reasoning == "Because it works"
@@ -70,23 +69,19 @@ def test_struct_inheritance_with_optional_final_answer():
 
     # Create Output with Optional final_answer
     Output = type(
-        'Output',
+        "Output",
         (GenerationSchema,),
-        {'__annotations__': {'final_answer': Optional[SignatureOutput]}}
+        {"__annotations__": {"final_answer": Optional[SignatureOutput]}},
     )
 
     # Test with final_answer present
     output_with_answer = Output(
-        reasoning="test",
-        final_answer=SignatureOutput(value="answer")
+        reasoning="test", final_answer=SignatureOutput(value="answer")
     )
     assert output_with_answer.final_answer.value == "answer"
 
     # Test with final_answer as None
-    output_without_answer = Output(
-        reasoning="test",
-        final_answer=None
-    )
+    output_without_answer = Output(reasoning="test", final_answer=None)
     assert output_without_answer.final_answer is None
 
 
@@ -102,18 +97,17 @@ def test_struct_inheritance_updating_existing_attr():
 
     # Override the final_answer type using type()
     Output = type(
-        'Output',
+        "Output",
         (GenerationSchema,),
-        {'__annotations__': {'final_answer': SignatureOutput}}
+        {"__annotations__": {"final_answer": SignatureOutput}},
     )
 
     # Verify the final_answer type was updated
-    assert Output.__annotations__['final_answer'] == SignatureOutput
+    assert Output.__annotations__["final_answer"] == SignatureOutput
 
     # Test instantiation with new type
     output = Output(
-        reasoning="testing override",
-        final_answer=SignatureOutput(data=123)
+        reasoning="testing override", final_answer=SignatureOutput(data=123)
     )
 
     assert output.reasoning == "testing override"
@@ -134,26 +128,22 @@ def test_struct_inheritance_with_merged_annotations():
     # Merge parent annotations with new ones
     merged_annotations = {
         **GenerationSchema.__annotations__,
-        'final_answer': SignatureOutput
+        "final_answer": SignatureOutput,
     }
 
     Output = type(
-        'Output',
-        (GenerationSchema,),
-        {'__annotations__': merged_annotations}
+        "Output", (GenerationSchema,), {"__annotations__": merged_annotations}
     )
 
     # Now all annotations should be present in Output.__annotations__
-    assert 'reasoning' in Output.__annotations__
-    assert 'action' in Output.__annotations__
-    assert 'final_answer' in Output.__annotations__
-    assert Output.__annotations__['final_answer'] == SignatureOutput
+    assert "reasoning" in Output.__annotations__
+    assert "action" in Output.__annotations__
+    assert "final_answer" in Output.__annotations__
+    assert Output.__annotations__["final_answer"] == SignatureOutput
 
     # Test instantiation
     output = Output(
-        reasoning="test",
-        action="do",
-        final_answer=SignatureOutput(result=100)
+        reasoning="test", action="do", final_answer=SignatureOutput(result=100)
     )
 
     assert output.reasoning == "test"
@@ -175,28 +165,23 @@ def test_overriding_existing_field_with_merge():
     # When we merge, the final_answer in the dict takes precedence
     merged_annotations = {
         **ParentSchema.__annotations__,
-        'final_answer': NewFinalAnswerType  # This overrides the str type
+        "final_answer": NewFinalAnswerType,  # This overrides the str type
     }
 
-    Output = type(
-        'Output',
-        (ParentSchema,),
-        {'__annotations__': merged_annotations}
-    )
+    Output = type("Output", (ParentSchema,), {"__annotations__": merged_annotations})
 
     # Verify the override worked
-    assert 'reasoning' in Output.__annotations__
-    assert 'final_answer' in Output.__annotations__
+    assert "reasoning" in Output.__annotations__
+    assert "final_answer" in Output.__annotations__
 
     # The final_answer type should now be NewFinalAnswerType, not str
-    assert Output.__annotations__['final_answer'] == NewFinalAnswerType
-    assert Output.__annotations__['final_answer'] != str
-    assert Output.__annotations__['reasoning'] == str
+    assert Output.__annotations__["final_answer"] == NewFinalAnswerType
+    assert Output.__annotations__["final_answer"] != str
+    assert Output.__annotations__["reasoning"] == str
 
     # Test instantiation with the new type
     output = Output(
-        reasoning="test",
-        final_answer=NewFinalAnswerType(result=100, confidence=0.95)
+        reasoning="test", final_answer=NewFinalAnswerType(result=100, confidence=0.95)
     )
 
     assert output.reasoning == "test"
@@ -221,12 +206,10 @@ def test_multiple_inheritance_with_type():
     # but demonstrates the syntax
     try:
         Combined = type(
-            'Combined',
-            (BaseA,),
-            {'__annotations__': {'final_answer': SignatureOutput}}
+            "Combined", (BaseA,), {"__annotations__": {"final_answer": SignatureOutput}}
         )
 
-        assert 'final_answer' in Combined.__annotations__
+        assert "final_answer" in Combined.__annotations__
     except Exception as e:
         # Expected if msgspec doesn't support this pattern
         print(f"Multiple inheritance pattern not supported: {e}")

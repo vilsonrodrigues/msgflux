@@ -1,14 +1,14 @@
 """Test MCP client with local FastMCP server."""
+
 import asyncio
+
 from msgflux.protocols.mcp import MCPClient
 
 
 async def main():
     print("Starting MCP client test...")
 
-    client = MCPClient.from_http(
-        base_url="http://127.0.0.1:8000/mcp"
-    )
+    client = MCPClient.from_http(base_url="http://127.0.0.1:8000/mcp")
 
     try:
         async with client:
@@ -31,6 +31,7 @@ async def main():
     except Exception as e:
         print(f"❌ Error: {e}")
         import traceback
+
         traceback.print_exc()
 
 

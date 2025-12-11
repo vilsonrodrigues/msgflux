@@ -7,15 +7,17 @@ This test validates:
 3. The signature-generated task_template takes precedence over user-provided templates
 """
 
-import pytest
 from unittest.mock import MagicMock
+
+import pytest
+
 from msgflux.nn.modules.agent import Agent
 
 
 def create_mock_model():
     """Create a mock chat completion model."""
     model = MagicMock()
-    model.model_type = 'chat_completion'
+    model.model_type = "chat_completion"
     return model
 
 
@@ -25,12 +27,10 @@ def test_agent_without_signature_no_error():
 
     # Should not raise AttributeError about _set_task_template
     agent = Agent(
-        name='test_agent',
-        model=model,
-        templates={'task': 'Test task: {{input}}'}
+        name="test_agent", model=model, templates={"task": "Test task: {{input}}"}
     )
 
-    assert agent.templates == {'task': 'Test task: {{input}}'}
+    assert agent.templates == {"task": "Test task: {{input}}"}
     print("✓ Test 1 passed: Agent without signature created successfully")
 
 
@@ -39,25 +39,22 @@ def test_agent_with_signature_overrides_task_template():
     model = create_mock_model()
 
     agent = Agent(
-        name='test_agent_sig',
+        name="test_agent_sig",
         model=model,
-        signature='input: str -> output: str',
-        templates={
-            'task': 'This should be overridden',
-            'response': '{{output}}'
-        }
+        signature="input: str -> output: str",
+        templates={"task": "This should be overridden", "response": "{{output}}"},
     )
 
     # Verify task template was overridden
-    assert 'task' in agent.templates
-    assert 'response' in agent.templates
+    assert "task" in agent.templates
+    assert "response" in agent.templates
 
     # The task template should be from signature, not the user-provided one
-    assert agent.templates['task'] != 'This should be overridden'
-    assert 'input' in agent.templates['task']
+    assert agent.templates["task"] != "This should be overridden"
+    assert "input" in agent.templates["task"]
 
     # The response template should remain unchanged
-    assert agent.templates['response'] == '{{output}}'
+    assert agent.templates["response"] == "{{output}}"
 
     print("✓ Test 2 passed: Signature correctly overrides task template")
 
@@ -67,14 +64,12 @@ def test_agent_with_signature_without_templates():
     model = create_mock_model()
 
     agent = Agent(
-        name='test_agent_sig',
-        model=model,
-        signature='question: str -> answer: str'
+        name="test_agent_sig", model=model, signature="question: str -> answer: str"
     )
 
     # Should have task template from signature
-    assert 'task' in agent.templates
-    assert 'question' in agent.templates['task']
+    assert "task" in agent.templates
+    assert "question" in agent.templates["task"]
 
     print("✓ Test 3 passed: Agent with signature and no templates works correctly")
 
@@ -85,28 +80,28 @@ def test_templates_initialization_order():
 
     # When both templates and signature are provided
     agent = Agent(
-        name='test_agent',
+        name="test_agent",
         model=model,
-        signature='x: int -> y: int',
+        signature="x: int -> y: int",
         templates={
-            'task': 'User template',
-            'context': 'Context: {{ctx}}',
-            'response': 'Result: {{y}}'
-        }
+            "task": "User template",
+            "context": "Context: {{ctx}}",
+            "response": "Result: {{y}}",
+        },
     )
 
     # Task should be overridden by signature
-    assert agent.templates['task'] != 'User template'
-    assert 'x' in agent.templates['task']
+    assert agent.templates["task"] != "User template"
+    assert "x" in agent.templates["task"]
 
     # Other templates should be preserved
-    assert agent.templates['context'] == 'Context: {{ctx}}'
-    assert agent.templates['response'] == 'Result: {{y}}'
+    assert agent.templates["context"] == "Context: {{ctx}}"
+    assert agent.templates["response"] == "Result: {{y}}"
 
     print("✓ Test 4 passed: Template initialization order is correct")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_agent_without_signature_no_error()
     test_agent_with_signature_overrides_task_template()
     test_agent_with_signature_without_templates()
@@ -114,7 +109,13 @@ if __name__ == '__main__':
 
     print("\n✅ All tests passed! Bug fix validated successfully.")
     print("\nSummary of the fix:")
-    print("  1. Removed non-existent _set_task_template() calls (was on lines 241 and 1383)")
-    print("  2. Moved _set_templates(templates) to execute BEFORE _set_signature() in __init__")
-    print("  3. In _set_signature(), task_template now directly sets self.templates['task']")
+    print(
+        "  1. Removed non-existent _set_task_template() calls (was on lines 241 and 1383)"
+    )
+    print(
+        "  2. Moved _set_templates(templates) to execute BEFORE _set_signature() in __init__"
+    )
+    print(
+        "  3. In _set_signature(), task_template now directly sets self.templates['task']"
+    )
     print("  4. This ensures signature-generated templates override user-provided ones")

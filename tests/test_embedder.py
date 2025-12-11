@@ -1,5 +1,7 @@
 """Tests for Embedder module with batch support."""
+
 import pytest
+
 from msgflux.message import Message
 from msgflux.models.response import ModelResponse
 from msgflux.nn.modules import Embedder
@@ -65,10 +67,7 @@ class MockNonBatchEmbedder:
 def test_embedder_with_batch_model_single_text():
     """Test Embedder with batch-supporting model on single text."""
     model = MockBatchEmbedder()
-    embedder = Embedder(
-        name="test_embedder",
-        model=model
-    )
+    embedder = Embedder(name="test_embedder", model=model)
 
     # Single text input
     result = embedder("Hello world")
@@ -88,10 +87,7 @@ def test_embedder_with_batch_model_single_text():
 def test_embedder_with_batch_model_multiple_texts():
     """Test Embedder with batch-supporting model on multiple texts."""
     model = MockBatchEmbedder()
-    embedder = Embedder(
-        name="test_embedder",
-        model=model
-    )
+    embedder = Embedder(name="test_embedder", model=model)
 
     # Multiple texts
     texts = ["text1", "text2", "text3"]
@@ -112,10 +108,7 @@ def test_embedder_with_batch_model_multiple_texts():
 def test_embedder_with_non_batch_model_multiple_texts():
     """Test Embedder with non-batch model on multiple texts."""
     model = MockNonBatchEmbedder()
-    embedder = Embedder(
-        name="test_embedder",
-        model=model
-    )
+    embedder = Embedder(name="test_embedder", model=model)
 
     # Multiple texts
     texts = ["text1", "text2", "text3"]
@@ -138,10 +131,7 @@ def test_embedder_with_non_batch_model_multiple_texts():
 def test_embedder_with_non_batch_model_single_text():
     """Test Embedder with non-batch model on single text."""
     model = MockNonBatchEmbedder()
-    embedder = Embedder(
-        name="test_embedder",
-        model=model
-    )
+    embedder = Embedder(name="test_embedder", model=model)
 
     # Single text
     result = embedder("Hello world")
@@ -161,11 +151,7 @@ def test_embedder_with_message_object():
     """Test Embedder with Message object using message_fields."""
     model = MockBatchEmbedder()
     embedder = Embedder(
-        name="test_embedder",
-        model=model,
-        message_fields={
-            "task_inputs": "texts"
-        }
+        name="test_embedder", model=model, message_fields={"task_inputs": "texts"}
     )
 
     # Create message with texts field
@@ -185,9 +171,7 @@ def test_embedder_with_config():
     """Test Embedder with config parameters."""
     model = MockBatchEmbedder()
     embedder = Embedder(
-        name="test_embedder",
-        model=model,
-        config={"normalize": True, "truncate": True}
+        name="test_embedder", model=model, config={"normalize": True, "truncate": True}
     )
 
     result = embedder("Hello")
@@ -202,10 +186,7 @@ def test_embedder_async():
     import asyncio
 
     model = MockBatchEmbedder()
-    embedder = Embedder(
-        name="test_embedder",
-        model=model
-    )
+    embedder = Embedder(name="test_embedder", model=model)
 
     async def run_test():
         result = await embedder.aforward(["text1", "text2"])
@@ -225,9 +206,7 @@ def test_embedder_response_mode_plain():
     """Test Embedder with plain_response mode."""
     model = MockBatchEmbedder()
     embedder = Embedder(
-        name="test_embedder",
-        model=model,
-        response_mode="plain_response"
+        name="test_embedder", model=model, response_mode="plain_response"
     )
 
     result = embedder("Hello")
@@ -239,14 +218,12 @@ def test_embedder_response_mode_plain():
 
 def test_embedder_invalid_model_type():
     """Test Embedder with invalid model type."""
+
     class InvalidModel:
         model_type = "chat_completion"  # Wrong type
 
     with pytest.raises(TypeError, match="requires be `embedder` model"):
-        Embedder(
-            name="test_embedder",
-            model=InvalidModel()
-        )
+        Embedder(name="test_embedder", model=InvalidModel())
 
 
 if __name__ == "__main__":

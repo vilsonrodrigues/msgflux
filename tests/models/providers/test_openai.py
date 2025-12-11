@@ -1,8 +1,9 @@
 """Tests for msgflux.models.providers.openai module."""
 
-import pytest
-from unittest.mock import Mock, patch, MagicMock
 import os
+from unittest.mock import MagicMock, Mock, patch
+
+import pytest
 
 
 class TestOpenAIProviderImport:
@@ -13,12 +14,13 @@ class TestOpenAIProviderImport:
         try:
             from msgflux.models.providers.openai import (
                 OpenAIChatCompletion,
-                OpenAITextToSpeech,
-                OpenAITextToImage,
+                OpenAIModeration,
                 OpenAISpeechToText,
                 OpenAITextEmbedder,
-                OpenAIModeration,
+                OpenAITextToImage,
+                OpenAITextToSpeech,
             )
+
             # If we get here, imports worked
             assert True
         except ImportError:
@@ -49,8 +51,10 @@ class TestOpenAIChatCompletion:
     @pytest.fixture
     def mock_openai_client(self):
         """Mock OpenAI client."""
-        with patch("msgflux.models.providers.openai.OpenAI") as mock_client, \
-             patch("msgflux.models.providers.openai.AsyncOpenAI") as mock_async_client:
+        with (
+            patch("msgflux.models.providers.openai.OpenAI") as mock_client,
+            patch("msgflux.models.providers.openai.AsyncOpenAI") as mock_async_client,
+        ):
             yield mock_client, mock_async_client
 
     def test_chat_completion_initialization(self, mock_openai_client):
@@ -138,8 +142,10 @@ class TestOpenAITextToSpeech:
     @pytest.fixture
     def mock_openai_client(self):
         """Mock OpenAI client."""
-        with patch("msgflux.models.providers.openai.OpenAI") as mock_client, \
-             patch("msgflux.models.providers.openai.AsyncOpenAI") as mock_async_client:
+        with (
+            patch("msgflux.models.providers.openai.OpenAI") as mock_client,
+            patch("msgflux.models.providers.openai.AsyncOpenAI") as mock_async_client,
+        ):
             yield mock_client, mock_async_client
 
     def test_text_to_speech_initialization(self, mock_openai_client):
@@ -181,8 +187,10 @@ class TestOpenAITextToImage:
     @pytest.fixture
     def mock_openai_client(self):
         """Mock OpenAI client."""
-        with patch("msgflux.models.providers.openai.OpenAI") as mock_client, \
-             patch("msgflux.models.providers.openai.AsyncOpenAI") as mock_async_client:
+        with (
+            patch("msgflux.models.providers.openai.OpenAI") as mock_client,
+            patch("msgflux.models.providers.openai.AsyncOpenAI") as mock_async_client,
+        ):
             yield mock_client, mock_async_client
 
     def test_text_to_image_initialization(self, mock_openai_client):
@@ -222,8 +230,10 @@ class TestOpenAISpeechToText:
     @pytest.fixture
     def mock_openai_client(self):
         """Mock OpenAI client."""
-        with patch("msgflux.models.providers.openai.OpenAI") as mock_client, \
-             patch("msgflux.models.providers.openai.AsyncOpenAI") as mock_async_client:
+        with (
+            patch("msgflux.models.providers.openai.OpenAI") as mock_client,
+            patch("msgflux.models.providers.openai.AsyncOpenAI") as mock_async_client,
+        ):
             yield mock_client, mock_async_client
 
     def test_speech_to_text_initialization(self, mock_openai_client):
@@ -263,8 +273,10 @@ class TestOpenAITextEmbedder:
     @pytest.fixture
     def mock_openai_client(self):
         """Mock OpenAI client."""
-        with patch("msgflux.models.providers.openai.OpenAI") as mock_client, \
-             patch("msgflux.models.providers.openai.AsyncOpenAI") as mock_async_client:
+        with (
+            patch("msgflux.models.providers.openai.OpenAI") as mock_client,
+            patch("msgflux.models.providers.openai.AsyncOpenAI") as mock_async_client,
+        ):
             yield mock_client, mock_async_client
 
     def test_text_embedder_initialization(self, mock_openai_client):
@@ -304,8 +316,10 @@ class TestOpenAIModeration:
     @pytest.fixture
     def mock_openai_client(self):
         """Mock OpenAI client."""
-        with patch("msgflux.models.providers.openai.OpenAI") as mock_client, \
-             patch("msgflux.models.providers.openai.AsyncOpenAI") as mock_async_client:
+        with (
+            patch("msgflux.models.providers.openai.OpenAI") as mock_client,
+            patch("msgflux.models.providers.openai.AsyncOpenAI") as mock_async_client,
+        ):
             yield mock_client, mock_async_client
 
     def test_moderation_initialization(self, mock_openai_client):
@@ -332,8 +346,10 @@ class TestOpenAIBaseURL:
     @pytest.fixture
     def mock_openai_client(self):
         """Mock OpenAI client."""
-        with patch("msgflux.models.providers.openai.OpenAI") as mock_client, \
-             patch("msgflux.models.providers.openai.AsyncOpenAI") as mock_async_client:
+        with (
+            patch("msgflux.models.providers.openai.OpenAI") as mock_client,
+            patch("msgflux.models.providers.openai.AsyncOpenAI") as mock_async_client,
+        ):
             yield mock_client, mock_async_client
 
     def test_chat_completion_custom_base_url(self, mock_openai_client):

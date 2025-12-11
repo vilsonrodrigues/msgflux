@@ -49,7 +49,7 @@ class TestFilterTools:
         result = filter_tools(
             sample_tools,
             include_tools=["read_file", "write_file"],
-            exclude_tools=["write_file"]  # Should be ignored
+            exclude_tools=["write_file"],  # Should be ignored
         )
         assert len(result) == 2
         assert result[1].name == "write_file"  # Not excluded
@@ -76,11 +76,9 @@ class TestConvertMCPSchema:
             description="Read a file",
             inputSchema={
                 "type": "object",
-                "properties": {
-                    "path": {"type": "string", "description": "File path"}
-                },
-                "required": ["path"]
-            }
+                "properties": {"path": {"type": "string", "description": "File path"}},
+                "required": ["path"],
+            },
         )
 
         schema = convert_mcp_schema_to_tool_schema(mcp_tool)
@@ -93,11 +91,7 @@ class TestConvertMCPSchema:
 
     def test_convert_with_namespace(self):
         """Test converting schema with namespace."""
-        mcp_tool = MCPTool(
-            name="list_files",
-            description="List files",
-            inputSchema={}
-        )
+        mcp_tool = MCPTool(name="list_files", description="List files", inputSchema={})
 
         schema = convert_mcp_schema_to_tool_schema(mcp_tool, namespace="fs")
 
@@ -107,9 +101,7 @@ class TestConvertMCPSchema:
     def test_convert_empty_schema(self):
         """Test converting tool with empty input schema."""
         mcp_tool = MCPTool(
-            name="simple_tool",
-            description="Simple tool",
-            inputSchema={}
+            name="simple_tool", description="Simple tool", inputSchema={}
         )
 
         schema = convert_mcp_schema_to_tool_schema(mcp_tool)
@@ -130,18 +122,21 @@ class TestConvertMCPSchema:
                         "type": "object",
                         "properties": {
                             "case_sensitive": {"type": "boolean"},
-                            "max_results": {"type": "integer"}
-                        }
-                    }
+                            "max_results": {"type": "integer"},
+                        },
+                    },
                 },
-                "required": ["query"]
-            }
+                "required": ["query"],
+            },
         )
 
         schema = convert_mcp_schema_to_tool_schema(mcp_tool)
 
         assert "options" in schema["function"]["parameters"]["properties"]
-        assert schema["function"]["parameters"]["properties"]["options"]["type"] == "object"
+        assert (
+            schema["function"]["parameters"]["properties"]["options"]["type"]
+            == "object"
+        )
 
 
 class TestExtractToolResultText:
@@ -150,8 +145,7 @@ class TestExtractToolResultText:
     def test_extract_single_text_content(self):
         """Test extracting text from single text content."""
         result = MCPToolResult(
-            content=[MCPContent(type="text", text="Hello, world!")],
-            isError=False
+            content=[MCPContent(type="text", text="Hello, world!")], isError=False
         )
 
         text = extract_tool_result_text(result)
@@ -163,9 +157,9 @@ class TestExtractToolResultText:
             content=[
                 MCPContent(type="text", text="Part 1"),
                 MCPContent(type="text", text="Part 2"),
-                MCPContent(type="text", text="Part 3")
+                MCPContent(type="text", text="Part 3"),
             ],
-            isError=False
+            isError=False,
         )
 
         text = extract_tool_result_text(result)
@@ -174,8 +168,7 @@ class TestExtractToolResultText:
     def test_extract_resource_content(self):
         """Test extracting data from resource content."""
         result = MCPToolResult(
-            content=[MCPContent(type="resource", data="base64data")],
-            isError=False
+            content=[MCPContent(type="resource", data="base64data")], isError=False
         )
 
         text = extract_tool_result_text(result)
@@ -187,9 +180,9 @@ class TestExtractToolResultText:
             content=[
                 MCPContent(type="text", text="Text part"),
                 MCPContent(type="resource", data="Data part"),
-                MCPContent(type="text", text="More text")
+                MCPContent(type="text", text="More text"),
             ],
-            isError=False
+            isError=False,
         )
 
         text = extract_tool_result_text(result)
@@ -215,9 +208,9 @@ class TestExtractToolResultText:
             content=[
                 MCPContent(type="text", text="Valid text"),
                 MCPContent(type="text", text=None),
-                MCPContent(type="resource", data=None)
+                MCPContent(type="resource", data=None),
             ],
-            isError=False
+            isError=False,
         )
 
         text = extract_tool_result_text(result)

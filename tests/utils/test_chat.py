@@ -1,5 +1,6 @@
 import msgspec
 import pytest
+
 from msgflux.utils.chat import (
     ChatBlock,
     ChatML,
@@ -63,7 +64,7 @@ class TestChatBlock:
         result = ChatBlock.image("http://example.com/image.jpg")
         assert result == {
             "type": "image_url",
-            "image_url": {"url": "http://example.com/image.jpg"}
+            "image_url": {"url": "http://example.com/image.jpg"},
         }
 
     def test_image_with_high_detail(self):
@@ -71,10 +72,7 @@ class TestChatBlock:
         result = ChatBlock.image("http://example.com/image.jpg", detail="high")
         assert result == {
             "type": "image_url",
-            "image_url": {
-                "url": "http://example.com/image.jpg",
-                "detail": "high"
-            }
+            "image_url": {"url": "http://example.com/image.jpg", "detail": "high"},
         }
 
     def test_image_with_low_detail(self):
@@ -82,10 +80,7 @@ class TestChatBlock:
         result = ChatBlock.image("http://example.com/image.jpg", detail="low")
         assert result == {
             "type": "image_url",
-            "image_url": {
-                "url": "http://example.com/image.jpg",
-                "detail": "low"
-            }
+            "image_url": {"url": "http://example.com/image.jpg", "detail": "low"},
         }
 
     def test_image_list_with_detail(self):
@@ -95,18 +90,12 @@ class TestChatBlock:
         assert result == [
             {
                 "type": "image_url",
-                "image_url": {
-                    "url": "http://example.com/img1.jpg",
-                    "detail": "high"
-                }
+                "image_url": {"url": "http://example.com/img1.jpg", "detail": "high"},
             },
             {
                 "type": "image_url",
-                "image_url": {
-                    "url": "http://example.com/img2.jpg",
-                    "detail": "high"
-                }
-            }
+                "image_url": {"url": "http://example.com/img2.jpg", "detail": "high"},
+            },
         ]
 
     def test_image_list_without_detail(self):
@@ -114,14 +103,8 @@ class TestChatBlock:
         urls = ["http://example.com/img1.jpg", "http://example.com/img2.jpg"]
         result = ChatBlock.image(urls)
         assert result == [
-            {
-                "type": "image_url",
-                "image_url": {"url": "http://example.com/img1.jpg"}
-            },
-            {
-                "type": "image_url",
-                "image_url": {"url": "http://example.com/img2.jpg"}
-            }
+            {"type": "image_url", "image_url": {"url": "http://example.com/img1.jpg"}},
+            {"type": "image_url", "image_url": {"url": "http://example.com/img2.jpg"}},
         ]
 
 
@@ -218,4 +201,7 @@ def test_adapt_messages_for_vllm_audio():
     ]
     adapted = adapt_messages_for_vllm_audio(messages)
     assert adapted[0]["content"][1]["type"] == "audio_url"
-    assert "data:audio/mpeg;base64,base64_data" in adapted[0]["content"][1]["audio_url"]["url"]
+    assert (
+        "data:audio/mpeg;base64,base64_data"
+        in adapted[0]["content"][1]["audio_url"]["url"]
+    )

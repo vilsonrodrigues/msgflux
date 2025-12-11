@@ -1,20 +1,26 @@
 """Tests for msgflux.models.gateway module."""
 
-import pytest
-from unittest.mock import Mock, MagicMock, patch
 from datetime import datetime, time, timezone
+from unittest.mock import MagicMock, Mock, patch
 
-from msgflux.models.gateway import ModelGateway
+import pytest
+
 from msgflux.exceptions import ModelRouterError
 from msgflux.models.base import BaseModel
+from msgflux.models.gateway import ModelGateway
 from msgflux.models.response import ModelResponse
 
 
 class MockModel(BaseModel):
     """Mock model for testing gateway."""
 
-    def __init__(self, model_id: str, model_type: str = "chat_completion",
-                 provider: str = "mock", should_fail: bool = False):
+    def __init__(
+        self,
+        model_id: str,
+        model_type: str = "chat_completion",
+        provider: str = "mock",
+        should_fail: bool = False,
+    ):
         self.model_id = model_id
         self.model_type = model_type
         self.provider = provider
