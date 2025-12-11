@@ -151,44 +151,24 @@ def decorate_function(
 
 
 def decorate_class(cls: type, tool_config: Dict[str, Union[bool, str]]) -> type:
-    """Decorates a class by creating a subclass with tool_config injection.
+    """Decorates a class by injecting tool_config as a class attribute.
 
-    Uses type() to dynamically create a new class that inherits from the original,
-    ensuring that only instances of the decorated class have tool_config.
+    Injects tool_config directly into the class to make it accessible both
+    from the class itself and from instances. This is compatible with AutoParams
+    and doesn't interfere with __init__.
 
     Args:
         cls: The class to decorate
         tool_config: Dictionary containing tool configuration properties
 
     Returns:
-        A new subclass with tool_config injection in __init__
+        The class with tool_config injected as a class attribute
     """
+    # Inject tool_config directly as class attribute
+    # This works for both class-level access (when used as tool) and instance access
+    cls.tool_config = tool_config["tool_config"]
 
-    # Define __init__ for the new class
-    def __init__(self, *args, **kwargs):  # noqa: N807
-        # Call parent __init__
-        cls.__init__(self, *args, **kwargs)
-        # Inject a COPY of tool_config into the instance to avoid sharing
-        for key, value in tool_config.items():
-            if key == "tool_config" and hasattr(value, "to_dict"):
-                # Create a new dotdict instance with the same data
-                self.__dict__[key] = dotdict(value.to_dict())
-            else:
-                self.__dict__[key] = value
-
-    # Create new class using type()
-    new_class = type(
-        cls.__name__,  # Same name as original
-        (cls,),  # Inherit from original class
-        {
-            "__init__": __init__,
-            "__module__": cls.__module__,
-            "__qualname__": cls.__qualname__,
-            "__doc__": cls.__doc__,
-        },
-    )
-
-    return new_class
+    return cls
 
 
 def decorate_instance(
