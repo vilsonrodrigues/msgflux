@@ -42,6 +42,15 @@ from msgflux.utils.msgspec import StructFactory, is_optional_field, msgspec_dump
 from msgflux.utils.validation import is_subclass_of
 from msgflux.utils.xml import apply_xml_tags
 
+# Reserved kwargs that should not be treated as task inputs
+_RESERVED_KWARGS = {
+    "vars",
+    "task_messages",
+    "task_multimodal_inputs",
+    "context_inputs",
+    "model_preference",
+}
+
 
 class Agent(Module, metaclass=AutoParams):
     """Agent is a Module type that uses language models to solve tasks.
@@ -292,20 +301,53 @@ class Agent(Module, metaclass=AutoParams):
         Args:
             message: The input message, which can be:
                 - str: Direct task input (used as task_inputs)
-                - Message: Message object with fields mapped via message_fields
+                - Message: Message object with fields mapped via message_fields.
+                  Requires message_fields configuration, e.g.:
+                  message_fields={"task_inputs": "input.user"}
                 - dict: Task inputs as a dictionary
-                - None: When using task_template without dynamic inputs
-            **kwargs: Runtime overrides for message_fields. Can include:
-                - task_inputs: Override field path or direct value
-                - task_multimodal_inputs: Override multimodal inputs
-                - task_messages: Override chat messages
-                - context_inputs: Override context
-                - model_preference: Override model preference
-                - vars: Override template/tool variables
+                - None: When using named task arguments (see below)
+            **kwargs: Can include:
+                - Reserved kwargs (runtime overrides for message_fields):
+                    - task_multimodal_inputs: Override multimodal inputs
+                    - task_messages: Override chat messages
+                    - context_inputs: Override context
+                    - model_preference: Override model preference
+                    - vars: Override template/tool variables
+                - Named task arguments: When message=None and a task template is
+                  configured, any other kwargs are treated as task inputs.
+                  Example: agent(name="Vilson", age=27)
+                  This is useful when using agents as tools with typed annotations.
 
         Returns:
             Agent response (str, Message, or ModelStreamResponse depending on
             configuration)
+
+        Raises:
+            ValueError: If both message and named task arguments are provided,
+                or if named arguments are used without a task template.
+
+        Examples:
+            >>> # String input
+            >>> agent("What is the weather?")
+
+            >>> # Dict input
+            >>> agent({"city": "Natal"})
+
+            >>> # Message input (requires message_fields configuration)
+            >>> agent_with_message = Agent(
+            ...     model=model,
+            ...     message_fields={"task_inputs": "user.query"}
+            ... )
+            >>> msg = Message()
+            >>> msg.set("user.query", "Hello")
+            >>> agent_with_message(msg)
+
+            >>> # Named arguments (requires task template)
+            >>> agent = Agent(
+            ...     model=model,
+            ...     templates={"task": "Greet {{name}} who is {{age}} years old"},
+            ... )
+            >>> agent(name="Vilson", age=27)
         """
         inputs = self._prepare_task(message, **kwargs)
         model_response = self._execute_model(prefilling=self.prefilling, **inputs)
@@ -432,12 +474,12 @@ class Agent(Module, metaclass=AutoParams):
 
     def _process_model_response(
         self,
-        message: Union[str, Mapping[str, str], Message],
+        message: Union[str, Mapping[str, Any], Message],
         model_response: Union[ModelResponse, ModelStreamResponse],
         model_state: List[Mapping[str, Any]],
         vars: Mapping[str, Any],
         model_preference: Optional[str] = None,
-    ) -> Union[str, Mapping[str, str], Message, ModelStreamResponse]:
+    ) -> Union[str, Mapping[str, Any], Message, ModelStreamResponse]:
         if "tool_call" in model_response.response_type:
             model_response, model_state = self._process_tool_call_response(
                 model_response, model_state, vars, model_preference
@@ -464,12 +506,12 @@ class Agent(Module, metaclass=AutoParams):
 
     async def _aprocess_model_response(
         self,
-        message: Union[str, Mapping[str, str], Message],
+        message: Union[str, Mapping[str, Any], Message],
         model_response: Union[ModelResponse, ModelStreamResponse],
         model_state: List[Mapping[str, Any]],
         vars: Mapping[str, Any],
         model_preference: Optional[str] = None,
-    ) -> Union[str, Mapping[str, str], Message, ModelStreamResponse]:
+    ) -> Union[str, Mapping[str, Any], Message, ModelStreamResponse]:
         if "tool_call" in model_response.response_type:
             model_response, model_state = await self._aprocess_tool_call_response(
                 model_response, model_state, vars, model_preference
@@ -844,26 +886,64 @@ class Agent(Module, metaclass=AutoParams):
         guardrail_params = {"data": data}
         return guardrail_params
 
-    def _prepare_task(
-        self, message: Union[str, Message, Mapping[str, str]], **kwargs
+    def _prepare_task(  # noqa: C901
+        self, message: Optional[Union[str, Message, Mapping[str, Any]]] = None, **kwargs
     ) -> Mapping[str, Any]:
         """Prepare model input in ChatML format and execution params."""
+        # Extract reserved kwargs
         vars = kwargs.pop("vars", {})
+        task_messages = kwargs.pop("task_messages", None)
+        model_preference = kwargs.pop("model_preference", None)
+
+        # Get remaining kwargs (potential task inputs)
+        remaining_kwargs = {
+            k: v for k, v in kwargs.items() if k not in _RESERVED_KWARGS
+        }
+
+        # Handle named task arguments
+        if message is None and remaining_kwargs:
+            if not self.templates.get("task"):
+                raise ValueError(
+                    f"Named task arguments require a 'task' template to be configured. "
+                    f"Received kwargs: {list(remaining_kwargs.keys())}. "
+                    f"Either configure a task template or pass arguments as: "
+                    f"agent({{'key': 'value'}}) or agent(Message(...))"
+                )
+            # Convert named kwargs to dict for template rendering
+            message = remaining_kwargs
+            # Clear kwargs to avoid passing them down
+            for key in remaining_kwargs:
+                kwargs.pop(key)
+        elif message is not None and remaining_kwargs:
+            raise ValueError(
+                f"Cannot pass both 'message' argument and named task arguments. "
+                f"Received message={type(message).__name__} and "
+                f"kwargs={list(remaining_kwargs.keys())}. "
+                f"Use either agent(message) or agent(key1=value1, key2=value2)"
+            )
+
+        # Extract vars from Message if not provided
         if not vars and isinstance(message, Message) and self.vars is not None:
             vars = message.get(self.vars, {})
 
-        task_messages = kwargs.pop("task_messages", None)
+        # Extract task_messages from Message if not provided
         if (
             task_messages is None
             and isinstance(message, Message)
-            and self.vars is not None
+            and self.task_messages is not None
         ):
             task_messages = self._get_content_from_message(self.task_messages, message)
 
         content = self._process_task_inputs(message, vars=vars, **kwargs)
 
         if content is None and task_messages is None:
-            raise ValueError("No data was detected to make the model input")
+            raise ValueError(
+                "No task input provided. Expected one of:\n"
+                "  - agent('your text')\n"
+                "  - agent({'key': 'value'})\n"
+                "  - agent(message=Message(...))\n"
+                "  - agent(param1=..., param2=...) with task template configured"
+            )
 
         if content is not None:
             chat_content = [ChatBlock.user(content)]
@@ -875,7 +955,6 @@ class Agent(Module, metaclass=AutoParams):
         else:
             model_state = task_messages
 
-        model_preference = kwargs.pop("model_preference", None)
         if model_preference is None and isinstance(message, Message):
             model_preference = self.get_model_preference_from_message(message)
 
@@ -885,28 +964,66 @@ class Agent(Module, metaclass=AutoParams):
             "vars": vars,
         }
 
-    async def _aprepare_task(
-        self, message: Union[str, Message, Mapping[str, str]], **kwargs
+    async def _aprepare_task(  # noqa: C901
+        self, message: Optional[Union[str, Message, Mapping[str, Any]]] = None, **kwargs
     ) -> Mapping[str, Any]:
         """Async version of _prepare_task.
         Prepare model input in ChatML format and execution params.
         """
+        # Extract reserved kwargs
         vars = kwargs.pop("vars", {})
+        task_messages = kwargs.pop("task_messages", None)
+        model_preference = kwargs.pop("model_preference", None)
+
+        # Get remaining kwargs (potential task inputs)
+        remaining_kwargs = {
+            k: v for k, v in kwargs.items() if k not in _RESERVED_KWARGS
+        }
+
+        # Handle named task arguments
+        if message is None and remaining_kwargs:
+            if not self.templates.get("task"):
+                raise ValueError(
+                    f"Named task arguments require a 'task' template to be configured. "
+                    f"Received kwargs: {list(remaining_kwargs.keys())}. "
+                    f"Either configure a task template or pass arguments as: "
+                    f"agent({{'key': 'value'}}) or agent(Message(...))"
+                )
+            # Convert named kwargs to dict for template rendering
+            message = remaining_kwargs
+            # Clear kwargs to avoid passing them down
+            for key in remaining_kwargs:
+                kwargs.pop(key)
+        elif message is not None and remaining_kwargs:
+            raise ValueError(
+                f"Cannot pass both 'message' argument and named task arguments. "
+                f"Received message={type(message).__name__} and "
+                f"kwargs={list(remaining_kwargs.keys())}. "
+                f"Use either agent(message) or agent(key1=value1, key2=value2)"
+            )
+
+        # Extract vars from Message if not provided
         if not vars and isinstance(message, Message) and self.vars is not None:
             vars = message.get(self.vars, {})
 
-        task_messages = kwargs.pop("task_messages", None)
+        # Extract task_messages from Message if not provided
         if (
             task_messages is None
             and isinstance(message, Message)
-            and self.vars is not None
+            and self.task_messages is not None
         ):
             task_messages = self._get_content_from_message(self.task_messages, message)
 
         content = await self._aprocess_task_inputs(message, vars=vars, **kwargs)
 
         if content is None and task_messages is None:
-            raise ValueError("No data was detected to make the model input")
+            raise ValueError(
+                "No task input provided. Expected one of:\n"
+                "  - agent('your text')\n"
+                "  - agent({'key': 'value'})\n"
+                "  - agent(message=Message(...))\n"
+                "  - agent(param1=..., param2=...) with task template configured"
+            )
 
         if content is not None:
             chat_content = [ChatBlock.user(content)]
@@ -918,7 +1035,6 @@ class Agent(Module, metaclass=AutoParams):
         else:
             model_state = task_messages
 
-        model_preference = kwargs.pop("model_preference", None)
         if model_preference is None and isinstance(message, Message):
             model_preference = self.get_model_preference_from_message(message)
 
@@ -930,7 +1046,7 @@ class Agent(Module, metaclass=AutoParams):
 
     def _process_task_inputs(  # noqa: C901
         self,
-        message: Union[str, Message, Mapping[str, str]],
+        message: Union[str, Message, Mapping[str, Any]],
         vars: Mapping[str, Any],
         **kwargs,
     ) -> Optional[Union[str, Mapping[str, Any]]]:
@@ -980,7 +1096,7 @@ class Agent(Module, metaclass=AutoParams):
 
     async def _aprocess_task_inputs(  # noqa: C901
         self,
-        message: Union[str, Message, Mapping[str, str]],
+        message: Union[str, Message, Mapping[str, Any]],
         vars: Mapping[str, Any],
         **kwargs,
     ) -> Optional[Union[str, Mapping[str, Any]]]:
@@ -1033,7 +1149,7 @@ class Agent(Module, metaclass=AutoParams):
 
     def _context_manager(  # noqa: C901
         self,
-        message: Union[str, Message, Mapping[str, str]],
+        message: Union[str, Message, Mapping[str, Any]],
         vars: Mapping[str, Any],
         **kwargs,
     ) -> Optional[str]:
@@ -1080,7 +1196,7 @@ class Agent(Module, metaclass=AutoParams):
         return None
 
     def _process_task_multimodal_inputs(
-        self, message: Union[str, Message, Mapping[str, str]], **kwargs
+        self, message: Union[str, Message, Mapping[str, Any]], **kwargs
     ) -> Optional[List[Mapping[str, Any]]]:
         """Processes multimodal inputs (image, audio, video, file) via kwargs or
         message.
@@ -1120,7 +1236,7 @@ class Agent(Module, metaclass=AutoParams):
         return content
 
     async def _aprocess_task_multimodal_inputs(
-        self, message: Union[str, Message, Mapping[str, str]], **kwargs
+        self, message: Union[str, Message, Mapping[str, Any]], **kwargs
     ) -> Optional[List[Mapping[str, Any]]]:
         """Async version of _process_task_multimodal_inputs.
         Processes multimodal inputs (image, audio, video, file) via kwargs or message.
@@ -1337,9 +1453,15 @@ class Agent(Module, metaclass=AutoParams):
 
         return ChatBlock.file(filename, file_data_uri)
 
-    def inspect_model_execution_params(self, *args, **kwargs) -> Mapping[str, Any]:
-        """Debug model input parameters."""
-        inputs = self._prepare_task(*args, **kwargs)
+    def inspect_model_execution_params(
+        self, message: Optional[Union[str, Mapping[str, Any], Message]] = None, **kwargs
+    ) -> Mapping[str, Any]:
+        """Debug model input parameters.
+
+        Accepts the same arguments as forward() to inspect what would be sent to
+        the model.
+        """
+        inputs = self._prepare_task(message, **kwargs)
         model_execution_params = self._prepare_model_execution(
             prefilling=self.prefilling, **inputs
         )
