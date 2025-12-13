@@ -1,7 +1,6 @@
 import asyncio
 import functools
 import inspect
-import re
 import weakref
 from collections import OrderedDict, namedtuple
 from typing import (
@@ -26,7 +25,6 @@ try:
 except ImportError:
     code_to_mermaid = None
     Mermaid = None
-from jinja2 import Template
 from msgtrace.sdk import MsgTraceAttributes
 from opentelemetry import trace
 from opentelemetry.trace import Status, StatusCode
@@ -35,7 +33,6 @@ from msgflux._private.executor import Executor
 from msgflux.dotdict import dotdict
 from msgflux.envs import envs
 from msgflux.exceptions import UnsafeModelResponseError, UnsafeUserInputError
-from msgflux.logger import logger
 from msgflux.message import Message
 from msgflux.models.gateway import ModelGateway
 from msgflux.models.model import Model
@@ -43,11 +40,11 @@ from msgflux.models.response import ModelResponse, ModelStreamResponse
 from msgflux.nn.parameter import Parameter
 from msgflux.telemetry import Spans
 from msgflux.utils.convert import convert_camel_snake_to_title
-from msgflux.utils.encode import aencode_data_to_base64, encode_data_to_base64
 from msgflux.utils.hooks import RemovableHandle
 from msgflux.utils.mermaid import plot_mermaid
 from msgflux.utils.msgspec import StructFactory
-from msgflux.utils.validation import is_base64, is_builtin_type, is_subclass_of
+from msgflux.utils.templates import format_template
+from msgflux.utils.validation import is_builtin_type, is_subclass_of
 
 __all__ = [
     "Module",
@@ -504,69 +501,6 @@ class Module:
             ]
         return None
 
-    def _prepare_data_uri(
-        self,
-        source: str,
-        force_encode: Optional[bool] = False,  # noqa: FBT001, FBT002
-    ) -> Optional[str]:
-        """Prepares a data string (URL or Data URI base64).
-        If force_encode=True, always tries to download and encode URL.
-        Otherwise, keeps the URL if it is HTTP and not base64.
-        Returns None in case of encoding/download error.
-        """
-        if not source:
-            return None
-
-        if is_base64(source):
-            # If it is already base64, assume it is ready (no prefix)
-            # Prefix will be added by formatter if needed
-            return source
-
-        is_url = source.startswith("http")
-
-        if is_url and not force_encode:
-            # Keep the URL as is if you don't force the encoding
-            return source
-
-        # Need to encode (either local or force_encode=True for URL)
-        try:
-            return encode_data_to_base64(source)
-        except Exception as e:
-            logger.error(f"Failed to encode source {source}: {e}")
-            return None
-
-    async def _aprepare_data_uri(
-        self,
-        source: str,
-        force_encode: Optional[bool] = False,  # noqa: FBT001, FBT002
-    ) -> Optional[str]:
-        """Async version of _prepare_data_uri.
-        Prepares a data string (URL or Data URI base64).
-        If force_encode=True, always tries to download and encode URL.
-        Otherwise, keeps the URL if it is HTTP and not base64.
-        Returns None in case of encoding/download error.
-        """
-        if not source:
-            return None
-
-        if is_base64(source):
-            # If it is already base64, assume it is ready (no prefix)
-            # Prefix will be added by formatter if needed
-            return source
-
-        is_url = source.startswith("http")
-
-        if is_url and not force_encode:
-            # Keep the URL as is if you don't force the encoding
-            return source
-
-        # Need to encode (either local or force_encode=True for URL)
-        try:
-            return await aencode_data_to_base64(source)
-        except Exception as e:
-            logger.error(f"Failed to encode source {source}: {e}")
-            return None
-
     def _format_task_template(self, content: Union[str, Dict[str, Any]]) -> str:
         return self._format_template(content, self.templates.get("task"))
 
@@ -576,15 +510,13 @@ class Module:
     def _format_template(
         self, content: Union[str, Dict[str, Any]], raw_template: str
     ) -> str:
-        if isinstance(content, str):
-            rendered = raw_template.format(content)
-        elif isinstance(content, dict):
-            template = Template(raw_template)
-            rendered = template.render(content)
-        else:
-            raise ValueError("Unsupported content type for template formatting")
-        rendered = re.sub(r"\n{3,}", "\n\n", rendered).strip()
-        return rendered
+        """Format a template with content, using security settings from config.
+
+        Delegates to msgflux.utils.templates.format_template with sanitization
+        controlled by the 'sanitize_inputs' config option (default: True).
+        """
+        sanitize = self.config.get("sanitize_inputs", True)
+        return format_template(content, raw_template, sanitize_inputs=sanitize)
 
     def set_name(self, name: str):
         if isinstance(name, str):
@@ -1458,8 +1390,18 @@ class Module:
         if not (self._forward_hooks or self._forward_pre_hooks):
             return await self._acall(*args, **kwargs)
 
+        # Execute forward pre-hooks (sync or async)
         for hook in self._forward_pre_hooks.values():
-            hook_result = hook(self, args, kwargs)
+            if inspect.iscoroutinefunction(hook):
+                # Async hook - await directly
+                hook_result = await hook(self, args, kwargs)
+            else:
+                # Sync hook - run in executor to avoid blocking event loop
+                loop = asyncio.get_event_loop()
+                hook_result = await loop.run_in_executor(
+                    None, functools.partial(hook, self, args, kwargs)
+                )
+
             if hook_result is not None:
                 if isinstance(hook_result, tuple) and len(hook_result) == 2:
                     args, kwargs = hook_result
@@ -1470,8 +1412,18 @@ class Module:
 
         result = await self._acall(*args, **kwargs)
 
+        # Execute forward hooks (sync or async)
         for hook in self._forward_hooks.values():
-            hook_result = hook(self, args, kwargs, result)
+            if inspect.iscoroutinefunction(hook):
+                # Async hook - await directly
+                hook_result = await hook(self, args, kwargs, result)
+            else:
+                # Sync hook - run in executor to avoid blocking event loop
+                loop = asyncio.get_event_loop()
+                hook_result = await loop.run_in_executor(
+                    None, functools.partial(hook, self, args, kwargs, result)
+                )
+
             if hook_result is not None:
                 result = hook_result
 
