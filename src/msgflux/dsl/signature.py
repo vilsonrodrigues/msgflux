@@ -31,42 +31,6 @@ class FieldInfo:
     desc: Optional[str] = None
 
 
-class Image:
-    """Represents an image input or output in a model signature.
-
-    Can hold metadata in the future (e.g., format, resolution).
-    """
-
-    pass
-
-
-class Audio:
-    """Represents an audio input or output in a model signature.
-
-    Can hold metadata in the future (e.g., sample rate, channels).
-    """
-
-    pass
-
-
-class File:
-    """Represents a file input or output in a model signature.
-
-    Can hold metadata in the future (e.g., file type, size).
-    """
-
-    pass
-
-
-class Video:
-    """Represents a video input or output in a model signature.
-
-    Can hold metadata in the future (e.g., duration, resolution, fps).
-    """
-
-    pass
-
-
 class Field:
     def __init__(self, desc: Optional[str] = None):
         if isinstance(desc, str) or desc is None:

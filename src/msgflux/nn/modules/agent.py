@@ -1,5 +1,4 @@
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import (
     Any,
     Callable,
@@ -11,13 +10,13 @@ from typing import (
     Type,
     Union,
     cast,
-    get_type_hints,
 )
 from uuid import uuid4
 
 import msgspec
 
 from msgflux.auto import AutoParams
+from msgflux.data.types import Audio, File, Image, Video
 from msgflux.dotdict import dotdict
 from msgflux.dsl.signature import (
     Signature,
@@ -42,7 +41,6 @@ from msgflux.nn.modules.tool import ToolLibrary, ToolResponses
 from msgflux.nn.parameter import Parameter
 from msgflux.utils.chat import ChatBlock, response_format_from_msgspec_struct
 from msgflux.utils.console import cprint
-from msgflux.utils.inspect import get_filename, get_mime_type
 from msgflux.utils.msgspec import StructFactory, is_optional_field, msgspec_dumps
 from msgflux.utils.validation import is_subclass_of
 from msgflux.utils.xml import apply_xml_tags
@@ -1298,181 +1296,63 @@ class Agent(Module, metaclass=AutoParams):
 
     def _format_image_input(self, image_source: str) -> Optional[Mapping[str, Any]]:
         """Formats the image input for the model."""
-        encoded_image = self._prepare_data_uri(image_source, force_encode=False)
-
-        if not encoded_image:
-            return None
-
-        if not encoded_image.startswith("http"):
-            # Try to guess from the original source
-            mime_type = get_mime_type(image_source)
-            if not mime_type.startswith("image/"):
-                mime_type = "image/jpeg"  # Fallback
-            encoded_image = f"data:{mime_type};base64,{encoded_image}"
-
-        return ChatBlock.image(
-            encoded_image, **self.config.get("image_block_kwargs", {})
-        )
+        img = Image(image_source, **self.config.get("image_block_kwargs", {}))
+        return img()
 
     def _format_video_input(self, video_source: str) -> Optional[Mapping[str, Any]]:
         """Formats the video input for the model."""
-        # Check if it's a URL
-        if video_source.startswith("http://") or video_source.startswith("https://"):
-            return ChatBlock.video(
-                video_source, **self.config.get("video_block_kwargs", {})
-            )
-
-        # Otherwise, encode as base64
-        encoded_video = self._prepare_data_uri(video_source, force_encode=True)
-
-        if not encoded_video:
-            return None
-
-        # Get MIME type or use mp4 as fallback
-        mime_type = get_mime_type(video_source)
-        if not mime_type.startswith("video/"):
-            mime_type = "video/mp4"  # Fallback
-
-        video_data_uri = f"data:{mime_type};base64,{encoded_video}"
-
-        return ChatBlock.video(
-            video_data_uri, **self.config.get("video_block_kwargs", {})
+        # URLs: don't force encode (keep URL), local files: encode
+        is_url = video_source.startswith("http")
+        vid = Video(
+            video_source,
+            force_encode=not is_url,
+            **self.config.get("video_block_kwargs", {}),
         )
+        return vid()
 
     def _format_audio_input(self, audio_source: str) -> Optional[Mapping[str, Any]]:
         """Formats the audio input for the model."""
-        base64_audio = self._prepare_data_uri(audio_source, force_encode=True)
-
-        if not base64_audio:
-            return None
-
-        audio_format_suffix = Path(audio_source).suffix.lstrip(".")
-        mime_type = get_mime_type(audio_source)
-        if not mime_type.startswith("audio/"):
-            # If MIME type is not audio, use suffix or fallback
-            audio_format_for_uri = (
-                audio_format_suffix if audio_format_suffix else "mpeg"
-            )  # fallback
-            mime_type = f"audio/{audio_format_for_uri}"
-
-        # Use suffix like 'format' if available, otherwise extract from mime type
-        audio_format = (
-            audio_format_suffix if audio_format_suffix else mime_type.split("/")[-1]
-        )
-
-        return ChatBlock.audio(base64_audio, audio_format)
+        aud = Audio(audio_source)
+        return aud()
 
     def _format_file_input(self, file_source: str) -> Optional[Mapping[str, Any]]:
         """Formats the file input for the model."""
-        base64_file = self._prepare_data_uri(file_source, force_encode=True)
-
-        if not base64_file:
-            return None
-
-        filename = get_filename(file_source)
-        mime_type = get_mime_type(file_source)
-
-        if mime_type == "application/octet-stream" and filename.lower().endswith(
-            ".pdf"
-        ):
-            mime_type = "application/pdf"
-
-        file_data_uri = f"data:{mime_type};base64,{base64_file}"
-
-        return ChatBlock.file(filename, file_data_uri)
+        f = File(file_source)
+        return f()
 
     async def _aformat_image_input(
         self, image_source: str
     ) -> Optional[Mapping[str, Any]]:
         """Async version of _format_image_input."""
-        encoded_image = await self._aprepare_data_uri(image_source, force_encode=False)
-
-        if not encoded_image:
-            return None
-
-        if not encoded_image.startswith("http"):
-            # Try to guess from the original source
-            mime_type = get_mime_type(image_source)
-            if not mime_type.startswith("image/"):
-                mime_type = "image/jpeg"  # Fallback
-            encoded_image = f"data:{mime_type};base64,{encoded_image}"
-
-        return ChatBlock.image(
-            encoded_image, **self.config.get("image_block_kwargs", {})
-        )
+        img = Image(image_source, **self.config.get("image_block_kwargs", {}))
+        return await img.acall()
 
     async def _aformat_video_input(
         self, video_source: str
     ) -> Optional[Mapping[str, Any]]:
         """Async version of _format_video_input."""
-        # Check if it's a URL
-        if video_source.startswith("http://") or video_source.startswith("https://"):
-            return ChatBlock.video(
-                video_source, **self.config.get("video_block_kwargs", {})
-            )
-
-        # Otherwise, encode as base64
-        encoded_video = await self._aprepare_data_uri(video_source, force_encode=True)
-
-        if not encoded_video:
-            return None
-
-        # Get MIME type or use mp4 as fallback
-        mime_type = get_mime_type(video_source)
-        if not mime_type.startswith("video/"):
-            mime_type = "video/mp4"  # Fallback
-
-        video_data_uri = f"data:{mime_type};base64,{encoded_video}"
-
-        return ChatBlock.video(
-            video_data_uri, **self.config.get("video_block_kwargs", {})
+        # URLs: don't force encode (keep URL), local files: encode
+        is_url = video_source.startswith("http")
+        vid = Video(
+            video_source,
+            force_encode=not is_url,
+            **self.config.get("video_block_kwargs", {}),
         )
+        return await vid.acall()
 
     async def _aformat_audio_input(
         self, audio_source: str
     ) -> Optional[Mapping[str, Any]]:
         """Async version of _format_audio_input."""
-        base64_audio = await self._aprepare_data_uri(audio_source, force_encode=True)
-
-        if not base64_audio:
-            return None
-
-        audio_format_suffix = Path(audio_source).suffix.lstrip(".")
-        mime_type = get_mime_type(audio_source)
-        if not mime_type.startswith("audio/"):
-            # If MIME type is not audio, use suffix or fallback
-            audio_format_for_uri = (
-                audio_format_suffix if audio_format_suffix else "mpeg"
-            )  # fallback
-            mime_type = f"audio/{audio_format_for_uri}"
-
-        # Use suffix like 'format' if available, otherwise extract from mime type
-        audio_format = (
-            audio_format_suffix if audio_format_suffix else mime_type.split("/")[-1]
-        )
-
-        return ChatBlock.audio(base64_audio, audio_format)
+        aud = Audio(audio_source)
+        return await aud.acall()
 
     async def _aformat_file_input(
         self, file_source: str
     ) -> Optional[Mapping[str, Any]]:
         """Async version of _format_file_input."""
-        base64_file = await self._aprepare_data_uri(file_source, force_encode=True)
-
-        if not base64_file:
-            return None
-
-        filename = get_filename(file_source)
-        mime_type = get_mime_type(file_source)
-
-        if mime_type == "application/octet-stream" and filename.lower().endswith(
-            ".pdf"
-        ):
-            mime_type = "application/pdf"
-
-        file_data_uri = f"data:{mime_type};base64,{base64_file}"
-
-        return ChatBlock.file(filename, file_data_uri)
+        f = File(file_source)
+        return await f.acall()
 
     def inspect_model_execution_params(
         self, message: Optional[Union[str, Mapping[str, Any], Message]] = None, **kwargs

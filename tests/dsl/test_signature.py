@@ -2,10 +2,9 @@ from typing import Dict, List, Optional
 
 import pytest
 
+from msgflux.data.types import Audio, Image
 from msgflux.dsl.signature import (
-    Audio,
     FieldInfo,
-    Image,
     InputField,
     OutputField,
     Signature,

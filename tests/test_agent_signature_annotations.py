@@ -11,7 +11,8 @@ from unittest.mock import MagicMock
 import pytest
 
 import msgflux as mf
-from msgflux.dsl.signature import Audio, Image, Signature, Video
+from msgflux.data.types import Audio, Image, Video
+from msgflux.dsl.signature import Signature
 from msgflux.nn.modules.agent import Agent
 
 
