@@ -22,6 +22,7 @@ from msgflux.telemetry.span import (
     aset_tool_attributes,
     set_tool_attributes,
 )
+from msgflux.tools.signal import ToolSignal
 from msgflux.utils.chat import generate_tool_json_schema
 from msgflux.utils.inspect import fn_has_parameters
 from msgflux.utils.tenacity import tool_retry
@@ -501,6 +502,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
         call_metadata = []
         tool_calls: List[ToolCall] = []
         return_directly = True if tool_callings else False
+        has_error = False  # Track if any error occurred (blocks return_direct)
 
         for tool_id, tool_name, tool_params in tool_callings:
             if tool_name not in self.library:
@@ -513,6 +515,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
                     )
                 )
                 return_directly = False
+                has_error = True
                 continue
 
             # Get tool
@@ -579,6 +582,14 @@ class ToolLibrary(Module, metaclass=AutoParams):
         if prepared_calls:
             results = F.scatter_gather(prepared_calls)
             for meta, result in zip(call_metadata, results):
+                # Process ToolSignal if returned
+                actual_result = result
+                if isinstance(result, ToolSignal):
+                    actual_result = result.result
+                    # Apply overrides (only if no errors occurred)
+                    if not has_error and result.get("return_direct") is True:
+                        return_directly = True
+
                 if isinstance(meta.params, dict):
                     parameters = meta.params.to_dict()
                     parameters.pop("vars", None)
@@ -590,7 +601,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
                         id=meta.id,
                         name=meta.name,
                         parameters=parameters,
-                        result=result,
+                        result=actual_result,
                     )
                 )
 
@@ -630,6 +641,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
         call_metadata = []
         tool_calls: List[ToolCall] = []
         return_directly = True if tool_callings else False
+        has_error = False  # Track if any error occurred (blocks return_direct)
 
         for tool_id, tool_name, tool_params in tool_callings:
             if tool_name not in self.library:
@@ -642,6 +654,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
                     )
                 )
                 return_directly = False
+                has_error = True
                 continue
 
             # Get tool
@@ -708,6 +721,14 @@ class ToolLibrary(Module, metaclass=AutoParams):
         if prepared_calls:
             results = await F.ascatter_gather(prepared_calls)
             for meta, result in zip(call_metadata, results):
+                # Process ToolSignal if returned
+                actual_result = result
+                if isinstance(result, ToolSignal):
+                    actual_result = result.result
+                    # Apply overrides (only if no errors occurred)
+                    if not has_error and result.get("return_direct") is True:
+                        return_directly = True
+
                 if isinstance(meta.params, dict):
                     parameters = meta.params.to_dict()
                     parameters.pop("vars", None)
@@ -719,7 +740,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
                         id=meta.id,
                         name=meta.name,
                         parameters=parameters,
-                        result=result,
+                        result=actual_result,
                     )
                 )
 

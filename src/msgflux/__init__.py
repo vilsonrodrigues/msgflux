@@ -14,6 +14,7 @@ from .models import Model
 from .models.gateway import ModelGateway
 from .telemetry import Spans
 from .tools.config import tool_config
+from .tools.signal import ToolSignal
 from .utils.chat import ChatBlock, ChatML
 from .utils.console import cprint
 from .utils.inspect import get_fn_name
@@ -35,6 +36,7 @@ __all__ = [
     "Retriever",
     "Signature",
     "Spans",
+    "ToolSignal",
     "Video",
     "ainline",
     "cprint",
