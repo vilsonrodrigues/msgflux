@@ -344,7 +344,11 @@ class Agent(Module, metaclass=AutoParams):
             self._set_system_message(system_message)
 
     def forward(
-        self, message: Optional[Union[str, Mapping[str, Any], Message]] = None, **kwargs
+        self,
+        message: Optional[Union[str, Mapping[str, Any], Message]] = None,
+        *,
+        tool_filter: Optional[Dict[str, List[str]]] = None,
+        **kwargs,
     ) -> Union[str, Mapping[str, None], ModelStreamResponse, Message]:
         """Execute the agent with the given message.
 
@@ -356,6 +360,10 @@ class Agent(Module, metaclass=AutoParams):
                   message_fields={"task_inputs": "input.user"}
                 - dict: Task inputs as a dictionary
                 - None: When using named task arguments (see below)
+            tool_filter: Filter which tools are available to the model.
+                Must contain exactly one key: "allow" or "block".
+                - {"allow": ["tool1", "tool2"]}: Only these tools are available
+                - {"block": ["tool3"]}: All tools except these are available
             **kwargs: Can include:
                 - Reserved kwargs (runtime overrides for message_fields):
                     - task_multimodal_inputs: Override multimodal inputs
@@ -398,28 +406,46 @@ class Agent(Module, metaclass=AutoParams):
             ...     templates={"task": "Greet {{name}} who is {{age}} years old"},
             ... )
             >>> agent(name="Vilson", age=27)
+
+            >>> # Filter tools - allow only specific tools
+            >>> agent("query", tool_filter={"allow": ["search", "calculator"]})
+
+            >>> # Filter tools - block specific tools
+            >>> agent("query", tool_filter={"block": ["browser"]})
         """
         inputs = self._prepare_task(message, **kwargs)
         model_response = self._execute_model(
-            message=message, prefilling=self.prefilling, **inputs
+            message=message,
+            prefilling=self.prefilling,
+            tool_filter=tool_filter,
+            **inputs,
         )
         if isinstance(model_response, str):
             return self._define_response_mode(model_response, message)
-        response = self._process_model_response(message, model_response, **inputs)
+        response = self._process_model_response(
+            message, model_response, tool_filter=tool_filter, **inputs
+        )
         return response
 
     async def aforward(
-        self, message: Optional[Union[str, Mapping[str, Any], Message]] = None, **kwargs
+        self,
+        message: Optional[Union[str, Mapping[str, Any], Message]] = None,
+        *,
+        tool_filter: Optional[Dict[str, List[str]]] = None,
+        **kwargs,
     ) -> Union[str, Mapping[str, None], ModelStreamResponse, Message]:
         """Async version of forward."""
         inputs = await self._aprepare_task(message, **kwargs)
         model_response = await self._aexecute_model(
-            message=message, prefilling=self.prefilling, **inputs
+            message=message,
+            prefilling=self.prefilling,
+            tool_filter=tool_filter,
+            **inputs,
         )
         if isinstance(model_response, str):
             return self._define_response_mode(model_response, message)
         response = await self._aprocess_model_response(
-            message, model_response, **inputs
+            message, model_response, tool_filter=tool_filter, **inputs
         )
         return response
 
@@ -430,12 +456,14 @@ class Agent(Module, metaclass=AutoParams):
         message: Optional[Union[str, Mapping[str, Any], Message]] = None,  # noqa: ARG002
         prefilling: Optional[str] = None,
         model_preference: Optional[str] = None,
+        tool_filter: Optional[Dict[str, List[str]]] = None,
     ) -> Union[str, ModelResponse, ModelStreamResponse]:
         model_execution_params = self._prepare_model_execution(
             messages=messages,
             prefilling=prefilling,
             model_preference=model_preference,
             vars=vars,
+            tool_filter=tool_filter,
         )
         if self.config.get("verbose", False):
             cprint(f"[{self.name}][call_model]", bc="br1", ls="b")
@@ -452,12 +480,14 @@ class Agent(Module, metaclass=AutoParams):
         message: Optional[Union[str, Mapping[str, Any], Message]] = None,  # noqa: ARG002
         prefilling: Optional[str] = None,
         model_preference: Optional[str] = None,
+        tool_filter: Optional[Dict[str, List[str]]] = None,
     ) -> Union[str, ModelResponse, ModelStreamResponse]:
         model_execution_params = self._prepare_model_execution(
             messages=messages,
             prefilling=prefilling,
             model_preference=model_preference,
             vars=vars,
+            tool_filter=tool_filter,
         )
         if self.config.get("verbose", False):
             cprint(f"[{self.name}][call_model]", bc="br1", ls="b")
@@ -473,10 +503,16 @@ class Agent(Module, metaclass=AutoParams):
         vars: Mapping[str, Any],
         prefilling: Optional[str] = None,
         model_preference: Optional[str] = None,
+        tool_filter: Optional[Dict[str, List[str]]] = None,
     ) -> Mapping[str, Any]:
         system_prompt = self.get_system_prompt(vars)
 
         tool_schemas = self.tool_library.get_tool_json_schemas()
+
+        # Apply tool_filter if provided
+        if tool_filter is not None and tool_schemas:
+            tool_schemas = self._apply_tool_filter(tool_schemas, tool_filter)
+
         if not tool_schemas:
             tool_schemas = None
 
@@ -509,6 +545,65 @@ class Agent(Module, metaclass=AutoParams):
 
         return model_execution_params
 
+    def _apply_tool_filter(
+        self,
+        tool_schemas: List[Dict[str, Any]],
+        tool_filter: Dict[str, List[str]],
+    ) -> List[Dict[str, Any]]:
+        """Filter tool schemas based on allow/block list.
+
+        Args:
+            tool_schemas: List of tool JSON schemas
+            tool_filter: Dict with either "allow" or "block" key containing tool names
+
+        Returns:
+            Filtered list of tool schemas
+
+        Raises:
+            ValueError: If tool_filter has invalid format
+        """
+        if not isinstance(tool_filter, dict):
+            raise ValueError(
+                f"`tool_filter` must be a dict, given `{type(tool_filter)}`"
+            )
+
+        keys = set(tool_filter.keys())
+        valid_keys = {"allow", "block"}
+
+        if not keys:
+            raise ValueError("`tool_filter` must contain 'allow' or 'block' key")
+
+        if keys - valid_keys:
+            raise ValueError(
+                f"`tool_filter` contains invalid keys: {keys - valid_keys}. "
+                f"Valid keys are: {valid_keys}"
+            )
+
+        if len(keys) > 1:
+            raise ValueError(
+                "`tool_filter` must contain only one key: 'allow' or 'block', "
+                f"got both: {keys}"
+            )
+
+        if "allow" in tool_filter:
+            allowed_tools = set(tool_filter["allow"])
+            return [
+                schema
+                for schema in tool_schemas
+                if schema.get("function", {}).get("name") in allowed_tools
+            ]
+        else:  # "block" in tool_filter
+            block_value = tool_filter["block"]
+            # Block all tools with "*"
+            if block_value == "*":
+                return []
+            blocked_tools = set(block_value)
+            return [
+                schema
+                for schema in tool_schemas
+                if schema.get("function", {}).get("name") not in blocked_tools
+            ]
+
     def _process_model_response(
         self,
         message: Union[str, Mapping[str, Any], Message],
@@ -516,14 +611,15 @@ class Agent(Module, metaclass=AutoParams):
         messages: List[Mapping[str, Any]],
         vars: Mapping[str, Any],
         model_preference: Optional[str] = None,
+        tool_filter: Optional[Dict[str, List[str]]] = None,
     ) -> Union[str, Mapping[str, Any], Message, ModelStreamResponse]:
         if "tool_call" in model_response.response_type:
             model_response, messages = self._process_tool_call_response(
-                model_response, messages, vars, model_preference
+                model_response, messages, vars, model_preference, tool_filter
             )
         elif is_subclass_of(self.generation_schema, ToolFlowControl):
             model_response, messages = self._process_tool_flow_control_response(
-                model_response, messages, vars, model_preference
+                model_response, messages, vars, model_preference, tool_filter
             )
 
         if isinstance(model_response, (ModelResponse, ModelStreamResponse)):
@@ -548,17 +644,18 @@ class Agent(Module, metaclass=AutoParams):
         messages: List[Mapping[str, Any]],
         vars: Mapping[str, Any],
         model_preference: Optional[str] = None,
+        tool_filter: Optional[Dict[str, List[str]]] = None,
     ) -> Union[str, Mapping[str, Any], Message, ModelStreamResponse]:
         if "tool_call" in model_response.response_type:
             model_response, messages = await self._aprocess_tool_call_response(
-                model_response, messages, vars, model_preference
+                model_response, messages, vars, model_preference, tool_filter
             )
         elif is_subclass_of(self.generation_schema, ToolFlowControl):
             (
                 model_response,
                 messages,
             ) = await self._aprocess_tool_flow_control_response(
-                model_response, messages, vars, model_preference
+                model_response, messages, vars, model_preference, tool_filter
             )
 
         if isinstance(model_response, (ModelResponse, ModelStreamResponse)):
@@ -582,8 +679,11 @@ class Agent(Module, metaclass=AutoParams):
         messages: Mapping[str, Any],
         vars: Mapping[str, Any],
         model_preference: Optional[str] = None,
+        tool_filter: Optional[Dict[str, List[str]]] = None,
     ) -> Tuple[Union[str, Mapping[str, Any], ModelStreamResponse], Mapping[str, Any]]:
         """Handle tool flow control responses using the ToolFlowControl interface."""
+        max_tool_turns = self.config.get("max_tool_turns")
+        turn_count = 0
         flow_control = self.generation_schema
         while True:
             raw_response = self._extract_raw_response(model_response)
@@ -604,6 +704,19 @@ class Agent(Module, metaclass=AutoParams):
                 )
 
             if flow_result.tool_calls:
+                # Check max_tool_turns limit
+                turn_count += 1
+                if max_tool_turns is not None and turn_count > max_tool_turns:
+                    if self.config.get("verbose", False):
+                        cprint(
+                            f"[{self.name}][max_tool_turns] Limit of {max_tool_turns} "
+                            "turns reached, blocking all tools",
+                            bc="y",
+                            ls="b",
+                        )
+                    # Block all tools to force model to respond without tools
+                    tool_filter = {"block": "*"}
+
                 tool_results = self._process_tool_call(
                     flow_result.tool_calls, messages, vars
                 )
@@ -621,7 +734,10 @@ class Agent(Module, metaclass=AutoParams):
                 messages = flow_control.build_history(raw_response, messages)
 
             model_response = self._execute_model(
-                messages=messages, model_preference=model_preference, vars=vars
+                messages=messages,
+                model_preference=model_preference,
+                vars=vars,
+                tool_filter=tool_filter,
             )
 
     async def _aprocess_tool_flow_control_response(
@@ -630,10 +746,13 @@ class Agent(Module, metaclass=AutoParams):
         messages: Mapping[str, Any],
         vars: Mapping[str, Any],
         model_preference: Optional[str] = None,
+        tool_filter: Optional[Dict[str, List[str]]] = None,
     ) -> Tuple[Union[str, Mapping[str, Any], ModelStreamResponse], Mapping[str, Any]]:
         """Async version of _process_tool_flow_control_response.
         Handle tool flow control responses using the ToolFlowControl interface.
         """
+        max_tool_turns = self.config.get("max_tool_turns")
+        turn_count = 0
         flow_control = self.generation_schema
         while True:
             raw_response = self._extract_raw_response(model_response)
@@ -654,6 +773,19 @@ class Agent(Module, metaclass=AutoParams):
                 )
 
             if flow_result.tool_calls:
+                # Check max_tool_turns limit
+                turn_count += 1
+                if max_tool_turns is not None and turn_count > max_tool_turns:
+                    if self.config.get("verbose", False):
+                        cprint(
+                            f"[{self.name}][max_tool_turns] Limit of {max_tool_turns} "
+                            "turns reached, blocking all tools",
+                            bc="y",
+                            ls="b",
+                        )
+                    # Block all tools to force model to respond without tools
+                    tool_filter = {"block": "*"}
+
                 tool_results = await self._aprocess_tool_call(
                     flow_result.tool_calls, messages, vars
                 )
@@ -673,7 +805,10 @@ class Agent(Module, metaclass=AutoParams):
                 messages = await flow_control.abuild_history(raw_response, messages)
 
             model_response = await self._aexecute_model(
-                messages=messages, model_preference=model_preference, vars=vars
+                messages=messages,
+                model_preference=model_preference,
+                vars=vars,
+                tool_filter=tool_filter,
             )
 
     def _process_tool_call_response(
@@ -682,6 +817,7 @@ class Agent(Module, metaclass=AutoParams):
         messages: Mapping[str, Any],
         vars: Mapping[str, Any],
         model_preference: Optional[str] = None,
+        tool_filter: Optional[Dict[str, List[str]]] = None,
     ) -> Tuple[Union[str, Mapping[str, Any], ModelStreamResponse], Mapping[str, Any]]:
         """ToolCall example:
         [{'role': 'assistant', 'tool_responses': [{'id': 'call_1YL',
@@ -689,8 +825,24 @@ class Agent(Module, metaclass=AutoParams):
         'name': 'get_delivery_date'}}]}, {'role': 'tool', 'tool_call_id': 'call_HA',
         'content': '2024-10-15'}].
         """
+        max_tool_turns = self.config.get("max_tool_turns")
+        turn_count = 0
+
         while True:
             if model_response.response_type == "tool_call":
+                # Check max_tool_turns limit
+                turn_count += 1
+                if max_tool_turns is not None and turn_count > max_tool_turns:
+                    if self.config.get("verbose", False):
+                        cprint(
+                            f"[{self.name}][max_tool_turns] Limit of {max_tool_turns} "
+                            "turns reached, blocking all tools",
+                            bc="y",
+                            ls="b",
+                        )
+                    # Block all tools to force model to respond without tools
+                    tool_filter = {"block": "*"}
+
                 raw_response = model_response.data
                 reasoning = raw_response.reasoning
 
@@ -720,7 +872,10 @@ class Agent(Module, metaclass=AutoParams):
                 return model_response, messages
 
             model_response = self._execute_model(
-                messages=messages, model_preference=model_preference, vars=vars
+                messages=messages,
+                model_preference=model_preference,
+                vars=vars,
+                tool_filter=tool_filter,
             )
 
     async def _aprocess_tool_call_response(
@@ -729,6 +884,7 @@ class Agent(Module, metaclass=AutoParams):
         messages: Mapping[str, Any],
         vars: Mapping[str, Any],
         model_preference: Optional[str] = None,
+        tool_filter: Optional[Dict[str, List[str]]] = None,
     ) -> Tuple[Union[str, Mapping[str, Any], ModelStreamResponse], Mapping[str, Any]]:
         """Async version of _process_tool_call_response.
         ToolCall example: [{'role': 'assistant', 'tool_responses': [{'id': 'call_1YL',
@@ -736,8 +892,24 @@ class Agent(Module, metaclass=AutoParams):
         'name': 'get_delivery_date'}}]}, {'role': 'tool', 'tool_call_id': 'call_HA',
         'content': '2024-10-15'}].
         """
+        max_tool_turns = self.config.get("max_tool_turns")
+        turn_count = 0
+
         while True:
             if model_response.response_type == "tool_call":
+                # Check max_tool_turns limit
+                turn_count += 1
+                if max_tool_turns is not None and turn_count > max_tool_turns:
+                    if self.config.get("verbose", False):
+                        cprint(
+                            f"[{self.name}][max_tool_turns] Limit of {max_tool_turns} "
+                            "turns reached, blocking all tools",
+                            bc="y",
+                            ls="b",
+                        )
+                    # Block all tools to force model to respond without tools
+                    tool_filter = {"block": "*"}
+
                 raw_response = model_response.data
                 reasoning = raw_response.reasoning
 
@@ -769,7 +941,10 @@ class Agent(Module, metaclass=AutoParams):
                 return model_response, messages
 
             model_response = await self._aexecute_model(
-                messages=messages, model_preference=model_preference, vars=vars
+                messages=messages,
+                model_preference=model_preference,
+                vars=vars,
+                tool_filter=tool_filter,
             )
 
     def _process_tool_call(
@@ -1547,6 +1722,7 @@ class Agent(Module, metaclass=AutoParams):
             "video_block_kwargs",
             "include_date",
             "execution",  # Added for execution settings
+            "max_tool_turns",  # Maximum consecutive tool call turns
         }
 
         if config is None:
@@ -1574,6 +1750,14 @@ class Agent(Module, metaclass=AutoParams):
                 raise TypeError(
                     f"`video_block_kwargs` must be a dict, "
                     f"given `{type(config['video_block_kwargs'])}`"
+                )
+
+        if "max_tool_turns" in config:
+            max_turns = config["max_tool_turns"]
+            if not isinstance(max_turns, int) or max_turns < 1:
+                raise ValueError(
+                    f"`max_tool_turns` must be a positive integer, "
+                    f"given `{config['max_tool_turns']}`"
                 )
 
         self.register_buffer("config", config.copy())
