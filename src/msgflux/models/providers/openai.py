@@ -2,7 +2,17 @@ import base64
 import tempfile
 from contextlib import asynccontextmanager, contextmanager
 from os import getenv
-from typing import Any, Dict, List, Literal, Mapping, Optional, Union
+from typing import (
+    Any,
+    AsyncIterator,
+    Dict,
+    Iterator,
+    List,
+    Literal,
+    Mapping,
+    Optional,
+    Union,
+)
 
 import msgspec
 
@@ -29,6 +39,11 @@ from msgflux.models.cache import ResponseCache, generate_cache_key
 from msgflux.models.profiles import get_model_profile
 from msgflux.models.registry import register_model
 from msgflux.models.response import ModelResponse, ModelStreamResponse
+from msgflux.models.streaming import (
+    StreamChunk,
+    ToolCallBuffer,
+    ToolCallComplete,
+)
 from msgflux.models.tool_call_agg import ToolCallAggregator
 from msgflux.models.types import (
     ChatCompletionModel,
@@ -751,6 +766,249 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
                 generation_schema=generation_schema,
             )
             return response
+
+    def stream(
+        self,
+        messages: Union[str, List[Dict[str, Any]]],
+        *,
+        system_prompt: Optional[str] = None,
+        prefilling: Optional[str] = None,
+        tool_schemas: Optional[List[Dict[str, Any]]] = None,
+        tool_choice: Optional[Union[str, Dict[str, Any]]] = None,
+    ) -> Iterator[StreamChunk]:
+        """Stream model response as typed chunks.
+
+        Unlike __call__(stream=True), this method:
+        - Returns a real Iterator (not ModelStreamResponse)
+        - Emits typed chunks (text, tool_call, reasoning, usage)
+        - Allows inline processing of tool calls
+        - Does not use background task
+
+        This is designed for use with AgentStreamer where you need
+        fine-grained control over the streaming process.
+
+        Args:
+            messages: Conversation history. Can be simple string or list of messages.
+            system_prompt: System instructions for the model.
+            prefilling: Forces an initial assistant message.
+            tool_schemas: JSON schema for available tools (optional).
+            tool_choice: Control tool selection behavior (optional).
+
+        Yields:
+            StreamChunk with type: "text", "reasoning", "tool_call", or "usage"
+        """
+        # Prepare messages
+        if isinstance(messages, str):
+            messages = [ChatBlock.user(messages)]
+        if system_prompt:
+            messages = [ChatBlock.system(system_prompt)] + messages
+        if prefilling:
+            messages = messages + [{"role": "assistant", "content": prefilling}]
+
+        # Prepare tool_choice
+        if isinstance(tool_choice, str):
+            if tool_choice not in ["auto", "required", "none"]:
+                tool_choice = {
+                    "type": "function",
+                    "function": {"name": tool_choice},
+                }
+
+        # Build params
+        params = {
+            "messages": messages,
+            "model": self.model_id,
+            "stream": True,
+            "stream_options": {"include_usage": True},
+            **self.sampling_run_params,
+        }
+
+        if tool_schemas:
+            params["tools"] = tool_schemas
+            params["tool_choice"] = tool_choice
+            params["parallel_tool_calls"] = self.parallel_tool_calls
+
+        # Adapt params for OpenAI (max_tokens -> max_completion_tokens)
+        params = self._adapt_params(params)
+
+        # Execute stream
+        model_output = self.client.chat.completions.create(**params)
+
+        # State for accumulating tool calls
+        tool_buffers: Dict[int, ToolCallBuffer] = {}
+
+        for chunk in model_output:
+            # Handle usage chunk (no choices)
+            if not chunk.choices:
+                if chunk.usage:
+                    yield StreamChunk(type="usage", usage=chunk.usage.to_dict())
+                continue
+
+            delta = chunk.choices[0].delta
+            finish_reason = chunk.choices[0].finish_reason
+
+            # Text content
+            if delta.content:
+                yield StreamChunk(type="text", content=delta.content)
+
+            # Reasoning content (if model supports)
+            reasoning = (
+                getattr(delta, "reasoning_content", None)
+                or getattr(delta, "reasoning", None)
+                or getattr(delta, "thinking", None)
+            )
+            if reasoning:
+                yield StreamChunk(type="reasoning", content=reasoning)
+
+            # Tool calls (accumulate until complete)
+            if delta.tool_calls:
+                for tc in delta.tool_calls:
+                    idx = tc.index
+                    if idx not in tool_buffers:
+                        tool_buffers[idx] = ToolCallBuffer(
+                            index=idx,
+                            id=tc.id,
+                            name=tc.function.name if tc.function else None,
+                            arguments="",
+                        )
+                    buf = tool_buffers[idx]
+                    if tc.id:
+                        buf.id = tc.id
+                    if tc.function:
+                        if tc.function.name:
+                            buf.name = tc.function.name
+                        if tc.function.arguments:
+                            buf.arguments += tc.function.arguments
+
+            # Emit complete tool calls when finish_reason is tool_calls
+            if finish_reason == "tool_calls":
+                for idx in sorted(tool_buffers.keys()):
+                    buf = tool_buffers[idx]
+                    yield StreamChunk(
+                        type="tool_call",
+                        tool_call=ToolCallComplete(
+                            id=buf.id or "",
+                            name=buf.name or "",
+                            arguments=buf.arguments,
+                        ),
+                    )
+
+    async def astream(
+        self,
+        messages: Union[str, List[Dict[str, Any]]],
+        *,
+        system_prompt: Optional[str] = None,
+        prefilling: Optional[str] = None,
+        tool_schemas: Optional[List[Dict[str, Any]]] = None,
+        tool_choice: Optional[Union[str, Dict[str, Any]]] = None,
+    ) -> AsyncIterator[StreamChunk]:
+        """Async version of stream().
+
+        Stream model response as typed chunks asynchronously.
+
+        Args:
+            messages: Conversation history. Can be simple string or list of messages.
+            system_prompt: System instructions for the model.
+            prefilling: Forces an initial assistant message.
+            tool_schemas: JSON schema for available tools (optional).
+            tool_choice: Control tool selection behavior (optional).
+
+        Yields:
+            StreamChunk with type: "text", "reasoning", "tool_call", or "usage"
+        """
+        # Prepare messages
+        if isinstance(messages, str):
+            messages = [ChatBlock.user(messages)]
+        if system_prompt:
+            messages = [ChatBlock.system(system_prompt)] + messages
+        if prefilling:
+            messages = messages + [{"role": "assistant", "content": prefilling}]
+
+        # Prepare tool_choice
+        if isinstance(tool_choice, str):
+            if tool_choice not in ["auto", "required", "none"]:
+                tool_choice = {
+                    "type": "function",
+                    "function": {"name": tool_choice},
+                }
+
+        # Build params
+        params = {
+            "messages": messages,
+            "model": self.model_id,
+            "stream": True,
+            "stream_options": {"include_usage": True},
+            **self.sampling_run_params,
+        }
+
+        if tool_schemas:
+            params["tools"] = tool_schemas
+            params["tool_choice"] = tool_choice
+            params["parallel_tool_calls"] = self.parallel_tool_calls
+
+        # Adapt params for OpenAI (max_tokens -> max_completion_tokens)
+        params = self._adapt_params(params)
+
+        # Execute stream
+        model_output = await self.aclient.chat.completions.create(**params)
+
+        # State for accumulating tool calls
+        tool_buffers: Dict[int, ToolCallBuffer] = {}
+
+        async for chunk in model_output:
+            # Handle usage chunk (no choices)
+            if not chunk.choices:
+                if chunk.usage:
+                    yield StreamChunk(type="usage", usage=chunk.usage.to_dict())
+                continue
+
+            delta = chunk.choices[0].delta
+            finish_reason = chunk.choices[0].finish_reason
+
+            # Text content
+            if delta.content:
+                yield StreamChunk(type="text", content=delta.content)
+
+            # Reasoning content (if model supports)
+            reasoning = (
+                getattr(delta, "reasoning_content", None)
+                or getattr(delta, "reasoning", None)
+                or getattr(delta, "thinking", None)
+            )
+            if reasoning:
+                yield StreamChunk(type="reasoning", content=reasoning)
+
+            # Tool calls (accumulate until complete)
+            if delta.tool_calls:
+                for tc in delta.tool_calls:
+                    idx = tc.index
+                    if idx not in tool_buffers:
+                        tool_buffers[idx] = ToolCallBuffer(
+                            index=idx,
+                            id=tc.id,
+                            name=tc.function.name if tc.function else None,
+                            arguments="",
+                        )
+                    buf = tool_buffers[idx]
+                    if tc.id:
+                        buf.id = tc.id
+                    if tc.function:
+                        if tc.function.name:
+                            buf.name = tc.function.name
+                        if tc.function.arguments:
+                            buf.arguments += tc.function.arguments
+
+            # Emit complete tool calls when finish_reason is tool_calls
+            if finish_reason == "tool_calls":
+                for idx in sorted(tool_buffers.keys()):
+                    buf = tool_buffers[idx]
+                    yield StreamChunk(
+                        type="tool_call",
+                        tool_call=ToolCallComplete(
+                            id=buf.id or "",
+                            name=buf.name or "",
+                            arguments=buf.arguments,
+                        ),
+                    )
 
 
 @register_model

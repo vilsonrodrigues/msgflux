@@ -1,4 +1,5 @@
 from msgflux.nn.modules.agent import Agent
+from msgflux.nn.modules.agent_streamer import AgentStreamer, StreamEvent
 from msgflux.nn.modules.container import ModuleDict, ModuleList, Sequential
 from msgflux.nn.modules.embedder import Embedder
 from msgflux.nn.modules.lm import LM
@@ -12,6 +13,7 @@ from msgflux.nn.modules.transcriber import Transcriber
 
 __all__ = [
     "Agent",
+    "AgentStreamer",
     "Embedder",
     "LM",
     "LocalTool",
@@ -24,6 +26,7 @@ __all__ = [
     "Retriever",
     "Sequential",
     "Speaker",
+    "StreamEvent",
     "Tool",
     "ToolLibrary",
     "Transcriber",
