@@ -283,3 +283,193 @@ Se você quer o comportamento do Claude Code (texto + tool no mesmo stream):
 7. **Continue** streaming
 
 Esta abordagem dá mais controle e UX mais fluida, mas requer mais trabalho de implementação.
+
+
+## Plano de Implementação para msgflux
+
+### Etapa 1: Implementar .stream() e .astream() no Cliente OpenAI
+
+O cliente atual (`OpenAIChatCompletion`) já tem `_stream_generate` e `_astream_generate`,
+mas eles usam uma abordagem de background task. Precisamos de métodos que retornem
+iteradores reais.
+
+**Arquivos a modificar:**
+- `src/msgflux/models/providers/openai.py`
+- `src/msgflux/models/response.py` (se necessário)
+
+**Novos métodos no OpenAIChatCompletion:**
+
+    def stream(self, messages, **kwargs) -> Iterator[StreamChunk]:
+        """Retorna iterator síncrono de chunks."""
+        params = self._prepare_params(messages, **kwargs)
+        response = self.client.chat.completions.create(**params, stream=True)
+        for chunk in response:
+            yield self._process_chunk(chunk)
+
+    async def astream(self, messages, **kwargs) -> AsyncIterator[StreamChunk]:
+        """Retorna async iterator de chunks."""
+        params = self._prepare_params(messages, **kwargs)
+        response = await self.aclient.chat.completions.create(**params, stream=True)
+        async for chunk in response:
+            yield self._process_chunk(chunk)
+
+
+**Classe StreamChunk:**
+
+    @dataclass
+    class StreamChunk:
+        """Chunk individual do stream."""
+        type: Literal["text", "tool_call", "reasoning", "usage"]
+        content: Optional[str] = None
+        tool_call: Optional[ToolCallDelta] = None
+        usage: Optional[dict] = None
+
+    @dataclass
+    class ToolCallDelta:
+        """Delta de tool call (pode ser parcial)."""
+        index: int
+        id: Optional[str] = None
+        name: Optional[str] = None
+        arguments: Optional[str] = None
+
+
+### Etapa 2: Implementar AgentStreamer a partir do nn.Agent
+
+Criar uma classe que herda/estende Agent para suportar streaming com execução
+de tools em tempo real.
+
+**Arquivos a criar:**
+- `src/msgflux/nn/modules/agent_streamer.py`
+
+**Arquivos a modificar:**
+- `src/msgflux/nn/modules/__init__.py`
+- `src/msgflux/nn/__init__.py`
+
+**Classe AgentStreamer:**
+
+    class AgentStreamer(Agent):
+        """Agent com suporte a streaming real e execução de tools em tempo real.
+
+        Usa o paradigma XML-em-texto para permitir texto e tool calls
+        intercalados no mesmo stream.
+        """
+
+        def __init__(
+            self,
+            name: str,
+            model: ChatCompletionModel,
+            *,
+            on_text: Optional[Callable[[str], None]] = None,
+            on_tool_start: Optional[Callable[[str, str, dict], None]] = None,
+            on_tool_end: Optional[Callable[[str, Any], None]] = None,
+            **kwargs
+        ):
+            super().__init__(name, model, **kwargs)
+            self.on_text = on_text or self._default_text_handler
+            self.on_tool_start = on_tool_start
+            self.on_tool_end = on_tool_end
+            self.parser = StreamingXMLParser()
+
+        def stream(
+            self,
+            message: Optional[Union[str, Mapping[str, Any], Message]] = None,
+            **kwargs
+        ) -> Iterator[StreamEvent]:
+            """Stream de eventos (texto, tool_start, tool_result, etc)."""
+            inputs = self._prepare_task(message, **kwargs)
+            model_state = inputs["model_state"]
+            vars = inputs["vars"]
+
+            while True:
+                # Stream do modelo
+                for chunk in self._stream_model(model_state, vars):
+                    text, tools = self.parser.feed(chunk.content or "")
+
+                    # Yield texto
+                    if text:
+                        yield StreamEvent(type="text", content=text)
+                        if self.on_text:
+                            self.on_text(text)
+
+                    # Processar tools detectadas
+                    for tool in tools:
+                        yield StreamEvent(type="tool_start", tool_name=tool["name"])
+                        if self.on_tool_start:
+                            self.on_tool_start(tool["id"], tool["name"], tool["params"])
+
+                        result = self._execute_tool(tool, model_state, vars)
+
+                        yield StreamEvent(type="tool_result", tool_result=result)
+                        if self.on_tool_end:
+                            self.on_tool_end(tool["id"], result)
+
+                # Verificar se precisa continuar loop (mais tools)
+                if not self._should_continue(model_state):
+                    break
+
+        async def astream(
+            self,
+            message: Optional[Union[str, Mapping[str, Any], Message]] = None,
+            **kwargs
+        ) -> AsyncIterator[StreamEvent]:
+            """Async stream de eventos."""
+            # Implementação similar mas async
+            ...
+
+
+**Classe StreamEvent:**
+
+    @dataclass
+    class StreamEvent:
+        """Evento do stream do AgentStreamer."""
+        type: Literal["text", "tool_start", "tool_result", "done", "error"]
+        content: Optional[str] = None
+        tool_name: Optional[str] = None
+        tool_params: Optional[dict] = None
+        tool_result: Optional[Any] = None
+        error: Optional[str] = None
+
+
+### Estrutura Final de Arquivos
+
+    src/msgflux/
+    ├── models/
+    │   ├── providers/
+    │   │   └── openai.py          # Adicionar stream(), astream()
+    │   └── response.py            # Adicionar StreamChunk, ToolCallDelta
+    ├── nn/
+    │   └── modules/
+    │       ├── agent.py           # Agent existente
+    │       └── agent_streamer.py  # NOVO: AgentStreamer
+    └── streaming/                 # NOVO: Módulo de streaming
+        ├── __init__.py
+        ├── parser.py              # StreamingXMLParser
+        ├── events.py              # StreamEvent, StreamChunk
+        └── handlers.py            # Handlers de callbacks
+
+
+### Passos de Implementação
+
+**Fase 1: Streaming no Cliente**
+1. Criar `StreamChunk` e `ToolCallDelta` em models/response.py
+2. Adicionar `stream()` ao OpenAIChatCompletion
+3. Adicionar `astream()` ao OpenAIChatCompletion
+4. Testar streaming básico
+
+**Fase 2: Parser XML Incremental**
+1. Criar módulo `streaming/`
+2. Implementar `StreamingXMLParser`
+3. Implementar `StreamEvent`
+4. Testar parser isoladamente
+
+**Fase 3: AgentStreamer**
+1. Criar `AgentStreamer` herdando de `Agent`
+2. Implementar `stream()` com loop de tools
+3. Implementar `astream()`
+4. Integrar callbacks (on_text, on_tool_start, on_tool_end)
+5. Testar fluxo completo
+
+**Fase 4: Integração**
+1. Exportar novas classes
+2. Documentar uso
+3. Criar exemplos
