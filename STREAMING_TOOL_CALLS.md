@@ -287,50 +287,192 @@ Esta abordagem dá mais controle e UX mais fluida, mas requer mais trabalho de i
 
 ## Plano de Implementação para msgflux
 
-### Etapa 1: Implementar .stream() e .astream() no Cliente OpenAI
+### Etapa 1: Refatorar Streaming no Cliente OpenAI
 
-O cliente atual (`OpenAIChatCompletion`) já tem `_stream_generate` e `_astream_generate`,
-mas eles usam uma abordagem de background task. Precisamos de métodos que retornem
-iteradores reais.
+**Problema dos métodos atuais (`_stream_generate`, `_astream_generate`):**
+
+Os métodos existentes têm limitações fundamentais:
+1. Acumulam tool calls em `ToolCallAggregator` até o FIM do stream
+2. Só processam tool calls DEPOIS que o stream termina
+3. Não permitem execução de tools "inline" durante o stream
+4. Usam background task que não permite controle fino do fluxo
+
+**Comportamento atual (problemático para AgentStreamer):**
+
+    async for chunk in model_output:
+        if delta.tool_calls:
+            aggregator.process(...)  # Só acumula, não executa
+    # Só aqui, após loop, temos os tool calls completos
+    stream_response.data = aggregator
+
+**Comportamento necessário:**
+
+    async for chunk in model_output:
+        if delta.content:
+            yield StreamChunk(type="text", content=delta.content)
+        if delta.tool_calls:
+            # Acumula até tool call completo
+            # Quando completo: yield e permite execução
+            if tool_complete:
+                yield StreamChunk(type="tool_call", tool_call=complete_tool)
+
+**Solução: Criar novos métodos `stream()` e `astream()`**
+
+Não modificar os existentes (manter compatibilidade), criar novos que retornem
+iteradores reais com chunks tipados.
 
 **Arquivos a modificar:**
 - `src/msgflux/models/providers/openai.py`
-- `src/msgflux/models/response.py` (se necessário)
+- `src/msgflux/models/response.py` (novos tipos)
+- `src/msgflux/models/types.py` (protocol para streaming)
 
 **Novos métodos no OpenAIChatCompletion:**
 
-    def stream(self, messages, **kwargs) -> Iterator[StreamChunk]:
-        """Retorna iterator síncrono de chunks."""
-        params = self._prepare_params(messages, **kwargs)
-        response = self.client.chat.completions.create(**params, stream=True)
+    def stream(
+        self,
+        messages: List[Dict[str, Any]],
+        *,
+        system_prompt: Optional[str] = None,
+        tool_schemas: Optional[List[Dict]] = None,
+        **kwargs
+    ) -> Iterator[StreamChunk]:
+        """Retorna iterator síncrono de chunks tipados.
+
+        Diferente de __call__(stream=True), este método:
+        - Retorna Iterator real (não ModelStreamResponse)
+        - Emite chunks tipados (text, tool_call, reasoning, usage)
+        - Permite processamento inline de tool calls
+        - Não usa background task
+        """
+        # Preparar parâmetros
+        if isinstance(messages, str):
+            messages = [ChatBlock.user(messages)]
+        if system_prompt:
+            messages.insert(0, ChatBlock.system(system_prompt))
+
+        params = {
+            "messages": messages,
+            "model": self.model_id,
+            "stream": True,
+            "stream_options": {"include_usage": True},
+            **self.sampling_run_params,
+        }
+        if tool_schemas:
+            params["tools"] = tool_schemas
+            params["parallel_tool_calls"] = self.parallel_tool_calls
+
+        # Executar stream
+        response = self.client.chat.completions.create(**params)
+
+        # Estado para acumular tool calls
+        tool_buffers: Dict[int, ToolCallBuffer] = {}
+
         for chunk in response:
-            yield self._process_chunk(chunk)
+            if not chunk.choices:
+                # Usage chunk (final)
+                if chunk.usage:
+                    yield StreamChunk(
+                        type="usage",
+                        usage=chunk.usage.to_dict()
+                    )
+                continue
 
-    async def astream(self, messages, **kwargs) -> AsyncIterator[StreamChunk]:
-        """Retorna async iterator de chunks."""
-        params = self._prepare_params(messages, **kwargs)
-        response = await self.aclient.chat.completions.create(**params, stream=True)
-        async for chunk in response:
-            yield self._process_chunk(chunk)
+            delta = chunk.choices[0].delta
+
+            # Texto
+            if delta.content:
+                yield StreamChunk(type="text", content=delta.content)
+
+            # Reasoning (se disponível)
+            reasoning = (
+                getattr(delta, "reasoning_content", None)
+                or getattr(delta, "reasoning", None)
+            )
+            if reasoning:
+                yield StreamChunk(type="reasoning", content=reasoning)
+
+            # Tool calls (acumular até completo)
+            if delta.tool_calls:
+                for tc in delta.tool_calls:
+                    idx = tc.index
+                    if idx not in tool_buffers:
+                        tool_buffers[idx] = ToolCallBuffer(
+                            index=idx,
+                            id=tc.id,
+                            name=tc.function.name if tc.function else None,
+                            arguments=""
+                        )
+                    buf = tool_buffers[idx]
+                    if tc.id:
+                        buf.id = tc.id
+                    if tc.function:
+                        if tc.function.name:
+                            buf.name = tc.function.name
+                        if tc.function.arguments:
+                            buf.arguments += tc.function.arguments
+
+            # Verificar finish_reason para emitir tool calls completos
+            if chunk.choices[0].finish_reason == "tool_calls":
+                for idx in sorted(tool_buffers.keys()):
+                    buf = tool_buffers[idx]
+                    yield StreamChunk(
+                        type="tool_call",
+                        tool_call=ToolCallComplete(
+                            id=buf.id,
+                            name=buf.name,
+                            arguments=buf.arguments
+                        )
+                    )
+
+    async def astream(
+        self,
+        messages: List[Dict[str, Any]],
+        *,
+        system_prompt: Optional[str] = None,
+        tool_schemas: Optional[List[Dict]] = None,
+        **kwargs
+    ) -> AsyncIterator[StreamChunk]:
+        """Versão async de stream()."""
+        # Mesma lógica, mas com async for
+        # ... (implementação similar)
 
 
-**Classe StreamChunk:**
+**Novos tipos (em models/response.py ou streaming/types.py):**
 
     @dataclass
     class StreamChunk:
-        """Chunk individual do stream."""
-        type: Literal["text", "tool_call", "reasoning", "usage"]
+        """Chunk individual do stream.
+
+        Tipos:
+        - text: Conteúdo textual para exibir ao usuário
+        - reasoning: Conteúdo de raciocínio/thinking (se modelo suportar)
+        - tool_call: Tool call completo, pronto para execução
+        - usage: Estatísticas de uso (tokens)
+        """
+        type: Literal["text", "reasoning", "tool_call", "usage"]
         content: Optional[str] = None
-        tool_call: Optional[ToolCallDelta] = None
-        usage: Optional[dict] = None
+        tool_call: Optional["ToolCallComplete"] = None
+        usage: Optional[Dict[str, Any]] = None
 
     @dataclass
-    class ToolCallDelta:
-        """Delta de tool call (pode ser parcial)."""
+    class ToolCallBuffer:
+        """Buffer para acumular tool call durante stream."""
         index: int
         id: Optional[str] = None
         name: Optional[str] = None
-        arguments: Optional[str] = None
+        arguments: str = ""
+
+    @dataclass
+    class ToolCallComplete:
+        """Tool call completo, pronto para execução."""
+        id: str
+        name: str
+        arguments: str  # JSON string
+
+        def get_params(self) -> Dict[str, Any]:
+            """Parse arguments JSON para dict."""
+            import json
+            return json.loads(self.arguments) if self.arguments else {}
 
 
 ### Etapa 2: Implementar AgentStreamer a partir do nn.Agent
