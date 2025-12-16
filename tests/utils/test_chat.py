@@ -1,9 +1,15 @@
 import msgspec
 import pytest
 
+from msgflux.types.content import (
+    AudioContent,
+    FileContent,
+    ImageContent,
+    TextContent,
+    VideoContent,
+)
 from msgflux.utils.chat import (
     ChatBlock,
-    ChatML,
     adapt_messages_for_vllm_audio,
     clean_docstring,
     generate_json_schema,
@@ -15,19 +21,68 @@ from msgflux.utils.chat import (
 
 
 class TestChatBlock:
+    # Test new ModelState content type methods
+    def test_text_block(self):
+        """Test text content block creation."""
+        result = ChatBlock.text("hello world")
+        assert isinstance(result, TextContent)
+        assert result.text == "hello world"
+
+    def test_image_block(self):
+        """Test image content block creation."""
+        result = ChatBlock.image(
+            url="http://example.com/image.jpg",
+            detail="high"
+        )
+        assert isinstance(result, ImageContent)
+        assert result.url == "http://example.com/image.jpg"
+        assert result.detail == "high"
+
+    def test_image_block_base64(self):
+        """Test image content block with base64."""
+        result = ChatBlock.image(
+            base64="base64data",
+            media_type="image/jpeg"
+        )
+        assert isinstance(result, ImageContent)
+        assert result.base64 == "base64data"
+        assert result.media_type == "image/jpeg"
+
+    def test_audio_block(self):
+        """Test audio content block creation."""
+        result = ChatBlock.audio(
+            url="http://example.com/audio.mp3",
+            format="mp3"
+        )
+        assert isinstance(result, AudioContent)
+        assert result.url == "http://example.com/audio.mp3"
+        assert result.format == "mp3"
+
+    def test_video_block(self):
+        """Test video content block creation."""
+        result = ChatBlock.video(
+            url="http://example.com/video.mp4",
+            media_type="video/mp4"
+        )
+        assert isinstance(result, VideoContent)
+        assert result.url == "http://example.com/video.mp4"
+        assert result.media_type == "video/mp4"
+
+    def test_file_block(self):
+        """Test file content block creation."""
+        result = ChatBlock.file(
+            filename="document.pdf",
+            data="base64data",
+            media_type="application/pdf"
+        )
+        assert isinstance(result, FileContent)
+        assert result.filename == "document.pdf"
+        assert result.data == "base64data"
+        assert result.media_type == "application/pdf"
+
+    # Test legacy dict-based methods
     def test_user_message(self):
         assert ChatBlock.user("hello") == {"role": "user", "content": "hello"}
-
-    def test_user_message_with_media(self):
-        media = {"type": "image", "url": "http://example.com/img.png"}
-        message = ChatBlock.user("hello", media=media)
-        assert message == {
-            "role": "user",
-            "content": [
-                {"type": "text", "text": "hello"},
-                {"type": "image", "url": "http://example.com/img.png"},
-            ],
-        }
 
     def test_assist_message(self):
         assert ChatBlock.assist("world") == {"role": "assistant", "content": "world"}
@@ -58,71 +113,6 @@ class TestChatBlock:
             "tool_call_id": "123",
             "content": "tool output",
         }
-
-    def test_image_without_detail(self):
-        """Test image block without detail parameter."""
-        result = ChatBlock.image("http://example.com/image.jpg")
-        assert result == {
-            "type": "image_url",
-            "image_url": {"url": "http://example.com/image.jpg"},
-        }
-
-    def test_image_with_high_detail(self):
-        """Test image block with high detail parameter."""
-        result = ChatBlock.image("http://example.com/image.jpg", detail="high")
-        assert result == {
-            "type": "image_url",
-            "image_url": {"url": "http://example.com/image.jpg", "detail": "high"},
-        }
-
-    def test_image_with_low_detail(self):
-        """Test image block with low detail parameter."""
-        result = ChatBlock.image("http://example.com/image.jpg", detail="low")
-        assert result == {
-            "type": "image_url",
-            "image_url": {"url": "http://example.com/image.jpg", "detail": "low"},
-        }
-
-    def test_image_list_with_detail(self):
-        """Test multiple images with detail parameter."""
-        urls = ["http://example.com/img1.jpg", "http://example.com/img2.jpg"]
-        result = ChatBlock.image(urls, detail="high")
-        assert result == [
-            {
-                "type": "image_url",
-                "image_url": {"url": "http://example.com/img1.jpg", "detail": "high"},
-            },
-            {
-                "type": "image_url",
-                "image_url": {"url": "http://example.com/img2.jpg", "detail": "high"},
-            },
-        ]
-
-    def test_image_list_without_detail(self):
-        """Test multiple images without detail parameter."""
-        urls = ["http://example.com/img1.jpg", "http://example.com/img2.jpg"]
-        result = ChatBlock.image(urls)
-        assert result == [
-            {"type": "image_url", "image_url": {"url": "http://example.com/img1.jpg"}},
-            {"type": "image_url", "image_url": {"url": "http://example.com/img2.jpg"}},
-        ]
-
-
-class TestChatML:
-    def test_add_messages(self):
-        chat = ChatML()
-        chat.add_user_message("hello")
-        chat.add_assist_message("world")
-        assert chat.get_messages() == [
-            {"role": "user", "content": "hello"},
-            {"role": "assistant", "content": "world"},
-        ]
-
-    def test_clear(self):
-        chat = ChatML()
-        chat.add_user_message("hello")
-        chat.clear()
-        assert chat.get_messages() == []
 
 
 class MyStruct(msgspec.Struct):

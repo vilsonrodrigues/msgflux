@@ -14,6 +14,11 @@ def tool_config(
     inject_vars: Optional[Union[bool, List[str]]] = False,
     handoff: Optional[bool] = False,
     name_override: Optional[str] = None,
+    # Context window management options
+    ephemeral: Optional[bool] = False,
+    ephemeral_ttl: Optional[int] = None,
+    result_importance: Optional[float] = None,
+    summarize_result: Optional[bool] = False,
 ) -> Callable:
     """Decorator to inject meta-properties into functions, classes, or instances.
 
@@ -54,6 +59,21 @@ def tool_config(
         name_override:
             A custom name to override the default tool name derived from the function
             or class. If not provided, the original name is used.
+        ephemeral:
+            If True, the tool call and response messages are marked as temporary
+            and will be removed at the end of the tool call scope. Useful for
+            intermediate tool calls whose results don't need to persist.
+        ephemeral_ttl:
+            Number of turns that the tool response message remains in context.
+            After this many turns, the message is automatically removed.
+            Requires `ephemeral=True` to be implicitly set.
+        result_importance:
+            A float between 0.0 and 1.0 indicating the importance of the tool's
+            result for context compaction decisions. Lower values make the result
+            more likely to be summarized or removed during compaction.
+        summarize_result:
+            If True and a summarizer is configured on the Agent, the tool result
+            will be summarized before being inserted into the context window.
 
     Returns:
         A decorator that modifies the target by injecting the specified properties.
@@ -114,6 +134,20 @@ def tool_config(
                 "`inject_vars` is not compatible with `call_as_response=True`"
             )
 
+        # Handle ephemeral_ttl implying ephemeral=True
+        _ephemeral = ephemeral
+        if ephemeral_ttl is not None and not _ephemeral:
+            _ephemeral = True
+
+        # Validate result_importance range
+        _result_importance = result_importance
+        if _result_importance is not None:
+            if not 0.0 <= _result_importance <= 1.0:
+                raise ValueError(
+                    f"`result_importance` must be between 0.0 and 1.0, "
+                    f"given `{_result_importance}`"
+                )
+
         tool_config = {
             "tool_config": dotdict(
                 {
@@ -124,6 +158,11 @@ def tool_config(
                     "inject_vars": inject_vars,
                     "return_direct": _return_direct,
                     "name_overridden": name_override,
+                    # Context window management
+                    "ephemeral": _ephemeral,
+                    "ephemeral_ttl": ephemeral_ttl,
+                    "result_importance": _result_importance,
+                    "summarize_result": summarize_result,
                 }
             )
         }

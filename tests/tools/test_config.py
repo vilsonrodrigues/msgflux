@@ -382,3 +382,161 @@ class TestToolConfigEdgeCases:
         args, kwargs = sample(1, 2, 3, a=4, b=5)
         assert args == (1, 2, 3)
         assert kwargs == {"a": 4, "b": 5}
+
+
+class TestToolConfigContextWindowOptions:
+    """Tests for context window management options in tool_config."""
+
+    def test_ephemeral_default_false(self):
+        """Test that ephemeral is False by default."""
+
+        @tool_config()
+        def sample():
+            pass
+
+        assert sample.tool_config.ephemeral is False
+
+    def test_ephemeral_true(self):
+        """Test ephemeral=True configuration."""
+
+        @tool_config(ephemeral=True)
+        def sample():
+            pass
+
+        assert sample.tool_config.ephemeral is True
+
+    def test_ephemeral_ttl_implies_ephemeral(self):
+        """Test that ephemeral_ttl implies ephemeral=True."""
+
+        @tool_config(ephemeral_ttl=5)
+        def sample():
+            pass
+
+        assert sample.tool_config.ephemeral is True
+        assert sample.tool_config.ephemeral_ttl == 5
+
+    def test_ephemeral_ttl_with_explicit_ephemeral(self):
+        """Test ephemeral_ttl with explicit ephemeral=True."""
+
+        @tool_config(ephemeral=True, ephemeral_ttl=3)
+        def sample():
+            pass
+
+        assert sample.tool_config.ephemeral is True
+        assert sample.tool_config.ephemeral_ttl == 3
+
+    def test_result_importance_default_none(self):
+        """Test that result_importance is None by default."""
+
+        @tool_config()
+        def sample():
+            pass
+
+        assert sample.tool_config.result_importance is None
+
+    def test_result_importance_valid_value(self):
+        """Test result_importance with valid value."""
+
+        @tool_config(result_importance=0.5)
+        def sample():
+            pass
+
+        assert sample.tool_config.result_importance == 0.5
+
+    def test_result_importance_boundary_values(self):
+        """Test result_importance with boundary values."""
+
+        @tool_config(result_importance=0.0)
+        def sample_low():
+            pass
+
+        @tool_config(result_importance=1.0)
+        def sample_high():
+            pass
+
+        assert sample_low.tool_config.result_importance == 0.0
+        assert sample_high.tool_config.result_importance == 1.0
+
+    def test_result_importance_invalid_low(self):
+        """Test result_importance rejects values below 0."""
+        with pytest.raises(ValueError, match="result_importance.*must be between"):
+
+            @tool_config(result_importance=-0.1)
+            def sample():
+                pass
+
+    def test_result_importance_invalid_high(self):
+        """Test result_importance rejects values above 1."""
+        with pytest.raises(ValueError, match="result_importance.*must be between"):
+
+            @tool_config(result_importance=1.1)
+            def sample():
+                pass
+
+    def test_summarize_result_default_false(self):
+        """Test that summarize_result is False by default."""
+
+        @tool_config()
+        def sample():
+            pass
+
+        assert sample.tool_config.summarize_result is False
+
+    def test_summarize_result_true(self):
+        """Test summarize_result=True configuration."""
+
+        @tool_config(summarize_result=True)
+        def sample():
+            pass
+
+        assert sample.tool_config.summarize_result is True
+
+    def test_all_context_options_combined(self):
+        """Test all context window options used together."""
+
+        @tool_config(
+            ephemeral=True,
+            ephemeral_ttl=10,
+            result_importance=0.3,
+            summarize_result=True,
+        )
+        def sample():
+            pass
+
+        config = sample.tool_config
+        assert config.ephemeral is True
+        assert config.ephemeral_ttl == 10
+        assert config.result_importance == 0.3
+        assert config.summarize_result is True
+
+    def test_context_options_on_class(self):
+        """Test context window options on class decorator."""
+
+        @tool_config(ephemeral=True, result_importance=0.7)
+        class SampleTool:
+            def __call__(self):
+                pass
+
+        instance = SampleTool()
+        assert instance.tool_config.ephemeral is True
+        assert instance.tool_config.result_importance == 0.7
+
+    def test_context_options_with_other_options(self):
+        """Test context window options combined with other tool_config options."""
+
+        @tool_config(
+            return_direct=True,
+            inject_vars=["context"],
+            ephemeral=True,
+            ephemeral_ttl=5,
+            result_importance=0.5,
+        )
+        def sample():
+            pass
+
+        config = sample.tool_config
+        assert config.return_direct is True
+        assert config.inject_vars == ["context"]
+        assert config.ephemeral is True
+        assert config.ephemeral_ttl == 5
+        assert config.result_importance == 0.5

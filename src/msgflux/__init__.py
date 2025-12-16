@@ -14,7 +14,7 @@ from .models import Model
 from .models.gateway import ModelGateway
 from .telemetry import Spans
 from .tools.config import tool_config
-from .utils.chat import ChatBlock, ChatML
+from .utils.chat import ChatBlock
 from .utils.console import cprint
 from .utils.inspect import get_fn_name
 from .utils.msgspec import load, msgspec_dumps, save
@@ -23,7 +23,6 @@ __all__ = [
     "DB",
     "Audio",
     "ChatBlock",
-    "ChatML",
     "Example",
     "File",
     "Image",

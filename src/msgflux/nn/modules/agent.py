@@ -34,6 +34,16 @@ from msgflux.generation.templates import (
 from msgflux.message import Message
 from msgflux.models.gateway import ModelGateway
 from msgflux.models.response import ModelResponse, ModelStreamResponse
+from msgflux.models.state import (
+    LifecycleType,
+    ModelState,
+    Policy,
+    ensure_model_state,
+)
+from msgflux.models.state import (
+    ToolCall as KernelToolCall,
+)
+from msgflux.models.state.utils import get_tool_lifecycle_configs
 from msgflux.models.types import ChatCompletionModel
 from msgflux.nn.modules.lm import LM
 from msgflux.nn.modules.module import Module
@@ -48,7 +58,7 @@ from msgflux.utils.xml import apply_xml_tags
 # Reserved kwargs that should not be treated as task inputs
 _RESERVED_KWARGS = {
     "vars",
-    "task_messages",
+    "model_state",
     "task_multimodal_inputs",
     "context_inputs",
     "model_preference",
@@ -128,13 +138,13 @@ class Agent(Module, metaclass=AutoParams):
                 guardrails={"input": input_checker, "output": output_checker}
         message_fields:
             Dictionary mapping Message field names to their paths in the Message object.
-            Valid keys: "task_inputs", "task_multimodal_inputs", "task_messages",
+            Valid keys: "task_inputs", "task_multimodal_inputs", "model_state",
             "context_inputs", "model_preference", "vars"
             !!! example
                 message_fields={
                     "task_inputs": "input.user",
                     "task_multimodal_inputs": {"audio": "audio.user"},
-                    "task_messages": "messages.history",
+                    "model_state": "messages.history",
                     "context_inputs": "context.data",
                     "model_preference": "model.preference",
                     "vars": "vars.data"
@@ -144,7 +154,7 @@ class Agent(Module, metaclass=AutoParams):
             - task_inputs: Field path for task input (str, dict, or tuple)
             - task_multimodal_inputs: Map datatype (image, video, audio, file)
               to field paths
-            - task_messages: Field path for list of chats in ChatML format
+            - model_state: Field path for list of chats in ChatML format
             - context_inputs: Field path for context (str or list of str)
             - model_preference: Field path for model preference (str, only valid
               with ModelGateway)
@@ -152,7 +162,8 @@ class Agent(Module, metaclass=AutoParams):
         config:
             Dictionary with configuration options.
             Valid keys: "verbose", "return_model_state", "tool_choice",
-            "stream", "image_block_kwargs", "video_block_kwargs", "include_date"
+            "stream", "image_block_kwargs", "video_block_kwargs", "include_date",
+            "policy"
             !!! example
                 config={
                     "verbose": True,
@@ -161,7 +172,8 @@ class Agent(Module, metaclass=AutoParams):
                     "stream": False,
                     "image_block_kwargs": {"detail": "high"},
                     "video_block_kwargs": {"format": "mp4"},
-                    "include_date": False
+                    "include_date": False,
+                    "policy": {"type": "sliding_window", "max_messages": 50}
                 }
 
             Configuration options:
@@ -175,6 +187,9 @@ class Agent(Module, metaclass=AutoParams):
               (e.g., {"format": "mp4"})
             - include_date: Include current date with weekday in system prompt
               (bool). Format: "Weekday, Month DD, YYYY" (e.g., "Monday, December 09, 2025")
+            - policy: ModelState compaction policy configuration (dict or Policy).
+              When provided, enables Git-like versioning, ephemeral messages,
+              scope-based grouping, and automatic compaction.
         templates:
             Dictionary mapping template types to Jinja template strings.
             Valid keys: "task", "response", "context", "system_prompt"
@@ -336,7 +351,7 @@ class Agent(Module, metaclass=AutoParams):
             **kwargs: Can include:
                 - Reserved kwargs (runtime overrides for message_fields):
                     - task_multimodal_inputs: Override multimodal inputs
-                    - task_messages: Override chat messages
+                    - model_state: Override chat messages
                     - context_inputs: Override context
                     - model_preference: Override model preference
                     - vars: Override template/tool variables
@@ -410,7 +425,7 @@ class Agent(Module, metaclass=AutoParams):
 
     def _execute_model(
         self,
-        model_state: List[Mapping[str, Any]],
+        model_state: ModelState,
         vars: Mapping[str, Any],
         prefilling: Optional[str] = None,
         model_preference: Optional[str] = None,
@@ -432,7 +447,7 @@ class Agent(Module, metaclass=AutoParams):
 
     async def _aexecute_model(
         self,
-        model_state: List[Mapping[str, Any]],
+        model_state: ModelState,
         vars: Mapping[str, Any],
         prefilling: Optional[str] = None,
         model_preference: Optional[str] = None,
@@ -454,19 +469,41 @@ class Agent(Module, metaclass=AutoParams):
 
     def _prepare_model_execution(
         self,
-        model_state: List[Mapping[str, Any]],
+        model_state: ModelState,
         vars: Mapping[str, Any],
         prefilling: Optional[str] = None,
         model_preference: Optional[str] = None,
         tool_filter: Optional[Dict[str, List[str]]] = None,
     ) -> Mapping[str, Any]:
-        # model_state, prefilling, model_preference, vars
-        agent_state = []
-
+        # Clone ModelState if we have fixed_messages to prepend
         if self.fixed_messages:
-            agent_state.extend(self.fixed_messages)
+            # Create a deep copy via serialization
+            cloned_data = model_state.serialize()
+            agent_state = ModelState.deserialize(cloned_data)
 
-        agent_state.extend(model_state)
+            # Get current messages
+            current_messages = list(agent_state._history.get_messages())
+
+            # Clear and re-add: fixed_messages first, then original messages
+            agent_state.clear()
+
+            # Add fixed_messages first
+            for msg in self.fixed_messages:
+                role = msg.get("role")
+                content = msg.get("content", "")
+                if role == "user":
+                    agent_state.add_user(content)
+                elif role == "assistant":
+                    agent_state.add_assistant(content)
+                elif role == "system":
+                    pass  # System messages handled separately via system_prompt
+
+            # Re-add original messages
+            for msg in current_messages:
+                agent_state._history.add_message(msg)
+        else:
+            # Use model_state directly if no fixed_messages
+            agent_state = model_state
 
         system_prompt = self._get_system_prompt(vars)
 
@@ -586,7 +623,7 @@ class Agent(Module, metaclass=AutoParams):
         self,
         message: Union[str, Mapping[str, Any], Message],
         model_response: Union[ModelResponse, ModelStreamResponse],
-        model_state: List[Mapping[str, Any]],
+        model_state: ModelState,
         vars: Mapping[str, Any],
         model_preference: Optional[str] = None,
         tool_filter: Optional[Dict[str, List[str]]] = None,
@@ -619,7 +656,7 @@ class Agent(Module, metaclass=AutoParams):
         self,
         message: Union[str, Mapping[str, Any], Message],
         model_response: Union[ModelResponse, ModelStreamResponse],
-        model_state: List[Mapping[str, Any]],
+        model_state: ModelState,
         vars: Mapping[str, Any],
         model_preference: Optional[str] = None,
         tool_filter: Optional[Dict[str, List[str]]] = None,
@@ -654,7 +691,7 @@ class Agent(Module, metaclass=AutoParams):
     def _process_tool_flow_control_response(
         self,
         model_response: Union[ModelResponse, ModelStreamResponse],
-        model_state: Mapping[str, Any],
+        model_state: ModelState,
         vars: Mapping[str, Any],
         model_preference: Optional[str] = None,
         tool_filter: Optional[Dict[str, List[str]]] = None,
@@ -700,10 +737,12 @@ class Agent(Module, metaclass=AutoParams):
                 tool_results = self._process_tool_call(tool_callings, model_state, vars)
 
                 if tool_results.return_directly:
+                    # Add tool execution to context before returning
+                    model_state.add_assistant(msgspec.json.encode(raw_response).decode())
+
                     tool_calls = tool_results.to_dict().pop("return_directly")
                     tool_calls["reasoning"] = reasoning
                     tool_responses = dotdict(tool_responses=tool_calls)
-                    # TODO converter tool calls em tool call msgs
                     return tool_responses, model_state
 
                 for act in actions:  # Add results
@@ -712,14 +751,8 @@ class Agent(Module, metaclass=AutoParams):
                     act.result = result or error
 
                 # Compact steps history
-                if model_state and model_state[-1].get("role") == "assistant":
-                    last_react_msg = model_state[-1].get("content")
-                    react_state = msgspec.json.decode(last_react_msg)
-                    react_state.append(raw_response)
-                    model_state[-1] = ChatBlock.assist(react_state)
-                else:
-                    react_state = [raw_response]
-                    model_state.append(ChatBlock.assist(react_state))
+                # Add the raw response as assistant message
+                model_state.add_assistant(msgspec.json.encode(raw_response).decode())
 
             model_response = self._execute_model(
                 model_state=model_state,
@@ -731,7 +764,7 @@ class Agent(Module, metaclass=AutoParams):
     async def _aprocess_tool_flow_control_response(
         self,
         model_response: Union[ModelResponse, ModelStreamResponse],
-        model_state: Mapping[str, Any],
+        model_state: ModelState,
         vars: Mapping[str, Any],
         model_preference: Optional[str] = None,
         tool_filter: Optional[Dict[str, List[str]]] = None,
@@ -780,10 +813,12 @@ class Agent(Module, metaclass=AutoParams):
                 )
 
                 if tool_results.return_directly:
+                    # Add tool execution to context before returning
+                    model_state.add_assistant(msgspec.json.encode(raw_response).decode())
+
                     tool_calls = tool_results.to_dict().pop("return_directly")
                     tool_calls["reasoning"] = reasoning
                     tool_responses = dotdict(tool_responses=tool_calls)
-                    # TODO converter tool calls em tool call msgs
                     return tool_responses, model_state
 
                 for act in actions:  # Add results
@@ -792,14 +827,8 @@ class Agent(Module, metaclass=AutoParams):
                     act.result = result or error
 
                 # Compact steps history
-                if model_state and model_state[-1].get("role") == "assistant":
-                    last_react_msg = model_state[-1].get("content")
-                    react_state = msgspec.json.decode(last_react_msg)
-                    react_state.append(raw_response)
-                    model_state[-1] = ChatBlock.assist(react_state)
-                else:
-                    react_state = [raw_response]
-                    model_state.append(ChatBlock.assist(react_state))
+                # Add the raw response as assistant message
+                model_state.add_assistant(msgspec.json.encode(raw_response).decode())
 
             model_response = await self._aexecute_model(
                 model_state=model_state,
@@ -811,7 +840,7 @@ class Agent(Module, metaclass=AutoParams):
     def _process_tool_call_response(
         self,
         model_response: Union[ModelResponse, ModelStreamResponse],
-        model_state: Mapping[str, Any],
+        model_state: ModelState,
         vars: Mapping[str, Any],
         model_preference: Optional[str] = None,
         tool_filter: Optional[Dict[str, List[str]]] = None,
@@ -824,6 +853,9 @@ class Agent(Module, metaclass=AutoParams):
         """
         max_tool_turns = self.config.get("max_tool_turns")
         turn_count = 0
+
+        # Enter tool loop scope
+        model_state.begin_scope(f"tool_loop_{uuid4().hex[:8]}")
 
         while True:
             if model_response.response_type == "tool_call":
@@ -856,6 +888,8 @@ class Agent(Module, metaclass=AutoParams):
                     tool_calls.pop("return_directly")
                     tool_calls["reasoning"] = reasoning
                     tool_responses = dotdict(tool_responses=tool_calls)
+                    # Exit scope before returning
+                    model_state.end_scope()
                     return tool_responses, model_state
 
                 id_results = {
@@ -864,8 +898,21 @@ class Agent(Module, metaclass=AutoParams):
                 }
                 raw_response.insert_results(id_results)
                 tool_responses_message = raw_response.get_messages()
-                model_state.extend(tool_responses_message)
+
+                # Add messages with lifecycle metadata
+                tool_configs = get_tool_lifecycle_configs(
+                    self.tool_library, tool_callings
+                )
+                self._add_tool_messages_with_lifecycle(
+                    model_state, tool_responses_message, tool_configs
+                )
+                model_state.advance_turn()
             else:
+                # Exit scope when tool loop ends
+                model_state.end_scope()
+                # Optionally compact if configured in policy
+                if self._policy and self._policy.summarize_tool_loops:
+                    model_state.compact()
                 return model_response, model_state
 
             model_response = self._execute_model(
@@ -878,7 +925,7 @@ class Agent(Module, metaclass=AutoParams):
     async def _aprocess_tool_call_response(
         self,
         model_response: Union[ModelResponse, ModelStreamResponse],
-        model_state: Mapping[str, Any],
+        model_state: ModelState,
         vars: Mapping[str, Any],
         model_preference: Optional[str] = None,
         tool_filter: Optional[Dict[str, List[str]]] = None,
@@ -891,6 +938,9 @@ class Agent(Module, metaclass=AutoParams):
         """
         max_tool_turns = self.config.get("max_tool_turns")
         turn_count = 0
+
+        # Enter tool loop scope
+        model_state.begin_scope(f"tool_loop_{uuid4().hex[:8]}")
 
         while True:
             if model_response.response_type == "tool_call":
@@ -925,6 +975,8 @@ class Agent(Module, metaclass=AutoParams):
                     tool_calls.pop("return_directly")
                     tool_calls["reasoning"] = reasoning
                     tool_responses = dotdict(tool_responses=tool_calls)
+                    # Exit scope before returning
+                    model_state.end_scope()
                     return tool_responses, model_state
 
                 id_results = {
@@ -933,8 +985,21 @@ class Agent(Module, metaclass=AutoParams):
                 }
                 raw_response.insert_results(id_results)
                 tool_responses_message = raw_response.get_messages()
-                model_state.extend(tool_responses_message)
+
+                # Add messages with lifecycle metadata
+                tool_configs = get_tool_lifecycle_configs(
+                    self.tool_library, tool_callings
+                )
+                self._add_tool_messages_with_lifecycle(
+                    model_state, tool_responses_message, tool_configs
+                )
+                model_state.advance_turn()
             else:
+                # Exit scope when tool loop ends
+                model_state.end_scope()
+                # Optionally compact if configured in policy
+                if self._policy and self._policy.summarize_tool_loops:
+                    model_state.compact()
                 return model_response, model_state
 
             model_response = await self._aexecute_model(
@@ -947,7 +1012,7 @@ class Agent(Module, metaclass=AutoParams):
     def _process_tool_call(
         self,
         tool_callings: Mapping[str, Any],
-        model_state: List[Mapping[str, Any]],
+        model_state: ModelState,
         vars: Mapping[str, Any],
     ) -> ToolResponses:
         if self.config.get("verbose", False):
@@ -973,7 +1038,7 @@ class Agent(Module, metaclass=AutoParams):
     async def _aprocess_tool_call(
         self,
         tool_callings: Mapping[str, Any],
-        model_state: List[Mapping[str, Any]],
+        model_state: ModelState,
         vars: Mapping[str, Any],
     ) -> ToolResponses:
         """Async version of _process_tool_call."""
@@ -997,11 +1062,88 @@ class Agent(Module, metaclass=AutoParams):
                 cprint(repr_str, ls="b")
         return tool_results
 
+    def _add_tool_messages_with_lifecycle(
+        self,
+        model_state: ModelState,
+        messages: List[Dict[str, Any]],
+        tool_configs: Dict[str, Dict[str, Any]],
+    ) -> None:
+        """Add tool messages to context kernel with appropriate lifecycle.
+
+        Args:
+            model_state: ModelState instance to add messages to.
+            messages: List of ChatML messages from tool calls.
+            tool_configs: Lifecycle configuration per tool_id.
+        """
+        for msg in messages:
+            role = msg.get("role")
+            tool_call_id = msg.get("tool_call_id")
+
+            # Determine lifecycle based on message type and tool config
+            lifecycle = LifecycleType.PERMANENT
+            ttl_turns = None
+            importance = 1.0
+
+            if role == "tool" and tool_call_id and tool_call_id in tool_configs:
+                config = tool_configs[tool_call_id]
+                if config.get("ephemeral"):
+                    if config.get("ephemeral_ttl"):
+                        lifecycle = LifecycleType.EPHEMERAL_TURNS
+                        ttl_turns = config["ephemeral_ttl"]
+                    else:
+                        lifecycle = LifecycleType.EPHEMERAL_SCOPE
+                if config.get("result_importance") is not None:
+                    importance = config["result_importance"]
+
+                # Add tool result message
+                model_state.add_tool_result(
+                    call_id=tool_call_id,
+                    content=msg.get("content", ""),
+                    lifecycle=lifecycle,
+                    ttl_turns=ttl_turns,
+                    importance=importance,
+                )
+
+            elif role == "assistant" and "tool_calls" in msg:
+                # Check if any tool in the batch is ephemeral
+                has_ephemeral = any(
+                    c.get("ephemeral") for c in tool_configs.values()
+                )
+                if has_ephemeral:
+                    lifecycle = LifecycleType.EPHEMERAL_SCOPE
+
+                # Convert tool_calls from ChatML to ModelState format
+                tool_calls = []
+                for tc in msg.get("tool_calls", []):
+                    func = tc.get("function", {})
+                    args = func.get("arguments", "{}")
+                    if isinstance(args, str):
+                        try:
+                            args = msgspec.json.decode(args.encode())
+                        except Exception:
+                            args = {}
+                    tool_calls.append(
+                        KernelToolCall(
+                            id=tc.get("id", ""),
+                            name=func.get("name", ""),
+                            arguments=args,
+                        )
+                    )
+
+                # Add assistant message with tool calls
+                model_state.add_assistant(
+                    content=msg.get("content"),
+                    tool_calls=tool_calls if tool_calls else None,
+                    lifecycle=lifecycle,
+                    ttl_turns=ttl_turns,
+                    importance=importance,
+                )
+
     def _prepare_response(
         self,
         raw_response: Union[str, Mapping[str, Any], ModelStreamResponse],
         response_type: str,
-        model_state: List[Mapping[str, Any]],
+        model_state: ModelState,
         message: Union[str, Mapping[str, Any], Message],
         vars: Mapping[str, Any],
     ) -> Union[str, Mapping[str, Any], ModelStreamResponse]:
@@ -1036,7 +1178,7 @@ class Agent(Module, metaclass=AutoParams):
         self,
         raw_response: Union[str, Mapping[str, Any], ModelStreamResponse],
         response_type: str,
-        model_state: List[Mapping[str, Any]],
+        model_state: ModelState,
         message: Union[str, Mapping[str, Any], Message],
         vars: Mapping[str, Any],
     ) -> Union[str, Mapping[str, Any], ModelStreamResponse]:
@@ -1081,10 +1223,19 @@ class Agent(Module, metaclass=AutoParams):
     def _prepare_task(
         self, message: Optional[Union[str, Message, Mapping[str, Any]]] = None, **kwargs
     ) -> Mapping[str, Any]:
-        """Prepare model input in ChatML format and execution params."""
+        """Prepare model input in ChatML format and execution params.
+
+        Args:
+            message: Task input (str, dict, or Message object).
+            **kwargs: Can include model_state (ModelState or List[Dict]),
+                vars, model_preference, and named task arguments.
+
+        Returns:
+            Dict with model_state (List[Dict]), model_preference, and vars.
+        """
         # Extract reserved kwargs
         vars = kwargs.pop("vars", {})
-        task_messages = kwargs.pop("task_messages", None)
+        model_state = kwargs.pop("model_state", None)
         model_preference = kwargs.pop("model_preference", None)
 
         # Get remaining kwargs (potential task inputs)
@@ -1118,17 +1269,17 @@ class Agent(Module, metaclass=AutoParams):
         if not vars and isinstance(message, Message) and self.vars is not None:
             vars = message.get(self.vars, {})
 
-        # Extract task_messages from Message if not provided
+        # Extract model_state from Message if not provided
         if (
-            task_messages is None
+            model_state is None
             and isinstance(message, Message)
-            and self.task_messages is not None
+            and self.model_state is not None
         ):
-            task_messages = self._get_content_from_message(self.task_messages, message)
+            model_state = self._get_content_from_message(self.model_state, message)
 
         content = self._process_task_inputs(message, vars=vars, **kwargs)
 
-        if content is None and task_messages is None:
+        if content is None and model_state is None:
             raise ValueError(
                 "No task input provided. Expected one of:\n"
                 "  - agent('your text')\n"
@@ -1137,15 +1288,18 @@ class Agent(Module, metaclass=AutoParams):
                 "  - agent(param1=..., param2=...) with task template configured"
             )
 
-        if content is not None:
-            chat_content = [ChatBlock.user(content)]
-            if task_messages is None:
-                model_state = chat_content
-            else:
-                task_messages.extend(chat_content)
-                model_state = task_messages
+        # Build model_state from model_state
+        # model_state is ALWAYS a ModelState
+        if model_state is not None:
+            # Convert to ModelState if needed (List[Dict] → ModelState)
+            model_state = ensure_model_state(model_state, policy=self._policy)
         else:
-            model_state = task_messages
+            # No model_state - create ModelState
+            model_state = ModelState(policy=self._policy)
+
+        # Add current user content
+        if content is not None:
+            model_state.add_user(content)
 
         if model_preference is None and isinstance(message, Message):
             model_preference = self.get_model_preference_from_message(message)
@@ -1160,11 +1314,18 @@ class Agent(Module, metaclass=AutoParams):
         self, message: Optional[Union[str, Message, Mapping[str, Any]]] = None, **kwargs
     ) -> Mapping[str, Any]:
         """Async version of _prepare_task.
-        Prepare model input in ChatML format and execution params.
+
+        Args:
+            message: Task input (str, dict, or Message object).
+            **kwargs: Can include model_state (ModelState or List[Dict]),
+                vars, model_preference, and named task arguments.
+
+        Returns:
+            Dict with model_state (List[Dict]), model_preference, and vars.
         """
         # Extract reserved kwargs
         vars = kwargs.pop("vars", {})
-        task_messages = kwargs.pop("task_messages", None)
+        model_state = kwargs.pop("model_state", None)
         model_preference = kwargs.pop("model_preference", None)
 
         # Get remaining kwargs (potential task inputs)
@@ -1198,17 +1359,17 @@ class Agent(Module, metaclass=AutoParams):
         if not vars and isinstance(message, Message) and self.vars is not None:
             vars = message.get(self.vars, {})
 
-        # Extract task_messages from Message if not provided
+        # Extract model_state from Message if not provided
         if (
-            task_messages is None
+            model_state is None
             and isinstance(message, Message)
-            and self.task_messages is not None
+            and self.model_state is not None
         ):
-            task_messages = self._get_content_from_message(self.task_messages, message)
+            model_state = self._get_content_from_message(self.model_state, message)
 
         content = await self._aprocess_task_inputs(message, vars=vars, **kwargs)
 
-        if content is None and task_messages is None:
+        if content is None and model_state is None:
             raise ValueError(
                 "No task input provided. Expected one of:\n"
                 "  - agent('your text')\n"
@@ -1217,15 +1378,18 @@ class Agent(Module, metaclass=AutoParams):
                 "  - agent(param1=..., param2=...) with task template configured"
             )
 
-        if content is not None:
-            chat_content = [ChatBlock.user(content)]
-            if task_messages is None:
-                model_state = chat_content
-            else:
-                task_messages.extend(chat_content)
-                model_state = task_messages
+        # Build model_state from model_state
+        # model_state is ALWAYS a ModelState
+        if model_state is not None:
+            # Convert to ModelState if needed (List[Dict] → ModelState)
+            model_state = ensure_model_state(model_state, policy=self._policy)
         else:
-            model_state = task_messages
+            # No model_state - create new ModelState
+            model_state = ModelState(policy=self._policy)
+
+        # Add current user content
+        if content is not None:
+            model_state.add_user(content)
 
         if model_preference is None and isinstance(message, Message):
             model_preference = self.get_model_preference_from_message(message)
@@ -1504,7 +1668,6 @@ class Agent(Module, metaclass=AutoParams):
         self, video_source: str
     ) -> Optional[Mapping[str, Any]]:
         """Async version of _format_video_input."""
-        # URLs: don't force encode (keep URL), local files: encode
         is_url = video_source.startswith("http")
         vid = Video(
             video_source,
@@ -1713,13 +1876,13 @@ class Agent(Module, metaclass=AutoParams):
                 f"`examples` requires a List[Example] or None given `{type(examples)}`"
             )
 
-    def _set_task_messages(self, task_messages: Optional[str] = None):
-        if isinstance(task_messages, str) or task_messages is None:
-            self.register_buffer("task_messages", task_messages)
+    def _set_model_state(self, model_state: Optional[str] = None):
+        if isinstance(model_state, str) or model_state is None:
+            self.register_buffer("model_state", model_state)
         else:
             raise TypeError(
-                "`task_messages` requires a string or None "
-                f"given `{type(task_messages)}`"
+                "`model_state` requires a string or None "
+                f"given `{type(model_state)}`"
             )
 
     def _set_config(self, config: Optional[Dict[str, Any]] = None):
@@ -1729,7 +1892,8 @@ class Agent(Module, metaclass=AutoParams):
             config:
                 Dictionary with configuration options.
                 Valid keys: "verbose", "return_model_state", "tool_choice",
-                "stream", "image_block_kwargs", "video_block_kwargs", "include_date"
+                "stream", "image_block_kwargs", "video_block_kwargs", "include_date",
+                "policy"
 
         Raises:
             TypeError:
@@ -1748,7 +1912,11 @@ class Agent(Module, metaclass=AutoParams):
             "include_date",
             "execution",  # Added for execution settings
             "max_tool_turns",  # Maximum consecutive tool call turns
+            "policy",  # ModelState compaction policy
         }
+
+        # Store policy config for later ModelState initialization
+        self._policy = None
 
         if config is None:
             self.register_buffer("config", {})
@@ -1784,6 +1952,19 @@ class Agent(Module, metaclass=AutoParams):
                     f"given `{config['max_tool_turns']}`"
                 )
 
+        # Store policy config for ModelState initialization
+        if "policy" in config:
+            policy_config = config["policy"]
+            if isinstance(policy_config, dict):
+                self._policy = Policy(**policy_config)
+            elif isinstance(policy_config, Policy):
+                self._policy = policy_config
+            else:
+                raise TypeError(
+                    f"`policy` must be a dict or Policy instance, "
+                    f"given `{type(policy_config)}`"
+                )
+
         self.register_buffer("config", config.copy())
 
     def _set_system_extra_message(self, system_extra_message: Optional[str] = None):
@@ -1806,7 +1987,7 @@ class Agent(Module, metaclass=AutoParams):
 
         Args:
             message_fields: Dictionary mapping field names to their values.
-                Valid keys: "task_inputs", "task_multimodal_inputs", "task_messages",
+                Valid keys: "task_inputs", "task_multimodal_inputs", "model_state",
                 "context_inputs", "model_preference", "vars"
 
         Raises:
@@ -1817,7 +1998,7 @@ class Agent(Module, metaclass=AutoParams):
         valid_keys = {
             "task_inputs",
             "task_multimodal_inputs",
-            "task_messages",
+            "model_state",
             "context_inputs",
             "model_preference",
             "vars",
@@ -1829,7 +2010,7 @@ class Agent(Module, metaclass=AutoParams):
             self._set_task_multimodal_inputs(None)
             self._set_model_preference(None)
             self._set_context_inputs(None)
-            self._set_task_messages(None)
+            self._set_model_state(None)
             self._set_vars(None)
             return
 
@@ -1852,7 +2033,7 @@ class Agent(Module, metaclass=AutoParams):
         self._set_task_multimodal_inputs(message_fields.get("task_multimodal_inputs"))
         self._set_model_preference(message_fields.get("model_preference"))
         self._set_context_inputs(message_fields.get("context_inputs"))
-        self._set_task_messages(message_fields.get("task_messages"))
+        self._set_model_state(message_fields.get("model_state"))
         self._set_vars(message_fields.get("vars"))
 
     def _set_typed_parser(self, typed_parser: Optional[str] = None):

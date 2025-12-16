@@ -17,57 +17,101 @@ import msgspec
 
 from msgflux.generation.control_flow import ToolFlowControl
 from msgflux.logger import logger
+from msgflux.types.content import (
+    AudioContent,
+    FileContent,
+    ImageContent,
+    TextContent,
+    VideoContent,
+)
 from msgflux.utils.inspect import get_mime_type
 from msgflux.utils.msgspec import msgspec_dumps
 from msgflux.utils.validation import is_subclass_of
 
 
-class ChatBlockMeta(type):
-    def __call__(
-        cls,
-        role: str,
-        content: str,
-        media: Optional[Union[List[Dict[str, Any]], Dict[str, Any]]] = None,
-    ) -> Dict[str, Any]:
-        role = role.lower()
-        role_map = {"user": cls.user, "assist": cls.assist, "system": cls.system}
-        if role not in role_map:
-            raise ValueError(f"Invalid role `{role}`. Use {', '.join(role_map)}")
-        if role == "user":
-            return role_map[role](content, media)
-        return role_map[role](content)
+class ChatBlock:
+    """Factories for creating chat message content blocks using ModelState types."""
 
+    @staticmethod
+    def text(text: str) -> TextContent:
+        """Create a text content block."""
+        return TextContent(text=text)
 
-class ChatBlock(metaclass=ChatBlockMeta):
+    @staticmethod
+    def image(
+        url: Optional[str] = None,
+        base64: Optional[str] = None,
+        media_type: Optional[str] = None,
+        detail: Optional[str] = None,
+    ) -> ImageContent:
+        """Create an image content block."""
+        return ImageContent(
+            url=url,
+            base64=base64,
+            media_type=media_type,
+            detail=detail,
+        )
+
+    @staticmethod
+    def audio(
+        url: Optional[str] = None,
+        base64: Optional[str] = None,
+        format: Optional[str] = None,
+    ) -> AudioContent:
+        """Create an audio content block."""
+        return AudioContent(
+            url=url,
+            base64=base64,
+            format=format,
+        )
+
+    @staticmethod
+    def video(
+        url: Optional[str] = None,
+        base64: Optional[str] = None,
+        media_type: Optional[str] = None,
+    ) -> VideoContent:
+        """Create a video content block."""
+        return VideoContent(
+            url=url,
+            base64=base64,
+            media_type=media_type,
+        )
+
+    @staticmethod
+    def file(
+        filename: str,
+        data: str,
+        media_type: Optional[str] = None,
+    ) -> FileContent:
+        """Create a file content block."""
+        return FileContent(
+            filename=filename,
+            data=data,
+            media_type=media_type,
+        )
+
+    # Legacy dict-based methods for backward compatibility
     @classmethod
-    def user(
-        cls,
-        content: Union[str, List[Dict[str, Any]]],
-        media: Optional[Union[List[Dict[str, Any]], Dict[str, Any]]] = None,
-    ) -> Dict[str, Any]:
-        if media is None:
-            return {"role": "user", "content": content}
-        content_list = []
-        if content:
-            content_list.append({"type": "text", "text": content})
-        if isinstance(media, list):
-            content_list.extend(media)
-        else:
-            content_list.append(media)
-        return {"role": "user", "content": content_list}
+    def user(cls, content: Union[str, List[Dict[str, Any]]]) -> Dict[str, Any]:
+        """Legacy: Create user message dict."""
+        return {"role": "user", "content": content}
 
     @classmethod
     def assist(cls, content: Any) -> Dict[str, str]:
+        """Legacy: Create assistant message dict."""
         if not isinstance(content, str):
             content = msgspec_dumps(content)
         return {"role": "assistant", "content": content}
 
     @classmethod
     def system(cls, content: str) -> Dict[str, str]:
+        """Legacy: Create system message dict."""
         return {"role": "system", "content": content}
 
     @staticmethod
     def tool_call(tool_id: str, name: str, arguments: str) -> Dict[str, str]:
+        """Legacy: Create tool call dict."""
         return {
             "id": tool_id,
             "type": "function",
@@ -76,111 +120,13 @@ class ChatBlock(metaclass=ChatBlockMeta):
 
     @classmethod
     def assist_tool_calls(cls, tool_calls: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Legacy: Create assistant message with tool calls."""
         return {"role": "assistant", "tool_calls": tool_calls}
 
     @classmethod
     def tool(cls, tool_call_id: str, content: str) -> Dict[str, Any]:
+        """Legacy: Create tool result message."""
         return {"role": "tool", "tool_call_id": tool_call_id, "content": content}
-
-    @staticmethod
-    def text(text: str) -> Dict[str, str]:
-        return {"type": "text", "text": text}
-
-    @staticmethod
-    def image(
-        url: Union[str, List[str]], **kwargs: Any
-    ) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
-        """Create image block(s) for chat content.
-
-        Args:
-            url: Image URL or list of URLs
-            **kwargs: Additional parameters to pass to image_url dict.
-                     Common params: detail ("high" or "low"), etc.
-
-        Returns:
-            Image block dict or list of dicts
-        """
-        if isinstance(url, list):
-            image_blocks = []
-            for u in url:
-                image_url_dict = {"url": u, **kwargs}
-                image_blocks.append({"type": "image_url", "image_url": image_url_dict})
-            return image_blocks
-
-        image_url_dict = {"url": url, **kwargs}
-        return {"type": "image_url", "image_url": image_url_dict}
-
-    @staticmethod
-    def video(
-        url: Union[str, List[str]], **kwargs: Any
-    ) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
-        """Create video block(s) for chat content.
-
-        Args:
-            url: Video URL or list of URLs
-            **kwargs: Additional parameters to pass to video_url dict.
-                     Can include provider-specific parameters.
-
-        Returns:
-            Video block dict or list of dicts
-        """
-        if isinstance(url, list):
-            return [
-                {"type": "video_url", "video_url": {"url": u, **kwargs}} for u in url
-            ]
-        return {"type": "video_url", "video_url": {"url": url, **kwargs}}
-
-    @staticmethod
-    def audio(data: str, audio_format: str) -> Dict[str, str]:
-        return {
-            "type": "input_audio",
-            "input_audio": {"data": data, "format": audio_format},
-        }
-
-    @staticmethod
-    def file(filename: str, file_data: str) -> Dict[str, str]:
-        return {"type": "file", "file": {"filename": filename, "file_data": file_data}}
-
-
-class ChatML:
-    """Manage messages in ChatML format."""
-
-    def __init__(self, messages: Optional[List[Dict[str, Any]]] = None):
-        self.history = messages if messages is not None else []
-
-    def add_user_message(
-        self,
-        content: Union[str, Dict[str, Any]],
-        media: Optional[Union[List[Dict[str, Any]], Dict[str, Any]]] = None,
-    ):
-        """Adds a message with role `user`."""
-        if isinstance(content, dict):
-            self._add_message(content)
-        self._add_message(ChatBlock.user(content, media))
-
-    def add_assist_message(self, content: Union[str, Dict[str, Any]]):
-        """Adds a message with role `assistant`."""
-        if isinstance(content, dict):
-            self._add_message(content)
-        self._add_message(ChatBlock.assist(content))
-
-    # def add_tool_message(self, content: Union[str, Dict[str, Any]]):
-    #    """Adds a message with role `tool`."""
-    #    self._add_message("tool", content) TODO
-
-    def _add_message(self, message: Dict[str, Any]):
-        """Internal method to add message to history."""
-        self.history.append(message)
-
-    def extend_history(self, messages):
-        """Add a list of messages to the history."""
-        return self.history.extend(messages)
-
-    def get_messages(self):
-        return self.history
-
-    def clear(self):
-        self.history = []
 
 
 complex_arguments_schema = {
