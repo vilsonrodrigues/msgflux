@@ -48,7 +48,7 @@ from msgflux.utils.xml import apply_xml_tags
 # Reserved kwargs that should not be treated as task inputs
 _RESERVED_KWARGS = {
     "vars",
-    "task_messages",
+    "model_state",
     "task_multimodal_inputs",
     "context_inputs",
     "model_preference",
@@ -128,13 +128,13 @@ class Agent(Module, metaclass=AutoParams):
                 guardrails={"input": input_checker, "output": output_checker}
         message_fields:
             Dictionary mapping Message field names to their paths in the Message object.
-            Valid keys: "task_inputs", "task_multimodal_inputs", "task_messages",
+            Valid keys: "task_inputs", "task_multimodal_inputs", "model_state",
             "context_inputs", "model_preference", "vars"
             !!! example
                 message_fields={
                     "task_inputs": "input.user",
                     "task_multimodal_inputs": {"audio": "audio.user"},
-                    "task_messages": "messages.history",
+                    "model_state": "messages.history",
                     "context_inputs": "context.data",
                     "model_preference": "model.preference",
                     "vars": "vars.data"
@@ -144,7 +144,7 @@ class Agent(Module, metaclass=AutoParams):
             - task_inputs: Field path for task input (str, dict, or tuple)
             - task_multimodal_inputs: Map datatype (image, video, audio, file)
               to field paths
-            - task_messages: Field path for list of chats in ChatML format
+            - model_state: Field path for list of chats in ChatML format
             - context_inputs: Field path for context (str or list of str)
             - model_preference: Field path for model preference (str, only valid
               with ModelGateway)
@@ -328,7 +328,7 @@ class Agent(Module, metaclass=AutoParams):
             **kwargs: Can include:
                 - Reserved kwargs (runtime overrides for message_fields):
                     - task_multimodal_inputs: Override multimodal inputs
-                    - task_messages: Override chat messages
+                    - model_state: Override chat messages (model state)
                     - context_inputs: Override context
                     - model_preference: Override model preference
                     - vars: Override template/tool variables
@@ -911,7 +911,7 @@ class Agent(Module, metaclass=AutoParams):
         """Prepare model input in ChatML format and execution params."""
         # Extract reserved kwargs
         vars = kwargs.pop("vars", {})
-        task_messages = kwargs.pop("task_messages", None)
+        model_state = kwargs.pop("model_state", [])
         model_preference = kwargs.pop("model_preference", None)
 
         # Get remaining kwargs (potential task inputs)
@@ -945,17 +945,17 @@ class Agent(Module, metaclass=AutoParams):
         if not vars and isinstance(message, Message) and self.vars is not None:
             vars = message.get(self.vars, {})
 
-        # Extract task_messages from Message if not provided
+        # Extract model_state from Message if not provided
         if (
-            task_messages is None
+            model_state == []
             and isinstance(message, Message)
-            and self.task_messages is not None
+            and self.model_state is not None
         ):
-            task_messages = self._get_content_from_message(self.task_messages, message)
+            model_state = self._get_content_from_message(self.model_state, message)
 
         content = self._process_task_inputs(message, vars=vars, **kwargs)
 
-        if content is None and task_messages is None:
+        if content is None and model_state == []:
             raise ValueError(
                 "No task input provided. Expected one of:\n"
                 "  - agent('your text')\n"
@@ -966,13 +966,10 @@ class Agent(Module, metaclass=AutoParams):
 
         if content is not None:
             chat_content = [ChatBlock.user(content)]
-            if task_messages is None:
+            if model_state == []:
                 model_state = chat_content
             else:
-                task_messages.extend(chat_content)
-                model_state = task_messages
-        else:
-            model_state = task_messages
+                model_state.extend(chat_content)
 
         if model_preference is None and isinstance(message, Message):
             model_preference = self.get_model_preference_from_message(message)
@@ -991,7 +988,7 @@ class Agent(Module, metaclass=AutoParams):
         """
         # Extract reserved kwargs
         vars = kwargs.pop("vars", {})
-        task_messages = kwargs.pop("task_messages", None)
+        model_state = kwargs.pop("model_state", [])
         model_preference = kwargs.pop("model_preference", None)
 
         # Get remaining kwargs (potential task inputs)
@@ -1025,17 +1022,17 @@ class Agent(Module, metaclass=AutoParams):
         if not vars and isinstance(message, Message) and self.vars is not None:
             vars = message.get(self.vars, {})
 
-        # Extract task_messages from Message if not provided
+        # Extract model_state from Message if not provided
         if (
-            task_messages is None
+            model_state == []
             and isinstance(message, Message)
-            and self.task_messages is not None
+            and self.model_state is not None
         ):
-            task_messages = self._get_content_from_message(self.task_messages, message)
+            model_state = self._get_content_from_message(self.model_state, message)
 
         content = await self._aprocess_task_inputs(message, vars=vars, **kwargs)
 
-        if content is None and task_messages is None:
+        if content is None and model_state == []:
             raise ValueError(
                 "No task input provided. Expected one of:\n"
                 "  - agent('your text')\n"
@@ -1046,13 +1043,11 @@ class Agent(Module, metaclass=AutoParams):
 
         if content is not None:
             chat_content = [ChatBlock.user(content)]
-            if task_messages is None:
+            if model_state == []:
                 model_state = chat_content
             else:
-                task_messages.extend(chat_content)
-                model_state = task_messages
-        else:
-            model_state = task_messages
+                model_state.extend(chat_content)
+        # model_state is already set when content is None
 
         if model_preference is None and isinstance(message, Message):
             model_preference = self.get_model_preference_from_message(message)
@@ -1540,13 +1535,13 @@ class Agent(Module, metaclass=AutoParams):
                 f"`examples` requires a List[Example] or None given `{type(examples)}`"
             )
 
-    def _set_task_messages(self, task_messages: Optional[str] = None):
-        if isinstance(task_messages, str) or task_messages is None:
-            self.register_buffer("task_messages", task_messages)
+    def _set_model_state(self, model_state: Optional[str] = None):
+        if isinstance(model_state, str) or model_state is None:
+            self.register_buffer("model_state", model_state)
         else:
             raise TypeError(
-                "`task_messages` requires a string or None "
-                f"given `{type(task_messages)}`"
+                "`model_state` requires a string or None "
+                f"given `{type(model_state)}`"
             )
 
     def _set_config(self, config: Optional[Dict[str, Any]] = None):
@@ -1625,7 +1620,7 @@ class Agent(Module, metaclass=AutoParams):
 
         Args:
             message_fields: Dictionary mapping field names to their values.
-                Valid keys: "task_inputs", "task_multimodal_inputs", "task_messages",
+                Valid keys: "task_inputs", "task_multimodal_inputs", "model_state",
                 "context_inputs", "model_preference", "vars"
 
         Raises:
@@ -1636,7 +1631,7 @@ class Agent(Module, metaclass=AutoParams):
         valid_keys = {
             "task_inputs",
             "task_multimodal_inputs",
-            "task_messages",
+            "model_state",
             "context_inputs",
             "model_preference",
             "vars",
@@ -1648,7 +1643,7 @@ class Agent(Module, metaclass=AutoParams):
             self._set_task_multimodal_inputs(None)
             self._set_model_preference(None)
             self._set_context_inputs(None)
-            self._set_task_messages(None)
+            self._set_model_state(None)
             self._set_vars(None)
             return
 
@@ -1671,7 +1666,7 @@ class Agent(Module, metaclass=AutoParams):
         self._set_task_multimodal_inputs(message_fields.get("task_multimodal_inputs"))
         self._set_model_preference(message_fields.get("model_preference"))
         self._set_context_inputs(message_fields.get("context_inputs"))
-        self._set_task_messages(message_fields.get("task_messages"))
+        self._set_model_state(message_fields.get("model_state"))
         self._set_vars(message_fields.get("vars"))
 
     def _set_typed_parser(self, typed_parser: Optional[str] = None):
