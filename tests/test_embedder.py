@@ -67,7 +67,7 @@ class MockNonBatchEmbedder:
 def test_embedder_with_batch_model_single_text():
     """Test Embedder with batch-supporting model on single text."""
     model = MockBatchEmbedder()
-    embedder = Embedder(name="test_embedder", model=model)
+    embedder = Embedder(model=model)
 
     # Single text input
     result = embedder("Hello world")
@@ -87,7 +87,7 @@ def test_embedder_with_batch_model_single_text():
 def test_embedder_with_batch_model_multiple_texts():
     """Test Embedder with batch-supporting model on multiple texts."""
     model = MockBatchEmbedder()
-    embedder = Embedder(name="test_embedder", model=model)
+    embedder = Embedder(model=model)
 
     # Multiple texts
     texts = ["text1", "text2", "text3"]
@@ -108,7 +108,7 @@ def test_embedder_with_batch_model_multiple_texts():
 def test_embedder_with_non_batch_model_multiple_texts():
     """Test Embedder with non-batch model on multiple texts."""
     model = MockNonBatchEmbedder()
-    embedder = Embedder(name="test_embedder", model=model)
+    embedder = Embedder(model=model)
 
     # Multiple texts
     texts = ["text1", "text2", "text3"]
@@ -131,7 +131,7 @@ def test_embedder_with_non_batch_model_multiple_texts():
 def test_embedder_with_non_batch_model_single_text():
     """Test Embedder with non-batch model on single text."""
     model = MockNonBatchEmbedder()
-    embedder = Embedder(name="test_embedder", model=model)
+    embedder = Embedder(model=model)
 
     # Single text
     result = embedder("Hello world")
@@ -186,7 +186,7 @@ def test_embedder_async():
     import asyncio
 
     model = MockBatchEmbedder()
-    embedder = Embedder(name="test_embedder", model=model)
+    embedder = Embedder(model=model)
 
     async def run_test():
         result = await embedder.aforward(["text1", "text2"])
@@ -223,7 +223,7 @@ def test_embedder_invalid_model_type():
         model_type = "chat_completion"  # Wrong type
 
     with pytest.raises(TypeError, match="requires be `embedder` model"):
-        Embedder(name="test_embedder", model=InvalidModel())
+        Embedder(model=InvalidModel())
 
 
 if __name__ == "__main__":
