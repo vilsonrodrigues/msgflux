@@ -168,3 +168,72 @@ class Predictor(Module, metaclass=AutoParams):
             raise TypeError(f"`config` must be a dict or None, given `{type(config)}`")
 
         self.register_buffer("config", config.copy())
+
+    def _set_message_fields(self, message_fields: Optional[Dict[str, Any]] = None):
+        """Set message field mappings.
+
+        Args:
+            message_fields: Dictionary mapping field names to their values.
+                Valid keys: "task_inputs", "model_preference"
+
+        Raises:
+            TypeError: If message_fields is not a dict or None
+            ValueError: If invalid keys are provided
+        """
+        valid_keys = {"task_inputs", "model_preference"}
+
+        if message_fields is None:
+            self._set_task_inputs(None)
+            self._set_model_preference(None)
+            return
+
+        if not isinstance(message_fields, dict):
+            raise TypeError(f"`message_fields` must be a dict or None, given `{type(message_fields)}`")
+
+        # Check for invalid keys
+        invalid_keys = set(message_fields.keys()) - valid_keys
+        if invalid_keys:
+            raise ValueError(
+                f"Invalid keys in message_fields: {invalid_keys}. "
+                f"Valid keys are: {valid_keys}"
+            )
+
+        # Set individual fields
+        self._set_task_inputs(message_fields.get("task_inputs"))
+        self._set_model_preference(message_fields.get("model_preference"))
+
+    def _set_task_inputs(self, task_inputs: Optional[str] = None):
+        """Set task_inputs field mapping."""
+        if isinstance(task_inputs, str) or task_inputs is None:
+            self.register_buffer("task_inputs", task_inputs)
+        else:
+            raise TypeError(
+                f"`task_inputs` requires a string or None, given `{type(task_inputs)}`"
+            )
+
+    def _set_model_preference(self, model_preference: Optional[str] = None):
+        """Set model_preference field mapping."""
+        if isinstance(model_preference, str) or model_preference is None:
+            self.register_buffer("model_preference", model_preference)
+        else:
+            raise TypeError(
+                f"`model_preference` requires a string or None, given `{type(model_preference)}`"
+            )
+
+    def _set_response_mode(self, response_mode: Optional[str] = None):
+        """Set response mode."""
+        if isinstance(response_mode, str) or response_mode is None:
+            self.register_buffer("response_mode", response_mode or "plain_response")
+        else:
+            raise TypeError(
+                f"`response_mode` requires a string or None, given `{type(response_mode)}`"
+            )
+
+    def _set_response_template(self, response_template: Optional[str] = None):
+        """Set response template."""
+        if isinstance(response_template, str) or response_template is None:
+            self.register_buffer("response_template", response_template)
+        else:
+            raise TypeError(
+                f"`response_template` requires a string or None, given `{type(response_template)}`"
+            )
