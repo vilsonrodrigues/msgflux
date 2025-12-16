@@ -557,7 +557,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 continue
 
             if config.get("inject_model_state", False):  # Add model_state
-                tool_params["task_messages"] = model_state
+                tool_params["model_state"] = model_state
 
             if not config.get("return_direct", False):
                 return_directly = False
@@ -686,7 +686,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 continue
 
             if config.get("inject_model_state", False):  # Add model_state
-                tool_params["task_messages"] = model_state
+                tool_params["model_state"] = model_state
 
             if not config.get("return_direct", False):
                 return_directly = False
