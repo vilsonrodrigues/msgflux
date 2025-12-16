@@ -48,7 +48,7 @@ class TestPredictor:
         predictor = Predictor(
             name="test_predictor",
             model=model,
-            task_inputs="content",
+            message_fields={"task_inputs": "content"},
             response_mode="outputs.prediction",
         )
 
@@ -63,11 +63,11 @@ class TestPredictor:
         predictor = Predictor(
             name="predictor",
             model=model,
-            execution_kwargs={"temperature": 0.7, "max_tokens": 100},
+            config={"temperature": 0.7, "max_tokens": 100},
         )
 
-        assert predictor.execution_kwargs["temperature"] == 0.7
-        assert predictor.execution_kwargs["max_tokens"] == 100
+        assert predictor.config["temperature"] == 0.7
+        assert predictor.config["max_tokens"] == 100
 
     def test_set_model_invalid_type(self):
         """Test that setting invalid model type raises TypeError."""
@@ -77,7 +77,7 @@ class TestPredictor:
     def test_prepare_task_with_message(self):
         """Test _prepare_task with Message input."""
         model = MockModel()
-        predictor = Predictor(name="test", model=model, task_inputs="content")
+        predictor = Predictor(name="test", model=model, message_fields={"task_inputs": "content"})
 
         message = Message(content="test input")
         inputs = predictor._prepare_task(message)
@@ -97,7 +97,7 @@ class TestPredictor:
         """Test _prepare_task with model preference."""
         model = MockModel()
         predictor = Predictor(
-            name="test", model=model, model_preference="context.preferred_model"
+            name="test", model=model, message_fields={"model_preference": "context.preferred_model"}
         )
 
         message = Message(content="test")
@@ -111,7 +111,7 @@ class TestPredictor:
         """Test _prepare_model_execution."""
         model = MockModel()
         predictor = Predictor(
-            name="test", model=model, execution_kwargs={"temperature": 0.5}
+            name="test", model=model, config={"temperature": 0.5}
         )
 
         params = predictor._prepare_model_execution("test data")
@@ -158,7 +158,7 @@ class TestPredictor:
         predictor = Predictor(
             name="test",
             model=model,
-            task_inputs="content",
+            message_fields={"task_inputs": "content"},
             response_mode="outputs.result",
         )
 
@@ -185,7 +185,7 @@ class TestPredictor:
         predictor = Predictor(
             name="test",
             model=model,
-            task_inputs="content",
+            message_fields={"task_inputs": "content"},
             response_mode="outputs.result",
         )
 
@@ -201,8 +201,8 @@ class TestPredictor:
         predictor = Predictor(
             name="test",
             model=model,
-            task_inputs="content",
-            execution_kwargs={"temperature": 0.7},
+            message_fields={"task_inputs": "content"},
+            config={"temperature": 0.7},
         )
 
         message = Message(content="test")
