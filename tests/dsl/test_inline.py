@@ -457,3 +457,159 @@ async def test_async_sequential_multiple_steps(async_modules):
     input_msg = dotdict()
     result = await ainline(expression, async_modules, input_msg)
     assert result["counter"] == 2
+
+
+def test_conditional_missing_closing_parenthesis_raises_error(modules):
+    """Test that missing closing parenthesis raises ValueError."""
+    expression = "prep -> {(output.agent == 'xpto'?feat_a,feat_b} -> final"
+    input_msg = dotdict()
+    with pytest.raises(ValueError, match="Missing closing parenthesis"):
+        inline(expression, modules, input_msg)
+
+
+def test_conditional_invalid_format_raises_error(modules):
+    """Test that invalid condition format raises ValueError."""
+    expression = "prep -> {invalid_condition?feat_a,feat_b} -> final"
+    input_msg = dotdict()
+    with pytest.raises(ValueError, match="Invalid condition format"):
+        inline(expression, modules, input_msg)
+
+
+def test_conditional_is_with_non_none_raises_error(modules):
+    """Test that 'is' operator with non-None value raises error."""
+    expression = "prep -> {output.agent is 'xpto'?feat_a,feat_b} -> final"
+    input_msg = dotdict()
+    with pytest.raises(ValueError, match="`is` and `is not` operators only support"):
+        inline(expression, modules, input_msg)
+
+
+def test_conditional_empty_condition_raises_error(modules):
+    """Test that empty condition raises ValueError."""
+    expression = "prep -> {?feat_a,feat_b} -> final"
+    input_msg = dotdict()
+    with pytest.raises(ValueError, match="Empty condition"):
+        inline(expression, modules, input_msg)
+
+
+def test_conditional_with_boolean_string_values(modules):
+    """Test conditional with string boolean values."""
+    def setup(msg: dotdict) -> dotdict:
+        msg["is_active"] = "true"
+        return msg
+    
+    modules_ext = {**modules, "setup": setup}
+    expression = "setup -> {is_active == true?feat_a,feat_b} -> final"
+    input_msg = dotdict()
+    result = inline(expression, modules_ext, input_msg)
+    assert result["feat_a"] == "result_a"
+
+
+def test_conditional_with_boolean_false_string(modules):
+    """Test conditional with string 'false' value."""
+    def setup(msg: dotdict) -> dotdict:
+        msg["is_active"] = "false"
+        return msg
+    
+    modules_ext = {**modules, "setup": setup}
+    expression = "setup -> {is_active == false?feat_a,feat_b} -> final"
+    input_msg = dotdict()
+    result = inline(expression, modules_ext, input_msg)
+    assert result["feat_a"] == "result_a"
+
+
+def test_conditional_with_float_comparison(modules):
+    """Test conditional with float values."""
+    def setup(msg: dotdict) -> dotdict:
+        msg["price"] = 19.99
+        return msg
+    
+    modules_ext = {**modules, "setup": setup}
+    expression = "setup -> {price > 10.5?feat_a,feat_b} -> final"
+    input_msg = dotdict()
+    result = inline(expression, modules_ext, input_msg)
+    assert result["feat_a"] == "result_a"
+
+
+def test_conditional_with_nonexistent_key_returns_false(modules):
+    """Test that nonexistent key in condition evaluates to false."""
+    expression = "prep -> {nonexistent.key == 'value'?feat_a,feat_b} -> final"
+    input_msg = dotdict()
+    result = inline(expression, modules, input_msg)
+    assert result["feat_b"] == "result_b"
+    assert "feat_a" not in result
+
+
+def test_conditional_with_string_comparison(modules):
+    """Test conditional with string comparison."""
+    expression = "prep -> {output.status == 'success'?feat_a,feat_b} -> final"
+    input_msg = dotdict()
+    result = inline(expression, modules, input_msg)
+    assert result["feat_a"] == "result_a"
+
+
+def test_while_loop_max_iterations_safety(modules):
+    """Test while loop respects max_iterations limit."""
+    def never_stop(msg: dotdict) -> dotdict:
+        msg["counter"] = msg.get("counter", 0) + 1
+        return msg
+
+    modules_ext = {**modules, "never_stop": never_stop}
+    # This would be an infinite loop, but should raise RuntimeError at max_iterations
+    expression = "prep -> @{counter < 10000}: never_stop; -> final"
+    input_msg = dotdict()
+    # Should raise RuntimeError due to max_iterations limit (default 1000)
+    with pytest.raises(RuntimeError, match="While loop exceeded maximum iterations"):
+        inline(expression, modules_ext, input_msg)
+
+
+def test_parallel_empty_list_edge_case(modules):
+    """Test parallel with minimal modules."""
+    expression = "prep -> [feat_a] -> final"
+    input_msg = dotdict()
+    result = inline(expression, modules, input_msg)
+    assert result["feat_a"] == "result_a"
+
+
+def test_conditional_with_quoted_strings(modules):
+    """Test conditional with both single and double quoted strings."""
+    expression = 'prep -> {output.agent == "xpto"?feat_a,feat_b} -> final'
+    input_msg = dotdict()
+    result = inline(expression, modules, input_msg)
+    assert result["feat_a"] == "result_a"
+
+
+@pytest.mark.asyncio
+async def test_async_conditional_invalid_format_raises_error(async_modules):
+    """Test async invalid condition format raises ValueError."""
+    expression = "prep -> {invalid?feat_a,feat_b} -> final"
+    input_msg = dotdict()
+    with pytest.raises(ValueError, match="Invalid condition format"):
+        await ainline(expression, async_modules, input_msg)
+
+
+@pytest.mark.asyncio
+async def test_async_conditional_with_float(async_modules):
+    """Test async conditional with float comparison."""
+    async def setup(msg: dotdict) -> dotdict:
+        msg["price"] = 25.5
+        return msg
+    
+    modules_ext = {**async_modules, "setup": setup}
+    expression = "setup -> {price > 20.0?feat_a,feat_b} -> final"
+    input_msg = dotdict()
+    result = await ainline(expression, modules_ext, input_msg)
+    assert result["feat_a"] == "result_a"
+
+
+@pytest.mark.asyncio
+async def test_async_while_loop_zero_iterations(async_modules):
+    """Test async while loop with zero iterations."""
+    async def set_high(msg: dotdict) -> dotdict:
+        msg["counter"] = 100
+        return msg
+    
+    modules_ext = {**async_modules, "set_high": set_high}
+    expression = "set_high -> @{counter < 5}: increment; -> final"
+    input_msg = dotdict()
+    result = await ainline(expression, modules_ext, input_msg)
+    assert result["counter"] == 100
