@@ -1,7 +1,8 @@
 """Tests for msgflux.utils.pooling module."""
 
-import numpy as np
 import pytest
+
+np = pytest.importorskip("numpy")
 
 from msgflux.utils.pooling import apply_pooling
 

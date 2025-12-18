@@ -2,6 +2,9 @@
 
 import pytest
 
+# Skip all XML tests if defusedxml is not installed
+pytest.importorskip("defusedxml")
+
 from msgflux.dsl.typed_parsers.base import BaseTypedParser
 from msgflux.dsl.typed_parsers.providers.xml import TypedXMLParser
 from msgflux.dsl.typed_parsers.registry import register_typed_parser, typed_parser_registry
