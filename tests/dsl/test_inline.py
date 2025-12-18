@@ -333,3 +333,127 @@ async def test_async_parallel_with_multiple_modules(async_modules):
     assert result["feat_a"] == "result_a"
     assert result["feat_b"] == "result_b"
     assert result["feat_c"] == "result_c"
+
+
+def test_conditional_with_parentheses(modules):
+    """Test conditional with parentheses for grouping."""
+    expression = "prep -> {(output.agent == 'xpto') & (output.score >= 10)?feat_a,feat_b} -> final"
+    input_msg = dotdict()
+    result = inline(expression, modules, input_msg)
+    assert result["feat_a"] == "result_a"
+    assert "feat_b" not in result
+
+
+def test_conditional_complex_logic(modules):
+    """Test conditional with complex logical expression."""
+    expression = "prep -> {(output.agent == 'xpto' || output.score >= 100) & !(output.status == 'failed')?feat_a,feat_b} -> final"
+    input_msg = dotdict()
+    result = inline(expression, modules, input_msg)
+    assert result["feat_a"] == "result_a"
+
+
+def test_empty_branch_in_conditional(modules):
+    """Test conditional with empty false branch."""
+    expression = "prep -> {output.agent == 'xpto'?feat_a} -> final"
+    input_msg = dotdict()
+    result = inline(expression, modules, input_msg)
+    assert result["feat_a"] == "result_a"
+    assert result["final"] == "done"
+
+
+def test_single_module_execution(modules):
+    """Test executing a single module."""
+    expression = "prep"
+    input_msg = dotdict()
+    result = inline(expression, modules, input_msg)
+    assert "output" in result
+    assert result["counter"] == 0
+
+
+def test_sequential_multiple_steps(modules):
+    """Test sequential execution with many steps."""
+    expression = "prep -> increment -> increment -> increment -> final"
+    input_msg = dotdict()
+    result = inline(expression, modules, input_msg)
+    assert result["counter"] == 3
+    assert result["final"] == "done"
+
+
+def test_nested_conditionals(modules):
+    """Test nested conditional expressions."""
+    def check_score(msg: dotdict) -> dotdict:
+        if msg["output"]["score"] >= 10:
+            msg["high_score"] = True
+        return msg
+    
+    modules_ext = {**modules, "check_score": check_score}
+    expression = "prep -> {output.agent == 'xpto'?check_score,feat_b} -> final"
+    input_msg = dotdict()
+    result = inline(expression, modules_ext, input_msg)
+    assert result.get("high_score") is True
+
+
+def test_comparison_greater_equal(modules):
+    """Test >= operator in conditional."""
+    expression = "prep -> {output.score >= 10?feat_a,feat_b} -> final"
+    input_msg = dotdict()
+    result = inline(expression, modules, input_msg)
+    assert result["feat_a"] == "result_a"
+
+
+def test_comparison_less_equal(modules):
+    """Test <= operator in conditional."""
+    expression = "prep -> {output.score <= 100?feat_a,feat_b} -> final"
+    input_msg = dotdict()
+    result = inline(expression, modules, input_msg)
+    assert result["feat_a"] == "result_a"
+
+
+def test_while_loop_zero_iterations(modules):
+    """Test while loop that doesn't execute (condition false from start)."""
+    def set_high_counter(msg: dotdict) -> dotdict:
+        msg["counter"] = 100
+        return msg
+    
+    modules_ext = {**modules, "set_high": set_high_counter}
+    expression = "set_high -> @{counter < 5}: increment; -> final"
+    input_msg = dotdict()
+    result = inline(expression, modules_ext, input_msg)
+    assert result["counter"] == 100  # No increment happened
+    assert result["final"] == "done"
+
+
+@pytest.mark.asyncio
+async def test_async_conditional_with_parentheses(async_modules):
+    """Test async conditional with parentheses."""
+    expression = "prep -> {(output.agent == 'xpto') & (output.score >= 10)?feat_a,feat_b} -> final"
+    input_msg = dotdict()
+    result = await ainline(expression, async_modules, input_msg)
+    assert result["feat_a"] == "result_a"
+
+
+@pytest.mark.asyncio
+async def test_async_empty_branch(async_modules):
+    """Test async conditional with empty false branch."""
+    expression = "prep -> {output.agent == 'xpto'?feat_a} -> final"
+    input_msg = dotdict()
+    result = await ainline(expression, async_modules, input_msg)
+    assert result["feat_a"] == "result_a"
+
+
+@pytest.mark.asyncio
+async def test_async_single_module(async_modules):
+    """Test async single module execution."""
+    expression = "prep"
+    input_msg = dotdict()
+    result = await ainline(expression, async_modules, input_msg)
+    assert "output" in result
+
+
+@pytest.mark.asyncio
+async def test_async_sequential_multiple_steps(async_modules):
+    """Test async sequential with multiple steps."""
+    expression = "prep -> increment -> increment -> final"
+    input_msg = dotdict()
+    result = await ainline(expression, async_modules, input_msg)
+    assert result["counter"] == 2

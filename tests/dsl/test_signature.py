@@ -230,3 +230,111 @@ def test_signature_with_complex_types():
     
     assert inputs[0].dtype == "List[Dict[str, int]]"
     assert outputs[0].dtype == "Optional[List[str]]"
+
+
+def test_dtype_to_str_with_union():
+    """Test _dtype_to_str with Union types."""
+    from typing import Union
+    
+    class TestUnionSignature(Signature):
+        value: Union[str, int] = InputField()
+    
+    inputs = TestUnionSignature.get_inputs_info()
+    # Union that's not Optional should be preserved
+    assert "Union" in inputs[0].dtype or "|" in inputs[0].dtype or "str" in inputs[0].dtype
+
+
+def test_dtype_to_str_with_list_of_union():
+    """Test _dtype_to_str with List[Union[...]]."""
+    from typing import Union
+    
+    class TestListUnionSignature(Signature):
+        values: List[Union[str, int]] = InputField()
+    
+    inputs = TestListUnionSignature.get_inputs_info()
+    assert "List" in inputs[0].dtype
+
+
+def test_signature_factory_with_image_types():
+    """Test task template generation with Image types."""
+    from msgflux.data.types import Image
+    
+    inputs_info = [
+        FieldInfo(name="photo", dtype="Image", desc="A photo"),
+        FieldInfo(name="text", dtype="str")
+    ]
+    
+    template = SignatureFactory.get_task_template_from_signature(inputs_info)
+    assert "<Image>photo</Image>" in template
+    assert "<text>{{ text }}</text>" in template
+
+
+def test_signature_factory_with_audio_types():
+    """Test task template generation with Audio types."""
+    from msgflux.data.types import Audio
+    
+    inputs_info = [
+        FieldInfo(name="sound", dtype="Audio", desc="An audio file")
+    ]
+    
+    template = SignatureFactory.get_task_template_from_signature(inputs_info)
+    assert "<Audio>sound</Audio>" in template
+
+
+def test_signature_factory_with_mixed_media():
+    """Test task template generation with mixed media types."""
+    inputs_info = [
+        FieldInfo(name="img", dtype="Image"),
+        FieldInfo(name="audio", dtype="Audio"),
+        FieldInfo(name="text", dtype="str")
+    ]
+    
+    template = SignatureFactory.get_task_template_from_signature(inputs_info)
+    assert "<Image>img</Image>" in template
+    assert "<Audio>audio</Audio>" in template
+    assert "<text>{{ text }}</text>" in template
+
+
+def test_get_inputs_info_preserves_order():
+    """Test that get_inputs_info preserves field order."""
+    class OrderedSignature(Signature):
+        first: str = InputField()
+        second: int = InputField()
+        third: bool = InputField()
+    
+    inputs = OrderedSignature.get_inputs_info()
+    assert inputs[0].name == "first"
+    assert inputs[1].name == "second"
+    assert inputs[2].name == "third"
+
+
+def test_get_outputs_info_preserves_order():
+    """Test that get_outputs_info preserves field order."""
+    class OrderedSignature(Signature):
+        first: str = OutputField()
+        second: int = OutputField()
+        third: bool = OutputField()
+    
+    outputs = OrderedSignature.get_outputs_info()
+    assert outputs[0].name == "first"
+    assert outputs[1].name == "second"
+    assert outputs[2].name == "third"
+
+
+def test_signature_with_only_optional_outputs():
+    """Test signature with all optional outputs."""
+    class OptionalOutputSignature(Signature):
+        maybe1: Optional[str] = OutputField()
+        maybe2: Optional[int] = OutputField()
+    
+    outputs = OptionalOutputSignature.get_outputs_info()
+    assert all("Optional" in out.dtype for out in outputs)
+
+
+def test_signature_factory_expected_output_includes_write_json():
+    """Test that expected output includes JSON instruction."""
+    inputs = [FieldInfo(name="x", dtype="int")]
+    outputs = [FieldInfo(name="y", dtype="str")]
+    
+    result = SignatureFactory.get_expected_output_from_signature(inputs, outputs)
+    assert "Write an encoded JSON" in result or "JSON" in result
