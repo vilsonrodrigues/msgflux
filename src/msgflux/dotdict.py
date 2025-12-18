@@ -43,7 +43,7 @@ class dotdict(dict):  # noqa: N801
 
     def __init__(
         self,
-        data: Optional[Dict[str, Any]] = None,
+        initial_data: Optional[Dict[str, Any]] = None,
         *,
         frozen: Optional[bool] = False,
         hidden_keys: Optional[list[str]] = None,
@@ -52,7 +52,7 @@ class dotdict(dict):  # noqa: N801
         """Initializes an instance of dotdict.
 
         Args:
-            data:
+            initial_data:
                 Base dictionary to initialize data.
             frozen:
                 If True, prevents changes after creation.
@@ -72,11 +72,11 @@ class dotdict(dict):  # noqa: N801
             print(d.get("api_key"))  # Returns None
             print(d.get("name"))     # Returns "John"
         """
-        data = data or {}
+        initial_data = initial_data or {}
         self._frozen = frozen
         self._hidden_keys = set(hidden_keys or [])
         super().__init__()
-        for key, value in {**data, **kwargs}.items():
+        for key, value in {**initial_data, **kwargs}.items():
             super().__setitem__(key, self._wrap(value))
 
     def __getattr__(self, attr: str):

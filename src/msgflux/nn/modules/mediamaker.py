@@ -256,10 +256,11 @@ class MediaMaker(Module, metaclass=AutoParams):
 
         content = {}
 
-        for media_source in ["image", "mask"]:
-            data = task_multimodal_inputs.get(media_source, None)
-            if data:
-                content[media_source] = data
+        if task_multimodal_inputs:
+            for media_source in ["image", "mask"]:
+                data = task_multimodal_inputs.get(media_source, None)
+                if data:
+                    content[media_source] = data
 
         return content
 
@@ -270,11 +271,11 @@ class MediaMaker(Module, metaclass=AutoParams):
         return model_execution_params
 
     def _set_model(self, model: Union[BaseModel, ModelGateway]):
-        if isinstance(model, tuple(MEDIA_MODEL_TYPES)):
+        if isinstance(model, (BaseModel, ModelGateway)):
             self.register_buffer("model", model)
         else:
             raise TypeError(
-                f"`model` need be a `{MEDIA_MODEL_TYPES!s}` "
+                f"`model` need be a `BaseModel` or `ModelGateway` "
                 f"model, given `{type(model)}`"
             )
 

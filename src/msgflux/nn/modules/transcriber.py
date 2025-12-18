@@ -81,7 +81,8 @@ class Transcriber(Module, metaclass=AutoParams):
         self._set_message_fields(message_fields)
         self._set_response_format(response_format)
         self._set_response_mode(response_mode)
-        self._set_response_template(response_template)
+        if response_template:
+            self.register_buffer("response_template", response_template)
         self._set_config(config)
         if name:
             self.set_name(name)
