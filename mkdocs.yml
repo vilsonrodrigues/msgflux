@@ -12,8 +12,8 @@ repo_name: msgflux/msgflux
 theme:
   name: material
   language: en
-  logo: assets/logo-msgFlux-S.png
-  favicon: assets/favicon.png
+  logo: assets/logo-symbol-bg.png
+  favicon: assets/logo-symbol-bg.png
   icon:
     repo: fontawesome/brands/github
   features:
@@ -33,7 +33,7 @@ theme:
     - blog
     # Table of Contents
     - toc.follow
-    - toc.integrate
+    # - toc.integrate  # Disabled: keeps TOC separate from navigation
     # Search
     - search.suggest
     - search.highlight
@@ -115,9 +115,10 @@ markdown_extensions:
   - pymdownx.tilde
 
 nav:
-  - Home: 
+  - Home:
     - index.md
   - Learn:
+    - Installation: learn/installation.md
     - QuickStart: quickstart.md
     - Docs:
       - ✧ Models:
@@ -130,14 +131,21 @@ nav:
         - learn/models/speech_to_text.md        
         - learn/models/text_to_image.md
         - learn/models/image_text_to_image.md
-      #- ⛁ DataBases: 
-      #  - core/database.md
-      #  - Vector: databases/vector.md
       - ⟳ Retrievers:
         - learn/retrievers/retriever.md
-      - ⎙ Parsers: learn/parsers/parser.md
-      - ⟢ nn:
-        - learn/module.md      
+      - ⚝ Utilities:
+        - ◉ dotdict: learn/dotdict.md
+        - ⤞ inline: learn/inline.md
+        - ⍗ AutoParams: learn/autoparams.md        
+      - ⟢ Modules:
+        - ⮔ Module: learn/nn/module.md
+        - ➤ Message: learn/message.md
+        - ∑ Functional: learn/nn/functional.md
+        - ∀ Agent: learn/nn/agent.md
+        - ⤹ Retriever: learn/nn/retriever.md
+        - ⊰ Speaker: learn/nn/speaker.md
+        - ℁ Transcriber: learn/nn/transcriber.md
+        - Δ Predictor: learn/nn/predictor.md      
     #- ⇄ Dependency Management: dependency-management.md
   - API Reference:
     - Models:

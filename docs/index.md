@@ -110,25 +110,25 @@ msgFlux introduces a set of high-level modules designed to streamline **multimod
 === "Chat Completion"
 
     ```python
-    from msgflux.models import ChatCompletion
+    import msgflux as mf
 
-    model = ChatCompletion(provider="openai", model="gpt-4")
+    model = mf.Model.chat_completion("openai/gpt-4")
 
-    response = model.call(
+    response = model(
         messages=[{"role": "user", "content": "Hello!"}]
     )
 
-    print(response.content)
+    print(response.consume())
     ```
 
 === "Text Embeddings"
 
     ```python
-    from msgflux.models import TextEmbedder
+    import msgflux as mf
 
-    embedder = TextEmbedder(provider="openai")
+    embedder = mf.Model.text_embedder("openai/text-embedding-3-small")
 
-    embeddings = embedder.call(
+    embeddings = embedder(
         texts=["Hello world", "msgFlux is awesome"]
     )
 
@@ -138,11 +138,11 @@ msgFlux introduces a set of high-level modules designed to streamline **multimod
 === "Text-to-Speech"
 
     ```python
-    from msgflux.models import TextToSpeech
+    import msgflux as mf
 
-    tts = TextToSpeech(provider="openai")
+    tts = mf.Model.text_to_speech("openai/tts-1")
 
-    audio = tts.call(
+    audio = tts(
         text="Hello from msgFlux!",
         voice="alloy"
     )
@@ -153,10 +153,13 @@ msgFlux introduces a set of high-level modules designed to streamline **multimod
 === "Neural Network Module"
 
     ```python
-    from msgflux.nn import Agent
+    import msgflux as mf
 
-    agent = Agent(
-        model="gpt-4",
+    model = mf.Model.chat_completion("openai/gpt-4")
+
+    agent = mf.nn.Agent(
+        name="helpful_assistant",
+        model=model,
         instructions="You are a helpful assistant",
         tools=[search_tool, calculator_tool]
     )
