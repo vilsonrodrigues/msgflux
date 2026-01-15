@@ -1,8 +1,4 @@
-"""Integration tests for optimizers with Agent module.
-
-Note: These tests work around a known issue with ModuleDict not being hashable
-by directly accessing Agent's Parameter attributes instead of using parameters().
-"""
+"""Integration tests for optimizers with Agent module."""
 
 from typing import Any, List, Mapping, Optional, Union
 from unittest.mock import MagicMock, patch
@@ -75,21 +71,6 @@ class MockChatCompletionModel:
         return self.__call__(**kwargs)
 
 
-def get_agent_parameters(agent: Agent) -> List[Parameter]:
-    """Extract parameters directly from Agent's attributes.
-
-    This is a workaround for the ModuleDict hashability issue.
-    """
-    params = []
-    # Known Parameter attributes in Agent
-    for attr_name in ["system_message", "instructions", "expected_output", "examples"]:
-        if hasattr(agent, attr_name):
-            param = getattr(agent, attr_name)
-            if isinstance(param, Parameter):
-                params.append(param)
-    return params
-
-
 @pytest.fixture
 def trainset():
     """Create sample training set."""
@@ -150,7 +131,7 @@ class TestAgentParameters:
 
     def test_agent_has_parameters(self, agent):
         """Test that Agent has optimizable parameters."""
-        params = get_agent_parameters(agent)
+        params = list(agent.parameters())
 
         assert len(params) > 0
         assert all(isinstance(p, Parameter) for p in params)
@@ -192,7 +173,7 @@ class TestLabeledFewShotWithAgent:
 
     def test_optimizer_with_agent_parameters(self, agent, trainset):
         """Test creating optimizer with Agent parameters."""
-        params = get_agent_parameters(agent)
+        params = list(agent.parameters())
         optimizer = LabeledFewShot(params, trainset=trainset, k=4, seed=42)
 
         assert optimizer is not None
@@ -203,7 +184,7 @@ class TestLabeledFewShotWithAgent:
         # Get initial examples parameter
         initial_examples = agent.examples.data
 
-        params = get_agent_parameters(agent)
+        params = list(agent.parameters())
         optimizer = LabeledFewShot(params, trainset=trainset, k=4, seed=42)
         optimizer.step()
 
@@ -218,7 +199,7 @@ class TestLabeledFewShotWithAgent:
         agent.examples.requires_grad = False
         original_examples = agent.examples.data
 
-        params = get_agent_parameters(agent)
+        params = list(agent.parameters())
         optimizer = LabeledFewShot(params, trainset=trainset, k=4, seed=42)
         optimizer.step()
 
@@ -239,7 +220,7 @@ class TestLabeledFewShotWithAgent:
         )
 
         # Optimize both agents' examples
-        all_params = get_agent_parameters(agent1) + get_agent_parameters(agent2)
+        all_params = list(agent1.parameters()) + list(agent2.parameters())
 
         optimizer = LabeledFewShot(all_params, trainset=trainset, k=4, seed=42)
         optimizer.step()
@@ -250,7 +231,7 @@ class TestLabeledFewShotWithAgent:
 
     def test_step_increments_count(self, agent, trainset):
         """Test that step increments step count."""
-        params = get_agent_parameters(agent)
+        params = list(agent.parameters())
         optimizer = LabeledFewShot(params, trainset=trainset, k=4, seed=42)
 
         optimizer.step()
@@ -270,7 +251,7 @@ class TestBootstrapFewShotWithAgent:
 
     def test_optimizer_with_agent_parameters(self, agent, trainset, metric):
         """Test creating BootstrapFewShot with Agent parameters."""
-        params = get_agent_parameters(agent)
+        params = list(agent.parameters())
         optimizer = BootstrapFewShot(
             params,
             metric=metric,
@@ -284,7 +265,7 @@ class TestBootstrapFewShotWithAgent:
 
     def test_step_without_teacher(self, agent, trainset, metric):
         """Test step without teacher (only labeled demos)."""
-        params = get_agent_parameters(agent)
+        params = list(agent.parameters())
         optimizer = BootstrapFewShot(
             params,
             metric=metric,
@@ -361,7 +342,7 @@ class TestTrainerWithAgent:
     @pytest.fixture
     def optimizer(self, agent, trainset):
         """Create optimizer for training."""
-        params = get_agent_parameters(agent)
+        params = list(agent.parameters())
         return LabeledFewShot(params, trainset=trainset, k=4, seed=42)
 
     def test_trainer_with_agent(self, agent, optimizer, evaluator, trainset, valset):
@@ -416,7 +397,7 @@ class TestEndToEndOptimization:
         )
 
         # Create optimizer
-        params = get_agent_parameters(agent)
+        params = list(agent.parameters())
         optimizer = LabeledFewShot(params, trainset=trainset, k=4, seed=42)
 
         # Create evaluator
@@ -446,7 +427,7 @@ class TestEndToEndOptimization:
             system_message="Calculator 1.",
         )
 
-        params1 = get_agent_parameters(agent1)
+        params1 = list(agent1.parameters())
         optimizer1 = LabeledFewShot(params1, trainset=trainset, k=4, seed=42)
         optimizer1.step()
         state = optimizer1.state_dict()
@@ -458,7 +439,7 @@ class TestEndToEndOptimization:
             system_message="Calculator 2.",
         )
 
-        params2 = get_agent_parameters(agent2)
+        params2 = list(agent2.parameters())
         optimizer2 = LabeledFewShot(params2, trainset=trainset, k=2, seed=1)
         optimizer2.load_state_dict(state)
 
@@ -477,7 +458,7 @@ class TestEndToEndOptimization:
         initial_examples = agent.examples.data
 
         # Optimize
-        params = get_agent_parameters(agent)
+        params = list(agent.parameters())
         optimizer = LabeledFewShot(params, trainset=trainset, k=4, seed=42)
         optimizer.step()
 
@@ -533,7 +514,7 @@ class TestCompilationState:
 
         assert agent.compiled is False
 
-        params = get_agent_parameters(agent)
+        params = list(agent.parameters())
         optimizer = LabeledFewShot(params, trainset=trainset, k=4, seed=42)
         evaluator = Evaluator(metric=metric)
 
