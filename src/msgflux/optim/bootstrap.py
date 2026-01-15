@@ -2,8 +2,10 @@
 
 This module provides an optimizer that uses bootstrapping to generate
 demonstrations from successful executions, similar to DSPy's BootstrapFewShot.
+Supports both synchronous and asynchronous execution.
 """
 
+import asyncio
 import logging
 import random
 from dataclasses import dataclass, field
@@ -379,3 +381,264 @@ class BootstrapFewShot(Optimizer):
         if "seed" in state_dict:
             self.seed = state_dict["seed"]
             self.rng = random.Random(self.seed)
+
+    # Async methods
+
+    async def astep(
+        self,
+        trainset: List[Example],
+        teacher: Optional[Module] = None,
+        closure: Optional[Callable[[], float]] = None,
+        *,
+        max_concurrency: Optional[int] = None,
+    ) -> Optional[float]:
+        """Execute bootstrap asynchronously and update demonstration parameters.
+
+        This method evaluates examples concurrently using asyncio, which is
+        more efficient for I/O-bound operations like API calls.
+
+        Args:
+            trainset: Training examples to bootstrap from.
+            teacher: Teacher module to use for bootstrapping.
+            closure: Optional closure for computing loss.
+            max_concurrency: Maximum number of concurrent evaluations.
+                If None, evaluates all examples concurrently.
+
+        Returns:
+            Optional loss value if closure was provided.
+
+        Example:
+            >>> result = await optimizer.astep(trainset, teacher=agent)
+        """
+        loss = None
+        if closure is not None:
+            loss = closure()
+
+        # Reset state for new step
+        self._traces.clear()
+        self._bootstrapped_indices.clear()
+        self._bootstrap_results.clear()
+        self._error_count = 0
+
+        # Bootstrap if teacher is provided
+        if teacher is not None:
+            await self._abootstrap(trainset, teacher, max_concurrency)
+
+        # Update parameters with demos
+        self._update_demos(trainset)
+
+        self._step_count += 1
+        return loss
+
+    async def _abootstrap(
+        self,
+        trainset: List[Example],
+        teacher: Module,
+        max_concurrency: Optional[int] = None,
+    ) -> None:
+        """Execute bootstrapping asynchronously to collect traces."""
+        logger.info(f"Starting async bootstrap with {len(trainset)} examples")
+
+        for round_idx in range(self.max_rounds):
+            logger.debug(f"Bootstrap round {round_idx + 1}/{self.max_rounds}")
+
+            # Get examples to process this round
+            examples_to_process = [
+                (idx, example)
+                for idx, example in enumerate(trainset)
+                if idx not in self._bootstrapped_indices
+            ]
+
+            # Limit to remaining needed
+            remaining_needed = self.max_bootstrapped_demos - len(self._bootstrapped_indices)
+            if remaining_needed <= 0:
+                break
+
+            examples_to_process = examples_to_process[:remaining_needed * 2]
+
+            if max_concurrency:
+                results = await self._abootstrap_with_semaphore(
+                    examples_to_process, teacher, round_idx, max_concurrency
+                )
+            else:
+                results = await self._abootstrap_concurrent(
+                    examples_to_process, teacher, round_idx
+                )
+
+            # Process results
+            for idx, result in results:
+                self._bootstrap_results.append(result)
+                if result.success:
+                    self._bootstrapped_indices.add(idx)
+                    self._collect_traces(result)
+                    logger.debug(f"Successfully bootstrapped example {idx}")
+
+                    if len(self._bootstrapped_indices) >= self.max_bootstrapped_demos:
+                        logger.info(
+                            f"Reached max bootstrapped demos ({self.max_bootstrapped_demos})"
+                        )
+                        return
+
+        logger.info(
+            f"Async bootstrap complete: {len(self._bootstrapped_indices)} successful, "
+            f"{self._error_count} errors"
+        )
+
+    async def _abootstrap_concurrent(
+        self,
+        examples_with_idx: List[Tuple[int, Example]],
+        teacher: Module,
+        round_idx: int,
+    ) -> List[Tuple[int, BootstrapResult]]:
+        """Bootstrap examples concurrently."""
+        tasks = [
+            self._abootstrap_one(idx, example, teacher, round_idx)
+            for idx, example in examples_with_idx
+        ]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        final_results = []
+        for i, result in enumerate(results):
+            idx = examples_with_idx[i][0]
+            if isinstance(result, Exception):
+                logger.error(f"Async bootstrap error: {result}")
+                self._error_count += 1
+                final_results.append((idx, BootstrapResult(
+                    example=examples_with_idx[i][1],
+                    prediction=None,
+                    traces=[],
+                    score=0.0,
+                    success=False,
+                    error=str(result),
+                )))
+            else:
+                final_results.append(result)
+
+        return final_results
+
+    async def _abootstrap_with_semaphore(
+        self,
+        examples_with_idx: List[Tuple[int, Example]],
+        teacher: Module,
+        round_idx: int,
+        max_concurrency: int,
+    ) -> List[Tuple[int, BootstrapResult]]:
+        """Bootstrap examples with limited concurrency."""
+        semaphore = asyncio.Semaphore(max_concurrency)
+
+        async def bounded_bootstrap(idx: int, example: Example):
+            async with semaphore:
+                return await self._abootstrap_one(idx, example, teacher, round_idx)
+
+        tasks = [bounded_bootstrap(idx, ex) for idx, ex in examples_with_idx]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        final_results = []
+        for i, result in enumerate(results):
+            idx = examples_with_idx[i][0]
+            if isinstance(result, Exception):
+                logger.error(f"Async bootstrap error: {result}")
+                self._error_count += 1
+                final_results.append((idx, BootstrapResult(
+                    example=examples_with_idx[i][1],
+                    prediction=None,
+                    traces=[],
+                    score=0.0,
+                    success=False,
+                    error=str(result),
+                )))
+            else:
+                final_results.append(result)
+
+        return final_results
+
+    async def _abootstrap_one(
+        self,
+        idx: int,
+        example: Example,
+        teacher: Module,
+        round_idx: int,
+    ) -> Tuple[int, BootstrapResult]:
+        """Bootstrap a single example asynchronously."""
+        traces: List[Trace] = []
+
+        try:
+            # Create a hook to collect traces
+            def trace_hook(module, args, kwargs, output):
+                module_name = getattr(module, "_name", None) or module.__class__.__name__
+                inputs = {}
+                if args:
+                    inputs["input"] = args[0] if len(args) == 1 else args
+                inputs.update(kwargs)
+
+                if isinstance(output, dict):
+                    outputs = output
+                elif isinstance(output, str):
+                    outputs = {"output": output}
+                else:
+                    outputs = {"output": str(output)}
+
+                traces.append(Trace(
+                    module_name=module_name,
+                    inputs=inputs,
+                    outputs=outputs,
+                    augmented=True,
+                ))
+
+            # Register hooks
+            handles = []
+            for name, module in teacher.named_modules():
+                if hasattr(module, "register_forward_hook"):
+                    try:
+                        h = module.register_forward_hook(trace_hook)
+                        handles.append(h)
+                    except Exception:
+                        pass
+
+            # Execute the teacher asynchronously
+            if hasattr(teacher, "acall"):
+                prediction = await teacher.acall(example.inputs)
+            elif hasattr(teacher, "aforward"):
+                prediction = await teacher.aforward(example.inputs)
+            else:
+                loop = asyncio.get_event_loop()
+                prediction = await loop.run_in_executor(
+                    None, teacher, example.inputs
+                )
+
+            # Remove hooks
+            for h in handles:
+                try:
+                    h.remove()
+                except Exception:
+                    pass
+
+            # Evaluate with metric
+            score = self.metric(example, prediction)
+            success = self._is_success(score)
+
+            return (idx, BootstrapResult(
+                example=example,
+                prediction=prediction,
+                traces=traces,
+                score=score,
+                success=success,
+            ))
+
+        except Exception as e:
+            self._error_count += 1
+            logger.warning(f"Async bootstrap error: {e}")
+
+            if self._error_count >= self.max_errors:
+                raise RuntimeError(
+                    f"Maximum errors ({self.max_errors}) reached during bootstrap"
+                ) from e
+
+            return (idx, BootstrapResult(
+                example=example,
+                prediction=None,
+                traces=[],
+                score=0.0,
+                success=False,
+                error=str(e),
+            ))

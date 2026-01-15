@@ -1,9 +1,11 @@
 """COPRO - Collaborative Prompt Optimization.
 
 This optimizer uses an LLM to generate improved instructions based on
-successful and failed examples from evaluation.
+successful and failed examples from evaluation. Supports both synchronous
+and asynchronous execution.
 """
 
+import asyncio
 import random
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
@@ -429,3 +431,179 @@ class COPRO(Optimizer):
         self._best_score = state.get("best_score", 0.0)
         self.seed = state.get("seed", self.seed)
         self.rng = random.Random(self.seed)
+
+    # Async methods
+
+    async def astep(
+        self,
+        trainset: List[Example],
+        valset: Optional[List[Example]] = None,
+        *,
+        teacher: Optional[Module] = None,
+        closure: Optional[Callable[[], float]] = None,
+        max_concurrency: Optional[int] = None,
+    ) -> Optional[float]:
+        """Perform one COPRO optimization step asynchronously.
+
+        Args:
+            trainset: Training examples for evaluation.
+            valset: Validation examples (optional).
+            teacher: Module to evaluate (optional).
+            closure: Closure for loss computation (optional).
+            max_concurrency: Maximum concurrent evaluations.
+
+        Returns:
+            The loss value if closure is provided, None otherwise.
+        """
+        self._step_count += 1
+
+        if valset is None:
+            valset = trainset
+
+        instructions_param = self._get_instructions_param()
+        if instructions_param is None or self.prompt_model is None:
+            if closure is not None:
+                return closure()
+            return None
+
+        # Evaluate current instruction asynchronously
+        current_instruction = instructions_param.data or ""
+        success_examples, failure_examples = await self._acollect_examples(
+            trainset, teacher, current_instruction, max_concurrency
+        )
+
+        success_rate = len(success_examples) / len(trainset) if trainset else 0.0
+
+        # Generate candidates (sync - uses prompt_model)
+        candidates = self._generate_candidates(
+            current_instruction=current_instruction,
+            success_examples=success_examples,
+            failure_examples=failure_examples,
+            total_examples=len(trainset),
+            success_rate=success_rate,
+        )
+
+        # Evaluate candidates asynchronously
+        best_candidate = await self._aevaluate_candidates(
+            candidates, valset, teacher, max_concurrency
+        )
+
+        if best_candidate and best_candidate.score > self._best_score:
+            self._best_score = best_candidate.score
+            self._best_instruction = best_candidate.instruction
+            if instructions_param.requires_grad:
+                instructions_param.data = best_candidate.instruction
+
+        self._candidates_history.append(candidates)
+
+        if closure is not None:
+            return closure()
+        return None
+
+    async def _acollect_examples(
+        self,
+        examples: List[Example],
+        teacher: Optional[Module],
+        current_instruction: str,
+        max_concurrency: Optional[int] = None,
+    ) -> Tuple[List[Tuple[Example, Any, float]], List[Tuple[Example, Any, float]]]:
+        """Collect examples asynchronously."""
+        if teacher is None:
+            return [(ex, ex.labels, 1.0) for ex in examples], []
+
+        async def evaluate_one(example: Example):
+            try:
+                if hasattr(teacher, "acall"):
+                    prediction = await teacher.acall(example.inputs)
+                else:
+                    loop = asyncio.get_event_loop()
+                    prediction = await loop.run_in_executor(
+                        None, teacher, example.inputs
+                    )
+                score = self.metric(example, prediction)
+                return (example, prediction, score)
+            except Exception:
+                return (example, None, 0.0)
+
+        if max_concurrency:
+            semaphore = asyncio.Semaphore(max_concurrency)
+
+            async def bounded_eval(ex):
+                async with semaphore:
+                    return await evaluate_one(ex)
+
+            tasks = [bounded_eval(ex) for ex in examples]
+        else:
+            tasks = [evaluate_one(ex) for ex in examples]
+
+        results = await asyncio.gather(*tasks)
+
+        success = [(ex, pred, score) for ex, pred, score in results if score > 0.5]
+        failure = [(ex, pred, score) for ex, pred, score in results if score <= 0.5]
+
+        return success, failure
+
+    async def _aevaluate_candidates(
+        self,
+        candidates: List[CoproCandidate],
+        valset: List[Example],
+        teacher: Optional[Module],
+        max_concurrency: Optional[int] = None,
+    ) -> Optional[CoproCandidate]:
+        """Evaluate candidates asynchronously."""
+        if not candidates or teacher is None:
+            return None
+
+        for candidate in candidates[: self.breadth]:
+            score = await self._aevaluate_instruction(
+                candidate.instruction, valset, teacher, max_concurrency
+            )
+            candidate.score = score
+            candidate.evaluated = True
+
+        return max(candidates, key=lambda c: c.score) if candidates else None
+
+    async def _aevaluate_instruction(
+        self,
+        instruction: str,
+        valset: List[Example],
+        teacher: Module,
+        max_concurrency: Optional[int] = None,
+    ) -> float:
+        """Evaluate instruction asynchronously."""
+        instructions_param = self._get_instructions_param()
+        if instructions_param is None:
+            return 0.0
+
+        original = instructions_param.data
+        instructions_param.data = instruction
+
+        try:
+            async def eval_one(example: Example):
+                try:
+                    if hasattr(teacher, "acall"):
+                        pred = await teacher.acall(example.inputs)
+                    else:
+                        loop = asyncio.get_event_loop()
+                        pred = await loop.run_in_executor(
+                            None, teacher, example.inputs
+                        )
+                    return self.metric(example, pred)
+                except Exception:
+                    return 0.0
+
+            if max_concurrency:
+                semaphore = asyncio.Semaphore(max_concurrency)
+
+                async def bounded(ex):
+                    async with semaphore:
+                        return await eval_one(ex)
+
+                tasks = [bounded(ex) for ex in valset]
+            else:
+                tasks = [eval_one(ex) for ex in valset]
+
+            scores = await asyncio.gather(*tasks)
+            return sum(scores) / len(valset) if valset else 0.0
+        finally:
+            instructions_param.data = original

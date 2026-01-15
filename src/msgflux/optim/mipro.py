@@ -5,6 +5,7 @@ Bayesian optimization to find the best combination of instructions
 and demonstrations.
 """
 
+import asyncio
 import random
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
@@ -441,3 +442,214 @@ class MIPROv2(Optimizer):
                 demos=demos,
                 score=self._best_score,
             )
+
+    # =========================================================================
+    # Async Methods
+    # =========================================================================
+
+    async def astep(
+        self,
+        trainset: List[Example],
+        valset: Optional[List[Example]] = None,
+        *,
+        teacher: Optional[Module] = None,
+        closure: Optional[Callable[[], float]] = None,
+        max_concurrency: Optional[int] = None,
+    ) -> Optional[float]:
+        """Perform one MIPROv2 optimization step asynchronously.
+
+        This method runs optimization trials concurrently, which can significantly
+        speed up optimization when using async-capable modules.
+
+        Args:
+            trainset: Training examples for demonstrations.
+            valset: Validation examples for evaluation.
+            teacher: Module to evaluate (must support acall or aforward).
+            closure: Closure for loss computation.
+            max_concurrency: Maximum concurrent evaluations. If None, runs
+                all trials concurrently.
+
+        Returns:
+            The loss value if closure is provided, None otherwise.
+
+        Example:
+            >>> result = await optimizer.astep(trainset, valset, teacher=agent)
+        """
+        self._step_count += 1
+
+        if valset is None:
+            valset = trainset
+
+        # Initialize demonstration pool
+        self._demo_pool = trainset.copy()
+
+        # Generate instruction candidates (sync operation)
+        if not self._instruction_candidates:
+            self._instruction_candidates = self._generate_instruction_candidates(
+                trainset
+            )
+
+        # Run optimization trials asynchronously
+        if max_concurrency:
+            await self._arun_trials_with_semaphore(
+                valset, teacher, max_concurrency
+            )
+        else:
+            await self._arun_trials_concurrent(valset, teacher)
+
+        # Apply best configuration to parameters
+        if self._best_candidate is not None:
+            self._apply_candidate(self._best_candidate)
+
+        if closure is not None:
+            return closure()
+        return None
+
+    async def _arun_trials_concurrent(
+        self,
+        valset: List[Example],
+        teacher: Optional[Module],
+    ) -> None:
+        """Run all trials concurrently without limit."""
+        tasks = [
+            self._arun_trial(valset, teacher)
+            for _ in range(self.num_trials)
+        ]
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+    async def _arun_trials_with_semaphore(
+        self,
+        valset: List[Example],
+        teacher: Optional[Module],
+        max_concurrency: int,
+    ) -> None:
+        """Run trials with limited concurrency using semaphore."""
+        semaphore = asyncio.Semaphore(max_concurrency)
+
+        async def bounded_trial():
+            async with semaphore:
+                return await self._arun_trial(valset, teacher)
+
+        tasks = [bounded_trial() for _ in range(self.num_trials)]
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+    async def _arun_trial(
+        self,
+        valset: List[Example],
+        teacher: Optional[Module],
+    ) -> MiproTrial:
+        """Run a single optimization trial asynchronously."""
+        # Sample instruction and demos based on surrogate predictions
+        instruction_idx = self._sample_instruction()
+        demo_indices = self._sample_demos()
+
+        # Create candidate
+        candidate = PromptCandidate(
+            instruction=self._instruction_candidates[instruction_idx],
+            demos=[self._demo_pool[i] for i in demo_indices if i < len(self._demo_pool)],
+        )
+
+        # Evaluate candidate asynchronously
+        if teacher is not None:
+            score = await self._aevaluate_candidate(candidate, valset, teacher)
+        else:
+            score = 0.0
+
+        candidate.score = score
+        candidate.evaluated = True
+
+        # Record trial
+        trial = MiproTrial(
+            instruction_idx=instruction_idx,
+            demo_indices=demo_indices,
+            score=score,
+            candidate=candidate,
+        )
+        self._trials.append(trial)
+
+        # Update surrogate model
+        self._update_surrogate(trial)
+
+        # Track best
+        if score > self._best_score:
+            self._best_score = score
+            self._best_candidate = candidate
+
+        return trial
+
+    async def _aevaluate_candidate(
+        self,
+        candidate: PromptCandidate,
+        valset: List[Example],
+        teacher: Module,
+    ) -> float:
+        """Evaluate a candidate configuration asynchronously."""
+        # Apply candidate temporarily
+        instructions_param = None
+        examples_param = None
+        original_instructions = None
+        original_examples = None
+
+        for group in self.param_groups:
+            for param in group["params"]:
+                if param.spec == PromptSpec.INSTRUCTIONS:
+                    instructions_param = param
+                    original_instructions = param.data
+                elif param.spec == PromptSpec.EXAMPLES:
+                    examples_param = param
+                    original_examples = param.data
+
+        try:
+            # Apply candidate
+            if instructions_param and instructions_param.requires_grad:
+                instructions_param.data = candidate.instruction
+
+            if examples_param and examples_param.requires_grad and candidate.demos:
+                examples_param.data = self._format_demos(candidate.demos)
+
+            # Evaluate all examples concurrently
+            tasks = [
+                self._aevaluate_example(teacher, example)
+                for example in valset
+            ]
+            scores = await asyncio.gather(*tasks, return_exceptions=True)
+
+            # Sum valid scores
+            total_score = 0.0
+            for score in scores:
+                if isinstance(score, (int, float)):
+                    total_score += score
+
+            return total_score / len(valset) if valset else 0.0
+
+        finally:
+            # Restore original values
+            if instructions_param:
+                instructions_param.data = original_instructions
+            if examples_param:
+                examples_param.data = original_examples
+
+    async def _aevaluate_example(
+        self,
+        teacher: Module,
+        example: Example,
+    ) -> float:
+        """Evaluate a single example asynchronously."""
+        try:
+            # Run the module asynchronously
+            if hasattr(teacher, "acall"):
+                prediction = await teacher.acall(example.inputs)
+            elif hasattr(teacher, "aforward"):
+                prediction = await teacher.aforward(example.inputs)
+            else:
+                # Fallback to sync in executor
+                loop = asyncio.get_event_loop()
+                prediction = await loop.run_in_executor(
+                    None, teacher, example.inputs
+                )
+
+            # Score with metric (sync operation)
+            return self.metric(example, prediction)
+
+        except Exception:
+            return 0.0

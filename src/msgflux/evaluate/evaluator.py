@@ -1,9 +1,11 @@
 """Evaluator for measuring module performance.
 
 This module provides the Evaluator class for evaluating msgflux modules
-on development/test sets using custom metrics.
+on development/test sets using custom metrics. Supports both synchronous
+and asynchronous evaluation.
 """
 
+import asyncio
 import logging
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
@@ -263,4 +265,185 @@ class Evaluator:
             Tuple of (prediction, score).
         """
         _, prediction, score = self._evaluate_one(module, example)
+        return prediction, score
+
+    # Async methods
+
+    async def aevaluate(
+        self,
+        module: Module,
+        devset: List[Example],
+        *,
+        return_predictions: bool = True,
+        max_concurrency: Optional[int] = None,
+    ) -> EvaluationResult:
+        """Run evaluation asynchronously on a dataset.
+
+        This method evaluates examples concurrently using asyncio, which is
+        more efficient for I/O-bound operations like API calls.
+
+        Args:
+            module: The module to evaluate (must support aforward).
+            devset: List of Example objects to evaluate on.
+            return_predictions: Whether to include predictions in results.
+            max_concurrency: Maximum number of concurrent evaluations.
+                If None, evaluates all examples concurrently.
+
+        Returns:
+            EvaluationResult with score and detailed results.
+
+        Example:
+            >>> result = await evaluator.aevaluate(agent, test_examples)
+            >>> print(f"Score: {result.score:.2f}%")
+        """
+        if not devset:
+            return EvaluationResult(score=0.0, results=[], num_errors=0)
+
+        # Reset error count
+        self._error_count = 0
+
+        # Store original training mode
+        was_training = module.training
+
+        # Set to evaluation mode
+        module.eval()
+
+        try:
+            if max_concurrency:
+                results = await self._aevaluate_with_semaphore(
+                    module, devset, max_concurrency
+                )
+            else:
+                results = await self._aevaluate_concurrent(module, devset)
+        finally:
+            # Restore training mode
+            if was_training:
+                module.train()
+
+        # Calculate overall score
+        total_score = sum(score for _, _, score in results)
+        score = (total_score / len(results)) * 100 if results else 0.0
+
+        if self.verbose:
+            logger.info(
+                f"Async evaluation complete: {score:.2f}% "
+                f"({int(total_score)}/{len(results)} correct)"
+            )
+
+        return EvaluationResult(
+            score=round(score, 2),
+            results=results if return_predictions else [],
+            num_errors=self._error_count,
+            metadata={
+                "num_examples": len(devset),
+                "num_evaluated": len(results),
+                "metric_name": getattr(self.metric, "__name__", "custom"),
+                "async": True,
+            },
+        )
+
+    async def _aevaluate_concurrent(
+        self,
+        module: Module,
+        devset: List[Example],
+    ) -> List[Tuple[Example, Any, float]]:
+        """Evaluate all examples concurrently."""
+        tasks = [
+            self._aevaluate_one(module, example)
+            for example in devset
+        ]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Handle exceptions
+        final_results = []
+        for idx, result in enumerate(results):
+            if isinstance(result, Exception):
+                logger.error(f"Async evaluation error: {result}")
+                final_results.append((devset[idx], None, self.failure_score))
+                self._error_count += 1
+            else:
+                final_results.append(result)
+
+        return final_results
+
+    async def _aevaluate_with_semaphore(
+        self,
+        module: Module,
+        devset: List[Example],
+        max_concurrency: int,
+    ) -> List[Tuple[Example, Any, float]]:
+        """Evaluate examples with limited concurrency using semaphore."""
+        semaphore = asyncio.Semaphore(max_concurrency)
+
+        async def bounded_evaluate(example: Example):
+            async with semaphore:
+                return await self._aevaluate_one(module, example)
+
+        tasks = [bounded_evaluate(example) for example in devset]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Handle exceptions
+        final_results = []
+        for idx, result in enumerate(results):
+            if isinstance(result, Exception):
+                logger.error(f"Async evaluation error: {result}")
+                final_results.append((devset[idx], None, self.failure_score))
+                self._error_count += 1
+            else:
+                final_results.append(result)
+
+        return final_results
+
+    async def _aevaluate_one(
+        self,
+        module: Module,
+        example: Example,
+    ) -> Tuple[Example, Any, float]:
+        """Evaluate a single example asynchronously."""
+        try:
+            # Run the module asynchronously
+            if hasattr(module, "acall"):
+                prediction = await module.acall(example.inputs)
+            elif hasattr(module, "aforward"):
+                prediction = await module.aforward(example.inputs)
+            else:
+                # Fallback to sync in executor
+                loop = asyncio.get_event_loop()
+                prediction = await loop.run_in_executor(
+                    None, module, example.inputs
+                )
+
+            # Score with metric (sync operation)
+            score = self.metric(example, prediction)
+
+            return (example, prediction, score)
+
+        except Exception as e:
+            self._error_count += 1
+
+            if self.verbose:
+                logger.warning(f"Async evaluation error: {e}")
+
+            if self._error_count >= self.max_errors:
+                raise RuntimeError(
+                    f"Maximum errors ({self.max_errors}) reached during evaluation"
+                ) from e
+
+            return (example, None, self.failure_score)
+
+    async def aevaluate_single(
+        self,
+        module: Module,
+        example: Example,
+    ) -> Tuple[Any, float]:
+        """Evaluate a single example asynchronously.
+
+        Args:
+            module: The module to evaluate.
+            example: The example to evaluate.
+
+        Returns:
+            Tuple of (prediction, score).
+        """
+        _, prediction, score = await self._aevaluate_one(module, example)
         return prediction, score

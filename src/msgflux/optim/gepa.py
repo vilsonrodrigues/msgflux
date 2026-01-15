@@ -4,6 +4,7 @@ This optimizer uses genetic algorithms to evolve prompts through
 selection, crossover, and mutation operations.
 """
 
+import asyncio
 import random
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
@@ -563,3 +564,206 @@ class GEPA(Optimizer):
                 demos=demos,
                 fitness=self._best_fitness,
             )
+
+    # =========================================================================
+    # Async Methods
+    # =========================================================================
+
+    async def astep(
+        self,
+        trainset: List[Example],
+        valset: Optional[List[Example]] = None,
+        *,
+        teacher: Optional[Module] = None,
+        closure: Optional[Callable[[], float]] = None,
+        max_concurrency: Optional[int] = None,
+    ) -> Optional[float]:
+        """Perform one GEPA optimization step asynchronously.
+
+        This method evaluates population fitness concurrently, which can
+        significantly speed up optimization when using async-capable modules.
+
+        Args:
+            trainset: Training examples for demonstrations.
+            valset: Validation examples for evaluation.
+            teacher: Module to evaluate (must support acall or aforward).
+            closure: Closure for loss computation.
+            max_concurrency: Maximum concurrent evaluations per generation.
+                If None, evaluates all individuals concurrently.
+
+        Returns:
+            The loss value if closure is provided, None otherwise.
+
+        Example:
+            >>> result = await optimizer.astep(trainset, valset, teacher=agent)
+        """
+        self._step_count += 1
+
+        if valset is None:
+            valset = trainset
+
+        # Initialize population if needed
+        if not self._population:
+            self._initialize_population(trainset)
+
+        # Evolve for specified generations
+        for gen in range(self.num_generations):
+            self._current_generation += 1
+
+            # Evaluate fitness asynchronously
+            await self._aevaluate_population(valset, teacher, max_concurrency)
+
+            # Record statistics
+            self._record_stats()
+
+            # Selection, crossover, and mutation (sync operations)
+            new_population = self._evolve_population(trainset)
+            self._population = new_population
+
+        # Apply best individual to parameters
+        if self._best_individual is not None:
+            self._apply_individual(self._best_individual)
+
+        if closure is not None:
+            return closure()
+        return None
+
+    async def _aevaluate_population(
+        self,
+        valset: List[Example],
+        teacher: Optional[Module],
+        max_concurrency: Optional[int] = None,
+    ) -> None:
+        """Evaluate fitness of all individuals asynchronously."""
+        if teacher is None:
+            return
+
+        if max_concurrency:
+            await self._aevaluate_population_with_semaphore(
+                valset, teacher, max_concurrency
+            )
+        else:
+            await self._aevaluate_population_concurrent(valset, teacher)
+
+    async def _aevaluate_population_concurrent(
+        self,
+        valset: List[Example],
+        teacher: Module,
+    ) -> None:
+        """Evaluate all individuals concurrently without limit."""
+        tasks = [
+            self._aevaluate_individual(individual, valset, teacher)
+            for individual in self._population
+        ]
+        fitnesses = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Update fitness and track best
+        for individual, fitness in zip(self._population, fitnesses):
+            if isinstance(fitness, (int, float)):
+                individual.fitness = fitness
+                if fitness > self._best_fitness:
+                    self._best_fitness = fitness
+                    self._best_individual = individual
+
+    async def _aevaluate_population_with_semaphore(
+        self,
+        valset: List[Example],
+        teacher: Module,
+        max_concurrency: int,
+    ) -> None:
+        """Evaluate individuals with limited concurrency using semaphore."""
+        semaphore = asyncio.Semaphore(max_concurrency)
+
+        async def bounded_evaluate(individual: Individual) -> Tuple[Individual, float]:
+            async with semaphore:
+                fitness = await self._aevaluate_individual(individual, valset, teacher)
+                return individual, fitness
+
+        tasks = [bounded_evaluate(ind) for ind in self._population]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Update fitness and track best
+        for result in results:
+            if isinstance(result, tuple):
+                individual, fitness = result
+                individual.fitness = fitness
+                if fitness > self._best_fitness:
+                    self._best_fitness = fitness
+                    self._best_individual = individual
+
+    async def _aevaluate_individual(
+        self,
+        individual: Individual,
+        valset: List[Example],
+        teacher: Module,
+    ) -> float:
+        """Evaluate a single individual asynchronously."""
+        # Apply individual temporarily
+        instructions_param = None
+        examples_param = None
+        original_instructions = None
+        original_examples = None
+
+        for group in self.param_groups:
+            for param in group["params"]:
+                if param.spec == PromptSpec.INSTRUCTIONS:
+                    instructions_param = param
+                    original_instructions = param.data
+                elif param.spec == PromptSpec.EXAMPLES:
+                    examples_param = param
+                    original_examples = param.data
+
+        try:
+            # Apply individual
+            if instructions_param and instructions_param.requires_grad:
+                instructions_param.data = individual.instruction
+
+            if examples_param and examples_param.requires_grad and individual.demos:
+                examples_param.data = self._format_demos(individual.demos)
+
+            # Evaluate all examples concurrently
+            tasks = [
+                self._aevaluate_example(teacher, example)
+                for example in valset
+            ]
+            scores = await asyncio.gather(*tasks, return_exceptions=True)
+
+            # Sum valid scores
+            total_score = 0.0
+            for score in scores:
+                if isinstance(score, (int, float)):
+                    total_score += score
+
+            return total_score / len(valset) if valset else 0.0
+
+        finally:
+            # Restore original values
+            if instructions_param:
+                instructions_param.data = original_instructions
+            if examples_param:
+                examples_param.data = original_examples
+
+    async def _aevaluate_example(
+        self,
+        teacher: Module,
+        example: Example,
+    ) -> float:
+        """Evaluate a single example asynchronously."""
+        try:
+            # Run the module asynchronously
+            if hasattr(teacher, "acall"):
+                prediction = await teacher.acall(example.inputs)
+            elif hasattr(teacher, "aforward"):
+                prediction = await teacher.aforward(example.inputs)
+            else:
+                # Fallback to sync in executor
+                loop = asyncio.get_event_loop()
+                prediction = await loop.run_in_executor(
+                    None, teacher, example.inputs
+                )
+
+            # Score with metric (sync operation)
+            return self.metric(example, prediction)
+
+        except Exception:
+            return 0.0
