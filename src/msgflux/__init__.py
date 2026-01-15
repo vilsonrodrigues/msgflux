@@ -20,6 +20,11 @@ from .utils.console import cprint
 from .utils.inspect import get_fn_name
 from .utils.msgspec import load, msgspec_dumps, save
 
+# Optimization modules
+from . import evaluate
+from . import optim
+from . import trainer
+
 __all__ = [
     "AutoParams",
     "DB",
@@ -49,4 +54,8 @@ __all__ = [
     "save",
     "set_envs",
     "tool_config",
+    # Optimization modules
+    "evaluate",
+    "optim",
+    "trainer",
 ]
