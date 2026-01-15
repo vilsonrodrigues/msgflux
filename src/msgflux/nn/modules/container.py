@@ -569,6 +569,11 @@ class ModuleDict(Module, container_abcs.Mapping):
     def __contains__(self, key: str) -> bool:
         return key in self._modules
 
+    def __hash__(self) -> int:
+        # Make ModuleDict hashable by identity, like regular Python objects.
+        # This is needed because Mapping ABC marks __hash__ as None by default.
+        return id(self)
+
     def clear(self) -> None:
         """Remove all items from the ModuleDict."""
         self._modules.clear()
