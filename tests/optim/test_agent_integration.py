@@ -488,3 +488,103 @@ class TestEndToEndOptimization:
         # Call agent - examples should still be updated
         agent("What is 2+2?")
         assert agent.examples.data == updated_examples
+
+
+class TestCompilationState:
+    """Test module compilation state tracking."""
+
+    @pytest.fixture
+    def metric(self):
+        """Create exact match metric."""
+        return exact_match
+
+    def test_module_not_compiled_initially(self, agent):
+        """Test that modules are not compiled initially."""
+        assert agent.compiled is False
+        assert agent.get_compile_info() == {}
+
+    def test_compile_marks_module(self, agent):
+        """Test that compile_() marks module as compiled."""
+        agent.compile_(optimizer="TestOptimizer", score=0.95)
+
+        assert agent.compiled is True
+        info = agent.get_compile_info()
+        assert info["optimizer"] == "TestOptimizer"
+        assert info["score"] == 0.95
+
+    def test_decompile_resets_state(self, agent):
+        """Test that decompile_() resets compilation state."""
+        agent.compile_(optimizer="TestOptimizer", score=0.95)
+        assert agent.compiled is True
+
+        agent.decompile_()
+        assert agent.compiled is False
+        assert agent.get_compile_info() == {}
+
+    def test_trainer_marks_compiled(
+        self, mock_model, trainset, valset, metric
+    ):
+        """Test that Trainer marks module as compiled after training."""
+        agent = Agent(
+            name="calculator",
+            model=mock_model,
+            system_message="Calculator.",
+        )
+
+        assert agent.compiled is False
+
+        params = get_agent_parameters(agent)
+        optimizer = LabeledFewShot(params, trainset=trainset, k=4, seed=42)
+        evaluator = Evaluator(metric=metric)
+
+        trainer = Trainer(
+            module=agent,
+            optimizer=optimizer,
+            evaluator=evaluator,
+            config=TrainerConfig(max_epochs=2, verbose=False),
+        )
+
+        trainer.fit(trainset=trainset, valset=valset)
+
+        assert agent.compiled is True
+        info = agent.get_compile_info()
+        assert info["optimizer"] == "LabeledFewShot"
+        assert "score" in info
+        assert "epochs" in info
+
+    def test_compile_state_persisted_in_state_dict(self, agent):
+        """Test that compilation state is saved in state_dict."""
+        agent.compile_(optimizer="TestOptimizer", score=0.95, custom_key="value")
+
+        state = agent.state_dict()
+
+        assert "_compiled" in state
+        assert state["_compiled"] is True
+        assert "_compile_info" in state
+        assert state["_compile_info"]["optimizer"] == "TestOptimizer"
+
+    def test_compile_state_loaded_from_state_dict(self, mock_model):
+        """Test that compilation state is loaded from state_dict."""
+        # Create and compile first agent
+        agent1 = Agent(
+            name="agent1",
+            model=mock_model,
+            system_message="Agent 1.",
+        )
+        agent1.compile_(optimizer="TestOptimizer", score=0.95)
+        state = agent1.state_dict()
+
+        # Create new agent and load state
+        agent2 = Agent(
+            name="agent2",
+            model=mock_model,
+            system_message="Agent 2.",
+        )
+        assert agent2.compiled is False
+
+        agent2.load_state_dict(state)
+
+        assert agent2.compiled is True
+        info = agent2.get_compile_info()
+        assert info["optimizer"] == "TestOptimizer"
+        assert info["score"] == 0.95

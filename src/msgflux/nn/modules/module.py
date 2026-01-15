@@ -402,6 +402,9 @@ class Module:
         super().__setattr__("_load_state_dict_pre_hooks", OrderedDict())
         super().__setattr__("_load_state_dict_post_hooks", OrderedDict())
         super().__setattr__("_modules", {})
+        # Optimization state tracking
+        super().__setattr__("_compiled", False)
+        super().__setattr__("_compile_info", {})
 
         if self.call_super_init:
             super().__init__(*args, **kwargs)
@@ -1711,6 +1714,10 @@ class Module:
         for name, buf in self._buffers.items():
             destination[prefix + name] = self._get_serializable_value(buf)
 
+        # Save compilation state
+        destination[prefix + "_compiled"] = self._compiled
+        destination[prefix + "_compile_info"] = self._compile_info.copy()
+
     def state_dict(
         self, destination: Optional[Dict[str, Any]] = None, prefix: Optional[str] = ""
     ):
@@ -1839,6 +1846,15 @@ class Module:
                         self._buffers[name] = generation_schema
                 else:  # Otherwise, load the value directly
                     self._buffers[name] = data
+
+        # Load compilation state
+        compiled_key = prefix + "_compiled"
+        if compiled_key in state_dict:
+            self._compiled = state_dict[compiled_key]
+
+        compile_info_key = prefix + "_compile_info"
+        if compile_info_key in state_dict:
+            self._compile_info = state_dict[compile_info_key].copy()
 
         # Load submodules recursively
         for name, module in self._modules.items():
@@ -2147,6 +2163,78 @@ class Module:
             Self.
         """
         return self.train(mode=False)
+
+    # Compilation/Optimization state management
+
+    @property
+    def compiled(self) -> bool:
+        """Check if this module has been compiled/optimized.
+
+        Returns:
+            True if the module has been compiled, False otherwise.
+        """
+        return self._compiled
+
+    def compile_(
+        self: T,
+        *,
+        optimizer: Optional[str] = None,
+        score: Optional[float] = None,
+        **kwargs,
+    ) -> T:
+        """Mark this module as compiled/optimized.
+
+        This method is typically called by optimizers after successful
+        optimization to indicate that the module's prompts have been tuned.
+
+        Args:
+            optimizer: Name of the optimizer used (e.g., "LabeledFewShot", "COPRO").
+            score: Final optimization score achieved.
+            **kwargs: Additional metadata to store about the compilation.
+
+        Returns:
+            Self.
+
+        Example:
+            >>> optimizer = LabeledFewShot(agent.parameters(), trainset=data, k=4)
+            >>> optimizer.step()
+            >>> agent.compile_(optimizer="LabeledFewShot", score=0.95)
+            >>> assert agent.compiled is True
+        """
+        self._compiled = True
+        self._compile_info = {
+            "optimizer": optimizer,
+            "score": score,
+            **kwargs,
+        }
+        # Propagate to child modules
+        for module in self.children():
+            module.compile_(optimizer=optimizer, score=score, **kwargs)
+        return self
+
+    def decompile_(self: T) -> T:
+        """Mark this module as not compiled/optimized.
+
+        Useful when resetting a module for re-optimization or when
+        loading a module that should be re-tuned.
+
+        Returns:
+            Self.
+        """
+        self._compiled = False
+        self._compile_info = {}
+        for module in self.children():
+            module.decompile_()
+        return self
+
+    def get_compile_info(self) -> Dict[str, Any]:
+        """Get compilation metadata.
+
+        Returns:
+            Dictionary with compilation information including optimizer name,
+            score, and any additional metadata passed to compile_().
+        """
+        return self._compile_info.copy()
 
     def requires_grad_(self: T, *, requires_pgrad: Optional[bool] = True) -> T:
         """Change if autograd should record operations on parameters in this module.

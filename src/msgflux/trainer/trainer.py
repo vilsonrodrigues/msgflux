@@ -274,6 +274,15 @@ class Trainer:
         finally:
             self._on_train_end()
 
+        # Mark module as compiled after successful training
+        optimizer_name = type(self.optimizer).__name__
+        self.module.compile_(
+            optimizer=optimizer_name,
+            score=self.state.best_score,
+            epochs=self.state.epoch + 1,
+            best_epoch=self.state.best_epoch,
+        )
+
         return self.state
 
     def _train_epoch(
