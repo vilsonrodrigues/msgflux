@@ -11,9 +11,13 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
 
 from msgflux.examples import Example, ExampleCollection, ExampleFormat
 from msgflux.generation.templates import PromptSpec
+from msgflux.logger import init_logger
 from msgflux.nn.modules.module import Module
 from msgflux.nn.parameter import Parameter
 from msgflux.optim.optimizer import Optimizer
+from msgflux.optim.progress import OptimProgress, TrialInfo
+
+logger = init_logger(__name__)
 
 
 # Template for mutation
@@ -124,6 +128,7 @@ class GEPA(Optimizer):
         crossover_rate: float = 0.7,
         tournament_size: int = 3,
         elite_size: int = 2,
+        verbose: bool = False,
         seed: int = 0,
     ):
         defaults = dict(
@@ -145,8 +150,12 @@ class GEPA(Optimizer):
         self.crossover_rate = crossover_rate
         self.tournament_size = tournament_size
         self.elite_size = elite_size
+        self.verbose = verbose
         self.seed = seed
         self.rng = random.Random(seed)
+
+        # Progress tracking
+        self._progress = OptimProgress(verbose=verbose)
 
         # Track evolution state
         self._population: List[Individual] = []
@@ -179,11 +188,25 @@ class GEPA(Optimizer):
         if valset is None:
             valset = trainset
 
+        # Start progress tracking
+        self._progress.start(
+            "GEPA",
+            trainset_size=len(trainset),
+            valset_size=len(valset),
+            population_size=self.population_size,
+            num_generations=self.num_generations,
+            mutation_rate=self.mutation_rate,
+            crossover_rate=self.crossover_rate,
+        )
+
         # Initialize population if needed
+        self._progress.step("INITIALIZE POPULATION", 1, 3)
         if not self._population:
             self._initialize_population(trainset)
+        self._progress.substep(f"Population size: {len(self._population)}")
 
         # Evolve for specified generations
+        self._progress.step("EVOLVE GENERATIONS", 2, 3)
         for gen in range(self.num_generations):
             self._current_generation += 1
 
@@ -193,13 +216,36 @@ class GEPA(Optimizer):
             # Record statistics
             self._record_stats()
 
+            # Log generation progress
+            stats = self._stats_history[-1] if self._stats_history else None
+            if stats:
+                self._progress.trial(TrialInfo(
+                    trial_num=gen + 1,
+                    total_trials=self.num_generations,
+                    score=stats.best_fitness,
+                    best_score=self._best_fitness,
+                    is_best=stats.best_fitness >= self._best_fitness,
+                    params={"avg_fitness": f"{stats.avg_fitness:.4f}"},
+                ))
+
             # Selection, crossover, and mutation
             new_population = self._evolve_population(trainset)
             self._population = new_population
 
         # Apply best individual to parameters
+        self._progress.step("APPLY BEST INDIVIDUAL", 3, 3)
         if self._best_individual is not None:
             self._apply_individual(self._best_individual)
+            self._progress.success(f"Applied best individual with fitness {self._best_fitness:.4f}")
+
+        # Finish with summary
+        self._progress.finish(
+            best_score=self._best_fitness,
+            summary={
+                "generations": self._current_generation,
+                "population_size": len(self._population),
+            },
+        )
 
         if closure is not None:
             return closure()
@@ -611,11 +657,24 @@ class GEPA(Optimizer):
         if valset is None:
             valset = trainset
 
+        # Start progress tracking
+        self._progress.start(
+            "GEPA (async)",
+            trainset_size=len(trainset),
+            valset_size=len(valset),
+            population_size=self.population_size,
+            num_generations=self.num_generations,
+            max_concurrency=max_concurrency or "unlimited",
+        )
+
         # Initialize population if needed
+        self._progress.step("INITIALIZE POPULATION", 1, 3)
         if not self._population:
             self._initialize_population(trainset)
+        self._progress.substep(f"Population size: {len(self._population)}")
 
         # Evolve for specified generations
+        self._progress.step("EVOLVE GENERATIONS (async)", 2, 3)
         for gen in range(self.num_generations):
             self._current_generation += 1
 
@@ -625,13 +684,36 @@ class GEPA(Optimizer):
             # Record statistics
             self._record_stats()
 
+            # Log generation progress
+            stats = self._stats_history[-1] if self._stats_history else None
+            if stats:
+                self._progress.trial(TrialInfo(
+                    trial_num=gen + 1,
+                    total_trials=self.num_generations,
+                    score=stats.best_fitness,
+                    best_score=self._best_fitness,
+                    is_best=stats.best_fitness >= self._best_fitness,
+                    params={"avg_fitness": f"{stats.avg_fitness:.4f}"},
+                ))
+
             # Selection, crossover, and mutation (sync operations)
             new_population = self._evolve_population(trainset)
             self._population = new_population
 
         # Apply best individual to parameters
+        self._progress.step("APPLY BEST INDIVIDUAL", 3, 3)
         if self._best_individual is not None:
             self._apply_individual(self._best_individual)
+            self._progress.success(f"Applied best individual with fitness {self._best_fitness:.4f}")
+
+        # Finish with summary
+        self._progress.finish(
+            best_score=self._best_fitness,
+            summary={
+                "generations": self._current_generation,
+                "population_size": len(self._population),
+            },
+        )
 
         if closure is not None:
             return closure()

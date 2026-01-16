@@ -9,8 +9,12 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Union
 
 from msgflux.examples import Example, ExampleCollection
 from msgflux.generation.templates import PromptSpec
+from msgflux.logger import init_logger
 from msgflux.nn.parameter import Parameter
 from msgflux.optim.optimizer import Optimizer
+from msgflux.optim.progress import OptimProgress
+
+logger = init_logger(__name__)
 
 
 class LabeledFewShot(Optimizer):
@@ -50,6 +54,7 @@ class LabeledFewShot(Optimizer):
         trainset: List[Example],
         k: int = 16,
         sample: bool = True,
+        verbose: bool = False,
         seed: int = 0,
     ):
         defaults = dict(k=k, sample=sample, seed=seed)
@@ -61,8 +66,12 @@ class LabeledFewShot(Optimizer):
         self.trainset = trainset
         self.k = k
         self.sample = sample
+        self.verbose = verbose
         self.seed = seed
         self.rng = random.Random(seed)
+
+        # Progress tracking
+        self._progress = OptimProgress(verbose=verbose)
 
         # State for tracking selected examples
         self._selected_examples: List[Example] = []
@@ -80,29 +89,53 @@ class LabeledFewShot(Optimizer):
         if closure is not None:
             loss = closure()
 
+        # Start progress tracking
+        self._progress.start(
+            "LabeledFewShot",
+            trainset_size=len(self.trainset),
+            k=self.k,
+            sample=self.sample,
+        )
+
         # Determine number of examples to select
         k = min(self.k, len(self.trainset))
+        self._progress.step("SELECT EXAMPLES", 1, 2)
 
         # Select examples
         if self.sample:
             self._selected_examples = self.rng.sample(self.trainset, k)
+            self._progress.substep(f"Randomly sampled {k} examples")
         else:
             self._selected_examples = self.trainset[:k]
+            self._progress.substep(f"Selected first {k} examples")
 
         # Format demos
         formatted_demos = self._format_demos(self._selected_examples)
 
         # Update all example parameters
+        self._progress.step("UPDATE PARAMETERS", 2, 2)
+        params_updated = 0
         for group in self.param_groups:
             for param in group["params"]:
                 if self._is_example_param(param) and param.requires_grad:
                     param.data = formatted_demos
+                    params_updated += 1
 
                     # Store state for this parameter
                     self.state[param]["selected_indices"] = [
                         self.trainset.index(ex) for ex in self._selected_examples
                         if ex in self.trainset
                     ]
+
+        self._progress.success(f"Updated {params_updated} parameter(s) with {k} demos")
+
+        # Finish with summary
+        self._progress.finish(
+            summary={
+                "selected_examples": k,
+                "params_updated": params_updated,
+            },
+        )
 
         self._step_count += 1
         return loss

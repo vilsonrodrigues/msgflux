@@ -12,9 +12,13 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
 
 from msgflux.examples import Example
 from msgflux.generation.templates import PromptSpec
+from msgflux.logger import init_logger
 from msgflux.nn.modules.module import Module
 from msgflux.nn.parameter import Parameter
 from msgflux.optim.optimizer import Optimizer
+from msgflux.optim.progress import OptimProgress, TrialInfo
+
+logger = init_logger(__name__)
 
 
 # Template for instruction generation
@@ -119,6 +123,7 @@ class COPRO(Optimizer):
         task_description: Optional[str] = None,
         breadth: int = 5,
         depth: int = 3,
+        verbose: bool = False,
         seed: int = 0,
     ):
         defaults = dict(
@@ -139,8 +144,12 @@ class COPRO(Optimizer):
         self.task_description = task_description or "Complete the given task."
         self.breadth = breadth
         self.depth = depth
+        self.verbose = verbose
         self.seed = seed
         self.rng = random.Random(seed)
+
+        # Progress tracking
+        self._progress = OptimProgress(verbose=verbose)
 
         # Track optimization history
         self._candidates_history: List[List[CoproCandidate]] = []
@@ -171,28 +180,46 @@ class COPRO(Optimizer):
         if valset is None:
             valset = trainset
 
+        # Start progress tracking
+        self._progress.start(
+            "COPRO",
+            trainset_size=len(trainset),
+            valset_size=len(valset),
+            num_candidates=self.num_candidates,
+            breadth=self.breadth,
+            depth=self.depth,
+        )
+
         # Get instruction parameter
         instructions_param = self._get_instructions_param()
         if instructions_param is None:
+            self._progress.warning("No instructions parameter found")
             if closure is not None:
                 return closure()
             return None
 
         # If no prompt model, skip optimization
         if self.prompt_model is None:
+            self._progress.warning("No prompt model provided, skipping optimization")
             if closure is not None:
                 return closure()
             return None
 
         # Evaluate current instruction on trainset
+        self._progress.step("COLLECT EXAMPLES", 1, 3)
         current_instruction = instructions_param.data or ""
         success_examples, failure_examples = self._collect_examples(
             trainset, teacher, current_instruction
         )
 
         success_rate = len(success_examples) / len(trainset) if trainset else 0.0
+        self._progress.substep(
+            f"Collected {len(success_examples)} successes, {len(failure_examples)} failures"
+        )
+        self._progress.metric("Success rate", success_rate, 1.0)
 
         # Generate candidate instructions
+        self._progress.step("GENERATE CANDIDATES", 2, 3)
         candidates = self._generate_candidates(
             current_instruction=current_instruction,
             success_examples=success_examples,
@@ -200,8 +227,10 @@ class COPRO(Optimizer):
             total_examples=len(trainset),
             success_rate=success_rate,
         )
+        self._progress.substep(f"Generated {len(candidates)} candidates")
 
         # Evaluate candidates on validation set
+        self._progress.step("EVALUATE CANDIDATES", 3, 3)
         best_candidate = self._evaluate_candidates(candidates, valset, teacher)
 
         if best_candidate and best_candidate.score > self._best_score:
@@ -212,7 +241,32 @@ class COPRO(Optimizer):
             if instructions_param.requires_grad:
                 instructions_param.data = best_candidate.instruction
 
+            self._progress.trial(TrialInfo(
+                trial_num=self._step_count,
+                total_trials=self._step_count,
+                score=best_candidate.score,
+                best_score=self._best_score,
+                is_best=True,
+            ))
+        elif best_candidate:
+            self._progress.trial(TrialInfo(
+                trial_num=self._step_count,
+                total_trials=self._step_count,
+                score=best_candidate.score,
+                best_score=self._best_score,
+                is_best=False,
+            ))
+
         self._candidates_history.append(candidates)
+
+        # Finish with summary
+        self._progress.finish(
+            best_score=self._best_score,
+            summary={
+                "candidates_generated": len(candidates),
+                "success_rate": f"{success_rate:.1%}",
+            },
+        )
 
         if closure is not None:
             return closure()
@@ -460,21 +514,36 @@ class COPRO(Optimizer):
         if valset is None:
             valset = trainset
 
+        # Start progress tracking
+        self._progress.start(
+            "COPRO (async)",
+            trainset_size=len(trainset),
+            valset_size=len(valset),
+            num_candidates=self.num_candidates,
+            max_concurrency=max_concurrency or "unlimited",
+        )
+
         instructions_param = self._get_instructions_param()
         if instructions_param is None or self.prompt_model is None:
+            self._progress.warning("No instructions parameter or prompt model")
             if closure is not None:
                 return closure()
             return None
 
         # Evaluate current instruction asynchronously
+        self._progress.step("COLLECT EXAMPLES (async)", 1, 3)
         current_instruction = instructions_param.data or ""
         success_examples, failure_examples = await self._acollect_examples(
             trainset, teacher, current_instruction, max_concurrency
         )
 
         success_rate = len(success_examples) / len(trainset) if trainset else 0.0
+        self._progress.substep(
+            f"Collected {len(success_examples)} successes, {len(failure_examples)} failures"
+        )
 
         # Generate candidates (sync - uses prompt_model)
+        self._progress.step("GENERATE CANDIDATES", 2, 3)
         candidates = self._generate_candidates(
             current_instruction=current_instruction,
             success_examples=success_examples,
@@ -482,8 +551,10 @@ class COPRO(Optimizer):
             total_examples=len(trainset),
             success_rate=success_rate,
         )
+        self._progress.substep(f"Generated {len(candidates)} candidates")
 
         # Evaluate candidates asynchronously
+        self._progress.step("EVALUATE CANDIDATES (async)", 3, 3)
         best_candidate = await self._aevaluate_candidates(
             candidates, valset, teacher, max_concurrency
         )
@@ -494,7 +565,32 @@ class COPRO(Optimizer):
             if instructions_param.requires_grad:
                 instructions_param.data = best_candidate.instruction
 
+            self._progress.trial(TrialInfo(
+                trial_num=self._step_count,
+                total_trials=self._step_count,
+                score=best_candidate.score,
+                best_score=self._best_score,
+                is_best=True,
+            ))
+        elif best_candidate:
+            self._progress.trial(TrialInfo(
+                trial_num=self._step_count,
+                total_trials=self._step_count,
+                score=best_candidate.score,
+                best_score=self._best_score,
+                is_best=False,
+            ))
+
         self._candidates_history.append(candidates)
+
+        # Finish with summary
+        self._progress.finish(
+            best_score=self._best_score,
+            summary={
+                "candidates_generated": len(candidates),
+                "success_rate": f"{success_rate:.1%}",
+            },
+        )
 
         if closure is not None:
             return closure()

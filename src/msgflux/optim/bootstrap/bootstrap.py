@@ -6,18 +6,19 @@ Supports both synchronous and asynchronous execution.
 """
 
 import asyncio
-import logging
 import random
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
 
 from msgflux.examples import Example, ExampleCollection
 from msgflux.generation.templates import PromptSpec
+from msgflux.logger import init_logger
 from msgflux.nn.modules.module import Module
 from msgflux.nn.parameter import Parameter
 from msgflux.optim.optimizer import Optimizer
+from msgflux.optim.progress import OptimProgress, TrialInfo
 
-logger = logging.getLogger(__name__)
+logger = init_logger(__name__)
 
 
 @dataclass
@@ -86,6 +87,7 @@ class BootstrapFewShot(Optimizer):
         max_rounds: int = 1,
         max_errors: int = 10,
         teacher_settings: Optional[Dict[str, Any]] = None,
+        verbose: bool = False,
         seed: int = 0,
     ):
         defaults = dict(
@@ -102,8 +104,12 @@ class BootstrapFewShot(Optimizer):
         self.max_rounds = max_rounds
         self.max_errors = max_errors
         self.teacher_settings = teacher_settings or {}
+        self.verbose = verbose
         self.seed = seed
         self.rng = random.Random(seed)
+
+        # Progress tracking
+        self._progress = OptimProgress(verbose=verbose)
 
         # Internal state
         self._traces: Dict[str, List[Trace]] = {}
@@ -132,6 +138,15 @@ class BootstrapFewShot(Optimizer):
         if closure is not None:
             loss = closure()
 
+        # Start progress tracking
+        self._progress.start(
+            "BootstrapFewShot",
+            trainset_size=len(trainset),
+            max_bootstrapped_demos=self.max_bootstrapped_demos,
+            max_labeled_demos=self.max_labeled_demos,
+            max_rounds=self.max_rounds,
+        )
+
         # Reset state for new step
         self._traces.clear()
         self._bootstrapped_indices.clear()
@@ -140,25 +155,40 @@ class BootstrapFewShot(Optimizer):
 
         # Bootstrap if teacher is provided
         if teacher is not None:
+            self._progress.step("BOOTSTRAP EXAMPLES", 1, 2)
             self._bootstrap(trainset, teacher)
+        else:
+            self._progress.step("SKIP BOOTSTRAP (no teacher)", 1, 2)
 
         # Update parameters with demos
+        self._progress.step("UPDATE DEMONSTRATIONS", 2, 2)
         self._update_demos(trainset)
+
+        # Finish with summary
+        success_rate = self.get_success_rate()
+        self._progress.finish(
+            best_score=success_rate,
+            summary={
+                "bootstrapped": len(self._bootstrapped_indices),
+                "errors": self._error_count,
+                "success_rate": f"{success_rate:.1%}",
+            },
+        )
 
         self._step_count += 1
         return loss
 
     def _bootstrap(self, trainset: List[Example], teacher: Module) -> None:
         """Execute bootstrapping to collect traces from successful executions."""
-        logger.info(f"Starting bootstrap with {len(trainset)} examples")
+        self._progress.substep(f"Processing {len(trainset)} examples")
 
         for round_idx in range(self.max_rounds):
-            logger.debug(f"Bootstrap round {round_idx + 1}/{self.max_rounds}")
+            self._progress.substep(f"Round {round_idx + 1}/{self.max_rounds}")
 
             for idx, example in enumerate(trainset):
                 # Stop if we have enough bootstrapped examples
                 if len(self._bootstrapped_indices) >= self.max_bootstrapped_demos:
-                    logger.info(
+                    self._progress.success(
                         f"Reached max bootstrapped demos ({self.max_bootstrapped_demos})"
                     )
                     return
@@ -174,9 +204,8 @@ class BootstrapFewShot(Optimizer):
                 if result.success:
                     self._bootstrapped_indices.add(idx)
                     self._collect_traces(result)
-                    logger.debug(f"Successfully bootstrapped example {idx}")
 
-        logger.info(
+        self._progress.success(
             f"Bootstrap complete: {len(self._bootstrapped_indices)} successful, "
             f"{self._error_count} errors"
         )
@@ -253,7 +282,7 @@ class BootstrapFewShot(Optimizer):
 
         except Exception as e:
             self._error_count += 1
-            logger.warning(f"Bootstrap error: {e}")
+            self._progress.warning(f"Bootstrap error: {e}")
 
             if self._error_count >= self.max_errors:
                 raise RuntimeError(
@@ -321,7 +350,7 @@ class BootstrapFewShot(Optimizer):
                         "total_demos": len(all_demos),
                     }
 
-        logger.info(
+        self._progress.success(
             f"Updated demos: {num_bootstrapped} bootstrapped, {num_labeled} labeled"
         )
 
@@ -414,6 +443,16 @@ class BootstrapFewShot(Optimizer):
         if closure is not None:
             loss = closure()
 
+        # Start progress tracking
+        self._progress.start(
+            "BootstrapFewShot (async)",
+            trainset_size=len(trainset),
+            max_bootstrapped_demos=self.max_bootstrapped_demos,
+            max_labeled_demos=self.max_labeled_demos,
+            max_rounds=self.max_rounds,
+            max_concurrency=max_concurrency or "unlimited",
+        )
+
         # Reset state for new step
         self._traces.clear()
         self._bootstrapped_indices.clear()
@@ -422,10 +461,25 @@ class BootstrapFewShot(Optimizer):
 
         # Bootstrap if teacher is provided
         if teacher is not None:
+            self._progress.step("BOOTSTRAP EXAMPLES (async)", 1, 2)
             await self._abootstrap(trainset, teacher, max_concurrency)
+        else:
+            self._progress.step("SKIP BOOTSTRAP (no teacher)", 1, 2)
 
         # Update parameters with demos
+        self._progress.step("UPDATE DEMONSTRATIONS", 2, 2)
         self._update_demos(trainset)
+
+        # Finish with summary
+        success_rate = self.get_success_rate()
+        self._progress.finish(
+            best_score=success_rate,
+            summary={
+                "bootstrapped": len(self._bootstrapped_indices),
+                "errors": self._error_count,
+                "success_rate": f"{success_rate:.1%}",
+            },
+        )
 
         self._step_count += 1
         return loss
@@ -437,10 +491,10 @@ class BootstrapFewShot(Optimizer):
         max_concurrency: Optional[int] = None,
     ) -> None:
         """Execute bootstrapping asynchronously to collect traces."""
-        logger.info(f"Starting async bootstrap with {len(trainset)} examples")
+        self._progress.substep(f"Processing {len(trainset)} examples")
 
         for round_idx in range(self.max_rounds):
-            logger.debug(f"Bootstrap round {round_idx + 1}/{self.max_rounds}")
+            self._progress.substep(f"Round {round_idx + 1}/{self.max_rounds}")
 
             # Get examples to process this round
             examples_to_process = [
@@ -471,15 +525,14 @@ class BootstrapFewShot(Optimizer):
                 if result.success:
                     self._bootstrapped_indices.add(idx)
                     self._collect_traces(result)
-                    logger.debug(f"Successfully bootstrapped example {idx}")
 
                     if len(self._bootstrapped_indices) >= self.max_bootstrapped_demos:
-                        logger.info(
+                        self._progress.success(
                             f"Reached max bootstrapped demos ({self.max_bootstrapped_demos})"
                         )
                         return
 
-        logger.info(
+        self._progress.success(
             f"Async bootstrap complete: {len(self._bootstrapped_indices)} successful, "
             f"{self._error_count} errors"
         )
@@ -501,7 +554,7 @@ class BootstrapFewShot(Optimizer):
         for i, result in enumerate(results):
             idx = examples_with_idx[i][0]
             if isinstance(result, Exception):
-                logger.error(f"Async bootstrap error: {result}")
+                self._progress.error(f"Async bootstrap error: {result}")
                 self._error_count += 1
                 final_results.append((idx, BootstrapResult(
                     example=examples_with_idx[i][1],
@@ -537,7 +590,7 @@ class BootstrapFewShot(Optimizer):
         for i, result in enumerate(results):
             idx = examples_with_idx[i][0]
             if isinstance(result, Exception):
-                logger.error(f"Async bootstrap error: {result}")
+                self._progress.error(f"Async bootstrap error: {result}")
                 self._error_count += 1
                 final_results.append((idx, BootstrapResult(
                     example=examples_with_idx[i][1],
@@ -627,7 +680,7 @@ class BootstrapFewShot(Optimizer):
 
         except Exception as e:
             self._error_count += 1
-            logger.warning(f"Async bootstrap error: {e}")
+            self._progress.warning(f"Async bootstrap error: {e}")
 
             if self._error_count >= self.max_errors:
                 raise RuntimeError(

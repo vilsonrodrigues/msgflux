@@ -12,9 +12,13 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
 
 from msgflux.examples import Example, ExampleCollection, ExampleFormat
 from msgflux.generation.templates import PromptSpec
+from msgflux.logger import init_logger
 from msgflux.nn.modules.module import Module
 from msgflux.nn.parameter import Parameter
 from msgflux.optim.optimizer import Optimizer
+from msgflux.optim.progress import OptimProgress, TrialInfo
+
+logger = init_logger(__name__)
 
 
 # Template for instruction proposal
@@ -104,6 +108,7 @@ class MIPROv2(Optimizer):
         num_trials: int = 50,
         init_temperature: float = 1.0,
         task_context: Optional[str] = None,
+        verbose: bool = False,
         seed: int = 0,
     ):
         defaults = dict(
@@ -122,8 +127,12 @@ class MIPROv2(Optimizer):
         self.num_trials = num_trials
         self.init_temperature = init_temperature
         self.task_context = task_context or "Complete the given task accurately."
+        self.verbose = verbose
         self.seed = seed
         self.rng = random.Random(seed)
+
+        # Progress tracking
+        self._progress = OptimProgress(verbose=verbose)
 
         # Track optimization state
         self._instruction_candidates: List[str] = []
@@ -160,16 +169,29 @@ class MIPROv2(Optimizer):
         if valset is None:
             valset = trainset
 
+        # Start progress tracking
+        self._progress.start(
+            "MIPROv2",
+            trainset_size=len(trainset),
+            valset_size=len(valset),
+            num_candidates=self.num_candidates,
+            num_demos=self.num_demos,
+            num_trials=self.num_trials,
+        )
+
         # Initialize demonstration pool
         self._demo_pool = trainset.copy()
 
         # Generate instruction candidates
+        self._progress.step("GENERATE INSTRUCTION CANDIDATES", 1, 3)
         if not self._instruction_candidates:
             self._instruction_candidates = self._generate_instruction_candidates(
                 trainset
             )
+        self._progress.substep(f"Generated {len(self._instruction_candidates)} candidates")
 
         # Run optimization trials
+        self._progress.step("RUN OPTIMIZATION TRIALS", 2, 3)
         for trial_idx in range(self.num_trials):
             # Sample instruction and demos based on surrogate predictions
             instruction_idx = self._sample_instruction()
@@ -203,13 +225,34 @@ class MIPROv2(Optimizer):
             self._update_surrogate(trial)
 
             # Track best
-            if score > self._best_score:
+            is_best = score > self._best_score
+            if is_best:
                 self._best_score = score
                 self._best_candidate = candidate
 
+            # Log trial progress
+            self._progress.trial(TrialInfo(
+                trial_num=trial_idx + 1,
+                total_trials=self.num_trials,
+                score=score,
+                best_score=self._best_score,
+                is_best=is_best,
+            ))
+
         # Apply best configuration to parameters
+        self._progress.step("APPLY BEST CONFIGURATION", 3, 3)
         if self._best_candidate is not None:
             self._apply_candidate(self._best_candidate)
+            self._progress.success(f"Applied best candidate with score {self._best_score:.4f}")
+
+        # Finish with summary
+        self._progress.finish(
+            best_score=self._best_score,
+            summary={
+                "total_trials": len(self._trials),
+                "instruction_candidates": len(self._instruction_candidates),
+            },
+        )
 
         if closure is not None:
             return closure()
@@ -489,16 +532,29 @@ class MIPROv2(Optimizer):
         if valset is None:
             valset = trainset
 
+        # Start progress tracking
+        self._progress.start(
+            "MIPROv2 (async)",
+            trainset_size=len(trainset),
+            valset_size=len(valset),
+            num_candidates=self.num_candidates,
+            num_trials=self.num_trials,
+            max_concurrency=max_concurrency or "unlimited",
+        )
+
         # Initialize demonstration pool
         self._demo_pool = trainset.copy()
 
         # Generate instruction candidates (sync operation)
+        self._progress.step("GENERATE INSTRUCTION CANDIDATES", 1, 3)
         if not self._instruction_candidates:
             self._instruction_candidates = self._generate_instruction_candidates(
                 trainset
             )
+        self._progress.substep(f"Generated {len(self._instruction_candidates)} candidates")
 
         # Run optimization trials asynchronously
+        self._progress.step("RUN OPTIMIZATION TRIALS (async)", 2, 3)
         if max_concurrency:
             await self._arun_trials_with_semaphore(
                 valset, teacher, max_concurrency
@@ -507,8 +563,19 @@ class MIPROv2(Optimizer):
             await self._arun_trials_concurrent(valset, teacher)
 
         # Apply best configuration to parameters
+        self._progress.step("APPLY BEST CONFIGURATION", 3, 3)
         if self._best_candidate is not None:
             self._apply_candidate(self._best_candidate)
+            self._progress.success(f"Applied best candidate with score {self._best_score:.4f}")
+
+        # Finish with summary
+        self._progress.finish(
+            best_score=self._best_score,
+            summary={
+                "total_trials": len(self._trials),
+                "instruction_candidates": len(self._instruction_candidates),
+            },
+        )
 
         if closure is not None:
             return closure()
