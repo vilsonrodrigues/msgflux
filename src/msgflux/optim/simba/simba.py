@@ -6,10 +6,8 @@ mini-batch stochastic gradient ascent with self-reflection.
 """
 
 import asyncio
-import logging
 import math
 import random
-import statistics
 from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
@@ -17,6 +15,7 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
 from msgflux.examples import Example
 from msgflux.nn.modules.module import Module
 from msgflux.nn.parameter import Parameter
+from msgflux.logger import init_logger
 from msgflux.optim.optimizer import Optimizer
 from msgflux.optim.progress import OptimProgress, TrialInfo
 from msgflux.optim.simba.utils import (
@@ -26,6 +25,8 @@ from msgflux.optim.simba.utils import (
     prepare_models_for_resampling,
     wrap_program,
 )
+
+logger = init_logger(__name__)
 
 
 @dataclass
@@ -116,6 +117,7 @@ class SIMBA(Optimizer):
         demo_input_field_maxlen: int = 100_000,
         temperature_for_sampling: float = 0.2,
         temperature_for_candidates: float = 0.2,
+        verbose: bool = False,
         seed: int = 0,
     ):
         defaults = dict(
@@ -136,6 +138,7 @@ class SIMBA(Optimizer):
         self.demo_input_field_maxlen = demo_input_field_maxlen
         self.temperature_for_sampling = temperature_for_sampling
         self.temperature_for_candidates = temperature_for_candidates
+        self.verbose = verbose
         self.seed = seed
 
         # Initialize RNG
@@ -146,6 +149,9 @@ class SIMBA(Optimizer):
             self.strategies = [append_a_demo(demo_input_field_maxlen), append_a_rule]
         else:
             self.strategies = [append_a_rule]
+
+        # Progress tracking
+        self._progress = OptimProgress(verbose=verbose)
 
         # Internal state
         self._programs: List[Module] = []
@@ -183,6 +189,16 @@ class SIMBA(Optimizer):
         # Reset state
         self._reset_state()
 
+        # Start progress tracking
+        self._progress.start(
+            "SIMBA",
+            bsize=self.bsize,
+            num_candidates=self.num_candidates,
+            max_steps=self.max_steps,
+            max_demos=self.max_demos,
+            trainset_size=len(trainset),
+        )
+
         # Initialize baseline program
         if student is None:
             raise ValueError("student module is required for SIMBA optimization")
@@ -198,11 +214,18 @@ class SIMBA(Optimizer):
         self.rng.shuffle(data_indices)
         instance_idx = 0
 
+        best_overall_score = 0.0
+
         # Main optimization loop
         for batch_idx in range(self.max_steps):
             self._trial_logs[batch_idx] = SIMBATrialLog(batch_idx=batch_idx)
 
-            logger.info(f"Starting batch {batch_idx + 1} of {self.max_steps}")
+            self._progress.step(
+                "MINI-BATCH OPTIMIZATION",
+                batch_idx + 1,
+                self.max_steps,
+                f"Processing batch of {self.bsize} examples",
+            )
 
             # Step 1: Get next batch
             if instance_idx + self.bsize > len(trainset):
@@ -214,6 +237,9 @@ class SIMBA(Optimizer):
             instance_idx += self.bsize
 
             # Step 2: Sample trajectories
+            self._progress.substep(
+                f"Sampling {self.bsize} x {self.num_candidates} trajectories..."
+            )
             outputs = self._sample_trajectories(batch)
 
             # Step 3: Sort buckets by variability
@@ -225,24 +251,33 @@ class SIMBA(Optimizer):
             self._trial_logs[batch_idx].baseline_score = baseline_score
             self._trial_logs[batch_idx].batch_scores = all_scores
 
-            logger.info(f"Batch {batch_idx + 1}: baseline score = {baseline_score:.4f}")
+            self._progress.metric("Baseline", baseline_score, 1.0)
 
             # Step 4: Build candidate programs
+            self._progress.substep("Building candidate programs...")
             system_candidates = self._build_candidates(
                 batch, buckets, outputs, batch_idx
             )
 
             # Step 5: Evaluate candidates
+            self._progress.substep(f"Evaluating {len(system_candidates)} candidates...")
             candidate_scores = self._evaluate_candidates(system_candidates, batch)
             self._trial_logs[batch_idx].candidate_scores = candidate_scores
 
             if candidate_scores:
                 best_score = max(candidate_scores)
                 self._trial_logs[batch_idx].best_candidate_score = best_score
-                logger.info(
-                    f"Batch {batch_idx + 1}: candidate scores = {candidate_scores}, "
-                    f"best = {best_score:.4f}"
-                )
+                is_best = best_score > best_overall_score
+                if is_best:
+                    best_overall_score = best_score
+
+                self._progress.trial(TrialInfo(
+                    trial_num=batch_idx + 1,
+                    total_trials=self.max_steps,
+                    score=best_score,
+                    best_score=best_overall_score,
+                    is_best=is_best,
+                ))
 
             # Step 6: Select best and register candidates
             if candidate_scores:
@@ -255,7 +290,23 @@ class SIMBA(Optimizer):
                 self._register_program(cand, [candidate_scores[idx]] if candidate_scores else [])
 
         # Final validation
+        self._progress.step(
+            "FINAL VALIDATION",
+            self.max_steps + 1,
+            self.max_steps + 1,
+            f"Evaluating candidates on full trainset ({len(trainset)} examples)",
+        )
         result = self._final_validation(trainset)
+
+        # Finish progress
+        self._progress.finish(
+            best_score=result.score,
+            summary={
+                "candidates_evaluated": len(result.candidate_programs),
+                "total_programs_generated": len(self._programs),
+                "optimization_steps": self.max_steps,
+            },
+        )
 
         self._step_count += 1
         return result
