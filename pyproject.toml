@@ -96,6 +96,11 @@ google = [
     "google-genai>=1.42.0",
     "opentelemetry-instrumentation-google-genai>=0.3b0",
 ]
+optim = [
+    "numpy>=1.24.0",
+    "tqdm>=4.66.0",
+    "rich>=13.0.0",
+]
 
 [tool.ruff]
 target-version = "py39"
