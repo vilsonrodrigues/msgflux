@@ -52,6 +52,8 @@ from msgflux.optim.gepa import GEPA, GEPAStats, Individual
 from msgflux.optim.labeled_fewshot import LabeledFewShot
 from msgflux.optim.mipro import MIPROv2, MiproTrial, PromptCandidate
 from msgflux.optim.optimizer import Optimizer
+from msgflux.optim.progress import Colors, OptimProgress, TrialInfo, StepInfo
+from msgflux.optim.simba import SIMBA, SIMBACandidate, SIMBAResult, SIMBATrialLog
 
 __all__ = [
     # Base class
@@ -64,6 +66,13 @@ __all__ = [
     "MIPROv2",
     # Evolutionary optimizers
     "GEPA",
+    # Self-reflective optimizers
+    "SIMBA",
+    # Progress utilities
+    "OptimProgress",
+    "Colors",
+    "TrialInfo",
+    "StepInfo",
     # Data classes
     "BootstrapResult",
     "Trace",
@@ -73,4 +82,7 @@ __all__ = [
     "MiproTrial",
     "Individual",
     "GEPAStats",
+    "SIMBACandidate",
+    "SIMBAResult",
+    "SIMBATrialLog",
 ]
