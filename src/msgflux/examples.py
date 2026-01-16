@@ -1,7 +1,16 @@
 from dataclasses import dataclass, field
-from typing import Any, List, Mapping, Optional, Union
+from enum import Enum
+from typing import Any, List, Literal, Mapping, Optional, Union
 
 from msgflux.utils.xml import apply_xml_tags
+
+
+class ExampleFormat(str, Enum):
+    """Supported output formats for examples."""
+
+    XML = "xml"
+    PLAINTEXT = "plaintext"
+    MINIMAL = "minimal"
 
 
 @dataclass
@@ -86,18 +95,111 @@ class Example:
 
         return "\n".join(result)
 
+    def to_plaintext(self, example_id: int) -> str:
+        """Convert the example to plaintext format.
+
+        Format:
+            Example 1:
+            Input: <inputs>
+            [Reasoning: <reasoning>]
+            Output: <labels>
+        """
+        result = [f"Example {example_id}:"]
+        result.append(f"Input: {self.inputs}")
+        if self.reasoning:
+            result.append(f"Reasoning: {self.reasoning}")
+        result.append(f"Output: {self.labels}")
+        return "\n".join(result)
+
+    def to_minimal(self) -> str:
+        """Convert the example to minimal format.
+
+        Format:
+            Q: <inputs>
+            A: <labels>
+        """
+        result = [f"Q: {self.inputs}"]
+        if self.reasoning:
+            result.append(f"Reasoning: {self.reasoning}")
+        result.append(f"A: {self.labels}")
+        return "\n".join(result)
+
+    def format(
+        self,
+        fmt: Union[ExampleFormat, str] = ExampleFormat.XML,
+        example_id: int = 1,
+    ) -> str:
+        """Format example according to specified format.
+
+        Args:
+            fmt: Output format (xml, plaintext, minimal).
+            example_id: Example number for numbered formats.
+
+        Returns:
+            Formatted example string.
+        """
+        if isinstance(fmt, str):
+            fmt = ExampleFormat(fmt)
+
+        if fmt == ExampleFormat.XML:
+            return self.to_xml(example_id)
+        elif fmt == ExampleFormat.PLAINTEXT:
+            return self.to_plaintext(example_id)
+        elif fmt == ExampleFormat.MINIMAL:
+            return self.to_minimal()
+        else:
+            raise ValueError(f"Unknown format: {fmt}")
+
 
 class ExampleCollection:
+    """A collection of examples with flexible input and output formats.
+
+    Accepts examples in multiple formats:
+        - Example objects
+        - Dictionaries with 'inputs' and 'labels' keys
+        - Strings (converted to Example with inputs=str, labels="")
+
+    Examples:
+        >>> # From Example objects
+        >>> collection = ExampleCollection([
+        ...     Example(inputs="What is 2+2?", labels="4"),
+        ... ])
+
+        >>> # From dictionaries
+        >>> collection = ExampleCollection([
+        ...     {"inputs": "What is 2+2?", "labels": "4"},
+        ... ])
+
+        >>> # From strings
+        >>> collection = ExampleCollection([
+        ...     "This is a simple example",
+        ... ])
+
+        >>> # Mixed formats
+        >>> collection = ExampleCollection([
+        ...     Example(inputs="q1", labels="a1"),
+        ...     {"inputs": "q2", "labels": "a2"},
+        ...     "simple string",
+        ... ])
+    """
+
     def __init__(
-        self, examples: Optional[List[Union[Example, Mapping[str, Any]]]] = None
+        self, examples: Optional[List[Union[Example, Mapping[str, Any], str]]] = None
     ):
-        self.examples = []
+        self.examples: List[Example] = []
         if examples:
             for example in examples:
                 if isinstance(example, Example):
                     self.examples.append(example)
-                else:
+                elif isinstance(example, str):
+                    # String input: use as inputs with empty labels
+                    self.examples.append(Example(inputs=example, labels=""))
+                elif isinstance(example, Mapping):
                     self.add(**example)
+                else:
+                    raise TypeError(
+                        f"Expected Example, dict, or str, got {type(example).__name__}"
+                    )
 
     def _add(self, example: Example):
         self.examples.append(example)
@@ -149,21 +251,67 @@ class ExampleCollection:
 
     def get_formatted(
         self,
+        format: Union[ExampleFormat, str] = ExampleFormat.XML,
         input_transformer: Optional[callable] = None,
         output_transformer: Optional[callable] = None,
-    ) -> str:
-        """Converts the entire collection to XML format.
+        separator: Optional[str] = None,
+    ) -> Optional[str]:
+        """Format the entire collection according to specified format.
+
+        Args:
+            format: Output format - "xml", "plaintext", or "minimal".
+            input_transformer: Function to transform input dict to string.
+            output_transformer: Function to transform output dict to string.
+            separator: Custom separator between examples. Defaults to
+                "\\n\\n" for xml/plaintext, "\\n" for minimal.
 
         Returns:
-            Formatted examples using xml.
+            Formatted examples string, or None if collection is empty.
+
+        Examples:
+            >>> collection = ExampleCollection([
+            ...     Example(inputs="What is 2+2?", labels="4"),
+            ...     Example(inputs="What is 3+3?", labels="6"),
+            ... ])
+
+            >>> # XML format (default)
+            >>> print(collection.get_formatted())
+            <example id=1>
+            <input>What is 2+2?</input>
+            <output>4</output>
+            </example>
+            ...
+
+            >>> # Plaintext format
+            >>> print(collection.get_formatted(format="plaintext"))
+            Example 1:
+            Input: What is 2+2?
+            Output: 4
+            ...
+
+            >>> # Minimal format
+            >>> print(collection.get_formatted(format="minimal"))
+            Q: What is 2+2?
+            A: 4
+            ...
         """
         if not self.examples:
             return None
 
+        # Normalize format
+        if isinstance(format, str):
+            format = ExampleFormat(format)
+
+        # Set default separator based on format
+        if separator is None:
+            separator = "\n" if format == ExampleFormat.MINIMAL else "\n\n"
+
+        # Transform examples if needed
         collection = self.transform(input_transformer, output_transformer)
 
-        xml_parts = []
+        # Format each example
+        formatted_parts = []
         for i, example in enumerate(collection.get_examples(), start=1):
-            xml_parts.append(example.to_xml(i))
+            formatted_parts.append(example.format(format, example_id=i))
 
-        return "\n\n".join(xml_parts)
+        return separator.join(formatted_parts)

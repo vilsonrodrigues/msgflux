@@ -9,7 +9,7 @@ import random
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
 
-from msgflux.examples import Example
+from msgflux.examples import Example, ExampleCollection, ExampleFormat
 from msgflux.generation.templates import PromptSpec
 from msgflux.nn.modules.module import Module
 from msgflux.nn.parameter import Parameter
@@ -336,15 +336,24 @@ class GEPA(Optimizer):
             if examples_param:
                 examples_param.data = original_examples
 
-    def _format_demos(self, demos: List[Example]) -> str:
-        """Format demonstrations as a string."""
-        formatted = []
-        for i, demo in enumerate(demos, 1):
-            formatted.append(f"Example {i}:")
-            formatted.append(f"Input: {demo.inputs}")
-            formatted.append(f"Output: {demo.labels}")
-            formatted.append("")
-        return "\n".join(formatted)
+    def _format_demos(
+        self,
+        demos: List[Example],
+        format: ExampleFormat = ExampleFormat.PLAINTEXT,
+    ) -> str:
+        """Format demonstrations as a string.
+
+        Args:
+            demos: List of Example objects to format.
+            format: Output format (xml, plaintext, minimal).
+
+        Returns:
+            Formatted demonstrations string.
+        """
+        if not demos:
+            return ""
+        collection = ExampleCollection(demos)
+        return collection.get_formatted(format=format) or ""
 
     def _evolve_population(self, trainset: List[Example]) -> List[Individual]:
         """Create next generation through selection, crossover, and mutation."""
