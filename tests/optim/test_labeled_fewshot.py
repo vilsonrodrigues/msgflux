@@ -213,3 +213,37 @@ class TestLabeledFewShot:
 
         assert closure_called[0] is True
         assert loss == 0.8
+
+    @pytest.mark.asyncio
+    async def test_astep_basic(self, optimizer):
+        """Test async step method."""
+        await optimizer.astep()
+
+        selected = optimizer.get_selected_examples()
+        assert len(selected) == 4
+        assert optimizer._step_count == 1
+
+    @pytest.mark.asyncio
+    async def test_astep_with_closure(self, optimizer):
+        """Test async step with closure function."""
+        closure_called = [False]
+
+        def closure():
+            closure_called[0] = True
+            return 0.75
+
+        loss = await optimizer.astep(closure)
+
+        assert closure_called[0] is True
+        assert loss == 0.75
+
+    @pytest.mark.asyncio
+    async def test_astep_updates_params(self, optimizer, params):
+        """Test that astep updates parameters correctly."""
+        examples_param = params[2]
+        original_data = examples_param.data
+
+        await optimizer.astep()
+
+        assert examples_param.data != original_data
+        assert len(examples_param.data) > 0

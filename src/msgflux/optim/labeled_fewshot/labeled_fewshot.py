@@ -4,6 +4,7 @@ This module provides the simplest prompt optimizer - it samples
 examples from a training set and uses them as demonstrations.
 """
 
+import asyncio
 import random
 from typing import Any, Callable, Dict, Iterable, List, Optional, Union
 
@@ -195,3 +196,25 @@ class LabeledFewShot(Optimizer):
 
         if "seed" in state_dict:
             self.reseed(state_dict["seed"])
+
+    # Async methods
+
+    async def astep(
+        self, closure: Optional[Callable[[], float]] = None
+    ) -> Optional[float]:
+        """Select k examples and assign them to example parameters (async version).
+
+        This async version provides the same functionality as step() but runs
+        the sync operation in an executor to avoid blocking the event loop.
+
+        Args:
+            closure: Optional closure for computing loss (not typically used).
+
+        Returns:
+            Optional loss value if closure was provided.
+
+        Example:
+            >>> result = await optimizer.astep()
+        """
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, self.step, closure)
