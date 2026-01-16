@@ -207,26 +207,42 @@ class GEPA(Optimizer):
 
         # Evolve for specified generations
         self._progress.step("EVOLVE GENERATIONS", 2, 3)
+        total_evaluations = 0
         for gen in range(self.num_generations):
             self._current_generation += 1
 
             # Evaluate fitness
             self._evaluate_population(valset, teacher)
+            total_evaluations += len(self._population) * len(valset)
 
             # Record statistics
             self._record_stats()
 
-            # Log generation progress
+            # Log generation progress with DSPy-style output
             stats = self._stats_history[-1] if self._stats_history else None
             if stats:
-                self._progress.trial(TrialInfo(
-                    trial_num=gen + 1,
-                    total_trials=self.num_generations,
-                    score=stats.best_fitness,
-                    best_score=self._best_fitness,
-                    is_best=stats.best_fitness >= self._best_fitness,
-                    params={"avg_fitness": f"{stats.avg_fitness:.4f}"},
-                ))
+                # Log generation summary
+                self._progress.generation_summary(
+                    generation=gen + 1,
+                    total_generations=self.num_generations,
+                    best_score=stats.best_fitness,
+                    avg_score=stats.avg_fitness,
+                    population_size=stats.population_size,
+                    evaluations=total_evaluations,
+                )
+
+                # Log individual scores
+                scores = [ind.fitness for ind in self._population]
+                labels = [f"Ind-{i+1}" for i in range(len(self._population))]
+                self._progress.candidate_scores(scores, labels, max_display=5)
+
+                # Log Average Metric in DSPy style
+                metric_sum = stats.avg_fitness * stats.population_size
+                self._progress.average_metric(
+                    value=metric_sum,
+                    total=stats.population_size,
+                    name="Average Fitness",
+                )
 
             # Selection, crossover, and mutation
             new_population = self._evolve_population(trainset)
@@ -675,26 +691,42 @@ class GEPA(Optimizer):
 
         # Evolve for specified generations
         self._progress.step("EVOLVE GENERATIONS (async)", 2, 3)
+        total_evaluations = 0
         for gen in range(self.num_generations):
             self._current_generation += 1
 
             # Evaluate fitness asynchronously
             await self._aevaluate_population(valset, teacher, max_concurrency)
+            total_evaluations += len(self._population) * len(valset)
 
             # Record statistics
             self._record_stats()
 
-            # Log generation progress
+            # Log generation progress with DSPy-style output
             stats = self._stats_history[-1] if self._stats_history else None
             if stats:
-                self._progress.trial(TrialInfo(
-                    trial_num=gen + 1,
-                    total_trials=self.num_generations,
-                    score=stats.best_fitness,
-                    best_score=self._best_fitness,
-                    is_best=stats.best_fitness >= self._best_fitness,
-                    params={"avg_fitness": f"{stats.avg_fitness:.4f}"},
-                ))
+                # Log generation summary
+                self._progress.generation_summary(
+                    generation=gen + 1,
+                    total_generations=self.num_generations,
+                    best_score=stats.best_fitness,
+                    avg_score=stats.avg_fitness,
+                    population_size=stats.population_size,
+                    evaluations=total_evaluations,
+                )
+
+                # Log individual scores
+                scores = [ind.fitness for ind in self._population]
+                labels = [f"Ind-{i+1}" for i in range(len(self._population))]
+                self._progress.candidate_scores(scores, labels, max_display=5)
+
+                # Log Average Metric in DSPy style
+                metric_sum = stats.avg_fitness * stats.population_size
+                self._progress.average_metric(
+                    value=metric_sum,
+                    total=stats.population_size,
+                    name="Average Fitness",
+                )
 
             # Selection, crossover, and mutation (sync operations)
             new_population = self._evolve_population(trainset)

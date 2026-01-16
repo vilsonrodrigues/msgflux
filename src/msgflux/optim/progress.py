@@ -160,6 +160,87 @@ class SimpleProgress:
         self.n += n
 
 
+class MetricProgressBar:
+    """Progress bar with live metric updates in DSPy style.
+
+    Shows progress like: "Average Metric: 17.0 / 45 (37.8%): 100%|████████| 45/45"
+
+    Args:
+        iterable: The iterable to wrap.
+        total: Total number of items.
+        metric_name: Name of the metric to display.
+        disable: If True, disable the progress bar.
+    """
+
+    def __init__(
+        self,
+        iterable: Iterable[T],
+        total: Optional[int] = None,
+        metric_name: str = "Average Metric",
+        disable: bool = False,
+    ):
+        self.iterable = iterable
+        self.total = total or (len(iterable) if hasattr(iterable, "__len__") else None)
+        self.metric_name = metric_name
+        self.disable = disable
+
+        self._metric_sum = 0.0
+        self._count = 0
+        self._pbar = None
+
+    def __iter__(self) -> Iterator[T]:
+        if TQDM_AVAILABLE and not self.disable:
+            self._pbar = tqdm(
+                self.iterable,
+                total=self.total,
+                desc=self._format_metric_desc(),
+                dynamic_ncols=True,
+                file=sys.stdout,
+            )
+            for item in self._pbar:
+                yield item
+            self._pbar.close()
+        else:
+            for item in self.iterable:
+                self._count += 1
+                yield item
+
+    def update_metric(self, score: float) -> None:
+        """Update the metric with a new score.
+
+        Args:
+            score: The score to add to the running total.
+        """
+        self._metric_sum += score
+        self._count += 1
+
+        if self._pbar is not None:
+            self._pbar.set_description(self._format_metric_desc())
+
+    def _format_metric_desc(self) -> str:
+        """Format the metric description in DSPy style."""
+        if self._count == 0:
+            return f"{self.metric_name}: 0.00 / 0 (0.0%)"
+
+        pct = 100 * self._metric_sum / self._count if self._count > 0 else 0.0
+        return f"{self.metric_name}: {self._metric_sum:.2f} / {self._count} ({pct:.1f}%)"
+
+    @property
+    def metric_value(self) -> float:
+        """Get the current metric sum."""
+        return self._metric_sum
+
+    @property
+    def count(self) -> int:
+        """Get the current count."""
+        return self._count
+
+    @property
+    def average(self) -> float:
+        """Get the current average metric."""
+        return self._metric_sum / self._count if self._count > 0 else 0.0
+
+
 def create_progress_bar(
     iterable: Iterable[T],
     total: Optional[int] = None,
@@ -369,6 +450,149 @@ class OptimProgress:
 
         logger.log(self.log_level, msg)
 
+    def average_metric(
+        self,
+        value: float,
+        total: int,
+        name: str = "Average Metric",
+    ) -> str:
+        """Format and log metric in DSPy style.
+
+        Formats as: "Average Metric: 17.0 / 45 (37.8%)"
+
+        Args:
+            value: The metric value (sum of scores).
+            total: Total number of examples.
+            name: Name of the metric.
+
+        Returns:
+            The formatted metric string for use in progress bars.
+        """
+        pct = 100 * value / total if total > 0 else 0.0
+        metric_str = f"{name}: {value:.2f} / {total} ({pct:.1f}%)"
+
+        if self.verbose:
+            logger.log(self.log_level, metric_str)
+
+        return metric_str
+
+    def pareto_front(
+        self,
+        scores: List[float],
+        generation: int,
+        total_generations: int,
+    ) -> None:
+        """Log Pareto front information for multi-objective optimizers.
+
+        Args:
+            scores: List of scores in the Pareto front.
+            generation: Current generation number.
+            total_generations: Total number of generations.
+        """
+        if not self.verbose:
+            return
+
+        header = (
+            f"\n{Colors.BOLD}{Colors.MAGENTA}"
+            f"Pareto Front (Generation {generation}/{total_generations})"
+            f"{Colors.RESET}"
+        )
+        logger.log(self.log_level, header)
+
+        if scores:
+            best = max(scores)
+            avg = sum(scores) / len(scores)
+            logger.log(
+                self.log_level,
+                f"  Size: {len(scores)} | "
+                f"Best: {Colors.GREEN}{best:.4f}{Colors.RESET} | "
+                f"Avg: {avg:.4f}",
+            )
+
+            # Show individual scores if few enough
+            if len(scores) <= 10:
+                scores_str = ", ".join(f"{s:.3f}" for s in sorted(scores, reverse=True))
+                logger.log(
+                    self.log_level, f"  {Colors.DIM}Scores: [{scores_str}]{Colors.RESET}"
+                )
+        else:
+            logger.log(
+                self.log_level,
+                f"  {Colors.DIM}(empty){Colors.RESET}",
+            )
+
+    def generation_summary(
+        self,
+        generation: int,
+        total_generations: int,
+        best_score: float,
+        avg_score: float,
+        population_size: int,
+        evaluations: int,
+    ) -> None:
+        """Log generation summary for evolutionary optimizers.
+
+        Args:
+            generation: Current generation number.
+            total_generations: Total number of generations.
+            best_score: Best score in this generation.
+            avg_score: Average score in this generation.
+            population_size: Size of the population.
+            evaluations: Number of evaluations performed.
+        """
+        if not self.verbose:
+            return
+
+        header = (
+            f"{Colors.BOLD}Generation {generation}/{total_generations}{Colors.RESET}"
+        )
+        stats = (
+            f"Best: {Colors.GREEN}{best_score:.4f}{Colors.RESET} | "
+            f"Avg: {avg_score:.4f} | "
+            f"Pop: {population_size} | "
+            f"Evals: {evaluations}"
+        )
+
+        logger.log(self.log_level, f"\n{header}")
+        logger.log(self.log_level, f"  {stats}")
+
+    def candidate_scores(
+        self,
+        scores: List[float],
+        labels: Optional[List[str]] = None,
+        max_display: int = 10,
+    ) -> None:
+        """Log individual candidate scores.
+
+        Args:
+            scores: List of scores for each candidate.
+            labels: Optional labels for each candidate.
+            max_display: Maximum number of scores to display.
+        """
+        if not self.verbose or not scores:
+            return
+
+        # Sort by score descending
+        if labels:
+            pairs = sorted(zip(scores, labels), reverse=True)
+        else:
+            pairs = [(s, f"Candidate {i+1}") for i, s in enumerate(sorted(scores, reverse=True))]
+
+        logger.log(self.log_level, f"{Colors.DIM}Individual Scores:{Colors.RESET}")
+
+        for i, (score, label) in enumerate(pairs[:max_display]):
+            rank_color = Colors.GREEN if i == 0 else Colors.RESET
+            logger.log(
+                self.log_level,
+                f"  {rank_color}{i+1}. {label}: {score:.4f}{Colors.RESET}",
+            )
+
+        if len(scores) > max_display:
+            logger.log(
+                self.log_level,
+                f"  {Colors.DIM}... and {len(scores) - max_display} more{Colors.RESET}",
+            )
+
     def info(self, message: str) -> None:
         """Log an info message.
 
@@ -430,6 +654,44 @@ class OptimProgress:
         disable = not (self.verbose and self.show_progress_bar)
         return create_progress_bar(
             iterable, total=total, desc=desc, disable=disable, **kwargs
+        )
+
+    @contextmanager
+    def metric_progress(
+        self,
+        iterable: Iterable[T],
+        total: Optional[int] = None,
+        metric_name: str = "Average Metric",
+    ):
+        """Context manager for progress bar with live metric updates.
+
+        Creates a tqdm progress bar that shows metrics in DSPy style:
+        "Average Metric: 17.0 / 45 (37.8%): 100%|████████| 45/45 [03:10<00:00]"
+
+        Args:
+            iterable: The iterable to wrap.
+            total: Total number of items.
+            metric_name: Name of the metric to display.
+
+        Yields:
+            A MetricProgressBar instance with update_metric() method.
+
+        Example:
+            >>> with progress.metric_progress(examples, total=100) as pbar:
+            ...     for example in pbar:
+            ...         score = evaluate(example)
+            ...         pbar.update_metric(score)
+        """
+        if total is None and hasattr(iterable, "__len__"):
+            total = len(iterable)
+
+        disable = not (self.verbose and self.show_progress_bar)
+
+        yield MetricProgressBar(
+            iterable,
+            total=total,
+            metric_name=metric_name,
+            disable=disable,
         )
 
     def finish(
