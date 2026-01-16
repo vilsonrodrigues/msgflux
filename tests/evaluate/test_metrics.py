@@ -4,11 +4,18 @@ import pytest
 
 from msgflux.evaluate.metrics import (
     answer_correctness,
+    bleu_score,
     contains_match,
     create_metric,
     exact_match,
     f1_score,
+    jaccard_similarity,
+    levenshtein_similarity,
+    llm_as_judge,
     regex_match,
+    rouge_1,
+    rouge_2,
+    rouge_l,
 )
 from msgflux.examples import Example
 
@@ -273,5 +280,301 @@ class TestCreateMetric:
         example = Example(inputs="q", labels={"answer": "42"})
 
         score = metric(example, "42")
+
+        assert score == 1.0
+
+
+class TestBleuScore:
+    """Test suite for BLEU score metric."""
+
+    def test_bleu_perfect_match(self):
+        """Test BLEU with perfect match."""
+        example = Example(inputs="q", labels="the cat sat on the mat")
+
+        score = bleu_score(example, "the cat sat on the mat")
+
+        assert score == 1.0
+
+    def test_bleu_partial_match(self):
+        """Test BLEU with partial overlap using BLEU-2."""
+        example = Example(inputs="q", labels="the cat sat on the mat")
+
+        # Use max_n=2 for shorter texts (BLEU-2)
+        score = bleu_score(example, "the cat is on the mat", max_n=2)
+
+        # Should have some score but not perfect
+        assert 0.4 < score < 0.9
+
+    def test_bleu_no_match(self):
+        """Test BLEU with no overlap."""
+        example = Example(inputs="q", labels="hello world")
+
+        score = bleu_score(example, "goodbye universe")
+
+        assert score == 0.0
+
+    def test_bleu_empty_prediction(self):
+        """Test BLEU with empty prediction."""
+        example = Example(inputs="q", labels="hello world")
+
+        score = bleu_score(example, "")
+
+        assert score == 0.0
+
+    def test_bleu_shorter_prediction(self):
+        """Test BLEU brevity penalty for short predictions."""
+        example = Example(inputs="q", labels="the quick brown fox jumps over the lazy dog")
+
+        # Much shorter prediction should have brevity penalty
+        score = bleu_score(example, "the fox jumps")
+
+        assert score < 0.5
+
+
+class TestRouge:
+    """Test suite for ROUGE metrics."""
+
+    def test_rouge_1_perfect_match(self):
+        """Test ROUGE-1 with perfect match."""
+        example = Example(inputs="q", labels="the quick brown fox")
+
+        score = rouge_1(example, "the quick brown fox")
+
+        assert score == 1.0
+
+    def test_rouge_1_partial_match(self):
+        """Test ROUGE-1 with partial overlap."""
+        example = Example(inputs="q", labels="the quick brown fox")
+
+        score = rouge_1(example, "the quick fox jumps")
+
+        # 3 common words out of 4 reference and 4 prediction
+        assert 0.7 < score < 0.8
+
+    def test_rouge_2_perfect_match(self):
+        """Test ROUGE-2 with perfect match."""
+        example = Example(inputs="q", labels="the quick brown fox")
+
+        score = rouge_2(example, "the quick brown fox")
+
+        assert score == 1.0
+
+    def test_rouge_2_partial_match(self):
+        """Test ROUGE-2 with partial bigram overlap."""
+        example = Example(inputs="q", labels="the quick brown fox")
+
+        score = rouge_2(example, "the quick fox")
+
+        # Only "the quick" bigram matches
+        assert 0.3 < score < 0.5
+
+    def test_rouge_l_perfect_match(self):
+        """Test ROUGE-L with perfect match."""
+        example = Example(inputs="q", labels="the quick brown fox")
+
+        score = rouge_l(example, "the quick brown fox")
+
+        assert score == 1.0
+
+    def test_rouge_l_reordered(self):
+        """Test ROUGE-L with reordered words."""
+        example = Example(inputs="q", labels="the quick brown fox")
+
+        # LCS is "the brown fox" (length 3)
+        score = rouge_l(example, "the brown quick fox")
+
+        assert 0.7 < score < 0.9
+
+    def test_rouge_no_match(self):
+        """Test ROUGE with no overlap."""
+        example = Example(inputs="q", labels="hello world")
+
+        assert rouge_1(example, "goodbye universe") == 0.0
+        assert rouge_2(example, "goodbye universe") == 0.0
+        assert rouge_l(example, "goodbye universe") == 0.0
+
+
+class TestLevenshteinSimilarity:
+    """Test suite for Levenshtein similarity metric."""
+
+    def test_levenshtein_perfect_match(self):
+        """Test Levenshtein with identical strings."""
+        example = Example(inputs="q", labels="kitten")
+
+        score = levenshtein_similarity(example, "kitten")
+
+        assert score == 1.0
+
+    def test_levenshtein_one_edit(self):
+        """Test Levenshtein with one edit distance."""
+        example = Example(inputs="q", labels="kitten")
+
+        # "sitten" is 1 edit away from "kitten"
+        score = levenshtein_similarity(example, "sitten")
+
+        # 1 - (1/6) = 0.833...
+        assert 0.8 < score < 0.85
+
+    def test_levenshtein_multiple_edits(self):
+        """Test Levenshtein with multiple edits."""
+        example = Example(inputs="q", labels="kitten")
+
+        # "sitting" is 3 edits away from "kitten"
+        score = levenshtein_similarity(example, "sitting")
+
+        # 1 - (3/7) = 0.571...
+        assert 0.55 < score < 0.6
+
+    def test_levenshtein_empty_strings(self):
+        """Test Levenshtein with empty strings."""
+        example = Example(inputs="q", labels="")
+
+        score = levenshtein_similarity(example, "")
+
+        assert score == 1.0
+
+    def test_levenshtein_one_empty(self):
+        """Test Levenshtein with one empty string."""
+        example = Example(inputs="q", labels="hello")
+
+        score = levenshtein_similarity(example, "")
+
+        assert score == 0.0
+
+
+class TestJaccardSimilarity:
+    """Test suite for Jaccard similarity metric."""
+
+    def test_jaccard_perfect_match(self):
+        """Test Jaccard with identical token sets."""
+        example = Example(inputs="q", labels="the quick brown fox")
+
+        score = jaccard_similarity(example, "the quick brown fox")
+
+        assert score == 1.0
+
+    def test_jaccard_partial_overlap(self):
+        """Test Jaccard with partial overlap."""
+        example = Example(inputs="q", labels="the quick brown fox")
+
+        # Union: {the, quick, brown, fox, jumps} = 5
+        # Intersection: {the, quick, fox} = 3
+        score = jaccard_similarity(example, "the quick fox jumps")
+
+        assert score == 0.6
+
+    def test_jaccard_no_overlap(self):
+        """Test Jaccard with no overlap."""
+        example = Example(inputs="q", labels="hello world")
+
+        score = jaccard_similarity(example, "goodbye universe")
+
+        assert score == 0.0
+
+    def test_jaccard_empty_strings(self):
+        """Test Jaccard with empty strings."""
+        example = Example(inputs="q", labels="")
+
+        score = jaccard_similarity(example, "")
+
+        assert score == 1.0
+
+    def test_jaccard_order_independent(self):
+        """Test that Jaccard is order independent."""
+        example = Example(inputs="q", labels="a b c")
+
+        score1 = jaccard_similarity(example, "c b a")
+        score2 = jaccard_similarity(example, "a b c")
+
+        assert score1 == score2 == 1.0
+
+
+class TestLLMAsJudge:
+    """Test suite for LLM as judge metric."""
+
+    def test_llm_as_judge_without_judge(self):
+        """Test fallback to exact match when no judge provided."""
+        example = Example(inputs="What is 2+2?", labels="4")
+
+        score = llm_as_judge(example, "4")
+
+        assert score == 1.0
+
+    def test_llm_as_judge_with_judge(self):
+        """Test with mock judge that returns correct."""
+
+        def mock_judge(prompt):
+            return "10"
+
+        example = Example(inputs="What is 2+2?", labels="4")
+
+        score = llm_as_judge(example, "The answer is 4", judge=mock_judge)
+
+        assert score == 1.0
+
+    def test_llm_as_judge_partial_score(self):
+        """Test with mock judge that returns partial score."""
+
+        def mock_judge(prompt):
+            return "5"
+
+        example = Example(inputs="q", labels="Paris")
+
+        score = llm_as_judge(example, "Paris, the capital", judge=mock_judge)
+
+        assert score == 0.5
+
+    def test_llm_as_judge_wrong_answer(self):
+        """Test with mock judge that returns wrong."""
+
+        def mock_judge(prompt):
+            return "0"
+
+        example = Example(inputs="q", labels="Paris")
+
+        score = llm_as_judge(example, "London", judge=mock_judge)
+
+        assert score == 0.0
+
+    def test_llm_as_judge_keyword_response(self):
+        """Test parsing of keyword responses."""
+
+        def mock_judge_correct(prompt):
+            return "This is correct!"
+
+        def mock_judge_wrong(prompt):
+            return "This is wrong."
+
+        example = Example(inputs="q", labels="test")
+
+        score_correct = llm_as_judge(example, "test", judge=mock_judge_correct)
+        score_wrong = llm_as_judge(example, "wrong", judge=mock_judge_wrong)
+
+        assert score_correct == 1.0
+        assert score_wrong == 0.0
+
+    def test_llm_as_judge_with_criteria(self):
+        """Test that criteria is included in prompt."""
+        received_prompts = []
+
+        def mock_judge(prompt):
+            received_prompts.append(prompt)
+            return "10"
+
+        example = Example(inputs="q", labels="test")
+        llm_as_judge(example, "test", judge=mock_judge, criteria="Be strict")
+
+        assert "Be strict" in received_prompts[0]
+
+    def test_llm_as_judge_error_handling(self):
+        """Test fallback on judge error."""
+
+        def failing_judge(prompt):
+            raise ValueError("API error")
+
+        example = Example(inputs="q", labels="test")
+
+        # Should fall back to exact_match
+        score = llm_as_judge(example, "test", judge=failing_judge)
 
         assert score == 1.0

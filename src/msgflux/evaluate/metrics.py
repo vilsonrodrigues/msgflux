@@ -5,7 +5,7 @@ against ground truth labels.
 """
 
 import re
-from typing import Any, Callable, List, Optional, Set, Union
+from typing import Any, Callable, Dict, List, Optional, Set, Union
 
 from msgflux.examples import Example
 
@@ -255,6 +255,285 @@ def create_metric(
     return wrapper
 
 
+def bleu_score(
+    example: Example,
+    prediction: Any,
+    *,
+    max_n: int = 4,
+    weights: Optional[List[float]] = None,
+) -> float:
+    """Calculate BLEU score between prediction and label.
+
+    BLEU (Bilingual Evaluation Understudy) measures n-gram precision
+    with a brevity penalty. Commonly used for translation evaluation.
+
+    Args:
+        example: Example with expected labels.
+        prediction: Model prediction.
+        max_n: Maximum n-gram size (1-4). Defaults to 4.
+        weights: Weights for each n-gram (must sum to 1.0).
+            Defaults to uniform weights.
+
+    Returns:
+        BLEU score between 0.0 and 1.0.
+
+    Example:
+        >>> ex = Example(inputs="...", labels="the cat sat on the mat")
+        >>> bleu_score(ex, "the cat is on the mat")
+        0.668...
+    """
+    import math
+
+    label = _extract_label(example.labels)
+    pred = str(prediction)
+
+    ref_tokens = label.lower().split()
+    hyp_tokens = pred.lower().split()
+
+    if not hyp_tokens or not ref_tokens:
+        return 0.0
+
+    if weights is None:
+        weights = [1.0 / max_n] * max_n
+
+    # Calculate n-gram precisions
+    precisions = []
+    for n in range(1, max_n + 1):
+        ref_ngrams = _get_ngrams(ref_tokens, n)
+        hyp_ngrams = _get_ngrams(hyp_tokens, n)
+
+        if not hyp_ngrams:
+            precisions.append(0.0)
+            continue
+
+        # Count matches with clipping
+        matches = 0
+        for ngram in hyp_ngrams:
+            if ngram in ref_ngrams:
+                matches += min(hyp_ngrams[ngram], ref_ngrams[ngram])
+
+        total = sum(hyp_ngrams.values())
+        precisions.append(matches / total if total > 0 else 0.0)
+
+    # Geometric mean of precisions
+    if any(p == 0 for p in precisions):
+        return 0.0
+
+    log_precision = sum(w * math.log(p) for w, p in zip(weights, precisions) if p > 0)
+
+    # Brevity penalty
+    if len(hyp_tokens) >= len(ref_tokens):
+        bp = 1.0
+    else:
+        bp = math.exp(1 - len(ref_tokens) / len(hyp_tokens))
+
+    return bp * math.exp(log_precision)
+
+
+def rouge_1(example: Example, prediction: Any) -> float:
+    """Calculate ROUGE-1 (unigram) F1 score.
+
+    ROUGE-1 measures unigram overlap between prediction and reference.
+
+    Args:
+        example: Example with expected labels.
+        prediction: Model prediction.
+
+    Returns:
+        ROUGE-1 F1 score between 0.0 and 1.0.
+
+    Example:
+        >>> ex = Example(inputs="...", labels="the quick brown fox")
+        >>> rouge_1(ex, "the quick fox jumps")
+        0.75
+    """
+    return _rouge_n(example, prediction, n=1)
+
+
+def rouge_2(example: Example, prediction: Any) -> float:
+    """Calculate ROUGE-2 (bigram) F1 score.
+
+    ROUGE-2 measures bigram overlap between prediction and reference.
+
+    Args:
+        example: Example with expected labels.
+        prediction: Model prediction.
+
+    Returns:
+        ROUGE-2 F1 score between 0.0 and 1.0.
+
+    Example:
+        >>> ex = Example(inputs="...", labels="the quick brown fox")
+        >>> rouge_2(ex, "the quick fox")
+        0.4
+    """
+    return _rouge_n(example, prediction, n=2)
+
+
+def rouge_l(example: Example, prediction: Any) -> float:
+    """Calculate ROUGE-L (longest common subsequence) F1 score.
+
+    ROUGE-L uses longest common subsequence for more flexible matching.
+
+    Args:
+        example: Example with expected labels.
+        prediction: Model prediction.
+
+    Returns:
+        ROUGE-L F1 score between 0.0 and 1.0.
+
+    Example:
+        >>> ex = Example(inputs="...", labels="the quick brown fox")
+        >>> rouge_l(ex, "the brown quick fox")
+        0.8
+    """
+    label = _extract_label(example.labels)
+    pred = str(prediction)
+
+    ref_tokens = label.lower().split()
+    hyp_tokens = pred.lower().split()
+
+    if not ref_tokens or not hyp_tokens:
+        return float(ref_tokens == hyp_tokens)
+
+    lcs_length = _lcs_length(ref_tokens, hyp_tokens)
+
+    precision = lcs_length / len(hyp_tokens)
+    recall = lcs_length / len(ref_tokens)
+
+    if precision + recall == 0:
+        return 0.0
+
+    return 2 * precision * recall / (precision + recall)
+
+
+def levenshtein_similarity(example: Example, prediction: Any) -> float:
+    """Calculate normalized Levenshtein similarity.
+
+    Measures how similar two strings are based on minimum edit operations
+    (insertions, deletions, substitutions) needed to transform one into another.
+
+    Args:
+        example: Example with expected labels.
+        prediction: Model prediction.
+
+    Returns:
+        Similarity score between 0.0 and 1.0 (1.0 = identical).
+
+    Example:
+        >>> ex = Example(inputs="...", labels="kitten")
+        >>> levenshtein_similarity(ex, "sitting")
+        0.571...
+    """
+    label = _extract_label(example.labels).lower()
+    pred = str(prediction).lower()
+
+    if not label and not pred:
+        return 1.0
+    if not label or not pred:
+        return 0.0
+
+    distance = _levenshtein_distance(label, pred)
+    max_len = max(len(label), len(pred))
+
+    return 1.0 - (distance / max_len)
+
+
+def jaccard_similarity(example: Example, prediction: Any) -> float:
+    """Calculate Jaccard similarity between token sets.
+
+    Measures overlap between token sets: |intersection| / |union|.
+
+    Args:
+        example: Example with expected labels.
+        prediction: Model prediction.
+
+    Returns:
+        Jaccard similarity between 0.0 and 1.0.
+
+    Example:
+        >>> ex = Example(inputs="...", labels="the quick brown fox")
+        >>> jaccard_similarity(ex, "the quick fox jumps")
+        0.6
+    """
+    label = _extract_label(example.labels)
+    pred = str(prediction)
+
+    label_tokens = _tokenize(label)
+    pred_tokens = _tokenize(pred)
+
+    if not label_tokens and not pred_tokens:
+        return 1.0
+    if not label_tokens or not pred_tokens:
+        return 0.0
+
+    intersection = label_tokens & pred_tokens
+    union = label_tokens | pred_tokens
+
+    return len(intersection) / len(union)
+
+
+def llm_as_judge(
+    example: Example,
+    prediction: Any,
+    *,
+    judge: Optional[Callable[[str], str]] = None,
+    criteria: Optional[str] = None,
+) -> float:
+    """Use an LLM to evaluate prediction quality.
+
+    The LLM judge assesses whether the prediction correctly answers
+    the question based on the expected label.
+
+    Args:
+        example: Example with expected labels.
+        prediction: Model prediction.
+        judge: Callable that takes a prompt and returns LLM response.
+            If None, falls back to exact_match.
+        criteria: Optional evaluation criteria to include in the prompt.
+
+    Returns:
+        Score between 0.0 and 1.0 based on LLM judgment.
+
+    Example:
+        >>> def my_judge(prompt):
+        ...     return call_llm(prompt)  # Returns "correct" or "incorrect"
+        >>> ex = Example(inputs="What is 2+2?", labels="4")
+        >>> llm_as_judge(ex, "The answer is 4", judge=my_judge)
+        1.0
+    """
+    if judge is None:
+        return exact_match(example, prediction)
+
+    label = _extract_label(example.labels)
+    pred = str(prediction)
+    question = str(example.inputs) if hasattr(example, "inputs") else ""
+
+    # Build evaluation prompt
+    criteria_text = f"\nEvaluation criteria: {criteria}" if criteria else ""
+
+    prompt = f"""Evaluate if the prediction correctly answers the question.
+
+Question: {question}
+Expected Answer: {label}
+Prediction: {pred}
+{criteria_text}
+Is the prediction correct? Answer only with a number from 0 to 10, where:
+- 0 = completely wrong
+- 5 = partially correct
+- 10 = completely correct
+
+Score:"""
+
+    try:
+        response = judge(prompt)
+        # Parse score from response
+        score = _parse_llm_score(response)
+        return score / 10.0
+    except Exception:
+        return exact_match(example, prediction)
+
+
 # Helper functions
 
 
@@ -313,3 +592,116 @@ def _cosine_similarity(vec1: List[float], vec2: List[float]) -> float:
         return 0.0
 
     return dot_product / (norm1 * norm2)
+
+
+def _get_ngrams(tokens: List[str], n: int) -> dict:
+    """Get n-gram counts from token list."""
+    from collections import Counter
+
+    if len(tokens) < n:
+        return {}
+
+    ngrams = [tuple(tokens[i : i + n]) for i in range(len(tokens) - n + 1)]
+    return Counter(ngrams)
+
+
+def _rouge_n(example: Example, prediction: Any, n: int) -> float:
+    """Calculate ROUGE-N F1 score."""
+    label = _extract_label(example.labels)
+    pred = str(prediction)
+
+    ref_tokens = label.lower().split()
+    hyp_tokens = pred.lower().split()
+
+    if not ref_tokens or not hyp_tokens:
+        return float(ref_tokens == hyp_tokens)
+
+    ref_ngrams = _get_ngrams(ref_tokens, n)
+    hyp_ngrams = _get_ngrams(hyp_tokens, n)
+
+    if not ref_ngrams or not hyp_ngrams:
+        return 0.0
+
+    # Count overlapping n-grams
+    overlap = 0
+    for ngram in hyp_ngrams:
+        if ngram in ref_ngrams:
+            overlap += min(hyp_ngrams[ngram], ref_ngrams[ngram])
+
+    precision = overlap / sum(hyp_ngrams.values()) if hyp_ngrams else 0.0
+    recall = overlap / sum(ref_ngrams.values()) if ref_ngrams else 0.0
+
+    if precision + recall == 0:
+        return 0.0
+
+    return 2 * precision * recall / (precision + recall)
+
+
+def _lcs_length(seq1: List[str], seq2: List[str]) -> int:
+    """Calculate longest common subsequence length using dynamic programming."""
+    m, n = len(seq1), len(seq2)
+
+    # Use space-optimized DP (only need current and previous row)
+    prev = [0] * (n + 1)
+    curr = [0] * (n + 1)
+
+    for i in range(1, m + 1):
+        for j in range(1, n + 1):
+            if seq1[i - 1] == seq2[j - 1]:
+                curr[j] = prev[j - 1] + 1
+            else:
+                curr[j] = max(prev[j], curr[j - 1])
+        prev, curr = curr, prev
+
+    return prev[n]
+
+
+def _levenshtein_distance(s1: str, s2: str) -> int:
+    """Calculate Levenshtein edit distance between two strings."""
+    if len(s1) < len(s2):
+        return _levenshtein_distance(s2, s1)
+
+    if len(s2) == 0:
+        return len(s1)
+
+    # Use space-optimized DP
+    prev_row = list(range(len(s2) + 1))
+    curr_row = [0] * (len(s2) + 1)
+
+    for i, c1 in enumerate(s1):
+        curr_row[0] = i + 1
+        for j, c2 in enumerate(s2):
+            # Cost is 0 if chars match, 1 otherwise
+            cost = 0 if c1 == c2 else 1
+            curr_row[j + 1] = min(
+                prev_row[j + 1] + 1,  # Deletion
+                curr_row[j] + 1,  # Insertion
+                prev_row[j] + cost,  # Substitution
+            )
+        prev_row, curr_row = curr_row, prev_row
+
+    return prev_row[len(s2)]
+
+
+def _parse_llm_score(response: str) -> float:
+    """Parse numeric score from LLM response."""
+    import re
+
+    # Try to find a number 0-10 in the response
+    numbers = re.findall(r"\b(\d+(?:\.\d+)?)\b", response)
+
+    for num_str in numbers:
+        num = float(num_str)
+        if 0 <= num <= 10:
+            return num
+
+    # Fallback: check for keywords
+    response_lower = response.lower()
+    if any(word in response_lower for word in ["correct", "yes", "right", "perfect"]):
+        return 10.0
+    if any(word in response_lower for word in ["wrong", "incorrect", "no", "false"]):
+        return 0.0
+    if any(word in response_lower for word in ["partial", "somewhat", "close"]):
+        return 5.0
+
+    return 5.0  # Default to middle score if unparseable
