@@ -101,6 +101,10 @@ optim = [
     "tqdm>=4.66.0",
     "rich>=13.0.0",
 ]
+viz = [
+    "matplotlib>=3.5.0",
+    "plotly>=5.0.0",
+]
 
 [tool.ruff]
 target-version = "py39"
