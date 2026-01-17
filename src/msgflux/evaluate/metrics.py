@@ -4,10 +4,14 @@ This module provides commonly used metrics for evaluating model predictions
 against ground truth labels.
 """
 
+import asyncio
 import re
-from typing import Any, Callable, Dict, List, Optional, Set, Union
+from typing import Any, Callable, Coroutine, Dict, List, Optional, Set, Union
 
 from msgflux.examples import Example
+
+# Type alias for async metrics
+AsyncMetricFn = Callable[[Example, Any], Coroutine[Any, Any, float]]
 
 
 def exact_match(example: Example, prediction: Any) -> float:
@@ -705,3 +709,165 @@ def _parse_llm_score(response: str) -> float:
         return 5.0
 
     return 5.0  # Default to middle score if unparseable
+
+
+# Async metrics
+
+
+class AsyncMetric:
+    """Wrapper to make sync metrics usable in async contexts.
+
+    Runs the sync metric in an executor to avoid blocking.
+
+    Args:
+        metric: Synchronous metric function.
+
+    Example:
+        >>> async_exact = AsyncMetric(exact_match)
+        >>> score = await async_exact(example, prediction)
+    """
+
+    def __init__(self, metric: Callable[[Example, Any], float]):
+        self.metric = metric
+        self.__name__ = getattr(metric, "__name__", "async_metric")
+
+    async def __call__(self, example: Example, prediction: Any) -> float:
+        """Evaluate the metric asynchronously.
+
+        Args:
+            example: Example with expected labels.
+            prediction: Model prediction.
+
+        Returns:
+            Score from the wrapped metric.
+        """
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, self.metric, example, prediction)
+
+
+async def allm_as_judge(
+    example: Example,
+    prediction: Any,
+    *,
+    judge: Optional[Any] = None,
+    criteria: Optional[str] = None,
+    max_retries: int = 3,
+) -> float:
+    """Async version of llm_as_judge metric.
+
+    Uses an async-capable LLM to evaluate prediction quality.
+
+    Args:
+        example: The example being evaluated.
+        prediction: The model's prediction.
+        judge: Async-capable model for evaluation. Should have acall or aforward method.
+        criteria: Custom evaluation criteria.
+        max_retries: Number of retries on failure.
+
+    Returns:
+        Score from 0.0 to 1.0.
+
+    Example:
+        >>> score = await allm_as_judge(example, prediction, judge=async_model)
+    """
+    if judge is None:
+        # Fallback to sync exact_match in executor
+        return await AsyncMetric(exact_match)(example, prediction)
+
+    label = _extract_label(example.labels)
+    pred = str(prediction)
+    question = str(example.inputs) if hasattr(example, "inputs") else ""
+
+    # Build evaluation prompt
+    criteria_text = f"\nEvaluation criteria: {criteria}" if criteria else ""
+
+    prompt = f"""Evaluate if the prediction correctly answers the question.
+
+Question: {question}
+Expected Answer: {label}
+Prediction: {pred}
+{criteria_text}
+Is the prediction correct? Answer only with a number from 0 to 10, where:
+- 0 = completely wrong
+- 5 = partially correct
+- 10 = completely correct
+
+Score:"""
+
+    for attempt in range(max_retries):
+        try:
+            # Call judge asynchronously
+            if hasattr(judge, "acall"):
+                response = await judge.acall(prompt)
+            elif hasattr(judge, "aforward"):
+                response = await judge.aforward(prompt)
+            elif callable(judge):
+                # Try calling directly (might be async)
+                result = judge(prompt)
+                if asyncio.iscoroutine(result):
+                    response = await result
+                else:
+                    # Sync callable, run in executor
+                    loop = asyncio.get_running_loop()
+                    response = await loop.run_in_executor(None, judge, prompt)
+            else:
+                raise ValueError("judge must be callable or have acall/aforward method")
+
+            # Parse score from response
+            score = _parse_llm_score(str(response))
+            return score / 10.0
+
+        except Exception as e:
+            if attempt == max_retries - 1:
+                # Final fallback to exact_match
+                return await AsyncMetric(exact_match)(example, prediction)
+
+    return 0.0
+
+
+async def asemantic_similarity(
+    example: Example,
+    prediction: Any,
+    *,
+    embedder: Optional[Any] = None,
+    threshold: float = 0.8,
+) -> float:
+    """Async version of semantic_similarity metric.
+
+    Computes cosine similarity between embeddings asynchronously.
+
+    Args:
+        example: Example with expected labels.
+        prediction: Model prediction.
+        embedder: Async-capable embedder. Should have acall or aforward method.
+        threshold: Similarity threshold for success.
+
+    Returns:
+        Cosine similarity score if embedder provided, else exact_match.
+    """
+    if embedder is None:
+        return await AsyncMetric(exact_match)(example, prediction)
+
+    label = _extract_label(example.labels)
+    pred = str(prediction)
+
+    try:
+        # Get embeddings asynchronously
+        if hasattr(embedder, "acall"):
+            label_emb, pred_emb = await asyncio.gather(
+                embedder.acall(label), embedder.acall(pred)
+            )
+        elif hasattr(embedder, "aforward"):
+            label_emb, pred_emb = await asyncio.gather(
+                embedder.aforward(label), embedder.aforward(pred)
+            )
+        else:
+            # Fallback to sync in executor
+            loop = asyncio.get_running_loop()
+            label_emb = await loop.run_in_executor(None, embedder, label)
+            pred_emb = await loop.run_in_executor(None, embedder, pred)
+
+        similarity = _cosine_similarity(label_emb, pred_emb)
+        return similarity
+    except Exception:
+        return await AsyncMetric(exact_match)(example, prediction)

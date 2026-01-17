@@ -17,11 +17,19 @@ Example:
     >>> # Use LLM as judge for complex evaluations
     >>> from msgflux.evaluate import llm_as_judge
     >>> metric = lambda ex, pred: llm_as_judge(ex, pred, judge=my_llm)
+    >>>
+    >>> # Async metrics for parallel evaluation
+    >>> from msgflux.evaluate import AsyncMetric, allm_as_judge
+    >>> async_exact = AsyncMetric(exact_match)
+    >>> score = await async_exact(example, prediction)
 """
 
 from msgflux.evaluate.evaluator import EvaluationResult, Evaluator
 from msgflux.evaluate.metrics import (
+    AsyncMetric,
+    allm_as_judge,
     answer_correctness,
+    asemantic_similarity,
     bleu_score,
     contains_match,
     create_metric,
@@ -58,6 +66,10 @@ __all__ = [
     "jaccard_similarity",
     # Advanced metrics
     "llm_as_judge",
+    # Async metrics
+    "AsyncMetric",
+    "allm_as_judge",
+    "asemantic_similarity",
     # Utilities
     "create_metric",
 ]

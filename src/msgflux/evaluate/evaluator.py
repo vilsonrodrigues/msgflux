@@ -12,6 +12,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from msgflux.examples import Example
 from msgflux.nn.modules.module import Module
+from msgflux.optim.progress import MetricProgressBar, OptimProgress
 
 logger = logging.getLogger(__name__)
 
@@ -73,6 +74,8 @@ class Evaluator:
             uses global settings. Defaults to 10.
         failure_score: Score to assign when evaluation fails. Defaults to 0.0.
         verbose: Whether to log progress. Defaults to False.
+        show_progress_bar: Whether to show progress bar during evaluation.
+            Defaults to True.
 
     Example:
         >>> def exact_match(example, prediction):
@@ -91,12 +94,17 @@ class Evaluator:
         max_errors: int = 10,
         failure_score: float = 0.0,
         verbose: bool = False,
+        show_progress_bar: bool = True,
     ):
         self.metric = metric
         self.num_workers = num_workers
         self.max_errors = max_errors
         self.failure_score = failure_score
         self.verbose = verbose
+        self.show_progress_bar = show_progress_bar
+        self._progress = OptimProgress(
+            verbose=verbose, show_progress_bar=show_progress_bar
+        )
         self._error_count = 0
 
     def __call__(
@@ -160,12 +168,6 @@ class Evaluator:
         total_score = sum(score for _, _, score in results)
         score = (total_score / len(results)) * 100 if results else 0.0
 
-        if self.verbose:
-            logger.info(
-                f"Evaluation complete: {score:.2f}% "
-                f"({int(total_score)}/{len(results)} correct)"
-            )
-
         return EvaluationResult(
             score=round(score, 2),
             results=results if return_predictions else [],
@@ -182,15 +184,34 @@ class Evaluator:
         module: Module,
         devset: List[Example],
     ) -> List[Tuple[Example, Any, float]]:
-        """Evaluate examples sequentially."""
+        """Evaluate examples sequentially with DSPy-style progress."""
         results = []
+        total_score = 0.0
 
-        for idx, example in enumerate(devset):
-            if self.verbose and idx % 10 == 0:
-                logger.info(f"Evaluating example {idx + 1}/{len(devset)}")
+        # Use MetricProgressBar for DSPy-style progress display
+        disable_bar = not (self.verbose and self.show_progress_bar)
+        pbar = MetricProgressBar(
+            devset,
+            total=len(devset),
+            metric_name="Average Metric",
+            disable=disable_bar,
+        )
 
+        for example in pbar:
             result = self._evaluate_one(module, example)
             results.append(result)
+
+            _, _, score = result
+            total_score += score
+            pbar.update_metric(score)
+
+        # Log final metric in DSPy style
+        if self.verbose:
+            self._progress.average_metric(
+                value=total_score,
+                total=len(results),
+                name="Evaluation Score",
+            )
 
         return results
 
@@ -324,10 +345,12 @@ class Evaluator:
         total_score = sum(score for _, _, score in results)
         score = (total_score / len(results)) * 100 if results else 0.0
 
+        # Log final metric in DSPy style
         if self.verbose:
-            logger.info(
-                f"Async evaluation complete: {score:.2f}% "
-                f"({int(total_score)}/{len(results)} correct)"
+            self._progress.average_metric(
+                value=total_score,
+                total=len(results),
+                name="Async Evaluation Score",
             )
 
         return EvaluationResult(

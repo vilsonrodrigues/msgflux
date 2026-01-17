@@ -44,16 +44,44 @@ Example:
     ...     num_generations=10,
     ... )
     >>> optimizer.step(trainset, valset)
+    >>>
+    >>> # Early stopping
+    >>> from msgflux.optim import EarlyStopping
+    >>> early_stopping = EarlyStopping(patience=5, min_delta=0.01)
+    >>>
+    >>> # Checkpointing
+    >>> from msgflux.optim import Checkpointer
+    >>> checkpointer = Checkpointer("./checkpoints", save_every=10)
+    >>>
+    >>> # Callbacks
+    >>> from msgflux.optim.callbacks import EarlyStoppingCallback, CheckpointCallback
+    >>> callbacks = [EarlyStoppingCallback(patience=5), CheckpointCallback("./ckpts")]
+    >>>
+    >>> # Export results
+    >>> from msgflux.optim import ExperimentExporter
+    >>> exporter = ExperimentExporter(name="my-exp", optimizer="MIPROv2")
+    >>>
+    >>> # Temperature scheduling
+    >>> from msgflux.optim.schedulers import CosineScheduler
+    >>> scheduler = CosineScheduler(max_value=1.0, min_value=0.1, num_steps=100)
+    >>>
+    >>> # Visualization
+    >>> from msgflux.optim import OptimizationPlotter
+    >>> plotter = OptimizationPlotter()
 """
 
 from msgflux.optim.bootstrap import BootstrapFewShot, BootstrapResult, Trace
+from msgflux.optim.checkpointer import Checkpointer, CheckpointInfo
 from msgflux.optim.copro import COPRO, CoproCandidate, CoproResult
+from msgflux.optim.early_stopping import EarlyStopping, EarlyStoppingState
+from msgflux.optim.export import ExperimentExporter, ExperimentRecord, StepRecord
 from msgflux.optim.gepa import GEPA, GEPAStats, Individual
 from msgflux.optim.labeled_fewshot import LabeledFewShot
 from msgflux.optim.mipro import MIPROv2, MiproTrial, PromptCandidate
 from msgflux.optim.optimizer import Optimizer
-from msgflux.optim.progress import Colors, OptimProgress, TrialInfo, StepInfo
+from msgflux.optim.progress import Colors, MetricProgressBar, OptimProgress, StepInfo, TrialInfo
 from msgflux.optim.simba import SIMBA, SIMBACandidate, SIMBAResult, SIMBATrialLog
+from msgflux.optim.visualization import OptimizationPlotter, PlotData
 
 __all__ = [
     # Base class
@@ -70,9 +98,23 @@ __all__ = [
     "SIMBA",
     # Progress utilities
     "OptimProgress",
+    "MetricProgressBar",
     "Colors",
     "TrialInfo",
     "StepInfo",
+    # Early stopping
+    "EarlyStopping",
+    "EarlyStoppingState",
+    # Checkpointing
+    "Checkpointer",
+    "CheckpointInfo",
+    # Export
+    "ExperimentExporter",
+    "ExperimentRecord",
+    "StepRecord",
+    # Visualization
+    "OptimizationPlotter",
+    "PlotData",
     # Data classes
     "BootstrapResult",
     "Trace",
