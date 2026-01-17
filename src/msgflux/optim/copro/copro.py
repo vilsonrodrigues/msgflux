@@ -411,11 +411,28 @@ class COPRO(Optimizer):
         if not candidates or teacher is None:
             return None
 
+        total_score = 0.0
+
         # Evaluate each candidate
-        for candidate in candidates[: self.breadth]:
+        for i, candidate in enumerate(candidates[: self.breadth]):
             score = self._evaluate_instruction(candidate.instruction, valset, teacher)
             candidate.score = score
             candidate.evaluated = True
+            total_score += score
+
+            # Log progress in DSPy style
+            self._progress.average_metric(
+                value=total_score,
+                total=i + 1,
+                name="Candidate Avg Score",
+            )
+
+        # Log all candidate scores
+        evaluated = [c for c in candidates if c.evaluated]
+        if evaluated:
+            scores = [c.score for c in evaluated]
+            labels = [f"Cand-{i+1}" for i in range(len(scores))]
+            self._progress.candidate_scores(scores, labels, max_display=self.breadth)
 
         # Return best candidate
         if candidates:
@@ -650,12 +667,29 @@ class COPRO(Optimizer):
         if not candidates or teacher is None:
             return None
 
-        for candidate in candidates[: self.breadth]:
+        total_score = 0.0
+
+        for i, candidate in enumerate(candidates[: self.breadth]):
             score = await self._aevaluate_instruction(
                 candidate.instruction, valset, teacher, max_concurrency
             )
             candidate.score = score
             candidate.evaluated = True
+            total_score += score
+
+            # Log progress in DSPy style
+            self._progress.average_metric(
+                value=total_score,
+                total=i + 1,
+                name="Candidate Avg Score",
+            )
+
+        # Log all candidate scores
+        evaluated = [c for c in candidates if c.evaluated]
+        if evaluated:
+            scores = [c.score for c in evaluated]
+            labels = [f"Cand-{i+1}" for i in range(len(scores))]
+            self._progress.candidate_scores(scores, labels, max_display=self.breadth)
 
         return max(candidates, key=lambda c: c.score) if candidates else None
 

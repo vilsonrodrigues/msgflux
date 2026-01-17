@@ -271,13 +271,16 @@ class SIMBA(Optimizer):
                 if is_best:
                     best_overall_score = best_score
 
-                self._progress.trial(TrialInfo(
-                    trial_num=batch_idx + 1,
-                    total_trials=self.max_steps,
-                    score=best_score,
-                    best_score=best_overall_score,
-                    is_best=is_best,
-                ))
+                # Log candidate scores in DSPy style
+                total_cand_score = sum(candidate_scores)
+                self._progress.average_metric(
+                    value=total_cand_score,
+                    total=len(candidate_scores),
+                    name="Candidate Avg",
+                )
+
+                labels = [f"Cand-{i+1}" for i in range(len(candidate_scores))]
+                self._progress.candidate_scores(candidate_scores, labels, max_display=5)
 
             # Step 6: Select best and register candidates
             if candidate_scores:
@@ -393,6 +396,17 @@ class SIMBA(Optimizer):
             self._trial_logs[batch_idx].candidate_scores = candidate_scores
 
             if candidate_scores:
+                # Log candidate scores in DSPy style
+                total_cand_score = sum(candidate_scores)
+                self._progress.average_metric(
+                    value=total_cand_score,
+                    total=len(candidate_scores),
+                    name="Candidate Avg",
+                )
+
+                labels = [f"Cand-{i+1}" for i in range(len(candidate_scores))]
+                self._progress.candidate_scores(candidate_scores, labels, max_display=5)
+
                 best_idx = candidate_scores.index(max(candidate_scores))
                 best_program = self._deepcopy_program(system_candidates[best_idx])
                 self._winning_programs.append(best_program)
@@ -846,6 +860,18 @@ class SIMBA(Optimizer):
             avg = sum(prog_scores) / len(prog_scores) if prog_scores else 0.0
             scores.append(avg)
 
+        # Log final scores in DSPy style
+        if scores:
+            total_score = sum(scores)
+            self._progress.average_metric(
+                value=total_score,
+                total=len(scores),
+                name="Final Avg Score",
+            )
+
+            labels = [f"Prog-{i+1}" for i in range(len(scores))]
+            self._progress.candidate_scores(scores, labels, max_display=len(scores))
+
         # Update trial logs with final scores
         for idx, score in enumerate(scores[1:], start=0):
             if idx in self._trial_logs:
@@ -895,6 +921,18 @@ class SIMBA(Optimizer):
         scores = await self._aevaluate_candidates(
             candidate_programs, trainset, max_concurrency
         )
+
+        # Log final scores in DSPy style
+        if scores:
+            total_score = sum(scores)
+            self._progress.average_metric(
+                value=total_score,
+                total=len(scores),
+                name="Final Avg Score",
+            )
+
+            labels = [f"Prog-{i+1}" for i in range(len(scores))]
+            self._progress.candidate_scores(scores, labels, max_display=len(scores))
 
         for idx, score in enumerate(scores[1:], start=0):
             if idx in self._trial_logs:

@@ -192,6 +192,8 @@ class MIPROv2(Optimizer):
 
         # Run optimization trials
         self._progress.step("RUN OPTIMIZATION TRIALS", 2, 3)
+        total_score = 0.0
+
         for trial_idx in range(self.num_trials):
             # Sample instruction and demos based on surrogate predictions
             instruction_idx = self._sample_instruction()
@@ -211,6 +213,7 @@ class MIPROv2(Optimizer):
 
             candidate.score = score
             candidate.evaluated = True
+            total_score += score
 
             # Record trial
             trial = MiproTrial(
@@ -230,14 +233,24 @@ class MIPROv2(Optimizer):
                 self._best_score = score
                 self._best_candidate = candidate
 
-            # Log trial progress
-            self._progress.trial(TrialInfo(
-                trial_num=trial_idx + 1,
-                total_trials=self.num_trials,
-                score=score,
-                best_score=self._best_score,
-                is_best=is_best,
-            ))
+            # Log trial progress in DSPy style
+            self._progress.average_metric(
+                value=total_score,
+                total=trial_idx + 1,
+                name="Average Trial Score",
+            )
+
+        # Log instruction scores summary
+        if self._instruction_scores:
+            instr_avg_scores = []
+            instr_labels = []
+            for i, scores in self._instruction_scores.items():
+                if scores:
+                    instr_avg_scores.append(sum(scores) / len(scores))
+                    instr_labels.append(f"Instr-{i+1}")
+            self._progress.candidate_scores(
+                instr_avg_scores, instr_labels, max_display=5
+            )
 
         # Apply best configuration to parameters
         self._progress.step("APPLY BEST CONFIGURATION", 3, 3)
@@ -561,6 +574,27 @@ class MIPROv2(Optimizer):
             )
         else:
             await self._arun_trials_concurrent(valset, teacher)
+
+        # Log instruction scores summary after all trials
+        if self._instruction_scores:
+            instr_avg_scores = []
+            instr_labels = []
+            for i, scores in self._instruction_scores.items():
+                if scores:
+                    instr_avg_scores.append(sum(scores) / len(scores))
+                    instr_labels.append(f"Instr-{i+1}")
+            self._progress.candidate_scores(
+                instr_avg_scores, instr_labels, max_display=5
+            )
+
+        # Log average trial score
+        if self._trials:
+            total_score = sum(t.score for t in self._trials)
+            self._progress.average_metric(
+                value=total_score,
+                total=len(self._trials),
+                name="Average Trial Score",
+            )
 
         # Apply best configuration to parameters
         self._progress.step("APPLY BEST CONFIGURATION", 3, 3)

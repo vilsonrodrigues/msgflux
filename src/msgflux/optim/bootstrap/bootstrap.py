@@ -182,6 +182,9 @@ class BootstrapFewShot(Optimizer):
         """Execute bootstrapping to collect traces from successful executions."""
         self._progress.substep(f"Processing {len(trainset)} examples")
 
+        total_score = 0.0
+        round_scores: List[float] = []
+
         for round_idx in range(self.max_rounds):
             self._progress.substep(f"Round {round_idx + 1}/{self.max_rounds}")
 
@@ -200,10 +203,26 @@ class BootstrapFewShot(Optimizer):
                 # Bootstrap this example
                 result = self._bootstrap_one(example, teacher, round_idx)
                 self._bootstrap_results.append(result)
+                total_score += result.score
+                round_scores.append(result.score)
 
                 if result.success:
                     self._bootstrapped_indices.add(idx)
                     self._collect_traces(result)
+
+            # Log round summary in DSPy style
+            if round_scores:
+                self._progress.average_metric(
+                    value=total_score,
+                    total=len(self._bootstrap_results),
+                    name="Bootstrap Score",
+                )
+
+        # Log final candidate scores
+        if self._bootstrap_results:
+            scores = [r.score for r in self._bootstrap_results]
+            labels = [f"Ex-{i+1}" for i in range(len(scores))]
+            self._progress.candidate_scores(scores, labels, max_display=5)
 
         self._progress.success(
             f"Bootstrap complete: {len(self._bootstrapped_indices)} successful, "
@@ -493,6 +512,8 @@ class BootstrapFewShot(Optimizer):
         """Execute bootstrapping asynchronously to collect traces."""
         self._progress.substep(f"Processing {len(trainset)} examples")
 
+        total_score = 0.0
+
         for round_idx in range(self.max_rounds):
             self._progress.substep(f"Round {round_idx + 1}/{self.max_rounds}")
 
@@ -522,6 +543,8 @@ class BootstrapFewShot(Optimizer):
             # Process results
             for idx, result in results:
                 self._bootstrap_results.append(result)
+                total_score += result.score
+
                 if result.success:
                     self._bootstrapped_indices.add(idx)
                     self._collect_traces(result)
@@ -531,6 +554,20 @@ class BootstrapFewShot(Optimizer):
                             f"Reached max bootstrapped demos ({self.max_bootstrapped_demos})"
                         )
                         return
+
+            # Log round summary in DSPy style
+            if self._bootstrap_results:
+                self._progress.average_metric(
+                    value=total_score,
+                    total=len(self._bootstrap_results),
+                    name="Bootstrap Score",
+                )
+
+        # Log final candidate scores
+        if self._bootstrap_results:
+            scores = [r.score for r in self._bootstrap_results]
+            labels = [f"Ex-{i+1}" for i in range(len(scores))]
+            self._progress.candidate_scores(scores, labels, max_display=5)
 
         self._progress.success(
             f"Async bootstrap complete: {len(self._bootstrapped_indices)} successful, "
