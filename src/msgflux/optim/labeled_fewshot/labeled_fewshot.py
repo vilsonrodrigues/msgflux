@@ -110,6 +110,23 @@ class LabeledFewShot(Optimizer):
             self._selected_examples = self.trainset[:k]
             self._progress.substep(f"Selected first {k} examples")
 
+        # Log selection summary in DSPy style
+        self._progress.average_metric(
+            value=k,
+            total=len(self.trainset),
+            name="Selected Examples",
+        )
+
+        # Show selected example indices
+        selected_indices = [
+            self.trainset.index(ex) for ex in self._selected_examples
+            if ex in self.trainset
+        ]
+        labels = [f"Ex-{idx}" for idx in selected_indices]
+        # Use 1.0 as placeholder scores since we're just showing selection
+        scores = [1.0] * len(selected_indices)
+        self._progress.candidate_scores(scores, labels, max_display=k)
+
         # Format demos
         formatted_demos = self._format_demos(self._selected_examples)
 
