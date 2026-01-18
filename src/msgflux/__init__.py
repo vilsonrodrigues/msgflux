@@ -1,4 +1,4 @@
-from .auto import AutoParams
+from .auto import AutoModule, AutoParams
 from .cache import response_cache
 from .data.dbs import DB
 
@@ -21,6 +21,7 @@ from .utils.inspect import get_fn_name
 from .utils.msgspec import load, msgspec_dumps, save
 
 __all__ = [
+    "AutoModule",
     "AutoParams",
     "DB",
     "Audio",

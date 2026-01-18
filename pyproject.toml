@@ -96,6 +96,9 @@ google = [
     "google-genai>=1.42.0",
     "opentelemetry-instrumentation-google-genai>=0.3b0",
 ]
+hub = [
+    "huggingface_hub>=0.20.0",
+]
 
 [tool.ruff]
 target-version = "py39"
@@ -169,6 +172,9 @@ unfixable = ["F401"]
 "src/msgflux/nn/modules/tool.py" = ["A001","A002"]
 # Allow MCP protocol's camelCase naming convention
 "src/msgflux/protocols/mcp/types.py" = ["N815"]
+# AutoModule: Allow lazy imports, boolean args, global state, and complexity
+"src/msgflux/auto/*.py" = ["PLC0415", "FBT001", "FBT002", "PLW0603", "C901"]
+"src/msgflux/auto/sources/*.py" = ["PLC0415", "FBT001", "FBT002"]
 "tests/**/*" = [
   "D",
   "PLR0911",
