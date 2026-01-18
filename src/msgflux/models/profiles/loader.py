@@ -115,7 +115,7 @@ class ProfileLoader:
             Exception: If fetch fails
         """
         try:
-            import httpx
+            import httpx  # noqa: PLC0415
         except ImportError as e:
             raise ImportError(
                 "httpx is required for profile fetching. "

@@ -1,5 +1,6 @@
 from typing import Any, Callable, Dict, Literal, Mapping, Optional, Union
 
+from msgflux.auto import AutoParams
 from msgflux.dotdict import dotdict
 from msgflux.message import Message
 from msgflux.models.base import BaseModel
@@ -28,7 +29,7 @@ MEDIA_MODEL_TYPES = Union[
 ]
 
 
-class MediaMaker(Module):
+class MediaMaker(Module, metaclass=AutoParams):
     """MediaMaker is a Module type that uses generative
     models to create content.
     """
@@ -45,7 +46,9 @@ class MediaMaker(Module):
         config: Optional[Dict[str, Any]] = None,
         name: Optional[str] = None,
     ):
-        """Args:
+        """Initialize the MediaMaker module.
+
+        Args:
         model:
             MediaMaker Model client.
         guardrails:
@@ -107,7 +110,8 @@ class MediaMaker(Module):
                 - Message: Message object with fields mapped via message_fields
             **kwargs: Runtime overrides for message_fields. Can include:
                 - task_inputs: Override field path or direct value
-                - task_multimodal_inputs: Override multimodal inputs (e.g., {"image": "path"})
+                - task_multimodal_inputs: Override multimodal inputs
+                  (e.g., {"image": "path"})
 
         Returns:
             Generated media content (str or Message depending on response_mode).
@@ -163,7 +167,8 @@ class MediaMaker(Module):
         mask: Optional[str] = None,
         model_preference: Optional[str] = None,
     ) -> Dict[str, Any]:
-        # Start with config (contains fps, duration_seconds, aspect_ratio, n, and any other params)
+        # Start with config (contains fps, duration_seconds, aspect_ratio, n,
+        # and any other params)
         model_execution_params = dotdict(self.config) if self.config else dotdict()
 
         # Add required parameters
@@ -251,10 +256,11 @@ class MediaMaker(Module):
 
         content = {}
 
-        for media_source in ["image", "mask"]:
-            data = task_multimodal_inputs.get(media_source, None)
-            if data:
-                content[media_source] = data
+        if task_multimodal_inputs:
+            for media_source in ["image", "mask"]:
+                data = task_multimodal_inputs.get(media_source, None)
+                if data:
+                    content[media_source] = data
 
         return content
 
@@ -265,11 +271,11 @@ class MediaMaker(Module):
         return model_execution_params
 
     def _set_model(self, model: Union[BaseModel, ModelGateway]):
-        if isinstance(model, tuple(MEDIA_MODEL_TYPES)):
+        if isinstance(model, (BaseModel, ModelGateway)):
             self.register_buffer("model", model)
         else:
             raise TypeError(
-                f"`model` need be a `{MEDIA_MODEL_TYPES!s}` "
+                f"`model` need be a `BaseModel` or `ModelGateway` "
                 f"model, given `{type(model)}`"
             )
 

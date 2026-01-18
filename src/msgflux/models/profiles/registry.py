@@ -6,6 +6,7 @@ Provides singleton access to model profiles with automatic caching.
 import threading
 from typing import Dict, Optional
 
+from msgflux.logger import logger
 from msgflux.models.profiles.base import ModelProfile, ProviderProfile
 from msgflux.models.profiles.loader import ProfileLoader
 
@@ -116,7 +117,7 @@ class ProfileRegistry:
 
         return self._profiles.get(provider_id)
 
-    def ensure_loaded(self, background: bool = True):
+    def ensure_loaded(self, *, background: bool = True):
         """Ensure profiles are loaded.
 
         Args:
@@ -125,7 +126,7 @@ class ProfileRegistry:
         if self._profiles is None:
             self._load_profiles(background=background)
 
-    def _load_profiles(self, background: bool = True):
+    def _load_profiles(self, *, background: bool = True):
         """Load profiles from cache or fetch from API.
 
         Args:
@@ -144,7 +145,8 @@ class ProfileRegistry:
             # Cache miss/expired - need to fetch
             if background:
                 self._loading = True
-                from msgflux.nn.functional import background_task
+                # Lazy import to avoid circular dependency
+                from msgflux.nn.functional import background_task  # noqa: PLC0415
 
                 background_task(self._fetch_and_cache)
             else:
@@ -159,8 +161,6 @@ class ProfileRegistry:
                 ProfileLoader.save_to_cache(profiles)
         except Exception as e:
             # Log error but don't crash
-            from msgflux.logger import logger
-
             logger.error(f"Failed to fetch model profiles: {e}")
         finally:
             self._loading = False
@@ -198,7 +198,7 @@ def get_provider_profile(provider_id: str) -> Optional[ProviderProfile]:
     return _registry.get_provider_profile(provider_id)
 
 
-def ensure_profiles_loaded(background: bool = True):
+def ensure_profiles_loaded(*, background: bool = True):
     """Ensure profiles are loaded (module-level convenience function).
 
     Args:

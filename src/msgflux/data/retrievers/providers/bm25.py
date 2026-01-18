@@ -106,7 +106,7 @@ class BM25LexicalRetriever(BaseLexical, BaseRetriever, LexicalRetriever):
         return score
 
     def _search(
-        self, queries: List[str], top_k: int, threshold: float, return_score: bool
+        self, queries: List[str], top_k: int, threshold: float, *, return_score: bool
     ):
         """Finds the top_k most similar documents for multiple queries.
 

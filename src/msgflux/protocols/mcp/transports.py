@@ -10,6 +10,7 @@ try:
 except ImportError:
     httpx = None
 
+from msgflux.logger import logger
 from msgflux.protocols.mcp.exceptions import (
     MCPConnectionError,
     MCPError,
@@ -124,7 +125,7 @@ class HTTPTransport(BaseTransport):
         """Set session ID for subsequent requests."""
         self._session_id = session_id
 
-    async def _get_headers(self, include_session_id: bool = True) -> Dict[str, str]:
+    async def _get_headers(self, *, include_session_id: bool = True) -> Dict[str, str]:
         """Get headers with authentication applied.
 
         Args:
@@ -153,7 +154,7 @@ class HTTPTransport(BaseTransport):
 
         return headers
 
-    async def send_request(
+    async def send_request(  # noqa: C901
         self, method: str, params: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """Send HTTP POST request with JSON-RPC.
@@ -195,7 +196,8 @@ class HTTPTransport(BaseTransport):
             ]:
                 session_id = response.headers.get(header_name)
                 if session_id:
-                    # Always update session ID if server provides one (server's ID takes precedence)
+                    # Always update session ID if server provides one
+                    # (server's ID takes precedence)
                     self._session_id = session_id
                     break
 
@@ -213,12 +215,14 @@ class HTTPTransport(BaseTransport):
             else:
                 # Regular JSON response
                 return response.json()
-        except httpx.TimeoutException:
-            raise MCPTimeoutError(f"Request to {method} timed out")
+        except httpx.TimeoutException as e:
+            raise MCPTimeoutError(f"Request to {method} timed out") from e
         except httpx.HTTPStatusError as e:
-            raise MCPError(f"HTTP error {e.response.status_code}: {e.response.text}")
+            status_code = e.response.status_code
+            error_text = e.response.text
+            raise MCPError(f"HTTP error {status_code}: {error_text}") from e
         except json.JSONDecodeError as e:
-            raise MCPError(f"Failed to decode JSON response: {e}")
+            raise MCPError(f"Failed to decode JSON response: {e}") from e
 
     async def send_notification(
         self, method: str, params: Optional[Dict[str, Any]] = None
@@ -243,7 +247,7 @@ class HTTPTransport(BaseTransport):
             await self._http_client.post(
                 self.base_url, json=notification_data, headers=headers
             )
-        except Exception:
+        except Exception:  # noqa: S110
             # Notifications are fire-and-forget, log but don't raise
             pass
 
@@ -284,7 +288,7 @@ class StdioTransport(BaseTransport):
             return
 
         try:
-            full_command = [self.command] + self.args
+            full_command = [self.command, *self.args]
 
             self._process = await asyncio.create_subprocess_exec(
                 *full_command,
@@ -299,7 +303,7 @@ class StdioTransport(BaseTransport):
             self._read_task = asyncio.create_task(self._read_responses())
 
         except Exception as e:
-            raise MCPConnectionError(f"Failed to start MCP server: {e}")
+            raise MCPConnectionError(f"Failed to start MCP server: {e}") from e
 
     async def disconnect(self):
         """Terminate subprocess and cleanup."""
@@ -350,16 +354,18 @@ class StdioTransport(BaseTransport):
                     # Handle notifications from server (ignore for now)
                     # Could be extended to handle server notifications
 
-                except json.JSONDecodeError:
+                except json.JSONDecodeError as e:
                     # Invalid JSON, skip
+                    logger.debug(f"Invalid JSON response: {e}")
                     continue
-                except Exception:
+                except Exception as e:
                     # Error processing response
+                    logger.debug(f"Error processing response: {e}")
                     continue
 
         except asyncio.CancelledError:
             pass
-        except Exception:
+        except Exception:  # noqa: S110
             pass
 
     async def send_request(
@@ -395,10 +401,10 @@ class StdioTransport(BaseTransport):
 
         except asyncio.TimeoutError:
             self._pending_requests.pop(request_id, None)
-            raise MCPTimeoutError(f"Request to {method} timed out")
+            raise MCPTimeoutError(f"Request to {method} timed out") from None
         except Exception as e:
             self._pending_requests.pop(request_id, None)
-            raise MCPError(f"Failed to send request: {e}")
+            raise MCPError(f"Failed to send request: {e}") from e
 
     async def send_notification(
         self, method: str, params: Optional[Dict[str, Any]] = None
@@ -419,6 +425,6 @@ class StdioTransport(BaseTransport):
             message = json.dumps(notification_data) + "\n"
             self._process.stdin.write(message.encode("utf-8"))
             await self._process.stdin.drain()
-        except Exception:
+        except Exception:  # noqa: S110
             # Notifications are fire-and-forget
             pass

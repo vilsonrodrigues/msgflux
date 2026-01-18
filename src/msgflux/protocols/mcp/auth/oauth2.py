@@ -45,7 +45,7 @@ class OAuth2Auth(BaseAuth):
         refresh_token: Optional[str] = None,
         expires_in: Optional[int] = None,
         refresh_callback: Optional[Callable[[str], Awaitable[Dict[str, Any]]]] = None,
-        token_type: str = "Bearer",
+        token_type: str = "Bearer",  # noqa: S107,
     ):
         """Initialize OAuth2 authentication.
 
@@ -105,10 +105,10 @@ class OAuth2Auth(BaseAuth):
                 if "expires_in" in result:
                     self.set_expiration(result["expires_in"])
 
-                self._last_refresh = datetime.now()
+                self._last_refresh = datetime.now()  # noqa: DTZ005
                 return True
 
-        except Exception:
+        except Exception:  # noqa: S110
             pass
 
         return False

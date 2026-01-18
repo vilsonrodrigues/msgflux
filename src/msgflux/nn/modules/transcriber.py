@@ -1,5 +1,6 @@
 from typing import Any, Dict, Mapping, Optional, Union
 
+from msgflux.auto import AutoParams
 from msgflux.dotdict import dotdict
 from msgflux.message import Message
 from msgflux.models.gateway import ModelGateway
@@ -8,7 +9,7 @@ from msgflux.models.types import SpeechToTextModel
 from msgflux.nn.modules.module import Module
 
 
-class Transcriber(Module):
+class Transcriber(Module, metaclass=AutoParams):
     """Transcriber is a Module type that uses language models to transcribe audios."""
 
     def __init__(
@@ -23,7 +24,9 @@ class Transcriber(Module):
         config: Optional[Dict[str, Any]] = None,
         name: Optional[str] = None,
     ):
-        """Args:
+        """Initialize the Transcriber module.
+
+        Args:
         model:
             Transcriber Model client.
         message_fields:
@@ -38,7 +41,8 @@ class Transcriber(Module):
 
             Field descriptions:
             - task_multimodal_inputs: Field path for audio input (str or dict)
-            - model_preference: Field path for model preference (str, only valid with ModelGateway)
+            - model_preference: Field path for model preference (str, only valid
+              with ModelGateway)
         response_mode:
             What the response should be.
             * `plain_response` (default): Returns the final agent response directly.
@@ -65,7 +69,8 @@ class Transcriber(Module):
             Configuration options:
             - language: Spoken language acronym (str)
             - stream: Transmit response on-the-fly (bool)
-            - timestamp_granularities: Enable timestamp granularities - "word", "segment", or None
+            - timestamp_granularities: Enable timestamp granularities - "word",
+              "segment", or None
               (requires response_format=verbose_json)
         name:
             Transcriber name in snake case format.
@@ -76,7 +81,8 @@ class Transcriber(Module):
         self._set_message_fields(message_fields)
         self._set_response_format(response_format)
         self._set_response_mode(response_mode)
-        self._set_response_template(response_template)
+        if response_template:
+            self.register_buffer("response_template", response_template)
         self._set_config(config)
         if name:
             self.set_name(name)

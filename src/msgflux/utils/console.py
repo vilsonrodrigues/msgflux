@@ -6,7 +6,7 @@ def cprint(text: str, *, lc=None, bc=None, ls=None, **kwargs):
         bc (str): Background color.
         ls (str): Line style.
     """
-    FG_COLORS = {
+    fg_colors = {
         "k": 30,  # black
         "r": 31,  # red
         "g": 32,  # green
@@ -17,7 +17,7 @@ def cprint(text: str, *, lc=None, bc=None, ls=None, **kwargs):
         "w": 37,  # white
     }
 
-    BG_COLORS = {
+    bg_colors = {
         "k": 40,
         "r": 101,
         "g": 102,
@@ -33,7 +33,7 @@ def cprint(text: str, *, lc=None, bc=None, ls=None, **kwargs):
         "br4": "48;5;229",  # cream
     }
 
-    STYLES = {
+    styles = {
         "b": 1,  # bold
         "i": 3,  # italic
         "u": 4,  # underline
@@ -42,14 +42,14 @@ def cprint(text: str, *, lc=None, bc=None, ls=None, **kwargs):
 
     codes = []
 
-    if lc in FG_COLORS:
-        codes.append(str(FG_COLORS[lc]))
-    if bc in BG_COLORS:
-        codes.append(str(BG_COLORS[bc]))
-    if ls in STYLES:
-        codes.append(str(STYLES[ls]))
+    if lc in fg_colors:
+        codes.append(str(fg_colors[lc]))
+    if bc in bg_colors:
+        codes.append(str(bg_colors[bc]))
+    if ls in styles:
+        codes.append(str(styles[ls]))
 
     prefix = f"\033[{';'.join(codes)}m" if codes else ""
     suffix = "\033[0m"
 
-    print(f"{prefix}{text}{suffix}", **kwargs)
+    print(f"{prefix}{text}{suffix}", **kwargs)  # noqa: T201

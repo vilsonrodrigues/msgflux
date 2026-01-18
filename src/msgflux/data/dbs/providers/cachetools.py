@@ -51,8 +51,7 @@ class CacheToolsKVDB(BaseKV, BaseDB, KVDB):
         if not isinstance(documents, list):
             documents = [documents]
         for document in documents:
-            for k, v in document.items():
-                if self.hash_key:
-                    k = convert_str_to_hash(k)
-                v = msgspec.msgpack.encode(v)
-                self.client[k] = v
+            for key, value in document.items():
+                encoded_key = convert_str_to_hash(key) if self.hash_key else key
+                encoded_value = msgspec.msgpack.encode(value)
+                self.client[encoded_key] = encoded_value

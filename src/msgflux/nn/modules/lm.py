@@ -1,12 +1,13 @@
 from typing import Union
 
+from msgflux.auto import AutoParams
 from msgflux.models.gateway import ModelGateway
 from msgflux.models.response import ModelResponse, ModelStreamResponse
 from msgflux.models.types import ChatCompletionModel
 from msgflux.nn.modules.module import Module
 
 
-class LM(Module):
+class LM(Module, metaclass=AutoParams):
     """Language Model wrapper - enables hooks and composition for LM calls."""
 
     def __init__(self, model: Union[ChatCompletionModel, ModelGateway]):

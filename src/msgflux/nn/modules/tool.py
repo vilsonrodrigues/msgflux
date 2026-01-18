@@ -6,6 +6,7 @@ from typing import Any, Callable, Dict, Iterator, List, Mapping, Optional, Tuple
 
 import msgspec
 
+from msgflux.auto import AutoParams
 from msgflux.dotdict import dotdict
 from msgflux.logger import logger
 from msgflux.nn import functional as F
@@ -22,7 +23,6 @@ from msgflux.telemetry.span import (
     set_tool_attributes,
 )
 from msgflux.utils.chat import generate_tool_json_schema
-from msgflux.utils.convert import convert_camel_to_snake_case
 from msgflux.utils.inspect import fn_has_parameters
 from msgflux.utils.tenacity import tool_retry
 
@@ -215,6 +215,17 @@ def _convert_module_to_nn_tool(impl: Callable) -> Tool:  # noqa: C901
                 "a docstring in the class or in `def __call__`"
             )
 
+        name = (
+            name_overridden
+            or getattr(impl, "name", None)
+            or getattr(impl, "__name__", None)
+        )
+
+        # Instantiate class first if needed, so we can get instance attributes
+        if inspect.isclass(impl):
+            impl = impl()  # Initialized
+
+        # Now extract annotations (after instantiation for classes)
         annotations = (
             getattr(impl, "annotations", None)
             or getattr(impl, "__annotations__", None)
@@ -228,16 +239,6 @@ def _convert_module_to_nn_tool(impl: Callable) -> Tool:  # noqa: C901
                     "`self.annotations`, `self.__annotations__` or in `def __call__`"
                 )
             annotations = {}
-
-        raw_name = (
-            name_overridden
-            or getattr(impl, "name", None)
-            or getattr(impl, "__name__", None)
-        )
-        name = convert_camel_to_snake_case(raw_name)
-
-        if inspect.isclass(impl):
-            impl = impl()  # Initialized
 
     # Case 2: Function
     elif inspect.isfunction(impl) or inspect.iscoroutinefunction(impl):
@@ -283,7 +284,7 @@ def _convert_module_to_nn_tool(impl: Callable) -> Tool:  # noqa: C901
     )
 
 
-class ToolLibrary(Module):
+class ToolLibrary(Module, metaclass=AutoParams):
     """ToolLibrary is a Module type that manage tool calls over the tool library."""
 
     def __init__(
@@ -293,7 +294,9 @@ class ToolLibrary(Module):
         special_tools: Optional[List[str]] = None,
         mcp_servers: Optional[List[Dict[str, Any]]] = None,
     ):
-        """Args:
+        """Initialize the ToolLibrary.
+
+        Args:
         name:
             Library name.
         tools:
@@ -554,18 +557,23 @@ class ToolLibrary(Module):
                 continue
 
             if config.get("inject_model_state", False):  # Add model_state
-                tool_params["task_messages"] = model_state
+                tool_params["model_state"] = model_state
 
             if not config.get("return_direct", False):
                 return_directly = False
 
-            tool_params = tool_params or {}
+            final_tool_params = tool_params or {}
             # Add tool_call_id for telemetry
-            tool_params["tool_call_id"] = tool_id
-            prepared_calls.append(partial(tool, **tool_params))
+            final_tool_params["tool_call_id"] = tool_id
+            prepared_calls.append(partial(tool, **final_tool_params))
 
             call_metadata.append(
-                dotdict(id=tool_id, name=tool_name, config=config, params=tool_params)
+                dotdict(
+                    id=tool_id,
+                    name=tool_name,
+                    config=config,
+                    params=final_tool_params,
+                )
             )
 
         if prepared_calls:
@@ -594,7 +602,8 @@ class ToolLibrary(Module):
         model_state: Optional[List[Dict[str, Any]]] = None,
         vars: Optional[Mapping[str, Any]] = None,
     ) -> ToolResponses:
-        """Async version of forward. Executes tool calls with logic for `handoff`, `return_direct`.
+        """Async version of forward. Executes tool calls with logic for
+        `handoff`, `return_direct`.
 
         Args:
             tool_callings:
@@ -677,18 +686,23 @@ class ToolLibrary(Module):
                 continue
 
             if config.get("inject_model_state", False):  # Add model_state
-                tool_params["task_messages"] = model_state
+                tool_params["model_state"] = model_state
 
             if not config.get("return_direct", False):
                 return_directly = False
 
-            tool_params = tool_params or {}
+            final_tool_params = tool_params or {}
             # Add tool_call_id for telemetry
-            tool_params["tool_call_id"] = tool_id
-            prepared_calls.append(partial(tool.acall, **tool_params))
+            final_tool_params["tool_call_id"] = tool_id
+            prepared_calls.append(partial(tool.acall, **final_tool_params))
 
             call_metadata.append(
-                dotdict(id=tool_id, name=tool_name, config=config, params=tool_params)
+                dotdict(
+                    id=tool_id,
+                    name=tool_name,
+                    config=config,
+                    params=final_tool_params,
+                )
             )
 
         if prepared_calls:

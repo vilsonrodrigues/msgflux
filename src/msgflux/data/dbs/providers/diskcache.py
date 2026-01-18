@@ -43,7 +43,6 @@ class DiskCacheKVDB(BaseKV, BaseDB, KVDB):
             documents = [documents]
         for document in documents:
             for k, v in document.items():
-                if self.hash_key:
-                    k = convert_str_to_hash(k)
-                v = msgspec.msgpack.encode(v)
-                self.client.set(k, v, expire=self.ttl)
+                encoded_k = convert_str_to_hash(k) if self.hash_key else k
+                encoded_v = msgspec.msgpack.encode(v)
+                self.client.set(encoded_k, encoded_v, expire=self.ttl)

@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Mapping, Optional, Union
+from typing import Any, Dict, List, Mapping, Optional
 
 try:
     import numpy as np
@@ -8,7 +8,6 @@ except ImportError:
     np = None
 
 from msgflux.data.retrievers.base import BaseLexical, BaseRetriever
-from msgflux.data.retrievers.registry import register_retriever
 from msgflux.data.retrievers.types import LexicalRetriever
 from msgflux.dotdict import dotdict
 from msgflux.nn import functional as F
@@ -51,7 +50,9 @@ class RankBM25LexicalRetriever(BaseLexical, BaseRetriever, LexicalRetriever):
         self.tokenized_corpus.extend(self._tokenize(doc) for doc in documents)
         self.bm25 = BM25Okapi(self.tokenized_corpus, k1=self.k1, b=self.b)
 
-    def _search_single(self, query: str) -> List[Mapping[str, Any]]:
+    def _search_single(
+        self, query: str, top_k: int, threshold: float, *, return_score: bool
+    ) -> List[Mapping[str, Any]]:
         tokenized_query = self._tokenize(query)
         scores = self.bm25.get_scores(tokenized_query)
 
@@ -73,11 +74,17 @@ class RankBM25LexicalRetriever(BaseLexical, BaseRetriever, LexicalRetriever):
         return results
 
     def _search(
-        self, queries: List[str], top_k: int, threshold: float, return_score: bool
+        self, queries: List[str], top_k: int, threshold: float, *, return_score: bool
     ) -> List[List[Mapping[str, Any]]]:
         if not self.bm25:
             return [[] for _ in queries]
-        results = list(F.map_gather(self._search_single, args_list=queries))
+        args_list = [(query, top_k, threshold) for query in queries]
+        kwargs_list = [{"return_score": return_score} for _ in queries]
+        results = list(
+            F.map_gather(
+                self._search_single, args_list=args_list, kwargs_list=kwargs_list
+            )
+        )
         return results
 
     def get_score_statistics(self, query: str) -> Dict[str, float]:

@@ -8,7 +8,8 @@ REACT_SYSTEM_MESSAGE = """
 You are an Agent. In each episode, you will be given the task as input.
 And you can see your past trajectory so far.
 
-Your goal is to use one or more of the supplied tools to collect any necessary information for producing the `final_response`.
+Your goal is to use one or more of the supplied tools to collect any necessary
+information for producing the `final_response`.
 
 To do this, you will generate a `thought` containing your reasoning and plan.
 Identify and define necessary `actions` by creating a list of `toolcall` objects.
@@ -30,13 +31,17 @@ to plug into functions. Here are the available tools:
 
 {%- macro render_properties(properties, indent=0) -%}
 {%- for arg, spec in properties.items() %}
-{{ "  " * indent }}- {{ arg }} ({{ spec.get('type', 'unknown') }}){%- if spec.get('description') %}: {{ spec['description'] }}{% endif %}
+{{ "  " * indent }}- {{ arg }} ({{ spec.get('type', 'unknown') }})
+{%- if spec.get('description') %}
+{{ "  " * (indent + 1) }}{{ spec['description'] }}
+{% endif %}
 {%- if spec.get('enum') %}
 {{ "  " * (indent + 1) }}Options: {{ spec['enum'] | join(', ') }}
 {%- endif %}
 {%- if spec.get('type') == "object" and spec.get('properties') %}
 {{ render_properties(spec['properties'], indent + 1) }}
-{%- elif spec.get('type') == "array" and spec.get('items') and spec['items'].get('type') == "object" %}
+{%- elif spec.get('type') == "array" and spec.get('items') and
+spec['items'].get('type') == "object" %}
 {{ "  " * (indent + 1) }}Array items:
 {{ render_properties(spec['items']['properties'], indent + 2) }}
 {%- endif %}

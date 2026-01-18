@@ -4,21 +4,23 @@ from msgflux.nn.modules.embedder import Embedder
 from msgflux.nn.modules.lm import LM
 from msgflux.nn.modules.mediamaker import MediaMaker
 from msgflux.nn.modules.module import Module
+from msgflux.nn.modules.predictor import Predictor
 from msgflux.nn.modules.retriever import Retriever
 from msgflux.nn.modules.speaker import Speaker
 from msgflux.nn.modules.tool import LocalTool, MCPTool, Tool, ToolLibrary
 from msgflux.nn.modules.transcriber import Transcriber
 
 __all__ = [
-    "LM",
     "Agent",
     "Embedder",
+    "LM",
     "LocalTool",
     "MCPTool",
     "MediaMaker",
     "Module",
     "ModuleDict",
     "ModuleList",
+    "Predictor",
     "Retriever",
     "Sequential",
     "Speaker",

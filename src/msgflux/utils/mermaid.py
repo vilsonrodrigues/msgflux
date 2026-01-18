@@ -1,7 +1,7 @@
 try:
     import mermaid as md
     from mermaid.graph import Graph
-except:
+except ImportError:
     md = None
     Graph = None
 

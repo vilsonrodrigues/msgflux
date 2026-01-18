@@ -31,42 +31,6 @@ class FieldInfo:
     desc: Optional[str] = None
 
 
-class Image:
-    """Represents an image input or output in a model signature.
-
-    Can hold metadata in the future (e.g., format, resolution).
-    """
-
-    pass
-
-
-class Audio:
-    """Represents an audio input or output in a model signature.
-
-    Can hold metadata in the future (e.g., sample rate, channels).
-    """
-
-    pass
-
-
-class File:
-    """Represents a file input or output in a model signature.
-
-    Can hold metadata in the future (e.g., file type, size).
-    """
-
-    pass
-
-
-class Video:
-    """Represents a video input or output in a model signature.
-
-    Can hold metadata in the future (e.g., duration, resolution, fps).
-    """
-
-    pass
-
-
 class Field:
     def __init__(self, desc: Optional[str] = None):
         if isinstance(desc, str) or desc is None:
@@ -143,7 +107,8 @@ class Signature(metaclass=_SignatureMeta):
         # Get the signature in string format
         print(CheckCitationFaithfulness.get_str_signature())
         # Output:
-        # "context: str, text: str -> faithfulness: bool, evidence: dict[str, list[str]]"
+        # "context: str, text: str -> faithfulness: bool,
+        #  evidence: dict[str, list[str]]"
 
         # Get input descriptions
         print(CheckCitationFaithfulness.get_input_descriptions())
@@ -355,3 +320,76 @@ class SignatureFactory:
 
             task_template += part + "\n"
         return task_template.strip()
+
+
+# Multimodal types that should not be included in annotations
+_MULTIMODAL_TYPES = {"Image", "Audio", "Video", "File"}
+
+
+def is_multimodal_type(dtype_str: str) -> bool:
+    """Check if a type string represents a multimodal type.
+
+    Handles:
+    - Direct types: "Image", "Audio", etc.
+    - Optional types: "Optional[Image]"
+    - Union types with multimodal: "str | Image"
+
+    Args:
+        dtype_str: String representation of the type
+
+    Returns:
+        True if the type is multimodal, False otherwise
+    """
+    # Remove Optional wrapper
+    if dtype_str.startswith("Optional[") and dtype_str.endswith("]"):
+        dtype_str = dtype_str[9:-1]
+
+    # Check if base type or any Union member is multimodal
+    for mm_type in _MULTIMODAL_TYPES:
+        if mm_type in dtype_str:
+            return True
+    return False
+
+
+def generate_annotations_from_signature(
+    inputs_info: List[FieldInfo],
+    signature: Union[str, Type["Signature"]],
+) -> Dict[str, type]:
+    """Generate annotations dict from signature inputs.
+
+    Excludes multimodal types (Image, Audio, Video, File) as they are
+    handled separately in task_multimodal_inputs.
+
+    Args:
+        inputs_info: List of input field information
+        signature: The signature (str or Signature class)
+
+    Returns:
+        Dict mapping parameter names to types, excluding multimodal types
+    """
+    from msgflux.utils.msgspec import StructFactory
+
+    annotations = {}
+
+    # Process inputs
+    for input_info in inputs_info:
+        # Skip multimodal types
+        if is_multimodal_type(input_info.dtype):
+            continue
+
+        # For class-based signatures, get actual type from type hints
+        if isinstance(signature, type) and issubclass(signature, Signature):
+            type_hints = get_type_hints(signature)
+            if input_info.name in type_hints:
+                annotations[input_info.name] = type_hints[input_info.name]
+        else:
+            # For string signatures, use StructFactory to parse type string
+            annotations[input_info.name] = StructFactory._parse_type_string(
+                input_info.dtype
+            )
+
+    # Always add return annotation
+    # Use str as return type (actual output handled by generation_schema)
+    annotations["return"] = str
+
+    return annotations

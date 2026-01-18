@@ -576,9 +576,11 @@ def inline(
 
 
 class AsyncInlineDSL(InlineDSL):
-    """Async version of InlineDSL. Parses and executes workflow pipelines with async support.
+    """Async version of InlineDSL. Parses and executes workflow pipelines
+    with async support.
 
-    Inherits parsing logic from InlineDSL but overrides execution methods for async.
+    Inherits parsing logic from InlineDSL but overrides execution methods
+    for async.
     """
 
     async def _aexecute_while_loop(
@@ -694,7 +696,8 @@ class AsyncInlineDSL(InlineDSL):
 async def ainline(
     expression: str, modules: Mapping[str, Callable], message: dotdict
 ) -> dotdict:
-    """Async version of inline. Executes a workflow defined in DSL expression over a given `message`.
+    """Async version of inline. Executes a workflow defined in DSL
+    expression over a given `message`.
 
     Args:
         expression:

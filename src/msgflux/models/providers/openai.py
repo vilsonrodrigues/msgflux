@@ -259,7 +259,7 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
 
         return model_output
 
-    def _process_model_output(
+    def _process_model_output(  # noqa: C901
         self, model_output, typed_parser=None, generation_schema=None
     ):
         """Shared logic to process model output for both sync and async."""
@@ -304,10 +304,9 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
             response_content = aggregator
         elif choice.message.content:
             if (typed_parser or generation_schema) and self.verbose:
-                repr = f"[{self.model_id}][raw_response] {choice.message.content}"
-                cprint(repr, lc="r", ls="b")
+                repr_str = f"[{self.model_id}][raw_response] {choice.message.content}"
+                cprint(repr_str, lc="r", ls="b")
             if typed_parser is not None:
-                choice.message.content
                 response.set_response_type(f"{prefix_response_type}structured")
                 parser = typed_parser_registry[typed_parser]
                 response_content = dotdict(parser.decode(choice.message.content))
@@ -423,7 +422,7 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
 
         return response
 
-    async def _stream_generate(
+    async def _stream_generate(  # noqa: C901
         self, **kwargs: Mapping[str, Any]
     ) -> ModelStreamResponse:
         aggregator = ToolCallAggregator()
@@ -490,7 +489,7 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
         stream_response.set_metadata(metadata)
         stream_response.add(None)
 
-    async def _astream_generate(
+    async def _astream_generate(  # noqa: C901
         self, **kwargs: Mapping[str, Any]
     ) -> ModelStreamResponse:
         aggregator = ToolCallAggregator()
@@ -965,12 +964,12 @@ class OpenAITextToImage(_BaseOpenAI, TextToImageModel):
     def _get_metadata(self, model_output):
         metadata = dotdict(
             usage=model_output.usage.to_dict(),
-            details=dict(
-                size=model_output.size,
-                quality=model_output.quality,
-                output_format=model_output.output_format,
-                background=model_output.background,
-            ),
+            details={
+                "size": model_output.size,
+                "quality": model_output.quality,
+                "output_format": model_output.output_format,
+                "background": model_output.background,
+            },
         )
         return metadata
 
@@ -1255,13 +1254,13 @@ class OpenAISpeechToText(_BaseOpenAI, SpeechToTextModel):
                 transcript["text"] = model_output.text
             if model_output.words:
                 words = [
-                    dict(word=w.word, start=w.start, end=w.end)
+                    {"word": w.word, "start": w.start, "end": w.end}
                     for w in model_output.words
                 ]
                 transcript["words"] = words
             if model_output.segment:
                 segments = [
-                    dict(id=seg.id, start=seg.start, end=seg.end, text=seg.text)
+                    {"id": seg.id, "start": seg.start, "end": seg.end, "text": seg.text}
                     for seg in model_output.segments
                 ]
                 transcript["segments"] = segments
@@ -1286,13 +1285,13 @@ class OpenAISpeechToText(_BaseOpenAI, SpeechToTextModel):
                 transcript["text"] = model_output.text
             if model_output.words:
                 words = [
-                    dict(word=w.word, start=w.start, end=w.end)
+                    {"word": w.word, "start": w.start, "end": w.end}
                     for w in model_output.words
                 ]
                 transcript["words"] = words
             if model_output.segment:
                 segments = [
-                    dict(id=seg.id, start=seg.start, end=seg.end, text=seg.text)
+                    {"id": seg.id, "start": seg.start, "end": seg.end, "text": seg.text}
                     for seg in model_output.segments
                 ]
                 transcript["segments"] = segments
@@ -1371,14 +1370,14 @@ class OpenAISpeechToText(_BaseOpenAI, SpeechToTextModel):
             ISO-639-1 (e.g. en) format will improve accuracy and latency.
         """
         file = encode_data_to_bytes(data)
-        params = dict(
-            file=file,
-            language=language,
-            response_format=response_format,
-            timestamp_granularities=timestamp_granularities,
-            prompt=prompt,
-            model=self.model_id,
-        )
+        params = {
+            "file": file,
+            "language": language,
+            "response_format": response_format,
+            "timestamp_granularities": timestamp_granularities,
+            "prompt": prompt,
+            "model": self.model_id,
+        }
         if stream:
             stream_response = ModelStreamResponse()
             params["stream_response"] = stream_response
@@ -1426,14 +1425,14 @@ class OpenAISpeechToText(_BaseOpenAI, SpeechToTextModel):
             ISO-639-1 (e.g. en) format will improve accuracy and latency.
         """
         file = encode_data_to_bytes(data)
-        params = dict(
-            file=file,
-            language=language,
-            response_format=response_format,
-            timestamp_granularities=timestamp_granularities,
-            prompt=prompt,
-            model=self.model_id,
-        )
+        params = {
+            "file": file,
+            "language": language,
+            "response_format": response_format,
+            "timestamp_granularities": timestamp_granularities,
+            "prompt": prompt,
+            "model": self.model_id,
+        }
         if stream:
             stream_response = ModelStreamResponse()
             params["stream_response"] = stream_response

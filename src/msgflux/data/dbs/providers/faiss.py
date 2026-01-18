@@ -116,11 +116,12 @@ class FAISSVectorDB(BaseVector, BaseDB, VectorDB):
         self.index.add(embeddings)
         self.documents.extend(documents)
 
-    def _search(
+    def _search(  # noqa: C901
         self,
         queries: Union[List[List[float]], "np.ndarray"],
         top_k: Optional[int] = 4,
         threshold: Optional[float] = None,
+        *,
         return_score: Optional[bool] = False,
     ) -> List[List[Dict]]:
         if len(np.array(queries).shape) == 1:
@@ -200,9 +201,9 @@ class FAISSVectorDB(BaseVector, BaseDB, VectorDB):
             FAISSVectorDB instance
         """
         # Load metadata
-        metadata_path = os.path.join(directory, "metadata.pkl")
+        metadata_path = os.path.join(path, "metadata.pkl")
         with open(metadata_path, "rb") as f:
-            metadata = pickle.load(f)
+            metadata = pickle.load(f)  # noqa: S301
 
         # Create instance
         instance = cls(
@@ -210,7 +211,7 @@ class FAISSVectorDB(BaseVector, BaseDB, VectorDB):
         )
 
         # Load FAISS index
-        index_path = os.path.join(directory, "faiss_index.bin")
+        index_path = os.path.join(path, "faiss_index.bin")
         instance.index = faiss.read_index(index_path)
 
         # Restore metadata

@@ -1,9 +1,17 @@
+import asyncio
 import base64
 import io
 import os
 from typing import Optional, Union
 
 import requests
+
+try:
+    import anyio
+    import httpx
+except ImportError:
+    anyio = None
+    httpx = None
 
 
 def encode_base64_from_url(url: str) -> str:
@@ -25,6 +33,46 @@ def encode_data_to_base64(path: str) -> str:
         return encode_base64_from_url(path)
     elif os.path.exists(path) and not os.path.isdir(path):
         return encode_local_file_in_base64(path)
+    else:
+        return path  # Fallback
+
+
+# Async versions
+async def aencode_base64_from_url(url: str) -> str:
+    """Async version of encode_base64_from_url using httpx."""
+    if httpx is None:
+        # Fallback to sync version using run_in_executor
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, encode_base64_from_url, url)
+
+    try:
+        async with httpx.AsyncClient(timeout=300.0) as client:
+            response = await client.get(url)
+            response.raise_for_status()
+            return base64.b64encode(response.content).decode("utf-8")
+    except (httpx.HTTPError, UnicodeDecodeError):
+        return url  # Fallback
+
+
+async def aencode_local_file_in_base64(path: str) -> str:
+    """Async version of encode_local_file_in_base64 using anyio.Path."""
+    if anyio is None:
+        # Fallback to sync version using run_in_executor
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, encode_local_file_in_base64, path)
+
+    file = anyio.Path(path)
+    async with await file.open("rb") as f:
+        content = await f.read()
+        return base64.b64encode(content).decode("utf-8")
+
+
+async def aencode_data_to_base64(path: str) -> str:
+    """Async version of encode_data_to_base64."""
+    if "http" in path:
+        return await aencode_base64_from_url(path)
+    elif os.path.exists(path) and not os.path.isdir(path):
+        return await aencode_local_file_in_base64(path)
     else:
         return path  # Fallback
 

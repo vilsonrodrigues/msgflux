@@ -38,14 +38,16 @@ class Example:
         input_transformer: Optional[callable] = None,
         output_transformer: Optional[callable] = None,
     ) -> "Example":
-        """Retorna uma nova instância do Example com inputs/outputs transformados para string.
+        """Returns a new Example instance with transformed inputs/outputs as strings.
 
         Args:
-            input_transformer: Função para transformar input dict em string
-            output_transformer: Função para transformar output dict em string
+            input_transformer:
+                Function to transform input dict to string.
+            output_transformer:
+                Function to transform output dict to string.
 
         Returns:
-            Nova instância de Example com valores em string
+            New Example instance with string values
         """
         new_input = self.inputs
         new_output = self.labels
@@ -104,9 +106,9 @@ class ExampleCollection:
         self,
         inputs: Union[str, Mapping[str, Any]],
         labels: Union[str, Mapping[str, Any]],
-        title: str = None,
-        reasoning: str = None,
-        topic: str = None,
+        title: Optional[str] = None,
+        reasoning: Optional[str] = None,
+        topic: Optional[str] = None,
     ):
         """Add an example to the collection."""
         example = Example(

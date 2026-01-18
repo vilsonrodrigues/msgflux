@@ -37,7 +37,7 @@ class BaseAuth(ABC):
         """
         if self._expires_at is None:
             return False
-        return datetime.now() >= self._expires_at
+        return datetime.now()  # noqa: DTZ005 >= self._expires_at
 
     def set_expiration(self, expires_in: int) -> None:
         """Set token expiration time.
@@ -45,7 +45,7 @@ class BaseAuth(ABC):
         Args:
             expires_in: Number of seconds until expiration.
         """
-        self._expires_at = datetime.now() + timedelta(seconds=expires_in)
+        self._expires_at = datetime.now() + timedelta(seconds=expires_in)  # noqa: DTZ005
 
     async def refresh_if_needed(self) -> bool:
         """Refresh authentication if expired.

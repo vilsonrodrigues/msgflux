@@ -4,7 +4,6 @@ A lightweight implementation that supports multiple transports (stdio, HTTP/SSE)
 """
 
 import asyncio
-import time
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 from msgflux.protocols.mcp.exceptions import MCPConnectionError, MCPError
@@ -44,6 +43,7 @@ class MCPClient:
         client_info: Optional[Dict[str, Any]] = None,
         max_retries: int = 3,
         retry_delay: float = 1.0,
+        *,
         auto_reconnect: bool = True,
     ):
         """Initialize MCP client with a transport.
@@ -82,6 +82,7 @@ class MCPClient:
         client_info: Optional[Dict[str, Any]] = None,
         max_retries: int = 3,
         retry_delay: float = 1.0,
+        *,
         auto_reconnect: bool = True,
     ):
         """Create MCP client with stdio transport.
@@ -121,6 +122,7 @@ class MCPClient:
         client_info: Optional[Dict[str, Any]] = None,
         max_retries: int = 3,
         retry_delay: float = 1.0,
+        *,
         auto_reconnect: bool = True,
         pool_limits: Optional[Dict[str, int]] = None,
     ):
@@ -135,7 +137,8 @@ class MCPClient:
             max_retries: Maximum connection retry attempts
             retry_delay: Initial delay between retries
             auto_reconnect: Enable automatic reconnection
-            pool_limits: Connection pool limits (max_connections, max_keepalive_connections)
+            pool_limits: Connection pool limits (max_connections,
+                max_keepalive_connections)
 
         Returns:
             MCPClient instance configured for HTTP
@@ -194,8 +197,6 @@ class MCPClient:
 
     async def _connect_with_retry(self):
         """Connect with exponential backoff retry logic."""
-        last_exception = None
-
         for attempt in range(self.max_retries):
             try:
                 self._connection_attempts = attempt + 1
@@ -204,7 +205,6 @@ class MCPClient:
                 self._last_error = None
                 return
             except Exception as e:
-                last_exception = e
                 self._last_error = e
 
                 if attempt < self.max_retries - 1:
@@ -264,7 +264,7 @@ class MCPClient:
 
     # Resource Methods
     @Spans.ainstrument(attributes={"mcp.operation": "list_resources"})
-    async def list_resources(self, use_cache: bool = True) -> List[MCPResource]:
+    async def list_resources(self, *, use_cache: bool = True) -> List[MCPResource]:
         """List available resources."""
         await self._ensure_connected()
 
@@ -315,7 +315,7 @@ class MCPClient:
 
     # Tool Methods
     @Spans.ainstrument(attributes={"mcp.operation": "list_tools"})
-    async def list_tools(self, use_cache: bool = True) -> List[MCPTool]:
+    async def list_tools(self, *, use_cache: bool = True) -> List[MCPTool]:
         """List available tools."""
         await self._ensure_connected()
 
@@ -345,7 +345,7 @@ class MCPClient:
         self,
         name: str,
         arguments: Optional[Dict[str, Any]] = None,
-        progress_callback: Optional[Callable[[float, Optional[str]], None]] = None,
+        _progress_callback: Optional[Callable[[float, Optional[str]], None]] = None,
     ) -> MCPToolResult:
         """Execute a tool.
 
@@ -359,11 +359,9 @@ class MCPClient:
         """
         await self._ensure_connected()
 
-        start_time = time.time()
         params = {"name": name, "arguments": arguments or {}}
 
         response = await self.transport.send_request("tools/call", params)
-        duration = time.time() - start_time
 
         if "error" in response:
             error_msg = response["error"].get("message", str(response["error"]))
@@ -388,7 +386,7 @@ class MCPClient:
         return MCPToolResult(content=contents, isError=result.get("isError", False))
 
     # Prompt Methods
-    async def list_prompts(self, use_cache: bool = True) -> List[MCPPrompt]:
+    async def list_prompts(self, *, use_cache: bool = True) -> List[MCPPrompt]:
         """List available prompts."""
         if use_cache and self._prompts_cache is not None:
             return self._prompts_cache

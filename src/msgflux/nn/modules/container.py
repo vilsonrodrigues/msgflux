@@ -109,7 +109,9 @@ class Sequential(Module):
         return output
 
     async def aforward(self, *args, **kwargs) -> Any:
-        """Async version of forward. Executes modules sequentially with async support."""
+        """Async version of forward. Executes modules sequentially with async
+        support.
+        """
         modules_iter = iter(self._modules.values())
         first_module = next(modules_iter)
 

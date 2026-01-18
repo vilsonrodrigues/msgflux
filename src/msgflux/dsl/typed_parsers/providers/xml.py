@@ -6,7 +6,7 @@ try:
     import defusedxml.ElementTree as defused_ET
     from defusedxml import minidom
 except ImportError:
-    defused_ET = None
+    defused_ET = None  # noqa: N816
     minidom = None
 
 from msgflux.dotdict import dotdict
@@ -101,7 +101,8 @@ class TypedXMLParser(BaseTypedParser):
     def decode(
         cls, typed_xml: str, *, extract_root_values: Optional[bool] = True
     ) -> Dict[str, Any]:
-        """Converts an XML into a typed dictionary, returning direct values for single tags.
+        """Converts an XML into a typed dictionary, returning direct values
+        for single tags.
 
         Args:
             typed_xml:
@@ -150,7 +151,7 @@ class TypedXMLParser(BaseTypedParser):
             result = next(iter(result.values()))
             if not isinstance(result, dict):
                 # handles case where root has a single, non-dict child
-                result = {list(root)[0].tag: result}
+                result = {next(iter(root)).tag: result}
 
         result = dotdict(result)
         return result

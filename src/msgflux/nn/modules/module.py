@@ -1,7 +1,6 @@
 import asyncio
 import functools
 import inspect
-import re
 import weakref
 from collections import OrderedDict, namedtuple
 from typing import (
@@ -22,9 +21,10 @@ import msgspec
 
 try:
     from code2mermaid import code_to_mermaid
+    from mermaid import Mermaid
 except ImportError:
     code_to_mermaid = None
-from jinja2 import Template
+    Mermaid = None
 from msgtrace.sdk import MsgTraceAttributes
 from opentelemetry import trace
 from opentelemetry.trace import Status, StatusCode
@@ -33,7 +33,6 @@ from msgflux._private.executor import Executor
 from msgflux.dotdict import dotdict
 from msgflux.envs import envs
 from msgflux.exceptions import UnsafeModelResponseError, UnsafeUserInputError
-from msgflux.logger import logger
 from msgflux.message import Message
 from msgflux.models.gateway import ModelGateway
 from msgflux.models.model import Model
@@ -41,11 +40,11 @@ from msgflux.models.response import ModelResponse, ModelStreamResponse
 from msgflux.nn.parameter import Parameter
 from msgflux.telemetry import Spans
 from msgflux.utils.convert import convert_camel_snake_to_title
-from msgflux.utils.encode import encode_data_to_base64
 from msgflux.utils.hooks import RemovableHandle
 from msgflux.utils.mermaid import plot_mermaid
 from msgflux.utils.msgspec import StructFactory
-from msgflux.utils.validation import is_base64, is_builtin_type, is_subclass_of
+from msgflux.utils.templates import format_template
+from msgflux.utils.validation import is_builtin_type, is_subclass_of
 
 __all__ = [
     "Module",
@@ -438,7 +437,7 @@ class Module:
         orientation: Optional[str] = "TD",
         *,
         remove_self: Optional[bool] = True,
-    ) -> "Mermaid":
+    ) -> Mermaid:
         """Generates and renders a Mermaid diagram of the `forward` method.
 
         This method extracts the source code of the `forward` method and converts
@@ -502,37 +501,6 @@ class Module:
             ]
         return None
 
-    def _prepare_data_uri(
-        self,
-        source: str,
-        force_encode: Optional[bool] = False,  # noqa: FBT001, FBT002
-    ) -> Optional[str]:
-        """Prepares a data string (URL or Data URI base64).
-        If force_encode=True, always tries to download and encode URL.
-        Otherwise, keeps the URL if it is HTTP and not base64.
-        Returns None in case of encoding/download error.
-        """
-        if not source:
-            return None
-
-        if is_base64(source):
-            # If it is already base64, assume it is ready (no prefix)
-            # Prefix will be added by formatter if needed
-            return source
-
-        is_url = source.startswith("http")
-
-        if is_url and not force_encode:
-            # Keep the URL as is if you don't force the encoding
-            return source
-
-        # Need to encode (either local or force_encode=True for URL)
-        try:
-            return encode_data_to_base64(source)
-        except Exception as e:
-            logger.error(f"Failed to encode source {source}: {e}")
-            return None
-
     def _format_task_template(self, content: Union[str, Dict[str, Any]]) -> str:
         return self._format_template(content, self.templates.get("task"))
 
@@ -542,26 +510,17 @@ class Module:
     def _format_template(
         self, content: Union[str, Dict[str, Any]], raw_template: str
     ) -> str:
-        if isinstance(content, str):
-            rendered = raw_template.format(content)
-        elif isinstance(content, dict):
-            template = Template(raw_template)
-            rendered = template.render(content)
-        else:
-            raise ValueError("Unsupported content type for template formatting")
-        rendered = re.sub(r"\n{3,}", "\n\n", rendered).strip()
-        return rendered
+        """Format a template with content, using security settings from config.
+
+        Delegates to msgflux.utils.templates.format_template with sanitization
+        controlled by the 'sanitize_inputs' config option (default: True).
+        """
+        sanitize = self.config.get("sanitize_inputs", True)
+        return format_template(content, raw_template, sanitize_inputs=sanitize)
 
     def set_name(self, name: str):
         if isinstance(name, str):
             if name != "":
-                # Validate snake_case pattern
-                if not re.match(r"^[a-z][a-z0-9_]*$", name):
-                    raise ValueError(
-                        f"`name` must follow snake_case pattern (lowercase letters, "
-                        f"numbers, and underscores only, starting with a letter). "
-                        f"Got: '{name}'"
-                    )
                 self.register_buffer("name", name)
             else:
                 raise ValueError("`name` requires a string not empty")
@@ -749,7 +708,8 @@ class Module:
 
         if not isinstance(message_fields, dict):
             raise TypeError(
-                f"`message_fields` must be a dict or None, given `{type(message_fields)}`"
+                f"`message_fields` must be a dict or None, given "
+                f"`{type(message_fields)}`"
             )
 
         # Validate keys
@@ -770,7 +730,7 @@ class Module:
 
         Args:
             templates: Dictionary mapping template types to Jinja template strings.
-                Valid keys: "task", "response", "context"
+                Valid keys: "task", "response", "context", "system_prompt"
 
         Raises:
             TypeError: If templates is not a dict or None
@@ -780,7 +740,7 @@ class Module:
             The "context" template applies only to context_inputs, not to context_cache.
         """
         # Define valid keys
-        valid_keys = {"task", "response", "context"}
+        valid_keys = {"task", "response", "context", "system_prompt"}
 
         if templates is None:
             self.templates = {}
@@ -989,7 +949,7 @@ class Module:
             raise KeyError("parameter name can't contain '.'")
         elif name == "":
             raise KeyError("parameter name can't be empty string")
-        elif hasattr(self, name) and name not in self._parameters:
+        elif name in self.__dict__ and name not in self._parameters:
             raise KeyError(f"attribute '{name}' already exists")
         elif param is None:
             self._parameters[name] = None
@@ -1019,7 +979,7 @@ class Module:
             raise TypeError(f"{type(module)} is not a Module subclass")
         elif not isinstance(name, str):
             raise TypeError(f"module name should be a string. Got {type(name)}")
-        elif hasattr(self, name) and name not in self._modules:
+        elif name in self.__dict__ and name not in self._modules:
             raise KeyError(f"attribute `{name}` already exists")
         elif "." in name:
             raise KeyError(f"module name can't contain '.', got: {name}")
@@ -1406,12 +1366,14 @@ class Module:
         current_span = trace.get_current_span()
         # If there is no active span or it is not recording, this is the root module
         if current_span is None or not current_span.is_recording():
-            with Spans.init_flow(
-                module_name_title, module_type, encoded_state_dict
-            ) as span:
+            with Spans.init_flow(module_name_title) as span:
                 try:
                     MsgTraceAttributes.set_module_name(module_name_title)
                     MsgTraceAttributes.set_module_type(module_type)
+                    if envs.telemetry_capture_state_dict and encoded_state_dict:
+                        MsgTraceAttributes.set_custom(
+                            "module.state_dict", encoded_state_dict
+                        )
                     module_output = self.forward(*args, **kwargs)
                     span.set_status(Status(StatusCode.OK))
                     return module_output
@@ -1428,8 +1390,18 @@ class Module:
         if not (self._forward_hooks or self._forward_pre_hooks):
             return await self._acall(*args, **kwargs)
 
+        # Execute forward pre-hooks (sync or async)
         for hook in self._forward_pre_hooks.values():
-            hook_result = hook(self, args, kwargs)
+            if inspect.iscoroutinefunction(hook):
+                # Async hook - await directly
+                hook_result = await hook(self, args, kwargs)
+            else:
+                # Sync hook - run in executor to avoid blocking event loop
+                loop = asyncio.get_event_loop()
+                hook_result = await loop.run_in_executor(
+                    None, functools.partial(hook, self, args, kwargs)
+                )
+
             if hook_result is not None:
                 if isinstance(hook_result, tuple) and len(hook_result) == 2:
                     args, kwargs = hook_result
@@ -1440,8 +1412,18 @@ class Module:
 
         result = await self._acall(*args, **kwargs)
 
+        # Execute forward hooks (sync or async)
         for hook in self._forward_hooks.values():
-            hook_result = hook(self, args, kwargs, result)
+            if inspect.iscoroutinefunction(hook):
+                # Async hook - await directly
+                hook_result = await hook(self, args, kwargs, result)
+            else:
+                # Sync hook - run in executor to avoid blocking event loop
+                loop = asyncio.get_event_loop()
+                hook_result = await loop.run_in_executor(
+                    None, functools.partial(hook, self, args, kwargs, result)
+                )
+
             if hook_result is not None:
                 result = hook_result
 
@@ -1490,12 +1472,14 @@ class Module:
         current_span = trace.get_current_span()
         # If there is no active span or it is not recording, this is the root module
         if current_span is None or not current_span.is_recording():
-            async with Spans.ainit_flow(
-                module_name_title, module_type, encoded_state_dict
-            ) as span:
+            async with Spans.ainit_flow(module_name_title) as span:
                 try:
                     MsgTraceAttributes.set_module_name(module_name_title)
                     MsgTraceAttributes.set_module_type(module_type)
+                    if envs.telemetry_capture_state_dict and encoded_state_dict:
+                        MsgTraceAttributes.set_custom(
+                            "module.state_dict", encoded_state_dict
+                        )
                     module_output = await self.aforward(*args, **kwargs)
                     span.set_status(Status(StatusCode.OK))
                     return module_output
@@ -1549,19 +1533,39 @@ class Module:
         if "_non_persistent_buffers_set" not in self.__dict__:
             self._non_persistent_buffers_set = set()
 
+    def __getattribute__(self, name: str) -> Union[Any, "Module"]:
+        # Don't intercept special attributes or private attributes
+        if name.startswith("_"):
+            return super().__getattribute__(name)
+
+        # Check if this is a registered parameter, buffer, or module
+        # These should take priority over class attributes
+        try:
+            _dict = super().__getattribute__("__dict__")
+
+            if "_parameters" in _dict:
+                _parameters = _dict["_parameters"]
+                if name in _parameters:
+                    return _parameters[name]
+
+            if "_buffers" in _dict:
+                _buffers = _dict["_buffers"]
+                if name in _buffers:
+                    return _buffers[name]
+
+            if "_modules" in _dict:
+                _modules = _dict["_modules"]
+                if name in _modules:
+                    return _modules[name]
+        except AttributeError:
+            pass
+
+        # Fall back to normal attribute access
+        return super().__getattribute__(name)
+
     def __getattr__(self, name: str) -> Union[Any, "Module"]:
-        if "_parameters" in self.__dict__:
-            _parameters = self.__dict__["_parameters"]
-            if name in _parameters:
-                return _parameters[name]
-        if "_buffers" in self.__dict__:
-            _buffers = self.__dict__["_buffers"]
-            if name in _buffers:
-                return _buffers[name]
-        if "_modules" in self.__dict__:
-            modules = self.__dict__["_modules"]
-            if name in modules:
-                return modules[name]
+        # This is now only called when attribute truly doesn't exist
+        # (after __getattribute__ doesn't find it)
         raise AttributeError(
             f"`{type(self).__name__}` object has no attribute `{name}`"
         )

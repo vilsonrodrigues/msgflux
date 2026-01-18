@@ -67,9 +67,9 @@ class ChatBlock(metaclass=ChatBlockMeta):
         return {"role": "system", "content": content}
 
     @staticmethod
-    def tool_call(id: str, name: str, arguments: str) -> Dict[str, str]:
+    def tool_call(tool_id: str, name: str, arguments: str) -> Dict[str, str]:
         return {
-            "id": id,
+            "id": tool_id,
             "type": "function",
             "function": {"name": name, "arguments": arguments},
         }
@@ -131,8 +131,11 @@ class ChatBlock(metaclass=ChatBlockMeta):
         return {"type": "video_url", "video_url": {"url": url, **kwargs}}
 
     @staticmethod
-    def audio(data: str, format: str) -> Dict[str, str]:
-        return {"type": "input_audio", "input_audio": {"data": data, "format": format}}
+    def audio(data: str, audio_format: str) -> Dict[str, str]:
+        return {
+            "type": "input_audio",
+            "input_audio": {"data": data, "format": audio_format},
+        }
 
     @staticmethod
     def file(filename: str, file_data: str) -> Dict[str, str]:
@@ -209,7 +212,7 @@ complex_arguments_schema = {
 }
 
 
-def response_format_from_msgspec_struct(
+def response_format_from_msgspec_struct(  # noqa: C901
     struct_class: Type[msgspec.Struct],
 ) -> Dict[str, Any]:
     """Converts a msgspec.Struct to OpenAI's response_format format."""
@@ -300,7 +303,7 @@ def response_format_from_msgspec_struct(
     return response_format
 
 
-def hint_to_schema(type_hint) -> dict:
+def hint_to_schema(type_hint) -> dict:  # noqa: C901
     """Converte um type hint para um fragmento JSON Schema."""
     origin = get_origin(type_hint)
 
@@ -361,7 +364,7 @@ def clean_docstring(docstring: str) -> str:
     return cleaned
 
 
-def parse_docstring_args(docstring: str) -> Dict[str, str]:
+def parse_docstring_args(docstring: str) -> Dict[str, str]:  # noqa: C901
     """Extracts parameter descriptions from the Args section of the docstring.
 
     Supports:

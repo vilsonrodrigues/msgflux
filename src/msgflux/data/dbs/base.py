@@ -1,7 +1,10 @@
 from abc import abstractmethod
-from typing import List, Mapping, Optional, Union
+from typing import TYPE_CHECKING, List, Mapping, Optional, Union
 
 import msgspec
+
+if TYPE_CHECKING:
+    import numpy as np
 
 from msgflux._private.client import BaseClient
 from msgflux.data.dbs.response import DBResponse
@@ -18,13 +21,16 @@ class BaseDB(BaseClient):
 
     @abstractmethod
     def _initialize(self):
-        """Initialize the class. This method must be implemented by subclasses.
+        """Initialize the class. This method must be implemented by
+        subclasses.
 
-        This method is called during the deserialization process to ensure that the client
-        is properly initialized after its state has been restored.
+        This method is called during the deserialization process to ensure
+        that the client is properly initialized after its state has been
+        restored.
 
         Raises:
-            NotImplementedError: If the method is not implemented by the subclass.
+            NotImplementedError: If the method is not implemented by the
+                subclass.
         """
         raise NotImplementedError
 
@@ -49,15 +55,18 @@ class BaseKV:
         return results
 
     def __call__(self, queries: Union[str, List[str]]) -> DBResponse:
-        """Executes a search in the key-value database for the given query or queries.
+        """Executes a search in the key-value database for the given query
+        or queries.
 
-        This method searches the underlying key-value store using the provided query string
-        or list of query strings. If a single query is provided, the search result is returned
-        directly. If multiple queries are provided, a list of results is returned.
+        This method searches the underlying key-value store using the
+        provided query string or list of query strings. If a single query
+        is provided, the search result is returned directly. If multiple
+        queries are provided, a list of results is returned.
 
         Args:
             queries:
-                A single query string or a list of query strings to search for in the db.
+                A single query string or a list of query strings to search
+                for in the db.
 
         Returns:
             An object containing the search results.
@@ -108,7 +117,7 @@ class BaseVector:
         Raises:
             ValueError: If the query vectors are not in a supported format or are empty.
         """
-        results = self._search(queries, top_k, threshold, return_score)
+        results = self._search(queries, top_k, threshold, return_score=return_score)
         response = DBResponse()
         response.set_response_type("vector_search")
         response.add(results)

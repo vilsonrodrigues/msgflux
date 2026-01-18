@@ -509,13 +509,12 @@ async def abackground_task(to_send: Callable, *args, **kwargs) -> None:
                 await to_send(*args, **kwargs)
             else:
                 # Fall back to running sync function in executor
-                executor = Executor.get_instance()  # TODO
                 loop = asyncio.get_event_loop()
                 await loop.run_in_executor(None, lambda: to_send(*args, **kwargs))
         except Exception as e:
             logger.error(f"Async background task error: {e!s}", exc_info=True)
 
-    asyncio.create_task(run_task())
+    asyncio.create_task(run_task())  # noqa: RUF006
 
 
 @Spans.ainstrument()
@@ -632,7 +631,8 @@ async def ascatter_gather(
 
     Args:
         to_send:
-            List of callable objects (e.g. async functions or `Module` instances with acall).
+            List of callable objects (e.g. async functions or `Module` instances
+            with acall).
         args_list:
             Each tuple contains the positional arguments for the corresponding callable
             in `to_send`. If `None`, no positional arguments are passed unless specified
@@ -686,7 +686,8 @@ async def amsg_bcast_gather(
 
     Args:
         to_send:
-            List of callable objects (e.g. async functions or `Module` instances with acall).
+            List of callable objects (e.g. async functions or `Module` instances
+            with acall).
         message:
             Instance of `msgflux.dotdict` to broadcast.
 

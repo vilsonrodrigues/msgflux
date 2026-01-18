@@ -156,19 +156,19 @@ ignore = [
   "N817",    # Allow CamelCase imports that are aliased as acronyms.
   "TID252",  # Allow relative imports
   "RUF012",  # Allow mutable class attributes should not be annotated
+  "RUF022",  # Allow __all__ sorting different from isort (we use runtime check)
   "UP006",   # Allow List instead list to type hyint  
   "UP007",   # Allow `from typing import Optional` instead of `X | None`  
   "UP035",   # Allow `from typing import Sequence` instead of `Sequence[X]`
 ]
 unfixable = ["F401"]
 
-[tool.ruff.lint.isort]
-known-first-party = ["msgflux"]
-
-[tool.ruff.lint.flake8-tidy-imports]
-ban-relative-imports = "all"
-
 [tool.ruff.lint.per-file-ignores]
+# Allow vars parameter name in agent and tool modules (core library feature)
+"src/msgflux/nn/modules/agent.py" = ["A001","A002"]
+"src/msgflux/nn/modules/tool.py" = ["A001","A002"]
+# Allow MCP protocol's camelCase naming convention
+"src/msgflux/protocols/mcp/types.py" = ["N815"]
 "tests/**/*" = [
   "D",
   "PLR0911",
@@ -181,3 +181,8 @@ ban-relative-imports = "all"
   "S107",
   "TID252",
 ]
+[tool.ruff.lint.isort]
+known-first-party = ["msgflux"]
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "all"

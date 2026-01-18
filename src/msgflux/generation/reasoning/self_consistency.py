@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List
 
 from msgspec import Meta, Struct
 from typing_extensions import Annotated
