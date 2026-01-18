@@ -1,13 +1,13 @@
 """Hugging Face Hub source for AutoModule."""
 
-import logging
 from pathlib import Path
 from typing import List, Optional
 
 from msgflux.auto.sources.base import Source
 from msgflux.exceptions import DownloadError
+from msgflux.logger import init_logger
 
-logger = logging.getLogger(__name__)
+logger = init_logger(__name__)
 
 
 class HuggingFaceSource(Source):

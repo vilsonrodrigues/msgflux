@@ -1,7 +1,6 @@
 """AutoModule - Load nn.Module from remote repositories."""
 
 import importlib.util
-import logging
 import re
 import sys
 import warnings
@@ -18,8 +17,9 @@ from msgflux.exceptions import (
     DownloadError,
     SecurityError,
 )
+from msgflux.logger import init_logger
 
-logger = logging.getLogger(__name__)
+logger = init_logger(__name__)
 
 SourceType = Literal["github", "huggingface"]
 

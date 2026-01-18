@@ -1,15 +1,15 @@
 """Configuration loading and validation for AutoModule."""
 
-import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional
 
 from msgflux.exceptions import ConfigurationError, IncompatibleVersionError
+from msgflux.logger import init_logger
 from msgflux.utils.msgspec import read_json
 from msgflux.version import __version__
 
-logger = logging.getLogger(__name__)
+logger = init_logger(__name__)
 
 SharingMode = Literal["class", "instance"]
 

@@ -1,14 +1,14 @@
 """Cache management for AutoModule."""
 
-import logging
 import os
 import shutil
 from pathlib import Path
 from typing import Optional
 
 from msgflux.envs import envs
+from msgflux.logger import init_logger
 
-logger = logging.getLogger(__name__)
+logger = init_logger(__name__)
 
 
 def get_default_cache_dir() -> Path:
