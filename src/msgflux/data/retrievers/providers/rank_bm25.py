@@ -9,13 +9,14 @@ except ImportError:
     np = None
 
 from msgflux.data.retrievers.base import BaseLexical, BaseRetriever
+from msgflux.data.retrievers.registry import register_retriever
 from msgflux.data.retrievers.response import RetrieverResponse
 from msgflux.data.retrievers.types import LexicalRetriever
 from msgflux.dotdict import dotdict
 from msgflux.nn import functional as F
 
 
-# @register_retriever
+@register_retriever
 class RankBM25LexicalRetriever(BaseLexical, BaseRetriever, LexicalRetriever):
     """Rank Okapi BM25 - Best Matching 25 Lexical Retriever."""
 
@@ -47,7 +48,7 @@ class RankBM25LexicalRetriever(BaseLexical, BaseRetriever, LexicalRetriever):
     def _initialize(self):
         self.documents: List[str] = []
         self.tokenized_corpus: List[List[str]] = []
-        self.bm25: Optional[BM25Okapi] = None
+        self.bm25: Optional["BM25Okapi"] = None
 
     def _tokenize(self, text: str) -> List[str]:
         """Tokenize text into words."""
@@ -65,7 +66,7 @@ class RankBM25LexicalRetriever(BaseLexical, BaseRetriever, LexicalRetriever):
         tokenized_query = self._tokenize(query)
         scores = self.bm25.get_scores(tokenized_query)
 
-        # Filtra por threshold
+        # Filter by threshold
         filtered_doc_scores = [
             (doc_id, score) for doc_id, score in enumerate(scores) if score >= threshold
         ]
@@ -105,7 +106,7 @@ class RankBM25LexicalRetriever(BaseLexical, BaseRetriever, LexicalRetriever):
 
         mean_score = np.mean(scores)
         median_score = np.median(scores)
-        std_score = np.std(scores)  # já calcula a raiz
+        std_score = np.std(scores)
 
         return {
             "min_score": float(np.min(scores)),
