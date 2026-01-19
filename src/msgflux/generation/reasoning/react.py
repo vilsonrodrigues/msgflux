@@ -1,8 +1,14 @@
-from typing import Any, List, Optional
+from typing import TYPE_CHECKING, Any, List, Mapping, Optional
+from uuid import uuid4
 
+import msgspec
 from msgspec import Struct
 
-from msgflux.generation.control_flow import ToolFlowControl
+from msgflux.generation.control_flow import ToolFlowControl, ToolFlowResult
+from msgflux.utils.chat import ChatBlock
+
+if TYPE_CHECKING:
+    from msgflux.nn.modules.tool import ToolResponses
 
 REACT_SYSTEM_MESSAGE = """
 You are an Agent. In each episode, you will be given the task as input.
@@ -64,6 +70,8 @@ For each function call return a encoded json object with function name and argum
 class ToolCall(Struct):
     name: str
     arguments: Optional[Any]
+    id: Optional[str] = None
+    result: Optional[Any] = None
 
 
 class ReActStep(Struct):
@@ -74,6 +82,72 @@ class ReActStep(Struct):
 class ReAct(Struct, ToolFlowControl):
     current_step: Optional[ReActStep]
     final_answer: Optional[str]
+
+    @classmethod
+    def extract_flow_result(cls, raw_response: Mapping[str, Any]) -> ToolFlowResult:
+        """Extract flow information from ReAct response."""
+        final_answer = raw_response.get("final_answer")
+        if final_answer is not None:
+            return ToolFlowResult(
+                is_complete=True,
+                tool_calls=None,
+                reasoning=None,
+                final_response=raw_response,
+            )
+
+        current_step = raw_response.get("current_step")
+        if current_step is not None:
+            actions = current_step.get("actions", [])
+            tool_calls = []
+            for act in actions:
+                tool_id = str(uuid4())
+                act["id"] = tool_id
+                tool_calls.append((tool_id, act.get("name"), act.get("arguments")))
+
+            return ToolFlowResult(
+                is_complete=False,
+                tool_calls=tool_calls,
+                reasoning=current_step.get("thought"),
+                final_response=None,
+            )
+
+        return ToolFlowResult(
+            is_complete=True,
+            tool_calls=None,
+            reasoning=None,
+            final_response=raw_response,
+        )
+
+    @classmethod
+    def inject_results(
+        cls, raw_response: Mapping[str, Any], tool_results: "ToolResponses"
+    ) -> Mapping[str, Any]:
+        """Inject tool results back into ReAct structure."""
+        current_step = raw_response.get("current_step")
+        if current_step is not None:
+            actions = current_step.get("actions", [])
+            for act in actions:
+                call = tool_results.get_by_id(act.get("id"))
+                if call is not None:
+                    act["result"] = call.result or call.error
+        return raw_response
+
+    @classmethod
+    def build_history(
+        cls,
+        raw_response: Mapping[str, Any],
+        model_state: List[Mapping[str, Any]],
+    ) -> List[Mapping[str, Any]]:
+        """Build history message for next iteration."""
+        if model_state and model_state[-1].get("role") == "assistant":
+            last_react_msg = model_state[-1].get("content")
+            react_state = msgspec.json.decode(last_react_msg)
+            react_state.append(raw_response)
+            model_state[-1] = ChatBlock.assist(react_state)
+        else:
+            react_state = [raw_response]
+            model_state.append(ChatBlock.assist(react_state))
+        return model_state
 
 
 ReAct.system_message = REACT_SYSTEM_MESSAGE
