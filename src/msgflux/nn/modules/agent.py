@@ -11,7 +11,6 @@ from typing import (
     Union,
     cast,
 )
-from uuid import uuid4
 
 import msgspec
 
@@ -569,51 +568,40 @@ class Agent(Module, metaclass=AutoParams):
         vars: Mapping[str, Any],
         model_preference: Optional[str] = None,
     ) -> Tuple[Union[str, Mapping[str, Any], ModelStreamResponse], Mapping[str, Any]]:
-        """Handle the fields returned by `ReAct`. If the fields are different,
-        you must rewrite this function.
-        """
+        """Handle tool flow control responses using the ToolFlowControl interface."""
+        flow_control = self.generation_schema
         while True:
             raw_response = self._extract_raw_response(model_response)
 
-            if getattr(raw_response, "final_answer", None):
+            # Use ToolFlowControl interface via generation_schema
+            flow_result = flow_control.extract_flow_result(raw_response)
+
+            if flow_result.is_complete:
                 return model_response, model_state
 
-            if getattr(raw_response, "current_step", None):
-                step = raw_response.current_step
-                actions = step.actions
-                reasoning = step.thought
+            if self.config.get("verbose", False) and flow_result.reasoning:
+                cprint(
+                    f"[{self.name}][tool_calls_reasoning] {flow_result.reasoning}",
+                    bc="br2",
+                    ls="b",
+                )
 
-                if self.config.get("verbose", False):
-                    repr_str = f"[{self.name}][tool_calls_reasoning] {reasoning}"
-                    cprint(repr_str, bc="br2", ls="b")
-
-                for act in actions:
-                    act.id = str(uuid4())  # Add tool_id
-
-                tool_callings = [(act.id, act.name, act.arguments) for act in actions]
-                tool_results = self._process_tool_call(tool_callings, model_state, vars)
+            if flow_result.tool_calls:
+                tool_results = self._process_tool_call(
+                    flow_result.tool_calls, model_state, vars
+                )
 
                 if tool_results.return_directly:
                     tool_calls = tool_results.to_dict().pop("return_directly")
-                    tool_calls["reasoning"] = reasoning
+                    tool_calls["reasoning"] = flow_result.reasoning
                     tool_responses = dotdict(tool_responses=tool_calls)
-                    # TODO converter tool calls em tool call msgs
                     return tool_responses, model_state
 
-                for act in actions:  # Add results
-                    result = tool_results.get_by_id(act.id).result
-                    error = tool_results.get_by_id(act.id).error
-                    act.result = result or error
+                # Use interface to inject results
+                raw_response = flow_control.inject_results(raw_response, tool_results)
 
-                # Compact steps history
-                if model_state and model_state[-1].get("role") == "assistant":
-                    last_react_msg = model_state[-1].get("content")
-                    react_state = msgspec.json.decode(last_react_msg)
-                    react_state.append(raw_response)
-                    model_state[-1] = ChatBlock.assist(react_state)
-                else:
-                    react_state = [raw_response]
-                    model_state.append(ChatBlock.assist(react_state))
+                # Use interface to build history
+                model_state = flow_control.build_history(raw_response, model_state)
 
             model_response = self._execute_model(
                 model_state=model_state, model_preference=model_preference, vars=vars
@@ -627,53 +615,45 @@ class Agent(Module, metaclass=AutoParams):
         model_preference: Optional[str] = None,
     ) -> Tuple[Union[str, Mapping[str, Any], ModelStreamResponse], Mapping[str, Any]]:
         """Async version of _process_tool_flow_control_response.
-        Handle the fields returned by `ReAct`. If the fields are different,
-        you must rewrite this function.
+        Handle tool flow control responses using the ToolFlowControl interface.
         """
+        flow_control = self.generation_schema
         while True:
             raw_response = self._extract_raw_response(model_response)
 
-            if getattr(raw_response, "final_answer", None):
+            # Use ToolFlowControl interface via generation_schema (async)
+            flow_result = await flow_control.aextract_flow_result(raw_response)
+
+            if flow_result.is_complete:
                 return model_response, model_state
 
-            if getattr(raw_response, "current_step", None):
-                step = raw_response.current_step
-                actions = step.actions
-                reasoning = step.thought
+            if self.config.get("verbose", False) and flow_result.reasoning:
+                cprint(
+                    f"[{self.name}][tool_calls_reasoning] {flow_result.reasoning}",
+                    bc="br2",
+                    ls="b",
+                )
 
-                if self.config.get("verbose", False):
-                    repr_str = f"[{self.name}][tool_calls_reasoning] {reasoning}"
-                    cprint(repr_str, bc="br2", ls="b")
-
-                for act in actions:
-                    act.id = str(uuid4())  # Add tool_id
-
-                tool_callings = [(act.id, act.name, act.arguments) for act in actions]
+            if flow_result.tool_calls:
                 tool_results = await self._aprocess_tool_call(
-                    tool_callings, model_state, vars
+                    flow_result.tool_calls, model_state, vars
                 )
 
                 if tool_results.return_directly:
                     tool_calls = tool_results.to_dict().pop("return_directly")
-                    tool_calls["reasoning"] = reasoning
+                    tool_calls["reasoning"] = flow_result.reasoning
                     tool_responses = dotdict(tool_responses=tool_calls)
-                    # TODO converter tool calls em tool call msgs
                     return tool_responses, model_state
 
-                for act in actions:  # Add results
-                    result = tool_results.get_by_id(act.id).result
-                    error = tool_results.get_by_id(act.id).error
-                    act.result = result or error
+                # Use interface to inject results (async version)
+                raw_response = await flow_control.ainject_results(
+                    raw_response, tool_results
+                )
 
-                # Compact steps history
-                if model_state and model_state[-1].get("role") == "assistant":
-                    last_react_msg = model_state[-1].get("content")
-                    react_state = msgspec.json.decode(last_react_msg)
-                    react_state.append(raw_response)
-                    model_state[-1] = ChatBlock.assist(react_state)
-                else:
-                    react_state = [raw_response]
-                    model_state.append(ChatBlock.assist(react_state))
+                # Use interface to build history (async version)
+                model_state = await flow_control.abuild_history(
+                    raw_response, model_state
+                )
 
             model_response = await self._aexecute_model(
                 model_state=model_state, model_preference=model_preference, vars=vars
