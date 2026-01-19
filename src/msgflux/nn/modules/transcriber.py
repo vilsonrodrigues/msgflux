@@ -1,3 +1,5 @@
+import asyncio
+from functools import partial
 from typing import Any, Dict, Mapping, Optional, Union
 
 from msgflux.auto import AutoParams
@@ -11,6 +13,9 @@ from msgflux.nn.modules.module import Module
 
 class Transcriber(Module, metaclass=AutoParams):
     """Transcriber is a Module type that uses language models to transcribe audios."""
+
+    # Configure AutoParams to use class name as 'name' parameter
+    _autoparams_use_classname_for = "name"
 
     def __init__(
         self,
@@ -116,9 +121,9 @@ class Transcriber(Module, metaclass=AutoParams):
         self, message: Union[bytes, str, Dict[str, str], Message], **kwargs
     ) -> Union[str, Dict[str, str], Message, ModelStreamResponse]:
         """Async version of forward. Execute the transcriber asynchronously."""
-        inputs = self._prepare_task(message, **kwargs)
+        inputs = await self._aprepare_task(message, **kwargs)
         model_response = await self._aexecute_model(**inputs)
-        response = self._process_model_response(model_response, message)
+        response = await self._aprocess_model_response(model_response, message)
         return response
 
     def _execute_model(
@@ -164,6 +169,21 @@ class Transcriber(Module, metaclass=AutoParams):
                 f"Unsupported model response type `{model_response.response_type}`"
             )
 
+    async def _aprocess_model_response(
+        self,
+        model_response: Union[ModelResponse, ModelStreamResponse],
+        message: Union[str, Message],
+    ) -> Union[str, Dict[str, str], Message, ModelStreamResponse]:
+        """Async version of _process_model_response."""
+        if model_response.response_type == "transcript":
+            raw_response = self._extract_raw_response(model_response)
+            response = self._prepare_response(raw_response, message)
+            return response
+        else:
+            raise ValueError(
+                f"Unsupported model response type `{model_response.response_type}`"
+            )
+
     def _prepare_task(
         self, message: Union[bytes, str, Dict[str, str], Message], **kwargs
     ) -> Dict[str, Union[bytes, str]]:
@@ -174,6 +194,17 @@ class Transcriber(Module, metaclass=AutoParams):
             model_preference = self.get_model_preference_from_message(message)
 
         return {"data": data, "model_preference": model_preference}
+
+    async def _aprepare_task(
+        self, message: Union[bytes, str, Dict[str, str], Message], **kwargs
+    ) -> Dict[str, Union[bytes, str]]:
+        """Async version of _prepare_task.
+
+        Executes _prepare_task in an executor to avoid blocking the event loop.
+        """
+        loop = asyncio.get_event_loop()
+        func = partial(self._prepare_task, message, **kwargs)
+        return await loop.run_in_executor(None, func)
 
     def _process_task_multimodal_inputs(
         self, message: Union[bytes, str, Dict[str, str], Message]
