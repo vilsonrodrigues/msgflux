@@ -2,7 +2,7 @@
 import asyncio
 import concurrent.futures
 from concurrent.futures import Future
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple
 
 from msgflux._private.executor import Executor
 from msgflux.dotdict import dotdict
@@ -12,12 +12,14 @@ from msgflux.telemetry import Spans
 
 __all__ = [
     "abackground_task",
+    "ainline",
     "amap_gather",
     "amsg_bcast_gather",
     "ascatter_gather",
     "await_for_event",
     "background_task",
     "bcast_gather",
+    "inline",
     "map_gather",
     "msg_bcast_gather",
     "msg_scatter_gather",
@@ -546,6 +548,272 @@ async def await_for_event(event: asyncio.Event) -> None:
         raise TypeError("`event` must be an instance of asyncio.Event")
 
     await event.wait()
+
+
+def inline(
+    expression: str, modules: Mapping[str, Callable], message: dotdict
+) -> dotdict:
+    """Executes a workflow defined in DSL expression over a given `message`.
+
+    Args:
+        expression:
+            A string describing the execution pipeline using a
+            Domain-Specific Language (DSL).
+
+            The DSL supports:
+
+            **Sequential execution**:
+                Use `->` to define a linear pipeline.
+                !!! example
+
+                    `"prep -> transform -> output"`
+
+            **Parallel execution**:
+                Use square brackets `[...]` to group modules that run in parallel.
+                !!! example
+
+                    `"prep -> [feat_a, feat_b] -> combine"`
+
+            **Conditional execution**:
+                Use curly braces with a ternary-like structure:
+                `{condition ? then_module, else_module}`.
+                !!! example
+
+                    `"{user.age > 18 ? adult_module, child_module}"`
+
+            **While loops**:
+                Use `@{condition}: actions;` to execute actions repeatedly
+                while condition is true.
+                !!! example
+
+                    `"@{counter < 10}: increment;"`
+
+            **Logical operations in conditions**:
+                - **AND**: `cond1 & cond2`
+                - **OR**: `cond1 || cond2`
+                - **NOT**: `!cond`
+                Example: `"{user.is_active & !user.is_banned ? allow, deny}"`
+
+            **None checking in conditions**:
+                - `is None`: Example: `user.name is None`
+                - `is not None`: Example: `user.name is not None`
+
+            These conditionals are evaluated against the `message` object context.
+
+        modules:
+            A dictionary mapping module names (as strings) to callables.
+            Each function must accept and return a `message` object.
+
+        message:
+            The input message (dotdict) to be passed through the pipeline.
+
+    Returns:
+        The resulting `message` after executing the defined workflow.
+
+    Raises:
+        TypeError:
+            If expression is not a str.
+        TypeError:
+            If message is not a `msgflux.dotdict` instance.
+        TypeError:
+            If modules is not a Mapping.
+        ValueError:
+            If a module is not found, if the DSL syntax is invalid,
+            or if a condition cannot be parsed.
+        RuntimeError:
+            If a while loop exceeds the maximum iteration limit
+            (prevents infinite loops).
+
+    Examples:
+        from msgflux import dotdict
+        import msgflux.nn.functional as F
+
+        def prep(msg: dotdict) -> dotdict:
+            print(f"Executing prep, current msg: {msg}")
+            msg['output'] = {'agent': 'xpto', 'score': 10, 'status': 'success'}
+            msg['counter'] = 0
+            return msg
+
+        def increment(msg: dotdict) -> dotdict:
+            print(f"Executing increment, current msg: {msg}")
+            msg['counter'] = msg.get('counter', 0) + 1
+            return msg
+
+        def feat_a(msg: dotdict) -> dotdict:
+            print(f"Executing feat_a, current msg: {msg}")
+            msg['feat_a'] = 'result_a'
+            return msg
+
+        def feat_b(msg: dotdict) -> dotdict:
+            print(f"Executing feat_b, current msg: {msg}")
+            msg['feat_b'] = 'result_b'
+            return msg
+
+        def final(msg: dotdict) -> dotdict:
+            print(f"Executing final, current msg: {msg}")
+            msg['final'] = 'done'
+            return msg
+
+        my_modules = {
+            "prep": prep,
+            "increment": increment,
+            "feat_a": feat_a,
+            "feat_b": feat_b,
+            "final": final
+        }
+        input_msg = dotdict()
+
+        # Example with while loop
+        result = F.inline(
+            "prep -> @{counter < 5}: increment; -> final",
+            modules=my_modules,
+            message=input_msg
+        )
+
+        # Example with nested while loop and other constructs
+        result = F.inline(
+            "prep -> @{counter < 3}: increment -> [feat_a, feat_b]; -> final",
+            modules=my_modules,
+            message=input_msg
+        )
+    """
+    from msgflux.dsl.inline import inline as _inline  # noqa: PLC0415
+
+    return _inline(expression, modules, message)
+
+
+async def ainline(
+    expression: str, modules: Mapping[str, Callable], message: dotdict
+) -> dotdict:
+    """Async version of inline. Executes a workflow defined in DSL
+    expression over a given `message`.
+
+    Args:
+        expression:
+            A string describing the execution pipeline using a
+            Domain-Specific Language (DSL).
+
+            The DSL supports:
+
+            **Sequential execution**:
+                Use `->` to define a linear pipeline.
+                !!! example
+
+                    `"prep -> transform -> output"`
+
+            **Parallel execution**:
+                Use square brackets `[...]` to group modules that run in parallel.
+                !!! example
+
+                    `"prep -> [feat_a, feat_b] -> combine"`
+
+            **Conditional execution**:
+                Use curly braces with a ternary-like structure:
+                `{condition ? then_module, else_module}`.
+                !!! example
+
+                    `"{user.age > 18 ? adult_module, child_module}"`
+
+            **While loops**:
+                Use `@{condition}: actions;` to execute actions repeatedly
+                while condition is true.
+                !!! example
+
+                    `"@{counter < 10}: increment;"`
+
+            **Logical operations in conditions**:
+                - **AND**: `cond1 & cond2`
+                - **OR**: `cond1 || cond2`
+                - **NOT**: `!cond`
+                Example: `"{user.is_active & !user.is_banned ? allow, deny}"`
+
+            **None checking in conditions**:
+                - `is None`: Example: `user.name is None`
+                - `is not None`: Example: `user.name is not None`
+
+            These conditionals are evaluated against the `message` object context.
+
+        modules:
+            A dictionary mapping module names (as strings) to callables.
+            Each function must accept and return a `message` object.
+            Supports both sync and async modules.
+
+        message:
+            The input message (dotdict) to be passed through the pipeline.
+
+    Returns:
+        The resulting `message` after executing the defined workflow.
+
+    Raises:
+        TypeError:
+            If expression is not a str.
+        TypeError:
+            If message is not a `msgflux.dotdict` instance.
+        TypeError:
+            If modules is not a Mapping.
+        ValueError:
+            If a module is not found, if the DSL syntax is invalid,
+            or if a condition cannot be parsed.
+        RuntimeError:
+            If a while loop exceeds the maximum iteration limit
+            (prevents infinite loops).
+
+    Examples:
+        from msgflux import dotdict
+        import msgflux.nn.functional as F
+
+        async def prep(msg: dotdict) -> dotdict:
+            print(f"Executing prep, current msg: {msg}")
+            msg['output'] = {'agent': 'xpto', 'score': 10, 'status': 'success'}
+            msg['counter'] = 0
+            return msg
+
+        async def increment(msg: dotdict) -> dotdict:
+            print(f"Executing increment, current msg: {msg}")
+            msg['counter'] = msg.get('counter', 0) + 1
+            return msg
+
+        async def feat_a(msg: dotdict) -> dotdict:
+            print(f"Executing feat_a, current msg: {msg}")
+            msg['feat_a'] = 'result_a'
+            return msg
+
+        async def feat_b(msg: dotdict) -> dotdict:
+            print(f"Executing feat_b, current msg: {msg}")
+            msg['feat_b'] = 'result_b'
+            return msg
+
+        async def final(msg: dotdict) -> dotdict:
+            print(f"Executing final, current msg: {msg}")
+            msg['final'] = 'done'
+            return msg
+
+        my_modules = {
+            "prep": prep,
+            "increment": increment,
+            "feat_a": feat_a,
+            "feat_b": feat_b,
+            "final": final
+        }
+        input_msg = dotdict()
+
+        # Example with while loop
+        result = await F.ainline(
+            "prep -> @{counter < 5}: increment; -> final",
+            modules=my_modules,
+            message=input_msg
+        )
+
+        # Example with nested while loop and other constructs
+        result = await F.ainline(
+            "prep -> @{counter < 3}: increment -> [feat_a, feat_b]; -> final",
+            modules=my_modules,
+            message=input_msg
+        )
+    """
+    from msgflux.dsl.inline import ainline as _ainline  # noqa: PLC0415
+
+    return await _ainline(expression, modules, message)
 
 
 @Spans.ainstrument()
