@@ -17,9 +17,9 @@ class BaseLexical:
         self,
         queries: Union[str, List[str]],
         *,
-        top_k: Optional[int] = 5,
-        threshold: Optional[float] = 0.0,
-        return_score: Optional[bool] = False,
+        top_k: Optional[int] = None,
+        threshold: Optional[float] = None,
+        return_score: Optional[bool] = None,
     ) -> RetrieverResponse:
         """Retrieve the most relevant documents for one or multiple queries
         using BM25 ranking.
@@ -29,10 +29,13 @@ class BaseLexical:
                 A single query string or a list of query strings to search for.
             top_k:
                 The maximum number of documents to return for each query.
+                Defaults to 5.
             threshold:
-                Minimum BM25 score a document must have to be included in the results.
+                Minimum BM25 score a document must have to be included in the
+                results. Defaults to 0.0.
             return_score:
                 If True, includes the BM25 score in the returned results.
+                Defaults to False.
 
         Returns:
             RetrieverResponse:
@@ -48,6 +51,12 @@ class BaseLexical:
         """
         if isinstance(queries, str):
             queries = [queries]
+        if top_k is None:
+            top_k = 5
+        if threshold is None:
+            threshold = 0.0
+        if return_score is None:
+            return_score = False
         results = self._search(queries, top_k, threshold, return_score=return_score)
         response = RetrieverResponse()
         response.set_response_type("lexical_search")
@@ -57,7 +66,7 @@ class BaseLexical:
 
 class BaseWebSearch:
     def __call__(
-        self, queries: Union[str, List[str]], top_k: Optional[int] = 1
+        self, queries: Union[str, List[str]], top_k: Optional[int] = None
     ) -> RetrieverResponse:
         """Search web and retrieve results for given queries.
 
@@ -65,7 +74,7 @@ class BaseWebSearch:
             queries:
                 Single query string or list of queries.
             top_k:
-                Number of results to return per query.
+                Number of results to return per query. Defaults to 1.
 
         Returns:
             List of retriever results containing `data` and
@@ -73,6 +82,8 @@ class BaseWebSearch:
         """
         if isinstance(queries, str):
             queries = [queries]
+        if top_k is None:
+            top_k = 1
         results = self._search(queries, top_k)
         response = RetrieverResponse()
         response.set_response_type("web_search")

@@ -27,29 +27,48 @@ class WikipediaWebRetriever(BaseWebSearch, BaseRetriever, WebRetriever):
     def __init__(
         self,
         *,
-        language: Optional[str] = "en",
+        language: Optional[str] = None,
         summary: Optional[int] = None,
-        return_images: Optional[bool] = False,
-        max_return_images: Optional[int] = 5,
+        return_images: Optional[bool] = None,
+        max_return_images: Optional[int] = None,
     ):
         """Args:
             language:
-                The language code for Wikipedia searches.
+                The language code for Wikipedia searches. Defaults to "en".
             summary:
                 Number of sentences to include in summary.
+                Defaults to None (full content).
             return_images:
-                Whether to include images in the results.
+                Whether to include images in the results. Defaults to False.
             max_return_images:
-                Maximum number of images returned.
+                Maximum number of images returned. Defaults to 5.
 
         !!! example
 
             ```python
-            client = WikipediaClient(language="pt", return_images=True, summary=3)
-            results = client(["Python programming", "Machine learning"], top_k=2)
+            retriever = WikipediaWebRetriever(
+                language="pt", return_images=True, summary=3
+            )
+            results = retriever(
+                ["Python programming", "Machine learning"], top_k=2
+            )
             print(results)
             ```
         """
+        if wikipedia is None:
+            raise ImportError(
+                "The 'wikipedia' package is not installed. "
+                "Please install it via pip: pip install wikipedia"
+            )
+
+        # Apply defaults
+        if language is None:
+            language = "en"
+        if return_images is None:
+            return_images = False
+        if max_return_images is None:
+            max_return_images = 5
+
         self.language = language
         self.max_return_images = max_return_images
         self.return_images = return_images
