@@ -5,7 +5,6 @@ from .data.dbs import DB
 from .data.retrievers import Retriever
 from .data.types import Audio, File, Image, Video
 from .dotdict import dotdict
-from .dsl.inline import ainline, inline
 from .dsl.signature import InputField, OutputField, Signature
 from .envs import set_envs
 from .examples import Example
@@ -36,11 +35,9 @@ __all__ = [
     "Signature",
     "Spans",
     "Video",
-    "ainline",
     "cprint",
     "dotdict",
     "get_fn_name",
-    "inline",
     "load",
     "msgspec_dumps",
     "response_cache",
