@@ -1,9 +1,11 @@
+import asyncio
 import math
 from collections import Counter
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 
 from msgflux.data.retrievers.base import BaseLexical, BaseRetriever
 from msgflux.data.retrievers.registry import register_retriever
+from msgflux.data.retrievers.response import RetrieverResponse
 from msgflux.data.retrievers.types import LexicalRetriever
 from msgflux.dotdict import dotdict
 from msgflux.nn import functional as F
@@ -15,13 +17,19 @@ class BM25LexicalRetriever(BaseLexical, BaseRetriever, LexicalRetriever):
 
     provider = "bm25"
 
-    def __init__(self, *, k1: Optional[float] = 1.5, b: Optional[float] = 0.75):
+    def __init__(self, *, k1: Optional[float] = None, b: Optional[float] = None):
         """Args:
         k1:
-            Tuning parameter for term frequency.
+            Tuning parameter for term frequency. Defaults to 1.5.
         b:
-            Tuning parameter for document length.
+            Tuning parameter for document length. Defaults to 0.75.
         """
+        # Apply defaults
+        if k1 is None:
+            k1 = 1.5
+        if b is None:
+            b = 0.75
+
         self.b = b
         self.k1 = k1
         self._initialize()
@@ -185,3 +193,115 @@ class BM25LexicalRetriever(BaseLexical, BaseRetriever, LexicalRetriever):
             "median_score": median_score,
             "std_score": std_score,
         }
+
+    async def _asearch(
+        self,
+        queries: List[str],
+        top_k: int,
+        threshold: float,
+        *,
+        return_score: bool,
+    ):
+        """Async version of _search that runs queries in parallel.
+
+        Args:
+            queries:
+                Query string or list of strings.
+            top_k:
+                Number of results to return.
+            threshold:
+                Minimum score to include a document in the results.
+            return_score:
+                If True, returns the score along with the document.
+
+        Returns:
+            List of results for each query.
+        """
+        loop = asyncio.get_event_loop()
+
+        def process_query(query):
+            query_tokens = self._tokenize(query)
+
+            # Calculate scores for all documents
+            doc_scores = [
+                (doc_id, self._calculate_bm25_score(query_tokens, doc_id))
+                for doc_id in range(len(self.documents))
+            ]
+
+            # Filter documents by threshold
+            filtered_doc_scores = [
+                (doc_id, score) for doc_id, score in doc_scores if score >= threshold
+            ]
+
+            # Sort documents by score in descending order
+            filtered_doc_scores.sort(key=lambda x: x[1], reverse=True)
+
+            # Returns the K best results
+            results = []
+            for doc_id, score in filtered_doc_scores[:top_k]:
+                result = dotdict({"data": self.documents[doc_id]})
+                if return_score:
+                    result.score = score
+                results.append(result)
+
+            return results
+
+        # Execute all queries in parallel using executor
+        tasks = [loop.run_in_executor(None, process_query, query) for query in queries]
+        results = await asyncio.gather(*tasks)
+        return list(results)
+
+    async def acall(
+        self,
+        queries: Union[str, List[str]],
+        *,
+        top_k: Optional[int] = None,
+        threshold: Optional[float] = None,
+        return_score: Optional[bool] = None,
+    ):
+        """Async version of __call__ for BM25 retrieval.
+
+        Args:
+            queries:
+                A single query string or a list of query strings to search for.
+            top_k:
+                The maximum number of documents to return for each query.
+                Defaults to 5.
+            threshold:
+                Minimum BM25 score a document must have to be included in the
+                results. Defaults to 0.0.
+            return_score:
+                If True, includes the BM25 score in the returned results.
+                Defaults to False.
+
+        Returns:
+            RetrieverResponse containing search results.
+
+        !!! example
+
+            ```python
+            retriever = BM25LexicalRetriever(k1=1.5, b=0.75)
+            retriever.add(["Document 1 text", "Document 2 text"])
+            results = await retriever.acall(
+                ["search query"], top_k=5, return_score=True
+            )
+            print(results)
+            ```
+        """
+        if isinstance(queries, str):
+            queries = [queries]
+        if top_k is None:
+            top_k = 5
+        if threshold is None:
+            threshold = 0.0
+        if return_score is None:
+            return_score = False
+
+        results = await self._asearch(
+            queries, top_k, threshold, return_score=return_score
+        )
+
+        response = RetrieverResponse()
+        response.set_response_type("lexical_search")
+        response.add(results)
+        return response
