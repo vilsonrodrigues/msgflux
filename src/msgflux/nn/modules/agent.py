@@ -97,7 +97,7 @@ class Agent(Module, metaclass=AutoParams):
         prefilling: Optional[str] = None,
         generation_schema: Optional[msgspec.Struct] = None,
         typed_parser: Optional[str] = None,
-        response_mode: Optional[str] = "plain_response",
+        response_mode: Optional[str] = None,
         tools: Optional[List[Callable]] = None,
         mcp_servers: Optional[List[Mapping[str, Any]]] = None,
         fixed_messages: Optional[List[Mapping[str, Any]]] = None,
@@ -289,6 +289,10 @@ class Agent(Module, metaclass=AutoParams):
         self._set_model(model)
         self._set_prefilling(prefilling)
         self._set_system_extra_message(system_extra_message)
+
+        # Set default response_mode if None
+        if response_mode is None:
+            response_mode = "plain_response"
         self._set_response_mode(response_mode)
         self._set_templates(templates)
         self._set_tools(tools, mcp_servers)
@@ -1540,8 +1544,7 @@ class Agent(Module, metaclass=AutoParams):
             self.register_buffer("model_state", model_state)
         else:
             raise TypeError(
-                "`model_state` requires a string or None "
-                f"given `{type(model_state)}`"
+                f"`model_state` requires a string or None given `{type(model_state)}`"
             )
 
     def _set_config(self, config: Optional[Dict[str, Any]] = None):
