@@ -201,9 +201,9 @@ class WikipediaWebRetriever(BaseWebSearch, BaseRetriever, WebRetriever):
         except Exception:
             return []
 
-    def _search(self, top_k):
-        args_list = [(query,) for query in self]
-        kwargs_list = [{"top_k": top_k} for _ in self]
+    def _search(self, queries: List[str], top_k: int) -> List[dotdict]:
+        args_list = [(query,) for query in queries]
+        kwargs_list = [{"top_k": top_k} for _ in queries]
         query_results = F.map_gather(
             self._single_search, args_list=args_list, kwargs_list=kwargs_list
         )
