@@ -9,7 +9,6 @@ except ImportError:
 
 from msgflux.data.retrievers.base import BaseRetriever, BaseWebSearch
 from msgflux.data.retrievers.registry import register_retriever
-from msgflux.data.retrievers.response import RetrieverResponse
 from msgflux.data.retrievers.types import WebRetriever
 from msgflux.dotdict import dotdict
 from msgflux.logger import logger
@@ -291,7 +290,7 @@ class WikipediaWebRetriever(BaseWebSearch, BaseRetriever, WebRetriever):
                 Number of results to return per query. Defaults to 1.
 
         Returns:
-            RetrieverResponse containing search results.
+            dotdict containing search results.
 
         !!! example
 
@@ -309,8 +308,4 @@ class WikipediaWebRetriever(BaseWebSearch, BaseRetriever, WebRetriever):
             top_k = 1
 
         results = await self._asearch(queries, top_k)
-
-        response = RetrieverResponse()
-        response.set_response_type("web_search")
-        response.add(results)
-        return response
+        return dotdict({"response_type": "web_search", "data": results})

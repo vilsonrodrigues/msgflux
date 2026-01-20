@@ -10,7 +10,6 @@ except ImportError:
 
 from msgflux.data.retrievers.base import BaseLexical, BaseRetriever
 from msgflux.data.retrievers.registry import register_retriever
-from msgflux.data.retrievers.response import RetrieverResponse
 from msgflux.data.retrievers.types import LexicalRetriever
 from msgflux.dotdict import dotdict
 from msgflux.nn import functional as F
@@ -176,7 +175,7 @@ class RankBM25LexicalRetriever(BaseLexical, BaseRetriever, LexicalRetriever):
                 Defaults to False.
 
         Returns:
-            RetrieverResponse containing search results.
+            dotdict containing search results.
 
         !!! example
 
@@ -201,8 +200,4 @@ class RankBM25LexicalRetriever(BaseLexical, BaseRetriever, LexicalRetriever):
         results = await self._asearch(
             queries, top_k, threshold, return_score=return_score
         )
-
-        response = RetrieverResponse()
-        response.set_response_type("lexical_search")
-        response.add(results)
-        return response
+        return dotdict({"response_type": "lexical_search", "data": results})

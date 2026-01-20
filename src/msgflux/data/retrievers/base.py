@@ -1,7 +1,7 @@
 from typing import List, Mapping, Optional, Union
 
 from msgflux._private.client import BaseClient
-from msgflux.data.retrievers.response import RetrieverResponse
+from msgflux.dotdict import dotdict
 
 
 class BaseRetriever(BaseClient):
@@ -20,7 +20,7 @@ class BaseLexical:
         top_k: Optional[int] = None,
         threshold: Optional[float] = None,
         return_score: Optional[bool] = None,
-    ) -> RetrieverResponse:
+    ) -> dotdict:
         """Retrieve the most relevant documents for one or multiple queries
         using BM25 ranking.
 
@@ -38,7 +38,7 @@ class BaseLexical:
                 Defaults to False.
 
         Returns:
-            RetrieverResponse:
+            dotdict:
                 A response object containing the search results for each query.
                 Each result
                 includes the document text, and optionally the BM25 score if
@@ -58,16 +58,13 @@ class BaseLexical:
         if return_score is None:
             return_score = False
         results = self._search(queries, top_k, threshold, return_score=return_score)
-        response = RetrieverResponse()
-        response.set_response_type("lexical_search")
-        response.add(results)
-        return response
+        return dotdict({"response_type": "lexical_search", "data": results})
 
 
 class BaseWebSearch:
     def __call__(
         self, queries: Union[str, List[str]], top_k: Optional[int] = None
-    ) -> RetrieverResponse:
+    ) -> dotdict:
         """Search web and retrieve results for given queries.
 
         Args:
@@ -85,7 +82,4 @@ class BaseWebSearch:
         if top_k is None:
             top_k = 1
         results = self._search(queries, top_k)
-        response = RetrieverResponse()
-        response.set_response_type("web_search")
-        response.add(results)
-        return response
+        return dotdict({"response_type": "web_search", "data": results})
