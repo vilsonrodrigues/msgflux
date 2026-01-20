@@ -159,7 +159,8 @@ class BM25LexicalRetriever(BaseLexical, BaseRetriever, LexicalRetriever):
 
             return results
 
-        results = list(F.map_gather(process_query, args_list=queries))
+        args_list = [(query,) for query in queries]
+        results = list(F.map_gather(process_query, args_list=args_list))
         return results
 
     def get_score_statistics(self, query: str) -> Dict[str, float]:
