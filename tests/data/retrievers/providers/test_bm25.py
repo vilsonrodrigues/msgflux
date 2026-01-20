@@ -59,7 +59,7 @@ class TestBM25LexicalRetriever:
         results = retriever(["python"], top_k=2)
 
         assert len(results.data) == 1
-        assert len(results.data[0]) <= 2
+        assert len(results.data[0]["results"]) <= 2
 
     def test_search_multiple_queries(self):
         """Test search with multiple queries."""
@@ -90,10 +90,10 @@ class TestBM25LexicalRetriever:
 
         assert len(results.data) == 1
         # Should filter some results
-        if len(results.data[0]) > 0:
+        if len(results.data[0]["results"]) > 0:
             assert all(
                 result.score >= 1.0
-                for result in results.data[0]
+                for result in results.data[0]["results"]
             )
 
     def test_search_with_return_score(self):
@@ -104,8 +104,8 @@ class TestBM25LexicalRetriever:
 
         results = retriever(["python"], top_k=2, return_score=True)
 
-        assert len(results.data[0]) > 0
-        first_result = results.data[0][0]
+        assert len(results.data[0]["results"]) > 0
+        first_result = results.data[0]["results"][0]
         assert hasattr(first_result, "score")
         assert isinstance(first_result.score, float)
 
