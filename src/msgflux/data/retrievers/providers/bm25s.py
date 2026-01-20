@@ -148,11 +148,12 @@ class BM25SLexicalRetriever(BaseLexical, BaseRetriever, LexicalRetriever):
 
         args_list = [(query, top_k, threshold) for query in queries]
         kwargs_list = [{"return_score": return_score} for _ in queries]
-        results = list(
-            F.map_gather(
-                self._search_single, args_list=args_list, kwargs_list=kwargs_list
-            )
+        query_results = F.map_gather(
+            self._search_single, args_list=args_list, kwargs_list=kwargs_list
         )
+        results = []
+        for result in query_results:
+            results.append(dotdict({"results": result}))
         return results
 
     def get_score_statistics(self, query: str) -> Dict[str, float]:
@@ -214,12 +215,18 @@ class BM25SLexicalRetriever(BaseLexical, BaseRetriever, LexicalRetriever):
         # Execute all queries in parallel using executor
         tasks = [
             loop.run_in_executor(
-                None, self._search_single, query, top_k, threshold, return_score
+                None,
+                lambda q=query: self._search_single(
+                    q, top_k, threshold, return_score=return_score
+                ),
             )
             for query in queries
         ]
-        results = await asyncio.gather(*tasks)
-        return list(results)
+        query_results = await asyncio.gather(*tasks)
+        results = []
+        for result in query_results:
+            results.append(dotdict({"results": result}))
+        return results
 
     async def acall(
         self,
