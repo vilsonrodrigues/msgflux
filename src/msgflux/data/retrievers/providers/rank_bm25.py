@@ -142,7 +142,10 @@ class RankBM25LexicalRetriever(BaseLexical, BaseRetriever, LexicalRetriever):
         # Execute all queries in parallel using executor
         tasks = [
             loop.run_in_executor(
-                None, self._search_single, query, top_k, threshold, return_score
+                None,
+                lambda q=query: self._search_single(
+                    q, top_k, threshold, return_score=return_score
+                ),
             )
             for query in queries
         ]

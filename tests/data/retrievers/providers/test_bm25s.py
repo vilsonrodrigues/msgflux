@@ -37,15 +37,13 @@ class TestBM25SLexicalRetriever:
         mock_bm25_class = MagicMock(return_value=mock_bm25_instance)
         mock_module.BM25 = mock_bm25_class
 
-        with patch.dict("sys.modules", {"bm25s": mock_module, "numpy": np}):
-            # Re-import to get the mocked version
-            from msgflux.data.retrievers.providers import bm25s
+        with patch.dict("sys.modules", {"bm25s": mock_module}):
+            # Import to get the mocked version
+            from msgflux.data.retrievers.providers.bm25s import (
+                BM25SLexicalRetriever,
+            )
 
-            # Reload the module
-            import importlib
-
-            importlib.reload(bm25s)
-            yield bm25s.BM25SLexicalRetriever
+            yield BM25SLexicalRetriever
 
     def test_init_without_library_raises_error(self):
         """Test that initialization fails without bm25s."""

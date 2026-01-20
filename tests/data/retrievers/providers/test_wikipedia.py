@@ -39,14 +39,12 @@ class TestWikipediaWebRetriever:
         mock_module.exceptions.DisambiguationError = Exception
 
         with patch.dict("sys.modules", {"wikipedia": mock_module}):
-            # Re-import to get the mocked version
-            from msgflux.data.retrievers.providers import wikipedia
+            # Import to get the mocked version
+            from msgflux.data.retrievers.providers.wikipedia import (
+                WikipediaWebRetriever,
+            )
 
-            # Reload the module
-            import importlib
-
-            importlib.reload(wikipedia)
-            yield wikipedia.WikipediaWebRetriever
+            yield WikipediaWebRetriever
 
     def test_init_without_library_raises_error(self):
         """Test that initialization fails without wikipedia."""

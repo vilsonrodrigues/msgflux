@@ -19,14 +19,12 @@ class TestRankBM25LexicalRetriever:
         mock_bm25.BM25Okapi.return_value = mock_bm25_instance
 
         with patch.dict("sys.modules", {"rank_bm25": mock_bm25}):
-            # Re-import to get the mocked version
-            from msgflux.data.retrievers.providers import rank_bm25
+            # Import to get the mocked version
+            from msgflux.data.retrievers.providers.rank_bm25 import (
+                RankBM25LexicalRetriever,
+            )
 
-            # Reload the module
-            import importlib
-
-            importlib.reload(rank_bm25)
-            yield rank_bm25.RankBM25LexicalRetriever
+            yield RankBM25LexicalRetriever
 
     def test_init_without_library_raises_error(self):
         """Test that initialization fails without rank_bm25."""
