@@ -1,6 +1,6 @@
 import asyncio
 import re
-from typing import Any, List, Mapping, Optional, Union
+from typing import Any, List, Mapping, Optional
 
 try:
     import wikipedia
@@ -279,33 +279,3 @@ class WikipediaWebRetriever(BaseWebSearch, BaseRetriever, WebRetriever):
         for result in query_results:
             results.append(dotdict({"results": result}))
         return results
-
-    async def acall(self, queries: Union[str, List[str]], top_k: Optional[int] = None):
-        """Async version of __call__ for searching Wikipedia.
-
-        Args:
-            queries:
-                Single query string or list of queries.
-            top_k:
-                Number of results to return per query. Defaults to 1.
-
-        Returns:
-            dotdict containing search results.
-
-        !!! example
-
-            ```python
-            retriever = WikipediaWebRetriever(language="en", return_images=True)
-            results = await retriever.acall(
-                ["Python programming", "Machine learning"], top_k=2
-            )
-            print(results)
-            ```
-        """
-        if isinstance(queries, str):
-            queries = [queries]
-        if top_k is None:
-            top_k = 1
-
-        results = await self._asearch(queries, top_k)
-        return dotdict({"response_type": "web_search", "data": results})
