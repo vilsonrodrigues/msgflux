@@ -83,3 +83,35 @@ class BaseWebSearch:
             top_k = 1
         results = self._search(queries, top_k)
         return dotdict({"response_type": "web_search", "data": results})
+
+
+class BaseWebFetch:
+    def __call__(self, urls: Union[str, List[str]]) -> dotdict:
+        """Fetch web pages and extract content.
+
+        Args:
+            urls:
+                Single URL string or list of URLs to fetch.
+
+        Returns:
+            dotdict containing fetched page content as Markdown.
+        """
+        if isinstance(urls, str):
+            urls = [urls]
+        results = self._fetch(urls)
+        return dotdict({"response_type": "web_fetch", "data": results})
+
+    async def acall(self, urls: Union[str, List[str]]) -> dotdict:
+        """Async version for fetching web pages.
+
+        Args:
+            urls:
+                Single URL string or list of URLs to fetch.
+
+        Returns:
+            dotdict containing fetched page content as Markdown.
+        """
+        if isinstance(urls, str):
+            urls = [urls]
+        results = await self._afetch(urls)
+        return dotdict({"response_type": "web_fetch", "data": results})
