@@ -29,7 +29,7 @@ def test_agent_include_date_with_weekday():
         mock_dt.strftime = datetime.strftime  # Keep strftime working
 
         # Get the system prompt
-        system_prompt = agent._get_system_prompt()
+        system_prompt = agent.get_system_prompt()
 
         # Verify that the date includes the weekday
         assert "Tuesday" in system_prompt, "Weekday should be included"
@@ -57,7 +57,7 @@ def test_agent_without_include_date():
     )
 
     # Get the system prompt
-    system_prompt = agent._get_system_prompt()
+    system_prompt = agent.get_system_prompt()
 
     # Verify that date-related text is not present
     assert "current date" not in system_prompt.lower()
@@ -78,7 +78,7 @@ def test_agent_include_date_default_false():
     )
 
     # Get the system prompt
-    system_prompt = agent._get_system_prompt()
+    system_prompt = agent.get_system_prompt()
 
     # Verify that date is not included by default
     assert "current date" not in system_prompt.lower()
@@ -117,7 +117,7 @@ def test_agent_include_date_format_consistency():
             mock_dt.now.return_value = mock_datetime
 
             # Get the system prompt
-            system_prompt = agent._get_system_prompt()
+            system_prompt = agent.get_system_prompt()
 
             # Verify the expected date format
             assert expected_date in system_prompt, (

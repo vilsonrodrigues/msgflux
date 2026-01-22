@@ -444,7 +444,7 @@ class Agent(Module, metaclass=AutoParams):
 
         agent_state.extend(model_state)
 
-        system_prompt = self._get_system_prompt(vars)
+        system_prompt = self.get_system_prompt(vars)
 
         tool_schemas = self.tool_library.get_tool_json_schemas()
         if not tool_schemas:
@@ -1760,7 +1760,7 @@ class Agent(Module, metaclass=AutoParams):
             )
             self.set_annotations(generated_annotations)
 
-    def _get_system_prompt(self, vars: Optional[Mapping[str, Any]] = None) -> str:
+    def get_system_prompt(self, vars: Optional[Mapping[str, Any]] = None) -> str:
         """Render the system prompt using the Jinja template.
         Returns an empty string if no segments are provided.
         """

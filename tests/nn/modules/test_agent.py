@@ -624,7 +624,7 @@ class TestAgentTemplates:
     """Test Agent template functionality."""
 
     def test_agent_get_system_prompt(self):
-        """Test _get_system_prompt method."""
+        """Test get_system_prompt method."""
         mock_model = Mock()
         mock_model.model_type = "chat_completion"
 
@@ -635,7 +635,7 @@ class TestAgentTemplates:
             instructions="Be concise"
         )
 
-        system_prompt = agent._get_system_prompt()
+        system_prompt = agent.get_system_prompt()
 
         assert isinstance(system_prompt, str)
         assert len(system_prompt) > 0
@@ -926,7 +926,7 @@ class TestAgentSystemPrompt:
             config={"include_date": True}
         )
 
-        system_prompt = agent._get_system_prompt()
+        system_prompt = agent.get_system_prompt()
 
         assert isinstance(system_prompt, str)
         # Date should be included
@@ -943,7 +943,7 @@ class TestAgentSystemPrompt:
             system_message="Hello"
         )
 
-        system_prompt = agent._get_system_prompt(vars={"name": "Alice"})
+        system_prompt = agent.get_system_prompt(vars={"name": "Alice"})
 
         assert isinstance(system_prompt, str)
 
