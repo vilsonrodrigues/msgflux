@@ -22,7 +22,7 @@ class Transcriber(Module, metaclass=AutoParams):
         model: Union[SpeechToTextModel, ModelGateway],
         *,
         message_fields: Optional[Dict[str, Any]] = None,
-        response_mode: Optional[str] = "plain_response",
+        response_mode: Optional[str] = None,
         response_template: Optional[str] = None,
         response_format: Optional[str] = "text",
         prompt: Optional[str] = None,

@@ -533,14 +533,16 @@ class Module:
         else:
             raise TypeError(f"`annotations` need be a `dict` given {type(annotations)}")
 
-    def _set_response_mode(self, response_mode: str):
-        if isinstance(response_mode, str):
+    def _set_response_mode(self, response_mode: Optional[str]):
+        if response_mode is None:
+            self.register_buffer("response_mode", None)
+        elif isinstance(response_mode, str):
             if response_mode == "":
-                raise ValueError("`response_mode` requires a not empty string")
+                raise ValueError("`response_mode` requires a non-empty string or None")
             self.register_buffer("response_mode", response_mode)
         else:
             raise TypeError(
-                f"`response_mode` requires a string given `{type(response_mode)}`"
+                f"`response_mode` requires a string or None, given `{type(response_mode)}`"
             )
 
     def _set_prompt(self, prompt: Optional[str] = None):
@@ -580,14 +582,14 @@ class Module:
         return self._define_response_mode(response, message)
 
     def _define_response_mode(self, response: Any, message: Any) -> Any:
-        if self.response_mode == "plain_response":
+        if self.response_mode is None:
             return response
         elif isinstance(message, Message):
             message.set(self.response_mode, response)
             return message
         else:
             raise ValueError(
-                "For non-Message objects is required `response_mode=='plain_response'`"
+                "For non-Message objects, `response_mode` must be None"
             )
 
     def _set_task_inputs(

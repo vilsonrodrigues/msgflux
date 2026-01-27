@@ -18,7 +18,7 @@ class Speaker(Module, metaclass=AutoParams):
         *,
         guardrails: Optional[Dict[str, Callable]] = None,
         message_fields: Optional[Dict[str, Any]] = None,
-        response_mode: Optional[str] = "plain_response",
+        response_mode: Optional[str] = None,
         response_format: Optional[
             Literal["mp3", "opus", "aac", "flac", "wav", "pcm"]
         ] = "opus",

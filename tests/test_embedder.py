@@ -203,11 +203,9 @@ def test_embedder_async():
 
 
 def test_embedder_response_mode_plain():
-    """Test Embedder with plain_response mode."""
+    """Test Embedder with default response_mode (None)."""
     model = MockBatchEmbedder()
-    embedder = Embedder(
-        name="test_embedder", model=model, response_mode="plain_response"
-    )
+    embedder = Embedder(model=model, response_mode=None)
 
     result = embedder("Hello")
 

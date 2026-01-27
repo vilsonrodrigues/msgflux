@@ -33,7 +33,7 @@ class Retriever(Module, metaclass=AutoParams):
         *,
         model: Optional[Union[EMBEDDER_MODELS, Embedder]] = None,
         message_fields: Optional[Dict[str, Any]] = None,
-        response_mode: Optional[str] = "plain_response",
+        response_mode: Optional[str] = None,
         templates: Optional[Dict[str, str]] = None,
         config: Optional[Dict[str, Any]] = None,
         name: Optional[str] = None,

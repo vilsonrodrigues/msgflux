@@ -31,7 +31,7 @@ class Embedder(Module, metaclass=AutoParams):
         model: EMBEDDER_MODELS,
         *,
         message_fields: Optional[Dict[str, Any]] = None,
-        response_mode: Optional[str] = "plain_response",
+        response_mode: Optional[str] = None,
         config: Optional[Dict[str, Any]] = None,
     ):
         """Initialize the Embedder module.

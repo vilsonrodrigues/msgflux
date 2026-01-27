@@ -169,13 +169,13 @@ class TestPredictor:
         assert "result" in result.outputs
 
     def test_forward_with_plain_data(self):
-        """Test forward with plain data and plain_response mode."""
+        """Test forward with plain data and default response_mode (None)."""
         model = MockModel()
-        predictor = Predictor(name="test", model=model, response_mode="plain_response")
+        predictor = Predictor(name="test", model=model, response_mode=None)
 
         result = predictor("plain input")
 
-        # With plain_response mode, should return the processed response
+        # With response_mode=None, should return the processed response directly
         assert result is not None
 
     @pytest.mark.asyncio

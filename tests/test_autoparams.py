@@ -40,7 +40,7 @@ def test_autoparams_with_agent():
     # Note: We only set params that don't conflict with Agent's internal state
     class MyAssistant(Agent):
         name = "assistant"
-        response_mode = "plain_response"
+        response_mode = None
 
     # Create a mock model
     mock_model = Mock()

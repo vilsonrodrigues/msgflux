@@ -19,7 +19,7 @@ class Predictor(Module, metaclass=AutoParams):
         model: Union[BaseModel, ModelGateway],
         *,
         message_fields: Optional[Dict[str, Any]] = None,
-        response_mode: Optional[str] = "plain_response",
+        response_mode: Optional[str] = None,
         response_template: Optional[str] = None,
         config: Optional[Dict[str, Any]] = None,
         name: Optional[str] = None,
@@ -218,15 +218,6 @@ class Predictor(Module, metaclass=AutoParams):
         else:
             raise TypeError(
                 f"`model_preference` requires a string or None, given `{type(model_preference)}`"
-            )
-
-    def _set_response_mode(self, response_mode: Optional[str] = None):
-        """Set response mode."""
-        if isinstance(response_mode, str) or response_mode is None:
-            self.register_buffer("response_mode", response_mode or "plain_response")
-        else:
-            raise TypeError(
-                f"`response_mode` requires a string or None, given `{type(response_mode)}`"
             )
 
     def _set_response_template(self, response_template: Optional[str] = None):
