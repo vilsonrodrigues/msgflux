@@ -78,3 +78,19 @@
 |-------------|--------------------|
 | OpenAI      | `msgflux[openai]`  |
 | Together    | `msgflux[openai]`  |
+
+# Retrievers
+
+## Lexical
+
+| Provider    | Dependency        |
+|-------------|-------------------|
+| BM25        |         -         |
+| BM25s       |     `bm25s`       |
+| Rank BM25   |   `rank-bm25s`    |
+
+## Web Search
+
+| Provider    | Dependency        |
+|-------------|-------------------|
+| Wikipedia   |   `wikipedia`     |
