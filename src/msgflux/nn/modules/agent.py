@@ -99,7 +99,6 @@ class Agent(Module, metaclass=AutoParams):
         response_mode: Optional[str] = None,
         tools: Optional[List[Callable]] = None,
         mcp_servers: Optional[List[Mapping[str, Any]]] = None,
-        fixed_messages: Optional[List[Mapping[str, Any]]] = None,
         signature: Optional[Union[str, Signature]] = None,
         description: Optional[str] = None,
         annotations: Optional[Mapping[str, type]] = None,
@@ -225,8 +224,6 @@ class Agent(Module, metaclass=AutoParams):
                     "include_tools": ["read_file", "write_file"],
                     "tool_config": {"read_file": {"inject_vars": ["context"]}}
                 }]
-        fixed_messages:
-            A fixed list of chats in ChatML format.
         signature:
             A DSPy-based signature. A signature creates a task_template,
             a generation_schema, instructions and examples (both if passed).
@@ -282,16 +279,12 @@ class Agent(Module, metaclass=AutoParams):
                 raise ValueError("`typed_parser` is not `stream=True` compatible")
 
         self._set_context_cache(context_cache)
-        self._set_fixed_messages(fixed_messages)
         self._set_guardrails(guardrails)
         self._set_message_fields(message_fields)
         self._set_model(model)
         self._set_prefilling(prefilling)
         self._set_system_extra_message(system_extra_message)
 
-        # Set default response_mode if None
-        if response_mode is None:
-            response_mode = "plain_response"
         self._set_response_mode(response_mode)
         self._set_templates(templates)
         self._set_tools(tools, mcp_servers)
@@ -438,10 +431,6 @@ class Agent(Module, metaclass=AutoParams):
     ) -> Mapping[str, Any]:
         # model_state, prefilling, model_preference, vars
         agent_state = []
-
-        if self.fixed_messages:
-            agent_state.extend(self.fixed_messages)
-
         agent_state.extend(model_state)
 
         system_prompt = self.get_system_prompt(vars)
@@ -1393,20 +1382,6 @@ class Agent(Module, metaclass=AutoParams):
         self.tool_library = ToolLibrary(
             self.get_module_name(), tools or [], mcp_servers=mcp_servers
         )
-
-    def _set_fixed_messages(
-        self, fixed_messages: Optional[List[Mapping[str, Any]]] = None
-    ):
-        if (
-            isinstance(fixed_messages, list)
-            and all(dict(obj) for obj in fixed_messages)
-        ) or fixed_messages is None:
-            self.register_buffer("fixed_messages", fixed_messages)
-        else:
-            raise TypeError(
-                "`fixed_messages` need be a list of dict or None"
-                f"given `{type(fixed_messages)}`"
-            )
 
     def _set_generation_schema(
         self, generation_schema: Optional[msgspec.Struct] = None
