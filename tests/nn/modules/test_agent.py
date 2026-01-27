@@ -25,7 +25,7 @@ class TestAgentReservedKwargs:
         """Test that _RESERVED_KWARGS is a set with expected values."""
         assert isinstance(_RESERVED_KWARGS, set)
         assert "vars" in _RESERVED_KWARGS
-        assert "model_state" in _RESERVED_KWARGS
+        assert "messages" in _RESERVED_KWARGS
         assert "task_multimodal_inputs" in _RESERVED_KWARGS
         assert "context_inputs" in _RESERVED_KWARGS
         assert "model_preference" in _RESERVED_KWARGS
@@ -361,8 +361,8 @@ class TestAgentForward:
 
         assert result is not None
 
-    def test_agent_forward_with_model_state(self):
-        """Test Agent forward with model_state."""
+    def test_agent_forward_with_messages(self):
+        """Test Agent forward with messages."""
         mock_model = Mock()
         mock_model.model_type = "chat_completion"
         mock_response = ModelResponse()
@@ -380,7 +380,7 @@ class TestAgentForward:
 
         agent.lm.forward = Mock(return_value=mock_response)
 
-        result = agent(query="Test", model_state=[])
+        result = agent(query="Test", messages=[])
 
         assert result is not None
 
@@ -758,18 +758,18 @@ class TestAgentConfigOptions:
 
         assert agent.config.get("verbose") is True
 
-    def test_agent_config_return_model_state(self):
-        """Test Agent with return_model_state config."""
+    def test_agent_config_return_messages(self):
+        """Test Agent with return_messages config."""
         mock_model = Mock()
         mock_model.model_type = "chat_completion"
 
         agent = Agent(
             name="agent",
             model=mock_model,
-            config={"return_model_state": True}
+            config={"return_messages": True}
         )
 
-        assert agent.config.get("return_model_state") is True
+        assert agent.config.get("return_messages") is True
 
     def test_agent_config_tool_choice(self):
         """Test Agent with tool_choice config."""
@@ -1007,10 +1007,11 @@ class TestAgentProperties:
         agent = Agent(
             name="agent",
             model=mock_model,
-            response_mode="plain_response"
+            response_mode=None
         )
 
         assert hasattr(agent, "response_mode")
+        assert agent.response_mode is None
 
     def test_agent_context_cache_property(self):
         """Test context_cache property."""
@@ -1037,29 +1038,6 @@ class TestAgentProperties:
         )
 
         assert agent.prefilling == "Start here"
-
-
-class TestAgentFixedMessages:
-    """Test Agent with fixed messages."""
-
-    def test_agent_with_fixed_messages(self):
-        """Test Agent with fixed_messages parameter."""
-        mock_model = Mock()
-        mock_model.model_type = "chat_completion"
-
-        fixed_msgs = [
-            {"role": "user", "content": "Hello"},
-            {"role": "assistant", "content": "Hi there"}
-        ]
-
-        agent = Agent(
-            name="agent",
-            model=mock_model,
-            fixed_messages=fixed_msgs
-        )
-
-        # Agent should have fixed_messages attribute
-        assert hasattr(agent, "fixed_messages")
 
 
 class TestAgentSystemExtraMessage:

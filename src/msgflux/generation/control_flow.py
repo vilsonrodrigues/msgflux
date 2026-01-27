@@ -36,12 +36,12 @@ class ToolFlowControl:
     Subclasses must implement:
         - extract_flow_result(raw_response): Extract flow information
         - inject_results(raw_response, tool_results): Inject tool results
-        - build_history(raw_response, model_state): Build history message
+        - build_history(raw_response, messages): Build history message
 
     And async versions:
         - aextract_flow_result(raw_response): Async version
         - ainject_results(raw_response, tool_results): Async version
-        - abuild_history(raw_response, model_state): Async version
+        - abuild_history(raw_response, messages): Async version
 
     Class attributes:
         system_message: Optional system message template
@@ -89,16 +89,16 @@ class ToolFlowControl:
     def build_history(
         cls,
         raw_response: Mapping[str, Any],
-        model_state: List[Mapping[str, Any]],
+        messages: List[Mapping[str, Any]],
     ) -> List[Mapping[str, Any]]:
         """Build history message for next iteration.
 
         Args:
             raw_response: The model response (as dotdict)
-            model_state: Current state (chat history)
+            messages: Current messages (chat history)
 
         Returns:
-            Updated model_state with step history
+            Updated messages with step history
         """
         raise NotImplementedError
 
@@ -128,11 +128,11 @@ class ToolFlowControl:
     async def abuild_history(
         cls,
         raw_response: Mapping[str, Any],
-        model_state: List[Mapping[str, Any]],
+        messages: List[Mapping[str, Any]],
     ) -> List[Mapping[str, Any]]:
         """Async version of build_history.
 
         Default implementation calls sync version.
         Override for async-specific behavior.
         """
-        return cls.build_history(raw_response, model_state)
+        return cls.build_history(raw_response, messages)

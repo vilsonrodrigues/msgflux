@@ -115,7 +115,7 @@ def test_tool_config_values_are_correct():
         return_direct=True,
         call_as_response=False,
         background=False,
-        inject_model_state=False,
+        inject_messages=False,
         inject_vars=["var1", "var2"],
         handoff=False,
         name_override="CustomName",
@@ -131,7 +131,7 @@ def test_tool_config_values_are_correct():
     assert config.return_direct is True
     assert config.call_as_response is False
     assert config.background is False
-    assert config.inject_model_state is False
+    assert config.inject_messages is False
     assert config.inject_vars == ["var1", "var2"]
     assert config.handoff is False
     assert config.name_overridden == "CustomName"
@@ -150,10 +150,10 @@ def test_tool_config_handoff_sets_return_direct():
         name = "HandoffAgent"
         model = mock_model
 
-    # handoff should automatically enable return_direct and inject_model_state
+    # handoff should automatically enable return_direct and inject_messages
     assert HandoffAgent.tool_config.handoff is True
     assert HandoffAgent.tool_config.return_direct is True
-    assert HandoffAgent.tool_config.inject_model_state is True
+    assert HandoffAgent.tool_config.inject_messages is True
 
     print("✓ Test 5 passed: handoff=True sets dependent flags")
 

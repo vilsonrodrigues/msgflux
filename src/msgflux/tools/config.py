@@ -10,7 +10,7 @@ def tool_config(
     return_direct: Optional[bool] = False,
     call_as_response: Optional[bool] = False,
     background: Optional[bool] = False,
-    inject_model_state: Optional[bool] = False,
+    inject_messages: Optional[bool] = False,
     inject_vars: Optional[Union[bool, List[str]]] = False,
     handoff: Optional[bool] = False,
     name_override: Optional[str] = None,
@@ -38,18 +38,18 @@ def tool_config(
         background:
             If True, the tool will be executed in the background and a message
             that the task has been scheduled will be the response to the model.
-        inject_model_state:
-            If true, the tool automatically sets `inject_model_state` and
+        inject_messages:
+            If true, the tool automatically sets `inject_messages` and
             `return_direct` to `True`. Additionally, the tool will be
             renamed to `transfer_to_<name>`.
             Any input parameters for this tool will be removed. The tool will **only**
-            receive `model_state` as a parameter.
+            receive `messages` as a parameter.
         inject_vars:
             Indicates if the tool should receive vars. If True, the tool receives all
             vars as a named argument `vars`. If a list of vars is passed, only those
             vars will be passed.
         handoff:
-            If True, indicates that this function will receive the `model_state`
+            If True, indicates that this function will receive the `messages`
             from the Agent.
         name_override:
             A custom name to override the default tool name derived from the function
@@ -94,14 +94,14 @@ def tool_config(
 
     def decorator(f):
         _return_direct = return_direct  # Local copy
-        _inject_model_state = inject_model_state  # Local copy
+        _inject_messages = inject_messages  # Local copy
 
         if call_as_response is True and _return_direct is False:
             _return_direct = True
 
         if handoff:
             _return_direct = True
-            _inject_model_state = True
+            _inject_messages = True
 
         if background and (_return_direct or call_as_response):
             raise ValueError(
@@ -120,7 +120,7 @@ def tool_config(
                     "background": background,
                     "call_as_response": call_as_response,
                     "handoff": handoff,
-                    "inject_model_state": _inject_model_state,
+                    "inject_messages": _inject_messages,
                     "inject_vars": inject_vars,
                     "return_direct": _return_direct,
                     "name_overridden": name_override,

@@ -1,3 +1,4 @@
+from copy import deepcopy
 from datetime import datetime, timezone
 from typing import (
     Any,
@@ -47,7 +48,7 @@ from msgflux.utils.xml import apply_xml_tags
 # Reserved kwargs that should not be treated as task inputs
 _RESERVED_KWARGS = {
     "vars",
-    "model_state",
+    "messages",
     "task_multimodal_inputs",
     "context_inputs",
     "model_preference",
@@ -126,13 +127,13 @@ class Agent(Module, metaclass=AutoParams):
                 guardrails={"input": input_checker, "output": output_checker}
         message_fields:
             Dictionary mapping Message field names to their paths in the Message object.
-            Valid keys: "task_inputs", "task_multimodal_inputs", "model_state",
+            Valid keys: "task_inputs", "task_multimodal_inputs", "messages",
             "context_inputs", "model_preference", "vars"
             !!! example
                 message_fields={
                     "task_inputs": "input.user",
                     "task_multimodal_inputs": {"audio": "audio.user"},
-                    "model_state": "messages.history",
+                    "messages": "messages.history",
                     "context_inputs": "context.data",
                     "model_preference": "model.preference",
                     "vars": "vars.data"
@@ -142,19 +143,19 @@ class Agent(Module, metaclass=AutoParams):
             - task_inputs: Field path for task input (str, dict, or tuple)
             - task_multimodal_inputs: Map datatype (image, video, audio, file)
               to field paths
-            - model_state: Field path for list of chats in ChatML format
+            - messages: Field path for list of chats in ChatML format
             - context_inputs: Field path for context (str or list of str)
             - model_preference: Field path for model preference (str, only valid
               with ModelGateway)
             - vars: Field path for inputs to templates and tools (str)
         config:
             Dictionary with configuration options.
-            Valid keys: "verbose", "return_model_state", "tool_choice",
+            Valid keys: "verbose", "return_messages", "tool_choice",
             "stream", "image_block_kwargs", "video_block_kwargs", "include_date"
             !!! example
                 config={
                     "verbose": True,
-                    "return_model_state": False,
+                    "return_messages": False,
                     "tool_choice": "auto",
                     "stream": False,
                     "image_block_kwargs": {"detail": "high"},
@@ -164,7 +165,7 @@ class Agent(Module, metaclass=AutoParams):
 
             Configuration options:
             - verbose: Print model output and tool calls to console (bool)
-            - return_model_state: Return dict with model_state and response (bool)
+            - return_messages: Return dict with messages and response (bool)
             - tool_choice: Control tool selection ("auto", "required", or function name)
             - stream: Transmit response on-the-fly (bool)
             - image_block_kwargs: Dict of kwargs to pass to ChatBlock.image
@@ -324,7 +325,7 @@ class Agent(Module, metaclass=AutoParams):
             **kwargs: Can include:
                 - Reserved kwargs (runtime overrides for message_fields):
                     - task_multimodal_inputs: Override multimodal inputs
-                    - model_state: Override chat messages (model state)
+                    - messages: Override chat messages (chat history)
                     - context_inputs: Override context
                     - model_preference: Override model preference
                     - vars: Override template/tool variables
@@ -384,13 +385,13 @@ class Agent(Module, metaclass=AutoParams):
 
     def _execute_model(
         self,
-        model_state: List[Mapping[str, Any]],
+        messages: List[Mapping[str, Any]],
         vars: Mapping[str, Any],
         prefilling: Optional[str] = None,
         model_preference: Optional[str] = None,
     ) -> Union[ModelResponse, ModelStreamResponse]:
         model_execution_params = self._prepare_model_execution(
-            model_state=model_state,
+            messages=messages,
             prefilling=prefilling,
             model_preference=model_preference,
             vars=vars,
@@ -404,13 +405,13 @@ class Agent(Module, metaclass=AutoParams):
 
     async def _aexecute_model(
         self,
-        model_state: List[Mapping[str, Any]],
+        messages: List[Mapping[str, Any]],
         vars: Mapping[str, Any],
         prefilling: Optional[str] = None,
         model_preference: Optional[str] = None,
     ) -> Union[ModelResponse, ModelStreamResponse]:
         model_execution_params = self._prepare_model_execution(
-            model_state=model_state,
+            messages=messages,
             prefilling=prefilling,
             model_preference=model_preference,
             vars=vars,
@@ -424,15 +425,11 @@ class Agent(Module, metaclass=AutoParams):
 
     def _prepare_model_execution(
         self,
-        model_state: List[Mapping[str, Any]],
+        messages: List[Mapping[str, Any]],
         vars: Mapping[str, Any],
         prefilling: Optional[str] = None,
         model_preference: Optional[str] = None,
     ) -> Mapping[str, Any]:
-        # model_state, prefilling, model_preference, vars
-        agent_state = []
-        agent_state.extend(model_state)
-
         system_prompt = self.get_system_prompt(vars)
 
         tool_schemas = self.tool_library.get_tool_json_schemas()
@@ -453,7 +450,7 @@ class Agent(Module, metaclass=AutoParams):
             tool_choice = None  # Disable tool_choice to controlflow preference
 
         model_execution_params = dotdict(
-            messages=agent_state,
+            messages=deepcopy(messages),
             system_prompt=system_prompt or None,
             prefilling=prefilling,
             stream=self.config.get("stream", False),
@@ -487,17 +484,17 @@ class Agent(Module, metaclass=AutoParams):
         self,
         message: Union[str, Mapping[str, Any], Message],
         model_response: Union[ModelResponse, ModelStreamResponse],
-        model_state: List[Mapping[str, Any]],
+        messages: List[Mapping[str, Any]],
         vars: Mapping[str, Any],
         model_preference: Optional[str] = None,
     ) -> Union[str, Mapping[str, Any], Message, ModelStreamResponse]:
         if "tool_call" in model_response.response_type:
-            model_response, model_state = self._process_tool_call_response(
-                model_response, model_state, vars, model_preference
+            model_response, messages = self._process_tool_call_response(
+                model_response, messages, vars, model_preference
             )
         elif is_subclass_of(self.generation_schema, ToolFlowControl):
-            model_response, model_state = self._process_tool_flow_control_response(
-                model_response, model_state, vars, model_preference
+            model_response, messages = self._process_tool_flow_control_response(
+                model_response, messages, vars, model_preference
             )
 
         if isinstance(model_response, (ModelResponse, ModelStreamResponse)):
@@ -509,7 +506,7 @@ class Agent(Module, metaclass=AutoParams):
 
         if response_type in self._supported_outputs:
             response = self._prepare_response(
-                raw_response, response_type, model_state, message, vars
+                raw_response, response_type, messages, message, vars
             )
             return response
         else:
@@ -519,20 +516,20 @@ class Agent(Module, metaclass=AutoParams):
         self,
         message: Union[str, Mapping[str, Any], Message],
         model_response: Union[ModelResponse, ModelStreamResponse],
-        model_state: List[Mapping[str, Any]],
+        messages: List[Mapping[str, Any]],
         vars: Mapping[str, Any],
         model_preference: Optional[str] = None,
     ) -> Union[str, Mapping[str, Any], Message, ModelStreamResponse]:
         if "tool_call" in model_response.response_type:
-            model_response, model_state = await self._aprocess_tool_call_response(
-                model_response, model_state, vars, model_preference
+            model_response, messages = await self._aprocess_tool_call_response(
+                model_response, messages, vars, model_preference
             )
         elif is_subclass_of(self.generation_schema, ToolFlowControl):
             (
                 model_response,
-                model_state,
+                messages,
             ) = await self._aprocess_tool_flow_control_response(
-                model_response, model_state, vars, model_preference
+                model_response, messages, vars, model_preference
             )
 
         if isinstance(model_response, (ModelResponse, ModelStreamResponse)):
@@ -544,7 +541,7 @@ class Agent(Module, metaclass=AutoParams):
 
         if response_type in self._supported_outputs:
             response = await self._aprepare_response(
-                raw_response, response_type, model_state, message, vars
+                raw_response, response_type, messages, message, vars
             )
             return response
         else:
@@ -553,7 +550,7 @@ class Agent(Module, metaclass=AutoParams):
     def _process_tool_flow_control_response(
         self,
         model_response: Union[ModelResponse, ModelStreamResponse],
-        model_state: Mapping[str, Any],
+        messages: Mapping[str, Any],
         vars: Mapping[str, Any],
         model_preference: Optional[str] = None,
     ) -> Tuple[Union[str, Mapping[str, Any], ModelStreamResponse], Mapping[str, Any]]:
@@ -566,7 +563,7 @@ class Agent(Module, metaclass=AutoParams):
             flow_result = flow_control.extract_flow_result(raw_response)
 
             if flow_result.is_complete:
-                return model_response, model_state
+                return model_response, messages
 
             if self.config.get("verbose", False) and flow_result.reasoning:
                 cprint(
@@ -577,29 +574,29 @@ class Agent(Module, metaclass=AutoParams):
 
             if flow_result.tool_calls:
                 tool_results = self._process_tool_call(
-                    flow_result.tool_calls, model_state, vars
+                    flow_result.tool_calls, messages, vars
                 )
 
                 if tool_results.return_directly:
                     tool_calls = tool_results.to_dict().pop("return_directly")
                     tool_calls["reasoning"] = flow_result.reasoning
                     tool_responses = dotdict(tool_responses=tool_calls)
-                    return tool_responses, model_state
+                    return tool_responses, messages
 
                 # Use interface to inject results
                 raw_response = flow_control.inject_results(raw_response, tool_results)
 
                 # Use interface to build history
-                model_state = flow_control.build_history(raw_response, model_state)
+                messages = flow_control.build_history(raw_response, messages)
 
             model_response = self._execute_model(
-                model_state=model_state, model_preference=model_preference, vars=vars
+                messages=messages, model_preference=model_preference, vars=vars
             )
 
     async def _aprocess_tool_flow_control_response(
         self,
         model_response: Union[ModelResponse, ModelStreamResponse],
-        model_state: Mapping[str, Any],
+        messages: Mapping[str, Any],
         vars: Mapping[str, Any],
         model_preference: Optional[str] = None,
     ) -> Tuple[Union[str, Mapping[str, Any], ModelStreamResponse], Mapping[str, Any]]:
@@ -614,7 +611,7 @@ class Agent(Module, metaclass=AutoParams):
             flow_result = await flow_control.aextract_flow_result(raw_response)
 
             if flow_result.is_complete:
-                return model_response, model_state
+                return model_response, messages
 
             if self.config.get("verbose", False) and flow_result.reasoning:
                 cprint(
@@ -625,14 +622,14 @@ class Agent(Module, metaclass=AutoParams):
 
             if flow_result.tool_calls:
                 tool_results = await self._aprocess_tool_call(
-                    flow_result.tool_calls, model_state, vars
+                    flow_result.tool_calls, messages, vars
                 )
 
                 if tool_results.return_directly:
                     tool_calls = tool_results.to_dict().pop("return_directly")
                     tool_calls["reasoning"] = flow_result.reasoning
                     tool_responses = dotdict(tool_responses=tool_calls)
-                    return tool_responses, model_state
+                    return tool_responses, messages
 
                 # Use interface to inject results (async version)
                 raw_response = await flow_control.ainject_results(
@@ -640,18 +637,18 @@ class Agent(Module, metaclass=AutoParams):
                 )
 
                 # Use interface to build history (async version)
-                model_state = await flow_control.abuild_history(
-                    raw_response, model_state
+                messages = await flow_control.abuild_history(
+                    raw_response, messages
                 )
 
             model_response = await self._aexecute_model(
-                model_state=model_state, model_preference=model_preference, vars=vars
+                messages=messages, model_preference=model_preference, vars=vars
             )
 
     def _process_tool_call_response(
         self,
         model_response: Union[ModelResponse, ModelStreamResponse],
-        model_state: Mapping[str, Any],
+        messages: Mapping[str, Any],
         vars: Mapping[str, Any],
         model_preference: Optional[str] = None,
     ) -> Tuple[Union[str, Mapping[str, Any], ModelStreamResponse], Mapping[str, Any]]:
@@ -672,14 +669,14 @@ class Agent(Module, metaclass=AutoParams):
                         cprint(repr_str, bc="br2", ls="b")
 
                 tool_callings = raw_response.get_calls()
-                tool_results = self._process_tool_call(tool_callings, model_state, vars)
+                tool_results = self._process_tool_call(tool_callings, messages, vars)
 
                 if tool_results.return_directly:
                     tool_calls = tool_results.to_dict()
                     tool_calls.pop("return_directly")
                     tool_calls["reasoning"] = reasoning
                     tool_responses = dotdict(tool_responses=tool_calls)
-                    return tool_responses, model_state
+                    return tool_responses, messages
 
                 id_results = {
                     call.id: call.result or call.error
@@ -687,18 +684,18 @@ class Agent(Module, metaclass=AutoParams):
                 }
                 raw_response.insert_results(id_results)
                 tool_responses_message = raw_response.get_messages()
-                model_state.extend(tool_responses_message)
+                messages.extend(tool_responses_message)
             else:
-                return model_response, model_state
+                return model_response, messages
 
             model_response = self._execute_model(
-                model_state=model_state, model_preference=model_preference, vars=vars
+                messages=messages, model_preference=model_preference, vars=vars
             )
 
     async def _aprocess_tool_call_response(
         self,
         model_response: Union[ModelResponse, ModelStreamResponse],
-        model_state: Mapping[str, Any],
+        messages: Mapping[str, Any],
         vars: Mapping[str, Any],
         model_preference: Optional[str] = None,
     ) -> Tuple[Union[str, Mapping[str, Any], ModelStreamResponse], Mapping[str, Any]]:
@@ -720,7 +717,7 @@ class Agent(Module, metaclass=AutoParams):
 
                 tool_callings = raw_response.get_calls()
                 tool_results = await self._aprocess_tool_call(
-                    tool_callings, model_state, vars
+                    tool_callings, messages, vars
                 )
 
                 if tool_results.return_directly:
@@ -728,7 +725,7 @@ class Agent(Module, metaclass=AutoParams):
                     tool_calls.pop("return_directly")
                     tool_calls["reasoning"] = reasoning
                     tool_responses = dotdict(tool_responses=tool_calls)
-                    return tool_responses, model_state
+                    return tool_responses, messages
 
                 id_results = {
                     call.id: call.result or call.error
@@ -736,18 +733,18 @@ class Agent(Module, metaclass=AutoParams):
                 }
                 raw_response.insert_results(id_results)
                 tool_responses_message = raw_response.get_messages()
-                model_state.extend(tool_responses_message)
+                messages.extend(tool_responses_message)
             else:
-                return model_response, model_state
+                return model_response, messages
 
             model_response = await self._aexecute_model(
-                model_state=model_state, model_preference=model_preference, vars=vars
+                messages=messages, model_preference=model_preference, vars=vars
             )
 
     def _process_tool_call(
         self,
         tool_callings: Mapping[str, Any],
-        model_state: List[Mapping[str, Any]],
+        messages: List[Mapping[str, Any]],
         vars: Mapping[str, Any],
     ) -> ToolResponses:
         if self.config.get("verbose", False):
@@ -756,7 +753,7 @@ class Agent(Module, metaclass=AutoParams):
                 cprint(repr_str, bc="br2", ls="b")
         tool_results = self.tool_library(
             tool_callings=tool_callings,
-            model_state=model_state,
+            messages=messages,
             vars=vars,
         )
         if self.config.get("verbose", False):
@@ -773,7 +770,7 @@ class Agent(Module, metaclass=AutoParams):
     async def _aprocess_tool_call(
         self,
         tool_callings: Mapping[str, Any],
-        model_state: List[Mapping[str, Any]],
+        messages: List[Mapping[str, Any]],
         vars: Mapping[str, Any],
     ) -> ToolResponses:
         """Async version of _process_tool_call."""
@@ -783,7 +780,7 @@ class Agent(Module, metaclass=AutoParams):
                 cprint(repr_str, bc="br2", ls="b")
         tool_results = await self.tool_library.acall(
             tool_callings=tool_callings,
-            model_state=model_state,
+            messages=messages,
             vars=vars,
         )
         if self.config.get("verbose", False):
@@ -801,7 +798,7 @@ class Agent(Module, metaclass=AutoParams):
         self,
         raw_response: Union[str, Mapping[str, Any], ModelStreamResponse],
         response_type: str,
-        model_state: List[Mapping[str, Any]],
+        messages: List[Mapping[str, Any]],
         message: Union[str, Mapping[str, Any], Message],
         vars: Mapping[str, Any],
     ) -> Union[str, Mapping[str, Any], ModelStreamResponse]:
@@ -824,19 +821,19 @@ class Agent(Module, metaclass=AutoParams):
                             raw_response
                         )
 
-        response = formatted_response or raw_response
-        if self.config.get("return_model_state", False):
+        result = formatted_response or raw_response
+        if self.config.get("return_messages", False):
             if response_type == "tool_responses":
-                response.model_state = model_state
+                result.messages = messages
             else:
-                response = dotdict(agent_response=response, model_state=model_state)
-        return self._define_response_mode(response, message)
+                result = dotdict(response=result, messages=messages)
+        return self._define_response_mode(result, message)
 
     async def _aprepare_response(
         self,
         raw_response: Union[str, Mapping[str, Any], ModelStreamResponse],
         response_type: str,
-        model_state: List[Mapping[str, Any]],
+        messages: List[Mapping[str, Any]],
         message: Union[str, Mapping[str, Any], Message],
         vars: Mapping[str, Any],
     ) -> Union[str, Mapping[str, Any], ModelStreamResponse]:
@@ -860,13 +857,13 @@ class Agent(Module, metaclass=AutoParams):
                             raw_response
                         )
 
-        response = formatted_response or raw_response
-        if self.config.get("return_model_state", False):
+        result = formatted_response or raw_response
+        if self.config.get("return_messages", False):
             if response_type == "tool_responses":
-                response.model_state = model_state
+                result.messages = messages
             else:
-                response = dotdict(model_response=response, model_state=model_state)
-        return self._define_response_mode(response, message)
+                result = dotdict(response=result, messages=messages)
+        return self._define_response_mode(result, message)
 
     def _prepare_output_guardrail_execution(
         self, model_response: Union[str, Mapping[str, Any]]
@@ -884,7 +881,7 @@ class Agent(Module, metaclass=AutoParams):
         """Prepare model input in ChatML format and execution params."""
         # Extract reserved kwargs
         vars = kwargs.pop("vars", {})
-        model_state = kwargs.pop("model_state", [])
+        messages = kwargs.pop("messages", [])
         model_preference = kwargs.pop("model_preference", None)
 
         # Get remaining kwargs (potential task inputs)
@@ -918,17 +915,17 @@ class Agent(Module, metaclass=AutoParams):
         if not vars and isinstance(message, Message) and self.vars is not None:
             vars = message.get(self.vars, {})
 
-        # Extract model_state from Message if not provided
+        # Extract messages from Message if not provided
         if (
-            model_state == []
+            messages == []
             and isinstance(message, Message)
-            and self.model_state is not None
+            and self.messages is not None
         ):
-            model_state = self._get_content_from_message(self.model_state, message)
+            messages = self._get_content_from_message(self.messages, message)
 
         content = self._process_task_inputs(message, vars=vars, **kwargs)
 
-        if content is None and model_state == []:
+        if content is None and messages == []:
             raise ValueError(
                 "No task input provided. Expected one of:\n"
                 "  - agent('your text')\n"
@@ -939,16 +936,16 @@ class Agent(Module, metaclass=AutoParams):
 
         if content is not None:
             chat_content = [ChatBlock.user(content)]
-            if model_state == []:
-                model_state = chat_content
+            if messages == []:
+                messages = chat_content
             else:
-                model_state.extend(chat_content)
+                messages.extend(chat_content)
 
         if model_preference is None and isinstance(message, Message):
             model_preference = self.get_model_preference_from_message(message)
 
         return {
-            "model_state": model_state,
+            "messages": messages,
             "model_preference": model_preference,
             "vars": vars,
         }
@@ -961,7 +958,7 @@ class Agent(Module, metaclass=AutoParams):
         """
         # Extract reserved kwargs
         vars = kwargs.pop("vars", {})
-        model_state = kwargs.pop("model_state", [])
+        messages = kwargs.pop("messages", [])
         model_preference = kwargs.pop("model_preference", None)
 
         # Get remaining kwargs (potential task inputs)
@@ -995,17 +992,17 @@ class Agent(Module, metaclass=AutoParams):
         if not vars and isinstance(message, Message) and self.vars is not None:
             vars = message.get(self.vars, {})
 
-        # Extract model_state from Message if not provided
+        # Extract messages from Message if not provided
         if (
-            model_state == []
+            messages == []
             and isinstance(message, Message)
-            and self.model_state is not None
+            and self.messages is not None
         ):
-            model_state = self._get_content_from_message(self.model_state, message)
+            messages = self._get_content_from_message(self.messages, message)
 
         content = await self._aprocess_task_inputs(message, vars=vars, **kwargs)
 
-        if content is None and model_state == []:
+        if content is None and messages == []:
             raise ValueError(
                 "No task input provided. Expected one of:\n"
                 "  - agent('your text')\n"
@@ -1016,17 +1013,17 @@ class Agent(Module, metaclass=AutoParams):
 
         if content is not None:
             chat_content = [ChatBlock.user(content)]
-            if model_state == []:
-                model_state = chat_content
+            if messages == []:
+                messages = chat_content
             else:
-                model_state.extend(chat_content)
-        # model_state is already set when content is None
+                messages.extend(chat_content)
+        # messages is already set when content is None
 
         if model_preference is None and isinstance(message, Message):
             model_preference = self.get_model_preference_from_message(message)
 
         return {
-            "model_state": model_state,
+            "messages": messages,
             "model_preference": model_preference,
             "vars": vars,
         }
@@ -1494,12 +1491,12 @@ class Agent(Module, metaclass=AutoParams):
                 f"`examples` requires a List[Example] or None given `{type(examples)}`"
             )
 
-    def _set_model_state(self, model_state: Optional[str] = None):
-        if isinstance(model_state, str) or model_state is None:
-            self.register_buffer("model_state", model_state)
+    def _set_messages(self, messages: Optional[str] = None):
+        if isinstance(messages, str) or messages is None:
+            self.register_buffer("messages", messages)
         else:
             raise TypeError(
-                f"`model_state` requires a string or None given `{type(model_state)}`"
+                f"`messages` requires a string or None given `{type(messages)}`"
             )
 
     def _set_config(self, config: Optional[Dict[str, Any]] = None):
@@ -1508,7 +1505,7 @@ class Agent(Module, metaclass=AutoParams):
         Args:
             config:
                 Dictionary with configuration options.
-                Valid keys: "verbose", "return_model_state", "tool_choice",
+                Valid keys: "verbose", "return_messages", "tool_choice",
                 "stream", "image_block_kwargs", "video_block_kwargs", "include_date"
 
         Raises:
@@ -1520,7 +1517,7 @@ class Agent(Module, metaclass=AutoParams):
         # Define valid keys for Agent
         valid_keys = {
             "verbose",
-            "return_model_state",
+            "return_messages",
             "tool_choice",
             "stream",
             "image_block_kwargs",
@@ -1578,7 +1575,7 @@ class Agent(Module, metaclass=AutoParams):
 
         Args:
             message_fields: Dictionary mapping field names to their values.
-                Valid keys: "task_inputs", "task_multimodal_inputs", "model_state",
+                Valid keys: "task_inputs", "task_multimodal_inputs", "messages",
                 "context_inputs", "model_preference", "vars"
 
         Raises:
@@ -1589,7 +1586,7 @@ class Agent(Module, metaclass=AutoParams):
         valid_keys = {
             "task_inputs",
             "task_multimodal_inputs",
-            "model_state",
+            "messages",
             "context_inputs",
             "model_preference",
             "vars",
@@ -1601,7 +1598,7 @@ class Agent(Module, metaclass=AutoParams):
             self._set_task_multimodal_inputs(None)
             self._set_model_preference(None)
             self._set_context_inputs(None)
-            self._set_model_state(None)
+            self._set_messages(None)
             self._set_vars(None)
             return
 
@@ -1624,7 +1621,7 @@ class Agent(Module, metaclass=AutoParams):
         self._set_task_multimodal_inputs(message_fields.get("task_multimodal_inputs"))
         self._set_model_preference(message_fields.get("model_preference"))
         self._set_context_inputs(message_fields.get("context_inputs"))
-        self._set_model_state(message_fields.get("model_state"))
+        self._set_messages(message_fields.get("messages"))
         self._set_vars(message_fields.get("vars"))
 
     def _set_typed_parser(self, typed_parser: Optional[str] = None):

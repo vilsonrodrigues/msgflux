@@ -469,7 +469,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
     def forward(  # noqa: C901
         self,
         tool_callings: List[Tuple[str, str, Any]],
-        model_state: Optional[List[Dict[str, Any]]] = None,
+        messages: Optional[List[Dict[str, Any]]] = None,
         vars: Optional[Mapping[str, Any]] = None,
     ) -> ToolResponses:
         """Executes tool calls with tool config logic.
@@ -480,8 +480,8 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 !!! example
                     [('123121', 'tool_name1', {'parameter1': 'value1'}),
                     ('322', 'tool_name2', '')]
-            model_state:
-                The current state of the Agent for the `handoff` functionality.
+            messages:
+                The current messages (chat history) for the `handoff` functionality.
             vars:
                 Extra kwargs to be used in tools.
 
@@ -491,8 +491,8 @@ class ToolLibrary(Module, metaclass=AutoParams):
         """
         # TODO capturar no trace quando o modelo erra algo na tool
         # TODO capturar no trace o tool config
-        if model_state is None:
-            model_state = {}
+        if messages is None:
+            messages = {}
 
         if vars is None:
             vars = {}
@@ -556,8 +556,8 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 return_directly = True
                 continue
 
-            if config.get("inject_model_state", False):  # Add model_state
-                tool_params["model_state"] = model_state
+            if config.get("inject_messages", False):  # Add messages
+                tool_params["messages"] = messages
 
             if not config.get("return_direct", False):
                 return_directly = False
@@ -599,7 +599,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
     async def aforward(  # noqa: C901
         self,
         tool_callings: List[Tuple[str, str, Any]],
-        model_state: Optional[List[Dict[str, Any]]] = None,
+        messages: Optional[List[Dict[str, Any]]] = None,
         vars: Optional[Mapping[str, Any]] = None,
     ) -> ToolResponses:
         """Async version of forward. Executes tool calls with logic for
@@ -611,8 +611,8 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 !!! example
                     [('123121', 'tool_name1', {'parameter1': 'value1'}),
                     ('322', 'tool_name2', '')]
-            model_state:
-                The current state of the Agent for the `handoff` functionality.
+            messages:
+                The current messages (chat history) for the `handoff` functionality.
             vars:
                 Extra kwargs to be used in tools.
 
@@ -620,8 +620,8 @@ class ToolLibrary(Module, metaclass=AutoParams):
             ToolResponses:
                 Structured object containing all tool call results.
         """
-        if model_state is None:
-            model_state = {}
+        if messages is None:
+            messages = {}
 
         if vars is None:
             vars = {}
@@ -685,8 +685,8 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 return_directly = True
                 continue
 
-            if config.get("inject_model_state", False):  # Add model_state
-                tool_params["model_state"] = model_state
+            if config.get("inject_messages", False):  # Add messages
+                tool_params["messages"] = messages
 
             if not config.get("return_direct", False):
                 return_directly = False

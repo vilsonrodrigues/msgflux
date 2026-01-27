@@ -63,7 +63,7 @@ class TestToolConfig:
         assert config.handoff is False
         assert config.call_as_response is False
         assert config.inject_vars is False
-        assert config.inject_model_state is False
+        assert config.inject_messages is False
 
     def test_tool_config_call_as_response_sets_return_direct(self):
         """Test that call_as_response=True automatically sets return_direct=True."""
@@ -75,8 +75,8 @@ class TestToolConfig:
         assert sample_function.tool_config.call_as_response is True
         assert sample_function.tool_config.return_direct is True
 
-    def test_tool_config_handoff_sets_return_direct_and_inject_model_state(self):
-        """Test that handoff=True sets return_direct and inject_model_state to True."""
+    def test_tool_config_handoff_sets_return_direct_and_inject_messages(self):
+        """Test that handoff=True sets return_direct and inject_messages to True."""
 
         @tool_config(handoff=True)
         def sample_function():
@@ -84,7 +84,7 @@ class TestToolConfig:
 
         assert sample_function.tool_config.handoff is True
         assert sample_function.tool_config.return_direct is True
-        assert sample_function.tool_config.inject_model_state is True
+        assert sample_function.tool_config.inject_messages is True
 
     def test_tool_config_background_incompatible_with_return_direct(self):
         """Test that background=True is incompatible with return_direct=True."""
@@ -248,20 +248,20 @@ class TestToolConfigCombinations:
         assert sample.tool_config.background is True
         assert sample.tool_config.return_direct is False
 
-    def test_inject_model_state_true(self):
-        """Test inject_model_state=True configuration."""
+    def test_inject_messages_true(self):
+        """Test inject_messages=True configuration."""
 
-        @tool_config(inject_model_state=True)
+        @tool_config(inject_messages=True)
         def sample():
             pass
 
-        assert sample.tool_config.inject_model_state is True
+        assert sample.tool_config.inject_messages is True
 
     def test_multiple_parameters(self):
         """Test multiple parameters set simultaneously."""
 
         @tool_config(
-            return_direct=True, inject_vars=["var1", "var2"], inject_model_state=True
+            return_direct=True, inject_vars=["var1", "var2"], inject_messages=True
         )
         def sample():
             pass
@@ -269,7 +269,7 @@ class TestToolConfigCombinations:
         config = sample.tool_config
         assert config.return_direct is True
         assert config.inject_vars == ["var1", "var2"]
-        assert config.inject_model_state is True
+        assert config.inject_messages is True
 
     def test_all_false_parameters(self):
         """Test all parameters set to False."""
@@ -280,7 +280,7 @@ class TestToolConfigCombinations:
             handoff=False,
             call_as_response=False,
             inject_vars=False,
-            inject_model_state=False,
+            inject_messages=False,
         )
         def sample():
             pass
@@ -291,7 +291,7 @@ class TestToolConfigCombinations:
         assert config.handoff is False
         assert config.call_as_response is False
         assert config.inject_vars is False
-        assert config.inject_model_state is False
+        assert config.inject_messages is False
 
 
 class TestToolConfigEdgeCases:

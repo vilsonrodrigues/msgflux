@@ -136,18 +136,18 @@ class ReAct(Struct, ToolFlowControl):
     def build_history(
         cls,
         raw_response: Mapping[str, Any],
-        model_state: List[Mapping[str, Any]],
+        messages: List[Mapping[str, Any]],
     ) -> List[Mapping[str, Any]]:
         """Build history message for next iteration."""
-        if model_state and model_state[-1].get("role") == "assistant":
-            last_react_msg = model_state[-1].get("content")
+        if messages and messages[-1].get("role") == "assistant":
+            last_react_msg = messages[-1].get("content")
             react_state = msgspec.json.decode(last_react_msg)
             react_state.append(raw_response)
-            model_state[-1] = ChatBlock.assist(react_state)
+            messages[-1] = ChatBlock.assist(react_state)
         else:
             react_state = [raw_response]
-            model_state.append(ChatBlock.assist(react_state))
-        return model_state
+            messages.append(ChatBlock.assist(react_state))
+        return messages
 
 
 ReAct.system_message = REACT_SYSTEM_MESSAGE

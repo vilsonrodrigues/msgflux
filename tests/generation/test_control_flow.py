@@ -73,9 +73,9 @@ class TestToolFlowControl:
 
             @classmethod
             def build_history(
-                cls, raw_response: Mapping[str, Any], model_state: List[Mapping[str, Any]]
+                cls, raw_response: Mapping[str, Any], messages: List[Mapping[str, Any]]
             ) -> List[Mapping[str, Any]]:
-                return model_state
+                return messages
 
         assert issubclass(CustomControl, ToolFlowControl)
 
@@ -153,12 +153,12 @@ class TestCustomToolFlowControl:
 
             @classmethod
             def build_history(
-                cls, raw_response: Mapping[str, Any], model_state: List[Mapping[str, Any]]
+                cls, raw_response: Mapping[str, Any], messages: List[Mapping[str, Any]]
             ) -> List[Mapping[str, Any]]:
-                model_state.append(
+                messages.append(
                     {"role": "assistant", "content": str(raw_response)}
                 )
-                return model_state
+                return messages
 
         # Test completed state
         result = SimpleToolLoop.extract_flow_result({"done": True})
@@ -172,10 +172,10 @@ class TestCustomToolFlowControl:
         assert result.tool_calls[0][1] == "search"
 
         # Test build_history
-        model_state = []
-        model_state = SimpleToolLoop.build_history(raw, model_state)
-        assert len(model_state) == 1
-        assert model_state[0]["role"] == "assistant"
+        messages = []
+        messages = SimpleToolLoop.build_history(raw, messages)
+        assert len(messages) == 1
+        assert messages[0]["role"] == "assistant"
 
 
 class TestToolFlowControlAsync:
@@ -208,9 +208,9 @@ class TestToolFlowControlAsync:
 
             @classmethod
             def build_history(
-                cls, raw_response: Mapping[str, Any], model_state: List[Mapping[str, Any]]
+                cls, raw_response: Mapping[str, Any], messages: List[Mapping[str, Any]]
             ) -> List[Mapping[str, Any]]:
-                return model_state
+                return messages
 
         # Call async version
         result = await CustomControl.aextract_flow_result({})
@@ -246,9 +246,9 @@ class TestToolFlowControlAsync:
 
             @classmethod
             def build_history(
-                cls, raw_response: Mapping[str, Any], model_state: List[Mapping[str, Any]]
+                cls, raw_response: Mapping[str, Any], messages: List[Mapping[str, Any]]
             ) -> List[Mapping[str, Any]]:
-                return model_state
+                return messages
 
         await CustomControl.ainject_results({}, MagicMock())
         assert CustomControl.inject_called is True
@@ -279,11 +279,11 @@ class TestToolFlowControlAsync:
 
             @classmethod
             def build_history(
-                cls, raw_response: Mapping[str, Any], model_state: List[Mapping[str, Any]]
+                cls, raw_response: Mapping[str, Any], messages: List[Mapping[str, Any]]
             ) -> List[Mapping[str, Any]]:
                 cls.history_called = True
-                model_state.append({"role": "test"})
-                return model_state
+                messages.append({"role": "test"})
+                return messages
 
         result = await CustomControl.abuild_history({}, [])
         assert CustomControl.history_called is True

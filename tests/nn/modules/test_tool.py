@@ -711,20 +711,20 @@ class TestToolLibrary:
         assert len(result.tool_calls) == 1
         assert result.tool_calls[0].result is None  # Not executed, just returned
 
-    def test_tool_library_with_inject_model_state(self):
-        """Test ToolLibrary with inject_model_state config."""
+    def test_tool_library_with_inject_messages(self):
+        """Test ToolLibrary with inject_messages config."""
 
-        def stateful_tool(x: int, model_state: dict) -> str:
+        def stateful_tool(x: int, messages: dict) -> str:
             """Tool that uses model state."""
-            return f"{x}-{model_state.get('key', 'none')}"
+            return f"{x}-{messages.get('key', 'none')}"
 
-        stateful_tool.tool_config = {"inject_model_state": True}
+        stateful_tool.tool_config = {"inject_messages": True}
         library = ToolLibrary(name="lib", tools=[stateful_tool])
 
         tool_callings = [("call_1", "stateful_tool", {"x": 5})]
-        model_state = {"key": "value"}
+        messages = {"key": "value"}
 
-        result = library(tool_callings, model_state=model_state)
+        result = library(tool_callings, messages=messages)
 
         assert result.tool_calls[0].result == "5-value"
 
@@ -848,19 +848,19 @@ class TestToolLibrary:
         assert result.tool_calls[0].result is None  # Not executed yet
 
     @pytest.mark.asyncio
-    async def test_tool_library_aforward_inject_model_state(self):
-        """Test async ToolLibrary inject_model_state."""
+    async def test_tool_library_aforward_inject_messages(self):
+        """Test async ToolLibrary inject_messages."""
 
-        async def async_tool(x: int, model_state: dict) -> str:
+        async def async_tool(x: int, messages: dict) -> str:
             """Tool with model state."""
-            return f"{x}-{model_state['key']}"
+            return f"{x}-{messages['key']}"
 
-        async_tool.tool_config = {"inject_model_state": True}
+        async_tool.tool_config = {"inject_messages": True}
         library = ToolLibrary(name="lib", tools=[async_tool])
 
         tool_callings = [("call_1", "async_tool", {"x": 8})]
         result = await library.aforward(
-            tool_callings, model_state={"key": "state_value"}
+            tool_callings, messages={"key": "state_value"}
         )
 
         assert "8-state_value" in result.tool_calls[0].result

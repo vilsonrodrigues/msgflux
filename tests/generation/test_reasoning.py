@@ -156,8 +156,8 @@ class TestReActToolFlowControl:
             "final_answer": None,
         }
 
-        model_state = []
-        result = ReAct.build_history(raw_response, model_state)
+        messages = []
+        result = ReAct.build_history(raw_response, messages)
 
         assert len(result) == 1
         assert result[0]["role"] == "assistant"
@@ -174,7 +174,7 @@ class TestReActToolFlowControl:
             "final_answer": None,
         }
 
-        # Simulate existing ReAct state in model_state
+        # Simulate existing ReAct state in messages
         existing_react = {
             "current_step": {
                 "thought": "First step",
@@ -183,9 +183,9 @@ class TestReActToolFlowControl:
             "final_answer": None,
         }
         existing_content = msgspec.json.encode([existing_react]).decode()
-        model_state = [{"role": "assistant", "content": existing_content}]
+        messages = [{"role": "assistant", "content": existing_content}]
 
-        result = ReAct.build_history(raw_response, model_state)
+        result = ReAct.build_history(raw_response, messages)
 
         assert len(result) == 1
         assert result[0]["role"] == "assistant"

@@ -87,7 +87,7 @@ def test_named_kwargs_with_message_raises_error():
 
 
 def test_reserved_kwargs_not_treated_as_task_inputs():
-    """Test that reserved kwargs (vars, model_state, etc.) are not treated as task inputs."""
+    """Test that reserved kwargs (vars, messages, etc.) are not treated as task inputs."""
     model = create_mock_model()
 
     agent = Agent(name="test_agent", model=model, templates={"task": "Test message"})
@@ -248,7 +248,7 @@ if __name__ == "__main__":
     print(
         "  1. Agents can accept named kwargs as task inputs when task template exists"
     )
-    print("  2. Reserved kwargs (vars, model_state, etc.) are handled separately")
+    print("  2. Reserved kwargs (vars, messages, etc.) are handled separately")
     print("  3. Clear error messages when template is missing or args conflict")
     print("  4. Fully backward compatible with existing string/dict/Message inputs")
     print("  5. Works in both sync and async modes")
