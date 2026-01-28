@@ -35,6 +35,7 @@ from msgflux.message import Message
 from msgflux.models.gateway import ModelGateway
 from msgflux.models.response import ModelResponse, ModelStreamResponse
 from msgflux.models.types import ChatCompletionModel
+from msgflux.nn.events import EventType, emit_event
 from msgflux.nn.modules.lm import LM
 from msgflux.nn.modules.module import Module
 from msgflux.nn.modules.tool import ToolLibrary, ToolResponses
@@ -365,21 +366,41 @@ class Agent(Module, metaclass=AutoParams):
             ... )
             >>> agent(name="Vilson", age=27)
         """
+        module_name = self.get_module_name()
+        emit_event(EventType.AGENT_START, module_name, "agent")
+
         inputs = self._prepare_task(message, **kwargs)
         model_response = self._execute_model(prefilling=self.prefilling, **inputs)
         response = self._process_model_response(message, model_response, **inputs)
+
+        emit_event(
+            EventType.AGENT_COMPLETE,
+            module_name,
+            "agent",
+            data={"response": response},
+        )
         return response
 
     async def aforward(
         self, message: Optional[Union[str, Mapping[str, Any], Message]] = None, **kwargs
     ) -> Union[str, Mapping[str, None], ModelStreamResponse, Message]:
         """Async version of forward."""
+        module_name = self.get_module_name()
+        emit_event(EventType.AGENT_START, module_name, "agent")
+
         inputs = await self._aprepare_task(message, **kwargs)
         model_response = await self._aexecute_model(
             prefilling=self.prefilling, **inputs
         )
         response = await self._aprocess_model_response(
             message, model_response, **inputs
+        )
+
+        emit_event(
+            EventType.AGENT_COMPLETE,
+            module_name,
+            "agent",
+            data={"response": response},
         )
         return response
 
@@ -398,6 +419,18 @@ class Agent(Module, metaclass=AutoParams):
         )
         if self.guardrails.get("input"):
             self._execute_input_guardrail(model_execution_params)
+
+        module_name = self.get_module_name()
+        emit_event(
+            EventType.MODEL_REQUEST,
+            module_name,
+            "agent",
+            data={
+                "message_count": len(messages),
+                "stream": self.config.get("stream", False),
+            },
+        )
+
         if self.config.get("verbose", False):
             cprint(f"[{self.name}][call_model]", bc="br1", ls="b")
         model_response = self.lm(**model_execution_params)
@@ -418,6 +451,18 @@ class Agent(Module, metaclass=AutoParams):
         )
         if self.guardrails.get("input"):
             await self._aexecute_input_guardrail(model_execution_params)
+
+        module_name = self.get_module_name()
+        emit_event(
+            EventType.MODEL_REQUEST,
+            module_name,
+            "agent",
+            data={
+                "message_count": len(messages),
+                "stream": self.config.get("stream", False),
+            },
+        )
+
         if self.config.get("verbose", False):
             cprint(f"[{self.name}][call_model]", bc="br1", ls="b")
         model_response = await self.lm.acall(**model_execution_params)
@@ -504,6 +549,13 @@ class Agent(Module, metaclass=AutoParams):
             raw_response = model_response
             response_type = "tool_responses"
 
+        emit_event(
+            EventType.MODEL_RESPONSE,
+            self.get_module_name(),
+            "agent",
+            data={"response_type": response_type},
+        )
+
         if response_type in self._supported_outputs:
             response = self._prepare_response(
                 raw_response, response_type, messages, message, vars
@@ -539,6 +591,13 @@ class Agent(Module, metaclass=AutoParams):
             raw_response = model_response
             response_type = "tool_responses"
 
+        emit_event(
+            EventType.MODEL_RESPONSE,
+            self.get_module_name(),
+            "agent",
+            data={"response_type": response_type},
+        )
+
         if response_type in self._supported_outputs:
             response = await self._aprepare_response(
                 raw_response, response_type, messages, message, vars
@@ -556,6 +615,8 @@ class Agent(Module, metaclass=AutoParams):
     ) -> Tuple[Union[str, Mapping[str, Any], ModelStreamResponse], Mapping[str, Any]]:
         """Handle tool flow control responses using the ToolFlowControl interface."""
         flow_control = self.generation_schema
+        module_name = self.get_module_name()
+        step = 0
         while True:
             raw_response = self._extract_raw_response(model_response)
 
@@ -563,7 +624,22 @@ class Agent(Module, metaclass=AutoParams):
             flow_result = flow_control.extract_flow_result(raw_response)
 
             if flow_result.is_complete:
+                emit_event(
+                    EventType.FLOW_COMPLETE,
+                    module_name,
+                    "agent",
+                    data={"step": step},
+                )
                 return model_response, messages
+
+            step += 1
+            if flow_result.reasoning:
+                emit_event(
+                    EventType.FLOW_REASONING,
+                    module_name,
+                    "agent",
+                    data={"reasoning": flow_result.reasoning, "step": step},
+                )
 
             if self.config.get("verbose", False) and flow_result.reasoning:
                 cprint(
@@ -573,9 +649,44 @@ class Agent(Module, metaclass=AutoParams):
                 )
 
             if flow_result.tool_calls:
+                for tool_calling in flow_result.tool_calls:
+                    tool_id, tool_name, tool_args = (
+                        tool_calling[0],
+                        tool_calling[1],
+                        tool_calling[2] if len(tool_calling) > 2 else {},
+                    )
+                    emit_event(
+                        EventType.TOOL_CALL,
+                        module_name,
+                        "agent",
+                        data={
+                            "tool_name": tool_name,
+                            "tool_id": tool_id,
+                            "arguments": tool_args,
+                            "step": step,
+                        },
+                    )
+
                 tool_results = self._process_tool_call(
                     flow_result.tool_calls, messages, vars
                 )
+
+                for call in tool_results.tool_calls:
+                    event_type = (
+                        EventType.TOOL_ERROR if call.error else EventType.TOOL_RESULT
+                    )
+                    emit_event(
+                        event_type,
+                        module_name,
+                        "agent",
+                        data={
+                            "tool_name": call.name,
+                            "tool_id": call.id,
+                            "result": call.result,
+                            "error": call.error,
+                            "step": step,
+                        },
+                    )
 
                 if tool_results.return_directly:
                     tool_calls = tool_results.to_dict().pop("return_directly")
@@ -588,6 +699,13 @@ class Agent(Module, metaclass=AutoParams):
 
                 # Use interface to build history
                 messages = flow_control.build_history(raw_response, messages)
+
+            emit_event(
+                EventType.FLOW_STEP,
+                module_name,
+                "agent",
+                data={"step_number": step},
+            )
 
             model_response = self._execute_model(
                 messages=messages, model_preference=model_preference, vars=vars
@@ -604,6 +722,8 @@ class Agent(Module, metaclass=AutoParams):
         Handle tool flow control responses using the ToolFlowControl interface.
         """
         flow_control = self.generation_schema
+        module_name = self.get_module_name()
+        step = 0
         while True:
             raw_response = self._extract_raw_response(model_response)
 
@@ -611,7 +731,22 @@ class Agent(Module, metaclass=AutoParams):
             flow_result = await flow_control.aextract_flow_result(raw_response)
 
             if flow_result.is_complete:
+                emit_event(
+                    EventType.FLOW_COMPLETE,
+                    module_name,
+                    "agent",
+                    data={"step": step},
+                )
                 return model_response, messages
+
+            step += 1
+            if flow_result.reasoning:
+                emit_event(
+                    EventType.FLOW_REASONING,
+                    module_name,
+                    "agent",
+                    data={"reasoning": flow_result.reasoning, "step": step},
+                )
 
             if self.config.get("verbose", False) and flow_result.reasoning:
                 cprint(
@@ -621,9 +756,44 @@ class Agent(Module, metaclass=AutoParams):
                 )
 
             if flow_result.tool_calls:
+                for tool_calling in flow_result.tool_calls:
+                    tool_id, tool_name, tool_args = (
+                        tool_calling[0],
+                        tool_calling[1],
+                        tool_calling[2] if len(tool_calling) > 2 else {},
+                    )
+                    emit_event(
+                        EventType.TOOL_CALL,
+                        module_name,
+                        "agent",
+                        data={
+                            "tool_name": tool_name,
+                            "tool_id": tool_id,
+                            "arguments": tool_args,
+                            "step": step,
+                        },
+                    )
+
                 tool_results = await self._aprocess_tool_call(
                     flow_result.tool_calls, messages, vars
                 )
+
+                for call in tool_results.tool_calls:
+                    event_type = (
+                        EventType.TOOL_ERROR if call.error else EventType.TOOL_RESULT
+                    )
+                    emit_event(
+                        event_type,
+                        module_name,
+                        "agent",
+                        data={
+                            "tool_name": call.name,
+                            "tool_id": call.id,
+                            "result": call.result,
+                            "error": call.error,
+                            "step": step,
+                        },
+                    )
 
                 if tool_results.return_directly:
                     tool_calls = tool_results.to_dict().pop("return_directly")
@@ -637,9 +807,14 @@ class Agent(Module, metaclass=AutoParams):
                 )
 
                 # Use interface to build history (async version)
-                messages = await flow_control.abuild_history(
-                    raw_response, messages
-                )
+                messages = await flow_control.abuild_history(raw_response, messages)
+
+            emit_event(
+                EventType.FLOW_STEP,
+                module_name,
+                "agent",
+                data={"step_number": step},
+            )
 
             model_response = await self._aexecute_model(
                 messages=messages, model_preference=model_preference, vars=vars
@@ -658,10 +833,21 @@ class Agent(Module, metaclass=AutoParams):
         'name': 'get_delivery_date'}}]}, {'role': 'tool', 'tool_call_id': 'call_HA',
         'content': '2024-10-15'}].
         """
+        module_name = self.get_module_name()
+        step = 0
         while True:
             if model_response.response_type == "tool_call":
+                step += 1
                 raw_response = model_response.data
                 reasoning = raw_response.reasoning
+
+                if reasoning:
+                    emit_event(
+                        EventType.MODEL_REASONING,
+                        module_name,
+                        "agent",
+                        data={"reasoning": reasoning, "step": step},
+                    )
 
                 if self.config.get("verbose", False):
                     if reasoning:
@@ -669,7 +855,40 @@ class Agent(Module, metaclass=AutoParams):
                         cprint(repr_str, bc="br2", ls="b")
 
                 tool_callings = raw_response.get_calls()
+
+                for tool_calling in tool_callings:
+                    emit_event(
+                        EventType.TOOL_CALL,
+                        module_name,
+                        "agent",
+                        data={
+                            "tool_name": tool_calling[1],
+                            "tool_id": tool_calling[0],
+                            "arguments": (
+                                tool_calling[2] if len(tool_calling) > 2 else {}
+                            ),
+                            "step": step,
+                        },
+                    )
+
                 tool_results = self._process_tool_call(tool_callings, messages, vars)
+
+                for call in tool_results.tool_calls:
+                    event_type = (
+                        EventType.TOOL_ERROR if call.error else EventType.TOOL_RESULT
+                    )
+                    emit_event(
+                        event_type,
+                        module_name,
+                        "agent",
+                        data={
+                            "tool_name": call.name,
+                            "tool_id": call.id,
+                            "result": call.result,
+                            "error": call.error,
+                            "step": step,
+                        },
+                    )
 
                 if tool_results.return_directly:
                     tool_calls = tool_results.to_dict()
@@ -685,6 +904,13 @@ class Agent(Module, metaclass=AutoParams):
                 raw_response.insert_results(id_results)
                 tool_responses_message = raw_response.get_messages()
                 messages.extend(tool_responses_message)
+
+                emit_event(
+                    EventType.AGENT_STEP,
+                    module_name,
+                    "agent",
+                    data={"step_number": step, "step_type": "tool_call"},
+                )
             else:
                 return model_response, messages
 
@@ -705,10 +931,21 @@ class Agent(Module, metaclass=AutoParams):
         'name': 'get_delivery_date'}}]}, {'role': 'tool', 'tool_call_id': 'call_HA',
         'content': '2024-10-15'}].
         """
+        module_name = self.get_module_name()
+        step = 0
         while True:
             if model_response.response_type == "tool_call":
+                step += 1
                 raw_response = model_response.data
                 reasoning = raw_response.reasoning
+
+                if reasoning:
+                    emit_event(
+                        EventType.MODEL_REASONING,
+                        module_name,
+                        "agent",
+                        data={"reasoning": reasoning, "step": step},
+                    )
 
                 if self.config.get("verbose", False):
                     if reasoning:
@@ -716,9 +953,42 @@ class Agent(Module, metaclass=AutoParams):
                         cprint(repr_str, bc="br2", ls="b")
 
                 tool_callings = raw_response.get_calls()
+
+                for tool_calling in tool_callings:
+                    emit_event(
+                        EventType.TOOL_CALL,
+                        module_name,
+                        "agent",
+                        data={
+                            "tool_name": tool_calling[1],
+                            "tool_id": tool_calling[0],
+                            "arguments": (
+                                tool_calling[2] if len(tool_calling) > 2 else {}
+                            ),
+                            "step": step,
+                        },
+                    )
+
                 tool_results = await self._aprocess_tool_call(
                     tool_callings, messages, vars
                 )
+
+                for call in tool_results.tool_calls:
+                    event_type = (
+                        EventType.TOOL_ERROR if call.error else EventType.TOOL_RESULT
+                    )
+                    emit_event(
+                        event_type,
+                        module_name,
+                        "agent",
+                        data={
+                            "tool_name": call.name,
+                            "tool_id": call.id,
+                            "result": call.result,
+                            "error": call.error,
+                            "step": step,
+                        },
+                    )
 
                 if tool_results.return_directly:
                     tool_calls = tool_results.to_dict()
@@ -734,6 +1004,13 @@ class Agent(Module, metaclass=AutoParams):
                 raw_response.insert_results(id_results)
                 tool_responses_message = raw_response.get_messages()
                 messages.extend(tool_responses_message)
+
+                emit_event(
+                    EventType.AGENT_STEP,
+                    module_name,
+                    "agent",
+                    data={"step_number": step, "step_type": "tool_call"},
+                )
             else:
                 return model_response, messages
 
