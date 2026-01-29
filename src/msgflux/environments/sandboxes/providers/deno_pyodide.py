@@ -1,6 +1,8 @@
 """Secure Python sandbox using Deno + Pyodide (WebAssembly)."""
 
+import asyncio
 import base64
+import concurrent.futures
 import inspect
 import json
 import os
@@ -91,10 +93,11 @@ class DenoPyodideSandbox(BasePythonSandbox):
         self._process: Optional[subprocess.Popen] = None
         self._request_id = 0
         self._owner_thread: Optional[int] = None
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()  # RLock allows reentrant locking
         self._initialized = False
         self._variables: Dict[str, Any] = {}
         self._tools_registered = False
+        self._allow_cross_thread = False  # Used for async execution
 
         self._initialize()
 
@@ -289,14 +292,31 @@ class DenoPyodideSandbox(BasePythonSandbox):
         self._tools_registered = True
 
     def _handle_tool_call(self, tool_name: str, args: list, kwargs: dict) -> Any:
-        """Execute a tool call from the sandbox."""
+        """Execute a tool call from the sandbox.
+
+        Supports both sync and async tools. Async tools are executed
+        using asyncio.run() or via a thread pool if a loop is already running.
+        """
         if tool_name not in self._tools:
             raise ValueError(f"Unknown tool: {tool_name}")
 
         func = self._tools[tool_name]
 
         try:
-            result = func(*args, **kwargs)
+            # Check if the function is a coroutine function
+            if asyncio.iscoroutinefunction(func):
+                # Try to get the running loop, otherwise create a new one
+                try:
+                    asyncio.get_running_loop()
+                    # If we're in an async context, run in a thread pool
+                    with concurrent.futures.ThreadPoolExecutor() as pool:
+                        future = pool.submit(asyncio.run, func(*args, **kwargs))
+                        result = future.result()
+                except RuntimeError:
+                    # No running loop, safe to use asyncio.run
+                    result = asyncio.run(func(*args, **kwargs))
+            else:
+                result = func(*args, **kwargs)
 
             # Ensure result is JSON-serializable
             try:
@@ -312,6 +332,10 @@ class DenoPyodideSandbox(BasePythonSandbox):
 
     def _check_thread_ownership(self):
         """Verify we're on the owner thread."""
+        # Allow cross-thread access when explicitly enabled (e.g., for async execution)
+        if self._allow_cross_thread:
+            return
+
         current_thread = threading.current_thread().ident
         if self._owner_thread != current_thread:
             raise SandboxSecurityError(
@@ -334,10 +358,21 @@ class DenoPyodideSandbox(BasePythonSandbox):
                 "error": {"code": -32000, "message": error},
             }
         else:
+            # Format result with type information
+            # JSON-serializable types (dict, list, int, float, bool, None) go as json
+            # Strings go as string type
+            if isinstance(result, str):
+                formatted_result = {"value": result, "type": "string"}
+            elif result is None or isinstance(result, (dict, list, int, float, bool)):
+                formatted_result = {"value": json.dumps(result), "type": "json"}
+            else:
+                # Fallback for other types - convert to string
+                formatted_result = {"value": str(result), "type": "string"}
+
             response = {
                 "jsonrpc": "2.0",
                 "id": tool_call_id,
-                "result": result,
+                "result": formatted_result,
             }
 
         response_str = json.dumps(response) + "\n"
@@ -513,6 +548,51 @@ class DenoPyodideSandbox(BasePythonSandbox):
             variables=response.get("variables", {}),
             execution_time_ms=response.get("execution_time_ms"),
         )
+
+    async def acall(
+        self,
+        code: str,
+        *,
+        timeout: Optional[float] = None,
+        variables: Optional[Dict[str, Any]] = None,
+    ) -> ExecutionResult:
+        """Execute Python code in the sandbox asynchronously.
+
+        This method runs the synchronous execution in a thread pool
+        to avoid blocking the event loop. Thread safety is ensured via
+        internal locking.
+
+        Args:
+            code:
+                Python code to execute.
+            timeout:
+                Execution timeout in seconds (overrides default).
+            variables:
+                Variables to inject before execution.
+
+        Returns:
+            ExecutionResult with output, errors, and variables.
+
+        Example:
+            >>> async def main():
+            ...     sandbox = DenoPyodideSandbox()
+            ...     result = await sandbox.acall("print('hello')")
+            ...     print(result.output)
+        """
+
+        def _execute():
+            # Temporarily allow cross-thread access for async execution
+            # The lock ensures thread safety
+            with self._lock:
+                original_allow = self._allow_cross_thread
+                self._allow_cross_thread = True
+                try:
+                    return self(code, timeout=timeout, variables=variables)
+                finally:
+                    self._allow_cross_thread = original_allow
+
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, _execute)
 
     def mount_file(self, path: str, content: Union[str, bytes]) -> None:
         """Mount a file in the sandbox virtual filesystem.

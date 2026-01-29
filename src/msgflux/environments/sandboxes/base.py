@@ -1,5 +1,6 @@
 """Base classes for sandbox implementations."""
 
+import asyncio
 from abc import abstractmethod
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Mapping, Optional, Union
 
@@ -66,6 +67,35 @@ class BaseSandbox(BaseClient):
                 If the method is not implemented by the subclass.
         """
         raise NotImplementedError
+
+    async def acall(
+        self,
+        code: str,
+        *,
+        timeout: Optional[float] = None,
+        variables: Optional[Dict[str, Any]] = None,
+    ) -> "ExecutionResult":
+        """Execute code in the sandbox asynchronously.
+
+        This method runs the synchronous execution in a thread pool
+        to avoid blocking the event loop.
+
+        Args:
+            code:
+                The code to execute.
+            timeout:
+                Optional execution timeout in seconds.
+            variables:
+                Optional dictionary of variables to inject.
+
+        Returns:
+            ExecutionResult with output, errors, and variables.
+        """
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(
+            None,
+            lambda: self(code, timeout=timeout, variables=variables),
+        )
 
     @abstractmethod
     def mount_file(self, path: str, content: Union[str, bytes]) -> None:

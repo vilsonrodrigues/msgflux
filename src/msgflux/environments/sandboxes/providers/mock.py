@@ -1,5 +1,7 @@
 """Mock sandbox for testing without external dependencies."""
 
+import asyncio
+import concurrent.futures
 import io
 import time
 from contextlib import redirect_stderr, redirect_stdout
@@ -67,6 +69,20 @@ class MockSandbox(BasePythonSandbox):
         self._initialized = True
         if self.allowed_builtins is None:
             self.allowed_builtins = self._get_safe_builtins()
+
+    def _make_sync_wrapper(self, async_func: Callable) -> Callable:
+        """Create a sync wrapper for an async function."""
+
+        def wrapper(*args, **kwargs):
+            try:
+                asyncio.get_running_loop()
+                with concurrent.futures.ThreadPoolExecutor() as pool:
+                    future = pool.submit(asyncio.run, async_func(*args, **kwargs))
+                    return future.result()
+            except RuntimeError:
+                return asyncio.run(async_func(*args, **kwargs))
+
+        return wrapper
 
     def _get_safe_builtins(self) -> Dict[str, Any]:
         """Get a dictionary of safe builtins for mock execution."""
@@ -156,9 +172,13 @@ class MockSandbox(BasePythonSandbox):
             local_vars = dict(self._variables)
             global_vars = {"__builtins__": self.allowed_builtins}
 
-            # Inject tools into global namespace
+            # Inject tools into global namespace (with async support)
             for tool_name, tool_func in self._tools.items():
-                global_vars[tool_name] = tool_func
+                if asyncio.iscoroutinefunction(tool_func):
+                    # Wrap async function to make it callable synchronously
+                    global_vars[tool_name] = self._make_sync_wrapper(tool_func)
+                else:
+                    global_vars[tool_name] = tool_func
 
             stdout_capture = io.StringIO()
             stderr_capture = io.StringIO()
@@ -198,6 +218,32 @@ class MockSandbox(BasePythonSandbox):
                 error=f"{type(e).__name__}: {e}",
                 execution_time_ms=(time.time() - start_time) * 1000,
             )
+
+    async def acall(
+        self,
+        code: str,
+        *,
+        timeout: Optional[float] = None,
+        variables: Optional[Dict[str, Any]] = None,
+    ) -> ExecutionResult:
+        """Execute code in the mock sandbox asynchronously.
+
+        Args:
+            code:
+                Python code to execute.
+            timeout:
+                Ignored in mock implementation.
+            variables:
+                Variables to inject before execution.
+
+        Returns:
+            ExecutionResult with output and captured variables.
+        """
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(
+            None,
+            lambda: self(code, timeout=timeout, variables=variables),
+        )
 
     def mount_file(self, path: str, content: Union[str, bytes]) -> None:
         """Mount a virtual file in the mock sandbox.
@@ -262,6 +308,23 @@ class MockSandbox(BasePythonSandbox):
             Empty list in mock implementation.
         """
         return []
+
+    def register_tool(self, name: str, func: Callable[..., Any]) -> None:
+        """Register a tool that can be called from inside the sandbox.
+
+        Args:
+            name:
+                The name to use for the tool inside the sandbox.
+            func:
+                The Python function to register.
+
+        Example:
+            >>> def my_search(query: str) -> str:
+            ...     return f"Results for: {query}"
+            >>> sandbox.register_tool("search", my_search)
+            >>> sandbox("result = search('python')")
+        """
+        self._tools[name] = func
 
     @property
     def call_history(self) -> List[tuple]:
