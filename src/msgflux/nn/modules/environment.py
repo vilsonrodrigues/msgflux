@@ -80,7 +80,7 @@ class Environment(Module):
         code: str,
         *,
         tools: Optional[Dict[str, Callable[..., Any]]] = None,
-        variables: Optional[Dict[str, Any]] = None,
+        vars: Optional[Dict[str, Any]] = None,
     ) -> ExecutionResult:
         r"""Execute code in the sandbox environment.
 
@@ -91,7 +91,7 @@ class Environment(Module):
                 Optional dictionary mapping tool names to callables.
                 These tools will be available to call from within the code.
                 Supports both sync and async callables.
-            variables:
+            vars:
                 Optional dictionary of variables to inject into the
                 execution context before running the code.
 
@@ -122,14 +122,14 @@ class Environment(Module):
             self._register_tools(tools)
 
         # Execute code
-        return self._environment(code, variables=variables)
+        return self._environment(code, vars=vars)
 
     async def aforward(
         self,
         code: str,
         *,
         tools: Optional[Dict[str, Callable[..., Any]]] = None,
-        variables: Optional[Dict[str, Any]] = None,
+        vars: Optional[Dict[str, Any]] = None,
     ) -> ExecutionResult:
         """Execute code asynchronously in the sandbox environment.
 
@@ -141,7 +141,7 @@ class Environment(Module):
                 Python code to execute.
             tools:
                 Optional dictionary mapping tool names to callables.
-            variables:
+            vars:
                 Optional dictionary of variables to inject.
 
         Returns:
@@ -166,7 +166,7 @@ class Environment(Module):
             self._register_tools(tools)
 
         # Execute code asynchronously
-        return await self._environment.acall(code, variables=variables)
+        return await self._environment.acall(code, vars=vars)
 
     def _register_tools(self, tools: Dict[str, Callable[..., Any]]) -> None:
         """Register tools in the sandbox.

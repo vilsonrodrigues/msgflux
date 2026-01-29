@@ -122,7 +122,7 @@ class MockSandbox(BasePythonSandbox):
         code: str,
         *,
         timeout: Optional[float] = None,  # noqa: ARG002
-        variables: Optional[Dict[str, Any]] = None,
+        vars: Optional[Dict[str, Any]] = None,
     ) -> ExecutionResult:
         """Execute code in the mock sandbox.
 
@@ -131,7 +131,7 @@ class MockSandbox(BasePythonSandbox):
                 Python code to execute.
             timeout:
                 Ignored in mock implementation.
-            variables:
+            vars:
                 Variables to inject before execution.
 
         Returns:
@@ -139,10 +139,10 @@ class MockSandbox(BasePythonSandbox):
         """
         start_time = time.time()
 
-        if variables:
-            self._variables.update(variables)
+        if vars:
+            self._variables.update(vars)
 
-        self._call_history.append((code, dict(variables) if variables else {}))
+        self._call_history.append((code, dict(vars) if vars else {}))
 
         if self.simulate_errors:
             return ExecutionResult(
@@ -201,7 +201,7 @@ class MockSandbox(BasePythonSandbox):
                 success=True,
                 output=output or self.default_output,
                 variables={
-                    k: v for k, v in self._variables.items() if not k.startswith("_")
+                    k: v for k, v in self._vars.items() if not k.startswith("_")
                 },
                 execution_time_ms=(time.time() - start_time) * 1000,
             )
@@ -224,7 +224,7 @@ class MockSandbox(BasePythonSandbox):
         code: str,
         *,
         timeout: Optional[float] = None,
-        variables: Optional[Dict[str, Any]] = None,
+        vars: Optional[Dict[str, Any]] = None,
     ) -> ExecutionResult:
         """Execute code in the mock sandbox asynchronously.
 
@@ -233,7 +233,7 @@ class MockSandbox(BasePythonSandbox):
                 Python code to execute.
             timeout:
                 Ignored in mock implementation.
-            variables:
+            vars:
                 Variables to inject before execution.
 
         Returns:
@@ -242,7 +242,7 @@ class MockSandbox(BasePythonSandbox):
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(
             None,
-            lambda: self(code, timeout=timeout, variables=variables),
+            lambda: self(code, timeout=timeout, vars=vars),
         )
 
     def mount_file(self, path: str, content: Union[str, bytes]) -> None:

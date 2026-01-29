@@ -495,7 +495,7 @@ class DenoPyodideSandbox(BasePythonSandbox):
         code: str,
         *,
         timeout: Optional[float] = None,
-        variables: Optional[Dict[str, Any]] = None,
+        vars: Optional[Dict[str, Any]] = None,
     ) -> ExecutionResult:
         """Execute Python code in the sandbox.
 
@@ -504,7 +504,7 @@ class DenoPyodideSandbox(BasePythonSandbox):
                 Python code to execute.
             timeout:
                 Execution timeout in seconds (overrides default).
-            variables:
+            vars:
                 Variables to inject before execution.
 
         Returns:
@@ -513,8 +513,8 @@ class DenoPyodideSandbox(BasePythonSandbox):
         start_time = time.time()
 
         # Inject variables if provided
-        if variables:
-            for name, value in variables.items():
+        if vars:
+            for name, value in vars.items():
                 self._check_variable_size(name, value)
                 self.set_variable(name, value)
 
@@ -554,7 +554,7 @@ class DenoPyodideSandbox(BasePythonSandbox):
         code: str,
         *,
         timeout: Optional[float] = None,
-        variables: Optional[Dict[str, Any]] = None,
+        vars: Optional[Dict[str, Any]] = None,
     ) -> ExecutionResult:
         """Execute Python code in the sandbox asynchronously.
 
@@ -567,7 +567,7 @@ class DenoPyodideSandbox(BasePythonSandbox):
                 Python code to execute.
             timeout:
                 Execution timeout in seconds (overrides default).
-            variables:
+            vars:
                 Variables to inject before execution.
 
         Returns:
@@ -587,7 +587,7 @@ class DenoPyodideSandbox(BasePythonSandbox):
                 original_allow = self._allow_cross_thread
                 self._allow_cross_thread = True
                 try:
-                    return self(code, timeout=timeout, variables=variables)
+                    return self(code, timeout=timeout, vars=vars)
                 finally:
                     self._allow_cross_thread = original_allow
 

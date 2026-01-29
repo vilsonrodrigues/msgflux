@@ -47,7 +47,7 @@ class BaseSandbox(BaseClient):
         code: str,
         *,
         timeout: Optional[float] = None,
-        variables: Optional[Dict[str, Any]] = None,
+        vars: Optional[Dict[str, Any]] = None,
     ) -> "ExecutionResult":
         """Execute code in the sandbox.
 
@@ -56,7 +56,7 @@ class BaseSandbox(BaseClient):
                 The code to execute.
             timeout:
                 Optional execution timeout in seconds.
-            variables:
+            vars:
                 Optional dictionary of variables to inject.
 
         Returns:
@@ -73,7 +73,7 @@ class BaseSandbox(BaseClient):
         code: str,
         *,
         timeout: Optional[float] = None,
-        variables: Optional[Dict[str, Any]] = None,
+        vars: Optional[Dict[str, Any]] = None,
     ) -> "ExecutionResult":
         """Execute code in the sandbox asynchronously.
 
@@ -85,7 +85,7 @@ class BaseSandbox(BaseClient):
                 The code to execute.
             timeout:
                 Optional execution timeout in seconds.
-            variables:
+            vars:
                 Optional dictionary of variables to inject.
 
         Returns:
@@ -94,7 +94,7 @@ class BaseSandbox(BaseClient):
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(
             None,
-            lambda: self(code, timeout=timeout, variables=variables),
+            lambda: self(code, timeout=timeout, vars=vars),
         )
 
     @abstractmethod

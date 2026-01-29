@@ -808,7 +808,7 @@ class Agent(Module, metaclass=AutoParams):
             if tool_name == sandbox_name:
                 # Execute in sandbox via Environment
                 code = params.get("code", "") if isinstance(params, dict) else ""
-                result = self.sandbox(code, tools=tool_funcs, variables=vars)
+                result = self.sandbox(code, tools=tool_funcs, vars=vars)
 
                 # Inject result into params for the control flow to handle
                 params = {
@@ -886,7 +886,7 @@ class Agent(Module, metaclass=AutoParams):
             if tool_name == sandbox_name:
                 # Execute in sandbox via Environment
                 code = params.get("code", "") if isinstance(params, dict) else ""
-                result = await self.sandbox.acall(code, tools=tool_funcs, variables=vars)
+                result = await self.sandbox.acall(code, tools=tool_funcs, vars=vars)
 
                 # Inject result into params for the control flow to handle
                 params = {
