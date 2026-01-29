@@ -53,6 +53,8 @@ class Environment(Module):
             sandbox:
                 A sandbox instance for code execution (e.g., DenoPyodideSandbox,
                 MockSandbox). If None, code execution will raise an error.
+                The sandbox should have a `name` attribute that identifies it
+                as a tool (e.g., "execute_code", "python_interpreter").
 
         Example:
             >>> from msgflux.environments.sandboxes import DenoPyodideSandbox
@@ -60,13 +62,13 @@ class Environment(Module):
             >>> env = Environment(sandbox=sandbox)
         """
         super().__init__()
-        self._sandbox = sandbox
+        self._environment = sandbox
         self._registered_tools: Dict[str, Callable] = {}
 
     @property
-    def sandbox(self) -> Optional[BasePythonSandbox]:
+    def environment(self) -> Optional[BasePythonSandbox]:
         """Get the underlying sandbox instance."""
-        return self._sandbox
+        return self._environment
 
     @property
     def registered_tools(self) -> Dict[str, Callable]:
@@ -110,7 +112,7 @@ class Environment(Module):
             >>> result = env("x = add(1, 2)", tools={"add": lambda a, b: a + b})
             >>> print(result.output)  # "3"
         """
-        if self._sandbox is None:
+        if self._environment is None:
             raise RuntimeError(
                 "No sandbox configured. Pass a sandbox instance to Environment.__init__"
             )
@@ -120,7 +122,7 @@ class Environment(Module):
             self._register_tools(tools)
 
         # Execute code
-        return self._sandbox(code, variables=variables)
+        return self._environment(code, variables=variables)
 
     async def aforward(
         self,
@@ -154,7 +156,7 @@ class Environment(Module):
             ...     result = await env.acall("print('hello')")
             ...     print(result.output)
         """
-        if self._sandbox is None:
+        if self._environment is None:
             raise RuntimeError(
                 "No sandbox configured. Pass a sandbox instance to Environment.__init__"
             )
@@ -164,7 +166,7 @@ class Environment(Module):
             self._register_tools(tools)
 
         # Execute code asynchronously
-        return await self._sandbox.acall(code, variables=variables)
+        return await self._environment.acall(code, variables=variables)
 
     def _register_tools(self, tools: Dict[str, Callable[..., Any]]) -> None:
         """Register tools in the sandbox.
@@ -178,7 +180,7 @@ class Environment(Module):
         """
         for name, func in tools.items():
             if name not in self._registered_tools:
-                self._sandbox.register_tool(name, func)
+                self._environment.register_tool(name, func)
                 self._registered_tools[name] = func
 
     def reset(self) -> None:
@@ -186,14 +188,14 @@ class Environment(Module):
 
         Clears all registered tools and resets the sandbox state.
         """
-        if self._sandbox is not None:
-            self._sandbox.reset()
+        if self._environment is not None:
+            self._environment.reset()
         self._registered_tools.clear()
 
     def shutdown(self) -> None:
         """Shutdown the environment and release resources."""
-        if self._sandbox is not None:
-            self._sandbox.shutdown()
+        if self._environment is not None:
+            self._environment.shutdown()
         self._registered_tools.clear()
 
     def __enter__(self):
@@ -205,6 +207,6 @@ class Environment(Module):
         self.shutdown()
 
     def __repr__(self) -> str:
-        sandbox_type = type(self._sandbox).__name__ if self._sandbox else "None"
+        sandbox_type = type(self._environment).__name__ if self._environment else "None"
         tool_count = len(self._registered_tools)
         return f"Environment(sandbox={sandbox_type}, tools={tool_count})"

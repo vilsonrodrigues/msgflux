@@ -236,6 +236,7 @@ class BasePythonSandbox(BaseSandbox):
     """Base class for Python-specific sandboxes."""
 
     sandbox_type = "python"
+    name = "execute_code"  # Default name for tool identification
 
     def install_package(self, package: str) -> bool:
         """Install a Python package in the sandbox.

@@ -35,6 +35,7 @@ from msgflux.message import Message
 from msgflux.models.gateway import ModelGateway
 from msgflux.models.response import ModelResponse, ModelStreamResponse
 from msgflux.models.types import ChatCompletionModel
+from msgflux.nn.modules.environment import Environment
 from msgflux.nn.modules.lm import LM
 from msgflux.nn.modules.module import Module
 from msgflux.nn.modules.tool import ToolLibrary, ToolResponses
@@ -100,6 +101,7 @@ class Agent(Module, metaclass=AutoParams):
         response_mode: Optional[str] = None,
         tools: Optional[List[Callable]] = None,
         mcp_servers: Optional[List[Mapping[str, Any]]] = None,
+        sandbox: Optional[Environment] = None,
         signature: Optional[Union[str, Signature]] = None,
         description: Optional[str] = None,
         annotations: Optional[Mapping[str, type]] = None,
@@ -225,6 +227,13 @@ class Agent(Module, metaclass=AutoParams):
                     "include_tools": ["read_file", "write_file"],
                     "tool_config": {"read_file": {"inject_vars": ["context"]}}
                 }]
+        sandbox:
+            An Environment instance wrapping a sandbox for code execution.
+            When provided and a tool call matches the sandbox's name attribute
+            (e.g., "execute_code"), the code is executed in the sandbox with
+            all ToolLibrary tools available.
+            !!! example
+                sandbox=Environment(sandbox=DenoPyodideSandbox())
         signature:
             A DSPy-based signature. A signature creates a task_template,
             a generation_schema, instructions and examples (both if passed).
@@ -289,6 +298,7 @@ class Agent(Module, metaclass=AutoParams):
         self._set_response_mode(response_mode)
         self._set_templates(templates)
         self._set_tools(tools, mcp_servers)
+        self._set_sandbox(sandbox)
 
         if signature is not None:
             signature_params = dotdict(
@@ -751,11 +761,17 @@ class Agent(Module, metaclass=AutoParams):
             for call in tool_callings:
                 repr_str = f"[{self.name}][tool_call] {call[1]}: {call[2]}"
                 cprint(repr_str, bc="br2", ls="b")
+
+        # Check for sandbox-based code execution
+        if self.sandbox is not None:
+            tool_callings = self._process_sandbox_calls(tool_callings, vars)
+
         tool_results = self.tool_library(
             tool_callings=tool_callings,
             messages=messages,
             vars=vars,
         )
+
         if self.config.get("verbose", False):
             repr_str = f"[{self.name}][tool_responses]"
             if tool_results.return_directly:
@@ -766,6 +782,58 @@ class Agent(Module, metaclass=AutoParams):
                 repr_str = f"[{self.name}][tool_response] {call.name}: {result}"
                 cprint(repr_str, ls="b")
         return tool_results
+
+    def _process_sandbox_calls(
+        self,
+        tool_callings: List[Tuple[str, str, Any]],
+        vars: Mapping[str, Any],
+    ) -> List[Tuple[str, str, Any]]:
+        """Process sandbox calls, executing code and returning results.
+
+        When a tool call matches the sandbox.environment.name, execute the code
+        in the sandbox with all ToolLibrary tools available.
+
+        Returns:
+            Modified tool_callings with sandbox results injected.
+        """
+        processed_calls = []
+        sandbox_name = self.sandbox.environment.name
+
+        # Get tool functions from ToolLibrary to inject into sandbox
+        tool_funcs = self._get_tool_functions()
+
+        for call in tool_callings:
+            tool_id, tool_name, params = call
+
+            if tool_name == sandbox_name:
+                # Execute in sandbox via Environment
+                code = params.get("code", "") if isinstance(params, dict) else ""
+                result = self.sandbox(code, tools=tool_funcs, variables=vars)
+
+                # Inject result into params for the control flow to handle
+                params = {
+                    "_sandbox_result": {
+                        "success": result.success,
+                        "output": result.output,
+                        "error": result.error,
+                        "variables": result.variables,
+                        "return_value": result.return_value,
+                    }
+                }
+
+            processed_calls.append((tool_id, tool_name, params))
+
+        return processed_calls
+
+    def _get_tool_functions(self) -> Dict[str, Any]:
+        """Extract callable functions from ToolLibrary."""
+        tool_funcs = {}
+        for tool_name, tool in self.tool_library.library.items():
+            if hasattr(tool, "impl"):
+                tool_funcs[tool_name] = tool.impl
+            elif callable(tool):
+                tool_funcs[tool_name] = tool
+        return tool_funcs
 
     async def _aprocess_tool_call(
         self,
@@ -778,11 +846,17 @@ class Agent(Module, metaclass=AutoParams):
             for call in tool_callings:
                 repr_str = f"[{self.name}][tool_call] {call[1]}: {call[2]}"
                 cprint(repr_str, bc="br2", ls="b")
+
+        # Check for sandbox-based code execution
+        if self.sandbox is not None:
+            tool_callings = await self._aprocess_sandbox_calls(tool_callings, vars)
+
         tool_results = await self.tool_library.acall(
             tool_callings=tool_callings,
             messages=messages,
             vars=vars,
         )
+
         if self.config.get("verbose", False):
             repr_str = f"[{self.name}][tool_responses]"
             if tool_results.return_directly:
@@ -793,6 +867,41 @@ class Agent(Module, metaclass=AutoParams):
                 repr_str = f"[{self.name}][tool_response] {call.name}: {result}"
                 cprint(repr_str, ls="b")
         return tool_results
+
+    async def _aprocess_sandbox_calls(
+        self,
+        tool_callings: List[Tuple[str, str, Any]],
+        vars: Mapping[str, Any],
+    ) -> List[Tuple[str, str, Any]]:
+        """Async version of _process_sandbox_calls."""
+        processed_calls = []
+        sandbox_name = self.sandbox.environment.name
+
+        # Get tool functions from ToolLibrary to inject into sandbox
+        tool_funcs = self._get_tool_functions()
+
+        for call in tool_callings:
+            tool_id, tool_name, params = call
+
+            if tool_name == sandbox_name:
+                # Execute in sandbox via Environment
+                code = params.get("code", "") if isinstance(params, dict) else ""
+                result = await self.sandbox.acall(code, tools=tool_funcs, variables=vars)
+
+                # Inject result into params for the control flow to handle
+                params = {
+                    "_sandbox_result": {
+                        "success": result.success,
+                        "output": result.output,
+                        "error": result.error,
+                        "variables": result.variables,
+                        "return_value": result.return_value,
+                    }
+                }
+
+            processed_calls.append((tool_id, tool_name, params))
+
+        return processed_calls
 
     def _prepare_response(
         self,
@@ -1379,6 +1488,20 @@ class Agent(Module, metaclass=AutoParams):
         self.tool_library = ToolLibrary(
             self.get_module_name(), tools or [], mcp_servers=mcp_servers
         )
+
+    def _set_sandbox(self, sandbox: Optional[Environment] = None):
+        """Set the code execution sandbox.
+
+        Args:
+            sandbox:
+                An Environment instance wrapping a sandbox, or None.
+        """
+        if sandbox is not None and not isinstance(sandbox, Environment):
+            raise TypeError(
+                f"`sandbox` must be an Environment instance or None, "
+                f"given `{type(sandbox)}`"
+            )
+        self.register_buffer("sandbox", sandbox)
 
     def _set_generation_schema(
         self, generation_schema: Optional[msgspec.Struct] = None
