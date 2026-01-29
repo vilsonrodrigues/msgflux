@@ -448,9 +448,14 @@ class Agent(Module, metaclass=AutoParams):
 
         tool_choice = self.config.get("tool_choice")
 
-        if is_subclass_of(self.generation_schema, ToolFlowControl) and tool_schemas:
+        if is_subclass_of(self.generation_schema, ToolFlowControl):
             tools_template = self.generation_schema.tools_template
             inputs = {"tool_schemas": tool_schemas, "tool_choice": tool_choice}
+
+            # Add sandbox_name if sandbox is configured
+            if self.sandbox is not None and self.sandbox.name is not None:
+                inputs["sandbox_name"] = self.sandbox.name
+
             flow_control_tools = self._format_template(inputs, tools_template)
             if system_prompt:
                 system_prompt = flow_control_tools + "\n\n" + system_prompt
@@ -790,14 +795,13 @@ class Agent(Module, metaclass=AutoParams):
     ) -> List[Tuple[str, str, Any]]:
         """Process sandbox calls, executing code and returning results.
 
-        When a tool call matches the sandbox.environment.name, execute the code
-        in the sandbox with all ToolLibrary tools available.
+        When sandbox is configured, executes code in the Environment
+        with all ToolLibrary tools available.
 
         Returns:
             Modified tool_callings with sandbox results injected.
         """
         processed_calls = []
-        sandbox_name = self.sandbox.environment.name
 
         # Get tool functions from ToolLibrary to inject into sandbox
         tool_funcs = self._get_tool_functions()
@@ -805,9 +809,9 @@ class Agent(Module, metaclass=AutoParams):
         for call in tool_callings:
             tool_id, tool_name, params = call
 
-            if tool_name == sandbox_name:
-                # Execute in sandbox via Environment
-                code = params.get("code", "") if isinstance(params, dict) else ""
+            # If params has 'code', execute in sandbox
+            code = params.get("code", "") if isinstance(params, dict) else ""
+            if code:
                 result = self.sandbox(code, tools=tool_funcs, vars=vars)
 
                 # Inject result into params for the control flow to handle
@@ -875,7 +879,6 @@ class Agent(Module, metaclass=AutoParams):
     ) -> List[Tuple[str, str, Any]]:
         """Async version of _process_sandbox_calls."""
         processed_calls = []
-        sandbox_name = self.sandbox.environment.name
 
         # Get tool functions from ToolLibrary to inject into sandbox
         tool_funcs = self._get_tool_functions()
@@ -883,9 +886,9 @@ class Agent(Module, metaclass=AutoParams):
         for call in tool_callings:
             tool_id, tool_name, params = call
 
-            if tool_name == sandbox_name:
-                # Execute in sandbox via Environment
-                code = params.get("code", "") if isinstance(params, dict) else ""
+            # If params has 'code', execute in sandbox
+            code = params.get("code", "") if isinstance(params, dict) else ""
+            if code:
                 result = await self.sandbox.acall(code, tools=tool_funcs, vars=vars)
 
                 # Inject result into params for the control flow to handle

@@ -71,6 +71,13 @@ class Environment(Module):
         return self._environment
 
     @property
+    def name(self) -> Optional[str]:
+        """Get the sandbox name (e.g., 'execute_code')."""
+        if self._environment is not None:
+            return self._environment.name
+        return None
+
+    @property
     def registered_tools(self) -> Dict[str, Callable]:
         """Get the currently registered tools."""
         return self._registered_tools.copy()
