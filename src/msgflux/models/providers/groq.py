@@ -38,7 +38,13 @@ class GroqChatCompletion(_BaseGroq, OpenAIChatCompletion):
                 params["tool_choice"] = "auto"
             else:
                 params["tool_choice"] = "none"
+
         if self.sampling_run_params.get("reasoning_effort", None):
-            extra_body["reasoning_format"] = "parsed"
+            # GPT-OSS models use include_reasoning, Qwen uses reasoning_format
+            if "gpt-oss" in self.model_id.lower():
+                extra_body["include_reasoning"] = True
+            else:
+                extra_body["reasoning_format"] = "parsed"
+
         params["extra_body"] = extra_body
         return params
