@@ -69,36 +69,32 @@ class EventEmittingStreamResponse:
 
     This wrapper intercepts the consume methods and emits MODEL_RESPONSE_CHUNK
     and MODEL_REASONING_CHUNK events with the agent_name for traceability.
+    When streams finish, emits a completion event.
     """
 
-    def __init__(self, stream_response: ModelStreamResponse, agent_name: str):
+    __slots__ = (
+        "_agent_name",
+        "_content_index",
+        "_reasoning_index",
+        "_stream_response",
+    )
+
+    def __init__(self, stream_response: ModelStreamResponse, agent_name: str) -> None:
         self._stream_response = stream_response
         self._agent_name = agent_name
         self._content_index = 0
         self._reasoning_index = 0
 
-    @property
-    def response_type(self):
-        return self._stream_response.response_type
+    def __getattr__(self, name: str) -> Any:
+        """Delegate attribute access to the wrapped stream response."""
+        return getattr(self._stream_response, name)
 
-    @property
-    def metadata(self):
-        return self._stream_response.metadata
-
-    @property
-    def data(self):
-        return self._stream_response.data
-
-    @property
-    def first_chunk_event(self):
-        return self._stream_response.first_chunk_event
-
-    async def consume(self) -> AsyncGenerator[Union[bytes, str], None]:
+    async def consume(self) -> AsyncGenerator[str | bytes, None]:
         """Consume content chunks and emit events."""
         async for chunk in self.consume_content():
             yield chunk
 
-    async def consume_content(self) -> AsyncGenerator[Union[bytes, str], None]:
+    async def consume_content(self) -> AsyncGenerator[str | bytes, None]:
         """Consume content chunks and emit MODEL_RESPONSE_CHUNK events."""
         async for chunk in self._stream_response.consume_content():
             add_model_response_chunk_event(
@@ -108,8 +104,16 @@ class EventEmittingStreamResponse:
             )
             self._content_index += 1
             yield chunk
+        # Emit completion event when content stream finishes
+        add_event(
+            "gen_ai.model.content.complete",
+            {
+                "agent_name": self._agent_name,
+                "total_chunks": self._content_index,
+            },
+        )
 
-    async def consume_reasoning(self) -> AsyncGenerator[Union[bytes, str], None]:
+    async def consume_reasoning(self) -> AsyncGenerator[str, None]:
         """Consume reasoning chunks and emit MODEL_REASONING_CHUNK events."""
         async for chunk in self._stream_response.consume_reasoning():
             add_event(
@@ -122,6 +126,15 @@ class EventEmittingStreamResponse:
             )
             self._reasoning_index += 1
             yield chunk
+        # Emit completion event when reasoning stream finishes
+        if self._reasoning_index > 0:
+            add_event(
+                "gen_ai.model.reasoning.complete",
+                {
+                    "agent_name": self._agent_name,
+                    "total_chunks": self._reasoning_index,
+                },
+            )
 
 
 # Reserved kwargs that should not be treated as task inputs

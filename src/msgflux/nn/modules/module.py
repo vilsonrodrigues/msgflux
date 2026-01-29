@@ -1585,7 +1585,7 @@ class Module:
             # Use native async implementation
             return await self._acall_impl(*args, **kwargs)
 
-    async def astream(self, *args, **kwargs) -> AsyncGenerator[StreamEvent, None]:
+    async def astream_events(self, *args, **kwargs) -> AsyncGenerator[StreamEvent, None]:
         """Async generator that yields events during module execution.
 
         Creates an :class:`~msgtrace.sdk.EventStream` context, runs
@@ -1599,7 +1599,7 @@ class Module:
 
         Example::
 
-            async for event in agent.astream("Hello"):
+            async for event in agent.astream_events("Hello"):
                 print(event.name, event.attributes)
         """
         error_holder: List = []
@@ -1624,8 +1624,8 @@ class Module:
         if error_holder:
             raise error_holder[0]
 
-    def stream(self, *args, callback=None, **kwargs):
-        """Synchronous streaming with optional callback.
+    def stream_events(self, *args, callback=None, **kwargs):
+        """Synchronous event streaming with optional callback.
 
         If *callback* is provided, it is called for each event and the final
         module result is returned. Without a callback, returns a list of all
@@ -1634,10 +1634,10 @@ class Module:
         Example::
 
             # With callback
-            result = agent.stream("Hello", callback=lambda e: print(e.name))
+            result = agent.stream_events("Hello", callback=lambda e: print(e.name))
 
             # Without callback (collect events)
-            events = agent.stream("Hello")
+            events = agent.stream_events("Hello")
         """
         with EventStream() as stream:
             if callback is not None:

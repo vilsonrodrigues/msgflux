@@ -145,21 +145,21 @@ class TestEventStreamContextManager:
 
 
 class TestModuleStreamMethods:
-    """Test stream() and astream() methods on Module base class."""
+    """Test stream_events() and astream_events() methods on Module base class."""
 
-    def test_module_has_stream_method(self):
-        """Module should have stream() method."""
-        assert hasattr(Module, "stream")
-        assert callable(Module.stream)
+    def test_module_has_stream_events_method(self):
+        """Module should have stream_events() method."""
+        assert hasattr(Module, "stream_events")
+        assert callable(Module.stream_events)
 
-    def test_module_has_astream_method(self):
-        """Module should have astream() method."""
-        assert hasattr(Module, "astream")
-        assert callable(Module.astream)
+    def test_module_has_astream_events_method(self):
+        """Module should have astream_events() method."""
+        assert hasattr(Module, "astream_events")
+        assert callable(Module.astream_events)
 
-    def test_stream_method_signature(self):
-        """stream() should accept *args, callback=None, **kwargs."""
-        sig = inspect.signature(Module.stream)
+    def test_stream_events_method_signature(self):
+        """stream_events() should accept *args, callback=None, **kwargs."""
+        sig = inspect.signature(Module.stream_events)
         params = list(sig.parameters.keys())
         assert "self" in params
         assert "callback" in params
@@ -174,9 +174,9 @@ class TestModuleStreamMethods:
         assert has_var_positional
         assert has_var_keyword
 
-    def test_astream_returns_async_generator(self):
-        """astream() should return an AsyncGenerator."""
-        sig = inspect.signature(Module.astream)
+    def test_astream_events_returns_async_generator(self):
+        """astream_events() should return an AsyncGenerator."""
+        sig = inspect.signature(Module.astream_events)
         # Return annotation should indicate AsyncGenerator
         return_annotation = sig.return_annotation
         # Check that it's annotated as AsyncGenerator

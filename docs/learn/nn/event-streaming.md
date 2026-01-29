@@ -20,9 +20,9 @@ When no streaming consumer is active, there is **zero overhead** - events only g
 
 ## Quick Start
 
-### Async Streaming with `astream()`
+### Async Streaming with `astream_events()`
 
-The simplest way to consume events is via `Module.astream()`:
+The simplest way to consume events is via `Module.astream_events()`:
 
 ```python
 import asyncio
@@ -37,19 +37,19 @@ agent = nn.Agent(
 )
 
 async def main():
-    async for event in agent.astream("Hello, how are you?"):
+    async for event in agent.astream_events("Hello, how are you?"):
         print(f"[{event.name}] {event.attributes}")
 
 asyncio.run(main())
 ```
 
-### Sync Streaming with `stream()`
+### Sync Streaming with `stream_events()`
 
-For synchronous code, use `Module.stream()`:
+For synchronous code, use `Module.stream_events()`:
 
 ```python
 # Collect all events
-events = agent.stream("Hello!")
+events = agent.stream_events("Hello!")
 for event in events:
     print(f"[{event.name}] {event.attributes}")
 
@@ -57,7 +57,7 @@ for event in events:
 def on_event(event):
     print(f"Event: {event.name}")
 
-result = agent.stream("Hello!", callback=on_event)
+result = agent.stream_events("Hello!", callback=on_event)
 print(f"Result: {result}")
 ```
 
@@ -73,7 +73,7 @@ agent = nn.Agent(
     config={"stream": True},  # Enable streaming
 )
 
-async for event in agent.astream("Tell me a story"):
+async for event in agent.astream_events("Tell me a story"):
     if event.name == EventType.MODEL_RESPONSE_CHUNK:
         print(event.attributes["chunk"], end="", flush=True)
 ```
@@ -85,7 +85,7 @@ When using models that support reasoning (like OpenAI o1 or Claude with extended
 ```python
 from msgflux.nn import EventType
 
-async for event in agent.astream("Solve this math problem"):
+async for event in agent.astream_events("Solve this math problem"):
     match event.name:
         case EventType.MODEL_RESPONSE_CHUNK:
             # Main content chunks
@@ -126,8 +126,10 @@ Events follow [OpenTelemetry GenAI semantic conventions](https://opentelemetry.i
 | `gen_ai.model.request` | Model API request sent | `agent_name` |
 | `gen_ai.model.response` | Model response received | `agent_name`, `response_type` |
 | `gen_ai.model.response.chunk` | Streaming response chunk | `agent_name`, `chunk`, `index` |
+| `gen_ai.model.content.complete` | Content stream finished | `agent_name`, `total_chunks` |
 | `gen_ai.model.reasoning` | Model reasoning/thinking content | `agent_name`, `reasoning` |
 | `gen_ai.model.reasoning.chunk` | Streaming reasoning chunk | `agent_name`, `chunk`, `index` |
+| `gen_ai.model.reasoning.complete` | Reasoning stream finished | `agent_name`, `total_chunks` |
 
 ### Tool Events
 
@@ -175,7 +177,7 @@ class StreamEvent:
 All events include the `agent_name` attribute, making it easy to track which agent emitted each event:
 
 ```python
-async for event in agent.astream("Hello"):
+async for event in agent.astream_events("Hello"):
     agent = event.attributes.get("agent_name")
     print(f"[{agent}] {event.name}")
 ```
@@ -187,7 +189,7 @@ Tool events include a unique `tool_id` for correlating calls with results:
 ```python
 pending_calls = {}
 
-async for event in agent.astream("What's the weather?"):
+async for event in agent.astream_events("What's the weather?"):
     match event.name:
         case EventType.TOOL_CALL:
             tool_id = event.attributes["tool_id"]
@@ -240,7 +242,7 @@ Filter events by type for specific use cases:
 ```python
 from msgflux.nn import EventType
 
-async for event in agent.astream("Calculate 15 + 27"):
+async for event in agent.astream_events("Calculate 15 + 27"):
     match event.name:
         case EventType.TOOL_CALL:
             print(f"Tool: {event.attributes['tool_name']}")
@@ -285,7 +287,7 @@ manager = nn.Agent(
     tools=[researcher],
 )
 
-async for event in manager.astream("Research AI trends"):
+async for event in manager.astream_events("Research AI trends"):
     agent = event.attributes.get("agent_name", "unknown")
 
     # Events from manager show "manager"
@@ -311,7 +313,7 @@ async def chat_with_streaming(agent, message):
     current_tool = None
     final_response = None
 
-    async for event in agent.astream(message):
+    async for event in agent.astream_events(message):
         match event.name:
             case EventType.MODEL_RESPONSE_CHUNK:
                 # Stream text chunks as they arrive
