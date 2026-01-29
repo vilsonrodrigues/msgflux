@@ -2,21 +2,16 @@
 
 import dataclasses
 import inspect
-import warnings
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
 from msgflux import nn
 from msgflux.nn import events as events_module
 from msgflux.nn.events import (
-    EventBus,
     EventStream,
     EventType,
-    ModuleEvent,
     StreamEvent,
-    _current_event_bus,
-    _module_stack,
     add_agent_complete_event,
     add_agent_start_event,
     add_agent_step_event,
@@ -31,8 +26,6 @@ from msgflux.nn.events import (
     add_tool_call_event,
     add_tool_error_event,
     add_tool_result_event,
-    emit_event,
-    get_current_event_bus,
 )
 from msgflux.nn.modules.module import Module
 
@@ -84,127 +77,6 @@ class TestReExports:
         ]
         for func in functions:
             assert callable(func), f"{func.__name__} should be callable"
-
-
-class TestBackwardCompatibility:
-    """Test backward compatibility aliases."""
-
-    def test_module_event_is_stream_event_alias(self):
-        """ModuleEvent should be an alias for StreamEvent."""
-        assert ModuleEvent is StreamEvent
-
-    def test_event_bus_is_event_stream_alias(self):
-        """EventBus should be an alias for EventStream."""
-        assert EventBus is EventStream
-
-    def test_module_stack_contextvar_exists(self):
-        """_module_stack contextvar should exist for backward compatibility."""
-        assert _module_stack is not None
-        # Should be a ContextVar
-        assert hasattr(_module_stack, "get")
-        assert hasattr(_module_stack, "set")
-        # Default should be None
-        assert _module_stack.get() is None
-
-    def test_current_event_bus_contextvar_exists(self):
-        """_current_event_bus contextvar should exist for backward compatibility."""
-        assert _current_event_bus is not None
-        # Should be a ContextVar
-        assert hasattr(_current_event_bus, "get")
-        assert hasattr(_current_event_bus, "set")
-        # Default should be None
-        assert _current_event_bus.get() is None
-
-
-class TestDeprecatedEmitEvent:
-    """Test the deprecated emit_event function."""
-
-    def test_emit_event_raises_deprecation_warning(self):
-        """emit_event should raise DeprecationWarning."""
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            with patch("msgflux.nn.events.add_event"):
-                emit_event(
-                    event_type="test.event",
-                    module_name="test_module",
-                    module_type="test",
-                )
-            assert len(w) == 1
-            assert issubclass(w[0].category, DeprecationWarning)
-            assert "emit_event() is deprecated" in str(w[0].message)
-
-    def test_emit_event_calls_add_event(self):
-        """emit_event should call add_event with converted attributes."""
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", DeprecationWarning)
-            with patch("msgflux.nn.events.add_event") as mock_add_event:
-                emit_event(
-                    event_type="test.event",
-                    module_name="test_module",
-                    module_type="agent",
-                    data={"key": "value"},
-                    metadata={"extra": "info"},
-                )
-                mock_add_event.assert_called_once()
-                call_args = mock_add_event.call_args
-                assert call_args[0][0] == "test.event"
-                attributes = call_args[0][1]
-                assert attributes["module_name"] == "test_module"
-                assert attributes["module_type"] == "agent"
-                assert attributes["key"] == "value"
-                assert attributes["extra"] == "info"
-
-    def test_emit_event_with_non_dict_data(self):
-        """emit_event should handle non-dict data by putting it under 'data' key."""
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", DeprecationWarning)
-            with patch("msgflux.nn.events.add_event") as mock_add_event:
-                emit_event(
-                    event_type="test.event",
-                    module_name="test_module",
-                    module_type="tool",
-                    data="string_data",
-                )
-                call_args = mock_add_event.call_args
-                attributes = call_args[0][1]
-                assert attributes["data"] == "string_data"
-
-    def test_emit_event_without_data_or_metadata(self):
-        """emit_event should work with minimal arguments."""
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", DeprecationWarning)
-            with patch("msgflux.nn.events.add_event") as mock_add_event:
-                emit_event(
-                    event_type="test.event",
-                    module_name="minimal",
-                    module_type="module",
-                )
-                call_args = mock_add_event.call_args
-                attributes = call_args[0][1]
-                assert attributes == {
-                    "module_name": "minimal",
-                    "module_type": "module",
-                }
-
-
-class TestDeprecatedGetCurrentEventBus:
-    """Test the deprecated get_current_event_bus function."""
-
-    def test_get_current_event_bus_raises_deprecation_warning(self):
-        """get_current_event_bus should raise DeprecationWarning."""
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            get_current_event_bus()
-            assert len(w) == 1
-            assert issubclass(w[0].category, DeprecationWarning)
-            assert "get_current_event_bus() is deprecated" in str(w[0].message)
-
-    def test_get_current_event_bus_returns_none(self):
-        """get_current_event_bus should always return None."""
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", DeprecationWarning)
-            result = get_current_event_bus()
-            assert result is None
 
 
 class TestEventTypeConstants:
@@ -341,6 +213,3 @@ class TestAllExports:
         assert hasattr(nn, "EventType")
         assert hasattr(nn, "StreamEvent")
         assert hasattr(nn, "add_event")
-        # Backward compat
-        assert hasattr(nn, "EventBus")
-        assert hasattr(nn, "ModuleEvent")

@@ -11,7 +11,6 @@ from .examples import Example
 from .message import Message
 from .models import Model
 from .models.gateway import ModelGateway
-from .nn.events import EventBus
 from .telemetry import Spans
 from .tools.config import tool_config
 from .utils.chat import ChatBlock, ChatML
@@ -24,7 +23,6 @@ __all__ = [
     "Audio",
     "ChatBlock",
     "ChatML",
-    "EventBus",
     "Example",
     "File",
     "Image",

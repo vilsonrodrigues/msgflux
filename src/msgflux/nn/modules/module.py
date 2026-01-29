@@ -42,7 +42,6 @@ from msgflux.nn.events import (
     EventStream,
     EventType,
     StreamEvent,
-    _module_stack,
     add_event,
 )
 from msgflux.nn.parameter import Parameter
@@ -1365,10 +1364,6 @@ class Module:
         module_name_title = convert_camel_snake_to_title(module_name)
         module_type = self._get_name().lower()  # Agent, Transcriber, etc.
 
-        # Event streaming: push module onto stack for hierarchy tracking
-        stack = _module_stack.get() or []
-        token = _module_stack.set([*stack, module_name])
-
         encoded_state_dict = None
         if envs.telemetry_capture_state_dict:
             state_dict = self.state_dict()
@@ -1431,8 +1426,6 @@ class Module:
                 },
             )
             raise
-        finally:
-            _module_stack.reset(token)
 
     async def _acall_impl(self, *args, **kwargs):
         if not (self._forward_hooks or self._forward_pre_hooks):
@@ -1511,10 +1504,6 @@ class Module:
         module_name_title = convert_camel_snake_to_title(module_name)
         module_type = self._get_name().lower()  # Agent, Transcriber, etc.
 
-        # Event streaming: push module onto stack for hierarchy tracking
-        stack = _module_stack.get() or []
-        token = _module_stack.set([*stack, module_name])
-
         encoded_state_dict = None
         if envs.telemetry_capture_state_dict:
             state_dict = self.state_dict()
@@ -1577,8 +1566,6 @@ class Module:
                 },
             )
             raise
-        finally:
-            _module_stack.reset(token)
 
     __call__: Callable[..., Any] = _call_impl
 
