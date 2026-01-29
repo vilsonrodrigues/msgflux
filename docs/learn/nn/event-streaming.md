@@ -298,6 +298,43 @@ async for event in manager.astream_events("Research AI trends"):
         print(f"[{agent}] {event.attributes['chunk']}", end="")
 ```
 
+### Filtering Events by Agent
+
+In complex multi-agent systems, you may want to process only events from the root agent, ignoring sub-agent events. Use the `agent_name` attribute to filter:
+
+```python
+ROOT_AGENT = "manager"
+
+async for event in manager.astream_events("Research AI trends"):
+    # Skip events from sub-agents
+    if event.attributes.get("agent_name") != ROOT_AGENT:
+        continue
+
+    # Process only root agent events
+    match event.name:
+        case EventType.MODEL_RESPONSE_CHUNK:
+            print(event.attributes["chunk"], end="", flush=True)
+        case EventType.TOOL_CALL:
+            print(f"\n[Calling {event.attributes['tool_name']}...]")
+        case EventType.TOOL_RESULT:
+            print(" Done.")
+```
+
+Alternatively, to see events from specific agents only:
+
+```python
+ALLOWED_AGENTS = {"manager", "researcher"}
+
+async for event in manager.astream_events("Research AI trends"):
+    agent = event.attributes.get("agent_name")
+    if agent not in ALLOWED_AGENTS:
+        continue
+
+    print(f"[{agent}] {event.name}")
+```
+
+Note that all events are still captured by OpenTelemetry for observability, regardless of filtering in the streaming consumer.
+
 ## Example: Building a Chat UI
 
 ```python
