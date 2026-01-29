@@ -1,4 +1,5 @@
 import asyncio
+import contextvars
 import functools
 import inspect
 import weakref
@@ -53,8 +54,15 @@ from msgflux.utils.msgspec import StructFactory
 from msgflux.utils.templates import format_template
 from msgflux.utils.validation import is_builtin_type, is_subclass_of
 
+# Context variable to indicate if we're inside a stream_events() call.
+# When True, modules should consume streams automatically to emit chunk events.
+_streaming_events_active: contextvars.ContextVar[bool] = contextvars.ContextVar(
+    "_streaming_events_active", default=False
+)
+
 __all__ = [
     "Module",
+    "_streaming_events_active",
     "register_module_buffer_registration_hook",
     "register_module_forward_hook",
     "register_module_forward_pre_hook",
@@ -1597,29 +1605,36 @@ class Module:
         execution pipeline. Events are emitted to both the streaming
         queue (for real-time consumption) and OTel spans (for persistence).
 
+        When a module returns a streaming response, it will be automatically
+        consumed to emit chunk events (MODEL_RESPONSE_CHUNK, MODEL_REASONING_CHUNK).
+
         Example::
 
             async for event in agent.astream_events("Hello"):
                 print(event.name, event.attributes)
         """
         error_holder: List = []
+        token = _streaming_events_active.set(True)
 
-        async with EventStream() as stream:
+        try:
+            async with EventStream() as stream:
 
-            async def _run():
-                try:
-                    await self.acall(*args, **kwargs)
-                except Exception as exc:
-                    error_holder.append(exc)
-                finally:
-                    stream.close()
+                async def _run():
+                    try:
+                        await self.acall(*args, **kwargs)
+                    except Exception as exc:
+                        error_holder.append(exc)
+                    finally:
+                        stream.close()
 
-            task = asyncio.create_task(_run())
+                task = asyncio.create_task(_run())
 
-            async for event in stream:
-                yield event
+                async for event in stream:
+                    yield event
 
-            await task
+                await task
+        finally:
+            _streaming_events_active.reset(token)
 
         if error_holder:
             raise error_holder[0]
@@ -1631,6 +1646,9 @@ class Module:
         module result is returned. Without a callback, returns a list of all
         collected :class:`~msgtrace.sdk.StreamEvent` objects.
 
+        When a module returns a streaming response, it will be automatically
+        consumed to emit chunk events (MODEL_RESPONSE_CHUNK, MODEL_REASONING_CHUNK).
+
         Example::
 
             # With callback
@@ -1639,15 +1657,20 @@ class Module:
             # Without callback (collect events)
             events = agent.stream_events("Hello")
         """
-        with EventStream() as stream:
+        token = _streaming_events_active.set(True)
+
+        try:
+            with EventStream() as stream:
+                if callback is not None:
+                    stream.on_event(callback)
+
+                result = self.__call__(*args, **kwargs)
+
             if callback is not None:
-                stream.on_event(callback)
-
-            result = self.__call__(*args, **kwargs)
-
-        if callback is not None:
-            return result
-        return stream.events
+                return result
+            return stream.events
+        finally:
+            _streaming_events_active.reset(token)
 
     def __getstate__(self):
         state = self.__dict__.copy()

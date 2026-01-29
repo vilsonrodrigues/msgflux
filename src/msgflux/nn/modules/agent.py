@@ -54,7 +54,7 @@ from msgflux.nn.events import (
     add_tool_result_event,
 )
 from msgflux.nn.modules.lm import LM
-from msgflux.nn.modules.module import Module
+from msgflux.nn.modules.module import Module, _streaming_events_active
 from msgflux.nn.modules.tool import ToolLibrary, ToolResponses
 from msgflux.nn.parameter import Parameter
 from msgflux.utils.chat import ChatBlock, response_format_from_msgspec_struct
@@ -468,6 +468,18 @@ class Agent(Module, metaclass=AutoParams):
         if isinstance(response, ModelStreamResponse):
             response = EventEmittingStreamResponse(response, module_name)
 
+            # If inside stream_events() context, consume stream to emit events
+            if _streaming_events_active.get():
+                import asyncio
+
+                async def _consume():
+                    content_parts = []
+                    async for chunk in response.consume_content():
+                        content_parts.append(chunk)
+                    return "".join(str(c) for c in content_parts)
+
+                response = asyncio.get_event_loop().run_until_complete(_consume())
+
         add_agent_complete_event(module_name, response=response)
         return response
 
@@ -489,6 +501,13 @@ class Agent(Module, metaclass=AutoParams):
         # Wrap streaming response to emit chunk events
         if isinstance(response, ModelStreamResponse):
             response = EventEmittingStreamResponse(response, module_name)
+
+            # If inside stream_events() context, consume stream to emit events
+            if _streaming_events_active.get():
+                content_parts = []
+                async for chunk in response.consume_content():
+                    content_parts.append(chunk)
+                response = "".join(str(c) for c in content_parts)
 
         add_agent_complete_event(module_name, response=response)
         return response

@@ -78,6 +78,8 @@ async for event in agent.astream_events("Tell me a story"):
         print(event.attributes["chunk"], end="", flush=True)
 ```
 
+**Note**: When using `astream_events()` or `stream_events()`, the streaming response is automatically consumed to emit chunk events. The final response is accumulated and returned as a string instead of a stream object. This ensures all `MODEL_RESPONSE_CHUNK` and `MODEL_REASONING_CHUNK` events are captured.
+
 ### Separate Content and Reasoning Streams
 
 When using models that support reasoning (like OpenAI o1 or Claude with extended thinking), the streaming response separates content from reasoning:
