@@ -32,19 +32,49 @@ class BaseStreamResponse(CoreResponse):
     def __init__(self):
         self.first_chunk_event = asyncio.Event()
         self.data = None
-        self.queue = asyncio.Queue()
+        self.content_queue: asyncio.Queue = asyncio.Queue()
+        self.reasoning_queue: asyncio.Queue = asyncio.Queue()
         self.metadata = None
         self.response_type = None
 
+    @property
+    def queue(self) -> asyncio.Queue:
+        """Backward compatibility: alias for content_queue."""
+        return self.content_queue
+
     def add(self, data: Any):
-        """Add data to the stream queue (async)."""
-        self.queue.put_nowait(data)
+        """Add data to the content queue. Backward compatible."""
+        self.add_content(data)
+
+    def add_content(self, data: Any):
+        """Add content chunk to the content queue."""
+        self.content_queue.put_nowait(data)
+
+    def add_reasoning(self, data: Any):
+        """Add reasoning/thinking chunk to the reasoning queue."""
+        self.reasoning_queue.put_nowait(data)
 
     async def consume(self) -> AsyncGenerator[Union[bytes, str], None]:
-        """Async generator that yields chunks from the queue until None is received."""
+        """Async generator that yields content chunks. Backward compatible."""
+        async for chunk in self.consume_content():
+            yield chunk
+
+    async def consume_content(self) -> AsyncGenerator[Union[bytes, str], None]:
+        """Async generator that yields content chunks until None is received."""
         while True:
             try:
-                chunk = await asyncio.wait_for(self.queue.get(), timeout=1.0)
+                chunk = await asyncio.wait_for(self.content_queue.get(), timeout=1.0)
+                if chunk is None:
+                    break
+                yield chunk
+            except asyncio.TimeoutError:
+                continue
+
+    async def consume_reasoning(self) -> AsyncGenerator[Union[bytes, str], None]:
+        """Async generator that yields reasoning chunks until None is received."""
+        while True:
+            try:
+                chunk = await asyncio.wait_for(self.reasoning_queue.get(), timeout=1.0)
                 if chunk is None:
                     break
                 yield chunk

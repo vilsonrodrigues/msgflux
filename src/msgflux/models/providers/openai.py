@@ -443,21 +443,19 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
                     or getattr(delta, "thinking", None)
                 )
 
+                # Always capture reasoning in tool call context
                 if self.reasoning_in_tool_call and reasoning_chunk:
                     reasoning_tool_call += reasoning_chunk
 
-                if self.return_reasoning and reasoning_chunk:
-                    if stream_response.response_type is None:
-                        stream_response.set_response_type("reasoning_text_generation")
-                        stream_response.first_chunk_event.set()
-                    stream_response.add(reasoning_chunk)
-                    continue
+                # Always stream reasoning chunks to reasoning_queue
+                if reasoning_chunk:
+                    stream_response.add_reasoning(reasoning_chunk)
 
                 if getattr(delta, "content", None):
                     if stream_response.response_type is None:
                         stream_response.set_response_type("text_generation")
                         stream_response.first_chunk_event.set()
-                    stream_response.add(delta.content)
+                    stream_response.add_content(delta.content)
                     continue
 
                 if getattr(delta, "tool_calls", None):
@@ -487,7 +485,8 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
             stream_response.first_chunk_event.set()
 
         stream_response.set_metadata(metadata)
-        stream_response.add(None)
+        stream_response.add_content(None)  # Signal end of content
+        stream_response.add_reasoning(None)  # Signal end of reasoning
 
     async def _astream_generate(  # noqa: C901
         self, **kwargs: Mapping[str, Any]
@@ -510,21 +509,19 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
                     or getattr(delta, "thinking", None)
                 )
 
+                # Always capture reasoning in tool call context
                 if self.reasoning_in_tool_call and reasoning_chunk:
                     reasoning_tool_call += reasoning_chunk
 
-                if self.return_reasoning and reasoning_chunk:
-                    if stream_response.response_type is None:
-                        stream_response.set_response_type("reasoning_text_generation")
-                        stream_response.first_chunk_event.set()
-                    stream_response.add(reasoning_chunk)
-                    continue
+                # Always stream reasoning chunks to reasoning_queue
+                if reasoning_chunk:
+                    stream_response.add_reasoning(reasoning_chunk)
 
                 if getattr(delta, "content", None):
                     if stream_response.response_type is None:
                         stream_response.set_response_type("text_generation")
                         stream_response.first_chunk_event.set()
-                    stream_response.add(delta.content)
+                    stream_response.add_content(delta.content)
                     continue
 
                 if getattr(delta, "tool_calls", None):
@@ -554,7 +551,8 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
             stream_response.first_chunk_event.set()
 
         stream_response.set_metadata(metadata)
-        stream_response.add(None)
+        stream_response.add_content(None)  # Signal end of content
+        stream_response.add_reasoning(None)  # Signal end of reasoning
 
     @model_retry
     def __call__(

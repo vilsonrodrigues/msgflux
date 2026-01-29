@@ -10,7 +10,6 @@ from msgflux.auto import AutoParams
 from msgflux.dotdict import dotdict
 from msgflux.logger import logger
 from msgflux.nn import functional as F
-from msgflux.nn.events import add_tool_call_event, add_tool_result_event
 from msgflux.nn.modules.container import ModuleDict
 from msgflux.nn.modules.module import Module
 from msgflux.protocols.mcp import (
@@ -578,9 +577,6 @@ class ToolLibrary(Module, metaclass=AutoParams):
             )
 
         if prepared_calls:
-            for meta in call_metadata:
-                add_tool_call_event(meta.name, meta.id)
-
             results = F.scatter_gather(prepared_calls)
             for meta, result in zip(call_metadata, results):
                 if isinstance(meta.params, dict):
@@ -597,7 +593,6 @@ class ToolLibrary(Module, metaclass=AutoParams):
                         result=result,
                     )
                 )
-                add_tool_result_event(meta.name, meta.id, result=result)
 
         return ToolResponses(return_directly=return_directly, tool_calls=tool_calls)
 
@@ -711,9 +706,6 @@ class ToolLibrary(Module, metaclass=AutoParams):
             )
 
         if prepared_calls:
-            for meta in call_metadata:
-                add_tool_call_event(meta.name, meta.id)
-
             results = await F.ascatter_gather(prepared_calls)
             for meta, result in zip(call_metadata, results):
                 if isinstance(meta.params, dict):
@@ -730,6 +722,5 @@ class ToolLibrary(Module, metaclass=AutoParams):
                         result=result,
                     )
                 )
-                add_tool_result_event(meta.name, meta.id, result=result)
 
         return ToolResponses(return_directly=return_directly, tool_calls=tool_calls)

@@ -2,6 +2,7 @@ from copy import deepcopy
 from datetime import datetime, timezone
 from typing import (
     Any,
+    AsyncGenerator,
     Callable,
     Dict,
     List,
@@ -36,14 +37,17 @@ from msgflux.models.gateway import ModelGateway
 from msgflux.models.response import ModelResponse, ModelStreamResponse
 from msgflux.models.types import ChatCompletionModel
 from msgflux.nn.events import (
+    EventType,
     add_agent_complete_event,
     add_agent_start_event,
     add_agent_step_event,
+    add_event,
     add_flow_complete_event,
     add_flow_reasoning_event,
     add_flow_step_event,
     add_model_reasoning_event,
     add_model_request_event,
+    add_model_response_chunk_event,
     add_model_response_event,
     add_tool_call_event,
     add_tool_error_event,
@@ -58,6 +62,67 @@ from msgflux.utils.console import cprint
 from msgflux.utils.msgspec import StructFactory, is_optional_field, msgspec_dumps
 from msgflux.utils.validation import is_subclass_of
 from msgflux.utils.xml import apply_xml_tags
+
+
+class EventEmittingStreamResponse:
+    """Wrapper around ModelStreamResponse that emits events when chunks are consumed.
+
+    This wrapper intercepts the consume methods and emits MODEL_RESPONSE_CHUNK
+    and MODEL_REASONING_CHUNK events with the agent_name for traceability.
+    """
+
+    def __init__(self, stream_response: ModelStreamResponse, agent_name: str):
+        self._stream_response = stream_response
+        self._agent_name = agent_name
+        self._content_index = 0
+        self._reasoning_index = 0
+
+    @property
+    def response_type(self):
+        return self._stream_response.response_type
+
+    @property
+    def metadata(self):
+        return self._stream_response.metadata
+
+    @property
+    def data(self):
+        return self._stream_response.data
+
+    @property
+    def first_chunk_event(self):
+        return self._stream_response.first_chunk_event
+
+    async def consume(self) -> AsyncGenerator[Union[bytes, str], None]:
+        """Consume content chunks and emit events."""
+        async for chunk in self.consume_content():
+            yield chunk
+
+    async def consume_content(self) -> AsyncGenerator[Union[bytes, str], None]:
+        """Consume content chunks and emit MODEL_RESPONSE_CHUNK events."""
+        async for chunk in self._stream_response.consume_content():
+            add_model_response_chunk_event(
+                chunk=str(chunk),
+                index=self._content_index,
+                agent_name=self._agent_name,
+            )
+            self._content_index += 1
+            yield chunk
+
+    async def consume_reasoning(self) -> AsyncGenerator[Union[bytes, str], None]:
+        """Consume reasoning chunks and emit MODEL_REASONING_CHUNK events."""
+        async for chunk in self._stream_response.consume_reasoning():
+            add_event(
+                EventType.MODEL_REASONING_CHUNK,
+                {
+                    "chunk": str(chunk),
+                    "index": self._reasoning_index,
+                    "agent_name": self._agent_name,
+                },
+            )
+            self._reasoning_index += 1
+            yield chunk
+
 
 # Reserved kwargs that should not be treated as task inputs
 _RESERVED_KWARGS = {
@@ -386,6 +451,10 @@ class Agent(Module, metaclass=AutoParams):
         model_response = self._execute_model(prefilling=self.prefilling, **inputs)
         response = self._process_model_response(message, model_response, **inputs)
 
+        # Wrap streaming response to emit chunk events
+        if isinstance(response, ModelStreamResponse):
+            response = EventEmittingStreamResponse(response, module_name)
+
         add_agent_complete_event(module_name, response=response)
         return response
 
@@ -403,6 +472,10 @@ class Agent(Module, metaclass=AutoParams):
         response = await self._aprocess_model_response(
             message, model_response, **inputs
         )
+
+        # Wrap streaming response to emit chunk events
+        if isinstance(response, ModelStreamResponse):
+            response = EventEmittingStreamResponse(response, module_name)
 
         add_agent_complete_event(module_name, response=response)
         return response
@@ -619,8 +692,10 @@ class Agent(Module, metaclass=AutoParams):
                         tool_calling[1],
                         tool_calling[2] if len(tool_calling) > 2 else {},
                     )
+                    agent_name = self.get_module_name()
                     add_tool_call_event(
-                        tool_name, tool_id, arguments=tool_args, step=step
+                        tool_name, tool_id, arguments=tool_args, step=step,
+                        agent_name=agent_name,
                     )
 
                 tool_results = self._process_tool_call(
@@ -630,11 +705,13 @@ class Agent(Module, metaclass=AutoParams):
                 for call in tool_results.tool_calls:
                     if call.error:
                         add_tool_error_event(
-                            call.name, call.id, call.error, step=step
+                            call.name, call.id, call.error, step=step,
+                            agent_name=agent_name,
                         )
                     else:
                         add_tool_result_event(
-                            call.name, call.id, result=call.result, step=step
+                            call.name, call.id, result=call.result, step=step,
+                            agent_name=agent_name,
                         )
 
                 if tool_results.return_directly:
@@ -689,6 +766,7 @@ class Agent(Module, metaclass=AutoParams):
                 )
 
             if flow_result.tool_calls:
+                agent_name = self.get_module_name()
                 for tool_calling in flow_result.tool_calls:
                     tool_id, tool_name, tool_args = (
                         tool_calling[0],
@@ -696,7 +774,8 @@ class Agent(Module, metaclass=AutoParams):
                         tool_calling[2] if len(tool_calling) > 2 else {},
                     )
                     add_tool_call_event(
-                        tool_name, tool_id, arguments=tool_args, step=step
+                        tool_name, tool_id, arguments=tool_args, step=step,
+                        agent_name=agent_name,
                     )
 
                 tool_results = await self._aprocess_tool_call(
@@ -706,11 +785,13 @@ class Agent(Module, metaclass=AutoParams):
                 for call in tool_results.tool_calls:
                     if call.error:
                         add_tool_error_event(
-                            call.name, call.id, call.error, step=step
+                            call.name, call.id, call.error, step=step,
+                            agent_name=agent_name,
                         )
                     else:
                         add_tool_result_event(
-                            call.name, call.id, result=call.result, step=step
+                            call.name, call.id, result=call.result, step=step,
+                            agent_name=agent_name,
                         )
 
                 if tool_results.return_directly:
@@ -763,22 +844,28 @@ class Agent(Module, metaclass=AutoParams):
 
                 tool_callings = raw_response.get_calls()
 
+                agent_name = self.get_module_name()
                 for tool_calling in tool_callings:
                     add_tool_call_event(
                         tool_calling[1],
                         tool_calling[0],
                         arguments=(tool_calling[2] if len(tool_calling) > 2 else {}),
                         step=step,
+                        agent_name=agent_name,
                     )
 
                 tool_results = self._process_tool_call(tool_callings, messages, vars)
 
                 for call in tool_results.tool_calls:
                     if call.error:
-                        add_tool_error_event(call.name, call.id, call.error, step=step)
+                        add_tool_error_event(
+                            call.name, call.id, call.error, step=step,
+                            agent_name=agent_name,
+                        )
                     else:
                         add_tool_result_event(
-                            call.name, call.id, result=call.result, step=step
+                            call.name, call.id, result=call.result, step=step,
+                            agent_name=agent_name,
                         )
 
                 if tool_results.return_directly:
@@ -835,6 +922,7 @@ class Agent(Module, metaclass=AutoParams):
                         cprint(repr_str, bc="br2", ls="b")
 
                 tool_callings = raw_response.get_calls()
+                agent_name = self.get_module_name()
 
                 for tool_calling in tool_callings:
                     add_tool_call_event(
@@ -842,6 +930,7 @@ class Agent(Module, metaclass=AutoParams):
                         tool_calling[0],
                         arguments=(tool_calling[2] if len(tool_calling) > 2 else {}),
                         step=step,
+                        agent_name=agent_name,
                     )
 
                 tool_results = await self._aprocess_tool_call(
@@ -850,10 +939,14 @@ class Agent(Module, metaclass=AutoParams):
 
                 for call in tool_results.tool_calls:
                     if call.error:
-                        add_tool_error_event(call.name, call.id, call.error, step=step)
+                        add_tool_error_event(
+                            call.name, call.id, call.error, step=step,
+                            agent_name=agent_name,
+                        )
                     else:
                         add_tool_result_event(
-                            call.name, call.id, result=call.result, step=step
+                            call.name, call.id, result=call.result, step=step,
+                            agent_name=agent_name,
                         )
 
                 if tool_results.return_directly:
