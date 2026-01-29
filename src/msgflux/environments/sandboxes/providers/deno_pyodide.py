@@ -2,6 +2,7 @@
 
 import base64
 import json
+import os
 import select
 import shutil
 import subprocess
@@ -92,6 +93,26 @@ class DenoPyodideSandbox(BasePythonSandbox):
         """Get path to the Pyodide runner script."""
         return Path(__file__).parent / "scripts" / "pyodide_runner.js"
 
+    def _get_deno_cache_dir(self) -> Optional[str]:
+        """Get Deno cache directory."""
+        # Check DENO_DIR env var first
+        deno_dir = os.environ.get("DENO_DIR")
+        if deno_dir:
+            return deno_dir
+
+        # Default locations
+        home = os.environ.get("HOME", os.path.expanduser("~"))
+        cache_dir = os.path.join(home, ".cache", "deno")
+        if os.path.exists(cache_dir):
+            return cache_dir
+
+        # macOS location
+        cache_dir = os.path.join(home, "Library", "Caches", "deno")
+        if os.path.exists(cache_dir):
+            return cache_dir
+
+        return None
+
     def _build_deno_command(self) -> List[str]:
         """Build the Deno command with appropriate permissions."""
         runner_path = self._get_runner_path()
@@ -100,6 +121,11 @@ class DenoPyodideSandbox(BasePythonSandbox):
 
         # Always allow reading the runner script and Deno cache
         read_paths = [str(runner_path)]
+
+        # Add Deno cache directory (required for Pyodide WASM files)
+        deno_cache = self._get_deno_cache_dir()
+        if deno_cache:
+            read_paths.append(deno_cache)
 
         # Add user-specified read paths
         if self.allow_read:
@@ -111,9 +137,13 @@ class DenoPyodideSandbox(BasePythonSandbox):
         if self.allow_write:
             cmd.append(f"--allow-write={','.join(self.allow_write)}")
 
-        # Network permissions
+        # Network permissions - always allow Pyodide CDN for package downloads
+        # User can expand with allow_network=True for full access
+        pyodide_hosts = ["cdn.jsdelivr.net", "pypi.org", "files.pythonhosted.org"]
         if self.allow_network:
             cmd.append("--allow-net")
+        else:
+            cmd.append(f"--allow-net={','.join(pyodide_hosts)}")
 
         cmd.append(str(runner_path))
         return cmd
@@ -159,32 +189,49 @@ class DenoPyodideSandbox(BasePythonSandbox):
 
     def _wait_for_init(self):
         """Wait for sandbox initialization."""
-        try:
-            # Read the init response (with timeout)
-            ready, _, _ = select.select([self._process.stdout], [], [], 60.0)
-            if not ready:
+        start_time = time.time()
+        timeout_seconds = 120.0  # Pyodide download can take a while
+
+        while True:
+            elapsed = time.time() - start_time
+            remaining = timeout_seconds - elapsed
+            if remaining <= 0:
                 stderr = self._process.stderr.read() if self._process.stderr else ""
                 raise SandboxTimeoutError(
-                    60.0, f"Sandbox initialization timed out. Stderr: {stderr}"
+                    timeout_seconds,
+                    f"Sandbox initialization timed out. Stderr: {stderr}",
                 )
+
+            wait_time = min(remaining, 5.0)
+            ready, _, _ = select.select([self._process.stdout], [], [], wait_time)
+            if not ready:
+                continue  # Keep waiting
 
             line = self._process.stdout.readline().strip()
             if not line:
-                stderr = self._process.stderr.read() if self._process.stderr else ""
-                raise SandboxConnectionError(f"Empty init response. Stderr: {stderr}")
+                continue  # Empty line, keep reading
 
-            response = json.loads(line)
+            # Skip non-JSON lines (Pyodide loading messages)
+            if not line.startswith("{"):
+                logger.debug(f"Pyodide init message: {line}")
+                continue
+
+            try:
+                response = json.loads(line)
+            except json.JSONDecodeError:
+                logger.debug(f"Non-JSON line during init: {line}")
+                continue
+
             if "error" in response:
                 raise SandboxConnectionError(f"Init error: {response['error']}")
 
             result = response.get("result", {})
-            if result.get("status") != "ready":
-                raise SandboxConnectionError(f"Unexpected init response: {response}")
+            if result.get("status") == "ready":
+                logger.debug(f"Pyodide version: {result.get('version', 'unknown')}")
+                return
 
-            logger.debug(f"Pyodide version: {result.get('version', 'unknown')}")
-
-        except json.JSONDecodeError as e:
-            raise SandboxConnectionError(f"Invalid init response: {e}") from e
+            # If we got JSON but not "ready", log and continue
+            logger.debug(f"Unexpected init response: {response}")
 
     def _check_thread_ownership(self):
         """Verify we're on the owner thread."""
