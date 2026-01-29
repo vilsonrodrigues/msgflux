@@ -1,3 +1,4 @@
+import asyncio
 from copy import deepcopy
 from datetime import datetime, timezone
 from typing import (
@@ -468,17 +469,24 @@ class Agent(Module, metaclass=AutoParams):
         if isinstance(response, ModelStreamResponse):
             response = EventEmittingStreamResponse(response, module_name)
 
-            # If inside stream_events() context, consume stream to emit events
+            # If inside stream_events() context, consume streams to emit events
             if _streaming_events_active.get():
-                import asyncio
+                content_parts = []
+                reasoning_parts = []
 
                 async def _consume():
-                    content_parts = []
-                    async for chunk in response.consume_content():
-                        content_parts.append(chunk)
-                    return "".join(str(c) for c in content_parts)
+                    async def _consume_content():
+                        async for chunk in response.consume_content():
+                            content_parts.append(chunk)
 
-                response = asyncio.get_event_loop().run_until_complete(_consume())
+                    async def _consume_reasoning():
+                        async for chunk in response.consume_reasoning():
+                            reasoning_parts.append(chunk)
+
+                    await asyncio.gather(_consume_content(), _consume_reasoning())
+
+                asyncio.get_event_loop().run_until_complete(_consume())
+                response = "".join(str(c) for c in content_parts)
 
         add_agent_complete_event(module_name, response=response)
         return response
@@ -502,11 +510,21 @@ class Agent(Module, metaclass=AutoParams):
         if isinstance(response, ModelStreamResponse):
             response = EventEmittingStreamResponse(response, module_name)
 
-            # If inside stream_events() context, consume stream to emit events
+            # If inside stream_events() context, consume streams to emit events
             if _streaming_events_active.get():
                 content_parts = []
-                async for chunk in response.consume_content():
-                    content_parts.append(chunk)
+                reasoning_parts = []
+
+                # Consume both streams concurrently
+                async def _consume_content():
+                    async for chunk in response.consume_content():
+                        content_parts.append(chunk)
+
+                async def _consume_reasoning():
+                    async for chunk in response.consume_reasoning():
+                        reasoning_parts.append(chunk)
+
+                await asyncio.gather(_consume_content(), _consume_reasoning())
                 response = "".join(str(c) for c in content_parts)
 
         add_agent_complete_event(module_name, response=response)
