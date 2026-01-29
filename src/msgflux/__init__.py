@@ -3,6 +3,7 @@ from .data.dbs import DB
 
 # from .data.parsers import Parser
 from .data.retrievers import Retriever
+from .environments.sandboxes import Sandbox
 from .data.types import Audio, File, Image, Video
 from .dotdict import dotdict
 from .dsl.signature import InputField, OutputField, Signature
@@ -19,10 +20,10 @@ from .utils.inspect import get_fn_name
 from .utils.msgspec import load, msgspec_dumps, save
 
 __all__ = [
-    "DB",
     "Audio",
     "ChatBlock",
     "ChatML",
+    "DB",
     "Example",
     "File",
     "Image",
@@ -32,6 +33,7 @@ __all__ = [
     "ModelGateway",
     "OutputField",
     "Retriever",
+    "Sandbox",
     "Signature",
     "Spans",
     "Video",
