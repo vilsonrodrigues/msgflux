@@ -81,14 +81,14 @@ class Sandbox:
         return sandbox_cls(**kwargs)
 
     @classmethod
-    def python(cls, provider: str = "mock", **kwargs: Any) -> BasePythonSandbox:
+    def python(cls, provider: str = "deno_pyodide", **kwargs: Any) -> BasePythonSandbox:
         """Create a Python sandbox.
 
         Args:
             provider:
                 Sandbox provider to use. Available:
+                - "deno_pyodide": Secure sandbox using Deno + Pyodide (default)
                 - "mock": Mock sandbox for testing (no external deps)
-                - "deno_pyodide": Secure sandbox using Deno + Pyodide (future)
             **kwargs:
                 Provider-specific arguments.
 
@@ -96,10 +96,15 @@ class Sandbox:
             A Python sandbox instance.
 
         Example:
-            >>> sandbox = Sandbox.python(provider="mock")
+            >>> sandbox = Sandbox.python()
             >>> result = sandbox("print('Hello')")
             >>> print(result.output)
             Hello
+
+        Note:
+            The deno_pyodide provider requires Deno to be installed.
+            Install from https://deno.land or run:
+            curl -fsSL https://deno.land/install.sh | sh
         """
         return cls._create_sandbox("python", provider, **kwargs)
 
