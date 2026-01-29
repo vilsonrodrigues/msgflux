@@ -28,6 +28,7 @@ class MockSandbox(BasePythonSandbox):
         simulate_errors: bool = False,
         execute_fn: Optional[Callable[[str, Dict[str, Any]], Any]] = None,
         allowed_builtins: Optional[Dict[str, Any]] = None,
+        tools: Optional[Dict[str, Callable[..., Any]]] = None,
     ):
         """Initialize mock sandbox.
 
@@ -40,11 +41,21 @@ class MockSandbox(BasePythonSandbox):
                 Optional custom function to execute code.
             allowed_builtins:
                 Dictionary of allowed builtins. If None, uses safe defaults.
+            tools:
+                Dictionary of tool name to callable. Tools are Python functions
+                that can be called from code running in the sandbox.
+
+        Example:
+            >>> def search(query: str) -> str:
+            ...     return f"Results for {query}"
+            >>> sandbox = MockSandbox(tools={"search": search})
+            >>> sandbox("result = search('python')")
         """
         self.default_output = default_output
         self.simulate_errors = simulate_errors
         self.execute_fn = execute_fn
         self.allowed_builtins = allowed_builtins
+        self._tools: Dict[str, Callable[..., Any]] = tools or {}
         self._variables: Dict[str, Any] = {}
         self._files: Dict[str, Union[str, bytes]] = {}
         self._call_history: List[tuple] = []
@@ -90,7 +101,7 @@ class MockSandbox(BasePythonSandbox):
             "None": None,
         }
 
-    def __call__(
+    def __call__(  # noqa: C901
         self,
         code: str,
         *,
@@ -144,6 +155,10 @@ class MockSandbox(BasePythonSandbox):
         try:
             local_vars = dict(self._variables)
             global_vars = {"__builtins__": self.allowed_builtins}
+
+            # Inject tools into global namespace
+            for tool_name, tool_func in self._tools.items():
+                global_vars[tool_name] = tool_func
 
             stdout_capture = io.StringIO()
             stderr_capture = io.StringIO()

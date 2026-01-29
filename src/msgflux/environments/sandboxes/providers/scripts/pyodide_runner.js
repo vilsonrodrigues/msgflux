@@ -5,10 +5,13 @@
  * (Python compiled to WebAssembly). Communication happens via JSON-RPC 2.0 over
  * stdin/stdout.
  *
- * Security: Pyodide runs in WebAssembly sandbox with no direct filesystem or
- * network access unless explicitly enabled via Deno permissions.
+ * Features:
+ * - Secure code execution in WebAssembly sandbox
+ * - Tool registration and execution via JSON-RPC bridge
+ * - Variable injection and extraction
+ * - Package installation via micropip
  *
- * Usage: deno run [--deny-net] [--deny-read] [--deny-write] pyodide_runner.js
+ * Usage: deno run [permissions] pyodide_runner.js
  */
 
 // JSON-RPC 2.0 error codes
@@ -25,6 +28,7 @@ const JSONRPC_ERRORS = {
   VALUE_ERROR: -32003,
   RUNTIME_ERROR: -32004,
   EXECUTION_ERROR: -32005,
+  TOOL_ERROR: -32006,
 };
 
 /**
@@ -43,6 +47,13 @@ function jsonrpcError(code, message, id, data = null) {
     error.data = data;
   }
   return JSON.stringify({ jsonrpc: "2.0", error, id });
+}
+
+/**
+ * Create a JSON-RPC 2.0 request (for tool calls to host)
+ */
+function jsonrpcRequest(method, params, id) {
+  return JSON.stringify({ jsonrpc: "2.0", method, params, id });
 }
 
 /**
@@ -67,6 +78,10 @@ class PyodideRunner {
     this.pyodide = null;
     this.initialized = false;
     this.mountedFiles = new Map();
+    this.registeredTools = new Map();
+    this.toolCallCounter = 0;
+    this.pendingToolCalls = new Map();
+    this.stdinReader = null;
   }
 
   /**
@@ -83,7 +98,7 @@ class PyodideRunner {
     // Load micropip for package installation
     await this.pyodide.loadPackage("micropip");
 
-    // Setup Python environment
+    // Setup Python environment with tool support
     this.pyodide.runPython(`
 import sys
 import io
@@ -139,10 +154,133 @@ def _get_all_vars():
 
 def _clear_vars():
     _sandbox_vars.clear()
+
+# Tool bridge - will be populated by register_tool
+_tool_bridge = None
+
+def _set_tool_bridge(bridge):
+    global _tool_bridge
+    _tool_bridge = bridge
+
+def _call_tool(name, args, kwargs):
+    """Call a tool registered on the host."""
+    if _tool_bridge is None:
+        raise RuntimeError("Tool bridge not initialized")
+    return _tool_bridge(name, args, kwargs)
 `);
+
+    // Create the tool bridge function
+    const toolBridge = this.pyodide.globals.get("_set_tool_bridge");
+    const self = this;
+
+    // Create a JavaScript function that will be called from Python
+    const bridgeFunction = (name, args, kwargs) => {
+      // This will be called synchronously from Python
+      // We need to return a promise that resolves when the tool call completes
+      return self._callHostTool(name, args.toJs(), kwargs.toJs());
+    };
+
+    toolBridge(bridgeFunction);
 
     this.initialized = true;
     return { status: "ready", version: this.pyodide.version };
+  }
+
+  /**
+   * Call a tool on the host via JSON-RPC
+   */
+  async _callHostTool(name, args, kwargs) {
+    this.toolCallCounter++;
+    const callId = `tool_${this.toolCallCounter}`;
+
+    // Send tool call request to host
+    const request = jsonrpcRequest("tool_call", {
+      tool_name: name,
+      args: args,
+      kwargs: kwargs,
+    }, callId);
+
+    console.log(request);
+
+    // Wait for response from host
+    // The host will send a response with the same ID
+    return new Promise((resolve, reject) => {
+      this.pendingToolCalls.set(callId, { resolve, reject });
+    });
+  }
+
+  /**
+   * Handle a tool call response from the host
+   */
+  handleToolResponse(response) {
+    const callId = response.id;
+    const pending = this.pendingToolCalls.get(callId);
+
+    if (!pending) {
+      console.error(`No pending tool call for ID: ${callId}`);
+      return;
+    }
+
+    this.pendingToolCalls.delete(callId);
+
+    if (response.error) {
+      pending.reject(new Error(response.error.message));
+    } else {
+      pending.resolve(response.result);
+    }
+  }
+
+  /**
+   * Register a tool that can be called from Python
+   */
+  registerTool(name, parameters = []) {
+    if (!this.initialized) {
+      throw new Error("Pyodide not initialized");
+    }
+
+    this.registeredTools.set(name, { name, parameters });
+
+    // Build Python function signature
+    const sigParts = parameters.map(p => {
+      let part = p.name;
+      if (p.type) part += `: ${p.type}`;
+      if (p.default !== undefined) {
+        if (typeof p.default === 'string') {
+          part += ` = "${p.default}"`;
+        } else if (p.default === null) {
+          part += ` = None`;
+        } else {
+          part += ` = ${JSON.stringify(p.default)}`;
+        }
+      }
+      return part;
+    });
+    const signature = sigParts.join(', ');
+
+    // Build args list for the call
+    const argNames = parameters.map(p => p.name).join(', ');
+
+    // Create Python wrapper function
+    const wrapperCode = `
+def ${name}(${signature}):
+    """Tool function: ${name}"""
+    import json
+    from pyodide.ffi import run_sync
+    args = [${argNames}]
+    kwargs = {}
+    result = run_sync(_call_tool("${name}", args, kwargs))
+    # Convert JsProxy to Python if needed
+    if hasattr(result, 'to_py'):
+        return result.to_py()
+    return result
+
+# Also set in __main__
+import __main__
+setattr(__main__, "${name}", ${name})
+`;
+
+    this.pyodide.runPython(wrapperCode);
+    return { success: true, tool: name };
   }
 
   /**
@@ -336,11 +474,15 @@ list(micropip.list().keys())
     // Clear variables
     this.pyodide.runPython("_clear_vars()");
 
-    // Clear __main__ namespace
+    // Clear __main__ namespace (but keep registered tools)
+    const toolNames = Array.from(this.registeredTools.keys());
+    const keepNames = new Set(toolNames);
+
     this.pyodide.runPython(`
 import __main__
+_keep_names = ${JSON.stringify(toolNames)}
 for name in list(dir(__main__)):
-    if not name.startswith('_'):
+    if not name.startswith('_') and name not in _keep_names:
         try:
             delattr(__main__, name)
         except:
@@ -356,6 +498,15 @@ for name in list(dir(__main__)):
     this.mountedFiles.clear();
 
     return { success: true };
+  }
+
+  /**
+   * List registered tools
+   */
+  listTools() {
+    return {
+      tools: Array.from(this.registeredTools.keys()),
+    };
   }
 }
 
@@ -378,6 +529,12 @@ async function handleRequest(runner, request) {
 
       case "set_variable":
         return runner.setVariable(params.name, params.value);
+
+      case "register_tool":
+        return runner.registerTool(params.name, params.parameters || []);
+
+      case "list_tools":
+        return runner.listTools();
 
       case "install_package":
         return await runner.installPackage(params.package);
@@ -447,6 +604,12 @@ async function main() {
         requestId = request.id;
       } catch (error) {
         console.log(jsonrpcError(JSONRPC_ERRORS.PARSE_ERROR, "Invalid JSON", null));
+        continue;
+      }
+
+      // Check if this is a tool call response from host
+      if (request.result !== undefined || request.error !== undefined) {
+        runner.handleToolResponse(request);
         continue;
       }
 

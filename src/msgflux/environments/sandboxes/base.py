@@ -1,19 +1,22 @@
 """Base classes for sandbox implementations."""
 
 from abc import abstractmethod
-from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Optional, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Mapping, Optional, Union
 
 from msgflux._private.client import BaseClient
 
 if TYPE_CHECKING:
     from msgflux.environments.sandboxes.response import ExecutionResult
 
+# Type alias for tool functions
+ToolFunction = Callable[..., Any]
+
 
 class BaseSandbox(BaseClient):
     """Base class for all sandbox implementations."""
 
     msgflux_type = "sandbox"
-    to_ignore = ["_process", "_lock", "_owner_thread"]
+    to_ignore = ["_process", "_lock", "_owner_thread", "_tools"]
 
     def instance_type(self) -> Mapping[str, str]:
         """Return instance type metadata.
@@ -137,6 +140,58 @@ class BaseSandbox(BaseClient):
                 If the method is not implemented by the subclass.
         """
         raise NotImplementedError
+
+    def register_tool(self, name: str, func: ToolFunction) -> None:
+        """Register a tool function that can be called from inside the sandbox.
+
+        Tools are Python functions that execute on the host and can be called
+        from code running inside the sandbox. This enables the sandbox to
+        interact with external systems (LLMs, APIs, databases, etc.) while
+        maintaining isolation.
+
+        Args:
+            name:
+                The name to use for the tool inside the sandbox.
+            func:
+                The Python function to register. Must be callable and its
+                return value must be JSON-serializable.
+
+        Example:
+            >>> def search(query: str) -> str:
+            ...     return f"Results for: {query}"
+            >>> sandbox.register_tool("search", search)
+            >>> sandbox("result = search('python tutorial')")
+        """
+        if not hasattr(self, "_tools"):
+            self._tools: Dict[str, ToolFunction] = {}
+        self._tools[name] = func
+
+    def register_tools(self, tools: Dict[str, ToolFunction]) -> None:
+        """Register multiple tools at once.
+
+        Args:
+            tools:
+                Dictionary mapping tool names to functions.
+
+        Example:
+            >>> sandbox.register_tools({
+            ...     "search": search_function,
+            ...     "llm": llm_function,
+            ... })
+        """
+        for name, func in tools.items():
+            self.register_tool(name, func)
+
+    @property
+    def tools(self) -> Dict[str, ToolFunction]:
+        """Get registered tools.
+
+        Returns:
+            Dictionary of registered tool names to functions.
+        """
+        if not hasattr(self, "_tools"):
+            self._tools = {}
+        return self._tools
 
     def __enter__(self):
         """Context manager entry."""

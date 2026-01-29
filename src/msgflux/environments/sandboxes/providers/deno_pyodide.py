@@ -1,6 +1,7 @@
 """Secure Python sandbox using Deno + Pyodide (WebAssembly)."""
 
 import base64
+import inspect
 import json
 import os
 import select
@@ -9,7 +10,7 @@ import subprocess
 import threading
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 from msgflux.environments.exceptions import (
     SandboxConnectionError,
@@ -54,6 +55,7 @@ class DenoPyodideSandbox(BasePythonSandbox):
         allow_network: bool = False,
         allow_read: Optional[List[str]] = None,
         allow_write: Optional[List[str]] = None,
+        tools: Optional[Dict[str, Any]] = None,
     ):
         """Initialize Deno+Pyodide sandbox.
 
@@ -66,15 +68,25 @@ class DenoPyodideSandbox(BasePythonSandbox):
                 List of paths to allow reading (default: None).
             allow_write:
                 List of paths to allow writing (default: None).
+            tools:
+                Dictionary of tool name to callable. Tools are Python functions
+                that can be called from inside the sandbox.
 
         Raises:
             SandboxConnectionError:
                 If Deno is not installed.
+
+        Example:
+            >>> def search(query: str) -> str:
+            ...     return f"Results for {query}"
+            >>> sandbox = Sandbox.python(tools={"search": search})
+            >>> sandbox("result = search('python')")
         """
         self.timeout = timeout
         self.allow_network = allow_network
         self.allow_read = allow_read or []
         self.allow_write = allow_write or []
+        self._tools: Dict[str, Any] = tools or {}
 
         self._process: Optional[subprocess.Popen] = None
         self._request_id = 0
@@ -82,8 +94,13 @@ class DenoPyodideSandbox(BasePythonSandbox):
         self._lock = threading.Lock()
         self._initialized = False
         self._variables: Dict[str, Any] = {}
+        self._tools_registered = False
 
         self._initialize()
+
+        # Register tools after initialization
+        if self._tools:
+            self._register_tools_in_sandbox()
 
     def _check_deno_installed(self) -> bool:
         """Check if Deno is available in PATH."""
@@ -233,6 +250,66 @@ class DenoPyodideSandbox(BasePythonSandbox):
             # If we got JSON but not "ready", log and continue
             logger.debug(f"Unexpected init response: {response}")
 
+    def _register_tools_in_sandbox(self):
+        """Register all tools in the sandbox."""
+        for name, func in self._tools.items():
+            # Get function signature to build parameters
+            parameters = []
+            try:
+                sig = inspect.signature(func)
+                for param_name, param in sig.parameters.items():
+                    param_info = {"name": param_name}
+
+                    # Get type annotation if available
+                    if param.annotation != inspect.Parameter.empty:
+                        annotation = param.annotation
+                        type_name = getattr(annotation, "__name__", str(annotation))
+                        param_info["type"] = type_name
+
+                    # Get default value if available
+                    if param.default != inspect.Parameter.empty:
+                        param_info["default"] = param.default
+
+                    parameters.append(param_info)
+            except (ValueError, TypeError):
+                pass  # No signature available
+
+            # Register tool in sandbox
+            response = self._send_request(
+                "register_tool",
+                {"name": name, "parameters": parameters},
+                timeout=10.0,
+            )
+
+            if "error" in response:
+                logger.warning(f"Failed to register tool {name}: {response['error']}")
+            else:
+                logger.debug(f"Registered tool: {name}")
+
+        self._tools_registered = True
+
+    def _handle_tool_call(self, tool_name: str, args: list, kwargs: dict) -> Any:
+        """Execute a tool call from the sandbox."""
+        if tool_name not in self._tools:
+            raise ValueError(f"Unknown tool: {tool_name}")
+
+        func = self._tools[tool_name]
+
+        try:
+            result = func(*args, **kwargs)
+
+            # Ensure result is JSON-serializable
+            try:
+                json.dumps(result)
+            except (TypeError, ValueError):
+                result = str(result)
+
+            return result
+
+        except Exception as e:
+            logger.error(f"Tool {tool_name} failed: {e}")
+            raise
+
     def _check_thread_ownership(self):
         """Verify we're on the owner thread."""
         current_thread = threading.current_thread().ident
@@ -243,13 +320,43 @@ class DenoPyodideSandbox(BasePythonSandbox):
                 "Create a new sandbox instance for each thread."
             )
 
-    def _send_request(
+    def _send_tool_response(
+        self,
+        tool_call_id: str,
+        result: Any = None,
+        error: Optional[str] = None,
+    ):
+        """Send a tool call response back to the sandbox."""
+        if error:
+            response = {
+                "jsonrpc": "2.0",
+                "id": tool_call_id,
+                "error": {"code": -32000, "message": error},
+            }
+        else:
+            response = {
+                "jsonrpc": "2.0",
+                "id": tool_call_id,
+                "result": result,
+            }
+
+        response_str = json.dumps(response) + "\n"
+        self._process.stdin.write(response_str)
+        self._process.stdin.flush()
+
+    def _send_request(  # noqa: C901
         self,
         method: str,
         params: Dict[str, Any],
         timeout: Optional[float] = None,
     ) -> Dict[str, Any]:
-        """Send JSON-RPC request to Deno process."""
+        """Send JSON-RPC request to Deno process.
+
+        This method handles bidirectional communication:
+        - Sends requests to the sandbox
+        - Handles tool calls from the sandbox during execution
+        - Returns the final response
+        """
         if not self._initialized or not self._process:
             raise SandboxNotReadyError("Sandbox not initialized")
 
@@ -262,9 +369,10 @@ class DenoPyodideSandbox(BasePythonSandbox):
 
         with self._lock:
             self._request_id += 1
+            expected_id = self._request_id
             request = {
                 "jsonrpc": "2.0",
-                "id": self._request_id,
+                "id": expected_id,
                 "method": method,
                 "params": params,
             }
@@ -274,30 +382,56 @@ class DenoPyodideSandbox(BasePythonSandbox):
                 self._process.stdin.write(request_str)
                 self._process.stdin.flush()
 
-                # Read response with timeout
-                ready, _, _ = select.select([self._process.stdout], [], [], timeout)
+                start_time = time.time()
 
-                if not ready:
-                    raise SandboxTimeoutError(timeout)
+                # Read responses, handling tool calls until we get our response
+                while True:
+                    elapsed = time.time() - start_time
+                    remaining = timeout - elapsed
+                    if remaining <= 0:
+                        raise SandboxTimeoutError(timeout)
 
-                response_line = self._process.stdout.readline().strip()
-                if not response_line:
-                    stderr = self._process.stderr.read() if self._process.stderr else ""
-                    raise SandboxConnectionError(f"Empty response. Stderr: {stderr}")
-
-                response = json.loads(response_line)
-
-                # Verify response ID matches
-                if response.get("id") != self._request_id:
-                    logger.warning(
-                        f"Response ID mismatch: expected {self._request_id}, "
-                        f"got {response.get('id')}"
+                    ready, _, _ = select.select(
+                        [self._process.stdout], [], [], min(remaining, 1.0)
                     )
 
-                if "error" in response:
-                    return {"error": response["error"]}
+                    if not ready:
+                        continue
 
-                return response.get("result", {})
+                    response_line = self._process.stdout.readline().strip()
+                    if not response_line:
+                        continue
+
+                    response = json.loads(response_line)
+
+                    # Check if this is a tool call request from the sandbox
+                    if response.get("method") == "tool_call":
+                        tool_params = response.get("params", {})
+                        tool_call_id = response.get("id")
+                        tool_name = tool_params.get("tool_name")
+                        tool_args = tool_params.get("args", [])
+                        tool_kwargs = tool_params.get("kwargs", {})
+
+                        logger.debug(f"Tool call: {tool_name}(args={tool_args})")
+
+                        try:
+                            result = self._handle_tool_call(
+                                tool_name, tool_args, tool_kwargs
+                            )
+                            self._send_tool_response(tool_call_id, result=result)
+                        except Exception as e:
+                            self._send_tool_response(tool_call_id, error=str(e))
+
+                        continue
+
+                    # Check if this is our response
+                    if response.get("id") == expected_id:
+                        if "error" in response:
+                            return {"error": response["error"]}
+                        return response.get("result", {})
+
+                    # Log unexpected responses
+                    logger.warning(f"Unexpected response: {response}")
 
             except json.JSONDecodeError as e:
                 raise SandboxConnectionError(f"Invalid response JSON: {e}") from e
@@ -481,6 +615,53 @@ class DenoPyodideSandbox(BasePythonSandbox):
         """
         response = self._send_request("list_packages", {})
         return response.get("packages", [])
+
+    def register_tool(self, name: str, func: Callable[..., Any]) -> None:
+        """Register a tool that can be called from inside the sandbox.
+
+        Args:
+            name:
+                The name to use for the tool inside the sandbox.
+            func:
+                The Python function to register.
+
+        Example:
+            >>> def my_search(query: str) -> str:
+            ...     return f"Results for: {query}"
+            >>> sandbox.register_tool("search", my_search)
+            >>> sandbox("result = search('python')")
+        """
+        # Store in local tools dict
+        self._tools[name] = func
+
+        # Get function signature for the sandbox
+        parameters = []
+        try:
+            sig = inspect.signature(func)
+            for param_name, param in sig.parameters.items():
+                param_info = {"name": param_name}
+                if param.annotation != inspect.Parameter.empty:
+                    annotation = param.annotation
+                    type_name = getattr(annotation, "__name__", str(annotation))
+                    param_info["type"] = type_name
+                if param.default != inspect.Parameter.empty:
+                    param_info["default"] = param.default
+                parameters.append(param_info)
+        except (ValueError, TypeError):
+            pass
+
+        # Register in sandbox
+        response = self._send_request(
+            "register_tool",
+            {"name": name, "parameters": parameters},
+            timeout=10.0,
+        )
+
+        if "error" in response:
+            error_msg = response["error"]
+            raise SandboxConnectionError(f"Failed to register tool: {error_msg}")
+
+        logger.debug(f"Registered tool: {name}")
 
     def __del__(self):
         """Cleanup on garbage collection."""
