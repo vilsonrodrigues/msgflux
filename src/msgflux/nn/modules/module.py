@@ -39,12 +39,11 @@ from msgflux.models.gateway import ModelGateway
 from msgflux.models.model import Model
 from msgflux.models.response import ModelResponse, ModelStreamResponse
 from msgflux.nn.events import (
-    EventBus,
+    EventStream,
     EventType,
-    ModuleEvent,
-    _current_event_bus,
+    StreamEvent,
     _module_stack,
-    emit_event,
+    add_event,
 )
 from msgflux.nn.parameter import Parameter
 from msgflux.telemetry import Spans
@@ -1375,7 +1374,10 @@ class Module:
             state_dict = self.state_dict()
             encoded_state_dict = msgspec.json.encode(state_dict)
 
-        emit_event(EventType.MODULE_START, module_name, module_type)
+        add_event(
+            EventType.MODULE_START,
+            {"module_name": module_name, "module_type": module_type},
+        )
 
         try:
             # Trace capture
@@ -1392,11 +1394,13 @@ class Module:
                             )
                         module_output = self.forward(*args, **kwargs)
                         span.set_status(Status(StatusCode.OK))
-                        emit_event(
+                        add_event(
                             EventType.MODULE_COMPLETE,
-                            module_name,
-                            module_type,
-                            data={"response": module_output},
+                            {
+                                "module_name": module_name,
+                                "module_type": module_type,
+                                "response": module_output,
+                            },
                         )
                         return module_output
                     except Exception as e:
@@ -1407,19 +1411,24 @@ class Module:
                 result = self._execute_with_span(
                     module_name_title, module_type, *args, **kwargs
                 )
-                emit_event(
+                add_event(
                     EventType.MODULE_COMPLETE,
-                    module_name,
-                    module_type,
-                    data={"response": result},
+                    {
+                        "module_name": module_name,
+                        "module_type": module_type,
+                        "response": result,
+                    },
                 )
                 return result
         except Exception as e:
-            emit_event(
+            add_event(
                 EventType.MODULE_ERROR,
-                module_name,
-                module_type,
-                data={"error": str(e), "error_type": type(e).__name__},
+                {
+                    "module_name": module_name,
+                    "module_type": module_type,
+                    "error": str(e),
+                    "error_type": type(e).__name__,
+                },
             )
             raise
         finally:
@@ -1511,7 +1520,10 @@ class Module:
             state_dict = self.state_dict()
             encoded_state_dict = msgspec.json.encode(state_dict)
 
-        emit_event(EventType.MODULE_START, module_name, module_type)
+        add_event(
+            EventType.MODULE_START,
+            {"module_name": module_name, "module_type": module_type},
+        )
 
         try:
             # Trace capture
@@ -1528,11 +1540,13 @@ class Module:
                             )
                         module_output = await self.aforward(*args, **kwargs)
                         span.set_status(Status(StatusCode.OK))
-                        emit_event(
+                        add_event(
                             EventType.MODULE_COMPLETE,
-                            module_name,
-                            module_type,
-                            data={"response": module_output},
+                            {
+                                "module_name": module_name,
+                                "module_type": module_type,
+                                "response": module_output,
+                            },
                         )
                         return module_output
                     except Exception as e:
@@ -1543,19 +1557,24 @@ class Module:
                 result = await self._aexecute_with_span(
                     module_name_title, module_type, *args, **kwargs
                 )
-                emit_event(
+                add_event(
                     EventType.MODULE_COMPLETE,
-                    module_name,
-                    module_type,
-                    data={"response": result},
+                    {
+                        "module_name": module_name,
+                        "module_type": module_type,
+                        "response": result,
+                    },
                 )
                 return result
         except Exception as e:
-            emit_event(
+            add_event(
                 EventType.MODULE_ERROR,
-                module_name,
-                module_type,
-                data={"error": str(e), "error_type": type(e).__name__},
+                {
+                    "module_name": module_name,
+                    "module_type": module_type,
+                    "error": str(e),
+                    "error_type": type(e).__name__,
+                },
             )
             raise
         finally:
@@ -1579,47 +1598,40 @@ class Module:
             # Use native async implementation
             return await self._acall_impl(*args, **kwargs)
 
-    async def astream(self, *args, **kwargs) -> AsyncGenerator[ModuleEvent, None]:
+    async def astream(self, *args, **kwargs) -> AsyncGenerator[StreamEvent, None]:
         """Async generator that yields events during module execution.
 
-        Creates an internal :class:`~msgflux.nn.events.EventBus`, runs
+        Creates an :class:`~msgtrace.sdk.EventStream` context, runs
         :meth:`acall` as a background task, and yields
-        :class:`~msgflux.nn.events.ModuleEvent` objects as they are
-        emitted.
+        :class:`~msgtrace.sdk.StreamEvent` objects as they are emitted.
 
         This method does **not** duplicate ``forward()`` logic -- it
-        relies on the ``emit_event()`` calls already present in the
-        execution pipeline.
+        relies on the ``add_event()`` calls already present in the
+        execution pipeline. Events are emitted to both the streaming
+        queue (for real-time consumption) and OTel spans (for persistence).
 
         Example::
 
             async for event in agent.astream("Hello"):
-                print(event.event_type, event.data)
+                print(event.name, event.attributes)
         """
-        bus = EventBus()
-        bus._queue = asyncio.Queue()
-        bus._collect = True
-        token = _current_event_bus.set(bus)
-
-        result_holder: List = []
         error_holder: List = []
 
-        async def _run():
-            try:
-                result = await self.acall(*args, **kwargs)
-                result_holder.append(result)
-            except Exception as exc:
-                error_holder.append(exc)
-            finally:
-                bus.close()
+        async with EventStream() as stream:
 
-        task = asyncio.create_task(_run())
+            async def _run():
+                try:
+                    await self.acall(*args, **kwargs)
+                except Exception as exc:
+                    error_holder.append(exc)
+                finally:
+                    stream.close()
 
-        try:
-            async for event in bus:
+            task = asyncio.create_task(_run())
+
+            async for event in stream:
                 yield event
-        finally:
-            _current_event_bus.reset(token)
+
             await task
 
         if error_holder:
@@ -1630,31 +1642,25 @@ class Module:
 
         If *callback* is provided, it is called for each event and the final
         module result is returned. Without a callback, returns a list of all
-        collected :class:`~msgflux.nn.events.ModuleEvent` objects.
+        collected :class:`~msgtrace.sdk.StreamEvent` objects.
 
         Example::
 
             # With callback
-            result = agent.stream("Hello", callback=lambda e: print(e.event_type))
+            result = agent.stream("Hello", callback=lambda e: print(e.name))
 
             # Without callback (collect events)
             events = agent.stream("Hello")
         """
-        bus = EventBus()
-        bus._collect = True
-        if callback is not None:
-            bus.on_all(callback)
-        token = _current_event_bus.set(bus)
+        with EventStream() as stream:
+            if callback is not None:
+                stream.on_event(callback)
 
-        try:
             result = self.__call__(*args, **kwargs)
-        finally:
-            _current_event_bus.reset(token)
-            bus.close()
 
         if callback is not None:
             return result
-        return bus.events
+        return stream.events
 
     def __getstate__(self):
         state = self.__dict__.copy()

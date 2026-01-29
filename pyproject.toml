@@ -32,7 +32,7 @@ classifiers = [
 dependencies = [
     "jinja2>=3.1.6",
     "msgspec-ext>=0.5.0",
-    "msgtrace-sdk>=1.1.0",
+    "msgtrace-sdk>=1.2.0",
     "tenacity>=8.2.3",
     "typing-extensions>=4.14.1",
     "uvloop>=0.21.0 ; sys_platform != 'win32'",
