@@ -3,8 +3,8 @@ from .data.dbs import DB
 
 # from .data.parsers import Parser
 from .data.retrievers import Retriever
-from .environments.sandboxes import Sandbox
 from .data.types import Audio, File, Image, Video
+from .environments import Environments
 from .dotdict import dotdict
 from .dsl.signature import InputField, OutputField, Signature
 from .envs import set_envs
@@ -24,6 +24,7 @@ __all__ = [
     "ChatBlock",
     "ChatML",
     "DB",
+    "Environments",
     "Example",
     "File",
     "Image",
@@ -33,7 +34,6 @@ __all__ = [
     "ModelGateway",
     "OutputField",
     "Retriever",
-    "Sandbox",
     "Signature",
     "Spans",
     "Video",
