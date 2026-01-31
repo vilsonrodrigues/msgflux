@@ -1,9 +1,9 @@
 """Tools module for msgflux.
 
 This module provides tool-related functionality including
-ToolFlowControl for managing tool execution flow.
+FlowControl for managing tool and environment execution flow.
 """
 
-from msgflux.generation.control_flow import ToolFlowControl
+from msgflux.generation.control_flow import FlowControl
 
-__all__ = ["ToolFlowControl"]
+__all__ = ["FlowControl"]

@@ -15,7 +15,7 @@ from typing import (
 
 import msgspec
 
-from msgflux.generation.control_flow import ToolFlowControl
+from msgflux.generation.control_flow import FlowControl
 from msgflux.logger import logger
 from msgflux.utils.inspect import get_mime_type
 from msgflux.utils.msgspec import msgspec_dumps
@@ -285,8 +285,8 @@ def response_format_from_msgspec_struct(  # noqa: C901
     _add_additional_properties_false(inlined_schema)
     _ensure_all_properties_are_required(inlined_schema)
 
-    if is_subclass_of(struct_class, ToolFlowControl):
-        # Hack: LM providers NOT support `Any` type. ToolFlowControl needs receive
+    if is_subclass_of(struct_class, FlowControl):
+        # Hack: LM providers NOT support `Any` type. FlowControl needs receive
         # arguments, msgspec not render complex types as a long Union.
         # Force a complex type in `arguments`.
         _find_and_patch_property(inlined_schema, "arguments", complex_arguments_schema)

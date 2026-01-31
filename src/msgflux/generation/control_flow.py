@@ -7,27 +7,44 @@ if TYPE_CHECKING:
 
 
 @dataclass
-class ToolFlowResult:
-    """Result of a tool flow iteration.
+class EnvironmentCall:
+    """Request to execute code in an environment.
 
     Attributes:
-        is_complete: True if final answer reached
-        tool_calls: List of (id, name, args) to execute
-        reasoning: Reasoning text (for verbose mode)
-        final_response: Final response if complete
+        action: The code/action to execute in the environment.
+        inject_vars: Whether to inject context variables into the environment.
+        inject_tools: Whether to inject tools as callable functions.
+    """
+
+    action: str
+    inject_vars: bool = True
+    inject_tools: bool = True
+
+
+@dataclass
+class FlowResult:
+    """Result of a flow control iteration.
+
+    Attributes:
+        is_complete: True if final answer reached.
+        tool_calls: List of (id, name, args) to execute as tool calls.
+        environment_call: Request to execute code in an environment.
+        reasoning: Reasoning text (for verbose mode).
+        final_response: Final response if complete.
     """
 
     is_complete: bool
-    tool_calls: Optional[List[Tuple[str, str, Any]]]
-    reasoning: Optional[str]
-    final_response: Optional[Any]
+    tool_calls: Optional[List[Tuple[str, str, Any]]] = None
+    environment_call: Optional[EnvironmentCall] = None
+    reasoning: Optional[str] = None
+    final_response: Optional[Any] = None
 
 
-class ToolFlowControl:
-    """Base class for creating custom tool flow controls.
+class FlowControl:
+    """Base class for creating custom flow controls.
 
-    Each generation schema, such as ReAct, can be treated as a custom
-    tool flow control by inheriting from this class and implementing
+    Each generation schema, such as ReAct or ProgramOfThought, can be treated
+    as a custom flow control by inheriting from this class and implementing
     the required methods.
 
     Note: Model responses are converted to dotdict, so methods receive
@@ -35,12 +52,12 @@ class ToolFlowControl:
 
     Subclasses must implement:
         - extract_flow_result(raw_response): Extract flow information
-        - inject_results(raw_response, tool_results): Inject tool results
+        - inject_tool_results(raw_response, tool_results): Inject tool results
         - build_history(raw_response, messages): Build history message
 
     And async versions:
         - aextract_flow_result(raw_response): Async version
-        - ainject_results(raw_response, tool_results): Async version
+        - ainject_tool_results(raw_response, tool_results): Async version
         - abuild_history(raw_response, messages): Async version
 
     Class attributes:
@@ -53,16 +70,17 @@ class ToolFlowControl:
 
     @classmethod
     @abstractmethod
-    def extract_flow_result(cls, raw_response: Mapping[str, Any]) -> ToolFlowResult:
+    def extract_flow_result(cls, raw_response: Mapping[str, Any]) -> FlowResult:
         """Extract flow information from the response.
 
         Args:
             raw_response: The model response (as dotdict)
 
         Returns:
-            ToolFlowResult with:
+            FlowResult with:
             - is_complete: True if final_answer reached
             - tool_calls: List of (id, name, args) to execute
+            - environment_call: Request for environment execution
             - reasoning: Reasoning text (for verbose mode)
             - final_response: Final response if complete
         """
@@ -70,7 +88,7 @@ class ToolFlowControl:
 
     @classmethod
     @abstractmethod
-    def inject_results(
+    def inject_tool_results(
         cls, raw_response: Mapping[str, Any], tool_results: "ToolResponses"
     ) -> Mapping[str, Any]:
         """Inject tool results back into the structure.
@@ -105,7 +123,7 @@ class ToolFlowControl:
     @classmethod
     async def aextract_flow_result(
         cls, raw_response: Mapping[str, Any]
-    ) -> ToolFlowResult:
+    ) -> FlowResult:
         """Async version of extract_flow_result.
 
         Default implementation calls sync version.
@@ -114,15 +132,15 @@ class ToolFlowControl:
         return cls.extract_flow_result(raw_response)
 
     @classmethod
-    async def ainject_results(
+    async def ainject_tool_results(
         cls, raw_response: Mapping[str, Any], tool_results: "ToolResponses"
     ) -> Mapping[str, Any]:
-        """Async version of inject_results.
+        """Async version of inject_tool_results.
 
         Default implementation calls sync version.
         Override for async-specific behavior.
         """
-        return cls.inject_results(raw_response, tool_results)
+        return cls.inject_tool_results(raw_response, tool_results)
 
     @classmethod
     async def abuild_history(

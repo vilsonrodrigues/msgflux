@@ -1,5 +1,14 @@
 """Environments module for secure code execution."""
 
+from msgflux.environments.code import (
+    BaseCodeEnvironment,
+    BasePythonEnvironment,
+    DenoPyodideSandbox,
+    Environments,
+    ExecutionResult,
+    environment_registry,
+    register_environment,
+)
 from msgflux.environments.exceptions import (
     SandboxConnectionError,
     SandboxError,
@@ -9,18 +18,13 @@ from msgflux.environments.exceptions import (
     SandboxTimeoutError,
     VariableSizeLimitError,
 )
-from msgflux.environments.sandboxes import (
-    BasePythonSandbox,
-    BaseSandbox,
-    ExecutionResult,
-    Sandbox,
-)
 
 __all__ = [
-    "BasePythonSandbox",
-    "BaseSandbox",
+    "BaseCodeEnvironment",
+    "BasePythonEnvironment",
+    "DenoPyodideSandbox",
+    "Environments",
     "ExecutionResult",
-    "Sandbox",
     "SandboxConnectionError",
     "SandboxError",
     "SandboxMemoryError",
@@ -28,6 +32,8 @@ __all__ = [
     "SandboxSecurityError",
     "SandboxTimeoutError",
     "VariableSizeLimitError",
+    "environment_registry",
+    "register_environment",
 ]
 
 if __all__ != sorted(__all__):

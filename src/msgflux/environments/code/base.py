@@ -1,4 +1,4 @@
-"""Base classes for sandbox implementations."""
+"""Base classes for code environment implementations."""
 
 import asyncio
 from abc import abstractmethod
@@ -7,32 +7,36 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Mapping, Optional, 
 from msgflux._private.client import BaseClient
 
 if TYPE_CHECKING:
-    from msgflux.environments.sandboxes.response import ExecutionResult
+    from msgflux.environments.code.response import ExecutionResult
 
 # Type alias for tool functions
 ToolFunction = Callable[..., Any]
 
 
-class BaseSandbox(BaseClient):
-    """Base class for all sandbox implementations."""
+class BaseCodeEnvironment(BaseClient):
+    """Base class for all code environment implementations.
 
-    msgflux_type = "sandbox"
+    A code environment provides isolated execution of code (typically Python)
+    with support for tool injection, variable management, and state persistence.
+    """
+
+    msgflux_type = "environment"
     to_ignore = ["_process", "_lock", "_owner_thread", "_tools"]
 
     def instance_type(self) -> Mapping[str, str]:
         """Return instance type metadata.
 
         Returns:
-            Dictionary with sandbox_type.
+            Dictionary with environment_type.
         """
-        return {"sandbox_type": self.sandbox_type}
+        return {"environment_type": self.environment_type}
 
     @abstractmethod
     def _initialize(self):
-        """Initialize the sandbox runtime.
+        """Initialize the environment runtime.
 
         This method is called during the deserialization process to ensure
-        that the sandbox is properly initialized after its state has been
+        that the environment is properly initialized after its state has been
         restored.
 
         Raises:
@@ -44,16 +48,16 @@ class BaseSandbox(BaseClient):
     @abstractmethod
     def __call__(
         self,
-        code: str,
+        action: str,
         *,
         timeout: Optional[float] = None,
         vars: Optional[Dict[str, Any]] = None,
     ) -> "ExecutionResult":
-        """Execute code in the sandbox.
+        """Execute an action in the environment.
 
         Args:
-            code:
-                The code to execute.
+            action:
+                The action to execute (e.g., code for Python environments).
             timeout:
                 Optional execution timeout in seconds.
             vars:
@@ -70,19 +74,19 @@ class BaseSandbox(BaseClient):
 
     async def acall(
         self,
-        code: str,
+        action: str,
         *,
         timeout: Optional[float] = None,
         vars: Optional[Dict[str, Any]] = None,
     ) -> "ExecutionResult":
-        """Execute code in the sandbox asynchronously.
+        """Execute an action in the environment asynchronously.
 
         This method runs the synchronous execution in a thread pool
         to avoid blocking the event loop.
 
         Args:
-            code:
-                The code to execute.
+            action:
+                The action to execute.
             timeout:
                 Optional execution timeout in seconds.
             vars:
@@ -94,16 +98,16 @@ class BaseSandbox(BaseClient):
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(
             None,
-            lambda: self(code, timeout=timeout, vars=vars),
+            lambda: self(action, timeout=timeout, vars=vars),
         )
 
     @abstractmethod
     def mount_file(self, path: str, content: Union[str, bytes]) -> None:
-        """Mount a file into the sandbox filesystem.
+        """Mount a file into the environment filesystem.
 
         Args:
             path:
-                The virtual path for the file in the sandbox.
+                The virtual path for the file in the environment.
             content:
                 The file content as string or bytes.
 
@@ -115,7 +119,7 @@ class BaseSandbox(BaseClient):
 
     @abstractmethod
     def get_variable(self, name: str) -> Any:
-        """Retrieve a variable from the sandbox.
+        """Retrieve a variable from the environment.
 
         Args:
             name:
@@ -132,7 +136,7 @@ class BaseSandbox(BaseClient):
 
     @abstractmethod
     def set_variable(self, name: str, value: Any) -> None:
-        """Set a variable in the sandbox.
+        """Set a variable in the environment.
 
         Args:
             name:
@@ -148,9 +152,9 @@ class BaseSandbox(BaseClient):
 
     @abstractmethod
     def reset(self) -> None:
-        """Reset sandbox state.
+        """Reset environment state.
 
-        Clears all variables and mounted files, returning the sandbox
+        Clears all variables and mounted files, returning the environment
         to its initial state.
 
         Raises:
@@ -161,9 +165,9 @@ class BaseSandbox(BaseClient):
 
     @abstractmethod
     def shutdown(self) -> None:
-        """Shutdown the sandbox.
+        """Shutdown the environment.
 
-        Releases all resources and terminates the sandbox process.
+        Releases all resources and terminates the environment process.
 
         Raises:
             NotImplementedError:
@@ -172,16 +176,16 @@ class BaseSandbox(BaseClient):
         raise NotImplementedError
 
     def register_tool(self, name: str, func: ToolFunction) -> None:
-        """Register a tool function that can be called from inside the sandbox.
+        """Register a tool function that can be called from inside the environment.
 
         Tools are Python functions that execute on the host and can be called
-        from code running inside the sandbox. This enables the sandbox to
-        interact with external systems (LLMs, APIs, databases, etc.) while
+        from code running inside the environment. This enables the environment
+        to interact with external systems (LLMs, APIs, databases, etc.) while
         maintaining isolation.
 
         Args:
             name:
-                The name to use for the tool inside the sandbox.
+                The name to use for the tool inside the environment.
             func:
                 The Python function to register. Must be callable and its
                 return value must be JSON-serializable.
@@ -189,8 +193,8 @@ class BaseSandbox(BaseClient):
         Example:
             >>> def search(query: str) -> str:
             ...     return f"Results for: {query}"
-            >>> sandbox.register_tool("search", search)
-            >>> sandbox("result = search('python tutorial')")
+            >>> env.register_tool("search", search)
+            >>> env("result = search('python tutorial')")
         """
         if not hasattr(self, "_tools"):
             self._tools: Dict[str, ToolFunction] = {}
@@ -204,7 +208,7 @@ class BaseSandbox(BaseClient):
                 Dictionary mapping tool names to functions.
 
         Example:
-            >>> sandbox.register_tools({
+            >>> env.register_tools({
             ...     "search": search_function,
             ...     "llm": llm_function,
             ... })
@@ -232,14 +236,14 @@ class BaseSandbox(BaseClient):
         self.shutdown()
 
 
-class BasePythonSandbox(BaseSandbox):
-    """Base class for Python-specific sandboxes."""
+class BasePythonEnvironment(BaseCodeEnvironment):
+    """Base class for Python-specific code environments."""
 
-    sandbox_type = "python"
+    environment_type = "python"
     name = "execute_code"  # Default name for tool identification
 
     def install_package(self, package: str) -> bool:
-        """Install a Python package in the sandbox.
+        """Install a Python package in the environment.
 
         Args:
             package:
@@ -257,7 +261,7 @@ class BasePythonSandbox(BaseSandbox):
         )
 
     def list_packages(self) -> List[str]:
-        """List installed packages in the sandbox.
+        """List installed packages in the environment.
 
         Returns:
             List of installed package names.

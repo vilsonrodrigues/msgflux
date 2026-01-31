@@ -1,16 +1,16 @@
-"""Environment module for code execution in sandboxed environments."""
+"""Environment module for code execution in isolated environments."""
 
 from typing import Any, Callable, Dict, Optional
 
-from msgflux.environments.sandboxes.base import BasePythonSandbox
-from msgflux.environments.sandboxes.response import ExecutionResult
+from msgflux.environments.code.base import BasePythonEnvironment
+from msgflux.environments.code.response import ExecutionResult
 from msgflux.nn.modules.module import Module
 
 
 class Environment(Module):
     r"""Environment for secure code execution with optional tool injection.
 
-    This module wraps a sandbox (e.g., DenoPyodideSandbox) and provides
+    This module wraps a code environment (e.g., DenoPyodideSandbox) and provides
     a consistent interface for executing code with dynamically injected tools.
 
     The Environment follows the pattern used in DSPy's PythonInterpreter,
@@ -18,11 +18,10 @@ class Environment(Module):
 
     Example:
         >>> from msgflux.nn import Environment
-        >>> from msgflux.environments.sandboxes import DenoPyodideSandbox
+        >>> from msgflux.environments import Environments
         >>>
-        >>> # Create environment with a sandbox
-        >>> sandbox = DenoPyodideSandbox(timeout=30.0)
-        >>> env = Environment(sandbox=sandbox)
+        >>> # Create environment with a code environment
+        >>> env = Environment(environment=Environments.code("python"))
         >>>
         >>> # Execute code
         >>> result = env("x = 1 + 2\nprint(x)")
@@ -40,39 +39,38 @@ class Environment(Module):
     For RL and agent workflows:
         >>> # Tools can be passed dynamically from ToolLibrary
         >>> tool_funcs = {t.name: t.callable for t in tool_library}
-        >>> result = await env.acall(code, tools=tool_funcs)
+        >>> result = await env.acall(action, tools=tool_funcs)
     """
 
     def __init__(
         self,
-        sandbox: Optional[BasePythonSandbox] = None,
+        environment: Optional[BasePythonEnvironment] = None,
     ):
         """Initialize the Environment module.
 
         Args:
-            sandbox:
-                A sandbox instance for code execution (e.g., DenoPyodideSandbox,
-                MockSandbox). If None, code execution will raise an error.
-                The sandbox should have a `name` attribute that identifies it
+            environment:
+                A code environment instance for execution (e.g., DenoPyodideSandbox).
+                If None, code execution will raise an error.
+                The environment should have a `name` attribute that identifies it
                 as a tool (e.g., "execute_code", "python_interpreter").
 
         Example:
-            >>> from msgflux.environments.sandboxes import DenoPyodideSandbox
-            >>> sandbox = DenoPyodideSandbox(timeout=30.0)
-            >>> env = Environment(sandbox=sandbox)
+            >>> from msgflux.environments import Environments
+            >>> env = Environment(environment=Environments.code("python"))
         """
         super().__init__()
-        self._environment = sandbox
+        self._environment = environment
         self._registered_tools: Dict[str, Callable] = {}
 
     @property
-    def environment(self) -> Optional[BasePythonSandbox]:
-        """Get the underlying sandbox instance."""
+    def environment(self) -> Optional[BasePythonEnvironment]:
+        """Get the underlying environment instance."""
         return self._environment
 
     @property
     def name(self) -> Optional[str]:
-        """Get the sandbox name (e.g., 'execute_code')."""
+        """Get the environment name (e.g., 'execute_code')."""
         if self._environment is not None:
             return self._environment.name
         return None
@@ -84,23 +82,23 @@ class Environment(Module):
 
     def forward(
         self,
-        code: str,
+        action: str,
         *,
         tools: Optional[Dict[str, Callable[..., Any]]] = None,
         vars: Optional[Dict[str, Any]] = None,
     ) -> ExecutionResult:
-        r"""Execute code in the sandbox environment.
+        r"""Execute an action in the environment.
 
         Args:
-            code:
-                Python code to execute.
+            action:
+                The action to execute (e.g., Python code).
             tools:
                 Optional dictionary mapping tool names to callables.
                 These tools will be available to call from within the code.
                 Supports both sync and async callables.
             vars:
                 Optional dictionary of variables to inject into the
-                execution context before running the code.
+                execution context before running the action.
 
         Returns:
             ExecutionResult containing:
@@ -113,7 +111,7 @@ class Environment(Module):
 
         Raises:
             RuntimeError:
-                If no sandbox is configured.
+                If no environment is configured.
 
         Example:
             >>> result = env("x = add(1, 2)", tools={"add": lambda a, b: a + b})
@@ -121,31 +119,32 @@ class Environment(Module):
         """
         if self._environment is None:
             raise RuntimeError(
-                "No sandbox configured. Pass a sandbox instance to Environment.__init__"
+                "No environment configured. "
+                "Pass an environment instance to Environment.__init__"
             )
 
         # Register tools if provided
         if tools:
             self._register_tools(tools)
 
-        # Execute code
-        return self._environment(code, vars=vars)
+        # Execute action
+        return self._environment(action, vars=vars)
 
     async def aforward(
         self,
-        code: str,
+        action: str,
         *,
         tools: Optional[Dict[str, Callable[..., Any]]] = None,
         vars: Optional[Dict[str, Any]] = None,
     ) -> ExecutionResult:
-        """Execute code asynchronously in the sandbox environment.
+        """Execute an action asynchronously in the environment.
 
         This is the async version of forward(). The execution runs in a
         thread pool to avoid blocking the event loop.
 
         Args:
-            code:
-                Python code to execute.
+            action:
+                The action to execute (e.g., Python code).
             tools:
                 Optional dictionary mapping tool names to callables.
             vars:
@@ -156,7 +155,7 @@ class Environment(Module):
 
         Raises:
             RuntimeError:
-                If no sandbox is configured.
+                If no environment is configured.
 
         Example:
             >>> async def main():
@@ -165,18 +164,19 @@ class Environment(Module):
         """
         if self._environment is None:
             raise RuntimeError(
-                "No sandbox configured. Pass a sandbox instance to Environment.__init__"
+                "No environment configured. "
+                "Pass an environment instance to Environment.__init__"
             )
 
         # Register tools if provided
         if tools:
             self._register_tools(tools)
 
-        # Execute code asynchronously
-        return await self._environment.acall(code, vars=vars)
+        # Execute action asynchronously
+        return await self._environment.acall(action, vars=vars)
 
     def _register_tools(self, tools: Dict[str, Callable[..., Any]]) -> None:
-        """Register tools in the sandbox.
+        """Register tools in the environment.
 
         Only registers tools that haven't been registered yet to avoid
         duplicate registration overhead.
@@ -193,7 +193,7 @@ class Environment(Module):
     def reset(self) -> None:
         """Reset the environment state.
 
-        Clears all registered tools and resets the sandbox state.
+        Clears all registered tools and resets the environment state.
         """
         if self._environment is not None:
             self._environment.reset()
@@ -214,6 +214,6 @@ class Environment(Module):
         self.shutdown()
 
     def __repr__(self) -> str:
-        sandbox_type = type(self._environment).__name__ if self._environment else "None"
+        env_type = type(self._environment).__name__ if self._environment else "None"
         tool_count = len(self._registered_tools)
-        return f"Environment(sandbox={sandbox_type}, tools={tool_count})"
+        return f"Environment(environment={env_type}, tools={tool_count})"

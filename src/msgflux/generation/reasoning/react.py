@@ -4,7 +4,7 @@ from uuid import uuid4
 import msgspec
 from msgspec import Struct
 
-from msgflux.generation.control_flow import ToolFlowControl, ToolFlowResult
+from msgflux.generation.control_flow import FlowControl, FlowResult
 from msgflux.utils.chat import ChatBlock
 
 if TYPE_CHECKING:
@@ -70,6 +70,11 @@ For each function call return a encoded json object with function name and argum
 class ToolCall(Struct):
     name: str
     arguments: Optional[Any]
+    # TODO: substituir id para class var
+    # from typing import ClassVar
+    # a_class_variable: ClassVar[int] = 2
+    # isso faz com que não seja rastreado pelo msgspec, mas ainda gere um valor random
+    # você pode por exemplo usar uma uuid (que não seja tão longo, podemos cortar)
     id: Optional[str] = None
     result: Optional[Any] = None
 
@@ -79,19 +84,17 @@ class ReActStep(Struct):
     actions: List[ToolCall]
 
 
-class ReAct(Struct, ToolFlowControl):
+class ReAct(Struct, FlowControl):
     current_step: Optional[ReActStep]
     final_answer: Optional[str]
 
     @classmethod
-    def extract_flow_result(cls, raw_response: Mapping[str, Any]) -> ToolFlowResult:
+    def extract_flow_result(cls, raw_response: Mapping[str, Any]) -> FlowResult:
         """Extract flow information from ReAct response."""
         final_answer = raw_response.get("final_answer")
         if final_answer is not None:
-            return ToolFlowResult(
+            return FlowResult(
                 is_complete=True,
-                tool_calls=None,
-                reasoning=None,
                 final_response=raw_response,
             )
 
@@ -104,22 +107,19 @@ class ReAct(Struct, ToolFlowControl):
                 act["id"] = tool_id
                 tool_calls.append((tool_id, act.get("name"), act.get("arguments")))
 
-            return ToolFlowResult(
+            return FlowResult(
                 is_complete=False,
                 tool_calls=tool_calls,
                 reasoning=current_step.get("thought"),
-                final_response=None,
             )
 
-        return ToolFlowResult(
+        return FlowResult(
             is_complete=True,
-            tool_calls=None,
-            reasoning=None,
             final_response=raw_response,
         )
 
     @classmethod
-    def inject_results(
+    def inject_tool_results(
         cls, raw_response: Mapping[str, Any], tool_results: "ToolResponses"
     ) -> Mapping[str, Any]:
         """Inject tool results back into ReAct structure."""
@@ -150,5 +150,6 @@ class ReAct(Struct, ToolFlowControl):
         return messages
 
 
+# TODO podemos injetar isso também como classvar
 ReAct.system_message = REACT_SYSTEM_MESSAGE
 ReAct.tools_template = REACT_TOOLS_TEMPLATE

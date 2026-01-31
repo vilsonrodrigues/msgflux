@@ -1,4 +1,4 @@
-"""Secure Python sandbox using Deno + Pyodide (WebAssembly)."""
+"""Secure Python environment using Deno + Pyodide (WebAssembly)."""
 
 import asyncio
 import base64
@@ -14,6 +14,9 @@ import time
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union
 
+from msgflux.environments.code.base import BasePythonEnvironment
+from msgflux.environments.code.registry import register_environment
+from msgflux.environments.code.response import ExecutionResult
 from msgflux.environments.exceptions import (
     SandboxConnectionError,
     SandboxNotReadyError,
@@ -21,18 +24,15 @@ from msgflux.environments.exceptions import (
     SandboxTimeoutError,
     VariableSizeLimitError,
 )
-from msgflux.environments.sandboxes.base import BasePythonSandbox
-from msgflux.environments.sandboxes.registry import register_sandbox
-from msgflux.environments.sandboxes.response import ExecutionResult
 from msgflux.logger import logger
 
 # Maximum variable size for Pyodide FFI (100MB)
 MAX_VARIABLE_SIZE_BYTES = 100 * 1024 * 1024
 
 
-@register_sandbox
-class DenoPyodideSandbox(BasePythonSandbox):
-    """Secure Python sandbox using Deno + Pyodide (WebAssembly).
+@register_environment
+class DenoPyodideSandbox(BasePythonEnvironment):
+    """Secure Python environment using Deno + Pyodide (WebAssembly).
 
     This provides high security by running Python code in a WebAssembly
     sandbox within Deno's permission-restricted runtime.
@@ -46,6 +46,12 @@ class DenoPyodideSandbox(BasePythonSandbox):
 
     Requires:
     - Deno installed and available in PATH
+
+    Example:
+        >>> from msgflux.environments import Environments
+        >>> env = Environments.code("python")
+        >>> result = env("print('Hello!')")
+        >>> print(result.output)  # "Hello!"
     """
 
     provider = "deno_pyodide"
@@ -59,7 +65,7 @@ class DenoPyodideSandbox(BasePythonSandbox):
         allow_write: Optional[List[str]] = None,
         tools: Optional[Dict[str, Any]] = None,
     ):
-        """Initialize Deno+Pyodide sandbox.
+        """Initialize Deno+Pyodide environment.
 
         Args:
             timeout:
@@ -72,7 +78,7 @@ class DenoPyodideSandbox(BasePythonSandbox):
                 List of paths to allow writing (default: None).
             tools:
                 Dictionary of tool name to callable. Tools are Python functions
-                that can be called from inside the sandbox.
+                that can be called from inside the environment.
 
         Raises:
             SandboxConnectionError:
@@ -81,8 +87,8 @@ class DenoPyodideSandbox(BasePythonSandbox):
         Example:
             >>> def search(query: str) -> str:
             ...     return f"Results for {query}"
-            >>> sandbox = Sandbox.python(tools={"search": search})
-            >>> sandbox("result = search('python')")
+            >>> env = Environments.code("python", tools={"search": search})
+            >>> env("result = search('python')")
         """
         self.timeout = timeout
         self.allow_network = allow_network
@@ -183,7 +189,7 @@ class DenoPyodideSandbox(BasePythonSandbox):
             )
 
         cmd = self._build_deno_command()
-        logger.debug(f"Starting Deno sandbox: {' '.join(cmd)}")
+        logger.debug(f"Starting Deno environment: {' '.join(cmd)}")
 
         try:
             self._process = subprocess.Popen(  # noqa: S603
@@ -199,16 +205,16 @@ class DenoPyodideSandbox(BasePythonSandbox):
             # Wait for initialization response
             self._wait_for_init()
             self._initialized = True
-            logger.info("Deno+Pyodide sandbox initialized successfully")
+            logger.info("Deno+Pyodide environment initialized successfully")
 
         except Exception as e:
             if self._process:
                 self._process.kill()
                 self._process = None
-            raise SandboxConnectionError(f"Failed to start sandbox: {e}") from e
+            raise SandboxConnectionError(f"Failed to start environment: {e}") from e
 
     def _wait_for_init(self):
-        """Wait for sandbox initialization."""
+        """Wait for environment initialization."""
         start_time = time.time()
         timeout_seconds = 120.0  # Pyodide download can take a while
 
@@ -219,7 +225,7 @@ class DenoPyodideSandbox(BasePythonSandbox):
                 stderr = self._process.stderr.read() if self._process.stderr else ""
                 raise SandboxTimeoutError(
                     timeout_seconds,
-                    f"Sandbox initialization timed out. Stderr: {stderr}",
+                    f"Environment initialization timed out. Stderr: {stderr}",
                 )
 
             wait_time = min(remaining, 5.0)
@@ -254,7 +260,7 @@ class DenoPyodideSandbox(BasePythonSandbox):
             logger.debug(f"Unexpected init response: {response}")
 
     def _register_tools_in_sandbox(self):
-        """Register all tools in the sandbox."""
+        """Register all tools in the environment."""
         for name, func in self._tools.items():
             # Get function signature to build parameters
             parameters = []
@@ -277,7 +283,7 @@ class DenoPyodideSandbox(BasePythonSandbox):
             except (ValueError, TypeError):
                 pass  # No signature available
 
-            # Register tool in sandbox
+            # Register tool in environment
             response = self._send_request(
                 "register_tool",
                 {"name": name, "parameters": parameters},
@@ -292,7 +298,7 @@ class DenoPyodideSandbox(BasePythonSandbox):
         self._tools_registered = True
 
     def _handle_tool_call(self, tool_name: str, args: list, kwargs: dict) -> Any:
-        """Execute a tool call from the sandbox.
+        """Execute a tool call from the environment.
 
         Supports both sync and async tools. Async tools are executed
         using asyncio.run() or via a thread pool if a loop is already running.
@@ -339,9 +345,9 @@ class DenoPyodideSandbox(BasePythonSandbox):
         current_thread = threading.current_thread().ident
         if self._owner_thread != current_thread:
             raise SandboxSecurityError(
-                f"Sandbox accessed from wrong thread. "
+                f"Environment accessed from wrong thread. "
                 f"Owner: {self._owner_thread}, Current: {current_thread}. "
-                "Create a new sandbox instance for each thread."
+                "Create a new environment instance for each thread."
             )
 
     def _send_tool_response(
@@ -350,7 +356,7 @@ class DenoPyodideSandbox(BasePythonSandbox):
         result: Any = None,
         error: Optional[str] = None,
     ):
-        """Send a tool call response back to the sandbox."""
+        """Send a tool call response back to the environment."""
         if error:
             response = {
                 "jsonrpc": "2.0",
@@ -388,16 +394,16 @@ class DenoPyodideSandbox(BasePythonSandbox):
         """Send JSON-RPC request to Deno process.
 
         This method handles bidirectional communication:
-        - Sends requests to the sandbox
-        - Handles tool calls from the sandbox during execution
+        - Sends requests to the environment
+        - Handles tool calls from the environment during execution
         - Returns the final response
         """
         if not self._initialized or not self._process:
-            raise SandboxNotReadyError("Sandbox not initialized")
+            raise SandboxNotReadyError("Environment not initialized")
 
         if self._process.poll() is not None:
             stderr = self._process.stderr.read() if self._process.stderr else ""
-            raise SandboxConnectionError(f"Sandbox process died. Stderr: {stderr}")
+            raise SandboxConnectionError(f"Environment process died. Stderr: {stderr}")
 
         self._check_thread_ownership()
         timeout = timeout or self.timeout
@@ -439,7 +445,7 @@ class DenoPyodideSandbox(BasePythonSandbox):
 
                     response = json.loads(response_line)
 
-                    # Check if this is a tool call request from the sandbox
+                    # Check if this is a tool call request from the environment
                     if response.get("method") == "tool_call":
                         tool_params = response.get("params", {})
                         tool_call_id = response.get("id")
@@ -473,7 +479,7 @@ class DenoPyodideSandbox(BasePythonSandbox):
             except BrokenPipeError as e:
                 stderr = self._process.stderr.read() if self._process.stderr else ""
                 raise SandboxConnectionError(
-                    f"Sandbox process pipe broken. Stderr: {stderr}"
+                    f"Environment process pipe broken. Stderr: {stderr}"
                 ) from e
 
     def _check_variable_size(self, name: str, value: Any):
@@ -488,19 +494,19 @@ class DenoPyodideSandbox(BasePythonSandbox):
                     MAX_VARIABLE_SIZE_BYTES / (1024 * 1024),
                 )
         except (TypeError, ValueError):
-            pass  # Non-serializable, will be handled by sandbox
+            pass  # Non-serializable, will be handled by environment
 
     def __call__(
         self,
-        code: str,
+        action: str,
         *,
         timeout: Optional[float] = None,
         vars: Optional[Dict[str, Any]] = None,
     ) -> ExecutionResult:
-        """Execute Python code in the sandbox.
+        """Execute Python code in the environment.
 
         Args:
-            code:
+            action:
                 Python code to execute.
             timeout:
                 Execution timeout in seconds (overrides default).
@@ -518,7 +524,7 @@ class DenoPyodideSandbox(BasePythonSandbox):
                 self._check_variable_size(name, value)
                 self.set_variable(name, value)
 
-        response = self._send_request("execute", {"code": code}, timeout=timeout)
+        response = self._send_request("execute", {"code": action}, timeout=timeout)
 
         if "error" in response:
             error_info = response["error"]
@@ -551,19 +557,19 @@ class DenoPyodideSandbox(BasePythonSandbox):
 
     async def acall(
         self,
-        code: str,
+        action: str,
         *,
         timeout: Optional[float] = None,
         vars: Optional[Dict[str, Any]] = None,
     ) -> ExecutionResult:
-        """Execute Python code in the sandbox asynchronously.
+        """Execute Python code in the environment asynchronously.
 
         This method runs the synchronous execution in a thread pool
         to avoid blocking the event loop. Thread safety is ensured via
         internal locking.
 
         Args:
-            code:
+            action:
                 Python code to execute.
             timeout:
                 Execution timeout in seconds (overrides default).
@@ -575,8 +581,8 @@ class DenoPyodideSandbox(BasePythonSandbox):
 
         Example:
             >>> async def main():
-            ...     sandbox = DenoPyodideSandbox()
-            ...     result = await sandbox.acall("print('hello')")
+            ...     env = Environments.code("python")
+            ...     result = await env.acall("print('hello')")
             ...     print(result.output)
         """
 
@@ -587,7 +593,7 @@ class DenoPyodideSandbox(BasePythonSandbox):
                 original_allow = self._allow_cross_thread
                 self._allow_cross_thread = True
                 try:
-                    return self(code, timeout=timeout, vars=vars)
+                    return self(action, timeout=timeout, vars=vars)
                 finally:
                     self._allow_cross_thread = original_allow
 
@@ -595,11 +601,11 @@ class DenoPyodideSandbox(BasePythonSandbox):
         return await loop.run_in_executor(None, _execute)
 
     def mount_file(self, path: str, content: Union[str, bytes]) -> None:
-        """Mount a file in the sandbox virtual filesystem.
+        """Mount a file in the environment virtual filesystem.
 
         Args:
             path:
-                Virtual path for the file in the sandbox.
+                Virtual path for the file in the environment.
             content:
                 File content as string or bytes.
         """
@@ -613,7 +619,7 @@ class DenoPyodideSandbox(BasePythonSandbox):
             raise SandboxConnectionError(f"Failed to mount file: {response['error']}")
 
     def get_variable(self, name: str) -> Any:
-        """Get a variable from the sandbox.
+        """Get a variable from the environment.
 
         Args:
             name:
@@ -626,7 +632,7 @@ class DenoPyodideSandbox(BasePythonSandbox):
         return response.get("value")
 
     def set_variable(self, name: str, value: Any) -> None:
-        """Set a variable in the sandbox.
+        """Set a variable in the environment.
 
         Args:
             name:
@@ -638,12 +644,14 @@ class DenoPyodideSandbox(BasePythonSandbox):
         response = self._send_request("set_variable", {"name": name, "value": value})
 
         if "error" in response:
-            raise SandboxConnectionError(f"Failed to set variable: {response['error']}")
+            raise SandboxConnectionError(
+                f"Failed to set variable: {response['error']}"
+            )
 
         self._variables[name] = value
 
     def reset(self) -> None:
-        """Reset sandbox state."""
+        """Reset environment state."""
         response = self._send_request("reset", {})
 
         if "error" in response:
@@ -652,7 +660,7 @@ class DenoPyodideSandbox(BasePythonSandbox):
         self._variables.clear()
 
     def shutdown(self) -> None:
-        """Shutdown the sandbox."""
+        """Shutdown the environment."""
         if self._process:
             try:
                 self._send_request("shutdown", {}, timeout=5.0)
@@ -670,7 +678,7 @@ class DenoPyodideSandbox(BasePythonSandbox):
 
             self._process = None
             self._initialized = False
-            logger.debug("Deno sandbox shutdown complete")
+            logger.debug("Deno environment shutdown complete")
 
     def install_package(self, package: str) -> bool:
         """Install a Python package via micropip.
@@ -697,24 +705,24 @@ class DenoPyodideSandbox(BasePythonSandbox):
         return response.get("packages", [])
 
     def register_tool(self, name: str, func: Callable[..., Any]) -> None:
-        """Register a tool that can be called from inside the sandbox.
+        """Register a tool that can be called from inside the environment.
 
         Args:
             name:
-                The name to use for the tool inside the sandbox.
+                The name to use for the tool inside the environment.
             func:
                 The Python function to register.
 
         Example:
             >>> def my_search(query: str) -> str:
             ...     return f"Results for: {query}"
-            >>> sandbox.register_tool("search", my_search)
-            >>> sandbox("result = search('python')")
+            >>> env.register_tool("search", my_search)
+            >>> env("result = search('python')")
         """
         # Store in local tools dict
         self._tools[name] = func
 
-        # Get function signature for the sandbox
+        # Get function signature for the environment
         parameters = []
         try:
             sig = inspect.signature(func)
@@ -730,7 +738,7 @@ class DenoPyodideSandbox(BasePythonSandbox):
         except (ValueError, TypeError):
             pass
 
-        # Register in sandbox
+        # Register in environment
         response = self._send_request(
             "register_tool",
             {"name": name, "parameters": parameters},

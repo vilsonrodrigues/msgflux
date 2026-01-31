@@ -25,7 +25,7 @@ from msgflux.dsl.signature import (
 )
 from msgflux.dsl.typed_parsers.registry import typed_parser_registry
 from msgflux.examples import Example, ExampleCollection
-from msgflux.generation.control_flow import ToolFlowControl
+from msgflux.generation.control_flow import FlowControl
 from msgflux.generation.templates import (
     EXPECTED_OUTPUTS_TEMPLATE,
     SYSTEM_PROMPT_TEMPLATE,
@@ -101,7 +101,7 @@ class Agent(Module, metaclass=AutoParams):
         response_mode: Optional[str] = None,
         tools: Optional[List[Callable]] = None,
         mcp_servers: Optional[List[Mapping[str, Any]]] = None,
-        sandbox: Optional[Environment] = None,
+        environment: Optional[Environment] = None,
         signature: Optional[Union[str, Signature]] = None,
         description: Optional[str] = None,
         annotations: Optional[Mapping[str, type]] = None,
@@ -227,13 +227,13 @@ class Agent(Module, metaclass=AutoParams):
                     "include_tools": ["read_file", "write_file"],
                     "tool_config": {"read_file": {"inject_vars": ["context"]}}
                 }]
-        sandbox:
-            An Environment instance wrapping a sandbox for code execution.
-            When provided and a tool call matches the sandbox's name attribute
-            (e.g., "execute_code"), the code is executed in the sandbox with
-            all ToolLibrary tools available.
+        environment:
+            An Environment instance for code execution.
+            When provided, code execution requests from FlowControl schemas
+            (e.g., ProgramOfThought, RLM) are executed in this environment
+            with all ToolLibrary tools available.
             !!! example
-                sandbox=Environment(sandbox=DenoPyodideSandbox())
+                environment=Environment(environment=Environments.code("python"))
         signature:
             A DSPy-based signature. A signature creates a task_template,
             a generation_schema, instructions and examples (both if passed).
@@ -298,7 +298,7 @@ class Agent(Module, metaclass=AutoParams):
         self._set_response_mode(response_mode)
         self._set_templates(templates)
         self._set_tools(tools, mcp_servers)
-        self._set_sandbox(sandbox)
+        self._set_environment(environment)
 
         if signature is not None:
             signature_params = dotdict(
@@ -448,13 +448,13 @@ class Agent(Module, metaclass=AutoParams):
 
         tool_choice = self.config.get("tool_choice")
 
-        if is_subclass_of(self.generation_schema, ToolFlowControl):
+        if is_subclass_of(self.generation_schema, FlowControl):
             tools_template = self.generation_schema.tools_template
             inputs = {"tool_schemas": tool_schemas, "tool_choice": tool_choice}
 
-            # Add sandbox_name if sandbox is configured
-            if self.sandbox is not None and self.sandbox.name is not None:
-                inputs["sandbox_name"] = self.sandbox.name
+            # Add environment_name if environment is configured
+            if self.environment is not None and self.environment.name is not None:
+                inputs["environment_name"] = self.environment.name
 
             flow_control_tools = self._format_template(inputs, tools_template)
             if system_prompt:
@@ -507,8 +507,8 @@ class Agent(Module, metaclass=AutoParams):
             model_response, messages = self._process_tool_call_response(
                 model_response, messages, vars, model_preference
             )
-        elif is_subclass_of(self.generation_schema, ToolFlowControl):
-            model_response, messages = self._process_tool_flow_control_response(
+        elif is_subclass_of(self.generation_schema, FlowControl):
+            model_response, messages = self._process_flow_control_response(
                 model_response, messages, vars, model_preference
             )
 
@@ -539,11 +539,11 @@ class Agent(Module, metaclass=AutoParams):
             model_response, messages = await self._aprocess_tool_call_response(
                 model_response, messages, vars, model_preference
             )
-        elif is_subclass_of(self.generation_schema, ToolFlowControl):
+        elif is_subclass_of(self.generation_schema, FlowControl):
             (
                 model_response,
                 messages,
-            ) = await self._aprocess_tool_flow_control_response(
+            ) = await self._aprocess_flow_control_response(
                 model_response, messages, vars, model_preference
             )
 
@@ -562,19 +562,19 @@ class Agent(Module, metaclass=AutoParams):
         else:
             raise ValueError(f"Unsupported `response_type={response_type}`")
 
-    def _process_tool_flow_control_response(
+    def _process_flow_control_response(
         self,
         model_response: Union[ModelResponse, ModelStreamResponse],
         messages: Mapping[str, Any],
         vars: Mapping[str, Any],
         model_preference: Optional[str] = None,
     ) -> Tuple[Union[str, Mapping[str, Any], ModelStreamResponse], Mapping[str, Any]]:
-        """Handle tool flow control responses using the ToolFlowControl interface."""
+        """Handle flow control responses using the FlowControl interface."""
         flow_control = self.generation_schema
         while True:
             raw_response = self._extract_raw_response(model_response)
 
-            # Use ToolFlowControl interface via generation_schema
+            # Use FlowControl interface via generation_schema
             flow_result = flow_control.extract_flow_result(raw_response)
 
             if flow_result.is_complete:
@@ -582,12 +582,30 @@ class Agent(Module, metaclass=AutoParams):
 
             if self.config.get("verbose", False) and flow_result.reasoning:
                 cprint(
-                    f"[{self.name}][tool_calls_reasoning] {flow_result.reasoning}",
+                    f"[{self.name}][flow_control_reasoning] {flow_result.reasoning}",
                     bc="br2",
                     ls="b",
                 )
 
-            if flow_result.tool_calls:
+            # Handle environment calls
+            if flow_result.environment_call is not None and self.environment is not None:
+                env_call = flow_result.environment_call
+                tool_funcs = self._get_tool_functions() if env_call.inject_tools else {}
+                env_vars = vars if env_call.inject_vars else {}
+
+                result = self.environment(env_call.action, tools=tool_funcs, vars=env_vars)
+
+                # Inject environment result using schema method
+                if hasattr(flow_control, "inject_environment_result"):
+                    raw_response = flow_control.inject_environment_result(
+                        raw_response, result.to_dict()
+                    )
+
+                # Build history
+                messages = flow_control.build_history(raw_response, messages)
+
+            # Handle tool calls
+            elif flow_result.tool_calls:
                 tool_results = self._process_tool_call(
                     flow_result.tool_calls, messages, vars
                 )
@@ -599,7 +617,7 @@ class Agent(Module, metaclass=AutoParams):
                     return tool_responses, messages
 
                 # Use interface to inject results
-                raw_response = flow_control.inject_results(raw_response, tool_results)
+                raw_response = flow_control.inject_tool_results(raw_response, tool_results)
 
                 # Use interface to build history
                 messages = flow_control.build_history(raw_response, messages)
@@ -608,21 +626,21 @@ class Agent(Module, metaclass=AutoParams):
                 messages=messages, model_preference=model_preference, vars=vars
             )
 
-    async def _aprocess_tool_flow_control_response(
+    async def _aprocess_flow_control_response(
         self,
         model_response: Union[ModelResponse, ModelStreamResponse],
         messages: Mapping[str, Any],
         vars: Mapping[str, Any],
         model_preference: Optional[str] = None,
     ) -> Tuple[Union[str, Mapping[str, Any], ModelStreamResponse], Mapping[str, Any]]:
-        """Async version of _process_tool_flow_control_response.
-        Handle tool flow control responses using the ToolFlowControl interface.
+        """Async version of _process_flow_control_response.
+        Handle flow control responses using the FlowControl interface.
         """
         flow_control = self.generation_schema
         while True:
             raw_response = self._extract_raw_response(model_response)
 
-            # Use ToolFlowControl interface via generation_schema (async)
+            # Use FlowControl interface via generation_schema (async)
             flow_result = await flow_control.aextract_flow_result(raw_response)
 
             if flow_result.is_complete:
@@ -630,12 +648,32 @@ class Agent(Module, metaclass=AutoParams):
 
             if self.config.get("verbose", False) and flow_result.reasoning:
                 cprint(
-                    f"[{self.name}][tool_calls_reasoning] {flow_result.reasoning}",
+                    f"[{self.name}][flow_control_reasoning] {flow_result.reasoning}",
                     bc="br2",
                     ls="b",
                 )
 
-            if flow_result.tool_calls:
+            # Handle environment calls
+            if flow_result.environment_call is not None and self.environment is not None:
+                env_call = flow_result.environment_call
+                tool_funcs = self._get_tool_functions() if env_call.inject_tools else {}
+                env_vars = vars if env_call.inject_vars else {}
+
+                result = await self.environment.acall(
+                    env_call.action, tools=tool_funcs, vars=env_vars
+                )
+
+                # Inject environment result using schema method
+                if hasattr(flow_control, "inject_environment_result"):
+                    raw_response = flow_control.inject_environment_result(
+                        raw_response, result.to_dict()
+                    )
+
+                # Build history (async version)
+                messages = await flow_control.abuild_history(raw_response, messages)
+
+            # Handle tool calls
+            elif flow_result.tool_calls:
                 tool_results = await self._aprocess_tool_call(
                     flow_result.tool_calls, messages, vars
                 )
@@ -647,14 +685,12 @@ class Agent(Module, metaclass=AutoParams):
                     return tool_responses, messages
 
                 # Use interface to inject results (async version)
-                raw_response = await flow_control.ainject_results(
+                raw_response = await flow_control.ainject_tool_results(
                     raw_response, tool_results
                 )
 
                 # Use interface to build history (async version)
-                messages = await flow_control.abuild_history(
-                    raw_response, messages
-                )
+                messages = await flow_control.abuild_history(raw_response, messages)
 
             model_response = await self._aexecute_model(
                 messages=messages, model_preference=model_preference, vars=vars
@@ -768,7 +804,7 @@ class Agent(Module, metaclass=AutoParams):
                 cprint(repr_str, bc="br2", ls="b")
 
         # Check for sandbox-based code execution
-        if self.sandbox is not None:
+        if self.environment is not None:
             tool_callings = self._process_sandbox_calls(tool_callings, vars)
 
         tool_results = self.tool_library(
@@ -812,7 +848,7 @@ class Agent(Module, metaclass=AutoParams):
             # If params has 'code', execute in sandbox
             code = params.get("code", "") if isinstance(params, dict) else ""
             if code:
-                result = self.sandbox(code, tools=tool_funcs, vars=vars)
+                result = self.environment(code, tools=tool_funcs, vars=vars)
 
                 # Inject result into params for the control flow to handle
                 params = {
@@ -852,7 +888,7 @@ class Agent(Module, metaclass=AutoParams):
                 cprint(repr_str, bc="br2", ls="b")
 
         # Check for sandbox-based code execution
-        if self.sandbox is not None:
+        if self.environment is not None:
             tool_callings = await self._aprocess_sandbox_calls(tool_callings, vars)
 
         tool_results = await self.tool_library.acall(
@@ -889,7 +925,7 @@ class Agent(Module, metaclass=AutoParams):
             # If params has 'code', execute in sandbox
             code = params.get("code", "") if isinstance(params, dict) else ""
             if code:
-                result = await self.sandbox.acall(code, tools=tool_funcs, vars=vars)
+                result = await self.environment.acall(code, tools=tool_funcs, vars=vars)
 
                 # Inject result into params for the control flow to handle
                 params = {
@@ -1492,19 +1528,19 @@ class Agent(Module, metaclass=AutoParams):
             self.get_module_name(), tools or [], mcp_servers=mcp_servers
         )
 
-    def _set_sandbox(self, sandbox: Optional[Environment] = None):
-        """Set the code execution sandbox.
+    def _set_environment(self, environment: Optional[Environment] = None):
+        """Set the code execution environment.
 
         Args:
-            sandbox:
-                An Environment instance wrapping a sandbox, or None.
+            environment:
+                An Environment instance for code execution, or None.
         """
-        if sandbox is not None and not isinstance(sandbox, Environment):
+        if environment is not None and not isinstance(environment, Environment):
             raise TypeError(
-                f"`sandbox` must be an Environment instance or None, "
-                f"given `{type(sandbox)}`"
+                f"`environment` must be an Environment instance or None, "
+                f"given `{type(environment)}`"
             )
-        self.register_buffer("sandbox", sandbox)
+        self.register_buffer("environment", environment)
 
     def _set_generation_schema(
         self, generation_schema: Optional[msgspec.Struct] = None

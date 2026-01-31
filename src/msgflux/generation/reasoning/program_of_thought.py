@@ -2,7 +2,7 @@
 
 This module implements the Program of Thought pattern, where the LLM generates
 Python code to solve problems instead of making discrete tool calls. The code
-is executed in a sandbox with all registered tools available as Python functions.
+is executed in an environment with all registered tools available as Python functions.
 
 References:
     - Program of Thoughts: https://arxiv.org/abs/2211.12588
@@ -11,12 +11,11 @@ References:
 """
 
 from typing import TYPE_CHECKING, Any, List, Mapping, Optional
-from uuid import uuid4
 
 import msgspec
 from msgspec import Struct
 
-from msgflux.generation.control_flow import ToolFlowControl, ToolFlowResult
+from msgflux.generation.control_flow import EnvironmentCall, FlowControl, FlowResult
 from msgflux.utils.chat import ChatBlock
 
 if TYPE_CHECKING:
@@ -54,7 +53,7 @@ POT_TOOLS_TEMPLATE = """
 ## Code Execution Environment
 
 Your code will be executed in a sandboxed Python environment.
-{% if sandbox_name %}Sandbox: `{{ sandbox_name }}`.{% endif %}
+{% if environment_name %}Environment: `{{ environment_name }}`.{% endif %}
 {% if tool_schemas %}
 
 ## Available Tools
@@ -80,26 +79,22 @@ class ProgramOfThoughtStep(Struct):
     code: str
 
 
-# Default sandbox name for code execution
-DEFAULT_SANDBOX_NAME = "execute_code"
-
-
-class ProgramOfThought(Struct, ToolFlowControl):
+class ProgramOfThought(Struct, FlowControl):
     """Program of Thought control flow for code-based reasoning.
 
     Instead of making discrete tool calls, the LLM writes Python code that
-    is executed in a sandbox. All registered tools are available as callable
-    Python functions within the code.
+    is executed in an environment. All registered tools are available as
+    callable Python functions within the code.
 
     Example:
         >>> from msgflux.nn import Agent, Environment
-        >>> from msgflux.environments.sandboxes import DenoPyodideSandbox
+        >>> from msgflux.environments import Environments
         >>> from msgflux.generation.reasoning import ProgramOfThought
         >>>
         >>> agent = Agent(
         ...     "solver",
         ...     model,
-        ...     sandbox=Environment(sandbox=DenoPyodideSandbox()),
+        ...     environment=Environment(environment=Environments.code("python")),
         ...     tools=[search, calculate],
         ...     generation_schema=ProgramOfThought,
         ... )
@@ -114,20 +109,16 @@ class ProgramOfThought(Struct, ToolFlowControl):
     final_answer: Optional[str]
 
     @classmethod
-    def extract_flow_result(cls, raw_response: Mapping[str, Any]) -> ToolFlowResult:
+    def extract_flow_result(cls, raw_response: Mapping[str, Any]) -> FlowResult:
         """Extract flow information from ProgramOfThought response.
 
         If `final_answer` is present, the flow is complete.
-        If `current_step` with `code` is present, create a tool call to execute it.
-
-        The Agent executes any tool call with 'code' in params via its sandbox.
+        If `current_step` with `code` is present, create an environment call.
         """
         final_answer = raw_response.get("final_answer")
         if final_answer is not None:
-            return ToolFlowResult(
+            return FlowResult(
                 is_complete=True,
-                tool_calls=None,
-                reasoning=None,
                 final_response=raw_response,
             )
 
@@ -137,52 +128,60 @@ class ProgramOfThought(Struct, ToolFlowControl):
             thought = current_step.get("thought", "")
 
             if code:
-                # Create a single tool call using the default sandbox name
-                tool_id = str(uuid4())
-                tool_calls = [(tool_id, DEFAULT_SANDBOX_NAME, {"code": code})]
-
-                return ToolFlowResult(
+                return FlowResult(
                     is_complete=False,
-                    tool_calls=tool_calls,
+                    environment_call=EnvironmentCall(
+                        action=code,
+                        inject_vars=True,
+                        inject_tools=True,
+                    ),
                     reasoning=thought,
-                    final_response=None,
                 )
 
         # No code and no final answer - treat as complete
-        return ToolFlowResult(
+        return FlowResult(
             is_complete=True,
-            tool_calls=None,
-            reasoning=None,
             final_response=raw_response,
         )
 
     @classmethod
-    def inject_results(
-        cls, raw_response: Mapping[str, Any], tool_results: "ToolResponses"
+    def inject_environment_result(
+        cls, raw_response: Mapping[str, Any], result: Mapping[str, Any]
     ) -> Mapping[str, Any]:
-        """Inject execution results back into ProgramOfThought structure.
+        """Inject environment execution result back into ProgramOfThought structure.
 
-        The sandbox result contains stdout, variables, errors, etc.
-        We inject this as the 'result' field in current_step.
+        Args:
+            raw_response: The original model response.
+            result: The environment execution result dict with:
+                - success: bool
+                - output: str
+                - error: Optional[str]
+
+        Returns:
+            Updated raw_response with result injected.
         """
         current_step = raw_response.get("current_step")
-        if current_step is not None and tool_results.tool_calls:
-            # Get the execute_code result
-            call = tool_results.tool_calls[0]
-            sandbox_result = call.parameters.get("_sandbox_result", {})
-
-            if sandbox_result:
-                # Format the result for the LLM
-                if sandbox_result.get("success"):
-                    output = sandbox_result.get("output", "").strip()
-                    current_step["result"] = output if output else "(no output)"
-                else:
-                    error = sandbox_result.get("error", "Unknown error")
-                    current_step["result"] = f"Error: {error}"
+        if current_step is not None:
+            if result.get("success"):
+                output = result.get("output", "").strip()
+                current_step["result"] = output if output else "(no output)"
             else:
-                # Fallback to regular result
-                current_step["result"] = call.result or call.error or "(no output)"
+                error = result.get("error", "Unknown error")
+                current_step["result"] = f"Error: {error}"
 
+        return raw_response
+
+    @classmethod
+    def inject_tool_results(
+        cls,
+        raw_response: Mapping[str, Any],
+        tool_results: "ToolResponses",  # noqa: ARG003
+    ) -> Mapping[str, Any]:
+        """Inject tool results back into the structure.
+
+        Note: ProgramOfThought primarily uses environment_call, not tool_calls.
+        This method is provided for interface compliance.
+        """
         return raw_response
 
     @classmethod
