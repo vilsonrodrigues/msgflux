@@ -33,6 +33,10 @@ class TestEnvironmentModule:
         """Test environment name property."""
         assert env.name == "execute_code"
 
+    def test_environment_type(self, env):
+        """Test environment type property."""
+        assert env.environment_type == "python"
+
     def test_variable_injection(self, env):
         """Test vars injection."""
         result = env("result = a + b", vars={"a": 10, "b": 20})
@@ -117,12 +121,6 @@ class TestEnvironmentModule:
         with Environment(environment=code_env) as env:
             result = env("print('hello')")
             assert result.success
-
-    def test_repr(self, env):
-        """Test string representation."""
-        repr_str = repr(env)
-        assert "Environment" in repr_str
-        assert "DenoPyodideSandbox" in repr_str
 
 
 class TestEnvironmentsFactory:

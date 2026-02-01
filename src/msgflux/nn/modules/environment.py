@@ -1,4 +1,4 @@
-"""Environment module for code execution in isolated environments."""
+"""Environment module for executing actions in isolated environments."""
 
 from typing import Any, Callable, Dict, Optional
 
@@ -8,23 +8,19 @@ from msgflux.nn.modules.module import Module
 
 
 class Environment(Module):
-    r"""Environment for secure code execution with tool injection.
+    r"""Environment for executing actions in isolated environments.
 
-    This module wraps a code environment (e.g., DenoPyodideSandbox) and provides
-    a consistent interface for executing code with dynamically injected tools.
+    This module wraps an environment (e.g., code, browser, terminal) and provides
+    a consistent interface for execution with type-specific parameter handling.
 
-    The Environment follows the pattern used in DSPy's PythonInterpreter,
-    allowing code to call host-side functions (tools) during execution.
-
-    Tools can be provided at initialization (available for all executions) or
-    passed per-execution (merged with init tools). Tools passed at execution
-    time override init tools with the same name.
+    For code environments, tools can be provided at initialization or per-execution.
+    Tools passed at execution time override init tools with the same name.
 
     Example:
         >>> from msgflux.nn import Environment
         >>> from msgflux.environments import Environments
         >>>
-        >>> # Create environment with default tools
+        >>> # Create code environment with default tools
         >>> def search(query: str) -> str:
         ...     return f"Results for: {query}"
         >>>
@@ -42,11 +38,6 @@ class Environment(Module):
         ...     "x = add(1, 2)",
         ...     tools={"add": lambda a, b: a + b}
         ... )
-
-    For RL and agent workflows:
-        >>> # Tools can be passed dynamically from ToolLibrary
-        >>> tool_funcs = {t.name: t.callable for t in tool_library}
-        >>> result = await env.acall(action, tools=tool_funcs)
     """
 
     def __init__(
@@ -59,11 +50,11 @@ class Environment(Module):
 
         Args:
             environment:
-                A code environment instance for execution (e.g., DenoPyodideSandbox).
-                The environment should have a `name` attribute that identifies it
-                as a tool (e.g., "execute_code", "python_interpreter").
+                An environment instance for execution (e.g., DenoPyodideSandbox).
+                The environment should have `name` and `environment_type` attributes.
             tools:
                 Optional dictionary mapping tool names to callables.
+                Only applicable for code environments.
                 These tools will be available for all executions unless
                 overridden by tools passed to forward/acall.
 
@@ -84,13 +75,18 @@ class Environment(Module):
         return self._environment
 
     @property
+    def environment_type(self) -> str:
+        """Get the environment type (e.g., 'python', 'browser')."""
+        return self._environment.environment_type
+
+    @property
     def name(self) -> str:
         """Get the environment name (e.g., 'execute_code')."""
         return self._environment.name
 
     @property
     def tools(self) -> Dict[str, Callable]:
-        """Get the default tools configured at initialization."""
+        """Get the default tools configured at initialization (code environments only)."""
         return self._tools.copy()
 
     def forward(
@@ -99,37 +95,27 @@ class Environment(Module):
         *,
         tools: Optional[Dict[str, Callable[..., Any]]] = None,
         vars: Optional[Dict[str, Any]] = None,
-    ) -> ExecutionResult:
+        **kwargs,
+    ) -> Any:
         r"""Execute an action in the environment.
 
         Args:
             action:
-                The action to execute (e.g., Python code).
+                The action to execute.
             tools:
-                Optional dictionary mapping tool names to callables.
-                These are merged with init tools (overriding on conflict).
+                Optional dictionary of tools (code environments only).
             vars:
-                Optional dictionary of variables to inject into the
-                execution context before running the action.
+                Optional dictionary of variables (code environments only).
+            **kwargs:
+                Additional parameters for specific environment types.
 
         Returns:
-            ExecutionResult containing:
-                - success: Whether execution succeeded
-                - output: Captured stdout
-                - error: Error message if failed
-                - variables: Variables defined during execution
-                - return_value: Return value of last expression
-                - execution_time_ms: Execution time in milliseconds
-
-        Example:
-            >>> result = env("x = add(1, 2)", tools={"add": lambda a, b: a + b})
-            >>> print(result.output)  # "3"
+            Result from the environment execution.
         """
-        # Merge init tools with execution tools (execution tools override)
-        merged_tools = self._merge_tools(tools)
-
-        # Execute action with merged tools
-        return self._environment(action, vars=vars, tools=merged_tools)
+        if self.environment_type == "python":
+            return self._execute_code(action, tools=tools, vars=vars)
+        else:
+            return self._environment(action, **kwargs)
 
     async def aforward(
         self,
@@ -137,33 +123,72 @@ class Environment(Module):
         *,
         tools: Optional[Dict[str, Callable[..., Any]]] = None,
         vars: Optional[Dict[str, Any]] = None,
-    ) -> ExecutionResult:
+        **kwargs,
+    ) -> Any:
         """Execute an action asynchronously in the environment.
-
-        This is the async version of forward(). The execution runs in a
-        thread pool to avoid blocking the event loop.
 
         Args:
             action:
-                The action to execute (e.g., Python code).
+                The action to execute.
             tools:
-                Optional dictionary mapping tool names to callables.
-                These are merged with init tools (overriding on conflict).
+                Optional dictionary of tools (code environments only).
+            vars:
+                Optional dictionary of variables (code environments only).
+            **kwargs:
+                Additional parameters for specific environment types.
+
+        Returns:
+            Result from the environment execution.
+        """
+        if self.environment_type == "python":
+            return await self._aexecute_code(action, tools=tools, vars=vars)
+        else:
+            return await self._environment.acall(action, **kwargs)
+
+    def _execute_code(
+        self,
+        action: str,
+        *,
+        tools: Optional[Dict[str, Callable[..., Any]]] = None,
+        vars: Optional[Dict[str, Any]] = None,
+    ) -> ExecutionResult:
+        """Execute code in a code environment.
+
+        Args:
+            action:
+                The code to execute.
+            tools:
+                Optional dictionary of tools to make available.
             vars:
                 Optional dictionary of variables to inject.
 
         Returns:
-            ExecutionResult with execution details.
-
-        Example:
-            >>> async def main():
-            ...     result = await env.acall("print('hello')")
-            ...     print(result.output)
+            ExecutionResult with output, errors, and variables.
         """
-        # Merge init tools with execution tools (execution tools override)
         merged_tools = self._merge_tools(tools)
+        return self._environment(action, vars=vars, tools=merged_tools)
 
-        # Execute action asynchronously with merged tools
+    async def _aexecute_code(
+        self,
+        action: str,
+        *,
+        tools: Optional[Dict[str, Callable[..., Any]]] = None,
+        vars: Optional[Dict[str, Any]] = None,
+    ) -> ExecutionResult:
+        """Execute code asynchronously in a code environment.
+
+        Args:
+            action:
+                The code to execute.
+            tools:
+                Optional dictionary of tools to make available.
+            vars:
+                Optional dictionary of variables to inject.
+
+        Returns:
+            ExecutionResult with output, errors, and variables.
+        """
+        merged_tools = self._merge_tools(tools)
         return await self._environment.acall(action, vars=vars, tools=merged_tools)
 
     def _merge_tools(
@@ -188,7 +213,6 @@ class Environment(Module):
         if not self._tools:
             return tools
 
-        # Merge: init tools + execution tools (execution overrides)
         return {**self._tools, **tools}
 
     def reset(self) -> None:
@@ -206,8 +230,3 @@ class Environment(Module):
     def __exit__(self, *_):
         """Context manager exit with cleanup."""
         self.shutdown()
-
-    def __repr__(self) -> str:
-        env_type = type(self._environment).__name__
-        tool_count = len(self._tools)
-        return f"Environment(environment={env_type}, tools={tool_count})"
