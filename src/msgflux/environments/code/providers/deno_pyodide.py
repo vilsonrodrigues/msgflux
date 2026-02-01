@@ -526,6 +526,7 @@ class DenoPyodideSandbox(BasePythonEnvironment):
         *,
         timeout: Optional[float] = None,
         vars: Optional[Dict[str, Any]] = None,
+        tools: Optional[Dict[str, Callable[..., Any]]] = None,
     ) -> ExecutionResult:
         """Execute Python code in the environment.
 
@@ -536,11 +537,23 @@ class DenoPyodideSandbox(BasePythonEnvironment):
                 Execution timeout in seconds (overrides default).
             vars:
                 Variables to inject before execution.
+            tools:
+                Tools to make available for this execution.
+                New tools are registered; existing tools are updated.
 
         Returns:
             ExecutionResult with output, errors, and variables.
         """
         start_time = time.time()
+
+        # Register tools if provided
+        if tools:
+            for name, func in tools.items():
+                if name not in self._tools:
+                    self.register_tool(name, func)
+                else:
+                    # Update existing tool function
+                    self._tools[name] = func
 
         # Inject variables if provided
         if vars:
@@ -585,6 +598,7 @@ class DenoPyodideSandbox(BasePythonEnvironment):
         *,
         timeout: Optional[float] = None,
         vars: Optional[Dict[str, Any]] = None,
+        tools: Optional[Dict[str, Callable[..., Any]]] = None,
     ) -> ExecutionResult:
         """Execute Python code in the environment asynchronously.
 
@@ -599,6 +613,8 @@ class DenoPyodideSandbox(BasePythonEnvironment):
                 Execution timeout in seconds (overrides default).
             vars:
                 Variables to inject before execution.
+            tools:
+                Tools to make available for this execution.
 
         Returns:
             ExecutionResult with output, errors, and variables.
@@ -617,7 +633,7 @@ class DenoPyodideSandbox(BasePythonEnvironment):
                 original_allow = self._allow_cross_thread
                 self._allow_cross_thread = True
                 try:
-                    return self(action, timeout=timeout, vars=vars)
+                    return self(action, timeout=timeout, vars=vars, tools=tools)
                 finally:
                     self._allow_cross_thread = original_allow
 

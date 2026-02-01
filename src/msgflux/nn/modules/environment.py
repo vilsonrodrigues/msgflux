@@ -16,11 +16,15 @@ class Environment(Module):
     The Environment follows the pattern used in DSPy's PythonInterpreter,
     allowing code to call host-side functions (tools) during execution.
 
+    Tools can be provided at initialization (available for all executions) or
+    passed per-execution (merged with init tools). Tools passed at execution
+    time override init tools with the same name.
+
     Example:
         >>> from msgflux.nn import Environment
         >>> from msgflux.environments import Environments
         >>>
-        >>> # Create environment with tools registered at init
+        >>> # Create environment with default tools
         >>> def search(query: str) -> str:
         ...     return f"Results for: {query}"
         >>>
@@ -29,11 +33,11 @@ class Environment(Module):
         ...     tools={"search": search}
         ... )
         >>>
-        >>> # Execute code - tools are already available
+        >>> # Execute code - init tools are available
         >>> result = env("data = search('python')\nprint(data)")
         >>> print(result.output)  # "Results for: python"
         >>>
-        >>> # Or pass additional tools at execution time
+        >>> # Pass additional/override tools at execution time
         >>> result = env(
         ...     "x = add(1, 2)",
         ...     tools={"add": lambda a, b: a + b}
@@ -60,7 +64,8 @@ class Environment(Module):
                 as a tool (e.g., "execute_code", "python_interpreter").
             tools:
                 Optional dictionary mapping tool names to callables.
-                These tools will be registered and available for all executions.
+                These tools will be available for all executions unless
+                overridden by tools passed to forward/acall.
 
         Example:
             >>> from msgflux.environments import Environments
@@ -71,10 +76,7 @@ class Environment(Module):
         """
         super().__init__()
         self._environment = environment
-        self._registered_tools: Dict[str, Callable] = {}
-
-        if tools:
-            self._register_tools(tools)
+        self._tools: Dict[str, Callable] = tools or {}
 
     @property
     def environment(self) -> BaseEnvironment:
@@ -87,9 +89,9 @@ class Environment(Module):
         return self._environment.name
 
     @property
-    def registered_tools(self) -> Dict[str, Callable]:
-        """Get the currently registered tools."""
-        return self._registered_tools.copy()
+    def tools(self) -> Dict[str, Callable]:
+        """Get the default tools configured at initialization."""
+        return self._tools.copy()
 
     def forward(
         self,
@@ -105,8 +107,7 @@ class Environment(Module):
                 The action to execute (e.g., Python code).
             tools:
                 Optional dictionary mapping tool names to callables.
-                These tools will be available to call from within the code.
-                Supports both sync and async callables.
+                These are merged with init tools (overriding on conflict).
             vars:
                 Optional dictionary of variables to inject into the
                 execution context before running the action.
@@ -124,12 +125,11 @@ class Environment(Module):
             >>> result = env("x = add(1, 2)", tools={"add": lambda a, b: a + b})
             >>> print(result.output)  # "3"
         """
-        # Register tools if provided
-        if tools:
-            self._register_tools(tools)
+        # Merge init tools with execution tools (execution tools override)
+        merged_tools = self._merge_tools(tools)
 
-        # Execute action
-        return self._environment(action, vars=vars)
+        # Execute action with merged tools
+        return self._environment(action, vars=vars, tools=merged_tools)
 
     async def aforward(
         self,
@@ -148,6 +148,7 @@ class Environment(Module):
                 The action to execute (e.g., Python code).
             tools:
                 Optional dictionary mapping tool names to callables.
+                These are merged with init tools (overriding on conflict).
             vars:
                 Optional dictionary of variables to inject.
 
@@ -159,40 +160,44 @@ class Environment(Module):
             ...     result = await env.acall("print('hello')")
             ...     print(result.output)
         """
-        # Register tools if provided
-        if tools:
-            self._register_tools(tools)
+        # Merge init tools with execution tools (execution tools override)
+        merged_tools = self._merge_tools(tools)
 
-        # Execute action asynchronously
-        return await self._environment.acall(action, vars=vars)
+        # Execute action asynchronously with merged tools
+        return await self._environment.acall(action, vars=vars, tools=merged_tools)
 
-    def _register_tools(self, tools: Dict[str, Callable[..., Any]]) -> None:
-        """Register tools in the environment.
+    def _merge_tools(
+        self, tools: Optional[Dict[str, Callable[..., Any]]]
+    ) -> Optional[Dict[str, Callable[..., Any]]]:
+        """Merge init tools with execution tools.
 
-        Only registers tools that haven't been registered yet to avoid
-        duplicate registration overhead.
+        Execution tools override init tools with the same name.
 
         Args:
-            tools:
-                Dictionary mapping tool names to callables.
+            tools: Tools passed at execution time.
+
+        Returns:
+            Merged tools dictionary, or None if no tools.
         """
-        for name, func in tools.items():
-            if name not in self._registered_tools:
-                self._environment.register_tool(name, func)
-                self._registered_tools[name] = func
+        if not self._tools and not tools:
+            return None
+
+        if not tools:
+            return self._tools
+
+        if not self._tools:
+            return tools
+
+        # Merge: init tools + execution tools (execution overrides)
+        return {**self._tools, **tools}
 
     def reset(self) -> None:
-        """Reset the environment state.
-
-        Clears all registered tools and resets the environment state.
-        """
+        """Reset the environment state."""
         self._environment.reset()
-        self._registered_tools.clear()
 
     def shutdown(self) -> None:
         """Shutdown the environment and release resources."""
         self._environment.shutdown()
-        self._registered_tools.clear()
 
     def __enter__(self):
         """Context manager entry."""
@@ -204,5 +209,5 @@ class Environment(Module):
 
     def __repr__(self) -> str:
         env_type = type(self._environment).__name__
-        tool_count = len(self._registered_tools)
+        tool_count = len(self._tools)
         return f"Environment(environment={env_type}, tools={tool_count})"

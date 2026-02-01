@@ -53,6 +53,7 @@ class BaseCodeEnvironment(BaseEnvironment, BaseClient):
         *,
         timeout: Optional[float] = None,
         vars: Optional[Dict[str, Any]] = None,
+        tools: Optional[Dict[str, ToolFunction]] = None,
     ) -> "ExecutionResult":
         """Execute an action in the environment.
 
@@ -63,6 +64,9 @@ class BaseCodeEnvironment(BaseEnvironment, BaseClient):
                 Optional execution timeout in seconds.
             vars:
                 Optional dictionary of variables to inject.
+            tools:
+                Optional dictionary of tools available for this execution only.
+                Tools are registered before execution and available to the code.
 
         Returns:
             ExecutionResult with output, errors, and variables.
@@ -79,6 +83,7 @@ class BaseCodeEnvironment(BaseEnvironment, BaseClient):
         *,
         timeout: Optional[float] = None,
         vars: Optional[Dict[str, Any]] = None,
+        tools: Optional[Dict[str, ToolFunction]] = None,
     ) -> "ExecutionResult":
         """Execute an action in the environment asynchronously.
 
@@ -92,6 +97,8 @@ class BaseCodeEnvironment(BaseEnvironment, BaseClient):
                 Optional execution timeout in seconds.
             vars:
                 Optional dictionary of variables to inject.
+            tools:
+                Optional dictionary of tools available for this execution only.
 
         Returns:
             ExecutionResult with output, errors, and variables.
@@ -99,7 +106,7 @@ class BaseCodeEnvironment(BaseEnvironment, BaseClient):
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(
             None,
-            lambda: self(action, timeout=timeout, vars=vars),
+            lambda: self(action, timeout=timeout, vars=vars, tools=tools),
         )
 
     @abstractmethod
