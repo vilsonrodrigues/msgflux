@@ -5,6 +5,7 @@ from abc import abstractmethod
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Mapping, Optional, Union
 
 from msgflux._private.client import BaseClient
+from msgflux.environments.base import BaseEnvironment
 
 if TYPE_CHECKING:
     from msgflux.environments.code.response import ExecutionResult
@@ -13,7 +14,7 @@ if TYPE_CHECKING:
 ToolFunction = Callable[..., Any]
 
 
-class BaseCodeEnvironment(BaseClient):
+class BaseCodeEnvironment(BaseEnvironment, BaseClient):
     """Base class for all code environment implementations.
 
     A code environment provides isolated execution of code (typically Python)

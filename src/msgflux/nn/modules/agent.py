@@ -588,12 +588,9 @@ class Agent(Module, metaclass=AutoParams):
                 )
 
             # Handle environment calls
-            if flow_result.environment_call is not None and self.environment is not None:
-                env_call = flow_result.environment_call
-                tool_funcs = self._get_tool_functions() if env_call.inject_tools else {}
-                env_vars = vars if env_call.inject_vars else {}
-
-                result = self.environment(env_call.action, tools=tool_funcs, vars=env_vars)
+            env_call = flow_result.environment_call
+            if env_call is not None and self.environment is not None:
+                result = self._process_environment_call(env_call, vars)
 
                 # Inject environment result using schema method
                 if hasattr(flow_control, "inject_environment_result"):
@@ -626,6 +623,40 @@ class Agent(Module, metaclass=AutoParams):
                 messages=messages, model_preference=model_preference, vars=vars
             )
 
+    def _process_environment_call(
+        self,
+        env_call: Any,
+        vars: Mapping[str, Any],
+    ) -> Any:
+        """Process an environment call, executing code and returning the result.
+
+        Args:
+            env_call: EnvironmentCall with action and injection settings.
+            vars: Variables to inject into the environment.
+
+        Returns:
+            ExecutionResult from the environment.
+        """
+        tool_funcs = self._get_tool_functions() if env_call.inject_tools else {}
+        env_vars = vars if env_call.inject_vars else {}
+
+        result = self.environment(env_call.action, tools=tool_funcs, vars=env_vars)
+        return result
+
+    async def _aprocess_environment_call(
+        self,
+        env_call: Any,
+        vars: Mapping[str, Any],
+    ) -> Any:
+        """Async version of _process_environment_call."""
+        tool_funcs = self._get_tool_functions() if env_call.inject_tools else {}
+        env_vars = vars if env_call.inject_vars else {}
+
+        result = await self.environment.acall(
+            env_call.action, tools=tool_funcs, vars=env_vars
+        )
+        return result
+
     async def _aprocess_flow_control_response(
         self,
         model_response: Union[ModelResponse, ModelStreamResponse],
@@ -654,14 +685,9 @@ class Agent(Module, metaclass=AutoParams):
                 )
 
             # Handle environment calls
-            if flow_result.environment_call is not None and self.environment is not None:
-                env_call = flow_result.environment_call
-                tool_funcs = self._get_tool_functions() if env_call.inject_tools else {}
-                env_vars = vars if env_call.inject_vars else {}
-
-                result = await self.environment.acall(
-                    env_call.action, tools=tool_funcs, vars=env_vars
-                )
+            env_call = flow_result.environment_call
+            if env_call is not None and self.environment is not None:
+                result = await self._aprocess_environment_call(env_call, vars)
 
                 # Inject environment result using schema method
                 if hasattr(flow_control, "inject_environment_result"):
@@ -803,10 +829,6 @@ class Agent(Module, metaclass=AutoParams):
                 repr_str = f"[{self.name}][tool_call] {call[1]}: {call[2]}"
                 cprint(repr_str, bc="br2", ls="b")
 
-        # Check for sandbox-based code execution
-        if self.environment is not None:
-            tool_callings = self._process_sandbox_calls(tool_callings, vars)
-
         tool_results = self.tool_library(
             tool_callings=tool_callings,
             messages=messages,
@@ -823,47 +845,6 @@ class Agent(Module, metaclass=AutoParams):
                 repr_str = f"[{self.name}][tool_response] {call.name}: {result}"
                 cprint(repr_str, ls="b")
         return tool_results
-
-    def _process_sandbox_calls(
-        self,
-        tool_callings: List[Tuple[str, str, Any]],
-        vars: Mapping[str, Any],
-    ) -> List[Tuple[str, str, Any]]:
-        """Process sandbox calls, executing code and returning results.
-
-        When sandbox is configured, executes code in the Environment
-        with all ToolLibrary tools available.
-
-        Returns:
-            Modified tool_callings with sandbox results injected.
-        """
-        processed_calls = []
-
-        # Get tool functions from ToolLibrary to inject into sandbox
-        tool_funcs = self._get_tool_functions()
-
-        for call in tool_callings:
-            tool_id, tool_name, params = call
-
-            # If params has 'code', execute in sandbox
-            code = params.get("code", "") if isinstance(params, dict) else ""
-            if code:
-                result = self.environment(code, tools=tool_funcs, vars=vars)
-
-                # Inject result into params for the control flow to handle
-                params = {
-                    "_sandbox_result": {
-                        "success": result.success,
-                        "output": result.output,
-                        "error": result.error,
-                        "variables": result.variables,
-                        "return_value": result.return_value,
-                    }
-                }
-
-            processed_calls.append((tool_id, tool_name, params))
-
-        return processed_calls
 
     def _get_tool_functions(self) -> Dict[str, Any]:
         """Extract callable functions from ToolLibrary."""
@@ -887,10 +868,6 @@ class Agent(Module, metaclass=AutoParams):
                 repr_str = f"[{self.name}][tool_call] {call[1]}: {call[2]}"
                 cprint(repr_str, bc="br2", ls="b")
 
-        # Check for sandbox-based code execution
-        if self.environment is not None:
-            tool_callings = await self._aprocess_sandbox_calls(tool_callings, vars)
-
         tool_results = await self.tool_library.acall(
             tool_callings=tool_callings,
             messages=messages,
@@ -907,40 +884,6 @@ class Agent(Module, metaclass=AutoParams):
                 repr_str = f"[{self.name}][tool_response] {call.name}: {result}"
                 cprint(repr_str, ls="b")
         return tool_results
-
-    async def _aprocess_sandbox_calls(
-        self,
-        tool_callings: List[Tuple[str, str, Any]],
-        vars: Mapping[str, Any],
-    ) -> List[Tuple[str, str, Any]]:
-        """Async version of _process_sandbox_calls."""
-        processed_calls = []
-
-        # Get tool functions from ToolLibrary to inject into sandbox
-        tool_funcs = self._get_tool_functions()
-
-        for call in tool_callings:
-            tool_id, tool_name, params = call
-
-            # If params has 'code', execute in sandbox
-            code = params.get("code", "") if isinstance(params, dict) else ""
-            if code:
-                result = await self.environment.acall(code, tools=tool_funcs, vars=vars)
-
-                # Inject result into params for the control flow to handle
-                params = {
-                    "_sandbox_result": {
-                        "success": result.success,
-                        "output": result.output,
-                        "error": result.error,
-                        "variables": result.variables,
-                        "return_value": result.return_value,
-                    }
-                }
-
-            processed_calls.append((tool_id, tool_name, params))
-
-        return processed_calls
 
     def _prepare_response(
         self,

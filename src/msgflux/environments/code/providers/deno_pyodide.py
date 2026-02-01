@@ -64,6 +64,7 @@ class DenoPyodideSandbox(BasePythonEnvironment):
         allow_read: Optional[List[str]] = None,
         allow_write: Optional[List[str]] = None,
         tools: Optional[Dict[str, Any]] = None,
+        packages: Optional[List[str]] = None,
     ):
         """Initialize Deno+Pyodide environment.
 
@@ -79,22 +80,28 @@ class DenoPyodideSandbox(BasePythonEnvironment):
             tools:
                 Dictionary of tool name to callable. Tools are Python functions
                 that can be called from inside the environment.
+            packages:
+                List of Python packages to install via micropip on initialization.
+                Packages must be pure Python or have WebAssembly wheels available.
 
         Raises:
             SandboxConnectionError:
-                If Deno is not installed.
+                If Deno is not installed or package installation fails.
 
         Example:
-            >>> def search(query: str) -> str:
-            ...     return f"Results for {query}"
-            >>> env = Environments.code("python", tools={"search": search})
-            >>> env("result = search('python')")
+            >>> env = Environments.code(
+            ...     "python",
+            ...     packages=["matplotlib", "numpy"],
+            ...     tools={"search": search_fn}
+            ... )
+            >>> env("import matplotlib; print(matplotlib.__version__)")
         """
         self.timeout = timeout
         self.allow_network = allow_network
         self.allow_read = allow_read or []
         self.allow_write = allow_write or []
         self._tools: Dict[str, Any] = tools or {}
+        self._packages: List[str] = packages or []
 
         self._process: Optional[subprocess.Popen] = None
         self._request_id = 0
@@ -106,6 +113,10 @@ class DenoPyodideSandbox(BasePythonEnvironment):
         self._allow_cross_thread = False  # Used for async execution
 
         self._initialize()
+
+        # Install packages after initialization
+        if self._packages:
+            self._install_packages()
 
         # Register tools after initialization
         if self._tools:
@@ -258,6 +269,19 @@ class DenoPyodideSandbox(BasePythonEnvironment):
 
             # If we got JSON but not "ready", log and continue
             logger.debug(f"Unexpected init response: {response}")
+
+    def _install_packages(self):
+        """Install packages specified at initialization."""
+        for package in self._packages:
+            logger.debug(f"Installing package: {package}")
+            success = self.install_package(package)
+            if not success:
+                raise SandboxConnectionError(
+                    f"Failed to install package: {package}. "
+                    "Ensure the package is available for Pyodide (pure Python "
+                    "or has WebAssembly wheels)."
+                )
+            logger.info(f"Installed package: {package}")
 
     def _register_tools_in_sandbox(self):
         """Register all tools in the environment."""

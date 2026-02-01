@@ -2,13 +2,13 @@
 
 from typing import Any, Callable, Dict, Optional
 
-from msgflux.environments.code.base import BasePythonEnvironment
+from msgflux.environments.base import BaseEnvironment
 from msgflux.environments.code.response import ExecutionResult
 from msgflux.nn.modules.module import Module
 
 
 class Environment(Module):
-    r"""Environment for secure code execution with optional tool injection.
+    r"""Environment for secure code execution with tool injection.
 
     This module wraps a code environment (e.g., DenoPyodideSandbox) and provides
     a consistent interface for executing code with dynamically injected tools.
@@ -20,20 +20,23 @@ class Environment(Module):
         >>> from msgflux.nn import Environment
         >>> from msgflux.environments import Environments
         >>>
-        >>> # Create environment with a code environment
-        >>> env = Environment(environment=Environments.code("python"))
-        >>>
-        >>> # Execute code
-        >>> result = env("x = 1 + 2\nprint(x)")
-        >>> print(result.output)  # "3"
-        >>>
-        >>> # Execute with tools
+        >>> # Create environment with tools registered at init
         >>> def search(query: str) -> str:
         ...     return f"Results for: {query}"
         >>>
-        >>> result = env(
-        ...     "data = search('python')\nprint(data)",
+        >>> env = Environment(
+        ...     environment=Environments.code("python"),
         ...     tools={"search": search}
+        ... )
+        >>>
+        >>> # Execute code - tools are already available
+        >>> result = env("data = search('python')\nprint(data)")
+        >>> print(result.output)  # "Results for: python"
+        >>>
+        >>> # Or pass additional tools at execution time
+        >>> result = env(
+        ...     "x = add(1, 2)",
+        ...     tools={"add": lambda a, b: a + b}
         ... )
 
     For RL and agent workflows:
@@ -44,36 +47,44 @@ class Environment(Module):
 
     def __init__(
         self,
-        environment: Optional[BasePythonEnvironment] = None,
+        environment: BaseEnvironment,
+        *,
+        tools: Optional[Dict[str, Callable[..., Any]]] = None,
     ):
         """Initialize the Environment module.
 
         Args:
             environment:
                 A code environment instance for execution (e.g., DenoPyodideSandbox).
-                If None, code execution will raise an error.
                 The environment should have a `name` attribute that identifies it
                 as a tool (e.g., "execute_code", "python_interpreter").
+            tools:
+                Optional dictionary mapping tool names to callables.
+                These tools will be registered and available for all executions.
 
         Example:
             >>> from msgflux.environments import Environments
-            >>> env = Environment(environment=Environments.code("python"))
+            >>> env = Environment(
+            ...     environment=Environments.code("python"),
+            ...     tools={"search": search_fn, "calculate": calc_fn}
+            ... )
         """
         super().__init__()
         self._environment = environment
         self._registered_tools: Dict[str, Callable] = {}
 
+        if tools:
+            self._register_tools(tools)
+
     @property
-    def environment(self) -> Optional[BasePythonEnvironment]:
+    def environment(self) -> BaseEnvironment:
         """Get the underlying environment instance."""
         return self._environment
 
     @property
-    def name(self) -> Optional[str]:
+    def name(self) -> str:
         """Get the environment name (e.g., 'execute_code')."""
-        if self._environment is not None:
-            return self._environment.name
-        return None
+        return self._environment.name
 
     @property
     def registered_tools(self) -> Dict[str, Callable]:
@@ -109,20 +120,10 @@ class Environment(Module):
                 - return_value: Return value of last expression
                 - execution_time_ms: Execution time in milliseconds
 
-        Raises:
-            RuntimeError:
-                If no environment is configured.
-
         Example:
             >>> result = env("x = add(1, 2)", tools={"add": lambda a, b: a + b})
             >>> print(result.output)  # "3"
         """
-        if self._environment is None:
-            raise RuntimeError(
-                "No environment configured. "
-                "Pass an environment instance to Environment.__init__"
-            )
-
         # Register tools if provided
         if tools:
             self._register_tools(tools)
@@ -153,21 +154,11 @@ class Environment(Module):
         Returns:
             ExecutionResult with execution details.
 
-        Raises:
-            RuntimeError:
-                If no environment is configured.
-
         Example:
             >>> async def main():
             ...     result = await env.acall("print('hello')")
             ...     print(result.output)
         """
-        if self._environment is None:
-            raise RuntimeError(
-                "No environment configured. "
-                "Pass an environment instance to Environment.__init__"
-            )
-
         # Register tools if provided
         if tools:
             self._register_tools(tools)
@@ -195,14 +186,12 @@ class Environment(Module):
 
         Clears all registered tools and resets the environment state.
         """
-        if self._environment is not None:
-            self._environment.reset()
+        self._environment.reset()
         self._registered_tools.clear()
 
     def shutdown(self) -> None:
         """Shutdown the environment and release resources."""
-        if self._environment is not None:
-            self._environment.shutdown()
+        self._environment.shutdown()
         self._registered_tools.clear()
 
     def __enter__(self):
@@ -214,6 +203,6 @@ class Environment(Module):
         self.shutdown()
 
     def __repr__(self) -> str:
-        env_type = type(self._environment).__name__ if self._environment else "None"
+        env_type = type(self._environment).__name__
         tool_count = len(self._registered_tools)
         return f"Environment(environment={env_type}, tools={tool_count})"

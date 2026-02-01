@@ -121,13 +121,6 @@ class TestEnvironmentModule:
         assert "Environment" in repr_str
         assert "DenoPyodideSandbox" in repr_str
 
-    def test_no_environment_raises(self):
-        """Test that calling without environment raises."""
-        env = Environment(environment=None)
-
-        with pytest.raises(RuntimeError, match="No environment configured"):
-            env("x = 1")
-
 
 class TestEnvironmentsFactory:
     """Tests for Environments factory."""

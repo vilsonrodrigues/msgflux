@@ -1,5 +1,6 @@
 """Environments module for secure code execution."""
 
+from msgflux.environments.base import BaseEnvironment
 from msgflux.environments.code import (
     BaseCodeEnvironment,
     BasePythonEnvironment,
@@ -21,6 +22,7 @@ from msgflux.environments.exceptions import (
 
 __all__ = [
     "BaseCodeEnvironment",
+    "BaseEnvironment",
     "BasePythonEnvironment",
     "DenoPyodideSandbox",
     "Environments",

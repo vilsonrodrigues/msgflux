@@ -6,12 +6,13 @@ Code execution environments for LLM agents.
 
 ```
 environments/
+├── base.py              # BaseEnvironment (root class for all environments)
 ├── code/
 │   ├── base.py          # BaseCodeEnvironment, BasePythonEnvironment
 │   ├── registry.py      # Environments factory
 │   ├── response.py      # ExecutionResult
 │   └── providers/
-│       └── python.py    # DenoPyodideSandbox
+│       └── deno_pyodide.py  # DenoPyodideSandbox
 └── exceptions.py        # Error types
 ```
 
