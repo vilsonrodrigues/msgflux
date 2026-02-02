@@ -1,3 +1,4 @@
+import asyncio
 from copy import deepcopy
 from datetime import datetime, timezone
 from typing import (
@@ -35,6 +36,7 @@ from msgflux.message import Message
 from msgflux.models.gateway import ModelGateway
 from msgflux.models.response import ModelResponse, ModelStreamResponse
 from msgflux.models.types import ChatCompletionModel
+from msgflux.nn import functional as F
 from msgflux.nn.modules.environment import Environment
 from msgflux.nn.modules.lm import LM
 from msgflux.nn.modules.module import Module
@@ -562,6 +564,159 @@ class Agent(Module, metaclass=AutoParams):
         else:
             raise ValueError(f"Unsupported `response_type={response_type}`")
 
+    def _check_return_directly(
+        self,
+        tool_results: Optional[ToolResponses],
+        reasoning: Optional[str],
+    ) -> Optional[dotdict]:
+        """Check if tool_results has return_directly and format response.
+
+        Args:
+            tool_results: Results from tool execution.
+            reasoning: The reasoning from flow_result.
+
+        Returns:
+            Formatted tool_responses if return_directly, None otherwise.
+        """
+        if tool_results and tool_results.return_directly:
+            tool_calls = tool_results.to_dict()
+            tool_calls.pop("return_directly")
+            tool_calls["reasoning"] = reasoning
+            return dotdict(tool_responses=tool_calls)
+        return None
+
+    def _log_flow_reasoning(self, reasoning: Optional[str]) -> None:
+        """Log flow control reasoning if verbose mode is enabled."""
+        if self.config.get("verbose", False) and reasoning:
+            cprint(
+                f"[{self.name}][flow_control_reasoning] {reasoning}",
+                bc="br2",
+                ls="b",
+            )
+
+    def _inject_and_build_history(
+        self,
+        flow_control: FlowControl,
+        raw_response: Mapping[str, Any],
+        messages: List[Mapping[str, Any]],
+        env_result: Optional[Any] = None,
+        tool_results: Optional[ToolResponses] = None,
+    ) -> List[Mapping[str, Any]]:
+        """Inject environment/tool results and build history.
+
+        Args:
+            flow_control: The FlowControl schema.
+            raw_response: The raw model response.
+            messages: Current message history.
+            env_result: Optional environment execution result.
+            tool_results: Optional tool execution results.
+
+        Returns:
+            Updated messages with history appended.
+        """
+        # Inject environment result
+        has_inject_env = hasattr(flow_control, "inject_environment_result")
+        if env_result is not None and has_inject_env:
+            raw_response = flow_control.inject_environment_result(
+                raw_response, env_result.to_dict()
+            )
+
+        # Inject tool results
+        if tool_results is not None:
+            raw_response = flow_control.inject_tool_results(raw_response, tool_results)
+
+        # Build history
+        return flow_control.build_history(raw_response, messages)
+
+    async def _ainject_and_build_history(
+        self,
+        flow_control: FlowControl,
+        raw_response: Mapping[str, Any],
+        messages: List[Mapping[str, Any]],
+        env_result: Optional[Any] = None,
+        tool_results: Optional[ToolResponses] = None,
+    ) -> List[Mapping[str, Any]]:
+        """Async version of _inject_and_build_history."""
+        # Inject environment result
+        has_inject_env = hasattr(flow_control, "inject_environment_result")
+        if env_result is not None and has_inject_env:
+            raw_response = flow_control.inject_environment_result(
+                raw_response, env_result.to_dict()
+            )
+
+        # Inject tool results
+        if tool_results is not None:
+            raw_response = await flow_control.ainject_tool_results(
+                raw_response, tool_results
+            )
+
+        # Build history
+        return await flow_control.abuild_history(raw_response, messages)
+
+    def _execute_flow_actions(
+        self,
+        env_call: Optional[Any],
+        tool_calls: Optional[List],
+        messages: List[Mapping[str, Any]],
+        vars: Mapping[str, Any],
+    ) -> Tuple[Optional[Any], Optional[ToolResponses]]:
+        """Execute environment call and/or tool calls.
+
+        Executes in parallel when both are present.
+
+        Args:
+            env_call: Optional EnvironmentCall to execute.
+            tool_calls: Optional list of tool calls.
+            messages: Current message history.
+            vars: Variables for execution.
+
+        Returns:
+            Tuple of (env_result, tool_results).
+        """
+        has_env_call = env_call is not None and self.environment is not None
+        has_tool_calls = bool(tool_calls)
+
+        if has_env_call and has_tool_calls:
+            # Execute both in parallel
+            return F.scatter_gather(
+                [
+                    lambda ec=env_call, v=vars: self._process_environment_call(ec, v),
+                    lambda tc=tool_calls, m=messages, v=vars: (
+                        self._process_tool_call(tc, m, v)
+                    ),
+                ]
+            )
+        elif has_env_call:
+            return self._process_environment_call(env_call, vars), None
+        elif has_tool_calls:
+            return None, self._process_tool_call(tool_calls, messages, vars)
+
+        return None, None
+
+    async def _aexecute_flow_actions(
+        self,
+        env_call: Optional[Any],
+        tool_calls: Optional[List],
+        messages: List[Mapping[str, Any]],
+        vars: Mapping[str, Any],
+    ) -> Tuple[Optional[Any], Optional[ToolResponses]]:
+        """Async version of _execute_flow_actions."""
+        has_env_call = env_call is not None and self.environment is not None
+        has_tool_calls = bool(tool_calls)
+
+        if has_env_call and has_tool_calls:
+            # Execute both in parallel
+            return await asyncio.gather(
+                self._aprocess_environment_call(env_call, vars),
+                self._aprocess_tool_call(tool_calls, messages, vars),
+            )
+        elif has_env_call:
+            return await self._aprocess_environment_call(env_call, vars), None
+        elif has_tool_calls:
+            return None, await self._aprocess_tool_call(tool_calls, messages, vars)
+
+        return None, None
+
     def _process_flow_control_response(
         self,
         model_response: Union[ModelResponse, ModelStreamResponse],
@@ -573,51 +728,32 @@ class Agent(Module, metaclass=AutoParams):
         flow_control = self.generation_schema
         while True:
             raw_response = self._extract_raw_response(model_response)
-
-            # Use FlowControl interface via generation_schema
             flow_result = flow_control.extract_flow_result(raw_response)
 
             if flow_result.is_complete:
                 return model_response, messages
 
-            if self.config.get("verbose", False) and flow_result.reasoning:
-                cprint(
-                    f"[{self.name}][flow_control_reasoning] {flow_result.reasoning}",
-                    bc="br2",
-                    ls="b",
-                )
+            self._log_flow_reasoning(flow_result.reasoning)
 
-            # Handle environment calls
-            env_call = flow_result.environment_call
-            if env_call is not None and self.environment is not None:
-                result = self._process_environment_call(env_call, vars)
+            # Execute environment and/or tool calls
+            env_result, tool_results = self._execute_flow_actions(
+                flow_result.environment_call,
+                flow_result.tool_calls,
+                messages,
+                vars,
+            )
 
-                # Inject environment result using schema method
-                if hasattr(flow_control, "inject_environment_result"):
-                    raw_response = flow_control.inject_environment_result(
-                        raw_response, result.to_dict()
-                    )
+            # Check for return_directly
+            direct_response = self._check_return_directly(
+                tool_results, flow_result.reasoning
+            )
+            if direct_response:
+                return direct_response, messages
 
-                # Build history
-                messages = flow_control.build_history(raw_response, messages)
-
-            # Handle tool calls
-            elif flow_result.tool_calls:
-                tool_results = self._process_tool_call(
-                    flow_result.tool_calls, messages, vars
-                )
-
-                if tool_results.return_directly:
-                    tool_calls = tool_results.to_dict().pop("return_directly")
-                    tool_calls["reasoning"] = flow_result.reasoning
-                    tool_responses = dotdict(tool_responses=tool_calls)
-                    return tool_responses, messages
-
-                # Use interface to inject results
-                raw_response = flow_control.inject_tool_results(raw_response, tool_results)
-
-                # Use interface to build history
-                messages = flow_control.build_history(raw_response, messages)
+            # Inject results and build history
+            messages = self._inject_and_build_history(
+                flow_control, raw_response, messages, env_result, tool_results
+            )
 
             model_response = self._execute_model(
                 messages=messages, model_preference=model_preference, vars=vars
@@ -664,59 +800,36 @@ class Agent(Module, metaclass=AutoParams):
         vars: Mapping[str, Any],
         model_preference: Optional[str] = None,
     ) -> Tuple[Union[str, Mapping[str, Any], ModelStreamResponse], Mapping[str, Any]]:
-        """Async version of _process_flow_control_response.
-        Handle flow control responses using the FlowControl interface.
-        """
+        """Async version of _process_flow_control_response."""
         flow_control = self.generation_schema
         while True:
             raw_response = self._extract_raw_response(model_response)
-
-            # Use FlowControl interface via generation_schema (async)
             flow_result = await flow_control.aextract_flow_result(raw_response)
 
             if flow_result.is_complete:
                 return model_response, messages
 
-            if self.config.get("verbose", False) and flow_result.reasoning:
-                cprint(
-                    f"[{self.name}][flow_control_reasoning] {flow_result.reasoning}",
-                    bc="br2",
-                    ls="b",
-                )
+            self._log_flow_reasoning(flow_result.reasoning)
 
-            # Handle environment calls
-            env_call = flow_result.environment_call
-            if env_call is not None and self.environment is not None:
-                result = await self._aprocess_environment_call(env_call, vars)
+            # Execute environment and/or tool calls
+            env_result, tool_results = await self._aexecute_flow_actions(
+                flow_result.environment_call,
+                flow_result.tool_calls,
+                messages,
+                vars,
+            )
 
-                # Inject environment result using schema method
-                if hasattr(flow_control, "inject_environment_result"):
-                    raw_response = flow_control.inject_environment_result(
-                        raw_response, result.to_dict()
-                    )
+            # Check for return_directly
+            direct_response = self._check_return_directly(
+                tool_results, flow_result.reasoning
+            )
+            if direct_response:
+                return direct_response, messages
 
-                # Build history (async version)
-                messages = await flow_control.abuild_history(raw_response, messages)
-
-            # Handle tool calls
-            elif flow_result.tool_calls:
-                tool_results = await self._aprocess_tool_call(
-                    flow_result.tool_calls, messages, vars
-                )
-
-                if tool_results.return_directly:
-                    tool_calls = tool_results.to_dict().pop("return_directly")
-                    tool_calls["reasoning"] = flow_result.reasoning
-                    tool_responses = dotdict(tool_responses=tool_calls)
-                    return tool_responses, messages
-
-                # Use interface to inject results (async version)
-                raw_response = await flow_control.ainject_tool_results(
-                    raw_response, tool_results
-                )
-
-                # Use interface to build history (async version)
-                messages = await flow_control.abuild_history(raw_response, messages)
+            # Inject results and build history
+            messages = await self._ainject_and_build_history(
+                flow_control, raw_response, messages, env_result, tool_results
+            )
 
             model_response = await self._aexecute_model(
                 messages=messages, model_preference=model_preference, vars=vars
