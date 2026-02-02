@@ -75,14 +75,12 @@ For each function call return a encoded json object with function name and argum
 class ToolCall(Struct):
     """A tool call representation.
 
-    The `id` field is used to correlate tool calls with their results.
-    IDs are generated automatically by `extract_flow_result` using short UUIDs.
+    The model generates `name` and `arguments`. The `id` and `result` fields
+    are injected by the system during flow control processing.
     """
 
     name: str
     arguments: Optional[Any] = None
-    id: Optional[str] = None
-    result: Optional[Any] = None
 
 
 class ReActStep(Struct):
