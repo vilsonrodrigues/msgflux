@@ -230,7 +230,9 @@ DEFAULT_QUERY_LLM = {
     "signature": "query, context: Optional[str] -> response",
     "description": (
         "Query a sub-LLM for semantic analysis. "
-        "Use for understanding meaning, summarization, or extraction."
+        "Use for understanding meaning, summarization, or extraction. "
+        "IMPORTANT: Always use keyword arguments. "
+        "Example: query_llm(query='What is X?', context=my_text)"
     ),
     "instructions": (
         "You are a helpful assistant that answers queries based on the provided context. "
@@ -280,7 +282,35 @@ def make_rlm_tools(
     # Merge config with defaults
     config = {**DEFAULT_QUERY_LLM, **(query_config or {})}
 
-    query_llm_impl = Agent(model=sub_lm, **config)
+    query_llm_agent = Agent(model=sub_lm, **config)
+
+    class QueryLLM:
+        """Query a sub-LLM for semantic analysis."""
+
+        name = "query_llm"
+        description = (
+            "Query a sub-LLM for semantic analysis. "
+            "Use for understanding meaning, summarization, or extraction."
+        )
+
+        def __init__(self, agent: Optional[Callable] = None):
+            self._agent = agent if agent else query_llm_agent
+
+        def __call__(self, query: str, context: str = "") -> str:
+            """Query the sub-LLM.
+
+            Args:
+                query: The question or task for the LLM.
+                context: Optional context to analyze.
+
+            Returns:
+                The LLM's response as a string.
+            """
+            return self._agent(query=query, context=context)
+
+        async def acall(self, query: str, context: str = "") -> str:
+            """Async version of __call__."""
+            return await self._agent.acall(query=query, context=context)
 
     class BatchedQueryLLM:
         """Query a sub-LLM with multiple prompts concurrently."""
@@ -291,14 +321,14 @@ def make_rlm_tools(
             "Much faster than calling query_llm multiple times sequentially."
         )
 
-        def __init__(self, query_llm: Optional[Callable] = None):
-            self._query_llm = query_llm if query_llm else query_llm_impl
+        def __init__(self, query_llm_instance: Optional[Callable] = None):
+            self._query_llm = query_llm_instance if query_llm_instance else QueryLLM()
 
         def __call__(
             self,
-            queries: List[str],
-            contexts: Optional[List[str]] = None,
-        ) -> List[str]:
+            queries: list[str],
+            contexts: list[str] | None = None,
+        ) -> list[str]:
             """Query the sub-LLM with multiple prompts concurrently.
 
             Args:
@@ -327,16 +357,19 @@ def make_rlm_tools(
             ]
 
             # Execute in parallel
-            results = F.map_gather(self._query_llm, kwargs_list=kwargs_list)
+            args_list = [() for _ in queries]  # Empty positional args
+            results = F.map_gather(
+                self._query_llm, args_list=args_list, kwargs_list=kwargs_list
+            )
 
             # Convert to list of strings, handling None for errors
             return [str(r) if r is not None else "[ERROR] Query failed" for r in results]
 
         async def acall(
             self,
-            queries: List[str],
-            contexts: Optional[List[str]] = None,
-        ) -> List[str]:
+            queries: list[str],
+            contexts: list[str] | None = None,
+        ) -> list[str]:
             """Async version of __call__."""
             if not queries:
                 return []
@@ -356,14 +389,15 @@ def make_rlm_tools(
             ]
 
             # Execute in parallel
+            args_list = [() for _ in queries]  # Empty positional args
             results = await F.amap_gather(
-                self._query_llm.acall, kwargs_list=kwargs_list
+                self._query_llm.acall, args_list=args_list, kwargs_list=kwargs_list
             )
 
             # Convert to list of strings, handling None for errors
             return [str(r) if r is not None else "[ERROR] Query failed" for r in results]
 
     return {
-        "query_llm": query_llm_impl,
+        "query_llm": QueryLLM(),
         "batched_query_llm": BatchedQueryLLM(),
     }
