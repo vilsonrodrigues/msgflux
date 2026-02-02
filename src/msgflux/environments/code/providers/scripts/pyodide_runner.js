@@ -307,9 +307,8 @@ for name in dir(__main__):
     }
 
     const errorType = error.type || error.name || "Error";
-    const errorMessage = (error.message || "").trim();
 
-    // Get error args for Python exceptions
+    // Get error args for Python exceptions (contains the actual error message)
     let errorArgs = [];
     if (errorType !== "SyntaxError") {
       try {
@@ -318,6 +317,18 @@ for name in dir(__main__):
           errorArgs = JSON.parse(argsJson) || [];
         }
       } catch {}
+    }
+
+    // Extract error message: prefer args (clean message), fallback to error.message
+    let errorMessage = "";
+    if (errorArgs.length > 0) {
+      errorMessage = String(errorArgs[0]);
+    } else if (typeof error.message === "string") {
+      // Extract last line from traceback (the actual error message)
+      const lines = error.message.trim().split("\n");
+      errorMessage = lines[lines.length - 1] || error.message;
+    } else {
+      errorMessage = String(error.message || error);
     }
 
     const errorCode = JSONRPC_APP_ERRORS[errorType] || JSONRPC_APP_ERRORS.Unknown;
@@ -419,22 +430,34 @@ function handleMountFile(params) {
 }
 
 function handleReset() {
-  // Clear variables
+  // Clear sandbox variables
   pyodide.runPython("_clear_vars()");
 
   // Get registered tool names to preserve
   const toolNames = Array.from(registeredTools.keys());
 
-  // Clear __main__ namespace except tools
+  // Clear user-defined names in __main__ namespace
+  // Preserve: built-in modules, tools, and internal functions
   pyodide.runPython(`
 import __main__
+import sys
 _keep_names = ${JSON.stringify(toolNames)}
+_builtin_modules = {'sys', 'io', 'json', 'os', 'math', 'builtins'}
 for name in list(dir(__main__)):
-    if not name.startswith('_') and name not in _keep_names:
-        try:
-            delattr(__main__, name)
-        except:
-            pass
+    if name.startswith('_'):
+        continue
+    if name in _keep_names:
+        continue
+    if name in _builtin_modules:
+        continue
+    try:
+        obj = getattr(__main__, name)
+        # Keep modules and callable internals
+        if hasattr(obj, '__module__') and obj.__module__ != '__main__':
+            continue
+        delattr(__main__, name)
+    except:
+        pass
 `);
 
   return { success: true };

@@ -24,6 +24,7 @@ from msgflux.environments.exceptions import (
     SandboxTimeoutError,
     VariableSizeLimitError,
 )
+from msgflux.envs import envs
 from msgflux.logger import logger
 
 # Maximum variable size for Pyodide FFI (100MB)
@@ -171,8 +172,12 @@ class DenoPyodideSandbox(BasePythonEnvironment):
         cmd.append(f"--allow-read={','.join(read_paths)}")
 
         # Write permissions
-        if self.allow_write:
-            cmd.append(f"--allow-write={','.join(self.allow_write)}")
+        write_paths = list(self.allow_write) if self.allow_write else []
+        # Add Deno cache write permission if enabled via env var
+        if envs.deno_allow_cache_write and deno_cache:
+            write_paths.append(deno_cache)
+        if write_paths:
+            cmd.append(f"--allow-write={','.join(write_paths)}")
 
         # Network permissions - always allow Pyodide CDN for package downloads
         # User can expand with allow_network=True for full access
@@ -467,6 +472,11 @@ class DenoPyodideSandbox(BasePythonEnvironment):
                     if not response_line:
                         continue
 
+                    # Skip non-JSON lines (Pyodide loading messages)
+                    if not response_line.startswith("{"):
+                        logger.debug(f"Pyodide message: {response_line}")
+                        continue
+
                     response = json.loads(response_line)
 
                     # Check if this is a tool call request from the environment
@@ -566,7 +576,12 @@ class DenoPyodideSandbox(BasePythonEnvironment):
         if "error" in response:
             error_info = response["error"]
             if isinstance(error_info, dict):
-                error_type = error_info.get("type", "Error")
+                # Error type is in data.type (JSON-RPC format from pyodide_runner.js)
+                error_data = error_info.get("data", {})
+                if isinstance(error_data, dict):
+                    error_type = error_data.get("type", "Error")
+                else:
+                    error_type = "Error"
                 error_message = error_info.get("message", "")
                 error_msg = f"{error_type}: {error_message}"
             else:

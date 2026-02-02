@@ -151,9 +151,10 @@ ignore = [
 unfixable = ["F401"]
 
 [tool.ruff.lint.per-file-ignores]
-# Allow vars parameter name in agent and tool modules (core library feature)
+# Allow vars parameter name (core library feature for variable injection)
 "src/msgflux/nn/modules/agent.py" = ["A001","A002"]
 "src/msgflux/nn/modules/tool.py" = ["A001","A002"]
+"src/msgflux/environments/**/*.py" = ["A002"]
 # Allow MCP protocol's camelCase naming convention
 "src/msgflux/protocols/mcp/types.py" = ["N815"]
 "tests/**/*" = [

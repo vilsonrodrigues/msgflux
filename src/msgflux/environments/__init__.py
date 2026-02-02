@@ -19,14 +19,17 @@ from msgflux.environments.exceptions import (
     SandboxTimeoutError,
     VariableSizeLimitError,
 )
+from msgflux.environments.pool import EnvironmentPool, PooledEnvironmentContext
 
 __all__ = [
     "BaseCodeEnvironment",
     "BaseEnvironment",
     "BasePythonEnvironment",
     "DenoPyodideSandbox",
+    "EnvironmentPool",
     "Environments",
     "ExecutionResult",
+    "PooledEnvironmentContext",
     "SandboxConnectionError",
     "SandboxError",
     "SandboxMemoryError",

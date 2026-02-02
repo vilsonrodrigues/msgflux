@@ -97,11 +97,13 @@ class TestEnvironmentModule:
             pytest.skip(f"Deno not available: {e}")
 
     def test_error_handling(self, env):
-        """Test error handling."""
+        """Test error handling with proper error formatting."""
         result = env("x = undefined_var")
 
         assert not result.success
         assert result.error is not None
+        assert "NameError" in result.error
+        assert "undefined_var" in result.error
 
     def test_reset(self, env):
         """Test environment reset."""

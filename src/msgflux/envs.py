@@ -96,5 +96,10 @@ class EnvironmentVariables(BaseSettings):
     # Model profiles cache TTL in seconds (24 hours default)
     profile_cache_ttl: int = 86400
 
+    # Deno environment: allow writing to Deno cache for package caching
+    # If True, packages installed via micropip are cached locally
+    # If False (default), packages are downloaded on each environment creation
+    deno_allow_cache_write: bool = False
+
 
 envs = EnvironmentVariables()
