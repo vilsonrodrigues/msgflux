@@ -7,6 +7,7 @@ Code execution environments for LLM agents.
 ```
 environments/
 ├── base.py              # BaseEnvironment (root class for all environments)
+├── pool.py              # EnvironmentPool for reuse and warmup
 ├── code/
 │   ├── base.py          # BaseCodeEnvironment, BasePythonEnvironment
 │   ├── registry.py      # Environments factory
@@ -27,7 +28,7 @@ Standardized response from code execution:
 class ExecutionResult:
     success: bool                    # Execution succeeded
     output: Optional[str]            # stdout
-    error: Optional[str]             # Error message
+    error: Optional[str]             # Error message (e.g., "NameError: name 'x' is not defined")
     return_value: Optional[Any]      # Last expression value
     variables: Dict[str, Any]        # Variables after execution
     execution_time_ms: Optional[float]
@@ -41,9 +42,8 @@ Abstract base for all environments:
 
 ```python
 class BaseCodeEnvironment:
-    def __call__(self, action: str, *, timeout=None, vars=None) -> ExecutionResult
-    async def acall(self, action: str, *, timeout=None, vars=None) -> ExecutionResult
-    def register_tool(self, name: str, func: Callable)
+    def __call__(self, action: str, *, timeout=None, vars=None, tools=None) -> ExecutionResult
+    async def acall(self, action: str, *, timeout=None, vars=None, tools=None) -> ExecutionResult
     def reset(self) -> None
     def shutdown(self) -> None
 ```
@@ -56,13 +56,68 @@ from msgflux.environments import Environments
 # Create Python environment
 env = Environments.code("python", timeout=30.0)
 
-# With tools
-env = Environments.code("python", tools={"search": search_fn})
+# With packages pre-installed
+env = Environments.code("python", packages=["numpy", "pandas"])
 
 # List available
 Environments.list_types()      # ["python"]
 Environments.list_providers("python")  # ["deno_pyodide"]
 ```
+
+## Environment Pooling
+
+For efficient reuse of environments across multiple executions:
+
+```python
+from msgflux.environments import EnvironmentPool, Environments
+
+# Create pool with pre-installed packages
+pool = EnvironmentPool(
+    factory=lambda: Environments.code("python", timeout=60.0),
+    packages=["numpy", "pandas"],
+    min_size=2,      # Pre-warm 2 environments
+    max_size=10,     # Maximum pool size
+    idle_timeout=300.0,  # Remove idle envs after 5 min
+)
+
+# Acquire and use
+env = pool.acquire()
+result = env("import numpy; print(numpy.__version__)")
+pool.release(env)
+
+# Or use context manager
+with pool.acquire() as env:
+    result = env("print('hello')")
+
+# Cleanup
+pool.close()
+```
+
+### Pool Statistics
+
+```python
+stats = pool.stats
+# {
+#     "created": 5,
+#     "acquired": 100,
+#     "released": 100,
+#     "destroyed": 2,
+#     "cache_hits": 95,
+#     "cache_misses": 5,
+#     "pool_size": 3,
+#     "in_use": 2,
+# }
+```
+
+## Package Caching
+
+By default, packages are downloaded on each environment creation. To enable local caching:
+
+```bash
+export MSGFLUX_DENO_ALLOW_CACHE_WRITE=true
+```
+
+This allows Deno to write package wheels to its cache directory, speeding up subsequent environment creations.
 
 ## Integration with Agent
 
@@ -160,12 +215,16 @@ Wrapper for code environments in neural module system:
 ```python
 from msgflux.nn import Environment
 
-env = Environment(environment=Environments.code("python"))
+# With init tools (available in all executions)
+env = Environment(
+    environment=Environments.code("python"),
+    tools={"search": search_fn}
+)
 
-# Execute with tools
+# Execute with additional tools
 result = env(
     "data = search('query')\nprint(data)",
-    tools={"search": search_fn},
+    tools={"extra": extra_fn},  # Merged with init tools
     vars={"context": "..."}
 )
 
@@ -175,8 +234,9 @@ result = await env.acall(code, tools=tools, vars=vars)
 
 Properties:
 - `env.name` - Environment identifier (e.g., "execute_code")
+- `env.environment_type` - Type (e.g., "python")
 - `env.environment` - Underlying implementation
-- `env.registered_tools` - Currently registered tools
+- `env.tools` - Init tools configured at creation
 
 ## DenoPyodideSandbox
 
@@ -190,7 +250,7 @@ env = Environments.code(
     allow_network=False,
     allow_read=["/path"],
     allow_write=["/path"],
-    tools={"fn": callable}
+    packages=["numpy", "pandas"],
 )
 ```
 
@@ -240,6 +300,12 @@ Generic naming allows future non-Python environments (browser, terminal).
 - Decouples Agent from schema internals
 - Each schema decides how to present results to LLM
 
+### Why tools per-execution instead of permanent registration?
+
+- Avoids need to "unregister" tools
+- Clear scope: tools available for specific execution
+- Init tools provide defaults, execution tools override
+
 ## Template Variables
 
 FlowControl schemas receive via Jinja:
@@ -279,6 +345,12 @@ from msgflux.environments.exceptions import (
 )
 ```
 
+Error messages are properly formatted:
+```python
+result = env("x = undefined_var")
+print(result.error)  # "NameError: name 'undefined_var' is not defined"
+```
+
 ## Adding New Environment Types
 
 1. Create provider in `environments/code/providers/`:
@@ -293,7 +365,7 @@ class MyEnvironment(BaseCodeEnvironment):
     provider = "playwright"
     name = "browser_action"
 
-    def __call__(self, action, *, timeout=None, vars=None):
+    def __call__(self, action, *, timeout=None, vars=None, tools=None):
         # Execute action
         return ExecutionResult(...)
 ```
