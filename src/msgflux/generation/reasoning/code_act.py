@@ -36,7 +36,7 @@ by calling tools and computes the correct answer.
 
 For each step, provide:
 - `thought`: Your reasoning about the current situation and plan for next steps
-- `actions`: A code block with Python code to execute
+- `code`: Python code to execute
 
 When you have computed and verified the final answer, provide:
 - `final_answer`: The complete answer to the task
@@ -91,26 +91,16 @@ Standard Python libraries are available: re, json, collections, math, etc.
 """
 
 
-class CodeCall(Struct):
-    """A code execution request.
-
-    Attributes:
-        code: Python code to execute in the environment.
-    """
-
-    code: str
-
-
 class CodeActStep(Struct):
     """A single step in CodeAct reasoning.
 
     Attributes:
         thought: The agent's reasoning about current situation and plan.
-        actions: The code to execute with tools.
+        code: Python code to execute in the environment.
     """
 
     thought: str
-    actions: CodeCall
+    code: str
 
 
 class CodeAct(Struct, FlowControl):
@@ -147,7 +137,7 @@ class CodeAct(Struct, FlowControl):
         >>> # print(result)
 
     Attributes:
-        current_step: The current reasoning step with thought and actions.
+        current_step: The current reasoning step with thought and code.
         final_answer: The final answer when reasoning is complete.
     """
 
@@ -162,7 +152,7 @@ class CodeAct(Struct, FlowControl):
         """Extract flow information from CodeAct response.
 
         If `final_answer` is present, the flow is complete.
-        If `current_step` with `actions.code` is present, create an environment call.
+        If `current_step` with `code` is present, create an environment call.
         """
         final_answer = raw_response.get("final_answer")
         if final_answer is not None:
@@ -173,8 +163,7 @@ class CodeAct(Struct, FlowControl):
 
         current_step = raw_response.get("current_step")
         if current_step is not None:
-            actions = current_step.get("actions", {})
-            code = actions.get("code", "") if isinstance(actions, dict) else ""
+            code = current_step.get("code", "")
             thought = current_step.get("thought", "")
 
             if code:
@@ -208,18 +197,16 @@ class CodeAct(Struct, FlowControl):
                 - error: Optional[str]
 
         Returns:
-            Updated raw_response with result injected into actions.result.
+            Updated raw_response with result injected into current_step.result.
         """
         current_step = raw_response.get("current_step")
         if current_step is not None:
-            actions = current_step.get("actions")
-            if actions is not None:
-                if result.get("success"):
-                    output = result.get("output", "").strip()
-                    actions["result"] = output if output else "(no output)"
-                else:
-                    error = result.get("error", "Unknown error")
-                    actions["result"] = f"Error: {error}"
+            if result.get("success"):
+                output = result.get("output", "").strip()
+                current_step["result"] = output if output else "(no output)"
+            else:
+                error = result.get("error", "Unknown error")
+                current_step["result"] = f"Error: {error}"
 
         return raw_response
 
@@ -245,7 +232,7 @@ class CodeAct(Struct, FlowControl):
     ) -> List[Mapping[str, Any]]:
         """Build history message for next iteration.
 
-        Accumulates the trajectory of (thought, actions, result) steps.
+        Accumulates the trajectory of (thought, code, result) steps.
         """
         if messages and messages[-1].get("role") == "assistant":
             # Append to existing trajectory

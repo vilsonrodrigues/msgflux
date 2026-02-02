@@ -11,21 +11,11 @@ from msgflux.generation.reasoning.code_act import (
     CODEACT_TOOLS_TEMPLATE,
     CodeAct,
     CodeActStep,
-    CodeCall,
 )
 
 
 class TestCodeActStructure:
     """Tests for CodeAct data structures."""
-
-    def test_code_call_is_struct(self):
-        """Test that CodeCall is a Struct."""
-        assert issubclass(CodeCall, Struct)
-
-    def test_code_call_has_required_fields(self):
-        """Test that CodeCall has required fields."""
-        code_call = CodeCall(code="print('hello')")
-        assert code_call.code == "print('hello')"
 
     def test_code_act_step_is_struct(self):
         """Test that CodeActStep is a Struct."""
@@ -35,10 +25,10 @@ class TestCodeActStructure:
         """Test that CodeActStep has required fields."""
         step = CodeActStep(
             thought="I need to search for information",
-            actions=CodeCall(code="result = search('query')"),
+            code="result = search('query')",
         )
         assert step.thought == "I need to search for information"
-        assert step.actions.code == "result = search('query')"
+        assert step.code == "result = search('query')"
 
 
 class TestCodeActFlowControl:
@@ -69,7 +59,7 @@ class TestCodeActFlowControl:
         raw_response = {
             "current_step": {
                 "thought": "I need to search for information",
-                "actions": {"code": "result = search('Python')\nprint(result)"},
+                "code": "result = search('Python')\nprint(result)",
             },
             "final_answer": None,
         }
@@ -95,7 +85,7 @@ class TestCodeActFlowControl:
         raw_response = {
             "current_step": {
                 "thought": "Search for info",
-                "actions": {"code": "result = search('query')\nprint(result)"},
+                "code": "result = search('query')\nprint(result)",
             },
             "final_answer": None,
         }
@@ -103,14 +93,14 @@ class TestCodeActFlowControl:
         result = {"success": True, "output": "Found: Python documentation\n", "error": None}
         updated = CodeAct.inject_environment_result(raw_response, result)
 
-        assert updated["current_step"]["actions"]["result"] == "Found: Python documentation"
+        assert updated["current_step"]["result"] == "Found: Python documentation"
 
     def test_inject_environment_result_error(self):
         """Test injecting error result."""
         raw_response = {
             "current_step": {
                 "thought": "Search for info",
-                "actions": {"code": "result = undefined_function()"},
+                "code": "result = undefined_function()",
             },
             "final_answer": None,
         }
@@ -122,15 +112,15 @@ class TestCodeActFlowControl:
         }
         updated = CodeAct.inject_environment_result(raw_response, result)
 
-        assert "Error:" in updated["current_step"]["actions"]["result"]
-        assert "NameError" in updated["current_step"]["actions"]["result"]
+        assert "Error:" in updated["current_step"]["result"]
+        assert "NameError" in updated["current_step"]["result"]
 
     def test_inject_environment_result_no_output(self):
         """Test injecting result with no output."""
         raw_response = {
             "current_step": {
                 "thought": "Assign variable",
-                "actions": {"code": "x = 42"},
+                "code": "x = 42",
             },
             "final_answer": None,
         }
@@ -138,11 +128,11 @@ class TestCodeActFlowControl:
         result = {"success": True, "output": "", "error": None}
         updated = CodeAct.inject_environment_result(raw_response, result)
 
-        assert updated["current_step"]["actions"]["result"] == "(no output)"
+        assert updated["current_step"]["result"] == "(no output)"
 
     def test_inject_tool_results_noop(self):
         """Test inject_tool_results does nothing (CodeAct uses environment)."""
-        raw_response = {"current_step": {"thought": "Test", "actions": {}}, "final_answer": None}
+        raw_response = {"current_step": {"thought": "Test", "code": ""}, "final_answer": None}
         mock_results = MagicMock()
 
         result = CodeAct.inject_tool_results(raw_response, mock_results)
@@ -154,7 +144,8 @@ class TestCodeActFlowControl:
         raw_response = {
             "current_step": {
                 "thought": "Testing",
-                "actions": {"code": "print(1)", "result": "1"},
+                "code": "print(1)",
+                "result": "1",
             },
             "final_answer": None,
         }
@@ -172,14 +163,16 @@ class TestCodeActFlowControl:
         first_response = {
             "current_step": {
                 "thought": "First step",
-                "actions": {"code": "x = search('a')", "result": "result a"},
+                "code": "x = search('a')",
+                "result": "result a",
             },
             "final_answer": None,
         }
         second_response = {
             "current_step": {
                 "thought": "Second step",
-                "actions": {"code": "y = search('b')", "result": "result b"},
+                "code": "y = search('b')",
+                "result": "result b",
             },
             "final_answer": None,
         }

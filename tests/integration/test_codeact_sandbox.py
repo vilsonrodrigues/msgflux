@@ -17,7 +17,6 @@ import os
 import pytest
 
 from msgflux.environments import Environments
-from msgflux.generation.control_flow import EnvironmentCall, FlowResult
 from msgflux.generation.reasoning.code_act import CodeAct
 from msgflux.nn.modules.environment import Environment
 
@@ -41,7 +40,7 @@ class TestCodeActIntegration:
         raw_response = {
             "current_step": {
                 "thought": "I need to search for Python documentation",
-                "actions": {"code": "result = search('Python docs')\nprint(result)"},
+                "code": "result = search('Python docs')\nprint(result)",
             },
             "final_answer": None,
         }
@@ -72,7 +71,7 @@ class TestCodeActIntegration:
         raw_response = {
             "current_step": {
                 "thought": "Search for info",
-                "actions": {"code": "print(search('test'))"},
+                "code": "print(search('test'))",
             },
             "final_answer": None,
         }
@@ -80,14 +79,14 @@ class TestCodeActIntegration:
         result = {"success": True, "output": "Search results for: test\n", "error": None}
         updated = CodeAct.inject_environment_result(raw_response, result)
 
-        assert updated["current_step"]["actions"]["result"] == "Search results for: test"
+        assert updated["current_step"]["result"] == "Search results for: test"
 
     def test_inject_environment_result_error(self):
         """Test injecting error result."""
         raw_response = {
             "current_step": {
                 "thought": "Call undefined function",
-                "actions": {"code": "result = undefined_tool()"},
+                "code": "result = undefined_tool()",
             },
             "final_answer": None,
         }
@@ -99,8 +98,8 @@ class TestCodeActIntegration:
         }
         updated = CodeAct.inject_environment_result(raw_response, result)
 
-        assert "Error:" in updated["current_step"]["actions"]["result"]
-        assert "NameError" in updated["current_step"]["actions"]["result"]
+        assert "Error:" in updated["current_step"]["result"]
+        assert "NameError" in updated["current_step"]["result"]
 
     def test_environment_executes_code_with_tools(self, python_env):
         """Test that environment executes code that uses injected tools."""
@@ -113,7 +112,7 @@ class TestCodeActIntegration:
         raw_response = {
             "current_step": {
                 "thought": "I need to search for Python info",
-                "actions": {"code": "result = search('Python')\nprint(result)"},
+                "code": "result = search('Python')\nprint(result)",
             },
             "final_answer": None,
         }
@@ -136,7 +135,7 @@ class TestCodeActIntegration:
         }
         updated = CodeAct.inject_environment_result(raw_response, result_dict)
 
-        assert "Results for: Python" in updated["current_step"]["actions"]["result"]
+        assert "Results for: Python" in updated["current_step"]["result"]
 
     def test_environment_with_multiple_tools(self, python_env):
         """Test environment execution with multiple injected tools."""
@@ -297,7 +296,8 @@ class TestCodeActBuildHistory:
         raw_response = {
             "current_step": {
                 "thought": "First",
-                "actions": {"code": "print(1)", "result": "1"},
+                "code": "print(1)",
+                "result": "1",
             },
             "final_answer": None,
         }
@@ -315,14 +315,16 @@ class TestCodeActBuildHistory:
         first_response = {
             "current_step": {
                 "thought": "First",
-                "actions": {"code": "x = search('a')", "result": "result_a"},
+                "code": "x = search('a')",
+                "result": "result_a",
             },
             "final_answer": None,
         }
         second_response = {
             "current_step": {
                 "thought": "Second",
-                "actions": {"code": "y = search('b')", "result": "result_b"},
+                "code": "y = search('b')",
+                "result": "result_b",
             },
             "final_answer": None,
         }
@@ -376,9 +378,9 @@ def manual_test():
         """Search for information about a topic."""
         print(f"[Tool] search called with: {query}")
         results = {
-            "python": "Python is a high-level, interpreted programming language known for its simplicity.",
-            "prime": "Prime numbers are natural numbers greater than 1 that have no positive divisors other than 1 and themselves.",
-            "factorial": "Factorial (n!) is the product of all positive integers less than or equal to n.",
+            "python": "Python is a high-level, interpreted programming language.",
+            "prime": "Prime numbers are natural numbers greater than 1.",
+            "factorial": "Factorial (n!) is the product of all positive integers <= n.",
         }
         for key, value in results.items():
             if key in query.lower():
