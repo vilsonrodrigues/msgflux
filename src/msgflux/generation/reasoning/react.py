@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Any, List, Mapping, Optional
+from typing import TYPE_CHECKING, Any, ClassVar, List, Mapping, Optional
 from uuid import uuid4
 
 import msgspec
@@ -9,6 +9,11 @@ from msgflux.utils.chat import ChatBlock
 
 if TYPE_CHECKING:
     from msgflux.nn.modules.tool import ToolResponses
+
+
+def _generate_short_id() -> str:
+    """Generate a short unique ID for tool calls."""
+    return str(uuid4())[:8]
 
 REACT_SYSTEM_MESSAGE = """
 You are an Agent. In each episode, you will be given the task as input.
@@ -68,13 +73,14 @@ For each function call return a encoded json object with function name and argum
 
 
 class ToolCall(Struct):
+    """A tool call representation.
+
+    The `id` field is used to correlate tool calls with their results.
+    IDs are generated automatically by `extract_flow_result` using short UUIDs.
+    """
+
     name: str
-    arguments: Optional[Any]
-    # TODO: substituir id para class var
-    # from typing import ClassVar
-    # a_class_variable: ClassVar[int] = 2
-    # isso faz com que não seja rastreado pelo msgspec, mas ainda gere um valor random
-    # você pode por exemplo usar uma uuid (que não seja tão longo, podemos cortar)
+    arguments: Optional[Any] = None
     id: Optional[str] = None
     result: Optional[Any] = None
 
@@ -85,8 +91,17 @@ class ReActStep(Struct):
 
 
 class ReAct(Struct, FlowControl):
-    current_step: Optional[ReActStep]
-    final_answer: Optional[str]
+    """ReAct (Reasoning + Acting) flow control schema.
+
+    This schema implements the ReAct pattern where the LLM alternates between
+    reasoning (thought) and acting (tool calls) until it reaches a final answer.
+    """
+
+    system_message: ClassVar[str] = REACT_SYSTEM_MESSAGE
+    tools_template: ClassVar[str] = REACT_TOOLS_TEMPLATE
+
+    current_step: Optional[ReActStep] = None
+    final_answer: Optional[str] = None
 
     @classmethod
     def extract_flow_result(cls, raw_response: Mapping[str, Any]) -> FlowResult:
@@ -103,7 +118,7 @@ class ReAct(Struct, FlowControl):
             actions = current_step.get("actions", [])
             tool_calls = []
             for act in actions:
-                tool_id = str(uuid4())
+                tool_id = _generate_short_id()
                 act["id"] = tool_id
                 tool_calls.append((tool_id, act.get("name"), act.get("arguments")))
 
@@ -148,8 +163,3 @@ class ReAct(Struct, FlowControl):
             react_state = [raw_response]
             messages.append(ChatBlock.assist(react_state))
         return messages
-
-
-# TODO podemos injetar isso também como classvar
-ReAct.system_message = REACT_SYSTEM_MESSAGE
-ReAct.tools_template = REACT_TOOLS_TEMPLATE
