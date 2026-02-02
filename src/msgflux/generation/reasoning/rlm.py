@@ -10,14 +10,16 @@ References:
       (Prompts inspired by DSPy's implementation)
 """
 
-from typing import TYPE_CHECKING, Any, List, Mapping, Optional
+from typing import TYPE_CHECKING, Any, Callable, ClassVar, List, Mapping, Optional, Union
 
 import msgspec
 from msgspec import Struct
 
 from msgflux.generation.control_flow import EnvironmentCall, FlowControl, FlowResult
+from msgflux.models.gateway import ModelGateway
 from msgflux.models.types import ChatCompletionModel
 from msgflux.nn import functional as F
+from msgflux.nn.modules.lm import LM
 from msgflux.utils.chat import ChatBlock
 
 if TYPE_CHECKING:
@@ -122,8 +124,11 @@ class RLM(Struct, FlowControl):
         final_answer: The final answer when reasoning is complete.
     """
 
-    current_step: Optional[RLMStep]
-    final_answer: Optional[str]
+    system_message: ClassVar[str] = RLM_SYSTEM_MESSAGE
+    tools_template: ClassVar[str] = RLM_TOOLS_TEMPLATE
+
+    current_step: Optional[RLMStep] = None
+    final_answer: Optional[str] = None
 
     @classmethod
     def extract_flow_result(cls, raw_response: Mapping[str, Any]) -> FlowResult:
@@ -220,148 +225,145 @@ class RLM(Struct, FlowControl):
         return messages
 
 
-# Set class attributes for system message and tools template
-RLM.system_message = RLM_SYSTEM_MESSAGE
-RLM.tools_template = RLM_TOOLS_TEMPLATE
+DEFAULT_QUERY_LLM = {
+    "name": "query_llm",
+    "signature": "query, context: Optional[str] -> response",
+    "description": (
+        "Query a sub-LLM for semantic analysis. "
+        "Use for understanding meaning, summarization, or extraction."
+    ),
+    "instructions": (
+        "You are a helpful assistant that answers queries based on the provided context. "
+        "Analyze the context carefully and provide a clear, concise response to the query."
+    ),
+    "templates": {"response": "{{ response }}"},
+}
 
 
-# =============================================================================
-# LLM Query Tools for RLM
-# =============================================================================
+def make_rlm_tools(
+    sub_lm: Union[ChatCompletionModel, ModelGateway, LM],
+    *,
+    query_config: Optional[Mapping[str, Any]] = None,
+) -> Mapping[str, Callable]:
+    """Create RLM tools (query_llm and batched_query_llm) using nn.Agent.
 
+    This factory creates tools that use nn.Agent internally with a signature
+    of "query, context -> response", providing structured sub-LLM queries
+    within RLM code execution environments.
 
-class LLMQuery:
-    """Tool for querying a sub-LLM from within environment code.
+    Args:
+        sub_lm: The language model (nn.LM) to use for sub-queries.
+        query_config: Optional configuration to override DEFAULT_QUERY_LLM.
+            Keys: name, signature, description, instructions, templates.
 
-    This class provides sync and async methods to query an LLM, designed to be
-    used as a tool in RLM-based agents.
+    Returns:
+        Dictionary with 'query_llm' and 'batched_query_llm' callable tools.
 
-    Example:
-        >>> from msgflux.generation.reasoning import RLM, LLMQuery
+    Example:    
+        >>> from msgflux import Model
+        >>> from msgflux.nn import Agent, Environment
+        >>> from msgflux.generation.reasoning.rlm import make_rlm_tools, RLM
         >>>
-        >>> # Create the tool with your model
-        >>> query_llm = LLMQuery(sub_model)
+        >>> lm = Model.chat_completion("openai/gpt-4.1-mini")
+        >>> rlm_tools = make_rlm_tools(lm)
         >>>
         >>> agent = Agent(
-        ...     "analyzer",
-        ...     main_model,
-        ...     environment=Environment(environment=Environments.code("python")),
-        ...     tools=[query_llm],
+        ...     "researcher",
+        ...     model=lm,
+        ...     environment=env,
+        ...     tools=[search, *rlm_tools.values()],
         ...     generation_schema=RLM,
         ... )
     """
+    from msgflux.nn.modules.agent import Agent
 
-    name: str = "query_llm"
+    # Merge config with defaults
+    config = {**DEFAULT_QUERY_LLM, **(query_config or {})}
 
-    def __init__(self, lm: ChatCompletionModel):
-        """Initialize LLMQuery with a language model.
+    query_llm_impl = Agent(model=sub_lm, **config)
 
-        Args:
-            lm: The language model to use for queries.
-        """
-        self.lm = lm
+    class BatchedQueryLLM:
+        """Query a sub-LLM with multiple prompts concurrently."""
 
-    def __call__(self, prompt: str) -> str:
-        """Query the LLM with a prompt.
+        name = "batched_query_llm"
+        description = (
+            "Query a sub-LLM with multiple prompts concurrently. "
+            "Much faster than calling query_llm multiple times sequentially."
+        )
 
-        Args:
-            prompt: The prompt to send to the LLM.
+        def __init__(self, query_llm: Optional[Callable] = None):
+            self._query_llm = query_llm if query_llm else query_llm_impl
 
-        Returns:
-            The LLM response as a string.
-        """
-        if not prompt:
-            raise ValueError("prompt cannot be empty")
+        def __call__(
+            self,
+            queries: List[str],
+            contexts: Optional[List[str]] = None,
+        ) -> List[str]:
+            """Query the sub-LLM with multiple prompts concurrently.
 
-        response = self.lm(prompt)
-        return self._extract_response(response)
+            Args:
+                queries: List of query strings.
+                contexts: Optional list of context strings (same length as queries).
+                    If not provided, empty context is used for all queries.
 
-    async def acall(self, prompt: str) -> str:
-        """Async version of __call__.
+            Returns:
+                List of responses in the same order as queries.
+            """
+            if not queries:
+                return []
 
-        Args:
-            prompt: The prompt to send to the LLM.
+            # Default contexts to empty strings
+            if contexts is None:
+                contexts = [""] * len(queries)
+            elif len(contexts) != len(queries):
+                raise ValueError(
+                    f"Length mismatch: {len(queries)} queries vs {len(contexts)} contexts"
+                )
 
-        Returns:
-            The LLM response as a string.
-        """
-        if not prompt:
-            raise ValueError("prompt cannot be empty")
+            # Build kwargs list for map_gather
+            kwargs_list = [
+                {"query": q, "context": c}
+                for q, c in zip(queries, contexts)
+            ]
 
-        if hasattr(self.lm, "acall"):
-            response = await self.lm.acall(prompt)
-        else:
-            response = self.lm(prompt)
-        return self._extract_response(response)
+            # Execute in parallel
+            results = F.map_gather(self._query_llm, kwargs_list=kwargs_list)
 
-    def _extract_response(self, response: Any) -> str:
-        """Extract string from various response formats."""
-        if isinstance(response, str):
-            return response
-        if hasattr(response, "data"):
-            return str(response.data)
-        return str(response)
+            # Convert to list of strings, handling None for errors
+            return [str(r) if r is not None else "[ERROR] Query failed" for r in results]
 
+        async def acall(
+            self,
+            queries: List[str],
+            contexts: Optional[List[str]] = None,
+        ) -> List[str]:
+            """Async version of __call__."""
+            if not queries:
+                return []
 
-class LLMQueryBatched:
-    """Tool for querying a sub-LLM with multiple prompts concurrently.
+            # Default contexts to empty strings
+            if contexts is None:
+                contexts = [""] * len(queries)
+            elif len(contexts) != len(queries):
+                raise ValueError(
+                    f"Length mismatch: {len(queries)} queries vs {len(contexts)} contexts"
+                )
 
-    Uses nn.functional.map_gather for parallel execution.
+            # Build kwargs list for amap_gather
+            kwargs_list = [
+                {"query": q, "context": c}
+                for q, c in zip(queries, contexts)
+            ]
 
-    Example:
-        >>> from msgflux.generation.reasoning import RLM, LLMQueryBatched
-        >>>
-        >>> # Create the tool with your model
-        >>> query_llm_batch = LLMQueryBatched(sub_model)
-        >>>
-        >>> agent = Agent(
-        ...     "analyzer",
-        ...     main_model,
-        ...     environment=Environment(environment=Environments.code("python")),
-        ...     tools=[query_llm_batch],
-        ...     generation_schema=RLM,
-        ... )
-    """
+            # Execute in parallel
+            results = await F.amap_gather(
+                self._query_llm.acall, kwargs_list=kwargs_list
+            )
 
-    name: str = "query_llm_batched"
+            # Convert to list of strings, handling None for errors
+            return [str(r) if r is not None else "[ERROR] Query failed" for r in results]
 
-    def __init__(self, lm: ChatCompletionModel):
-        """Initialize LLMQueryBatched with a language model.
-
-        Args:
-            lm: The language model to use for queries.
-        """
-        self.lm = lm
-        self._query = LLMQuery(lm)
-
-    def __call__(self, prompts: List[str]) -> List[str]:
-        """Query the LLM with multiple prompts concurrently.
-
-        Args:
-            prompts: List of prompts to send to the LLM.
-
-        Returns:
-            List of LLM responses in the same order as prompts.
-        """
-        if not prompts:
-            return []
-
-        args_list = [(p,) for p in prompts]
-        results = F.map_gather(self._query, args_list=args_list)
-        return [r if r is not None else "[ERROR]" for r in results]
-
-    async def acall(self, prompts: List[str]) -> List[str]:
-        """Async version of __call__.
-
-        Args:
-            prompts: List of prompts to send to the LLM.
-
-        Returns:
-            List of LLM responses in the same order as prompts.
-        """
-        if not prompts:
-            return []
-
-        args_list = [(p,) for p in prompts]
-        results = await F.amap_gather(self._query.acall, args_list=args_list)
-        return [r if r is not None else "[ERROR]" for r in results]
+    return {
+        "query_llm": query_llm_impl,
+        "batched_query_llm": BatchedQueryLLM(),
+    }
