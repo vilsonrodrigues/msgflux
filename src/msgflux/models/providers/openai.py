@@ -562,6 +562,7 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
         messages: Union[str, List[Dict[str, Any]]],
         *,
         system_prompt: Optional[str] = None,
+        system_note: Optional[str] = None,
         prefilling: Optional[str] = None,
         stream: Optional[bool] = False,
         generation_schema: Optional[msgspec.Struct] = None,
@@ -575,6 +576,10 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
             system_prompt:
                 A set of instructions that defines the overarching behavior
                 and role of the model across all interactions.
+            system_note:
+                A late-injected note added after user messages but before
+                prefilling. Used for providing context like variable info
+                for Late Knowledge Injection (LKI). Inserted as a user message.
             prefilling:
                 Forces an initial message from the model. From that message
                 it will continue its response from there.
@@ -607,6 +612,10 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
             messages = [ChatBlock.user(messages)]
         if isinstance(system_prompt, str):
             messages.insert(0, ChatBlock.system(system_prompt))
+
+        # Insert system_note after messages, before prefilling
+        if system_note:
+            messages.append(ChatBlock.user(system_note))
 
         if isinstance(tool_choice, str):
             if tool_choice not in ["auto", "required", "none"]:
@@ -660,6 +669,7 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
         messages: Union[str, List[Dict[str, Any]]],
         *,
         system_prompt: Optional[str] = None,
+        system_note: Optional[str] = None,
         prefilling: Optional[str] = None,
         stream: Optional[bool] = False,
         generation_schema: Optional[msgspec.Struct] = None,
@@ -673,6 +683,10 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
             system_prompt:
                 A set of instructions that defines the overarching behavior
                 and role of the model across all interactions.
+            system_note:
+                A late-injected note added after user messages but before
+                prefilling. Used for providing context like variable info
+                for Late Knowledge Injection (LKI). Inserted as a user message.
             prefilling:
                 Forces an initial message from the model. From that message
                 it will continue its response from there.
@@ -705,6 +719,10 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
             messages = [ChatBlock.user(messages)]
         if isinstance(system_prompt, str):
             messages.insert(0, ChatBlock.system(system_prompt))
+
+        # Insert system_note after messages, before prefilling
+        if system_note:
+            messages.append(ChatBlock.user(system_note))
 
         if isinstance(tool_choice, str):
             if tool_choice not in ["auto", "required", "none"]:

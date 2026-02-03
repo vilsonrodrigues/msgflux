@@ -50,31 +50,40 @@ class FlowControl:
     Note: Model responses are converted to dotdict, so methods receive
     raw_response as a parameter rather than being called on the instance.
 
+    All methods receive `vars` as an optional parameter, which is the current
+    variables dict. FlowControl implementations can modify vars in-place to
+    persist state across iterations (e.g., merge environment variables).
+
     Subclasses must implement:
-        - extract_flow_result(raw_response): Extract flow information
-        - inject_tool_results(raw_response, tool_results): Inject tool results
+        - extract_flow_result(raw_response, vars): Extract flow information
+        - inject_tool_results(raw_response, tool_results, vars): Inject tool results
         - build_history(raw_response, messages): Build history message
 
-    And async versions:
-        - aextract_flow_result(raw_response): Async version
-        - ainject_tool_results(raw_response, tool_results): Async version
-        - abuild_history(raw_response, messages): Async version
+    Optional methods:
+        - inject_environment_result(raw_response, result, vars): Inject env results
 
     Class attributes:
         system_message: Optional system message template
         tools_template: Optional Jinja template for tool schemas
+        inject_vars_info: Whether to inject variable type info as system_note
     """
 
     system_message: Optional[str] = None
     tools_template: Optional[str] = None
+    inject_vars_info: bool = False
 
     @classmethod
     @abstractmethod
-    def extract_flow_result(cls, raw_response: Mapping[str, Any]) -> FlowResult:
+    def extract_flow_result(
+        cls,
+        raw_response: Mapping[str, Any],
+        vars: Mapping[str, Any],
+    ) -> FlowResult:
         """Extract flow information from the response.
 
         Args:
             raw_response: The model response (as dotdict)
+            vars: Current variables dict (can be modified in-place if needed).
 
         Returns:
             FlowResult with:
@@ -89,13 +98,17 @@ class FlowControl:
     @classmethod
     @abstractmethod
     def inject_tool_results(
-        cls, raw_response: Mapping[str, Any], tool_results: "ToolResponses"
+        cls,
+        raw_response: Mapping[str, Any],
+        tool_results: "ToolResponses",
+        vars: Mapping[str, Any],
     ) -> Mapping[str, Any]:
         """Inject tool results back into the structure.
 
         Args:
             raw_response: The model response (as dotdict)
             tool_results: Results from tool execution
+            vars: Current variables dict (can be modified in-place if needed).
 
         Returns:
             Updated raw_response with results injected
@@ -122,25 +135,30 @@ class FlowControl:
 
     @classmethod
     async def aextract_flow_result(
-        cls, raw_response: Mapping[str, Any]
+        cls,
+        raw_response: Mapping[str, Any],
+        vars: Mapping[str, Any],
     ) -> FlowResult:
         """Async version of extract_flow_result.
 
         Default implementation calls sync version.
         Override for async-specific behavior.
         """
-        return cls.extract_flow_result(raw_response)
+        return cls.extract_flow_result(raw_response, vars)
 
     @classmethod
     async def ainject_tool_results(
-        cls, raw_response: Mapping[str, Any], tool_results: "ToolResponses"
+        cls,
+        raw_response: Mapping[str, Any],
+        tool_results: "ToolResponses",
+        vars: Mapping[str, Any],
     ) -> Mapping[str, Any]:
         """Async version of inject_tool_results.
 
         Default implementation calls sync version.
         Override for async-specific behavior.
         """
-        return cls.inject_tool_results(raw_response, tool_results)
+        return cls.inject_tool_results(raw_response, tool_results, vars)
 
     @classmethod
     async def abuild_history(

@@ -51,3 +51,10 @@ Be consise in choosing your answers.
 {% endif %}
 {% endif %}
 """
+
+VARS_INFO_TEMPLATE = """<developer_note>
+Available variables:
+{% for var_name, var_type in vars_info.items() %}
+  {{ var_name }}: {{ var_type }}
+{% endfor %}
+</developer_note>"""

@@ -30,6 +30,7 @@ from msgflux.generation.control_flow import FlowControl
 from msgflux.generation.templates import (
     EXPECTED_OUTPUTS_TEMPLATE,
     SYSTEM_PROMPT_TEMPLATE,
+    VARS_INFO_TEMPLATE,
     PromptSpec,
 )
 from msgflux.message import Message
@@ -450,6 +451,21 @@ class Agent(Module, metaclass=AutoParams):
 
         tool_choice = self.config.get("tool_choice")
 
+        # Determine whether to inject vars info
+        system_note = None
+        inject_vars = self.config.get("inject_vars_info")  # None, True, or False
+
+        if inject_vars is None:
+            # Not defined in config, use FlowControl default
+            if is_subclass_of(self.generation_schema, FlowControl):
+                inject_vars = getattr(self.generation_schema, "inject_vars_info", False)
+            else:
+                inject_vars = False
+
+        # Only generate system_note if there are vars
+        if inject_vars and vars:
+            system_note = self._build_vars_info(vars)
+
         if is_subclass_of(self.generation_schema, FlowControl):
             tools_template = self.generation_schema.tools_template
             inputs = {"tool_schemas": tool_schemas, "tool_choice": tool_choice}
@@ -469,6 +485,7 @@ class Agent(Module, metaclass=AutoParams):
         model_execution_params = dotdict(
             messages=deepcopy(messages),
             system_prompt=system_prompt or None,
+            system_note=system_note,
             prefilling=prefilling,
             stream=self.config.get("stream", False),
             tool_schemas=tool_schemas,
@@ -599,59 +616,66 @@ class Agent(Module, metaclass=AutoParams):
         flow_control: FlowControl,
         raw_response: Mapping[str, Any],
         messages: List[Mapping[str, Any]],
+        vars: Mapping[str, Any],
         env_result: Optional[Any] = None,
         tool_results: Optional[ToolResponses] = None,
-    ) -> List[Mapping[str, Any]]:
+    ) -> Tuple[Mapping[str, Any], List[Mapping[str, Any]]]:
         """Inject environment/tool results and build history.
 
         Args:
             flow_control: The FlowControl schema.
             raw_response: The raw model response.
             messages: Current message history.
+            vars: Current variables dict (can be modified in-place by FlowControl).
             env_result: Optional environment execution result.
             tool_results: Optional tool execution results.
 
         Returns:
-            Updated messages with history appended.
+            Tuple of (updated raw_response, updated messages).
         """
         # Inject environment result
         has_inject_env = hasattr(flow_control, "inject_environment_result")
         if env_result is not None and has_inject_env:
             raw_response = flow_control.inject_environment_result(
-                raw_response, env_result.to_dict()
+                raw_response, env_result.to_dict(), vars
             )
 
         # Inject tool results
         if tool_results is not None:
-            raw_response = flow_control.inject_tool_results(raw_response, tool_results)
+            raw_response = flow_control.inject_tool_results(
+                raw_response, tool_results, vars
+            )
 
         # Build history
-        return flow_control.build_history(raw_response, messages)
+        messages = flow_control.build_history(raw_response, messages)
+        return raw_response, messages
 
     async def _ainject_and_build_history(
         self,
         flow_control: FlowControl,
         raw_response: Mapping[str, Any],
         messages: List[Mapping[str, Any]],
+        vars: Mapping[str, Any],
         env_result: Optional[Any] = None,
         tool_results: Optional[ToolResponses] = None,
-    ) -> List[Mapping[str, Any]]:
+    ) -> Tuple[Mapping[str, Any], List[Mapping[str, Any]]]:
         """Async version of _inject_and_build_history."""
         # Inject environment result
         has_inject_env = hasattr(flow_control, "inject_environment_result")
         if env_result is not None and has_inject_env:
             raw_response = flow_control.inject_environment_result(
-                raw_response, env_result.to_dict()
+                raw_response, env_result.to_dict(), vars
             )
 
         # Inject tool results
         if tool_results is not None:
             raw_response = await flow_control.ainject_tool_results(
-                raw_response, tool_results
+                raw_response, tool_results, vars
             )
 
         # Build history
-        return await flow_control.abuild_history(raw_response, messages)
+        messages = await flow_control.abuild_history(raw_response, messages)
+        return raw_response, messages
 
     def _execute_flow_actions(
         self,
@@ -728,9 +752,20 @@ class Agent(Module, metaclass=AutoParams):
         flow_control = self.generation_schema
         while True:
             raw_response = self._extract_raw_response(model_response)
-            flow_result = flow_control.extract_flow_result(raw_response)
+
+            # Log raw model response before processing
+            if self.config.get("verbose", False):
+                raw_str = str(raw_response)[:300]
+                cprint(f"[{self.name}][raw_response] {raw_str}", bc="br3", ls="b")
+
+            flow_result = flow_control.extract_flow_result(raw_response, vars)
 
             if flow_result.is_complete:
+                # Use final_response if available (e.g., LKI resolves vars)
+                if flow_result.final_response:
+                    model_response = ModelResponse()
+                    model_response.add(flow_result.final_response)
+                    model_response.set_response_type("structured")
                 return model_response, messages
 
             self._log_flow_reasoning(flow_result.reasoning)
@@ -751,9 +786,17 @@ class Agent(Module, metaclass=AutoParams):
                 return direct_response, messages
 
             # Inject results and build history
-            messages = self._inject_and_build_history(
-                flow_control, raw_response, messages, env_result, tool_results
+            raw_response, messages = self._inject_and_build_history(
+                flow_control, raw_response, messages, vars, env_result, tool_results
             )
+
+            # Check if flow is now complete after injection (e.g., LKI resolves vars)
+            flow_result = flow_control.extract_flow_result(raw_response, vars)
+            if flow_result.is_complete:
+                model_response = ModelResponse()
+                model_response.add(flow_result.final_response or raw_response)
+                model_response.set_response_type("structured")
+                return model_response, messages
 
             model_response = self._execute_model(
                 messages=messages, model_preference=model_preference, vars=vars
@@ -773,10 +816,24 @@ class Agent(Module, metaclass=AutoParams):
         Returns:
             ExecutionResult from the environment.
         """
+        if self.config.get("verbose", False):
+            code_preview = env_call.action[:100].replace("\n", "\\n")
+            if len(env_call.action) > 100:
+                code_preview += "..."
+            cprint(f"[{self.name}][environment_call] {code_preview}", bc="br2", ls="b")
+
         tool_funcs = self._get_tool_functions() if env_call.inject_tools else {}
         env_vars = vars if env_call.inject_vars else {}
 
         result = self.environment(env_call.action, tools=tool_funcs, vars=env_vars)
+
+        if self.config.get("verbose", False):
+            if result.success:
+                output_preview = (result.output or "(no output)")[:100]
+                cprint(f"[{self.name}][environment_result] {output_preview}", ls="b")
+            else:
+                cprint(f"[{self.name}][environment_error] {result.error}", ls="b")
+
         return result
 
     async def _aprocess_environment_call(
@@ -785,12 +842,26 @@ class Agent(Module, metaclass=AutoParams):
         vars: Mapping[str, Any],
     ) -> Any:
         """Async version of _process_environment_call."""
+        if self.config.get("verbose", False):
+            code_preview = env_call.action[:100].replace("\n", "\\n")
+            if len(env_call.action) > 100:
+                code_preview += "..."
+            cprint(f"[{self.name}][environment_call] {code_preview}", bc="br2", ls="b")
+
         tool_funcs = self._get_tool_functions() if env_call.inject_tools else {}
         env_vars = vars if env_call.inject_vars else {}
 
         result = await self.environment.acall(
             env_call.action, tools=tool_funcs, vars=env_vars
         )
+
+        if self.config.get("verbose", False):
+            if result.success:
+                output_preview = (result.output or "(no output)")[:100]
+                cprint(f"[{self.name}][environment_result] {output_preview}", ls="b")
+            else:
+                cprint(f"[{self.name}][environment_error] {result.error}", ls="b")
+
         return result
 
     async def _aprocess_flow_control_response(
@@ -804,9 +875,20 @@ class Agent(Module, metaclass=AutoParams):
         flow_control = self.generation_schema
         while True:
             raw_response = self._extract_raw_response(model_response)
-            flow_result = await flow_control.aextract_flow_result(raw_response)
+
+            # Log raw model response before processing
+            if self.config.get("verbose", False):
+                raw_str = str(raw_response)[:300]
+                cprint(f"[{self.name}][raw_response] {raw_str}", bc="br3", ls="b")
+
+            flow_result = await flow_control.aextract_flow_result(raw_response, vars)
 
             if flow_result.is_complete:
+                # Use final_response if available (e.g., LKI resolves vars)
+                if flow_result.final_response:
+                    model_response = ModelResponse()
+                    model_response.add(flow_result.final_response)
+                    model_response.set_response_type("structured")
                 return model_response, messages
 
             self._log_flow_reasoning(flow_result.reasoning)
@@ -827,9 +909,17 @@ class Agent(Module, metaclass=AutoParams):
                 return direct_response, messages
 
             # Inject results and build history
-            messages = await self._ainject_and_build_history(
-                flow_control, raw_response, messages, env_result, tool_results
+            raw_response, messages = await self._ainject_and_build_history(
+                flow_control, raw_response, messages, vars, env_result, tool_results
             )
+
+            # Check if flow is now complete after injection (e.g., LKI resolves vars)
+            flow_result = await flow_control.aextract_flow_result(raw_response, vars)
+            if flow_result.is_complete:
+                model_response = ModelResponse()
+                model_response.add(flow_result.final_response or raw_response)
+                model_response.set_response_type("structured")
+                return model_response, messages
 
             model_response = await self._aexecute_model(
                 messages=messages, model_preference=model_preference, vars=vars
@@ -998,6 +1088,17 @@ class Agent(Module, metaclass=AutoParams):
                 cprint(repr_str, ls="b")
         return tool_results
 
+    def _clean_internal_fields(
+        self, response: Union[str, Mapping[str, Any]]
+    ) -> Union[str, Mapping[str, Any]]:
+        """Remove internal fields (starting with '_') from response dict.
+
+        This prevents implementation details from leaking to the user.
+        """
+        if isinstance(response, dict):
+            return {k: v for k, v in response.items() if not k.startswith("_")}
+        return response
+
     def _prepare_response(
         self,
         raw_response: Union[str, Mapping[str, Any], ModelStreamResponse],
@@ -1006,6 +1107,10 @@ class Agent(Module, metaclass=AutoParams):
         message: Union[str, Mapping[str, Any], Message],
         vars: Mapping[str, Any],
     ) -> Union[str, Mapping[str, Any], ModelStreamResponse]:
+        # Clean internal fields before processing
+        if not isinstance(raw_response, ModelStreamResponse):
+            raw_response = self._clean_internal_fields(raw_response)
+
         formatted_response = None
         if not isinstance(raw_response, ModelStreamResponse):
             if response_type == "text_generation" or "structured" in response_type:
@@ -1042,6 +1147,10 @@ class Agent(Module, metaclass=AutoParams):
         vars: Mapping[str, Any],
     ) -> Union[str, Mapping[str, Any], ModelStreamResponse]:
         """Async version of _prepare_response with async output guardrail support."""
+        # Clean internal fields before processing
+        if not isinstance(raw_response, ModelStreamResponse):
+            raw_response = self._clean_internal_fields(raw_response)
+
         formatted_response = None
         if not isinstance(raw_response, ModelStreamResponse):
             if response_type == "text_generation" or "structured" in response_type:
@@ -1742,6 +1851,7 @@ class Agent(Module, metaclass=AutoParams):
             "video_block_kwargs",
             "include_date",
             "execution",  # Added for execution settings
+            "inject_vars_info",  # Control variable info injection
         }
 
         if config is None:
@@ -1949,6 +2059,35 @@ class Agent(Module, metaclass=AutoParams):
                 inputs_info, signature
             )
             self.set_annotations(generated_annotations)
+
+    def _build_vars_info(self, vars: Mapping[str, Any]) -> Optional[str]:
+        """Build system_note with variable types using Jinja template.
+
+        Args:
+            vars: Dictionary of variable names to values.
+
+        Returns:
+            Formatted string with <developer_note> tag, or None if no vars.
+        """
+        if not vars:
+            return None
+
+        # Extract types from variables
+        vars_info = {}
+        for name, value in vars.items():
+            type_name = type(value).__name__
+            # For lists/dicts, try to infer inner types
+            if isinstance(value, list) and value:
+                inner_type = type(value[0]).__name__
+                type_name = f"list[{inner_type}]"
+            elif isinstance(value, dict) and value:
+                key_type = type(next(iter(value.keys()))).__name__
+                val_type = type(next(iter(value.values()))).__name__
+                type_name = f"dict[{key_type}, {val_type}]"
+            vars_info[name] = type_name
+
+        # Render Jinja template
+        return self._format_template({"vars_info": vars_info}, VARS_INFO_TEMPLATE)
 
     def get_system_prompt(self, vars: Optional[Mapping[str, Any]] = None) -> str:
         """Render the system prompt using the Jinja template.
