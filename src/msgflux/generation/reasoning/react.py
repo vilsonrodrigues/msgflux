@@ -102,7 +102,11 @@ class ReAct(Struct, FlowControl):
     final_answer: Optional[str] = None
 
     @classmethod
-    def extract_flow_result(cls, raw_response: Mapping[str, Any]) -> FlowResult:
+    def extract_flow_result(
+        cls,
+        raw_response: Mapping[str, Any],
+        vars: Mapping[str, Any],  # noqa: ARG003
+    ) -> FlowResult:
         """Extract flow information from ReAct response."""
         final_answer = raw_response.get("final_answer")
         if final_answer is not None:
@@ -133,7 +137,10 @@ class ReAct(Struct, FlowControl):
 
     @classmethod
     def inject_tool_results(
-        cls, raw_response: Mapping[str, Any], tool_results: "ToolResponses"
+        cls,
+        raw_response: Mapping[str, Any],
+        tool_results: "ToolResponses",
+        vars: Mapping[str, Any],  # noqa: ARG003
     ) -> Mapping[str, Any]:
         """Inject tool results back into ReAct structure."""
         current_step = raw_response.get("current_step")

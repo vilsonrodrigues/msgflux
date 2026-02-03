@@ -109,7 +109,11 @@ class ProgramOfThought(Struct, FlowControl):
     final_answer: Optional[str]
 
     @classmethod
-    def extract_flow_result(cls, raw_response: Mapping[str, Any]) -> FlowResult:
+    def extract_flow_result(
+        cls,
+        raw_response: Mapping[str, Any],
+        vars: Mapping[str, Any],  # noqa: ARG003
+    ) -> FlowResult:
         """Extract flow information from ProgramOfThought response.
 
         If `final_answer` is present, the flow is complete.
@@ -146,7 +150,10 @@ class ProgramOfThought(Struct, FlowControl):
 
     @classmethod
     def inject_environment_result(
-        cls, raw_response: Mapping[str, Any], result: Mapping[str, Any]
+        cls,
+        raw_response: Mapping[str, Any],
+        result: Mapping[str, Any],
+        vars: Mapping[str, Any],  # noqa: ARG003
     ) -> Mapping[str, Any]:
         """Inject environment execution result back into ProgramOfThought structure.
 
@@ -156,6 +163,7 @@ class ProgramOfThought(Struct, FlowControl):
                 - success: bool
                 - output: str
                 - error: Optional[str]
+            vars: Current variables dict (not used in ProgramOfThought).
 
         Returns:
             Updated raw_response with result injected.
@@ -176,6 +184,7 @@ class ProgramOfThought(Struct, FlowControl):
         cls,
         raw_response: Mapping[str, Any],
         tool_results: "ToolResponses",  # noqa: ARG003
+        vars: Mapping[str, Any],  # noqa: ARG003
     ) -> Mapping[str, Any]:
         """Inject tool results back into the structure.
 

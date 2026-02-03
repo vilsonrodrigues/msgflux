@@ -148,7 +148,11 @@ class CodeAct(Struct, FlowControl):
     final_answer: Optional[str] = None
 
     @classmethod
-    def extract_flow_result(cls, raw_response: Mapping[str, Any]) -> FlowResult:
+    def extract_flow_result(
+        cls,
+        raw_response: Mapping[str, Any],
+        vars: Mapping[str, Any],  # noqa: ARG003
+    ) -> FlowResult:
         """Extract flow information from CodeAct response.
 
         If `final_answer` is present, the flow is complete.
@@ -185,7 +189,10 @@ class CodeAct(Struct, FlowControl):
 
     @classmethod
     def inject_environment_result(
-        cls, raw_response: Mapping[str, Any], result: Mapping[str, Any]
+        cls,
+        raw_response: Mapping[str, Any],
+        result: Mapping[str, Any],
+        vars: Mapping[str, Any],  # noqa: ARG003
     ) -> Mapping[str, Any]:
         """Inject environment execution result back into CodeAct structure.
 
@@ -195,6 +202,7 @@ class CodeAct(Struct, FlowControl):
                 - success: bool
                 - output: str
                 - error: Optional[str]
+            vars: Current variables dict (not used in CodeAct).
 
         Returns:
             Updated raw_response with result injected into current_step.result.
@@ -215,6 +223,7 @@ class CodeAct(Struct, FlowControl):
         cls,
         raw_response: Mapping[str, Any],
         tool_results: "ToolResponses",  # noqa: ARG003
+        vars: Mapping[str, Any],  # noqa: ARG003
     ) -> Mapping[str, Any]:
         """Inject tool results back into the structure.
 

@@ -37,7 +37,7 @@ class TestRLMFlowControl:
             "final_answer": "The answer is 42.",
         }
 
-        flow_result = RLM.extract_flow_result(raw_response)
+        flow_result = RLM.extract_flow_result(raw_response, {})
 
         assert flow_result.is_complete
         assert flow_result.final_response == raw_response
@@ -53,7 +53,7 @@ class TestRLMFlowControl:
             "final_answer": None,
         }
 
-        flow_result = RLM.extract_flow_result(raw_response)
+        flow_result = RLM.extract_flow_result(raw_response, {})
 
         assert not flow_result.is_complete
         assert flow_result.environment_call is not None
@@ -65,7 +65,7 @@ class TestRLMFlowControl:
     def test_extract_flow_result_empty_state(self):
         """Test extract_flow_result with no step and no final_answer."""
         raw_response = {"current_step": None, "final_answer": None}
-        flow_result = RLM.extract_flow_result(raw_response)
+        flow_result = RLM.extract_flow_result(raw_response, {})
 
         assert flow_result.is_complete
         assert flow_result.final_response is raw_response
@@ -80,8 +80,8 @@ class TestRLMFlowControl:
             "final_answer": None,
         }
 
-        result = {"success": True, "output": "1000\n", "error": None}
-        updated = RLM.inject_environment_result(raw_response, result)
+        result = {"success": True, "output": "1000\n", "error": None, "variables": {}}
+        updated = RLM.inject_environment_result(raw_response, result, {})
 
         assert updated["current_step"]["output"] == "1000"
 
@@ -99,8 +99,9 @@ class TestRLMFlowControl:
             "success": False,
             "output": "",
             "error": "NameError: name 'undefined_var' is not defined",
+            "variables": {},
         }
-        updated = RLM.inject_environment_result(raw_response, result)
+        updated = RLM.inject_environment_result(raw_response, result, {})
 
         assert "Error:" in updated["current_step"]["output"]
         assert "NameError" in updated["current_step"]["output"]
@@ -115,8 +116,8 @@ class TestRLMFlowControl:
             "final_answer": None,
         }
 
-        result = {"success": True, "output": "", "error": None}
-        updated = RLM.inject_environment_result(raw_response, result)
+        result = {"success": True, "output": "", "error": None, "variables": {}}
+        updated = RLM.inject_environment_result(raw_response, result, {})
 
         assert updated["current_step"]["output"] == "(no output)"
 

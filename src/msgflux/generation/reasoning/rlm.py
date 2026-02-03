@@ -131,7 +131,11 @@ class RLM(Struct, FlowControl):
     final_answer: Optional[str] = None
 
     @classmethod
-    def extract_flow_result(cls, raw_response: Mapping[str, Any]) -> FlowResult:
+    def extract_flow_result(
+        cls,
+        raw_response: Mapping[str, Any],
+        vars: Mapping[str, Any],  # noqa: ARG003
+    ) -> FlowResult:
         """Extract flow information from RLM response.
 
         If `final_answer` is present, the flow is complete.
@@ -168,7 +172,10 @@ class RLM(Struct, FlowControl):
 
     @classmethod
     def inject_environment_result(
-        cls, raw_response: Mapping[str, Any], result: Mapping[str, Any]
+        cls,
+        raw_response: Mapping[str, Any],
+        result: Mapping[str, Any],
+        vars: Mapping[str, Any],
     ) -> Mapping[str, Any]:
         """Inject environment execution result back into RLM structure.
 
@@ -178,6 +185,8 @@ class RLM(Struct, FlowControl):
                 - success: bool
                 - output: str
                 - error: Optional[str]
+                - variables: dict of environment state
+            vars: Current variables dict (not modified - state persists in sandbox).
 
         Returns:
             Updated raw_response with result injected.
@@ -198,6 +207,7 @@ class RLM(Struct, FlowControl):
         cls,
         raw_response: Mapping[str, Any],
         tool_results: "ToolResponses",  # noqa: ARG003
+        vars: Mapping[str, Any],  # noqa: ARG003
     ) -> Mapping[str, Any]:
         """Inject tool results back into the structure.
 
