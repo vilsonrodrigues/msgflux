@@ -10,7 +10,7 @@ References:
       (Prompts inspired by DSPy's implementation)
 """
 
-from typing import TYPE_CHECKING, Any, List, Mapping, Optional
+from typing import TYPE_CHECKING, Any, ClassVar, List, Mapping, Optional
 
 import msgspec
 from msgspec import Struct
@@ -79,7 +79,22 @@ class ProgramOfThoughtStep(Struct):
     code: str
 
 
-class ProgramOfThought(Struct, FlowControl):
+class ProgramOfThoughtSchema(Struct):
+    """Schema for ProgramOfThought responses.
+
+    This schema defines the structure of ProgramOfThought model outputs without
+    FlowControl logic, allowing reuse for parsing and validation.
+
+    Attributes:
+        current_step: The current reasoning step with thought and code.
+        final_answer: The final answer when reasoning is complete.
+    """
+
+    current_step: Optional[ProgramOfThoughtStep] = None
+    final_answer: Optional[str] = None
+
+
+class ProgramOfThought(ProgramOfThoughtSchema, FlowControl):
     """Program of Thought control flow for code-based reasoning.
 
     Instead of making discrete tool calls, the LLM writes Python code that
@@ -99,14 +114,10 @@ class ProgramOfThought(Struct, FlowControl):
         ...     generation_schema=ProgramOfThought,
         ... )
         >>> result = agent("What is 2 + 2?")
-
-    Attributes:
-        current_step: The current reasoning step with thought and code.
-        final_answer: The final answer when reasoning is complete.
     """
 
-    current_step: Optional[ProgramOfThoughtStep]
-    final_answer: Optional[str]
+    system_message: ClassVar[str] = POT_SYSTEM_MESSAGE
+    tools_template: ClassVar[str] = POT_TOOLS_TEMPLATE
 
     @classmethod
     def extract_flow_result(
@@ -215,8 +226,3 @@ class ProgramOfThought(Struct, FlowControl):
             messages.append(ChatBlock.assist(trajectory))
 
         return messages
-
-
-# Set class attributes for system message and tools template
-ProgramOfThought.system_message = POT_SYSTEM_MESSAGE
-ProgramOfThought.tools_template = POT_TOOLS_TEMPLATE

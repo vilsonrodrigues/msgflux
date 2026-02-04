@@ -88,7 +88,22 @@ class RLMStep(Struct):
     code: str
 
 
-class RLM(Struct, FlowControl):
+class RLMSchema(Struct):
+    """Schema for RLM responses.
+
+    This schema defines the structure of RLM model outputs without
+    FlowControl logic, allowing reuse for parsing and validation.
+
+    Attributes:
+        current_step: The current reasoning step with reasoning and code.
+        final_answer: The final answer when reasoning is complete.
+    """
+
+    current_step: Optional[RLMStep] = None
+    final_answer: Optional[str] = None
+
+
+class RLM(RLMSchema, FlowControl):
     """Recursive Language Model control flow for code-based reasoning.
 
     RLM is designed for tasks involving long contexts where the LLM writes
@@ -114,17 +129,10 @@ class RLM(Struct, FlowControl):
         ... )
         >>> # Context injected via vars
         >>> result = agent("Analyze this data", vars={"context": long_text})
-
-    Attributes:
-        current_step: The current reasoning step with reasoning and code.
-        final_answer: The final answer when reasoning is complete.
     """
 
     system_message: ClassVar[str] = RLM_SYSTEM_MESSAGE
     tools_template: ClassVar[str] = RLM_TOOLS_TEMPLATE
-
-    current_step: Optional[RLMStep] = None
-    final_answer: Optional[str] = None
 
     @classmethod
     def extract_flow_result(

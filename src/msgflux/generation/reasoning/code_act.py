@@ -103,7 +103,22 @@ class CodeActStep(Struct):
     code: str
 
 
-class CodeAct(Struct, FlowControl):
+class CodeActSchema(Struct):
+    """Schema for CodeAct responses.
+
+    This schema defines the structure of CodeAct model outputs without
+    FlowControl logic, allowing reuse for parsing and validation.
+
+    Attributes:
+        current_step: The current reasoning step with thought and code.
+        final_answer: The final answer when reasoning is complete.
+    """
+
+    current_step: Optional[CodeActStep] = None
+    final_answer: Optional[str] = None
+
+
+class CodeAct(CodeActSchema, FlowControl):
     """CodeAct control flow for tool-augmented code-based reasoning.
 
     CodeAct combines the flexibility of code generation with tool calling.
@@ -135,17 +150,10 @@ class CodeAct(Struct, FlowControl):
         >>> # The model will generate code like:
         >>> # result = search("Python")
         >>> # print(result)
-
-    Attributes:
-        current_step: The current reasoning step with thought and code.
-        final_answer: The final answer when reasoning is complete.
     """
 
     system_message: ClassVar[str] = CODEACT_SYSTEM_MESSAGE
     tools_template: ClassVar[str] = CODEACT_TOOLS_TEMPLATE
-
-    current_step: Optional[CodeActStep] = None
-    final_answer: Optional[str] = None
 
     @classmethod
     def extract_flow_result(

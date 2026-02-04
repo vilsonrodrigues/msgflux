@@ -84,22 +84,36 @@ class ToolCall(Struct):
 
 
 class ReActStep(Struct):
+    """A single step in ReAct reasoning."""
+
     thought: str
     actions: List[ToolCall]
 
 
-class ReAct(Struct, FlowControl):
-    """ReAct (Reasoning + Acting) flow control schema.
+class ReActSchema(Struct):
+    """Schema for ReAct responses.
 
-    This schema implements the ReAct pattern where the LLM alternates between
+    This schema defines the structure of ReAct model outputs without
+    FlowControl logic, allowing reuse for parsing and validation.
+
+    Attributes:
+        current_step: The current reasoning step with thought and actions.
+        final_answer: The final answer when reasoning is complete.
+    """
+
+    current_step: Optional[ReActStep] = None
+    final_answer: Optional[str] = None
+
+
+class ReAct(ReActSchema, FlowControl):
+    """ReAct (Reasoning + Acting) flow control.
+
+    This implements the ReAct pattern where the LLM alternates between
     reasoning (thought) and acting (tool calls) until it reaches a final answer.
     """
 
     system_message: ClassVar[str] = REACT_SYSTEM_MESSAGE
     tools_template: ClassVar[str] = REACT_TOOLS_TEMPLATE
-
-    current_step: Optional[ReActStep] = None
-    final_answer: Optional[str] = None
 
     @classmethod
     def extract_flow_result(
