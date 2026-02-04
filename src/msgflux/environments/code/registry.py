@@ -1,12 +1,37 @@
 """Registry for code environment providers."""
 
-from typing import TYPE_CHECKING, Any, Dict, Optional
+import importlib
+from typing import TYPE_CHECKING, Any, Dict
 
 if TYPE_CHECKING:
     from msgflux.environments.code.base import BaseCodeEnvironment
 
 # Registry: environment_registry[environment_type][provider] = cls
 environment_registry: Dict[str, Dict[str, type]] = {}
+
+# Optional providers that require additional dependencies
+# Maps (environment_type, provider) -> module import path
+_OPTIONAL_PROVIDERS: Dict[tuple, str] = {
+    ("python", "agent_sandbox"): "msgflux.environments.code.providers.agent_sandbox",
+    ("shell", "agent_sandbox"): "msgflux.environments.code.providers.agent_sandbox",
+}
+
+
+def _try_load_optional_provider(environment_type: str, provider: str) -> bool:
+    """Try to load an optional provider module.
+
+    Returns True if the provider was loaded successfully.
+    """
+    key = (environment_type, provider)
+    if key not in _OPTIONAL_PROVIDERS:
+        return False
+
+    module_path = _OPTIONAL_PROVIDERS[key]
+    try:
+        importlib.import_module(module_path)
+        return True
+    except ImportError:
+        return False
 
 
 def register_environment(cls: "type[BaseCodeEnvironment]"):
@@ -80,6 +105,10 @@ class Environments:
             environment_type = environment_id
             provider = None
 
+        # Try to load optional provider if not already registered
+        if provider is not None:
+            _try_load_optional_provider(environment_type, provider)
+
         if environment_type not in environment_registry:
             available = list(environment_registry.keys())
             raise ValueError(
@@ -94,6 +123,14 @@ class Environments:
             provider = next(iter(providers.keys()))
 
         if provider not in providers:
+            # Try to load optional provider
+            if _try_load_optional_provider(environment_type, provider):
+                # Re-check after loading
+                providers = environment_registry.get(environment_type, {})
+                if provider in providers:
+                    cls = providers[provider]
+                    return cls(**kwargs)
+
             available = [f"{environment_type}/{p}" for p in providers.keys()]
             raise ValueError(
                 f"Unknown provider '{provider}' for environment type "

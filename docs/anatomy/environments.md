@@ -9,11 +9,12 @@ environments/
 ├── base.py              # BaseEnvironment (root class for all environments)
 ├── pool.py              # EnvironmentPool for reuse and warmup
 ├── code/
-│   ├── base.py          # BaseCodeEnvironment, BasePythonEnvironment
-│   ├── registry.py      # Environments factory
+│   ├── base.py          # BaseCodeEnvironment, BasePythonEnvironment, BaseShellEnvironment
+│   ├── registry.py      # Environments factory (with lazy loading)
 │   ├── response.py      # ExecutionResult
 │   └── providers/
-│       └── deno_pyodide.py  # DenoPyodideSandbox
+│       ├── deno_pyodide.py   # DenoPyodideSandbox (local WebAssembly)
+│       └── agent_sandbox.py  # AgentSandboxPython, AgentSandboxShell (Docker)
 └── exceptions.py        # Error types
 ```
 
@@ -53,15 +54,21 @@ class BaseCodeEnvironment:
 ```python
 from msgflux.environments import Environments
 
-# Create Python environment
+# Create Python environment (default: deno_pyodide)
 env = Environments.code("python", timeout=30.0)
 
-# With packages pre-installed
+# Explicit provider selection
+env = Environments.code("python/deno_pyodide", timeout=30.0)
+env = Environments.code("python/agent_sandbox", base_url="http://localhost:8080")
+env = Environments.code("shell/agent_sandbox", base_url="http://localhost:8080")
+
+# With packages pre-installed (deno_pyodide only)
 env = Environments.code("python", packages=["numpy", "pandas"])
 
 # List available
-Environments.list_types()      # ["python"]
-Environments.list_providers("python")  # ["deno_pyodide"]
+Environments.list_types()      # ["python", "shell"]
+Environments.list_providers("python")  # ["deno_pyodide", "agent_sandbox"]
+Environments.list_providers("shell")   # ["agent_sandbox"]
 ```
 
 ## Environment Pooling
@@ -238,7 +245,9 @@ Properties:
 - `env.environment` - Underlying implementation
 - `env.tools` - Init tools configured at creation
 
-## DenoPyodideSandbox
+## Available Providers
+
+### DenoPyodideSandbox
 
 Secure Python execution via Deno + Pyodide (WebAssembly):
 
@@ -275,6 +284,109 @@ Sandbox (Pyodide)  ←→  Host (Python)
      │  tool_call response  │
      │ ←──────────────────  │
 ```
+
+### AgentSandboxPython
+
+Python execution via Jupyter kernel in [agent-infra/sandbox](https://github.com/agent-infra/sandbox) Docker container:
+
+```bash
+# Start the sandbox container
+docker run --rm -p 8080:8080 ghcr.io/agent-infra/sandbox:latest
+```
+
+```python
+# Install optional dependency
+# pip install msgflux[agent-sandbox]
+
+from msgflux.environments import Environments
+
+env = Environments.code(
+    "python/agent_sandbox",
+    base_url="http://localhost:8080",
+    timeout=30.0,
+)
+
+# Execute Python code
+result = env("x = 1 + 2; print(x)")
+print(result.output)  # "3"
+
+# Variables persist across executions
+env("y = x * 10")
+result = env("print(y)")
+print(result.output)  # "30"
+
+# Variable injection
+result = env("print(sum(numbers))", vars={"numbers": [1, 2, 3, 4, 5]})
+print(result.output)  # "15"
+
+# Get/set variables
+env.set_variable("data", {"key": "value"})
+value = env.get_variable("data")
+
+# Install packages (via pip)
+env.install_package("requests")
+packages = env.list_packages()
+```
+
+**Features:**
+- Session-based variable persistence (Jupyter kernel)
+- Real pip package installation
+- File mounting to container filesystem
+- HTTP-based communication
+
+**Limitations:**
+- Tool injection NOT supported (use DenoPyodideSandbox for tools)
+- Requires Docker running
+
+### AgentSandboxShell
+
+Shell command execution in the same Docker container:
+
+```python
+env = Environments.code(
+    "shell/agent_sandbox",
+    base_url="http://localhost:8080",
+    timeout=30.0,
+)
+
+# Execute shell commands
+result = env("echo 'Hello from Shell!'")
+print(result.output)  # "Hello from Shell!"
+
+# Check exit code
+result = env("ls /nonexistent")
+print(result.success)  # False
+print(result.metadata["exit_code"])  # Non-zero
+
+# Environment variables
+result = env("echo $MY_VAR", vars={"MY_VAR": "test"})
+print(result.output)  # "test"
+
+# Complex commands
+result = env("for i in 1 2 3; do echo $i; done")
+
+# File operations
+env("echo 'content' > /tmp/file.txt")
+result = env("cat /tmp/file.txt")
+```
+
+**Features:**
+- Full shell access (bash)
+- Environment variable injection via `vars`
+- Exit code tracking in `metadata`
+- File system access
+
+### Provider Comparison
+
+| Feature | DenoPyodideSandbox | AgentSandboxPython | AgentSandboxShell |
+|---------|-------------------|-------------------|-------------------|
+| Environment ID | `python/deno_pyodide` | `python/agent_sandbox` | `shell/agent_sandbox` |
+| Type | Python (Pyodide) | Python (Jupyter) | Shell/Bash |
+| Hosting | Local (WebAssembly) | Docker | Docker |
+| Tool Injection | Yes (JSON-RPC) | No | No |
+| Package Install | micropip (limited) | pip (full) | N/A |
+| Variable Persistence | Yes | Yes (session) | No (use env vars) |
+| Security | High (WASM isolation) | Container-based | Container-based |
 
 ## Design Decisions
 

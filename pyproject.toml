@@ -83,6 +83,9 @@ plot = [
     "code2mermaid>=0.3.0",
     "mermaid-py>=0.8.0",
 ]
+agent-sandbox = [
+    "agent-sandbox>=0.0.21",
+]
 
 [tool.ruff]
 target-version = "py39"
@@ -155,6 +158,9 @@ unfixable = ["F401"]
 "src/msgflux/nn/modules/agent.py" = ["A001","A002"]
 "src/msgflux/nn/modules/tool.py" = ["A001","A002"]
 "src/msgflux/environments/**/*.py" = ["A002"]
+# Allow lazy imports for optional dependencies in providers
+"src/msgflux/environments/code/providers/__init__.py" = ["PLC0415"]
+"src/msgflux/environments/code/providers/agent_sandbox.py" = ["PLC0415"]
 # Allow MCP protocol's camelCase naming convention
 "src/msgflux/protocols/mcp/types.py" = ["N815"]
 "tests/**/*" = [

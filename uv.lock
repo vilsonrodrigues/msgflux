@@ -7,6 +7,20 @@ resolution-markers = [
 ]
 
 [[package]]
+name = "agent-sandbox"
+version = "0.0.21"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "httpx", extra = ["socks"] },
+    { name = "pydantic" },
+    { name = "volcengine-python-sdk" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/9a/43/12eaf942730cc1944bf448138668bb8113e487b60dbf7850af4a5cfea901/agent_sandbox-0.0.21.tar.gz", hash = "sha256:fc130dfb98bd1a86eb53aa65b7eb0957f027beb2d6b79a08fcae1f046ddd5efd", size = 72436, upload-time = "2026-01-27T12:13:15.143Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/2c/67/e845daa8896865a4a850accb8a62ddcf0df04fa07452155799389c48cc4a/agent_sandbox-0.0.21-py2.py3-none-any.whl", hash = "sha256:5a613e6ca004559bdbf179a095a5ac226e1455754ddfac1670e3bb7ec134a64e", size = 164485, upload-time = "2026-01-27T12:13:13.351Z" },
+]
+
+[[package]]
 name = "annotated-types"
 version = "0.7.0"
 source = { registry = "https://pypi.org/simple" }
@@ -494,6 +508,11 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/2a/39/e50c7c3a983047577ee07d2a9e53faf5a69493943ec3f6a384bdc792deb2/httpx-0.28.1-py3-none-any.whl", hash = "sha256:d909fcccc110f8c7faf814ca82a9a4d816bc5a6dbfea25d6591d6985b8ba59ad", size = 73517, upload-time = "2024-12-06T15:37:21.509Z" },
 ]
 
+[package.optional-dependencies]
+socks = [
+    { name = "socksio" },
+]
+
 [[package]]
 name = "id"
 version = "1.5.0"
@@ -941,6 +960,9 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+agent-sandbox = [
+    { name = "agent-sandbox" },
+]
 httpx = [
     { name = "httpx" },
 ]
@@ -980,6 +1002,7 @@ doc = [
 
 [package.metadata]
 requires-dist = [
+    { name = "agent-sandbox", marker = "extra == 'agent-sandbox'", specifier = ">=0.0.21" },
     { name = "code2mermaid", marker = "extra == 'plot'", specifier = ">=0.3.0" },
     { name = "httpx", marker = "extra == 'httpx'", specifier = ">=0.28.1" },
     { name = "jinja2", specifier = ">=3.1.6" },
@@ -992,7 +1015,7 @@ requires-dist = [
     { name = "typing-extensions", specifier = ">=4.14.1" },
     { name = "uvloop", marker = "sys_platform != 'win32'", specifier = ">=0.21.0" },
 ]
-provides-extras = ["httpx", "openai", "plot"]
+provides-extras = ["agent-sandbox", "httpx", "openai", "plot"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -1068,16 +1091,16 @@ wheels = [
 
 [[package]]
 name = "msgtrace-sdk"
-version = "1.1.0"
+version = "1.2.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "opentelemetry-api" },
     { name = "opentelemetry-exporter-otlp-proto-http" },
     { name = "opentelemetry-sdk" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/cd/47/3f0c358b3f4cb5f17842b1dc5e713c793dc9a5c2ce56a41143d66ddf86e2/msgtrace_sdk-1.1.0.tar.gz", hash = "sha256:b1ad04dab5a56a39b231f5b5baf3cf7e209d25219e5c14a84f3c6964d811db61", size = 48792, upload-time = "2025-12-04T21:41:08.863Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/0b/24/cb5f1b940398e59901a03393e3de3f32c66165f1d1bef09559b360121aaf/msgtrace_sdk-1.2.0.tar.gz", hash = "sha256:1eb09f593d422e34efbcffacba604f1c475e9b24bd40083bcb40d9cfdbf7fd15", size = 55388, upload-time = "2026-01-28T19:54:11.525Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/6d/46/ea74f2e1a49d1f887b0392b1b6cc822720594321e299b56319a8419ddd24/msgtrace_sdk-1.1.0-py3-none-any.whl", hash = "sha256:d84681a397f289a96d6557ddbeef6046200c75b7b507fb94593b8812b1a79f23", size = 14078, upload-time = "2025-12-04T21:41:07.343Z" },
+    { url = "https://files.pythonhosted.org/packages/69/0d/039746c6bb34ab8dc4c46d1cb726b5ebfc5da91d49f48bca3990d4a86cd2/msgtrace_sdk-1.2.0-py3-none-any.whl", hash = "sha256:468c12011e7b7b3a5839b609b7cd28f4d3198b39f03bd4894d66fdd3c1510eea", size = 17312, upload-time = "2026-01-28T19:54:08.808Z" },
 ]
 
 [[package]]
@@ -2082,6 +2105,15 @@ wheels = [
 ]
 
 [[package]]
+name = "socksio"
+version = "1.0.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/f8/5c/48a7d9495be3d1c651198fd99dbb6ce190e2274d0f28b9051307bdec6b85/socksio-1.0.0.tar.gz", hash = "sha256:f88beb3da5b5c38b9890469de67d0cb0f9d494b78b106ca1845f96c10b91c4ac", size = 19055, upload-time = "2020-04-17T15:50:34.664Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/37/c3/6eeb6034408dac0fa653d126c9204ade96b819c936e136c5e8a6897eee9c/socksio-1.0.0-py3-none-any.whl", hash = "sha256:95dc1f15f9b34e8d7b16f06d74b8ccf48f609af32ab33c608d08761c5dcbb1f3", size = 12763, upload-time = "2020-04-17T15:50:31.878Z" },
+]
+
+[[package]]
 name = "soupsieve"
 version = "2.8.2"
 source = { registry = "https://pypi.org/simple" }
@@ -2266,6 +2298,21 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/d2/19/f5b78616566ea68edd42aacaf645adbf71fbd83fc52281fba555dc27e3f1/uvloop-0.21.0-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:f3df876acd7ec037a3d005b3ab85a7e4110422e4d9c1571d4fc89b0fc41b6816", size = 4701068, upload-time = "2024-10-14T23:38:06.385Z" },
     { url = "https://files.pythonhosted.org/packages/47/57/66f061ee118f413cd22a656de622925097170b9380b30091b78ea0c6ea75/uvloop-0.21.0-cp313-cp313-musllinux_1_2_aarch64.whl", hash = "sha256:bd53ecc9a0f3d87ab847503c2e1552b690362e005ab54e8a48ba97da3924c0dc", size = 4454428, upload-time = "2024-10-14T23:38:08.416Z" },
     { url = "https://files.pythonhosted.org/packages/63/9a/0962b05b308494e3202d3f794a6e85abe471fe3cafdbcf95c2e8c713aabd/uvloop-0.21.0-cp313-cp313-musllinux_1_2_x86_64.whl", hash = "sha256:a5c39f217ab3c663dc699c04cbd50c13813e31d917642d459fdcec07555cc553", size = 4660018, upload-time = "2024-10-14T23:38:10.888Z" },
+]
+
+[[package]]
+name = "volcengine-python-sdk"
+version = "5.0.8"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "certifi" },
+    { name = "python-dateutil" },
+    { name = "six" },
+    { name = "urllib3" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/12/04/ae8ecc5c96ae8466cff9af07b17182ee9d9413a4cd97e9d3d2b97e7b494c/volcengine_python_sdk-5.0.8.tar.gz", hash = "sha256:653fc99c99ddfed27dddd3fafc42c49df1511f1963dd5b7f6fd1e4b44480683f", size = 7671174, upload-time = "2026-01-29T12:10:49.103Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e8/15/b00f967475f2bf266a8c7097233d1e686e79d9c28f3fefe0488f5e1889cb/volcengine_python_sdk-5.0.8-py2.py3-none-any.whl", hash = "sha256:e5899279590d2bd452d8c7bcdcbb78673134d7903b20dfe8e4c08e818b097be8", size = 30152811, upload-time = "2026-01-29T12:10:44.109Z" },
 ]
 
 [[package]]

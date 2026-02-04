@@ -281,3 +281,43 @@ class BasePythonEnvironment(BaseCodeEnvironment):
         raise NotImplementedError(
             f"{self.__class__.__name__} does not support package listing."
         )
+
+
+class BaseShellEnvironment(BaseCodeEnvironment):
+    """Base class for shell/terminal environments.
+
+    Shell environments execute commands in a shell (bash, sh, etc.) rather than
+    running Python code. They don't support variable/package management like
+    Python environments.
+    """
+
+    environment_type = "shell"
+    name = "execute_command"  # Default name for tool identification
+
+    def get_variable(self, name: str) -> Any:
+        """Not applicable for shell environments.
+
+        Shell environments don't maintain variable state between executions.
+        Use environment variables via the `vars` parameter instead.
+
+        Raises:
+            NotImplementedError: Always raises as this is not supported.
+        """
+        raise NotImplementedError(
+            "Shell environments don't support get_variable. "
+            "Use environment variables via the `vars` parameter instead."
+        )
+
+    def set_variable(self, name: str, value: Any) -> None:
+        """Not applicable for shell environments.
+
+        Shell environments don't maintain variable state between executions.
+        Use environment variables via the `vars` parameter instead.
+
+        Raises:
+            NotImplementedError: Always raises as this is not supported.
+        """
+        raise NotImplementedError(
+            "Shell environments don't support set_variable. "
+            "Use environment variables via the `vars` parameter instead."
+        )
