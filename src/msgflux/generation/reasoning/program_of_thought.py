@@ -109,7 +109,7 @@ class ProgramOfThought(ProgramOfThoughtSchema, FlowControl):
         >>> agent = Agent(
         ...     "solver",
         ...     model,
-        ...     environment=Environment(environment=Environments.code("python")),
+        ...     environment=Environment(environment=Environments.code("python/deno_pyodide")),
         ...     tools=[search, calculate],
         ...     generation_schema=ProgramOfThought,
         ... )
@@ -118,6 +118,7 @@ class ProgramOfThought(ProgramOfThoughtSchema, FlowControl):
 
     system_message: ClassVar[str] = POT_SYSTEM_MESSAGE
     tools_template: ClassVar[str] = POT_TOOLS_TEMPLATE
+    final_answer_overridable: ClassVar[bool] = False
 
     @classmethod
     def extract_flow_result(

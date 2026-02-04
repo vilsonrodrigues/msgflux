@@ -66,11 +66,13 @@ class FlowControl:
         system_message: Optional system message template
         tools_template: Optional Jinja template for tool schemas
         inject_vars_info: Whether to inject variable type info as system_note
+        final_answer_overridable: Whether final_answer can be overridden by signature
     """
 
     system_message: Optional[str] = None
     tools_template: Optional[str] = None
     inject_vars_info: bool = False
+    final_answer_overridable: bool = True
 
     @classmethod
     @abstractmethod

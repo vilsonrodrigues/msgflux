@@ -236,7 +236,7 @@ class Agent(Module, metaclass=AutoParams):
             (e.g., ProgramOfThought, RLM) are executed in this environment
             with all ToolLibrary tools available.
             !!! example
-                environment=Environment(environment=Environments.code("python"))
+                environment=Environment(environment=Environments.code("python/deno_pyodide"))
         signature:
             A DSPy-based signature. A signature creates a task_template,
             a generation_schema, instructions and examples (both if passed).
@@ -755,8 +755,7 @@ class Agent(Module, metaclass=AutoParams):
 
             # Log raw model response before processing
             if self.config.get("verbose", False):
-                raw_str = str(raw_response)[:300]
-                cprint(f"[{self.name}][raw_response] {raw_str}", bc="br3", ls="b")
+                cprint(f"[{self.name}][raw_response] {raw_response}", bc="br3", ls="b")
 
             flow_result = flow_control.extract_flow_result(raw_response, vars)
 
@@ -817,10 +816,7 @@ class Agent(Module, metaclass=AutoParams):
             ExecutionResult from the environment.
         """
         if self.config.get("verbose", False):
-            code_preview = env_call.action[:100].replace("\n", "\\n")
-            if len(env_call.action) > 100:
-                code_preview += "..."
-            cprint(f"[{self.name}][environment_call] {code_preview}", bc="br2", ls="b")
+            cprint(f"[{self.name}][env_call] {env_call.action}", bc="br2", ls="b")
 
         tool_funcs = self._get_tool_functions() if env_call.inject_tools else {}
         env_vars = vars if env_call.inject_vars else {}
@@ -829,8 +825,8 @@ class Agent(Module, metaclass=AutoParams):
 
         if self.config.get("verbose", False):
             if result.success:
-                output_preview = (result.output or "(no output)")[:100]
-                cprint(f"[{self.name}][environment_result] {output_preview}", ls="b")
+                output = result.output or "(no output)"
+                cprint(f"[{self.name}][environment_result] {output}", ls="b")
             else:
                 cprint(f"[{self.name}][environment_error] {result.error}", ls="b")
 
@@ -843,10 +839,7 @@ class Agent(Module, metaclass=AutoParams):
     ) -> Any:
         """Async version of _process_environment_call."""
         if self.config.get("verbose", False):
-            code_preview = env_call.action[:100].replace("\n", "\\n")
-            if len(env_call.action) > 100:
-                code_preview += "..."
-            cprint(f"[{self.name}][environment_call] {code_preview}", bc="br2", ls="b")
+            cprint(f"[{self.name}][env_call] {env_call.action}", bc="br2", ls="b")
 
         tool_funcs = self._get_tool_functions() if env_call.inject_tools else {}
         env_vars = vars if env_call.inject_vars else {}
@@ -857,8 +850,8 @@ class Agent(Module, metaclass=AutoParams):
 
         if self.config.get("verbose", False):
             if result.success:
-                output_preview = (result.output or "(no output)")[:100]
-                cprint(f"[{self.name}][environment_result] {output_preview}", ls="b")
+                output = result.output or "(no output)"
+                cprint(f"[{self.name}][environment_result] {output}", ls="b")
             else:
                 cprint(f"[{self.name}][environment_error] {result.error}", ls="b")
 
@@ -878,8 +871,7 @@ class Agent(Module, metaclass=AutoParams):
 
             # Log raw model response before processing
             if self.config.get("verbose", False):
-                raw_str = str(raw_response)[:300]
-                cprint(f"[{self.name}][raw_response] {raw_str}", bc="br3", ls="b")
+                cprint(f"[{self.name}][raw_response] {raw_response}", bc="br3", ls="b")
 
             flow_result = await flow_control.aextract_flow_result(raw_response, vars)
 
@@ -2024,6 +2016,15 @@ class Agent(Module, metaclass=AutoParams):
             )
             fused_output_struct = None
             if generation_schema is not None:
+                # Check if schema allows signature fusion
+                can_override = getattr(generation_schema, "final_answer_overridable", True)
+                if not can_override:
+                    raise ValueError(
+                        f"Generation schema '{generation_schema.__name__}' does not "
+                        "support signature fusion. The final_answer is resolved by "
+                        "the system."
+                    )
+
                 signature_as_type = cast(Type[msgspec.Struct], signature_output_struct)
                 if is_optional_field(generation_schema, "final_answer"):
                     signature_as_type = Optional[signature_output_struct]  # type: ignore
