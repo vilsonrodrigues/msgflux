@@ -53,7 +53,7 @@ class EnvironmentPool:
         >>>
         >>> # Create a pool with pre-installed packages
         >>> pool = EnvironmentPool(
-        ...     factory=lambda: Environments.code("python"),
+        ...     factory=lambda: Environments.code("python/deno_pyodide"),
         ...     packages=["numpy", "pandas"],
         ...     min_size=2,
         ...     max_size=5,

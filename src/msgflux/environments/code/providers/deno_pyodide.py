@@ -50,7 +50,7 @@ class DenoPyodideSandbox(BasePythonEnvironment):
 
     Example:
         >>> from msgflux.environments import Environments
-        >>> env = Environments.code("python")
+        >>> env = Environments.code("python/deno_pyodide")
         >>> result = env("print('Hello!')")
         >>> print(result.output)  # "Hello!"
     """
@@ -636,7 +636,7 @@ class DenoPyodideSandbox(BasePythonEnvironment):
 
         Example:
             >>> async def main():
-            ...     env = Environments.code("python")
+            ...     env = Environments.code("python/deno_pyodide")
             ...     result = await env.acall("print('hello')")
             ...     print(result.output)
         """

@@ -123,7 +123,7 @@ class RLM(RLMSchema, FlowControl):
         >>> agent = Agent(
         ...     "analyzer",
         ...     model,
-        ...     environment=Environment(environment=Environments.code("python")),
+        ...     environment=Environment(environment=Environments.code("python/deno_pyodide")),
         ...     tools=[llm_query, search],
         ...     generation_schema=RLM,
         ... )

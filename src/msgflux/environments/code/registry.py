@@ -43,25 +43,21 @@ class Environments:
 
     Example:
         >>> from msgflux.environments import Environments
-        >>> env = Environments.code("python", provider="deno_pyodide")
+        >>> env = Environments.code("python/deno_pyodide")
         >>> result = env("print('Hello, World!')")
     """
 
     @staticmethod
     def code(
-        environment_type: str = "python",
-        *,
-        provider: Optional[str] = None,
+        environment_id: str = "python",
         **kwargs: Any,
     ) -> "BaseCodeEnvironment":
         """Create a code execution environment.
 
         Args:
-            environment_type:
-                The type of environment ("python", etc.).
-            provider:
-                The provider implementation to use. If None, uses the first
-                registered provider for the given type.
+            environment_id:
+                Environment identifier in format "type/provider" or just "type".
+                Examples: "python/deno_pyodide", "python"
             **kwargs:
                 Additional arguments passed to the environment constructor.
 
@@ -73,13 +69,21 @@ class Environments:
                 If the environment type or provider is not registered.
 
         Example:
-            >>> env = Environments.code("python", timeout=30.0)
-            >>> env = Environments.code("python", provider="deno_pyodide")
+            >>> env = Environments.code("python/deno_pyodide")
+            >>> env = Environments.code("python")  # uses default provider
+            >>> env = Environments.code("python/deno_pyodide", timeout=30.0)
         """
+        # Parse environment_id: "type/provider" or just "type"
+        if "/" in environment_id:
+            environment_type, provider = environment_id.split("/", 1)
+        else:
+            environment_type = environment_id
+            provider = None
+
         if environment_type not in environment_registry:
             available = list(environment_registry.keys())
             raise ValueError(
-                f"Unknown environment type: {environment_type}. "
+                f"Unknown environment type: '{environment_type}'. "
                 f"Available types: {available}"
             )
 
@@ -90,10 +94,10 @@ class Environments:
             provider = next(iter(providers.keys()))
 
         if provider not in providers:
-            available = list(providers.keys())
+            available = [f"{environment_type}/{p}" for p in providers.keys()]
             raise ValueError(
                 f"Unknown provider '{provider}' for environment type "
-                f"'{environment_type}'. Available providers: {available}"
+                f"'{environment_type}'. Available: {available}"
             )
 
         cls = providers[provider]

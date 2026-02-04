@@ -142,7 +142,7 @@ class CodeAct(CodeActSchema, FlowControl):
         >>> agent = Agent(
         ...     "researcher",
         ...     model,
-        ...     environment=Environment(environment=Environments.code("python")),
+        ...     environment=Environment(environment=Environments.code("python/deno_pyodide")),
         ...     tools=[search],
         ...     generation_schema=CodeAct,
         ... )

@@ -25,7 +25,7 @@ class Environment(Module):
         ...     return f"Results for: {query}"
         >>>
         >>> env = Environment(
-        ...     environment=Environments.code("python"),
+        ...     environment=Environments.code("python/deno_pyodide"),
         ...     tools={"search": search}
         ... )
         >>>
@@ -61,7 +61,7 @@ class Environment(Module):
         Example:
             >>> from msgflux.environments import Environments
             >>> env = Environment(
-            ...     environment=Environments.code("python"),
+            ...     environment=Environments.code("python/deno_pyodide"),
             ...     tools={"search": search_fn, "calculate": calc_fn}
             ... )
         """
