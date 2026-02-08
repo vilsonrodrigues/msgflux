@@ -1,4 +1,5 @@
 from msgflux.nn.modules.agent import Agent
+from msgflux.nn.modules.collaboration import Debate, Team
 from msgflux.nn.modules.container import ModuleDict, ModuleList, Sequential
 from msgflux.nn.modules.embedder import Embedder
 from msgflux.nn.modules.lm import LM
@@ -9,9 +10,11 @@ from msgflux.nn.modules.retriever import Retriever
 from msgflux.nn.modules.speaker import Speaker
 from msgflux.nn.modules.tool import LocalTool, MCPTool, Tool, ToolLibrary
 from msgflux.nn.modules.transcriber import Transcriber
+from msgflux.nn.modules.workspace import Workspace
 
 __all__ = [
     "Agent",
+    "Debate",
     "Embedder",
     "LM",
     "LocalTool",
@@ -24,9 +27,11 @@ __all__ = [
     "Retriever",
     "Sequential",
     "Speaker",
+    "Team",
     "Tool",
     "ToolLibrary",
     "Transcriber",
+    "Workspace",
 ]
 
 # Please keep this list sorted
