@@ -13,7 +13,7 @@ _VOTE_TRUE_TOKEN = "APPROVE"  # noqa: S105
 _VOTE_FALSE_TOKEN = "REJECT"  # noqa: S105
 
 
-class Team(Module, metaclass=AutoParams):
+class DeliberativeTeam(Module, metaclass=AutoParams):
     """Orchestrates a team of agents without a leader, using a moderator."""
 
     _autoparams_use_docstring_for = "description"

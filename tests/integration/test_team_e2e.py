@@ -1,4 +1,4 @@
-"""E2E tests for nn.Team (team.py) with real OpenAI models.
+"""E2E tests for nn.DeliberativeTeam with real OpenAI models.
 
 Requires OPENAI_API_KEY in environment.
 
@@ -12,7 +12,7 @@ import pytest
 
 import msgflux as mf
 from msgflux import nn
-from msgflux.nn.modules.team import Team
+from msgflux.nn.modules.team import DeliberativeTeam
 from msgflux.utils.console import cprint
 
 requires_openai = pytest.mark.skipif(
@@ -66,7 +66,7 @@ def test_team_full_deliberative_flow(model):
         "a tech lead moderating the team discussion and synthesizing plans",
     )
 
-    team = Team(
+    team = DeliberativeTeam(
         name="caching_team",
         agents=[backend, pm],
         moderator=moderator,
@@ -134,7 +134,7 @@ async def test_team_full_deliberative_flow_async(model):
         "a tech lead moderating the team discussion and synthesizing plans",
     )
 
-    team = Team(
+    team = DeliberativeTeam(
         name="caching_team_async",
         agents=[backend, pm],
         moderator=moderator,
@@ -198,7 +198,7 @@ def test_team_with_round_moderation(model):
         "a software architect moderating the discussion and providing guidance",
     )
 
-    team = Team(
+    team = DeliberativeTeam(
         name="api_team",
         agents=[frontend, backend],
         moderator=moderator,
@@ -261,7 +261,7 @@ def test_team_participants_filter_real(model):
         "a project manager moderating the team discussion",
     )
 
-    team = Team(
+    team = DeliberativeTeam(
         name="filtered_team",
         agents=[agent_a, agent_b, agent_c],
         moderator=moderator,
@@ -312,7 +312,7 @@ def test_team_response_quality(model):
         "a health IT project lead synthesizing team plans",
     )
 
-    team = Team(
+    team = DeliberativeTeam(
         name="healthcare_team",
         agents=[doctor_agent, alert_agent],
         moderator=moderator,

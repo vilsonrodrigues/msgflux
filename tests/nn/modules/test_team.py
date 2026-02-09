@@ -7,11 +7,11 @@ import pytest
 from msgflux.message import Message
 from msgflux.nn.modules.agent import Agent
 from msgflux.nn.modules.module import Module
-from msgflux.nn.modules.team import Team
+from msgflux.nn.modules.team import DeliberativeTeam
 
 
 class StubAgent(Agent):
-    """Lightweight Agent test double for Team orchestration tests."""
+    """Lightweight Agent test double for DeliberativeTeam tests."""
 
     def __init__(
         self,
@@ -64,8 +64,8 @@ def _build_team(
     config: Optional[dict[str, Any]] = None,
     message_fields: Optional[dict[str, Any]] = None,
     response_mode: Optional[str] = None,
-) -> Team:
-    return Team(
+) -> DeliberativeTeam:
+    return DeliberativeTeam(
         name="core_team",
         agents=agents,
         moderator=moderator,
@@ -97,7 +97,7 @@ class TestTeamInitialization:
 
     def test_team_requires_agent_instances(self):
         with pytest.raises(TypeError, match="instances of `nn.Agent`"):
-            Team(
+            DeliberativeTeam(
                 name="core_team",
                 agents=[StubAgent("agent_a"), object()],  # type: ignore[list-item]
                 moderator=StubAgent("moderator"),
