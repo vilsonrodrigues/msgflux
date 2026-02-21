@@ -105,7 +105,9 @@ class Agent(Module, metaclass=AutoParams):
         description: Optional[str] = None,
         annotations: Optional[Mapping[str, type]] = None,
     ):
-        """Args:
+        """Initialize the Agent module.
+
+        Args:
         name:
             Agent name in snake case format.
         model:
@@ -116,8 +118,7 @@ class Agent(Module, metaclass=AutoParams):
             What the Agent should do.
         expected_output:
             What the response should be like.
-
-        Examples:
+        examples:
             Examples of inputs, reasoning and outputs.
         system_extra_message:
             An extra message in system prompt.
