@@ -1,5 +1,6 @@
 from copy import deepcopy
 from datetime import datetime, timezone
+from inspect import cleandoc
 from typing import (
     Any,
     Callable,
@@ -1417,6 +1418,8 @@ class Agent(Module, metaclass=AutoParams):
 
     def _set_system_message(self, system_message: Optional[str] = None):
         if isinstance(system_message, str) or system_message is None:
+            if isinstance(system_message, str):
+                system_message = cleandoc(system_message)
             if (
                 hasattr(self.generation_schema, "system_message")
                 and self.generation_schema.system_message is not None
@@ -1436,6 +1439,8 @@ class Agent(Module, metaclass=AutoParams):
 
     def _set_instructions(self, instructions: Optional[str] = None):
         if isinstance(instructions, str) or instructions is None:
+            if isinstance(instructions, str):
+                instructions = cleandoc(instructions)
             typed_parser_cls = typed_parser_registry.get(self.typed_parser, None)
             if typed_parser_cls is not None:
                 instructions = self._format_template(
@@ -1449,6 +1454,8 @@ class Agent(Module, metaclass=AutoParams):
 
     def _set_expected_output(self, expected_output: Optional[str] = None):
         if isinstance(expected_output, str) or expected_output is None:  # TODO
+            if isinstance(expected_output, str):
+                expected_output = cleandoc(expected_output)
             expected_output_temp = ""
             if expected_output:
                 expected_output_temp += expected_output
@@ -1475,6 +1482,8 @@ class Agent(Module, metaclass=AutoParams):
         examples: Optional[Union[str, List[Union[Example, Mapping[str, Any]]]]] = None,
     ):
         if isinstance(examples, (str, list)) or examples is None:
+            if isinstance(examples, str):
+                examples = cleandoc(examples)
             if isinstance(examples, list):
                 typed_parser_cls = typed_parser_registry.get(self.typed_parser, None)
                 collection = ExampleCollection(examples)
@@ -1555,6 +1564,8 @@ class Agent(Module, metaclass=AutoParams):
 
     def _set_system_extra_message(self, system_extra_message: Optional[str] = None):
         if isinstance(system_extra_message, str) or system_extra_message is None:
+            if isinstance(system_extra_message, str):
+                system_extra_message = cleandoc(system_extra_message)
             self.register_buffer("system_extra_message", system_extra_message)
         else:
             raise TypeError(
