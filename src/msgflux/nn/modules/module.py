@@ -510,13 +510,7 @@ class Module:
     def _format_template(
         self, content: Union[str, Dict[str, Any]], raw_template: str
     ) -> str:
-        """Format a template with content, using security settings from config.
-
-        Delegates to msgflux.utils.templates.format_template with sanitization
-        controlled by the 'sanitize_inputs' config option (default: True).
-        """
-        sanitize = self.config.get("sanitize_inputs", True)
-        return format_template(content, raw_template, sanitize_inputs=sanitize)
+        return format_template(content, raw_template)
 
     def set_name(self, name: str):
         if isinstance(name, str):
@@ -588,9 +582,7 @@ class Module:
             message.set(self.response_mode, response)
             return message
         else:
-            raise ValueError(
-                "For non-Message objects, `response_mode` must be None"
-            )
+            raise ValueError("For non-Message objects, `response_mode` must be None")
 
     def _set_task_inputs(
         self, task_inputs: Optional[Union[str, Dict[str, str], Tuple[str, ...]]] = None

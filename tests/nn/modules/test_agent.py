@@ -52,7 +52,7 @@ class TestAgentInitialization:
         agent = Agent(
             name="agent",
             model=mock_model,
-            system_message="You are a helpful assistant."
+            system_message="You are a helpful assistant.",
         )
 
         assert hasattr(agent, "system_message") and agent.system_message is not None
@@ -63,9 +63,7 @@ class TestAgentInitialization:
         mock_model.model_type = "chat_completion"
 
         agent = Agent(
-            name="agent",
-            model=mock_model,
-            instructions="Follow these steps carefully."
+            name="agent", model=mock_model, instructions="Follow these steps carefully."
         )
 
         assert hasattr(agent, "instructions") and agent.instructions is not None
@@ -78,7 +76,7 @@ class TestAgentInitialization:
         agent = Agent(
             name="agent",
             model=mock_model,
-            expected_output="Provide a detailed response."
+            expected_output="Provide a detailed response.",
         )
 
         assert hasattr(agent, "expected_output") and agent.expected_output is not None
@@ -88,11 +86,7 @@ class TestAgentInitialization:
         mock_model = Mock()
         mock_model.model_type = "chat_completion"
 
-        agent = Agent(
-            name="agent",
-            model=mock_model,
-            examples="Example 1\nExample 2"
-        )
+        agent = Agent(name="agent", model=mock_model, examples="Example 1\nExample 2")
 
         # Examples should be processed
         assert hasattr(agent, "_buffers")
@@ -103,11 +97,7 @@ class TestAgentInitialization:
         mock_model.model_type = "chat_completion"
         example1 = Example(inputs="test input", labels="test output")
 
-        agent = Agent(
-            name="agent",
-            model=mock_model,
-            examples=[example1]
-        )
+        agent = Agent(name="agent", model=mock_model, examples=[example1])
 
         assert hasattr(agent, "_buffers")
 
@@ -119,11 +109,7 @@ class TestAgentInitialization:
         def input_guard(params):
             return params
 
-        agent = Agent(
-            name="agent",
-            model=mock_model,
-            guardrails={"input": input_guard}
-        )
+        agent = Agent(name="agent", model=mock_model, guardrails={"input": input_guard})
 
         assert hasattr(agent, "guardrails") and agent.guardrails is not None
 
@@ -133,9 +119,7 @@ class TestAgentInitialization:
         mock_model.model_type = "chat_completion"
 
         agent = Agent(
-            name="agent",
-            model=mock_model,
-            message_fields={"task_inputs": "input.user"}
+            name="agent", model=mock_model, message_fields={"task_inputs": "input.user"}
         )
 
         # message_fields is unpacked, not stored as single attribute
@@ -148,9 +132,7 @@ class TestAgentInitialization:
         mock_model.model_type = "chat_completion"
 
         agent = Agent(
-            name="agent",
-            model=mock_model,
-            config={"verbose": True, "stream": False}
+            name="agent", model=mock_model, config={"verbose": True, "stream": False}
         )
 
         assert hasattr(agent, "config") and agent.config is not None
@@ -161,9 +143,7 @@ class TestAgentInitialization:
         mock_model.model_type = "chat_completion"
 
         agent = Agent(
-            name="agent",
-            model=mock_model,
-            templates={"task": "Custom task template"}
+            name="agent", model=mock_model, templates={"task": "Custom task template"}
         )
 
         assert hasattr(agent, "templates") and agent.templates is not None
@@ -173,11 +153,7 @@ class TestAgentInitialization:
         mock_model = Mock()
         mock_model.model_type = "chat_completion"
 
-        agent = Agent(
-            name="agent",
-            model=mock_model,
-            context_cache="cache_key"
-        )
+        agent = Agent(name="agent", model=mock_model, context_cache="cache_key")
 
         assert hasattr(agent, "context_cache") and agent.context_cache is not None
 
@@ -186,11 +162,7 @@ class TestAgentInitialization:
         mock_model = Mock()
         mock_model.model_type = "chat_completion"
 
-        agent = Agent(
-            name="agent",
-            model=mock_model,
-            prefilling="Start with this text"
-        )
+        agent = Agent(name="agent", model=mock_model, prefilling="Start with this text")
 
         assert hasattr(agent, "prefilling") and agent.prefilling is not None
 
@@ -199,11 +171,7 @@ class TestAgentInitialization:
         mock_model = Mock()
         mock_model.model_type = "chat_completion"
 
-        agent = Agent(
-            name="agent",
-            model=mock_model,
-            response_mode="structured"
-        )
+        agent = Agent(name="agent", model=mock_model, response_mode="structured")
 
         assert hasattr(agent, "response_mode") and agent.response_mode is not None
 
@@ -216,11 +184,7 @@ class TestAgentInitialization:
             """Test tool."""
             return x * 2
 
-        agent = Agent(
-            name="agent",
-            model=mock_model,
-            tools=[my_tool]
-        )
+        agent = Agent(name="agent", model=mock_model, tools=[my_tool])
 
         # Tools are stored in tool_library attribute
         assert hasattr(agent, "tool_library")
@@ -231,11 +195,7 @@ class TestAgentInitialization:
         mock_model = Mock()
         mock_model.model_type = "chat_completion"
 
-        agent = Agent(
-            name="agent",
-            model=mock_model,
-            signature="input -> output"
-        )
+        agent = Agent(name="agent", model=mock_model, signature="input -> output")
 
         # Signature configures the agent but isn't stored as attribute
         # Verify agent was created successfully and has task template
@@ -279,11 +239,7 @@ class TestAgentForward:
         mock_model.return_value = mock_response
         mock_model.acall = AsyncMock(return_value=mock_response)
 
-        agent = Agent(
-            name="agent",
-            model=mock_model,
-            signature="query -> response"
-        )
+        agent = Agent(name="agent", model=mock_model, signature="query -> response")
 
         # Mock the lm forward call
         agent.lm.forward = Mock(return_value=mock_response)
@@ -304,9 +260,7 @@ class TestAgentForward:
         mock_model.acall = AsyncMock(return_value=mock_response)
 
         agent = Agent(
-            name="agent",
-            model=mock_model,
-            signature="query, context -> response"
+            name="agent", model=mock_model, signature="query, context -> response"
         )
 
         agent.lm.forward = Mock(return_value=mock_response)
@@ -326,11 +280,7 @@ class TestAgentForward:
         mock_model.return_value = mock_response
         mock_model.acall = AsyncMock(return_value=mock_response)
 
-        agent = Agent(
-            name="agent",
-            model=mock_model,
-            signature="query -> response"
-        )
+        agent = Agent(name="agent", model=mock_model, signature="query -> response")
 
         agent.lm.forward = Mock(return_value=mock_response)
 
@@ -349,11 +299,7 @@ class TestAgentForward:
         mock_model.return_value = mock_response
         mock_model.acall = AsyncMock(return_value=mock_response)
 
-        agent = Agent(
-            name="agent",
-            model=mock_model,
-            signature="query -> response"
-        )
+        agent = Agent(name="agent", model=mock_model, signature="query -> response")
 
         agent.lm.forward = Mock(return_value=mock_response)
 
@@ -372,11 +318,7 @@ class TestAgentForward:
         mock_model.return_value = mock_response
         mock_model.acall = AsyncMock(return_value=mock_response)
 
-        agent = Agent(
-            name="agent",
-            model=mock_model,
-            signature="query -> response"
-        )
+        agent = Agent(name="agent", model=mock_model, signature="query -> response")
 
         agent.lm.forward = Mock(return_value=mock_response)
 
@@ -397,7 +339,7 @@ class TestAgentInspect:
             name="agent",
             model=mock_model,
             system_message="System prompt",
-            signature="input -> output"  # Need signature for task template
+            signature="input -> output",  # Need signature for task template
         )
 
         params = agent.inspect_model_execution_params(input="Test input")
@@ -481,7 +423,7 @@ class TestAgentProcessing:
             name="agent",
             model=mock_model,
             system_message="You are helpful",
-            signature="input -> output"
+            signature="input -> output",
         )
 
         result = agent._prepare_task(input="Test input")
@@ -547,11 +489,7 @@ class TestAgentTools:
             """Add two numbers."""
             return a + b
 
-        agent = Agent(
-            name="agent",
-            model=mock_model,
-            tools=[add]
-        )
+        agent = Agent(name="agent", model=mock_model, tools=[add])
 
         # Tools are stored in tool_library attribute
         assert hasattr(agent, "tool_library")
@@ -613,7 +551,7 @@ class TestAgentGenerationSchema:
             name="agent",
             model=mock_model,
             signature="query -> output",
-            generation_schema=Output
+            generation_schema=Output,
         )
 
         assert hasattr(agent, "generation_schema")
@@ -632,7 +570,7 @@ class TestAgentTemplates:
             name="agent",
             model=mock_model,
             system_message="You are helpful",
-            instructions="Be concise"
+            instructions="Be concise",
         )
 
         system_prompt = agent.get_system_prompt()
@@ -646,9 +584,7 @@ class TestAgentTemplates:
         mock_model.model_type = "chat_completion"
 
         agent = Agent(
-            name="agent",
-            model=mock_model,
-            templates={"task": "Question: {{query}}"}
+            name="agent", model=mock_model, templates={"task": "Question: {{query}}"}
         )
 
         assert "task" in agent.templates
@@ -659,10 +595,7 @@ class TestAgentTemplates:
         mock_model = Mock()
         mock_model.model_type = "chat_completion"
 
-        agent = Agent(
-            name="agent",
-            model=mock_model
-        )
+        agent = Agent(name="agent", model=mock_model)
 
         result = agent._format_template({"name": "Alice"}, "Hello {{name}}")
 
@@ -683,11 +616,7 @@ class TestAgentGuardrails:
             called.append(True)
             return params
 
-        agent = Agent(
-            name="agent",
-            model=mock_model,
-            guardrails={"input": input_guard}
-        )
+        agent = Agent(name="agent", model=mock_model, guardrails={"input": input_guard})
 
         assert agent.guardrails is not None
         assert "input" in agent.guardrails
@@ -704,11 +633,7 @@ class TestAgentExamples:
         ex1 = Example(inputs="What is 2+2?", labels="4")
         ex2 = Example(inputs="What is 3+3?", labels="6")
 
-        agent = Agent(
-            name="agent",
-            model=mock_model,
-            examples=[ex1, ex2]
-        )
+        agent = Agent(name="agent", model=mock_model, examples=[ex1, ex2])
 
         assert hasattr(agent, "examples")
 
@@ -724,6 +649,33 @@ class TestAgentExamples:
 
         assert hasattr(agent, "examples")
 
+    def test_examples_not_html_escaped_in_system_prompt(self):
+        """Regression test: examples with XML tags must not be HTML-escaped.
+
+        Previously, format_template applied markupsafe.escape() on dict values,
+        converting '<example ...>' into '&lt;example ...&gt;' inside the system
+        prompt and corrupting the prompt sent to the model.
+        """
+        mock_model = Mock()
+        mock_model.model_type = "chat_completion"
+
+        example = Example(
+            inputs="A fintech offering digital wallets.",
+            labels={"Needs": "Payment integration", "Value": "Simplify payments"},
+            title="Fintech Lead",
+            topic="Sales",
+        )
+
+        agent = Agent(name="agent", model=mock_model, examples=[example])
+
+        system_prompt = agent.get_system_prompt()
+
+        assert "&lt;" not in system_prompt, "XML tags must not be HTML-escaped"
+        assert "&gt;" not in system_prompt, "XML tags must not be HTML-escaped"
+        assert "&#34;" not in system_prompt, "Quotes must not be HTML-escaped"
+        assert "<example" in system_prompt, "Example XML tag must be present"
+        assert "<input>" in system_prompt, "Input tag must be present"
+
 
 class TestAgentTypedParser:
     """Test Agent typed parser functionality."""
@@ -733,10 +685,7 @@ class TestAgentTypedParser:
         mock_model = Mock()
         mock_model.model_type = "chat_completion"
 
-        agent = Agent(
-            name="agent",
-            model=mock_model
-        )
+        agent = Agent(name="agent", model=mock_model)
 
         # Agent should have typed_parser attribute
         assert hasattr(agent, "typed_parser")
@@ -750,11 +699,7 @@ class TestAgentConfigOptions:
         mock_model = Mock()
         mock_model.model_type = "chat_completion"
 
-        agent = Agent(
-            name="agent",
-            model=mock_model,
-            config={"verbose": True}
-        )
+        agent = Agent(name="agent", model=mock_model, config={"verbose": True})
 
         assert agent.config.get("verbose") is True
 
@@ -763,11 +708,7 @@ class TestAgentConfigOptions:
         mock_model = Mock()
         mock_model.model_type = "chat_completion"
 
-        agent = Agent(
-            name="agent",
-            model=mock_model,
-            config={"return_messages": True}
-        )
+        agent = Agent(name="agent", model=mock_model, config={"return_messages": True})
 
         assert agent.config.get("return_messages") is True
 
@@ -776,11 +717,7 @@ class TestAgentConfigOptions:
         mock_model = Mock()
         mock_model.model_type = "chat_completion"
 
-        agent = Agent(
-            name="agent",
-            model=mock_model,
-            config={"tool_choice": "auto"}
-        )
+        agent = Agent(name="agent", model=mock_model, config={"tool_choice": "auto"})
 
         assert agent.config.get("tool_choice") == "auto"
 
@@ -789,11 +726,7 @@ class TestAgentConfigOptions:
         mock_model = Mock()
         mock_model.model_type = "chat_completion"
 
-        agent = Agent(
-            name="agent",
-            model=mock_model,
-            config={"include_date": True}
-        )
+        agent = Agent(name="agent", model=mock_model, config={"include_date": True})
 
         assert agent.config.get("include_date") is True
 
@@ -807,9 +740,7 @@ class TestAgentAnnotations:
         mock_model.model_type = "chat_completion"
 
         agent = Agent(
-            name="agent",
-            model=mock_model,
-            annotations={"message": str, "return": dict}
+            name="agent", model=mock_model, annotations={"message": str, "return": dict}
         )
 
         assert hasattr(agent, "annotations")
@@ -820,9 +751,7 @@ class TestAgentAnnotations:
         mock_model.model_type = "chat_completion"
 
         agent = Agent(
-            name="agent",
-            model=mock_model,
-            annotations={"message": str, "return": str}
+            name="agent", model=mock_model, annotations={"message": str, "return": str}
         )
 
         assert hasattr(agent, "annotations")
@@ -843,11 +772,7 @@ class TestAgentExecutionPaths:
         mock_model.return_value = mock_response
         mock_model.acall = AsyncMock(return_value=mock_response)
 
-        agent = Agent(
-            name="agent",
-            model=mock_model,
-            signature="query -> response"
-        )
+        agent = Agent(name="agent", model=mock_model, signature="query -> response")
 
         agent.lm.forward = Mock(return_value=mock_response)
 
@@ -873,7 +798,7 @@ class TestAgentExecutionPaths:
             name="agent",
             model=mock_model,
             signature="query -> response",
-            message_fields={"task_inputs": "query"}
+            message_fields={"task_inputs": "query"},
         )
 
         agent.lm.forward = Mock(return_value=mock_response)
@@ -897,18 +822,13 @@ class TestAgentExecutionPaths:
         mock_model.return_value = mock_response
         mock_model.acall = AsyncMock(return_value=mock_response)
 
-        agent = Agent(
-            name="agent",
-            model=mock_model,
-            signature="query -> response"
-        )
+        agent = Agent(name="agent", model=mock_model, signature="query -> response")
 
         agent.lm.forward = Mock(return_value=mock_response)
 
         result = agent(query="Test", context_inputs="Some context")
 
         assert result is not None
-
 
 
 class TestAgentSystemPrompt:
@@ -923,7 +843,7 @@ class TestAgentSystemPrompt:
             name="agent",
             model=mock_model,
             system_message="You are helpful",
-            config={"include_date": True}
+            config={"include_date": True},
         )
 
         system_prompt = agent.get_system_prompt()
@@ -937,11 +857,7 @@ class TestAgentSystemPrompt:
         mock_model = Mock()
         mock_model.model_type = "chat_completion"
 
-        agent = Agent(
-            name="agent",
-            model=mock_model,
-            system_message="Hello"
-        )
+        agent = Agent(name="agent", model=mock_model, system_message="Hello")
 
         system_prompt = agent.get_system_prompt(vars={"name": "Alice"})
 
@@ -955,7 +871,7 @@ class TestAgentSystemPrompt:
         agent = Agent(
             name="agent",
             model=mock_model,
-            templates={"system_prompt": "Custom: {{system_message}}"}
+            templates={"system_prompt": "Custom: {{system_message}}"},
         )
 
         template = agent.system_prompt_template
@@ -971,11 +887,7 @@ class TestAgentMessagePreparation:
         mock_model = Mock()
         mock_model.model_type = "chat_completion"
 
-        agent = Agent(
-            name="agent",
-            model=mock_model,
-            signature="query -> response"
-        )
+        agent = Agent(name="agent", model=mock_model, signature="query -> response")
 
         result = agent._prepare_task(query="Test {{var}}", vars={"var": "value"})
 
@@ -989,7 +901,7 @@ class TestAgentMessagePreparation:
         agent = Agent(
             name="agent",
             model=mock_model,
-            templates={"context": "Context: {{context}}"}
+            templates={"context": "Context: {{context}}"},
         )
 
         # Context preparation should use custom template
@@ -1004,11 +916,7 @@ class TestAgentProperties:
         mock_model = Mock()
         mock_model.model_type = "chat_completion"
 
-        agent = Agent(
-            name="agent",
-            model=mock_model,
-            response_mode=None
-        )
+        agent = Agent(name="agent", model=mock_model, response_mode=None)
 
         assert hasattr(agent, "response_mode")
         assert agent.response_mode is None
@@ -1018,11 +926,7 @@ class TestAgentProperties:
         mock_model = Mock()
         mock_model.model_type = "chat_completion"
 
-        agent = Agent(
-            name="agent",
-            model=mock_model,
-            context_cache="cached_context"
-        )
+        agent = Agent(name="agent", model=mock_model, context_cache="cached_context")
 
         assert agent.context_cache == "cached_context"
 
@@ -1031,11 +935,7 @@ class TestAgentProperties:
         mock_model = Mock()
         mock_model.model_type = "chat_completion"
 
-        agent = Agent(
-            name="agent",
-            model=mock_model,
-            prefilling="Start here"
-        )
+        agent = Agent(name="agent", model=mock_model, prefilling="Start here")
 
         assert agent.prefilling == "Start here"
 
@@ -1052,7 +952,7 @@ class TestAgentSystemExtraMessage:
             name="agent",
             model=mock_model,
             system_message="Main message",
-            system_extra_message="Extra info"
+            system_extra_message="Extra info",
         )
 
         assert hasattr(agent, "system_extra_message")
