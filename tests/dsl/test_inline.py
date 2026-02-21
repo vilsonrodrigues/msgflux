@@ -182,7 +182,9 @@ async def test_async_nested_while_loop(async_modules):
 
 def test_conditional_with_and_operator(modules):
     """Test conditional with AND operator."""
-    expression = "prep -> {output.agent == 'xpto' & output.score >= 10?feat_a,feat_b} -> final"
+    expression = (
+        "prep -> {output.agent == 'xpto' & output.score >= 10?feat_a,feat_b} -> final"
+    )
     input_msg = dotdict()
     result = inline(expression, modules, input_msg)
     assert result["feat_a"] == "result_a"
@@ -209,10 +211,11 @@ def test_conditional_with_not_operator(modules):
 
 def test_conditional_is_none(modules):
     """Test conditional with is None check."""
+
     def setup(msg: dotdict) -> dotdict:
         msg["value"] = None
         return msg
-    
+
     modules_with_setup = {**modules, "setup": setup}
     expression = "setup -> {value is None?feat_a,feat_b} -> final"
     input_msg = dotdict()
@@ -223,10 +226,11 @@ def test_conditional_is_none(modules):
 
 def test_conditional_is_not_none(modules):
     """Test conditional with is not None check."""
+
     def setup(msg: dotdict) -> dotdict:
         msg["value"] = "exists"
         return msg
-    
+
     modules_with_setup = {**modules, "setup": setup}
     expression = "setup -> {value is not None?feat_a,feat_b} -> final"
     input_msg = dotdict()
@@ -271,10 +275,11 @@ def test_inline_with_dotted_path(modules):
 
 def test_parallel_with_multiple_modules(modules):
     """Test parallel execution with more than two modules."""
+
     def feat_c(msg: dotdict) -> dotdict:
         msg["feat_c"] = "result_c"
         return msg
-    
+
     modules_extended = {**modules, "feat_c": feat_c}
     expression = "prep -> [feat_a, feat_b, feat_c] -> final"
     input_msg = dotdict()
@@ -287,7 +292,9 @@ def test_parallel_with_multiple_modules(modules):
 @pytest.mark.asyncio
 async def test_async_conditional_with_and_operator(async_modules):
     """Test async conditional with AND operator."""
-    expression = "prep -> {output.agent == 'xpto' & output.score >= 10?feat_a,feat_b} -> final"
+    expression = (
+        "prep -> {output.agent == 'xpto' & output.score >= 10?feat_a,feat_b} -> final"
+    )
     input_msg = dotdict()
     result = await ainline(expression, async_modules, input_msg)
     assert result["feat_a"] == "result_a"
@@ -307,10 +314,11 @@ async def test_async_conditional_with_or_operator(async_modules):
 @pytest.mark.asyncio
 async def test_async_conditional_is_none(async_modules):
     """Test async conditional with is None check."""
+
     async def setup(msg: dotdict) -> dotdict:
         msg["value"] = None
         return msg
-    
+
     modules_with_setup = {**async_modules, "setup": setup}
     expression = "setup -> {value is None?feat_a,feat_b} -> final"
     input_msg = dotdict()
@@ -322,10 +330,11 @@ async def test_async_conditional_is_none(async_modules):
 @pytest.mark.asyncio
 async def test_async_parallel_with_multiple_modules(async_modules):
     """Test async parallel execution with multiple modules."""
+
     async def feat_c(msg: dotdict) -> dotdict:
         msg["feat_c"] = "result_c"
         return msg
-    
+
     modules_extended = {**async_modules, "feat_c": feat_c}
     expression = "prep -> [feat_a, feat_b, feat_c] -> final"
     input_msg = dotdict()
@@ -381,11 +390,12 @@ def test_sequential_multiple_steps(modules):
 
 def test_nested_conditionals(modules):
     """Test nested conditional expressions."""
+
     def check_score(msg: dotdict) -> dotdict:
         if msg["output"]["score"] >= 10:
             msg["high_score"] = True
         return msg
-    
+
     modules_ext = {**modules, "check_score": check_score}
     expression = "prep -> {output.agent == 'xpto'?check_score,feat_b} -> final"
     input_msg = dotdict()
@@ -411,10 +421,11 @@ def test_comparison_less_equal(modules):
 
 def test_while_loop_zero_iterations(modules):
     """Test while loop that doesn't execute (condition false from start)."""
+
     def set_high_counter(msg: dotdict) -> dotdict:
         msg["counter"] = 100
         return msg
-    
+
     modules_ext = {**modules, "set_high": set_high_counter}
     expression = "set_high -> @{counter < 5}: increment; -> final"
     input_msg = dotdict()
@@ -493,10 +504,11 @@ def test_conditional_empty_condition_raises_error(modules):
 
 def test_conditional_with_boolean_string_values(modules):
     """Test conditional with string boolean values."""
+
     def setup(msg: dotdict) -> dotdict:
         msg["is_active"] = "true"
         return msg
-    
+
     modules_ext = {**modules, "setup": setup}
     expression = "setup -> {is_active == true?feat_a,feat_b} -> final"
     input_msg = dotdict()
@@ -506,10 +518,11 @@ def test_conditional_with_boolean_string_values(modules):
 
 def test_conditional_with_boolean_false_string(modules):
     """Test conditional with string 'false' value."""
+
     def setup(msg: dotdict) -> dotdict:
         msg["is_active"] = "false"
         return msg
-    
+
     modules_ext = {**modules, "setup": setup}
     expression = "setup -> {is_active == false?feat_a,feat_b} -> final"
     input_msg = dotdict()
@@ -519,10 +532,11 @@ def test_conditional_with_boolean_false_string(modules):
 
 def test_conditional_with_float_comparison(modules):
     """Test conditional with float values."""
+
     def setup(msg: dotdict) -> dotdict:
         msg["price"] = 19.99
         return msg
-    
+
     modules_ext = {**modules, "setup": setup}
     expression = "setup -> {price > 10.5?feat_a,feat_b} -> final"
     input_msg = dotdict()
@@ -549,6 +563,7 @@ def test_conditional_with_string_comparison(modules):
 
 def test_while_loop_max_iterations_safety(modules):
     """Test while loop respects max_iterations limit."""
+
     def never_stop(msg: dotdict) -> dotdict:
         msg["counter"] = msg.get("counter", 0) + 1
         return msg
@@ -590,10 +605,11 @@ async def test_async_conditional_invalid_format_raises_error(async_modules):
 @pytest.mark.asyncio
 async def test_async_conditional_with_float(async_modules):
     """Test async conditional with float comparison."""
+
     async def setup(msg: dotdict) -> dotdict:
         msg["price"] = 25.5
         return msg
-    
+
     modules_ext = {**async_modules, "setup": setup}
     expression = "setup -> {price > 20.0?feat_a,feat_b} -> final"
     input_msg = dotdict()
@@ -604,10 +620,11 @@ async def test_async_conditional_with_float(async_modules):
 @pytest.mark.asyncio
 async def test_async_while_loop_zero_iterations(async_modules):
     """Test async while loop with zero iterations."""
+
     async def set_high(msg: dotdict) -> dotdict:
         msg["counter"] = 100
         return msg
-    
+
     modules_ext = {**async_modules, "set_high": set_high}
     expression = "set_high -> @{counter < 5}: increment; -> final"
     input_msg = dotdict()

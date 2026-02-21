@@ -91,10 +91,7 @@ class TestBM25LexicalRetriever:
         assert len(results.data) == 1
         # Should filter some results
         if len(results.data[0]["results"]) > 0:
-            assert all(
-                result.score >= 1.0
-                for result in results.data[0]["results"]
-            )
+            assert all(result.score >= 1.0 for result in results.data[0]["results"])
 
     def test_search_with_return_score(self):
         """Test that scores are returned when requested."""

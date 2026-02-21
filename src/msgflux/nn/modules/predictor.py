@@ -188,7 +188,9 @@ class Predictor(Module, metaclass=AutoParams):
             return
 
         if not isinstance(message_fields, dict):
-            raise TypeError(f"`message_fields` must be a dict or None, given `{type(message_fields)}`")
+            raise TypeError(
+                f"`message_fields` must be a dict or None, given `{type(message_fields)}`"
+            )
 
         # Check for invalid keys
         invalid_keys = set(message_fields.keys()) - valid_keys

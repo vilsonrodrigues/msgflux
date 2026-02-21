@@ -11,26 +11,26 @@ from msgflux.models.response import ModelResponse
 
 class MockMediaModel(BaseModel):
     """Mock media generation model for testing."""
-    
+
     model_type = "text_to_image"
     provider = "mock"
-    
+
     def __init__(self):
         self.model_id = "test-media"
         self._api_key = None
         self.model = None
         self.processor = None
         self.client = None
-    
+
     def _initialize(self):
         pass
-    
+
     def __call__(self, **kwargs):
         response = ModelResponse()
         response.set_response_type("audio_generation")
         response.add("generated_media_url")
         return response
-    
+
     async def acall(self, **kwargs):
         response = ModelResponse()
         response.set_response_type("audio_generation")
@@ -45,7 +45,7 @@ class TestMediaMaker:
         """Test MediaMaker basic initialization."""
         mock_model = MockMediaModel()
         mediamaker = MediaMaker(model=mock_model)
-        
+
         assert mediamaker.model is mock_model
 
     def test_mediamaker_initialization_with_config(self):
@@ -53,7 +53,7 @@ class TestMediaMaker:
         mock_model = MockMediaModel()
         config = {"fps": 24, "duration_seconds": 5, "n": 1}
         mediamaker = MediaMaker(model=mock_model, config=config)
-        
+
         assert mediamaker._buffers["config"]["fps"] == 24
         assert mediamaker._buffers["config"]["duration_seconds"] == 5
         assert mediamaker._buffers["config"]["n"] == 1
@@ -62,37 +62,36 @@ class TestMediaMaker:
         """Test MediaMaker with negative_prompt."""
         mock_model = MockMediaModel()
         mediamaker = MediaMaker(
-            model=mock_model,
-            negative_prompt="no blur, no artifacts"
+            model=mock_model, negative_prompt="no blur, no artifacts"
         )
-        
+
         assert mediamaker.negative_prompt == "no blur, no artifacts"
 
     def test_mediamaker_with_response_format(self):
         """Test MediaMaker with response_format."""
         mock_model = MockMediaModel()
         mediamaker = MediaMaker(model=mock_model, response_format="base64")
-        
+
         assert mediamaker.response_format == "base64"
 
     def test_mediamaker_invalid_response_format_type(self):
         """Test MediaMaker raises TypeError for invalid response_format type."""
         mock_model = MockMediaModel()
-        
+
         with pytest.raises(TypeError, match="`response_format` need be a str"):
             MediaMaker(model=mock_model, response_format=123)
 
     def test_mediamaker_invalid_negative_prompt_type(self):
         """Test MediaMaker raises TypeError for invalid negative_prompt type."""
         mock_model = MockMediaModel()
-        
+
         with pytest.raises(TypeError, match="`negative_prompt` need be a str or None"):
             MediaMaker(model=mock_model, negative_prompt=123)
 
     def test_mediamaker_config_invalid_type(self):
         """Test MediaMaker raises TypeError for invalid config type."""
         mock_model = MockMediaModel()
-        
+
         with pytest.raises(TypeError, match="`config` must be a dict or None"):
             MediaMaker(model=mock_model, config="invalid")
 
@@ -101,18 +100,17 @@ class TestMediaMaker:
         mock_model = MockMediaModel()
         mediamaker = MediaMaker(model=mock_model)
         result = mediamaker("A beautiful landscape")
-        
+
         assert result == "generated_media_url"
 
     def test_mediamaker_forward_with_none_prompt(self):
         """Test MediaMaker raises ValueError for None prompt."""
         mock_model = MockMediaModel()
         mediamaker = MediaMaker(
-            model=mock_model,
-            message_fields={"task_inputs": "nonexistent"}
+            model=mock_model, message_fields={"task_inputs": "nonexistent"}
         )
         msg = Message()
-        
+
         with pytest.raises(ValueError, match="`prompt` cannot be None"):
             mediamaker(msg)
 
@@ -123,12 +121,12 @@ class TestMediaMaker:
         mock_response = Mock(spec=ModelResponse)
         mock_response.response_type = "text_generation"
         mock_model.return_value = mock_response
-        
+
         mediamaker = MediaMaker.__new__(MediaMaker)
         mediamaker._buffers = {"model": mock_model}
         mediamaker._modules = {}
         mediamaker._parameters = {}
-        
+
         with pytest.raises(ValueError, match="Unsupported model response type"):
             mediamaker._process_model_response(mock_response, "test")
 
@@ -138,30 +136,27 @@ class TestMediaMaker:
         mock_model = MockMediaModel()
         mediamaker = MediaMaker(model=mock_model)
         result = await mediamaker.aforward("A beautiful landscape")
-        
+
         assert result == "generated_media_url"
 
     def test_mediamaker_with_guardrails(self):
         """Test MediaMaker with input guardrails."""
         mock_model = MockMediaModel()
         mock_guardrail = Mock()
-        
-        mediamaker = MediaMaker(
-            model=mock_model,
-            guardrails={"input": mock_guardrail}
-        )
+
+        mediamaker = MediaMaker(model=mock_model, guardrails={"input": mock_guardrail})
         assert mediamaker.guardrails["input"] is mock_guardrail
 
     def test_mediamaker_response_format_url(self):
         """Test MediaMaker with response_format url."""
         mock_model = MockMediaModel()
         mediamaker = MediaMaker(model=mock_model, response_format="url")
-        
+
         assert mediamaker.response_format == "url"
 
     def test_mediamaker_response_format_base64(self):
         """Test MediaMaker with response_format base64."""
         mock_model = MockMediaModel()
         mediamaker = MediaMaker(model=mock_model, response_format="base64")
-        
+
         assert mediamaker.response_format == "base64"

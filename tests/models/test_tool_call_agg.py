@@ -46,7 +46,9 @@ class TestToolCallAggregatorBasics:
         agg.process(call_index=0, tool_id="", name="calculate", arguments='{"op')
 
         # Second chunk
-        agg.process(call_index=0, tool_id="call_456", name="", arguments='eration": "add')
+        agg.process(
+            call_index=0, tool_id="call_456", name="", arguments='eration": "add'
+        )
 
         # Third chunk
         agg.process(call_index=0, tool_id="", name="", arguments='", "a": 5, "b": 3}')

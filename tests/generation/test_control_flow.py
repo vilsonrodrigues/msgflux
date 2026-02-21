@@ -155,9 +155,7 @@ class TestCustomToolFlowControl:
             def build_history(
                 cls, raw_response: Mapping[str, Any], messages: List[Mapping[str, Any]]
             ) -> List[Mapping[str, Any]]:
-                messages.append(
-                    {"role": "assistant", "content": str(raw_response)}
-                )
+                messages.append({"role": "assistant", "content": str(raw_response)})
                 return messages
 
         # Test completed state

@@ -16,7 +16,11 @@ class TestAgentImageDetail:
         model = Mock()
         model.model_type = "chat_completion"
 
-        agent = Agent(name="test_agent", model=model, config={"image_block_kwargs": {"detail": "high"}})
+        agent = Agent(
+            name="test_agent",
+            model=model,
+            config={"image_block_kwargs": {"detail": "high"}},
+        )
 
         assert agent.config["image_block_kwargs"]["detail"] == "high"
 
@@ -25,7 +29,11 @@ class TestAgentImageDetail:
         model = Mock()
         model.model_type = "chat_completion"
 
-        agent = Agent(name="test_agent", model=model, config={"image_block_kwargs": {"detail": "low"}})
+        agent = Agent(
+            name="test_agent",
+            model=model,
+            config={"image_block_kwargs": {"detail": "low"}},
+        )
 
         assert agent.config["image_block_kwargs"]["detail"] == "low"
 
@@ -44,8 +52,12 @@ class TestAgentImageDetail:
         model.model_type = "chat_completion"
 
         # O Agent não valida o valor de detail, apenas passa para o ChatBlock
-        agent = Agent(name="test_agent", model=model, config={"image_block_kwargs": {"detail": "invalid"}})
-        
+        agent = Agent(
+            name="test_agent",
+            model=model,
+            config={"image_block_kwargs": {"detail": "invalid"}},
+        )
+
         # O agente deve ser criado sem erro, o ChatBlock é quem validará o valor
         assert agent.config["image_block_kwargs"]["detail"] == "invalid"
 
@@ -55,7 +67,11 @@ class TestAgentImageDetail:
         model = Mock()
         model.model_type = "chat_completion"
 
-        agent = Agent(name="test_agent", model=model, config={"image_block_kwargs": {"detail": "high"}})
+        agent = Agent(
+            name="test_agent",
+            model=model,
+            config={"image_block_kwargs": {"detail": "high"}},
+        )
 
         # Mock the return value
         mock_chatblock.image.return_value = {
@@ -80,7 +96,11 @@ class TestAgentImageDetail:
         model = Mock()
         model.model_type = "chat_completion"
 
-        agent = Agent(name="test_agent", model=model, config={"image_block_kwargs": {"detail": "low"}})
+        agent = Agent(
+            name="test_agent",
+            model=model,
+            config={"image_block_kwargs": {"detail": "low"}},
+        )
 
         # Mock the return value
         mock_chatblock.image.return_value = {

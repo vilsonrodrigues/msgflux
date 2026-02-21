@@ -309,6 +309,7 @@ class TestConvertModuleToNNTool:
 
         class Counter:
             """A counter tool."""
+
             name = "counter"
 
             def __init__(self):
@@ -388,6 +389,7 @@ class TestConvertModuleToNNTool:
 
         class NotCallable:
             """Has doc but not callable."""
+
             pass
 
         # This will raise AttributeError when trying to access __call__
@@ -693,7 +695,6 @@ class TestToolLibrary:
 
         assert result.return_directly is True
 
-
     def test_tool_library_with_call_as_response(self):
         """Test ToolLibrary with call_as_response config."""
 
@@ -859,9 +860,7 @@ class TestToolLibrary:
         library = ToolLibrary(name="lib", tools=[async_tool])
 
         tool_callings = [("call_1", "async_tool", {"x": 8})]
-        result = await library.aforward(
-            tool_callings, messages={"key": "state_value"}
-        )
+        result = await library.aforward(tool_callings, messages={"key": "state_value"})
 
         assert "8-state_value" in result.tool_calls[0].result
 
@@ -893,8 +892,10 @@ class TestToolLibrary:
             }
         ]
 
-        with patch("msgflux.nn.modules.tool.MCPClient") as mock_mcp_client_class, \
-             patch("msgflux.nn.modules.tool.F.wait_for") as mock_wait_for:
+        with (
+            patch("msgflux.nn.modules.tool.MCPClient") as mock_mcp_client_class,
+            patch("msgflux.nn.modules.tool.F.wait_for") as mock_wait_for,
+        ):
             mock_client = Mock()
             mock_tool_info = Mock()
             mock_tool_info.name = "test_tool"
@@ -921,8 +922,10 @@ class TestToolLibrary:
             }
         ]
 
-        with patch("msgflux.nn.modules.tool.MCPClient") as mock_mcp_client_class, \
-             patch("msgflux.nn.modules.tool.F.wait_for") as mock_wait_for:
+        with (
+            patch("msgflux.nn.modules.tool.MCPClient") as mock_mcp_client_class,
+            patch("msgflux.nn.modules.tool.F.wait_for") as mock_wait_for,
+        ):
             mock_client = Mock()
             mock_tool_info = Mock()
             mock_tool_info.name = "http_tool"
@@ -1077,8 +1080,10 @@ class TestMCPTool:
 
     def test_mcp_tool_forward_success(self):
         """Test MCPTool forward execution with success."""
-        with patch("msgflux.nn.modules.tool.F.wait_for") as mock_wait_for, \
-             patch("msgflux.nn.modules.tool.extract_tool_result_text") as mock_extract:
+        with (
+            patch("msgflux.nn.modules.tool.F.wait_for") as mock_wait_for,
+            patch("msgflux.nn.modules.tool.extract_tool_result_text") as mock_extract,
+        ):
             mock_client = Mock()
             mock_info = Mock()
             mock_info.description = "Test tool"
@@ -1103,8 +1108,10 @@ class TestMCPTool:
 
     def test_mcp_tool_forward_error(self):
         """Test MCPTool forward execution with error."""
-        with patch("msgflux.nn.modules.tool.F.wait_for") as mock_wait_for, \
-             patch("msgflux.nn.modules.tool.extract_tool_result_text") as mock_extract:
+        with (
+            patch("msgflux.nn.modules.tool.F.wait_for") as mock_wait_for,
+            patch("msgflux.nn.modules.tool.extract_tool_result_text") as mock_extract,
+        ):
             mock_client = Mock()
             mock_info = Mock()
             mock_info.description = "Test tool"

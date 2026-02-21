@@ -3,7 +3,11 @@
 import os
 import pytest
 
-from msgflux.telemetry.config import MsgTraceSettings, configure_msgtrace, msgtrace_settings
+from msgflux.telemetry.config import (
+    MsgTraceSettings,
+    configure_msgtrace,
+    msgtrace_settings,
+)
 
 
 class TestMsgTraceSettings:
@@ -45,8 +49,8 @@ class TestMsgTraceSettings:
     def test_global_settings_instance(self):
         """Test that global msgtrace_settings instance exists."""
         assert msgtrace_settings is not None
-        assert hasattr(msgtrace_settings, 'telemetry_enabled')
-        assert hasattr(msgtrace_settings, 'exporter')
+        assert hasattr(msgtrace_settings, "telemetry_enabled")
+        assert hasattr(msgtrace_settings, "exporter")
 
 
 class TestConfigureMsgtrace:
@@ -114,7 +118,7 @@ class TestConfigureMsgtrace:
             enabled=True,
             exporter="otlp",
             otlp_endpoint="http://localhost:9999",
-            service_name="multi-test"
+            service_name="multi-test",
         )
 
         assert msgtrace_settings.telemetry_enabled is True

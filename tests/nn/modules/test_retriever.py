@@ -50,10 +50,12 @@ class MockLexicalRetriever(LexicalRetriever):
         """Return mock results for each query."""
         results = []
         for query in queries:
-            results.append([
-                {"data": f"Result 1 for {query}", "score": 0.95},
-                {"data": f"Result 2 for {query}", "score": 0.85}
-            ])
+            results.append(
+                [
+                    {"data": f"Result 1 for {query}", "score": 0.95},
+                    {"data": f"Result 2 for {query}", "score": 0.85},
+                ]
+            )
         return results
 
 
@@ -64,10 +66,12 @@ class MockSemanticRetriever(SemanticRetriever):
         """Return mock results for embeddings."""
         results = []
         for _ in queries:
-            results.append([
-                {"data": "Semantic result 1", "score": 0.92},
-                {"data": "Semantic result 2", "score": 0.88}
-            ])
+            results.append(
+                [
+                    {"data": "Semantic result 1", "score": 0.92},
+                    {"data": "Semantic result 2", "score": 0.88},
+                ]
+            )
         return results
 
 
@@ -95,6 +99,7 @@ class TestRetriever:
     def test_retriever_inheritance_from_module(self):
         """Test that Retriever inherits from Module."""
         from msgflux.nn.modules.module import Module
+
         assert issubclass(Retriever, Module)
 
     def test_retriever_with_top_k(self):
@@ -164,8 +169,7 @@ class TestRetriever:
         """Test Retriever forward with Message object."""
         mock_retriever = MockLexicalRetriever()
         ret = Retriever(
-            retriever=mock_retriever,
-            message_fields={"task_inputs": "query"}
+            retriever=mock_retriever, message_fields={"task_inputs": "query"}
         )
 
         msg = Message()

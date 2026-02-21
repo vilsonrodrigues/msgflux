@@ -637,9 +637,7 @@ class Agent(Module, metaclass=AutoParams):
                 )
 
                 # Use interface to build history (async version)
-                messages = await flow_control.abuild_history(
-                    raw_response, messages
-                )
+                messages = await flow_control.abuild_history(raw_response, messages)
 
             model_response = await self._aexecute_model(
                 messages=messages, model_preference=model_preference, vars=vars

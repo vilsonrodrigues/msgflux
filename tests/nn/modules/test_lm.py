@@ -43,4 +43,5 @@ class TestLM:
     def test_lm_inheritance_from_module(self):
         """Test that LM inherits from Module."""
         from msgflux.nn.modules.module import Module
+
         assert issubclass(LM, Module)
