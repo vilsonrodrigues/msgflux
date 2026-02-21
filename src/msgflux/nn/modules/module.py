@@ -853,6 +853,8 @@ class Module:
 
     def set_description(self, description: Optional[str] = None):
         if isinstance(description, str) or description is None:
+            if isinstance(description, str):
+                description = inspect.cleandoc(description)
             self.register_buffer("description", description)
         else:
             raise ValueError("`description` requires a string not empty")
