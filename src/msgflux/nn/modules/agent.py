@@ -80,7 +80,7 @@ class Agent(Module, metaclass=AutoParams):
         "tool_responses",
     ]
 
-    def __init__(
+    def __init__(  # noqa: C901
         self,
         name: str,
         model: Union[ChatCompletionModel, ModelGateway, LM],
@@ -174,7 +174,7 @@ class Agent(Module, metaclass=AutoParams):
             - video_block_kwargs: Dict of kwargs to pass to ChatBlock.video
               (e.g., {"format": "mp4"})
             - include_date: Include current date with weekday in system prompt
-              (bool). Format: "Weekday, Month DD, YYYY" (e.g., "Monday, December 09, 2025")
+              (bool). Format: "Weekday, Month DD, YYYY"
         templates:
             Dictionary mapping template types to Jinja template strings.
             Valid keys: "task", "response", "context", "system_prompt"
@@ -183,16 +183,18 @@ class Agent(Module, metaclass=AutoParams):
                     "task": "Who was {{person}}?",
                     "response": "{{final_answer}}",
                     "context": "Context: {{context}}",
-                    "system_prompt": "Custom system prompt: {% if system_message %}{{ system_message }}{% endif %}"
+                    "system_prompt": "Custom system prompt: ..."
                 }
 
             Template descriptions:
             - task: Formats the task/prompt sent to the model
             - response: Formats the model's response
             - context: Formats context_inputs (does NOT apply to context_cache)
-            - system_prompt: Overrides the default system prompt template. If not provided,
-              uses SYSTEM_PROMPT_TEMPLATE. Available variables: system_message, instructions,
-              expected_output, examples, system_extra_message, current_date (if include_date=True)
+            - system_prompt: Overrides the default system prompt
+              template. If not provided, uses SYSTEM_PROMPT_TEMPLATE.
+              Available variables: system_message, instructions,
+              expected_output, examples, system_extra_message,
+              current_date (if include_date=True)
         context_cache:
             A fixed context.
         prefilling:
@@ -874,7 +876,7 @@ class Agent(Module, metaclass=AutoParams):
         guardrail_params = {"data": data}
         return guardrail_params
 
-    def _prepare_task(
+    def _prepare_task(  # noqa: C901
         self, message: Optional[Union[str, Message, Mapping[str, Any]]] = None, **kwargs
     ) -> Mapping[str, Any]:
         """Prepare model input in ChatML format and execution params."""
@@ -949,7 +951,7 @@ class Agent(Module, metaclass=AutoParams):
             "vars": vars,
         }
 
-    async def _aprepare_task(
+    async def _aprepare_task(  # noqa: C901
         self, message: Optional[Union[str, Message, Mapping[str, Any]]] = None, **kwargs
     ) -> Mapping[str, Any]:
         """Async version of _prepare_task.
@@ -1027,7 +1029,7 @@ class Agent(Module, metaclass=AutoParams):
             "vars": vars,
         }
 
-    def _process_task_inputs(
+    def _process_task_inputs(  # noqa: C901
         self,
         message: Union[str, Message, Mapping[str, Any]],
         vars: Mapping[str, Any],
@@ -1077,7 +1079,7 @@ class Agent(Module, metaclass=AutoParams):
             return multimodal_content
         return content
 
-    async def _aprocess_task_inputs(
+    async def _aprocess_task_inputs(  # noqa: C901
         self,
         message: Union[str, Message, Mapping[str, Any]],
         vars: Mapping[str, Any],
@@ -1130,7 +1132,7 @@ class Agent(Module, metaclass=AutoParams):
             return multimodal_content
         return content
 
-    def _context_manager(
+    def _context_manager(  # noqa: C901
         self,
         message: Union[str, Message, Mapping[str, Any]],
         vars: Mapping[str, Any],
@@ -1715,12 +1717,11 @@ class Agent(Module, metaclass=AutoParams):
                     "final_answer": signature_as_type,
                 }
 
-                Output = type(
+                fused_output_struct = type(
                     "Output",
                     (generation_schema,),
                     {"__annotations__": merged_annotations},
                 )
-                fused_output_struct = Output
             self._set_generation_schema(fused_output_struct or signature_output_struct)
 
             # system message
