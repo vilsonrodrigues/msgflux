@@ -60,6 +60,7 @@ dev = [
 doc = [
     "markdown-include>=0.8.1",
     "mkdocs>=1.6.1",
+    "mkdocs-copy-markdown>=0.1.0",
     "mkdocs-material>=9.6.21",
     "mkdocstrings>=0.30.1",
     "mkdocstrings-python>=1.18.2",
@@ -156,6 +157,8 @@ unfixable = ["F401"]
 "src/msgflux/nn/modules/tool.py" = ["A001","A002"]
 # Allow MCP protocol's camelCase naming convention
 "src/msgflux/protocols/mcp/types.py" = ["N815"]
+# Regex patterns in html.py are inherently long and cannot be split
+"src/msgflux/utils/html.py" = ["E501"]
 "tests/**/*" = [
   "D",
   "PLR0911",

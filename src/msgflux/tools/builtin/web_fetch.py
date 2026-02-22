@@ -1,5 +1,7 @@
 from urllib.parse import urlparse
 
+from msgflux.utils.html import html_to_text
+
 try:
     import httpx
 except ImportError:
@@ -26,13 +28,18 @@ class WebFetch:
         self.default_headers = default_headers or {}
         self.timeout = timeout
 
-    def _build_url(self, url: str) -> str:
+    def _normalize_url(self, url: str) -> str:
         parsed = urlparse(url)
-        target = url if parsed.scheme else f"https://{url}"
-        return f"{self.web_parser}{target}"
+        return url if parsed.scheme else f"https://{url}"
+
+    def _build_url(self, url: str) -> str:
+        return f"{self.web_parser}{self._normalize_url(url)}"
 
     def __call__(self, url: str) -> str:
         """Fetch and return web content as a string.
+
+        Tries the parser endpoint first. On failure, fetches raw HTML
+        and extracts clean text via semantic chunking as fallback.
 
         Args:
             url: Target website URL.
@@ -59,11 +66,26 @@ class WebFetch:
             )
             response.raise_for_status()
             return response.text
+        except httpx.HTTPError:
+            pass
+
+        target_url = self._normalize_url(url)
+        try:
+            response = httpx.get(
+                target_url,
+                headers=self.default_headers,
+                timeout=self.timeout,
+            )
+            response.raise_for_status()
+            return html_to_text(response.text)
         except httpx.HTTPError as exc:
             raise RuntimeError(f"Failed to fetch {url}: {exc}") from exc
 
     async def acall(self, url: str) -> str:
         """Asynchronously fetch and return web content as a string.
+
+        Tries the parser endpoint first. On failure, fetches raw HTML
+        and extracts clean text via semantic chunking as fallback.
 
         Args:
             url: Target website URL.
@@ -82,10 +104,18 @@ class WebFetch:
             )
 
         final_url = self._build_url(url)
+        target_url = self._normalize_url(url)
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             try:
                 response = await client.get(final_url, headers=self.default_headers)
                 response.raise_for_status()
                 return response.text
+            except httpx.HTTPError:
+                pass
+
+            try:
+                response = await client.get(target_url, headers=self.default_headers)
+                response.raise_for_status()
+                return html_to_text(response.text)
             except httpx.HTTPError as exc:
                 raise RuntimeError(f"Failed to fetch {url}: {exc}") from exc

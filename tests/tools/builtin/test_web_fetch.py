@@ -177,6 +177,140 @@ class TestWebFetchCall:
             tool("https://example.com")
 
 
+class TestWebFetchFallback:
+    """Tests for WebFetch fallback: parser fails → raw HTML + html_to_text."""
+
+    def test_fallback_called_on_parser_failure(self, mocker):
+        raw_html = "<html><body><p>Hello</p></body></html>"
+        mock_response = mocker.Mock()
+        mock_response.text = raw_html
+        mocker.patch(
+            "msgflux.tools.builtin.web_fetch.httpx.get",
+            side_effect=[httpx.HTTPError("parser down"), mock_response],
+        )
+        mock_html_to_text = mocker.patch(
+            "msgflux.tools.builtin.web_fetch.html_to_text",
+            return_value="Hello",
+        )
+
+        tool = WebFetch()
+        result = tool("https://example.com")
+
+        assert result == "Hello"
+        mock_html_to_text.assert_called_once_with(raw_html)
+
+    def test_fallback_fetches_raw_url_not_parser_url(self, mocker):
+        mock_response = mocker.Mock()
+        mock_response.text = "<html></html>"
+        mock_get = mocker.patch(
+            "msgflux.tools.builtin.web_fetch.httpx.get",
+            side_effect=[httpx.HTTPError("parser down"), mock_response],
+        )
+        mocker.patch("msgflux.tools.builtin.web_fetch.html_to_text", return_value="ok")
+
+        tool = WebFetch()
+        tool("https://example.com")
+
+        first_url = mock_get.call_args_list[0][0][0]
+        second_url = mock_get.call_args_list[1][0][0]
+        assert first_url == "https://markdown.new/https://example.com"
+        assert second_url == "https://example.com"
+
+    def test_fallback_normalizes_url_without_scheme(self, mocker):
+        mock_response = mocker.Mock()
+        mock_response.text = "<html></html>"
+        mock_get = mocker.patch(
+            "msgflux.tools.builtin.web_fetch.httpx.get",
+            side_effect=[httpx.HTTPError("parser down"), mock_response],
+        )
+        mocker.patch("msgflux.tools.builtin.web_fetch.html_to_text", return_value="ok")
+
+        tool = WebFetch()
+        tool("example.com")
+
+        second_url = mock_get.call_args_list[1][0][0]
+        assert second_url == "https://example.com"
+
+    def test_fallback_failure_raises_runtime_error(self, mocker):
+        mocker.patch(
+            "msgflux.tools.builtin.web_fetch.httpx.get",
+            side_effect=httpx.HTTPError("all down"),
+        )
+
+        tool = WebFetch()
+        with pytest.raises(RuntimeError, match="Failed to fetch"):
+            tool("https://example.com")
+
+    @pytest.mark.asyncio
+    async def test_async_fallback_called_on_parser_failure(self, mocker):
+        raw_html = "<html><body><p>Hello</p></body></html>"
+        ok_response = mocker.Mock()
+        ok_response.text = raw_html
+
+        mock_client = mocker.AsyncMock()
+        mock_client.get = mocker.AsyncMock(
+            side_effect=[httpx.HTTPError("parser down"), ok_response]
+        )
+        mock_client.__aenter__ = mocker.AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = mocker.AsyncMock(return_value=None)
+        mocker.patch(
+            "msgflux.tools.builtin.web_fetch.httpx.AsyncClient",
+            return_value=mock_client,
+        )
+        mock_html_to_text = mocker.patch(
+            "msgflux.tools.builtin.web_fetch.html_to_text",
+            return_value="Hello",
+        )
+
+        tool = WebFetch()
+        result = await tool.acall("https://example.com")
+
+        assert result == "Hello"
+        mock_html_to_text.assert_called_once_with(raw_html)
+
+    @pytest.mark.asyncio
+    async def test_async_fallback_fetches_raw_url(self, mocker):
+        ok_response = mocker.Mock()
+        ok_response.text = "<html></html>"
+
+        mock_client = mocker.AsyncMock()
+        mock_client.get = mocker.AsyncMock(
+            side_effect=[httpx.HTTPError("parser down"), ok_response]
+        )
+        mock_client.__aenter__ = mocker.AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = mocker.AsyncMock(return_value=None)
+        mocker.patch(
+            "msgflux.tools.builtin.web_fetch.httpx.AsyncClient",
+            return_value=mock_client,
+        )
+        mocker.patch("msgflux.tools.builtin.web_fetch.html_to_text", return_value="ok")
+
+        tool = WebFetch()
+        await tool.acall("https://example.com")
+
+        first_url = mock_client.get.call_args_list[0][0][0]
+        second_url = mock_client.get.call_args_list[1][0][0]
+        assert first_url == "https://markdown.new/https://example.com"
+        assert second_url == "https://example.com"
+
+    @pytest.mark.asyncio
+    async def test_async_fallback_failure_raises_runtime_error(self, mocker):
+        mock_client = mocker.AsyncMock()
+        mock_client.get = mocker.AsyncMock(
+            side_effect=httpx.HTTPError("all down")
+        )
+        mock_client.__aenter__ = mocker.AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = mocker.AsyncMock(return_value=None)
+        mocker.patch(
+            "msgflux.tools.builtin.web_fetch.httpx.AsyncClient",
+            return_value=mock_client,
+        )
+
+        tool = WebFetch()
+        with pytest.raises(RuntimeError, match="Failed to fetch"):
+            await tool.acall("https://example.com")
+
+
 class TestWebFetchAcall:
     """Tests for WebFetch.acall (async)."""
 
