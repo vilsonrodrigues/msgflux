@@ -386,3 +386,67 @@ class TestToolConfigEdgeCases:
         args, kwargs = sample(1, 2, 3, a=4, b=5)
         assert args == (1, 2, 3)
         assert kwargs == {"a": 4, "b": 5}
+
+
+class TestToolConfigBackground:
+    """Test suite for background parameter in tool_config."""
+
+    def test_background_default_false(self):
+        """Test that background defaults to False."""
+
+        @tool_config()
+        def sample():
+            pass
+
+        assert sample.tool_config.background is False
+
+    def test_background_true(self):
+        """Test background=True configuration."""
+
+        @tool_config(background=True)
+        def sample():
+            pass
+
+        assert sample.tool_config.background is True
+
+    def test_background_incompatible_with_return_direct(self):
+        """Test that background=True is incompatible with return_direct=True."""
+        with pytest.raises(ValueError, match="`background=True` is not compatible"):
+
+            @tool_config(background=True, return_direct=True)
+            def sample():
+                pass
+
+    def test_background_incompatible_with_call_as_response(self):
+        """Test that background=True is incompatible with call_as_response=True."""
+        with pytest.raises(ValueError, match="`background=True` is not compatible"):
+
+            @tool_config(background=True, call_as_response=True)
+            def sample():
+                pass
+
+    def test_background_incompatible_with_fire_and_forget(self):
+        """Test that background=True is incompatible with fire_and_forget=True."""
+        with pytest.raises(ValueError, match="`background=True` is not compatible"):
+
+            @tool_config(background=True, fire_and_forget=True)
+            def sample():
+                pass
+
+    def test_background_incompatible_with_handoff(self):
+        """Test that background=True is incompatible with handoff=True."""
+        with pytest.raises(ValueError, match="`background=True` is not compatible"):
+
+            @tool_config(background=True, handoff=True)
+            def sample():
+                pass
+
+    def test_background_compatible_with_inject_vars(self):
+        """Test that background=True is compatible with inject_vars."""
+
+        @tool_config(background=True, inject_vars=True)
+        def sample():
+            pass
+
+        assert sample.tool_config.background is True
+        assert sample.tool_config.inject_vars is True
