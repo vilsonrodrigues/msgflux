@@ -1378,8 +1378,12 @@ class Agent(Module, metaclass=AutoParams):
         tools: Optional[List[Callable]] = None,
         mcp_servers: Optional[List[Mapping[str, Any]]] = None,
     ):
+        consume_on_read = self.config.get("background_consume_on_read", True)
         self.tool_library = ToolLibrary(
-            self.get_module_name(), tools or [], mcp_servers=mcp_servers
+            self.get_module_name(),
+            tools or [],
+            mcp_servers=mcp_servers,
+            consume_on_read=consume_on_read,
         )
 
     def _set_generation_schema(

@@ -11,14 +11,16 @@ from msgflux.nn.modules.module import get_callable_name
 from msgflux.telemetry import Spans
 
 __all__ = [
+    "abackground_task",
     "afire_and_forget",
     "ainline",
     "amap_gather",
     "amsg_bcast_gather",
     "ascatter_gather",
     "await_for_event",
-    "fire_and_forget",
+    "background_task",
     "bcast_gather",
+    "fire_and_forget",
     "inline",
     "map_gather",
     "msg_bcast_gather",
@@ -417,6 +419,72 @@ def wait_for_event(event: asyncio.Event) -> None:
         future.result()
     except Exception as e:
         logger.error(str(e))
+
+
+@Spans.instrument()
+def background_task(to_send: Callable, *args, **kwargs) -> Future:
+    """Dispatches a task and returns its Future for later retrieval.
+
+    Args:
+        to_send:
+            Callable object (function, async function, or module).
+        *args:
+            Positional arguments.
+        **kwargs:
+            Named arguments.
+
+    Returns:
+        A concurrent.futures.Future representing the pending result.
+
+    Raises:
+        TypeError: If `to_send` is not a callable.
+
+    Examples:
+        def heavy_computation(x):
+            return x ** 2
+
+        future = F.background_task(heavy_computation, 42)
+        # ... do other work ...
+        result = future.result()  # 1764
+    """
+    if not callable(to_send):
+        raise TypeError("`to_send` must be a callable object")
+
+    executor = Executor.get_instance()
+    return executor.submit(to_send, *args, **kwargs)
+
+
+@Spans.ainstrument()
+async def abackground_task(to_send: Callable, *args, **kwargs) -> Future:
+    """Async version of background_task. Dispatches a task and returns its Future.
+
+    Args:
+        to_send:
+            Callable object (function, async function, or module).
+        *args:
+            Positional arguments.
+        **kwargs:
+            Named arguments.
+
+    Returns:
+        A concurrent.futures.Future representing the pending result.
+
+    Raises:
+        TypeError: If `to_send` is not a callable.
+
+    Examples:
+        async def heavy_computation(x):
+            return x ** 2
+
+        future = await F.abackground_task(heavy_computation, 42)
+        # ... do other work ...
+        result = future.result()  # 1764
+    """
+    if not callable(to_send):
+        raise TypeError("`to_send` must be a callable object")
+
+    executor = Executor.get_instance()
+    return executor.submit(to_send, *args, **kwargs)
 
 
 @Spans.instrument()

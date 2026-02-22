@@ -10,6 +10,7 @@ def tool_config(
     return_direct: Optional[bool] = False,
     call_as_response: Optional[bool] = False,
     fire_and_forget: Optional[bool] = False,
+    background: Optional[bool] = False,
     inject_messages: Optional[bool] = False,
     inject_vars: Optional[Union[bool, List[str]]] = False,
     handoff: Optional[bool] = False,
@@ -38,6 +39,10 @@ def tool_config(
         fire_and_forget:
             If True, the tool will be dispatched without waiting for a result.
             The model receives a confirmation that the task was started.
+        background:
+            If True, the tool will be dispatched asynchronously and return a
+            task_id immediately. The model can later retrieve the result using
+            the auto-injected `task_output` tool.
         inject_messages:
             If true, the tool automatically sets `inject_messages` and
             `return_direct` to `True`. Additionally, the tool will be
@@ -65,6 +70,9 @@ def tool_config(
         ValueError:
            `fire_and_forget=True` is not compatible with `return_direct=True`
            and `call_as_response=True`.
+        ValueError:
+           `background=True` is not compatible with `return_direct=True`,
+           `call_as_response=True`, `fire_and_forget=True`, and `handoff=True`.
         ValueError:
            `inject_vars=True` is not compatible with `call_as_response=True`.
 
@@ -109,6 +117,15 @@ def tool_config(
                 " and `call_as_response=True`."
             )
 
+        if background and (
+            _return_direct or call_as_response or fire_and_forget or handoff
+        ):
+            raise ValueError(
+                "`background=True` is not compatible with `return_direct=True`,"
+                " `call_as_response=True`, `fire_and_forget=True`,"
+                " and `handoff=True`."
+            )
+
         if inject_vars is not False and call_as_response is True:
             raise ValueError(
                 "`inject_vars` is not compatible with `call_as_response=True`"
@@ -117,6 +134,7 @@ def tool_config(
         tool_config = {
             "tool_config": dotdict(
                 {
+                    "background": background,
                     "fire_and_forget": fire_and_forget,
                     "call_as_response": call_as_response,
                     "handoff": handoff,

@@ -1,15 +1,19 @@
 """Tests for msgflux.nn.modules.tool module."""
 
+import threading
+from concurrent.futures import Future
+from unittest.mock import AsyncMock, Mock, patch
+
 import pytest
-from unittest.mock import Mock, AsyncMock, patch, MagicMock
 
 from msgflux.nn.modules.tool import (
-    ToolCall,
-    ToolResponses,
-    Tool,
+    BackgroundTask,
     LocalTool,
     MCPTool,
+    Tool,
+    ToolCall,
     ToolLibrary,
+    ToolResponses,
     _convert_module_to_nn_tool,
 )
 
@@ -1182,3 +1186,266 @@ class TestMCPTool:
 
             with pytest.raises(RuntimeError, match="MCP tool error"):
                 await tool.acall(arg="value")
+
+
+class TestBackgroundTask:
+    """Test suite for BackgroundTask dataclass."""
+
+    def test_background_task_initialization(self):
+        """Test BackgroundTask basic initialization."""
+        mock_future = Mock(spec=Future)
+        task = BackgroundTask(
+            task_id="abc12345",
+            tool_name="my_tool",
+            future=mock_future,
+            created_at=100.0,
+        )
+        assert task.task_id == "abc12345"
+        assert task.tool_name == "my_tool"
+        assert task.future is mock_future
+        assert task.created_at == 100.0
+
+
+class TestToolLibraryBackground:
+    """Test suite for ToolLibrary background task functionality."""
+
+    def test_background_tool_auto_injects_task_output(self):
+        """Test that adding a background tool auto-injects task_output tool."""
+
+        def bg_tool(x: int) -> int:
+            """Background tool."""
+            return x * 2
+
+        bg_tool.tool_config = {"background": True}
+        library = ToolLibrary(name="lib", tools=[bg_tool])
+
+        assert "task_output" in library.library
+        assert library._has_background_tools is True
+
+    def test_no_task_output_without_background_tools(self):
+        """Test that task_output is not injected for non-background tools."""
+
+        def normal_tool(x: int) -> int:
+            """Normal tool."""
+            return x
+
+        library = ToolLibrary(name="lib", tools=[normal_tool])
+
+        assert "task_output" not in library.library
+        assert library._has_background_tools is False
+
+    def test_task_output_injected_only_once(self):
+        """Test that task_output is only injected once for multiple bg tools."""
+
+        def bg_tool1(x: int) -> int:
+            """Background tool 1."""
+            return x
+
+        def bg_tool2(y: int) -> int:
+            """Background tool 2."""
+            return y
+
+        bg_tool1.tool_config = {"background": True}
+        bg_tool2.tool_config = {"background": True}
+        library = ToolLibrary(name="lib", tools=[bg_tool1, bg_tool2])
+
+        # task_output should exist once, plus bg_tool1 and bg_tool2
+        assert "task_output" in library.library
+        assert "bg_tool1" in library.library
+        assert "bg_tool2" in library.library
+
+    def test_forward_background_returns_task_id(self):
+        """Test that forward with background tool returns task_id in result."""
+
+        def slow_tool(x: int) -> int:
+            """Slow tool."""
+            return x * 10
+
+        slow_tool.tool_config = {"background": True}
+        library = ToolLibrary(name="lib", tools=[slow_tool])
+
+        tool_callings = [("call_1", "slow_tool", {"x": 5})]
+        result = library(tool_callings)
+
+        assert result.return_directly is False
+        assert len(result.tool_calls) == 1
+        assert "running in the background" in result.tool_calls[0].result
+        assert "Task ID:" in result.tool_calls[0].result
+        assert "task_output" in result.tool_calls[0].result
+
+    def test_task_output_completed_task(self):
+        """Test task_output returns result for completed task."""
+
+        def quick_tool(x: int) -> int:
+            """Quick tool."""
+            return x * 3
+
+        quick_tool.tool_config = {"background": True}
+        library = ToolLibrary(name="lib", tools=[quick_tool])
+
+        # Dispatch background tool
+        tool_callings = [("call_1", "quick_tool", {"x": 7})]
+        result = library(tool_callings)
+
+        # Extract task_id from result message
+        result_msg = result.tool_calls[0].result
+        task_id = result_msg.split("Task ID: '")[1].split("'")[0]
+
+        # Wait for the future to complete
+        task = library._background_tasks[task_id]
+        task.future.result(timeout=5)
+
+        # Now call task_output
+        output = library._task_output(task_id)
+        assert "21" in output  # 7 * 3 = 21
+
+    def test_task_output_still_running(self):
+        """Test task_output returns running status for incomplete task."""
+        event = threading.Event()
+
+        def blocking_tool(x: int) -> int:
+            """Blocking tool."""
+            event.wait(timeout=10)
+            return x
+
+        blocking_tool.tool_config = {"background": True}
+        library = ToolLibrary(name="lib", tools=[blocking_tool])
+
+        tool_callings = [("call_1", "blocking_tool", {"x": 1})]
+        result = library(tool_callings)
+
+        result_msg = result.tool_calls[0].result
+        task_id = result_msg.split("Task ID: '")[1].split("'")[0]
+
+        # Task should still be running
+        output = library._task_output(task_id)
+        assert "still running" in output
+
+        # Clean up
+        event.set()
+
+    def test_task_output_failed_task(self):
+        """Test task_output returns error for failed task."""
+
+        def failing_tool(x: int) -> int:  # noqa: ARG001
+            """Failing tool."""
+            raise ValueError("computation error")
+
+        failing_tool.tool_config = {"background": True}
+        library = ToolLibrary(name="lib", tools=[failing_tool])
+
+        tool_callings = [("call_1", "failing_tool", {"x": 1})]
+        result = library(tool_callings)
+
+        result_msg = result.tool_calls[0].result
+        task_id = result_msg.split("Task ID: '")[1].split("'")[0]
+
+        # Wait for the future to complete (with error)
+        task = library._background_tasks[task_id]
+        try:
+            task.future.result(timeout=5)
+        except ValueError:
+            pass
+
+        output = library._task_output(task_id)
+        assert "failed with error" in output
+        assert "computation error" in output
+
+    def test_task_output_invalid_id(self):
+        """Test task_output with invalid task_id."""
+
+        def bg_tool(x: int) -> int:
+            """Background tool."""
+            return x
+
+        bg_tool.tool_config = {"background": True}
+        library = ToolLibrary(name="lib", tools=[bg_tool])
+
+        output = library._task_output("nonexistent")
+        assert "No background task found" in output
+
+    def test_consume_on_read_default_removes_task(self):
+        """Test that consume_on_read=True (default) removes task after read."""
+
+        def bg_tool(x: int) -> int:
+            """Background tool."""
+            return x * 2
+
+        bg_tool.tool_config = {"background": True}
+        library = ToolLibrary(name="lib", tools=[bg_tool])
+
+        tool_callings = [("call_1", "bg_tool", {"x": 5})]
+        result = library(tool_callings)
+
+        result_msg = result.tool_calls[0].result
+        task_id = result_msg.split("Task ID: '")[1].split("'")[0]
+
+        # Wait for completion
+        library._background_tasks[task_id].future.result(timeout=5)
+
+        # First read should return result
+        output = library._task_output(task_id)
+        assert "10" in output
+
+        # Second read should say not found (consumed)
+        output = library._task_output(task_id)
+        assert "No background task found" in output
+
+    def test_consume_on_read_false_preserves_task(self):
+        """Test that consume_on_read=False preserves task after read."""
+
+        def bg_tool(x: int) -> int:
+            """Background tool."""
+            return x * 2
+
+        bg_tool.tool_config = {"background": True}
+        library = ToolLibrary(name="lib", tools=[bg_tool], consume_on_read=False)
+
+        tool_callings = [("call_1", "bg_tool", {"x": 5})]
+        result = library(tool_callings)
+
+        result_msg = result.tool_calls[0].result
+        task_id = result_msg.split("Task ID: '")[1].split("'")[0]
+
+        # Wait for completion
+        library._background_tasks[task_id].future.result(timeout=5)
+
+        # First read
+        output1 = library._task_output(task_id)
+        assert "10" in output1
+
+        # Second read should still return result
+        output2 = library._task_output(task_id)
+        assert "10" in output2
+
+    def test_background_description_modified(self):
+        """Test that background tools have modified description."""
+
+        def bg_tool(x: int) -> int:
+            """Original description."""
+            return x
+
+        bg_tool.tool_config = {"background": True}
+        tool = _convert_module_to_nn_tool(bg_tool)
+
+        assert "runs in the background" in tool.description
+        assert "task_output" in tool.description
+
+    @pytest.mark.asyncio
+    async def test_aforward_background_returns_task_id(self):
+        """Test that aforward with background tool returns task_id."""
+
+        def bg_tool(x: int) -> int:
+            """Background tool."""
+            return x * 5
+
+        bg_tool.tool_config = {"background": True}
+        library = ToolLibrary(name="lib", tools=[bg_tool])
+
+        tool_callings = [("call_1", "bg_tool", {"x": 3})]
+        result = await library.aforward(tool_callings)
+
+        assert result.return_directly is False
+        assert len(result.tool_calls) == 1
+        assert "running in the background" in result.tool_calls[0].result
+        assert "Task ID:" in result.tool_calls[0].result

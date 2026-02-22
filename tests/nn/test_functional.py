@@ -1,6 +1,7 @@
 """Tests for msgflux.nn.functional module."""
 
 import asyncio
+from concurrent.futures import Future
 
 import pytest
 
@@ -365,3 +366,63 @@ class TestAsyncFunctions:
         """Test afire_and_forget raises TypeError for non-callable."""
         with pytest.raises(TypeError, match="`to_send` must be a callable"):
             await F.afire_and_forget("not_callable")
+
+
+class TestBackgroundTask:
+    """Test suite for background_task function."""
+
+    def test_background_task_returns_future(self):
+        """Test that background_task returns a Future."""
+        def square(x):
+            return x * x
+
+        future = F.background_task(square, 5)
+        assert isinstance(future, Future)
+        assert future.result(timeout=5) == 25
+
+    def test_background_task_with_kwargs(self):
+        """Test background_task with keyword arguments."""
+
+        def multiply(x, y=2):
+            return x * y
+
+        future = F.background_task(multiply, 3, y=4)
+        assert future.result(timeout=5) == 12
+
+    def test_background_task_not_callable(self):
+        """Test background_task raises TypeError for non-callable."""
+        with pytest.raises(TypeError, match="`to_send` must be a callable"):
+            F.background_task("not_callable")
+
+    def test_background_task_captures_exception(self):
+        """Test that background_task Future captures exceptions."""
+
+        def failing():
+            raise ValueError("task failed")
+
+        future = F.background_task(failing)
+        assert isinstance(future, Future)
+        with pytest.raises(ValueError, match="task failed"):
+            future.result(timeout=5)
+
+
+class TestAsyncBackgroundTask:
+    """Test suite for abackground_task function."""
+
+    @pytest.mark.asyncio
+    async def test_abackground_task_returns_future(self):
+        """Test that abackground_task returns a Future."""
+        from concurrent.futures import Future
+
+        def square(x):
+            return x * x
+
+        future = await F.abackground_task(square, 5)
+        assert isinstance(future, Future)
+        assert future.result(timeout=5) == 25
+
+    @pytest.mark.asyncio
+    async def test_abackground_task_not_callable(self):
+        """Test abackground_task raises TypeError for non-callable."""
+        with pytest.raises(TypeError, match="`to_send` must be a callable"):
+            await F.abackground_task("not_callable")

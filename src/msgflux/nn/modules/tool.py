@@ -1,5 +1,7 @@
 import asyncio
 import inspect
+import time
+import uuid
 from dataclasses import asdict, dataclass, field
 from functools import partial
 from typing import Any, Callable, Dict, Iterator, List, Mapping, Optional, Tuple, Union
@@ -59,6 +61,16 @@ class ToolResponses:
     def get_by_name(self, tool_name: str) -> Optional[ToolCall]:
         """Retrieve a tool_call by tool name."""
         return next((r for r in self.tool_calls if r.name == tool_name), None)
+
+
+@dataclass
+class BackgroundTask:
+    """Represents a background task dispatched by a tool."""
+
+    task_id: str
+    tool_name: str
+    future: Any  # concurrent.futures.Future
+    created_at: float  # time.monotonic()
 
 
 class Tool(Module):
@@ -275,6 +287,12 @@ def _convert_module_to_nn_tool(impl: Callable) -> Tool:  # noqa: C901
     if tool_config.get("fire_and_forget"):
         doc = "This tool will not generate a return. \n" + doc
 
+    if tool_config.get("background"):
+        doc = (
+            "This tool runs in the background and returns a task_id. "
+            "Use `task_output` to retrieve the result.\n" + doc
+        )
+
     return LocalTool(
         name=name,
         description=doc,
@@ -293,6 +311,8 @@ class ToolLibrary(Module, metaclass=AutoParams):
         tools: List[Callable],
         special_tools: Optional[List[str]] = None,
         mcp_servers: Optional[List[Dict[str, Any]]] = None,
+        *,
+        consume_on_read: bool = True,
     ):
         """Initialize the ToolLibrary.
 
@@ -310,6 +330,9 @@ class ToolLibrary(Module, metaclass=AutoParams):
             - For stdio: command, args, cwd, env
             - For http: base_url, headers
             - Optional: include_tools, exclude_tools, tool_config
+        consume_on_read:
+            If True (default), background task results are removed after
+            being retrieved via `task_output`. If False, results persist.
         """
         super().__init__()
         self.set_name(f"{name}_tool_library")
@@ -317,6 +340,9 @@ class ToolLibrary(Module, metaclass=AutoParams):
         self.register_buffer("special_library", [])
         self.register_buffer("tool_configs", {})
         self.register_buffer("mcp_clients", {})
+        self._background_tasks: Dict[str, BackgroundTask] = {}
+        self._has_background_tools = False
+        self._consume_on_read = consume_on_read
         for tool in tools:
             self.add(tool)
         if special_tools:
@@ -343,6 +369,10 @@ class ToolLibrary(Module, metaclass=AutoParams):
             # Store tool config (may be empty dict for local tools)
             self.tool_configs[tool.name] = getattr(tool, "tool_config", {})
 
+            # Auto-inject task_output tool when background tools are registered
+            if self.tool_configs[tool.name].get("background"):
+                self._ensure_task_output_tool()
+
             self.library.update({tool.name: tool})
 
     def remove(self, tool_name: str):
@@ -358,6 +388,58 @@ class ToolLibrary(Module, metaclass=AutoParams):
         self.library.clear()
         self.special_library.clear()
         # TODO: clean mcp
+
+    def _ensure_task_output_tool(self):
+        """Auto-inject `task_output` tool when a background tool is registered."""
+        if self._has_background_tools:
+            return
+        self._has_background_tools = True
+        tool = LocalTool(
+            name="task_output",
+            description=(
+                "Check the status or retrieve the result of a background task "
+                "by its task_id."
+            ),
+            annotations={"task_id": str},
+            tool_config={},
+            impl=self._task_output,
+        )
+        self.library.update({tool.name: tool})
+        self.tool_configs[tool.name] = {}
+
+    def _submit_background_task(self, tool_name: str, future: Any) -> str:
+        """Register a background task and return its task_id."""
+        task_id = uuid.uuid4().hex[:8]
+        self._background_tasks[task_id] = BackgroundTask(
+            task_id=task_id,
+            tool_name=tool_name,
+            future=future,
+            created_at=time.monotonic(),
+        )
+        return task_id
+
+    def _task_output(self, task_id: str) -> str:
+        """Retrieve the result of a background task."""
+        task = self._background_tasks.get(task_id)
+        if task is None:
+            return f"No background task found with id '{task_id}'."
+
+        if not task.future.done():
+            elapsed = time.monotonic() - task.created_at
+            return (
+                f"Task '{task_id}' ({task.tool_name}) is still running "
+                f"(elapsed: {elapsed:.1f}s)."
+            )
+
+        try:
+            result = str(task.future.result())
+        except Exception as e:
+            result = f"Task '{task_id}' failed with error: {e!s}"
+
+        if self._consume_on_read:
+            del self._background_tasks[task_id]
+
+        return result
 
     def _initialize_mcp_clients(self, mcp_servers: List[Dict[str, Any]]):
         """Initialize MCP clients from server configurations."""
@@ -547,6 +629,23 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 )
                 continue
 
+            if config.get("background", False):
+                return_directly = False
+                future = F.background_task(tool, **(tool_params or {}))
+                task_id = self._submit_background_task(tool_name, future)
+                tool_calls.append(
+                    ToolCall(
+                        id=tool_id,
+                        name=tool_name,
+                        parameters=tool_params,
+                        result=f"The `{tool_name}` tool is running in the background. "
+                        f"Task ID: '{task_id}'. Use "
+                        f"`task_output(task_id='{task_id}')` "
+                        f"to retrieve the result.",
+                    )
+                )
+                continue
+
             if config.get(
                 "call_as_response", False
             ):  # return function call as response
@@ -672,6 +771,23 @@ class ToolLibrary(Module, metaclass=AutoParams):
                         parameters=tool_params,
                         result=f"The `{tool_name}` tool was dispatched. "
                         "This tool will not generate a return.",
+                    )
+                )
+                continue
+
+            if config.get("background", False):
+                return_directly = False
+                future = await F.abackground_task(tool, **(tool_params or {}))
+                task_id = self._submit_background_task(tool_name, future)
+                tool_calls.append(
+                    ToolCall(
+                        id=tool_id,
+                        name=tool_name,
+                        parameters=tool_params,
+                        result=f"The `{tool_name}` tool is running in the background. "
+                        f"Task ID: '{task_id}'. Use "
+                        f"`task_output(task_id='{task_id}')` "
+                        f"to retrieve the result.",
                     )
                 )
                 continue
