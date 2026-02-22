@@ -351,17 +351,17 @@ class TestConvertModuleToNNTool:
         assert tool.name.startswith("transfer_to_")
         assert tool.annotations == {}
 
-    def test_convert_with_background_config(self):
-        """Test converting with background configuration."""
+    def test_convert_with_fire_and_forget_config(self):
+        """Test converting with fire_and_forget configuration."""
 
-        def background_task(data: str) -> None:
-            """Process data in background."""
+        def dispatched_task(data: str) -> None:
+            """Dispatch task without return."""
             pass
 
-        background_task.tool_config = {"background": True}
-        tool = _convert_module_to_nn_tool(background_task)
+        dispatched_task.tool_config = {"fire_and_forget": True}
+        tool = _convert_module_to_nn_tool(dispatched_task)
 
-        assert "background" in tool.description.lower()
+        assert "not generate a return" in tool.description.lower()
 
     def test_convert_function_with_no_params(self):
         """Test converting function with no parameters."""
@@ -815,21 +815,21 @@ class TestToolLibrary:
         assert "5-value" in result.tool_calls[0].result
 
     @pytest.mark.asyncio
-    async def test_tool_library_aforward_background(self):
-        """Test async ToolLibrary background execution."""
+    async def test_tool_library_aforward_fire_and_forget(self):
+        """Test async ToolLibrary fire_and_forget execution."""
 
         async def async_tool(x: int) -> int:
-            """Background async tool."""
+            """Fire and forget async tool."""
             return x * 2
 
-        async_tool.tool_config = {"background": True}
+        async_tool.tool_config = {"fire_and_forget": True}
         library = ToolLibrary(name="lib", tools=[async_tool])
 
         tool_callings = [("call_1", "async_tool", {"x": 10})]
         result = await library.aforward(tool_callings)
 
         assert result.return_directly is False
-        assert "background" in result.tool_calls[0].result.lower()
+        assert "dispatched" in result.tool_calls[0].result.lower()
 
     @pytest.mark.asyncio
     async def test_tool_library_aforward_call_as_response(self):
@@ -864,21 +864,21 @@ class TestToolLibrary:
 
         assert "8-state_value" in result.tool_calls[0].result
 
-    def test_tool_library_forward_background(self):
-        """Test ToolLibrary background execution in sync mode."""
+    def test_tool_library_forward_fire_and_forget(self):
+        """Test ToolLibrary fire_and_forget execution in sync mode."""
 
         def sync_tool(x: int) -> int:
-            """Background sync tool."""
+            """Fire and forget sync tool."""
             return x * 4
 
-        sync_tool.tool_config = {"background": True}
+        sync_tool.tool_config = {"fire_and_forget": True}
         library = ToolLibrary(name="lib", tools=[sync_tool])
 
         tool_callings = [("call_1", "sync_tool", {"x": 5})]
         result = library(tool_callings)
 
         assert result.return_directly is False
-        assert "background" in result.tool_calls[0].result.lower()
+        assert "dispatched" in result.tool_calls[0].result.lower()
 
     def test_tool_library_mcp_initialization_stdio(self):
         """Test ToolLibrary MCP initialization with stdio transport."""

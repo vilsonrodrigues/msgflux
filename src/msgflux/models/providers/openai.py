@@ -631,7 +631,7 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
                 raise ValueError("`typed_parser` is not `stream=True` compatible")
 
             stream_response = ModelStreamResponse()
-            F.background_task(
+            F.fire_and_forget(
                 self._stream_generate,
                 **generation_params,
                 stream=stream,
@@ -729,7 +729,7 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
                 raise ValueError("`typed_parser` is not `stream=True` compatible")
 
             stream_response = ModelStreamResponse()
-            await F.abackground_task(
+            await F.afire_and_forget(
                 self._astream_generate,
                 **generation_params,
                 stream=stream,
@@ -880,7 +880,7 @@ class OpenAITextToSpeech(_BaseOpenAI, TextToSpeechModel):
         if stream:
             stream_response = ModelStreamResponse()
             params.stream_response = stream_response
-            F.background_task(self._stream_generate, **params)
+            F.fire_and_forget(self._stream_generate, **params)
             F.wait_for_event(stream_response.first_chunk_event)
             return stream_response
         else:
@@ -914,7 +914,7 @@ class OpenAITextToSpeech(_BaseOpenAI, TextToSpeechModel):
         if stream:
             stream_response = ModelStreamResponse()
             params.stream_response = stream_response
-            await F.abackground_task(self._astream_generate, **params)
+            await F.afire_and_forget(self._astream_generate, **params)
             await F.await_for_event(stream_response.first_chunk_event)
             return stream_response
         else:
@@ -1382,7 +1382,7 @@ class OpenAISpeechToText(_BaseOpenAI, SpeechToTextModel):
             stream_response = ModelStreamResponse()
             params["stream_response"] = stream_response
             params["stream"] = stream
-            F.background_task(self._stream_generate, **params)
+            F.fire_and_forget(self._stream_generate, **params)
             F.wait_for_event(stream_response.first_chunk_event)
             return stream_response
         else:
@@ -1437,7 +1437,7 @@ class OpenAISpeechToText(_BaseOpenAI, SpeechToTextModel):
             stream_response = ModelStreamResponse()
             params["stream_response"] = stream_response
             params["stream"] = stream
-            await F.abackground_task(self._astream_generate, **params)
+            await F.afire_and_forget(self._astream_generate, **params)
             await F.await_for_event(stream_response.first_chunk_event)
             return stream_response
         else:

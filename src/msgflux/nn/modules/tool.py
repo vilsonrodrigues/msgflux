@@ -272,8 +272,8 @@ def _convert_module_to_nn_tool(impl: Callable) -> Tool:  # noqa: C901
         name = "transfer_to_" + name
         annotations = {}  # pass only the model state
 
-    if tool_config.get("background"):
-        doc = "This tool will run in the background. \n" + doc
+    if tool_config.get("fire_and_forget"):
+        doc = "This tool will not generate a return. \n" + doc
 
     return LocalTool(
         name=name,
@@ -533,16 +533,16 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 elif inject_vars is True:
                     tool_params["vars"] = vars
 
-            if config.get("background", False):
+            if config.get("fire_and_forget", False):
                 return_directly = False
-                F.background_task(tool, **(tool_params or {}))
+                F.fire_and_forget(tool, **(tool_params or {}))
                 tool_calls.append(
                     ToolCall(
                         id=tool_id,
                         name=tool_name,
                         parameters=tool_params,
-                        result=f"""The `{tool_name}` tool was started in the background.
-                        This tool will not generate a return""",
+                        result=f"The `{tool_name}` tool was dispatched. "
+                        "This tool will not generate a return.",
                     )
                 )
                 continue
@@ -662,16 +662,16 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 elif inject_vars is True:
                     tool_params["vars"] = vars
 
-            if config.get("background", False):
+            if config.get("fire_and_forget", False):
                 return_directly = False
-                await F.abackground_task(tool.acall, **(tool_params or {}))
+                await F.afire_and_forget(tool.acall, **(tool_params or {}))
                 tool_calls.append(
                     ToolCall(
                         id=tool_id,
                         name=tool_name,
                         parameters=tool_params,
-                        result=f"""The `{tool_name}` tool was started in the background.
-                        This tool will not generate a return""",
+                        result=f"The `{tool_name}` tool was dispatched. "
+                        "This tool will not generate a return.",
                     )
                 )
                 continue

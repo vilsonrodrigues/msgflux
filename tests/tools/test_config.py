@@ -12,13 +12,13 @@ class TestToolConfig:
     def test_tool_config_on_function(self):
         """Test tool_config decorator on a regular function."""
 
-        @tool_config(return_direct=True, background=False)
+        @tool_config(return_direct=True, fire_and_forget=False)
         def sample_function(x: int) -> int:
             return x * 2
 
         assert hasattr(sample_function, "tool_config")
         assert sample_function.tool_config.return_direct is True
-        assert sample_function.tool_config.background is False
+        assert sample_function.tool_config.fire_and_forget is False
         assert sample_function(5) == 10
 
     def test_tool_config_on_method(self):
@@ -59,7 +59,7 @@ class TestToolConfig:
 
         config = sample_function.tool_config
         assert config.return_direct is False
-        assert config.background is False
+        assert config.fire_and_forget is False
         assert config.handoff is False
         assert config.call_as_response is False
         assert config.inject_vars is False
@@ -86,19 +86,23 @@ class TestToolConfig:
         assert sample_function.tool_config.return_direct is True
         assert sample_function.tool_config.inject_messages is True
 
-    def test_tool_config_background_incompatible_with_return_direct(self):
-        """Test that background=True is incompatible with return_direct=True."""
-        with pytest.raises(ValueError, match="`background=True` is not compatible"):
+    def test_tool_config_fire_and_forget_incompatible_with_return_direct(self):
+        """Test that fire_and_forget=True is incompatible with return_direct=True."""
+        with pytest.raises(
+            ValueError, match="`fire_and_forget=True` is not compatible"
+        ):
 
-            @tool_config(background=True, return_direct=True)
+            @tool_config(fire_and_forget=True, return_direct=True)
             def sample_function():
                 pass
 
-    def test_tool_config_background_incompatible_with_call_as_response(self):
-        """Test that background=True is incompatible with call_as_response=True."""
-        with pytest.raises(ValueError, match="`background=True` is not compatible"):
+    def test_tool_config_fire_and_forget_incompatible_with_call_as_response(self):
+        """Test that fire_and_forget=True is incompatible with call_as_response=True."""
+        with pytest.raises(
+            ValueError, match="`fire_and_forget=True` is not compatible"
+        ):
 
-            @tool_config(background=True, call_as_response=True)
+            @tool_config(fire_and_forget=True, call_as_response=True)
             def sample_function():
                 pass
 
@@ -173,7 +177,7 @@ class TestDecorateFunction:
         def sample_function():
             return "result"
 
-        config = {"tool_config": dotdict({"return_direct": True, "background": False})}
+        config = {"tool_config": dotdict({"return_direct": True, "fire_and_forget": False})}
 
         decorated = decorate_function(sample_function, config)
         assert hasattr(decorated, "tool_config")
@@ -186,7 +190,7 @@ class TestDecorateFunction:
         def multiply(x: int, y: int) -> int:
             return x * y
 
-        config = {"tool_config": dotdict({"return_direct": False, "background": False})}
+        config = {"tool_config": dotdict({"return_direct": False, "fire_and_forget": False})}
 
         decorated = decorate_function(multiply, config)
         assert decorated(3, 4) == 12
@@ -204,7 +208,7 @@ class TestDecorateInstance:
                 return "result"
 
         instance = SampleCallable()
-        config = {"tool_config": dotdict({"return_direct": True, "background": False})}
+        config = {"tool_config": dotdict({"return_direct": True, "fire_and_forget": False})}
 
         decorated = decorate_instance(instance, config)
         assert hasattr(decorated, "tool_config")
@@ -219,7 +223,7 @@ class TestDecorateInstance:
                 return x * y
 
         instance = Multiplier()
-        config = {"tool_config": dotdict({"return_direct": False, "background": False})}
+        config = {"tool_config": dotdict({"return_direct": False, "fire_and_forget": False})}
 
         decorated = decorate_instance(instance, config)
         assert decorated(3, 4) == 12
@@ -238,14 +242,14 @@ class TestToolConfigCombinations:
 
         assert sample.tool_config.return_direct is True
 
-    def test_background_true(self):
-        """Test background=True configuration."""
+    def test_fire_and_forget_true(self):
+        """Test fire_and_forget=True configuration."""
 
-        @tool_config(background=True)
+        @tool_config(fire_and_forget=True)
         def sample():
             pass
 
-        assert sample.tool_config.background is True
+        assert sample.tool_config.fire_and_forget is True
         assert sample.tool_config.return_direct is False
 
     def test_inject_messages_true(self):
@@ -276,7 +280,7 @@ class TestToolConfigCombinations:
 
         @tool_config(
             return_direct=False,
-            background=False,
+            fire_and_forget=False,
             handoff=False,
             call_as_response=False,
             inject_vars=False,
@@ -287,7 +291,7 @@ class TestToolConfigCombinations:
 
         config = sample.tool_config
         assert config.return_direct is False
-        assert config.background is False
+        assert config.fire_and_forget is False
         assert config.handoff is False
         assert config.call_as_response is False
         assert config.inject_vars is False

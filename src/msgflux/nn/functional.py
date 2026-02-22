@@ -11,13 +11,13 @@ from msgflux.nn.modules.module import get_callable_name
 from msgflux.telemetry import Spans
 
 __all__ = [
-    "abackground_task",
+    "afire_and_forget",
     "ainline",
     "amap_gather",
     "amsg_bcast_gather",
     "ascatter_gather",
     "await_for_event",
-    "background_task",
+    "fire_and_forget",
     "bcast_gather",
     "inline",
     "map_gather",
@@ -420,9 +420,9 @@ def wait_for_event(event: asyncio.Event) -> None:
 
 
 @Spans.instrument()
-def background_task(to_send: Callable, *args, **kwargs) -> None:
-    """Executes a task in the background asynchronously without blocking,
-    using the AsyncExecutorPool. This function is "fire-and-forget".
+def fire_and_forget(to_send: Callable, *args, **kwargs) -> None:
+    """Dispatches a task without waiting for a result.
+    Uses the AsyncExecutorPool. The task is not tracked and no return is provided.
 
     Args:
         to_send:
@@ -441,19 +441,19 @@ def background_task(to_send: Callable, *args, **kwargs) -> None:
         def print_message(message: str):
             time.sleep(1)
             print(f"[Sync] Message: {message}")
-        F.background_task(print_message, "Hello from sync function")
+        F.fire_and_forget(print_message, "Hello from sync function")
 
         # Example 2:
         import asyncio
         async def async_print_message(message: str):
             await asyncio.sleep(1)
             print(f"[Async] Message: {message}")
-        F.background_task(async_print_message, "Hello from async function")
+        F.fire_and_forget(async_print_message, "Hello from async function")
 
         # Example 3 (with error):
         def failing_task():
             raise ValueError("This task failed!")
-        F.background_task(failing_task)  # Error will be logged
+        F.fire_and_forget(failing_task)  # Error will be logged
     """
     if not callable(to_send):
         raise TypeError("`to_send` must be a callable object")
@@ -463,7 +463,7 @@ def background_task(to_send: Callable, *args, **kwargs) -> None:
         try:
             future.result()
         except Exception as e:
-            logger.error(f"Background task error: {e!s}", exc_info=True)
+            logger.error(f"Fire-and-forget task error: {e!s}", exc_info=True)
 
     executor = Executor.get_instance()
     future = executor.submit(to_send, *args, **kwargs)
@@ -471,9 +471,9 @@ def background_task(to_send: Callable, *args, **kwargs) -> None:
 
 
 @Spans.ainstrument()
-async def abackground_task(to_send: Callable, *args, **kwargs) -> None:
-    """Executes an async task in the background without blocking.
-    This is a truly async "fire-and-forget" function.
+async def afire_and_forget(to_send: Callable, *args, **kwargs) -> None:
+    """Dispatches an async task without waiting for a result.
+    The task is not tracked and no return is provided.
 
     Args:
         to_send:
@@ -492,12 +492,12 @@ async def abackground_task(to_send: Callable, *args, **kwargs) -> None:
         async def async_print_message(message: str):
             await asyncio.sleep(1)
             print(f"[Async] Message: {message}")
-        await F.abackground_task(async_print_message, "Hello from async function")
+        await F.afire_and_forget(async_print_message, "Hello from async function")
 
         # Example 2 (with error):
         async def failing_task():
             raise ValueError("This task failed!")
-        await F.abackground_task(failing_task)  # Error will be logged
+        await F.afire_and_forget(failing_task)  # Error will be logged
     """
     if not callable(to_send):
         raise TypeError("`to_send` must be a callable object")
@@ -514,7 +514,7 @@ async def abackground_task(to_send: Callable, *args, **kwargs) -> None:
                 loop = asyncio.get_event_loop()
                 await loop.run_in_executor(None, lambda: to_send(*args, **kwargs))
         except Exception as e:
-            logger.error(f"Async background task error: {e!s}", exc_info=True)
+            logger.error(f"Fire-and-forget task error: {e!s}", exc_info=True)
 
     asyncio.create_task(run_task())  # noqa: RUF006
 
