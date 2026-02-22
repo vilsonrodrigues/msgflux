@@ -35,9 +35,19 @@ You are a function calling AI model. You may call one or more functions
 to assist with the user query. Don't make assumptions about what values
 to plug into functions. Here are the available tools:
 
+{%- macro render_type(spec) -%}
+{%- if spec.get('type') == 'array' and spec.get('items') -%}
+list[{{ spec['items'].get('type', 'unknown') }}]
+{%- elif spec.get('type') == 'array' -%}
+list
+{%- else -%}
+{{ spec.get('type', 'unknown') }}
+{%- endif -%}
+{%- endmacro -%}
+
 {%- macro render_properties(properties, required, indent=0) -%}
 {%- for arg, spec in properties.items() %}
-{{ "  " * indent }}- {{ arg }} ({{ spec.get('type', 'unknown') }}
+{{ "  " * indent }}- {{ arg }} ({{ render_type(spec) }}
 {%- if arg in required %}, required{% endif %})
 {%- if spec.get('description') %}
 {{ "  " * (indent + 1) }}{{ spec['description'] }}
