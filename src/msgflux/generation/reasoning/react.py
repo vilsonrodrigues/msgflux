@@ -35,35 +35,39 @@ You are a function calling AI model. You may call one or more functions
 to assist with the user query. Don't make assumptions about what values
 to plug into functions. Here are the available tools:
 
-{%- macro render_properties(properties, indent=0) -%}
+{%- macro render_properties(properties, required, indent=0) -%}
 {%- for arg, spec in properties.items() %}
-{{ "  " * indent }}- {{ arg }} ({{ spec.get('type', 'unknown') }})
+{{ "  " * indent }}- {{ arg }} ({{ spec.get('type', 'unknown') }}
+{%- if arg in required %}, required{% endif %})
 {%- if spec.get('description') %}
 {{ "  " * (indent + 1) }}{{ spec['description'] }}
-{% endif %}
+{%- endif %}
 {%- if spec.get('enum') %}
 {{ "  " * (indent + 1) }}Options: {{ spec['enum'] | join(', ') }}
 {%- endif %}
 {%- if spec.get('type') == "object" and spec.get('properties') %}
-{{ render_properties(spec['properties'], indent + 1) }}
+{{ render_properties(spec['properties'], spec.get('required', []), indent + 1) }}
 {%- elif spec.get('type') == "array" and spec.get('items') and
 spec['items'].get('type') == "object" %}
 {{ "  " * (indent + 1) }}Array items:
-{{ render_properties(spec['items']['properties'], indent + 2) }}
+{{ render_properties(spec['items']['properties'], spec['items'].get('required', []), indent + 2) }}
 {%- endif %}
 {%- endfor %}
 {%- endmacro %}
 
 {%- for tool in tool_schemas %}
+{%- set params = tool['function']['parameters'] %}
 <tool>{{ tool['function']['name'] }}
 {{ tool['function']['description'] }}
-{{ render_properties(tool['function']['parameters']['properties']) }}
+Parameters:
+{{ render_properties(params['properties'], params.get('required', [])) }}
 </tool>
 {%- endfor %}
 
 Tool choice: {{ tool_choice }}
 
-For each function call return a encoded json object with function name and arguments.
+Each action must include the function name and its arguments as a list of
+{"name": "<param_name>", "value": <param_value>} objects.
 """
 
 
