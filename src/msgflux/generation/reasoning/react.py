@@ -35,13 +35,16 @@ You are a function calling AI model. You may call one or more functions
 to assist with the user query. Don't make assumptions about what values
 to plug into functions. Here are the available tools:
 
+{%- set type_map = {"integer": "int", "number": "float", "string": "string", "boolean": "bool", "object": "object"} -%}
 {%- macro render_type(spec) -%}
-{%- if spec.get('type') == 'array' and spec.get('items') -%}
-list[{{ spec['items'].get('type', 'unknown') }}]
-{%- elif spec.get('type') == 'array' -%}
+{%- set raw = spec.get('type', 'unknown') -%}
+{%- set mapped = type_map.get(raw, raw) -%}
+{%- if raw == 'array' and spec.get('items') -%}
+list[{{ type_map.get(spec['items'].get('type', 'unknown'), spec['items'].get('type', 'unknown')) }}]
+{%- elif raw == 'array' -%}
 list
 {%- else -%}
-{{ spec.get('type', 'unknown') }}
+{{ mapped }}
 {%- endif -%}
 {%- endmacro -%}
 
