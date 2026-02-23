@@ -1,7 +1,7 @@
 """Tests for msgflux.models.gateway module."""
 
-from datetime import datetime, time, timezone
-from unittest.mock import MagicMock, Mock, patch
+from datetime import datetime, timezone
+from unittest.mock import patch
 
 import pytest
 
@@ -19,6 +19,7 @@ class MockModel(BaseModel):
         model_id: str,
         model_type: str = "chat_completion",
         provider: str = "mock",
+        *,
         should_fail: bool = False,
     ):
         self.model_id = model_id
@@ -30,7 +31,7 @@ class MockModel(BaseModel):
     def _initialize(self):
         pass
 
-    def __call__(self, **kwargs):
+    def __call__(self, **kwargs):  # noqa: ARG002
         self.call_count += 1
         if self.should_fail:
             raise RuntimeError(f"Mock failure for {self.model_id}")
@@ -38,7 +39,7 @@ class MockModel(BaseModel):
         response.add(f"Response from {self.model_id}")
         return response
 
-    async def acall(self, **kwargs):
+    async def acall(self, **kwargs):  # noqa: ARG002
         self.call_count += 1
         if self.should_fail:
             raise RuntimeError(f"Mock async failure for {self.model_id}")
@@ -54,14 +55,40 @@ class MockModel(BaseModel):
         }
 
 
+def _deployment(
+    name: str,
+    model_id: str | None = None,
+    model_type: str = "chat_completion",
+    provider: str = "mock",
+    *,
+    should_fail: bool = False,
+    time_constraints=None,
+):
+    """Helper to build a deployment dict."""
+    if model_id is None:
+        model_id = name
+    entry = {
+        "model_name": name,
+        "model": MockModel(
+            model_id=model_id,
+            model_type=model_type,
+            provider=provider,
+            should_fail=should_fail,
+        ),
+    }
+    if time_constraints is not None:
+        entry["time_constraints"] = time_constraints
+    return entry
+
+
 class TestModelGatewayInitialization:
     """Test suite for ModelGateway initialization."""
 
     def test_gateway_initialization_basic(self):
         """Test basic ModelGateway initialization."""
         models = [
-            MockModel("model-1"),
-            MockModel("model-2"),
+            _deployment("model-1"),
+            _deployment("model-2"),
         ]
 
         gateway = ModelGateway(models=models)
@@ -69,21 +96,18 @@ class TestModelGatewayInitialization:
         assert len(gateway.models) == 2
         assert gateway.model_type == "chat_completion"
         assert gateway.current_model_index == 0
+        assert gateway.model_names == ["model-1", "model-2"]
 
     def test_gateway_initialization_with_time_constraints(self):
-        """Test ModelGateway with time constraints."""
+        """Test ModelGateway with time constraints inside deployments."""
         models = [
-            MockModel("model-1"),
-            MockModel("model-2"),
+            _deployment("model-1", time_constraints=[("22:00", "06:00")]),
+            _deployment("model-2"),
         ]
 
-        time_constraints = {
-            "model-1": [("22:00", "06:00")],
-        }
+        gateway = ModelGateway(models=models)
 
-        gateway = ModelGateway(models=models, time_constraints=time_constraints)
-
-        assert gateway.raw_time_constraints == time_constraints
+        assert gateway.raw_time_constraints == {"model-1": [("22:00", "06:00")]}
         assert "model-1" in gateway.parsed_time_constraints
 
     def test_gateway_empty_models_list(self):
@@ -96,37 +120,56 @@ class TestModelGatewayInitialization:
         with pytest.raises(TypeError, match="`models` must be a non-empty list"):
             ModelGateway(models="not-a-list")
 
+    def test_gateway_non_dict_elements(self):
+        """Test ModelGateway raises error when elements are not dicts."""
+        with pytest.raises(TypeError, match="requires a list of dicts"):
+            ModelGateway(models=[_deployment("model-1"), "not-a-dict"])
+
+    def test_gateway_missing_model_name(self):
+        """Test ModelGateway raises error when model_name is missing."""
+        with pytest.raises(ValueError, match="missing required key `model_name`"):
+            ModelGateway(models=[{"model": MockModel("m1")}, _deployment("model-2")])
+
+    def test_gateway_missing_model(self):
+        """Test ModelGateway raises error when model is missing."""
+        with pytest.raises(ValueError, match="missing required key `model`"):
+            ModelGateway(models=[{"model_name": "m1"}, _deployment("model-2")])
+
     def test_gateway_non_basemodel_instances(self):
-        """Test ModelGateway raises error when models don't inherit from BaseModel."""
-        with pytest.raises(TypeError, match="inheriting from `BaseModel`"):
-            ModelGateway(models=[MockModel("model-1"), "not-a-model"])
+        """Test ModelGateway raises error when model doesn't inherit BaseModel."""
+        with pytest.raises(TypeError, match="does not inherit from `BaseModel`"):
+            ModelGateway(
+                models=[
+                    {"model_name": "m1", "model": "not-a-model"},
+                    _deployment("model-2"),
+                ]
+            )
 
     def test_gateway_single_model_warning(self):
         """Test ModelGateway with only one model (should warn but not fail)."""
-        models = [MockModel("model-1")]
+        models = [_deployment("model-1")]
 
-        # Should not raise, but log a warning
         gateway = ModelGateway(models=models)
         assert len(gateway.models) == 1
 
     def test_gateway_mixed_model_types(self):
         """Test ModelGateway raises error with different model types."""
         models = [
-            MockModel("model-1", model_type="chat_completion"),
-            MockModel("model-2", model_type="text_embedder"),
+            _deployment("model-1", model_type="chat_completion"),
+            _deployment("model-2", model_type="text_embedder"),
         ]
 
         with pytest.raises(TypeError, match="must be of the same `model_type`"):
             ModelGateway(models=models)
 
-    def test_gateway_duplicate_model_ids(self):
-        """Test ModelGateway raises error with duplicate model IDs."""
+    def test_gateway_duplicate_model_names(self):
+        """Test ModelGateway raises error with duplicate model names."""
         models = [
-            MockModel("model-1"),
-            MockModel("model-1"),
+            _deployment("same-name", model_id="model-1"),
+            _deployment("same-name", model_id="model-2"),
         ]
 
-        with pytest.raises(ValueError, match="Duplicate model ID"):
+        with pytest.raises(ValueError, match="Duplicate model name"):
             ModelGateway(models=models)
 
     def test_gateway_model_without_model_type(self):
@@ -135,7 +178,12 @@ class TestModelGatewayInitialization:
         del model.model_type
 
         with pytest.raises(AttributeError, match="does not have a valid `model_type`"):
-            ModelGateway(models=[model, MockModel("model-2")])
+            ModelGateway(
+                models=[
+                    {"model_name": "m1", "model": model},
+                    _deployment("model-2"),
+                ]
+            )
 
     def test_gateway_model_without_model_id(self):
         """Test ModelGateway raises error when model lacks model_id."""
@@ -143,7 +191,12 @@ class TestModelGatewayInitialization:
         del model.model_id
 
         with pytest.raises(AttributeError, match="does not have a valid `model_id`"):
-            ModelGateway(models=[model, MockModel("model-2")])
+            ModelGateway(
+                models=[
+                    {"model_name": "m1", "model": model},
+                    _deployment("model-2"),
+                ]
+            )
 
     def test_gateway_model_without_provider(self):
         """Test ModelGateway raises error when model lacks provider."""
@@ -151,7 +204,25 @@ class TestModelGatewayInitialization:
         del model.provider
 
         with pytest.raises(AttributeError, match="does not have a valid `provider`"):
-            ModelGateway(models=[model, MockModel("model-2")])
+            ModelGateway(
+                models=[
+                    {"model_name": "m1", "model": model},
+                    _deployment("model-2"),
+                ]
+            )
+
+    def test_gateway_model_name_as_alias(self):
+        """Test that model_name can be any arbitrary string alias."""
+        models = [
+            _deployment("weak", model_id="gpt-4.1-mini"),
+            _deployment("strong", model_id="gpt-4.1"),
+        ]
+
+        gateway = ModelGateway(models=models)
+
+        assert gateway.model_names == ["weak", "strong"]
+        assert gateway.models[0].model_id == "gpt-4.1-mini"
+        assert gateway.models[1].model_id == "gpt-4.1"
 
 
 class TestTimeConstraintParsing:
@@ -159,13 +230,12 @@ class TestTimeConstraintParsing:
 
     def test_parse_time_constraints_valid(self):
         """Test parsing valid time constraints."""
-        models = [MockModel("model-1"), MockModel("model-2")]
-        time_constraints = {
-            "model-1": [("09:00", "17:00")],
-            "model-2": [("22:00", "06:00")],
-        }
+        models = [
+            _deployment("model-1", time_constraints=[("09:00", "17:00")]),
+            _deployment("model-2", time_constraints=[("22:00", "06:00")]),
+        ]
 
-        gateway = ModelGateway(models=models, time_constraints=time_constraints)
+        gateway = ModelGateway(models=models)
 
         assert "model-1" in gateway.parsed_time_constraints
         assert "model-2" in gateway.parsed_time_constraints
@@ -173,65 +243,78 @@ class TestTimeConstraintParsing:
 
     def test_parse_time_constraints_multiple_intervals(self):
         """Test parsing multiple time intervals for a model."""
-        models = [MockModel("model-1"), MockModel("model-2")]
-        time_constraints = {
-            "model-1": [("09:00", "12:00"), ("13:00", "17:00")],
-        }
+        models = [
+            _deployment(
+                "model-1",
+                time_constraints=[("09:00", "12:00"), ("13:00", "17:00")],
+            ),
+            _deployment("model-2"),
+        ]
 
-        gateway = ModelGateway(models=models, time_constraints=time_constraints)
+        gateway = ModelGateway(models=models)
 
         assert len(gateway.parsed_time_constraints["model-1"]) == 2
 
     def test_parse_time_constraints_invalid_format(self):
         """Test parsing time constraints with invalid time format."""
-        models = [MockModel("model-1"), MockModel("model-2")]
-        time_constraints = {
-            "model-1": [("25:00", "06:00")],  # Invalid hour
-        }
+        models = [
+            _deployment("model-1", time_constraints=[("25:00", "06:00")]),
+            _deployment("model-2"),
+        ]
 
-        with pytest.raises(ValueError, match="Invalid time format"):
-            ModelGateway(models=models, time_constraints=time_constraints)
+        with pytest.raises(ValueError, match="Invalid format in time"):
+            ModelGateway(models=models)
 
     def test_parse_time_constraints_not_list(self):
         """Test parsing time constraints when intervals is not a list."""
-        models = [MockModel("model-1"), MockModel("model-2")]
-        time_constraints = {
-            "model-1": "not-a-list",
-        }
+        models = [
+            {
+                "model_name": "model-1",
+                "model": MockModel("m1"),
+                "time_constraints": "not-a-list",
+            },
+            _deployment("model-2"),
+        ]
 
         with pytest.raises(TypeError, match="must be a list of tuples"):
-            ModelGateway(models=models, time_constraints=time_constraints)
+            ModelGateway(models=models)
 
     def test_parse_time_constraints_invalid_interval_type(self):
         """Test parsing time constraints with invalid interval type."""
-        models = [MockModel("model-1"), MockModel("model-2")]
-        time_constraints = {
-            "model-1": ["not-a-tuple"],
-        }
+        models = [
+            {
+                "model_name": "model-1",
+                "model": MockModel("m1"),
+                "time_constraints": ["not-a-tuple"],
+            },
+            _deployment("model-2"),
+        ]
 
         with pytest.raises(TypeError, match="must be a tuple/list of two strings"):
-            ModelGateway(models=models, time_constraints=time_constraints)
+            ModelGateway(models=models)
 
     def test_parse_time_constraints_non_string_times(self):
         """Test parsing time constraints with non-string times."""
-        models = [MockModel("model-1"), MockModel("model-2")]
-        time_constraints = {
-            "model-1": [(9, 17)],  # Numbers instead of strings
-        }
+        models = [
+            {
+                "model_name": "model-1",
+                "model": MockModel("m1"),
+                "time_constraints": [(9, 17)],
+            },
+            _deployment("model-2"),
+        ]
 
         with pytest.raises(TypeError, match="must be strings"):
-            ModelGateway(models=models, time_constraints=time_constraints)
+            ModelGateway(models=models)
 
-    def test_parse_time_constraints_nonexistent_model(self):
-        """Test warning when time constraint references nonexistent model."""
-        models = [MockModel("model-1"), MockModel("model-2")]
-        time_constraints = {
-            "nonexistent-model": [("09:00", "17:00")],
-        }
+    def test_no_time_constraints(self):
+        """Test gateway without any time constraints."""
+        models = [_deployment("model-1"), _deployment("model-2")]
 
-        # Should not raise, but log a warning
-        gateway = ModelGateway(models=models, time_constraints=time_constraints)
-        assert "nonexistent-model" in gateway.parsed_time_constraints
+        gateway = ModelGateway(models=models)
+
+        assert gateway.raw_time_constraints is None
+        assert gateway.parsed_time_constraints == {}
 
 
 class TestTimeRestriction:
@@ -239,51 +322,45 @@ class TestTimeRestriction:
 
     def test_is_time_restricted_no_constraints(self):
         """Test model with no time constraints is not restricted."""
-        models = [MockModel("model-1"), MockModel("model-2")]
+        models = [_deployment("model-1"), _deployment("model-2")]
         gateway = ModelGateway(models=models)
 
         assert not gateway._is_time_restricted("model-1")
 
     def test_is_time_restricted_within_range(self):
         """Test model is restricted when current time is within range."""
-        models = [MockModel("model-1"), MockModel("model-2")]
-
-        # Mock current time to be 10:00
         with patch("msgflux.models.gateway.datetime") as mock_datetime:
             mock_datetime.now.return_value = datetime(
                 2025, 1, 1, 10, 0, 0, tzinfo=timezone.utc
             )
             mock_datetime.strptime = datetime.strptime
 
-            time_constraints = {
-                "model-1": [("09:00", "17:00")],
-            }
+            models = [
+                _deployment("model-1", time_constraints=[("09:00", "17:00")]),
+                _deployment("model-2"),
+            ]
 
-            gateway = ModelGateway(models=models, time_constraints=time_constraints)
+            gateway = ModelGateway(models=models)
             assert gateway._is_time_restricted("model-1")
 
     def test_is_time_restricted_outside_range(self):
         """Test model is not restricted when current time is outside range."""
-        models = [MockModel("model-1"), MockModel("model-2")]
-
-        # Mock current time to be 08:00
         with patch("msgflux.models.gateway.datetime") as mock_datetime:
             mock_datetime.now.return_value = datetime(
                 2025, 1, 1, 8, 0, 0, tzinfo=timezone.utc
             )
             mock_datetime.strptime = datetime.strptime
 
-            time_constraints = {
-                "model-1": [("09:00", "17:00")],
-            }
+            models = [
+                _deployment("model-1", time_constraints=[("09:00", "17:00")]),
+                _deployment("model-2"),
+            ]
 
-            gateway = ModelGateway(models=models, time_constraints=time_constraints)
+            gateway = ModelGateway(models=models)
             assert not gateway._is_time_restricted("model-1")
 
     def test_is_time_restricted_midnight_crossover(self):
         """Test time restriction crossing midnight (e.g., 22:00 to 06:00)."""
-        models = [MockModel("model-1"), MockModel("model-2")]
-
         # Mock current time to be 23:00 (restricted)
         with patch("msgflux.models.gateway.datetime") as mock_datetime:
             mock_datetime.now.return_value = datetime(
@@ -291,11 +368,12 @@ class TestTimeRestriction:
             )
             mock_datetime.strptime = datetime.strptime
 
-            time_constraints = {
-                "model-1": [("22:00", "06:00")],
-            }
+            models = [
+                _deployment("model-1", time_constraints=[("22:00", "06:00")]),
+                _deployment("model-2"),
+            ]
 
-            gateway = ModelGateway(models=models, time_constraints=time_constraints)
+            gateway = ModelGateway(models=models)
             assert gateway._is_time_restricted("model-1")
 
         # Mock current time to be 03:00 (also restricted)
@@ -305,7 +383,12 @@ class TestTimeRestriction:
             )
             mock_datetime.strptime = datetime.strptime
 
-            gateway = ModelGateway(models=models, time_constraints=time_constraints)
+            models = [
+                _deployment("model-1", time_constraints=[("22:00", "06:00")]),
+                _deployment("model-2"),
+            ]
+
+            gateway = ModelGateway(models=models)
             assert gateway._is_time_restricted("model-1")
 
 
@@ -314,35 +397,35 @@ class TestModelExecution:
 
     def test_execute_model_basic(self):
         """Test basic model execution."""
-        models = [MockModel("model-1"), MockModel("model-2")]
+        models = [_deployment("model-1"), _deployment("model-2")]
         gateway = ModelGateway(models=models)
 
         response = gateway()
 
         assert response is not None
-        assert models[0].call_count == 1
+        assert gateway.models[0].call_count == 1
         assert "model-1" in response.data
 
     def test_execute_model_with_fallback(self):
         """Test fallback when first model fails."""
         models = [
-            MockModel("model-1", should_fail=True),
-            MockModel("model-2"),
+            _deployment("model-1", should_fail=True),
+            _deployment("model-2"),
         ]
         gateway = ModelGateway(models=models)
 
         response = gateway()
 
         assert response is not None
-        assert models[0].call_count == 1
-        assert models[1].call_count == 1
+        assert gateway.models[0].call_count == 1
+        assert gateway.models[1].call_count == 1
         assert "model-2" in response.data
 
     def test_execute_model_all_fail(self):
         """Test error when all models fail."""
         models = [
-            MockModel("model-1", should_fail=True),
-            MockModel("model-2", should_fail=True),
+            _deployment("model-1", should_fail=True),
+            _deployment("model-2", should_fail=True),
         ]
         gateway = ModelGateway(models=models)
 
@@ -350,121 +433,118 @@ class TestModelExecution:
             gateway()
 
     def test_execute_model_with_preference(self):
-        """Test model preference is respected."""
-        model1 = MockModel("model-1")
-        model2 = MockModel("model-2")
-        models = [model1, model2]
+        """Test model preference is respected using model_name."""
+        models = [_deployment("weak"), _deployment("strong")]
         gateway = ModelGateway(models=models)
 
-        response = gateway(model_preference="model-2")
+        response = gateway(model_preference="strong")
 
         assert response is not None
-        assert model2.call_count == 1
-        assert model1.call_count == 0
-        assert "model-2" in response.data
+        assert gateway.models[1].call_count == 1
+        assert gateway.models[0].call_count == 0
+        assert "strong" in response.data
 
     def test_execute_model_with_preference_fallback(self):
         """Test fallback when preferred model fails."""
-        model1 = MockModel("model-1")
-        model2 = MockModel("model-2", should_fail=True)
-        models = [model1, model2]
+        models = [
+            _deployment("weak"),
+            _deployment("strong", should_fail=True),
+        ]
         gateway = ModelGateway(models=models)
 
-        response = gateway(model_preference="model-2")
+        response = gateway(model_preference="strong")
 
         assert response is not None
-        assert model2.call_count == 1
-        assert model1.call_count == 1
-        assert "model-1" in response.data
+        assert gateway.models[1].call_count == 1
+        assert gateway.models[0].call_count == 1
+        assert "weak" in response.data
 
     def test_execute_model_with_kwargs(self):
         """Test passing kwargs to model."""
-        model = MockModel("model-1")
-        gateway = ModelGateway(models=[model, MockModel("model-2")])
+        models = [_deployment("model-1"), _deployment("model-2")]
+        gateway = ModelGateway(models=models)
 
         response = gateway(temperature=0.7, max_tokens=100)
 
         assert response is not None
-        assert model.call_count == 1
+        assert gateway.models[0].call_count == 1
 
     def test_execute_model_time_restricted(self):
         """Test execution skips time-restricted models."""
-        models = [MockModel("model-1"), MockModel("model-2")]
-
         with patch("msgflux.models.gateway.datetime") as mock_datetime:
             mock_datetime.now.return_value = datetime(
                 2025, 1, 1, 10, 0, 0, tzinfo=timezone.utc
             )
             mock_datetime.strptime = datetime.strptime
 
-            time_constraints = {
-                "model-1": [("09:00", "17:00")],
-            }
+            models = [
+                _deployment("model-1", time_constraints=[("09:00", "17:00")]),
+                _deployment("model-2"),
+            ]
 
-            gateway = ModelGateway(models=models, time_constraints=time_constraints)
+            gateway = ModelGateway(models=models)
             response = gateway()
 
             # model-1 is restricted, so model-2 should be used
-            assert models[0].call_count == 0
-            assert models[1].call_count == 1
+            assert gateway.models[0].call_count == 0
+            assert gateway.models[1].call_count == 1
             assert "model-2" in response.data
 
     def test_execute_model_all_restricted(self):
         """Test error when all models are time-restricted."""
-        models = [MockModel("model-1"), MockModel("model-2")]
-
         with patch("msgflux.models.gateway.datetime") as mock_datetime:
             mock_datetime.now.return_value = datetime(
                 2025, 1, 1, 10, 0, 0, tzinfo=timezone.utc
             )
             mock_datetime.strptime = datetime.strptime
 
-            time_constraints = {
-                "model-1": [("09:00", "17:00")],
-                "model-2": [("09:00", "17:00")],
-            }
+            models = [
+                _deployment("model-1", time_constraints=[("09:00", "17:00")]),
+                _deployment("model-2", time_constraints=[("09:00", "17:00")]),
+            ]
 
-            gateway = ModelGateway(models=models, time_constraints=time_constraints)
+            gateway = ModelGateway(models=models)
 
             with pytest.raises(
-                ModelRouterError, match="No model available due to time constraints"
+                ModelRouterError,
+                match="No model available due to time constraints",
             ):
                 gateway()
 
     @pytest.mark.asyncio
     async def test_aexecute_model_basic(self):
         """Test basic async model execution."""
-        models = [MockModel("model-1"), MockModel("model-2")]
+        models = [_deployment("model-1"), _deployment("model-2")]
         gateway = ModelGateway(models=models)
 
         response = await gateway.acall()
 
         assert response is not None
-        assert models[0].call_count == 1
+        assert gateway.models[0].call_count == 1
         assert "model-1" in response.data
 
     @pytest.mark.asyncio
     async def test_aexecute_model_with_fallback(self):
         """Test async fallback when first model fails."""
         models = [
-            MockModel("model-1", should_fail=True),
-            MockModel("model-2"),
+            _deployment("model-1", should_fail=True),
+            _deployment("model-2"),
         ]
         gateway = ModelGateway(models=models)
 
         response = await gateway.acall()
 
         assert response is not None
-        assert models[0].call_count == 1
-        assert models[1].call_count == 1
+        assert gateway.models[0].call_count == 1
+        assert gateway.models[1].call_count == 1
         assert "model-2" in response.data
 
     @pytest.mark.asyncio
     async def test_aexecute_model_all_fail(self):
         """Test async error when all models fail."""
         models = [
-            MockModel("model-1", should_fail=True),
-            MockModel("model-2", should_fail=True),
+            _deployment("model-1", should_fail=True),
+            _deployment("model-2", should_fail=True),
         ]
         gateway = ModelGateway(models=models)
 
@@ -477,7 +557,7 @@ class TestGatewaySerialization:
 
     def test_serialize_basic(self):
         """Test basic gateway serialization."""
-        models = [MockModel("model-1"), MockModel("model-2")]
+        models = [_deployment("model-1"), _deployment("model-2")]
         gateway = ModelGateway(models=models)
 
         serialized = gateway.serialize()
@@ -487,19 +567,22 @@ class TestGatewaySerialization:
         assert "state" in serialized
         assert "models" in serialized["state"]
         assert len(serialized["state"]["models"]) == 2
+        assert serialized["state"]["models"][0]["model_name"] == "model-1"
+        assert serialized["state"]["models"][1]["model_name"] == "model-2"
 
     def test_serialize_with_time_constraints(self):
-        """Test serialization preserves time constraints."""
-        models = [MockModel("model-1"), MockModel("model-2")]
-        time_constraints = {
-            "model-1": [("09:00", "17:00")],
-        }
-        gateway = ModelGateway(models=models, time_constraints=time_constraints)
+        """Test serialization preserves time constraints in deployments."""
+        models = [
+            _deployment("model-1", time_constraints=[("09:00", "17:00")]),
+            _deployment("model-2"),
+        ]
+        gateway = ModelGateway(models=models)
 
         serialized = gateway.serialize()
 
-        assert "time_constraints" in serialized["state"]
-        assert serialized["state"]["time_constraints"] == time_constraints
+        deployments = serialized["state"]["models"]
+        assert deployments[0]["time_constraints"] == [("09:00", "17:00")]
+        assert "time_constraints" not in deployments[1]
 
     @patch("msgflux.models.model.Model.from_serialized")
     def test_from_serialized_basic(self, mock_from_serialized):
@@ -513,8 +596,14 @@ class TestGatewaySerialization:
             "msgflux_type": "model_gateway",
             "state": {
                 "models": [
-                    {"model_id": "model-1"},
-                    {"model_id": "model-2"},
+                    {
+                        "model_name": "weak",
+                        "model": {"model_id": "model-1"},
+                    },
+                    {
+                        "model_name": "strong",
+                        "model": {"model_id": "model-2"},
+                    },
                 ],
             },
         }
@@ -522,6 +611,7 @@ class TestGatewaySerialization:
         gateway = ModelGateway.from_serialized(data)
 
         assert len(gateway.models) == 2
+        assert gateway.model_names == ["weak", "strong"]
         assert mock_from_serialized.call_count == 2
 
     @patch("msgflux.models.model.Model.from_serialized")
@@ -532,21 +622,26 @@ class TestGatewaySerialization:
             MockModel("model-2"),
         ]
 
-        time_constraints = {"model-1": [("09:00", "17:00")]}
         data = {
             "msgflux_type": "model_gateway",
             "state": {
                 "models": [
-                    {"model_id": "model-1"},
-                    {"model_id": "model-2"},
+                    {
+                        "model_name": "weak",
+                        "model": {"model_id": "model-1"},
+                        "time_constraints": [("09:00", "17:00")],
+                    },
+                    {
+                        "model_name": "strong",
+                        "model": {"model_id": "model-2"},
+                    },
                 ],
-                "time_constraints": time_constraints,
             },
         }
 
         gateway = ModelGateway.from_serialized(data)
 
-        assert gateway.raw_time_constraints == time_constraints
+        assert gateway.raw_time_constraints == {"weak": [("09:00", "17:00")]}
 
     def test_from_serialized_invalid_type(self):
         """Test error when deserializing with wrong msgflux_type."""
@@ -567,5 +662,5 @@ class TestGatewaySerialization:
             },
         }
 
-        with pytest.raises(ValueError, match="does not contain templates"):
+        with pytest.raises(ValueError, match="does not contain models"):
             ModelGateway.from_serialized(data)
