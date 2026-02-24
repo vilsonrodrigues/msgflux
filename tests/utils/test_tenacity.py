@@ -1,170 +1,99 @@
 """Tests for msgflux.utils.tenacity module."""
 
 import pytest
+from tenacity import retry, stop_after_attempt
 
-from msgflux.utils.tenacity import (
-    build_model_retry,
-    build_tool_retry,
-    model_retry,
-    tool_retry,
-)
-
-# --- Backward compatibility ---
+from msgflux.utils.tenacity import apply_retry, default_model_retry, default_tool_retry
 
 
-def test_model_retry_decorator_exists():
-    """Test that model_retry decorator exists and is callable."""
-    assert callable(model_retry)
+class TestDefaults:
+    """Test default retry decorators."""
+
+    def test_default_tool_retry_exists(self):
+        assert callable(default_tool_retry)
+
+    def test_default_model_retry_exists(self):
+        assert callable(default_model_retry)
+
+    def test_default_tool_retry_success(self):
+        call_count = 0
+
+        @default_tool_retry
+        def fn():
+            nonlocal call_count
+            call_count += 1
+            return "ok"
+
+        assert fn() == "ok"
+        assert call_count == 1
+
+    def test_default_model_retry_success(self):
+        call_count = 0
+
+        @default_model_retry
+        def fn():
+            nonlocal call_count
+            call_count += 1
+            return "ok"
+
+        assert fn() == "ok"
+        assert call_count == 1
 
 
-def test_tool_retry_decorator_exists():
-    """Test that tool_retry decorator exists and is callable."""
-    assert callable(tool_retry)
+class TestApplyRetry:
+    """Test apply_retry helper."""
 
+    def test_none_uses_default(self):
+        call_count = 0
 
-def test_model_retry_success():
-    """Test model_retry with a successful function."""
-    call_count = 0
+        def fn():
+            nonlocal call_count
+            call_count += 1
+            if call_count < 2:
+                raise ValueError("fail")
+            return "ok"
 
-    @model_retry
-    def successful_function():
-        nonlocal call_count
-        call_count += 1
-        return "success"
+        wrapped = apply_retry(
+            fn, None, default=retry(reraise=True, stop=stop_after_attempt(3))
+        )
+        assert wrapped() == "ok"
+        assert call_count == 2
 
-    result = successful_function()
-    assert result == "success"
-    assert call_count == 1
+    def test_false_disables_retry(self):
+        call_count = 0
 
-
-def test_tool_retry_success():
-    """Test tool_retry with a successful function."""
-    call_count = 0
-
-    @tool_retry
-    def successful_function():
-        nonlocal call_count
-        call_count += 1
-        return "success"
-
-    result = successful_function()
-    assert result == "success"
-    assert call_count == 1
-
-
-# --- build_tool_retry ---
-
-
-def test_build_tool_retry_default():
-    """Test build_tool_retry with default settings."""
-    dec = build_tool_retry()
-    call_count = 0
-
-    @dec
-    def fn():
-        nonlocal call_count
-        call_count += 1
-        return "ok"
-
-    assert fn() == "ok"
-    assert call_count == 1
-
-
-def test_build_tool_retry_retries_on_failure():
-    """Test that build_tool_retry retries on failure."""
-    dec = build_tool_retry(attempts=3)
-    call_count = 0
-
-    @dec
-    def fn():
-        nonlocal call_count
-        call_count += 1
-        if call_count < 3:
+        def fn():
+            nonlocal call_count
+            call_count += 1
             raise ValueError("fail")
-        return "ok"
 
-    assert fn() == "ok"
-    assert call_count == 3
+        wrapped = apply_retry(fn, False, default=default_tool_retry)
+        with pytest.raises(ValueError, match="fail"):
+            wrapped()
+        assert call_count == 1
 
+    def test_custom_decorator(self):
+        call_count = 0
+        custom = retry(reraise=True, stop=stop_after_attempt(2))
 
-def test_build_tool_retry_disabled():
-    """Test build_tool_retry with enabled=False returns no-op."""
-    dec = build_tool_retry(enabled=False)
-    call_count = 0
-
-    @dec
-    def fn():
-        nonlocal call_count
-        call_count += 1
-        raise ValueError("fail")
-
-    with pytest.raises(ValueError, match="fail"):
-        fn()
-    assert call_count == 1  # No retry
-
-
-def test_build_tool_retry_custom_attempts():
-    """Test build_tool_retry with custom attempts."""
-    dec = build_tool_retry(attempts=2)
-    call_count = 0
-
-    @dec
-    def fn():
-        nonlocal call_count
-        call_count += 1
-        raise ValueError("fail")
-
-    with pytest.raises(ValueError, match="fail"):
-        fn()
-    assert call_count == 2
-
-
-# --- build_model_retry ---
-
-
-def test_build_model_retry_default():
-    """Test build_model_retry with default settings."""
-    dec = build_model_retry()
-    call_count = 0
-
-    @dec
-    def fn():
-        nonlocal call_count
-        call_count += 1
-        return "ok"
-
-    assert fn() == "ok"
-    assert call_count == 1
-
-
-def test_build_model_retry_disabled():
-    """Test build_model_retry with enabled=False returns no-op."""
-    dec = build_model_retry(enabled=False)
-    call_count = 0
-
-    @dec
-    def fn():
-        nonlocal call_count
-        call_count += 1
-        raise ValueError("fail")
-
-    with pytest.raises(ValueError, match="fail"):
-        fn()
-    assert call_count == 1  # No retry
-
-
-def test_build_model_retry_custom_attempts():
-    """Test build_model_retry with custom attempts."""
-    dec = build_model_retry(attempts=3)
-    call_count = 0
-
-    @dec
-    def fn():
-        nonlocal call_count
-        call_count += 1
-        if call_count < 3:
+        def fn():
+            nonlocal call_count
+            call_count += 1
             raise ValueError("fail")
-        return "ok"
 
-    assert fn() == "ok"
-    assert call_count == 3
+        wrapped = apply_retry(fn, custom, default=default_tool_retry)
+        with pytest.raises(ValueError, match="fail"):
+            wrapped()
+        assert call_count == 2
+
+    def test_success_no_retry(self):
+        call_count = 0
+
+        def fn():
+            nonlocal call_count
+            call_count += 1
+            return "ok"
+
+        wrapped = apply_retry(fn, None, default=default_tool_retry)
+        assert wrapped() == "ok"
+        assert call_count == 1

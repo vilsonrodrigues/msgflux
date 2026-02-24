@@ -1,6 +1,6 @@
 from functools import wraps
 from types import FunctionType, MethodType
-from typing import Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 from msgflux.dotdict import dotdict
 
@@ -14,9 +14,7 @@ def tool_config(
     inject_vars: Optional[Union[bool, List[str]]] = False,
     handoff: Optional[bool] = False,
     name_override: Optional[str] = None,
-    retry_enabled: Optional[bool] = None,
-    retry_attempts: Optional[int] = None,
-    retry_delay: Optional[int] = None,
+    retry: Optional[Any] = None,
 ) -> Callable:
     """Decorator to inject meta-properties into functions, classes, or instances.
 
@@ -57,13 +55,10 @@ def tool_config(
         name_override:
             A custom name to override the default tool name derived from the function
             or class. If not provided, the original name is used.
-        retry_enabled:
-            Whether retry is enabled for this tool. Defaults to True (env-based retry).
-            Set to False to disable retry entirely.
-        retry_attempts:
-            Max retry attempts for this tool. Overrides the global env setting.
-        retry_delay:
-            Max retry delay in seconds for this tool. Overrides the global env setting.
+        retry:
+            Retry configuration for this tool. Accepts a tenacity retry decorator
+            for custom retry behavior, False to disable retry, or None (default)
+            to use the default retry from envs.
 
     Returns:
         A decorator that modifies the target by injecting the specified properties.
@@ -134,9 +129,7 @@ def tool_config(
                     "inject_vars": inject_vars,
                     "return_direct": _return_direct,
                     "name_overridden": name_override,
-                    "retry_enabled": retry_enabled,
-                    "retry_attempts": retry_attempts,
-                    "retry_delay": retry_delay,
+                    "retry": retry,
                 }
             )
         }
