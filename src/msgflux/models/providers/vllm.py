@@ -12,7 +12,6 @@ from msgflux.models.providers.openai import (
 from msgflux.models.registry import register_model
 from msgflux.models.response import ModelResponse
 from msgflux.models.types import TextClassifierModel
-from msgflux.utils.tenacity import model_retry
 
 
 class _BaseVLLM:
@@ -86,10 +85,12 @@ class VLLMTextClassifier(_BaseVLLM, HTTPXModelClient, TextClassifierModel):
 
     endpoint = "/classify"
 
-    def __init__(self, model_id: str, base_url: Optional[str] = None):
+    def __init__(self, model_id: str, base_url: Optional[str] = None, retry=None):
         super().__init__()
         self.model_id = model_id
         self.sampling_params = {"base_url": base_url or self._get_base_url()}
+        self.retry = retry
+        self._initialize()
 
     def _generate(self, **kwargs):
         response = ModelResponse()
@@ -109,7 +110,6 @@ class VLLMTextClassifier(_BaseVLLM, HTTPXModelClient, TextClassifierModel):
         response.add(results)
         return response
 
-    @model_retry
     def __call__(self, data: Union[str, List[str]]) -> ModelResponse:
         """Args:
         data:
@@ -120,7 +120,6 @@ class VLLMTextClassifier(_BaseVLLM, HTTPXModelClient, TextClassifierModel):
         response = self._generate(input=data)
         return response
 
-    @model_retry
     async def acall(self, data: Union[str, List[str]]) -> ModelResponse:
         """Async version of __call__. Args:
         data:

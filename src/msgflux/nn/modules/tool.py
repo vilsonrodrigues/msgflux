@@ -24,7 +24,7 @@ from msgflux.telemetry.span import (
 )
 from msgflux.utils.chat import generate_tool_json_schema
 from msgflux.utils.inspect import fn_has_parameters
-from msgflux.utils.tenacity import tool_retry
+from msgflux.utils.tenacity import apply_retry, default_tool_retry
 
 
 @dataclass
@@ -116,7 +116,17 @@ class MCPTool(Tool):
             self.set_description(mcp_tool_info.description)
 
         # Store config
-        self.register_buffer("tool_config", config or {})
+        tc = config or {}
+        self.register_buffer("tool_config", tc)
+
+        # Apply retry
+        retry_config = tc.get("retry")
+        self.forward = apply_retry(
+            self.forward, retry_config, default=default_tool_retry
+        )
+        self.aforward = apply_retry(
+            self.aforward, retry_config, default=default_tool_retry
+        )
 
     def get_json_schema(self) -> Dict[str, Any]:
         """Convert MCP tool schema to standard tool JSON schema."""
@@ -169,14 +179,21 @@ class LocalTool(Tool):
         self.register_buffer("tool_config", tool_config)
         self.impl = impl  # Not a buffer for now
 
-    @tool_retry
+        # Apply retry
+        retry_config = tool_config.get("retry")
+        self.forward = apply_retry(
+            self.forward, retry_config, default=default_tool_retry
+        )
+        self.aforward = apply_retry(
+            self.aforward, retry_config, default=default_tool_retry
+        )
+
     @set_tool_attributes(execution_type="local")
     def forward(self, **kwargs):
         if inspect.iscoroutinefunction(self.impl):
             return F.wait_for(self.impl, **kwargs)
         return self.impl(**kwargs)
 
-    @tool_retry
     @aset_tool_attributes(execution_type="local")
     async def aforward(self, *args, **kwargs):
         if hasattr(self.impl, "acall"):
