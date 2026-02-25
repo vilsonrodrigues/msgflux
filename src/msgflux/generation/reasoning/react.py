@@ -99,7 +99,7 @@ class Action(Struct):
 
 
 class ReAct(Struct, ToolFlowControl):
-    thought: Optional[str] = None
+    thought: str
     actions: Optional[List[Action]] = None
     final_answer: Optional[str] = None
 
@@ -108,6 +108,7 @@ class ReAct(Struct, ToolFlowControl):
         """Extract flow information from ReAct response."""
         final_answer = raw_response.get("final_answer")
         if final_answer is not None:
+            raw_response.pop("actions", None)
             return ToolFlowResult(
                 is_complete=True,
                 tool_calls=None,
@@ -141,6 +142,7 @@ class ReAct(Struct, ToolFlowControl):
                 final_response=None,
             )
 
+        raw_response.pop("actions", None)
         return ToolFlowResult(
             is_complete=True,
             tool_calls=None,

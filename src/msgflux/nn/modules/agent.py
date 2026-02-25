@@ -567,6 +567,8 @@ class Agent(Module, metaclass=AutoParams):
             flow_result = flow_control.extract_flow_result(raw_response)
 
             if flow_result.is_complete:
+                if flow_result.final_response is not None:
+                    model_response.data = flow_result.final_response
                 return model_response, messages
 
             if self.config.get("verbose", False) and flow_result.reasoning:
@@ -615,6 +617,8 @@ class Agent(Module, metaclass=AutoParams):
             flow_result = await flow_control.aextract_flow_result(raw_response)
 
             if flow_result.is_complete:
+                if flow_result.final_response is not None:
+                    model_response.data = flow_result.final_response
                 return model_response, messages
 
             if self.config.get("verbose", False) and flow_result.reasoning:
