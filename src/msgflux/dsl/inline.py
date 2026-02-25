@@ -407,6 +407,14 @@ class InlineDSL:
 
                 current_message = F.msg_bcast_gather(parallel_modules, current_message)
 
+                # Check for errors from parallel execution
+                errors = current_message.pop("_errors", None)
+                if errors:
+                    failed = ", ".join(
+                        f"`{name}`: {err.exception}" for name, err in errors.items()
+                    )
+                    raise RuntimeError(f"Parallel execution failed for: {failed}")
+
             elif step["type"] == "conditional":
                 condition_result = self._evaluate_condition(
                     step["condition"], current_message
@@ -540,6 +548,14 @@ class AsyncInlineDSL(InlineDSL):
                 current_message = await F.amsg_bcast_gather(
                     parallel_modules, current_message
                 )
+
+                # Check for errors from parallel execution
+                errors = current_message.pop("_errors", None)
+                if errors:
+                    failed = ", ".join(
+                        f"`{name}`: {err.exception}" for name, err in errors.items()
+                    )
+                    raise RuntimeError(f"Parallel execution failed for: {failed}")
 
             elif step["type"] == "conditional":
                 condition_result = self._evaluate_condition(

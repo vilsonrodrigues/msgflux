@@ -6,6 +6,7 @@ from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple
 
 from msgflux._private.executor import Executor
 from msgflux.dotdict import dotdict
+from msgflux.exceptions import TaskError
 from msgflux.logger import logger
 from msgflux.nn.modules.module import get_callable_name
 from msgflux.telemetry import Spans
@@ -56,7 +57,7 @@ def map_gather(
 
     Returns:
         A tuple containing the results of each call to the `f` function. If a call
-        fails or times out, the corresponding result will be `None`.
+        fails or times out, the corresponding result will be a `TaskError` instance.
 
     Raises:
         TypeError:
@@ -100,12 +101,12 @@ def map_gather(
 
     concurrent.futures.wait(futures, timeout=timeout)
     responses: List[Any] = []
-    for future in futures:
+    for i, future in enumerate(futures):
         try:
             responses.append(future.result())
         except Exception as e:
             logger.error(str(e))
-            responses.append(None)
+            responses.append(TaskError(exception=e, index=i))
     return tuple(responses)
 
 
@@ -145,7 +146,7 @@ def scatter_gather(
     Returns:
         Tuple containing the responses for each callable. If an error or
         timeout occurs for a specific callable, its corresponding response
-        in the tuple will be `None`.
+        in the tuple will be a `TaskError` instance.
 
     Raises:
         TypeError:
@@ -191,12 +192,12 @@ def scatter_gather(
 
     concurrent.futures.wait(futures, timeout=timeout)
     responses: List[Any] = []
-    for future in futures:
+    for i, future in enumerate(futures):
         try:
             responses.append(future.result())
         except Exception as e:
             logger.error(str(e))
-            responses.append(None)
+            responses.append(TaskError(exception=e, index=i))
     return tuple(responses)
 
 
@@ -243,12 +244,13 @@ def msg_scatter_gather(
     futures = [executor.submit(f, msg) for f, msg in zip(to_send, messages)]
 
     concurrent.futures.wait(futures, timeout=timeout)
-    for f, future in zip(to_send, futures):
+    for i, (f, future) in enumerate(zip(to_send, futures)):
         f_name = get_callable_name(f)
         try:
             future.result()
         except Exception as e:
             logger.error(f"Error in scattered task for `{f_name}`: {e}")
+            messages[i]["_error"] = TaskError(exception=e, index=i)
     return tuple(messages)
 
 
@@ -286,7 +288,7 @@ def bcast_gather(
 
         # Example 2: Simulate error
         results = F.bcast_gather([square, fail, cube], 2)
-        print(results)  # (4, None, 8)
+        print(results)  # (4, TaskError(...), 8)
 
         # Example 3: Timeout
         results = F.bcast_gather([square, cube], 4, timeout=0.01)
@@ -300,12 +302,12 @@ def bcast_gather(
 
     concurrent.futures.wait(futures, timeout=timeout)
     responses: List[Any] = []
-    for future in futures:
+    for i, future in enumerate(futures):
         try:
             responses.append(future.result())
         except Exception as e:
             logger.error(str(e))
-            responses.append(None)
+            responses.append(TaskError(exception=e, index=i))
     return tuple(responses)
 
 
@@ -343,12 +345,13 @@ def msg_bcast_gather(
     futures = [executor.submit(f, message) for f in to_send]
 
     concurrent.futures.wait(futures, timeout=timeout)
-    for f, future in zip(to_send, futures):
+    for i, (f, future) in enumerate(zip(to_send, futures)):
         f_name = get_callable_name(f)
         try:
             future.result()
         except Exception as e:
             logger.error(f"Error in scattered task for `{f_name}`: {e}")
+            message.setdefault("_errors", {})[f_name] = TaskError(exception=e, index=i)
     return message
 
 
@@ -393,7 +396,7 @@ def wait_for(
         return future.result()
     except Exception as e:
         logger.error(str(e))
-        return None
+        return TaskError(exception=e, index=0)
 
 
 @Spans.instrument()
@@ -868,12 +871,11 @@ async def amap_gather(
 
     responses = await asyncio.gather(*tasks, return_exceptions=True)
 
-    # Convert exceptions to None and log errors
     results = []
-    for response in responses:
+    for i, response in enumerate(responses):
         if isinstance(response, Exception):
             logger.error(str(response))
-            results.append(None)
+            results.append(TaskError(exception=response, index=i))
         else:
             results.append(response)
 
@@ -932,12 +934,11 @@ async def ascatter_gather(
 
     responses = await asyncio.gather(*tasks, return_exceptions=True)
 
-    # Convert exceptions to None and log errors
     results = []
-    for response in responses:
+    for i, response in enumerate(responses):
         if isinstance(response, Exception):
             logger.error(str(response))
-            results.append(None)
+            results.append(TaskError(exception=response, index=i))
         else:
             results.append(response)
 
@@ -1002,9 +1003,12 @@ async def amsg_bcast_gather(
 
     responses = await asyncio.gather(*tasks, return_exceptions=True)
 
-    for f, response in zip(to_send, responses):
+    for i, (f, response) in enumerate(zip(to_send, responses)):
         f_name = get_callable_name(f)
         if isinstance(response, Exception):
             logger.error(f"Error in async bcast task for `{f_name}`: {response}")
+            message.setdefault("_errors", {})[f_name] = TaskError(
+                exception=response, index=i
+            )
 
     return message
