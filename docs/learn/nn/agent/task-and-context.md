@@ -1,0 +1,732 @@
+# Task and Context
+
+The agent receives input through **task** (what to do) and **context** (background information). When both are provided, they're combined using XML-like tags in the final prompt.
+
+## Imperative vs Declarative
+
+There are two ways to pass inputs to an agent:
+
+| Mode | How it works |
+|------|--------------|
+| **Imperative** (kwargs) | Pass parameters directly via function arguments |
+| **Declarative** (message_fields) | Agent extracts inputs from a `mf.Message` object |
+
+The **declarative approach** with `message_fields` shines when designing complex systems: instead of manually wiring inputs and outputs between agents, you configure each agent once and let them consume/produce from a shared `Message`. This lets you **focus on system design** rather than plumbing variables between components. See [Declarative Mode with Message](#declarative-mode-with-message) for full details.
+
+## Input Parameters
+
+| Parameter | Description | Init | Runtime |
+|-----------|-------------|:----:|:-------:|
+| `task_inputs` | Main task input (string or dict for templates) | | ✅ |
+| `context_inputs` | Dynamic context passed at call time | | ✅ |
+| `context_cache` | Fixed context stored in the agent | ✅ | |
+| `task_multimodal_inputs` | Multimodal inputs (image, audio, file) | | ✅ |
+| `task_messages` | Conversation history (ChatML format) | | ✅ |
+| `vars` | Variables for Agent, Templates and Tools | | ✅ |
+
+## How Task and Context are Combined
+
+When you pass `context_inputs`, the context is injected **inside the task** using XML-like tags:
+
+```xml
+<context>
+Company: FinData Analytics
+Industry: FinTech
+Product: AI-powered risk analysis
+</context>
+
+<task>
+Create a pitch for this client
+</task>
+```
+
+This structure helps the model clearly distinguish between background information (context) and what it needs to do (task).
+
+???+ example
+
+    === "Context Inputs (str)"
+
+        Pass task as first argument and context via `context_inputs`:
+
+        ```python
+        # pip install msgflux[openai]
+        import msgflux as mf
+        import msgflux.nn as nn
+
+        # mf.set_envs(OPENAI_API_KEY="...")
+
+        class SalesAgent(nn.Agent):
+            model = mf.Model.chat_completion("openai/gpt-4.1-mini")
+            config = {"verbose": True}
+
+        agent = SalesAgent()
+
+        context = """
+        Company: FinData Analytics
+        Industry: FinTech
+        Product: AI-powered risk analysis
+        """
+
+        params = agent.inspect_model_execution_params(
+            "Create a pitch for this client", context_inputs=context
+        )
+        print(params)
+        ```
+
+    === "Context Cache"
+
+        Use `context_cache` for context that doesn't change between calls:
+
+        ```python
+        # pip install msgflux[openai]
+        import msgflux as mf
+        import msgflux.nn as nn
+
+        # mf.set_envs(OPENAI_API_KEY="...")
+
+        class CompanyAgent(nn.Agent):
+            model = mf.Model.chat_completion("openai/gpt-4.1-mini")
+            context_cache = """
+            Company values:
+            - Customer first
+            - Innovation
+            - Integrity
+            """
+            config = {"verbose": True}
+
+        agent = CompanyAgent()
+        params = agent.inspect_model_execution_params(
+            "Write a response to a customer complaint", context_inputs=context
+        )
+        print(params)
+        ```
+
+    === "Same Agent, Two Modes"
+
+        The same agent logic can be used imperatively or declaratively:
+
+        ```python
+        # pip install msgflux[openai]
+        import msgflux as mf
+        import msgflux.nn as nn
+
+        # mf.set_envs(OPENAI_API_KEY="...")
+
+        # Define agent with message_fields for declarative mode
+        class Scraper(nn.Agent):
+            model = mf.Model.chat_completion("openai/gpt-4.1-mini")
+            tools = [scrape_website]
+            templates = {"task": "Summarize the news on this site: {}"}
+            message_fields = {"task_inputs": "content"} # Where to read
+            response_mode = "summary"                   # Where to write
+
+        scraper = Scraper()
+
+        # Imperative: Pass directly, get directly
+        response = scraper("https://example.com/news")
+        print(response)  # Direct string response
+
+        # Declarative: Read from Message, write to Message
+        msg = mf.Message(content="https://example.com/news")
+        msg = scraper(msg)
+        print(msg.summary)  # Response stored in message
+        ```
+
+        **When to choose declarative:**
+
+        - Building pipelines where agents pass data to each other
+        - Production systems where you want agents to be self-documenting
+        - When you want to **design the system once** and let data flow through it
+
+## Templates
+
+Templates use **Jinja2** syntax to format inputs and outputs. There are three template types:
+
+| Template | Purpose | Data Source |
+|----------|---------|-------------|
+| `task` | Format the task/question sent to the model | `task_inputs` dict + [vars](vars.md) |
+| `context` | Format background context | `context_inputs` dict + [vars](vars.md) |
+| `response` | Format the model's output before returning | Model output fields + [vars](vars.md) |
+
+!!! tip "Response Template + Generation Schema"
+    The `response` template is especially powerful when combined with `generation_schema`. The model outputs structured data, and you use Jinja to transform it into a human-readable format. This separates **what the model extracts** from **how you present it**.
+
+???+ note "Template Examples"
+
+    === "Task Template"
+
+        Use `templates={"task": ...}` to format the task input:
+
+        ```python
+        # pip install msgflux[openai]
+        import msgflux as mf
+        import msgflux.nn as nn
+
+        # mf.set_envs(OPENAI_API_KEY="...")
+
+        class Assistant(nn.Agent):
+            model = mf.Model.chat_completion("openai/gpt-4.1-mini")
+            templates = {
+                "task": """
+                {% if user_name %}
+                My name is {{ user_name }}.
+                {% endif %}
+                {{ user_input }}
+                """
+            }
+            config = {"verbose": True}
+
+        agent = Assistant()
+
+        response = agent(
+            task_inputs={"user_input": "Who was Nikola Tesla?"},
+            vars={"user_name": "Bruce Wayne"}
+        )
+        ```
+
+    === "Context Template"
+
+        Use `templates={"context": ...}` to format structured context:
+
+        ```python
+        # pip install msgflux[openai]
+        import msgflux as mf
+        import msgflux.nn as nn
+
+        # mf.set_envs(OPENAI_API_KEY="...")
+
+        class SalesAgent(nn.Module):
+            model = mf.Model.chat_completion("openai/gpt-4.1-mini")
+            templates = {
+                "context": """
+                The client is **{{ client_name }}** in the **{{ industry }}** sector.
+
+                Challenges:
+                {%- for pain in pain_points %}
+                - {{ pain }}
+                {%- endfor %}
+                """
+            }
+            config = {"verbose": True}
+
+        agent = SalesAgent()
+
+        response = agent(
+            "Create a pitch",
+            context_inputs={
+                "client_name": "EcoSupply Ltd.",
+                "industry": "Sustainable packaging",
+                "pain_points": ["High costs", "Certification needs"]
+            }
+        )
+        ```
+
+    === "Response Template (String)"
+
+        For plain text outputs, use `{}` as placeholder for the model response:
+
+        ```python
+        # pip install msgflux[openai]
+        import msgflux as mf
+        import msgflux.nn as nn
+
+        # mf.set_envs(OPENAI_API_KEY="...")
+
+        class Assistant(nn.Agent):
+            model = mf.Model.chat_completion("openai/gpt-4.1-mini")
+            templates = {
+                "response": """
+                {% if user_name %}
+                Hi {{ user_name }},
+                {% endif %}
+                {}
+                """
+            }
+            config = {"verbose": True}
+
+        agent = Assistant()
+
+        response = agent(
+            "Who was Nikola Tesla?",
+            vars={"user_name": "Bruce Wayne"}
+        )
+        # Output: "Hi Bruce Wayne,\n\nNikola Tesla was a Serbian-American inventor..."
+        ```
+
+    === "Response Template (Structured)"
+
+        When using `generation_schema`, access output fields directly in the template:
+
+        ```python
+        # pip install msgflux[openai]
+        import msgflux as mf
+        import msgflux.nn as nn
+        from msgspec import Struct
+        from typing import Optional
+
+        # mf.set_envs(OPENAI_API_KEY="...")
+
+        class SafetyCheck(Struct):
+            safe: bool
+            answer: Optional[str]
+
+        class Assistant(nn.Agent):
+            model = mf.Model.chat_completion("openai/gpt-4.1-mini")
+            instructions = "Only respond if the question is safe."
+            generation_schema = SafetyCheck
+            templates={
+                "response": """
+                {% if safe %}
+                Hi! {{ answer }}
+                {% else %}
+                Sorry, I can't answer that question.
+                {% endif %}
+                """
+            }
+            message_fields = {"task_inputs": "content"}
+            response_mode = "assistant.output"
+            config = {"verbose": True}
+
+        agent = Assistant()
+
+        msg = mf.Message(content="Who was Nikola Tesla?")
+        msg = agent(msg)
+        print(msg.get("assistant.output"))
+        # Model outputs: {"safe": true, "answer": "Nikola Tesla was..."}
+        # Template formats: "Hi! Nikola Tesla was..."
+        ```
+
+    === "Response + Extraction"
+
+        Extract structured data and format a personalized response:
+
+        ```python
+        # pip install msgflux[openai]
+        import msgflux as mf
+        import msgflux.nn as nn
+        from msgspec import Struct
+
+        # mf.set_envs(OPENAI_API_KEY="...")
+
+        class ClientInfo(Struct):
+            client_name: str
+            company_name: str
+            industry: str
+            pain_points: list[str]
+
+        class Extractor(nn.Agent):
+            model = mf.Model.chat_completion("openai/gpt-4.1-mini")
+            system_message = "You are an information extractor."
+            instructions = "Extract information from the customer's message."
+            generation_schema = ClientInfo
+            templates = {
+                "response": """
+                Dear {{ client_name }},
+
+                I understand that {{ company_name }} operates in {{ industry }}.
+
+                Your main challenges:
+                {%- for pain in pain_points %}
+                - {{ pain }}
+                {%- endfor %}
+
+                Our solution addresses these exact pain points.
+
+                Best regards,
+                {{ seller }}.
+                """
+        }
+
+
+        task = """
+        Hello, my name is John and I work at EcoSupply Ltd.,
+        a sustainable packaging company. We face high logistics
+        costs and need ecological certifications.
+        """
+
+        agent = Assistant()
+
+        response = agent(task, vars={"seller": "Hal Jordan"})
+        # Model extracts: {"client_name": "John", "company_name": "EcoSupply Ltd.", ...}
+        # Template produces personalized letter
+        ```
+
+    === "Response + Reasoning"
+
+        Extract only `final_answer` from reasoning schemas like ReAct:
+
+        ```python
+        # pip install msgflux[openai]
+        import msgflux as mf
+        import msgflux.nn as nn
+        from msgflux.generation.reasoning import ReAct
+
+        # mf.set_envs(OPENAI_API_KEY="...")
+
+        def web_search(query: str) -> str:
+            """Search the web for information."""
+            # Simplified example - in production, use a real search API
+            return f"Search results for '{query}': ..."
+
+        class Researcher(nn.Agent):
+            model = mf.Model.chat_completion("openai/gpt-4.1-mini")
+            tools = [web_search]
+            generation_schema = ReAct
+            templates = {
+                "task": "Research this topic: {}",
+                "response": "{{ final_answer }}"  # Only return the final answer
+            }
+            config = {"verbose": True}
+
+        agent = Researcher()
+
+        # ReAct outputs: {"current_step": {...}, "final_answer": "..."}
+        # Template extracts just the final_answer
+        response = agent("What is the population of Tokyo?")
+        ```
+
+    === "Signature + Response"
+
+        Combine signature with response template for clean tool outputs:
+
+        ```python
+        # pip install msgflux[openai]
+        import msgflux as mf
+        import msgflux.nn as nn
+        from typing import Literal
+
+        # mf.set_envs(OPENAI_API_KEY="...")
+
+        model = mf.Model.chat_completion("openai/gpt-4.1-mini")
+
+        class Classify(mf.Signature):
+            """Classify sentiment of a given sentence."""
+            sentence: str = mf.InputField()
+            sentiment: Literal["positive", "negative", "neutral"] = mf.OutputField()
+            confidence: float = mf.OutputField()
+
+        @mf.tool_config(return_direct=True)
+        class SentimentClassifier(nn.Agent):
+            """Specialist in sentiment analysis."""
+            model = model
+            signature = Classify
+            templates = {
+                "response":
+                """The sentence was classified as {{ sentiment }},
+                with a confidence of {{ (confidence * 100) | round(2) }}%."""
+            }
+            config = {"verbose": True}
+
+        class Assistant(nn.Agent):
+            model = model
+            tools = [SentimentClassifier]
+            config = {"verbose": True}
+
+        assistant = Assistant()
+        response = assistant("Classify: 'This book was amazing!'")
+        # Output: "The sentence was classified as positive, with a confidence of 92.5%."
+        ```
+
+!!! info "Task Template Without task_inputs"
+    When you configure a `task` template but don't pass `task_inputs`, the rendered template itself becomes the task. This is useful for scenarios where the prompt is fixed and only some component changes (like images or [vars](vars.md)).
+
+## Multimodal Inputs
+
+Pass images, audio, or files via `task_multimodal_inputs`. Requires a multimodal model (e.g., `gpt-4.1`, `gpt-4.1-mini`).
+
+| Media | Single | Multiple |
+|-------|:------:|:--------:|
+| Image | ✅ | ✅ |
+| Audio | ✅ | ❌ |
+| Video | ✅ | ❌ |
+| File  | ✅ | ❌ |
+
+!!! warning "Model Compatibility"
+    Not all models support all multimodal inputs. Before using video, audio, or file inputs, verify that your chosen model supports that media type. Check the model provider's documentation for supported input types.
+
+
+???+ note "Multimodal Examples"
+
+    === "Image"
+
+        Single image or multiple images for comparison:
+
+        ```python
+        # pip install msgflux[openai]
+        import msgflux as mf
+        import msgflux.nn as nn
+
+        # mf.set_envs(OPENAI_API_KEY="...")
+
+        class VisionAgent(nn.Agent):
+            model = mf.Model.chat_completion("openai/gpt-4.1-mini")
+
+        agent = VisionAgent()
+
+        # Single image (URL)
+        response = agent(
+            "Describe this image",
+            task_multimodal_inputs={
+                "image": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Gfp-wisconsin-madison-the-nature-boardwalk.jpg/800px-Gfp-wisconsin-madison-the-nature-boardwalk.jpg"
+            }
+        )
+
+        # Multiple images for comparison
+        response = agent(
+            "Compare these two images",
+            task_multimodal_inputs={
+                "image": [
+                    "https://upload.wikimedia.org/wikipedia/commons/thumb/4/47/PNG_transparency_demonstration_1.png/280px-PNG_transparency_demonstration_1.png",
+                    "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a7/Camponotus_flavomarginatus_ant.jpg/320px-Camponotus_flavomarginatus_ant.jpg"
+                ]
+            }
+        )
+
+        # With task template (fixed prompt, variable image)
+        # When task_inputs is not passed, the rendered template becomes the task
+        class DescribeAgent(nn.Agent):
+            model = mf.Model.chat_completion("openai/gpt-4.1-mini")
+            templates = {"task": "Describe this image in {{ language }}."}
+
+        describe_agent = DescribeAgent()
+
+        # Inspect what the model would receive
+        params = describe_agent.inspect_model_execution_params(
+            task_multimodal_inputs={
+                "image": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Gfp-wisconsin-madison-the-nature-boardwalk.jpg/800px-Gfp-wisconsin-madison-the-nature-boardwalk.jpg"
+            },
+            vars={"language": "Portuguese"}
+        )
+        print(params["messages"])
+        # The task will be: "Describe this image in Portuguese."
+
+        # Execute the agent
+        response = describe_agent(
+            task_multimodal_inputs={
+                "image": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Gfp-wisconsin-madison-the-nature-boardwalk.jpg/800px-Gfp-wisconsin-madison-the-nature-boardwalk.jpg"
+            },
+            vars={"language": "Portuguese"}
+        )
+        ```
+
+    === "Image (Message Fields)"
+
+        Use `message_fields` for declarative mapping from Message objects:
+
+        !!! info "Graceful Handling of Missing Fields"
+            If an image cannot be retrieved from the declarative mapping (e.g., the field doesn't exist or is empty), the task will still be assembled normally — the missing image simply won't be included. This allows flexible pipelines where multimodal inputs are optional.
+
+        ```python
+        # pip install msgflux[openai]
+        import msgflux as mf
+        import msgflux.nn as nn
+
+        # mf.set_envs(OPENAI_API_KEY="...")
+
+        # Single image mapping
+        class VisionAgent(nn.Agent):
+            model = mf.Model.chat_completion("openai/gpt-4.1-mini")
+            message_fields = {
+                "task_inputs": "user.query",
+                "task_multimodal_inputs": {"image": "user.image_url"}
+            }
+
+        agent = VisionAgent()
+
+        # Create message with structured data
+        msg = mf.Message()
+        msg.set("user.query", "What objects are in this image?")
+        msg.set("user.image_url", "https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Gfp-wisconsin-madison-the-nature-boardwalk.jpg/800px-Gfp-wisconsin-madison-the-nature-boardwalk.jpg")
+
+        response = agent(msg)
+
+        # Multiple images mapping
+        class ComparisonAgent(nn.Agent):
+            model = mf.Model.chat_completion("openai/gpt-4.1-mini")
+            message_fields = {
+                "task_inputs": "user.query",
+                "task_multimodal_inputs": {"image": "user.images"}
+            }
+
+        comparison_agent = ComparisonAgent()
+
+        msg = mf.Message()
+        msg.set("user.query", "Compare these two images and describe the differences.")
+        msg.set("user.images", [
+            "https://upload.wikimedia.org/wikipedia/commons/thumb/4/47/PNG_transparency_demonstration_1.png/280px-PNG_transparency_demonstration_1.png",
+            "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a7/Camponotus_flavomarginatus_ant.jpg/320px-Camponotus_flavomarginatus_ant.jpg"
+        ])
+
+        response = comparison_agent(msg)
+        ```
+
+    === "Audio"
+
+        Transcribe or analyze audio files:
+
+        ```python
+        # pip install msgflux[openai]
+        import msgflux as mf
+        import msgflux.nn as nn
+
+        # mf.set_envs(OPENAI_API_KEY="...")
+
+        class AgentTranscriber(nn.Agent):
+            model = mf.Model.chat_completion("openai/gpt-4.1-audio-preview")
+
+        agent = AgentTranscriber()
+
+        response = agent(
+            "Transcribe this audio and identify the speaker's emotion",
+            task_multimodal_inputs={"audio": "/path/to/recording.wav"}
+        )
+        ```
+
+    === "File (PDF)"
+
+        Analyze PDF documents:
+
+        ```python
+        # pip install msgflux[openai]
+        import msgflux as mf
+        import msgflux.nn as nn
+
+        # mf.set_envs(OPENAI_API_KEY="...")
+
+        class AnalyzerAgent(nn.Agent):
+            model = mf.Model.chat_completion("openai/gpt-4.1")
+
+        agent = AnalyzerAgent()
+
+        # From URL
+        response = agent(
+            "Summarize the key findings of this paper",
+            task_multimodal_inputs={"file": "https://arxiv.org/pdf/1706.03762.pdf"}
+        )
+
+        # From local file
+        response = agent(
+            "Extract the main conclusions",
+            task_multimodal_inputs={"file": "./report.pdf"}
+        )
+        ```
+
+
+## Messages (Chat History)
+
+Pass a list of messages in ChatML format to provide conversation history. This is useful for chatbots and multi-turn conversations.
+
+Use `config={"return_messages": True}` to get back both the agent's response and the internal message history, which you can feed back into the agent for the next turn.
+
+???+ note "Chat History Examples"
+
+    === "Basic Chat"
+
+        Use `return_messages` to capture and reuse conversation history:
+
+        ```python
+        # pip install msgflux[openai]
+        import msgflux as mf
+        import msgflux.nn as nn
+
+        # mf.set_envs(OPENAI_API_KEY="...")
+
+        class Assistant(nn.Agent):
+            model = mf.Model.chat_completion("openai/gpt-4.1-mini")
+            config = {"return_messages": True}
+
+        agent = Assistant()
+
+        # First message - no history yet
+        result = agent("Hi, my name is Peter Parker, and I'm a photographer.")
+        print(result.response)
+
+        # result.messages has the history but not the assistant reply yet
+        # Append it manually with ChatBlock.assist before the next turn
+        messages = result.messages + [mf.ChatBlock.assist(result.response)]
+
+        result = agent(
+            "Can you recommend some cameras for my freelance job?",
+            messages=messages
+        )
+        print(result.response)
+        # The agent remembers you're Peter Parker and a photographer
+        ```
+
+    === "Multi-turn Conversation"
+
+        Chain multiple turns by passing `messages` each time:
+
+        ```python
+        # pip install msgflux[openai]
+        import msgflux as mf
+        import msgflux.nn as nn
+
+        # mf.set_envs(OPENAI_API_KEY="...")
+
+        class Advisor(nn.Agent):
+            model = mf.Model.chat_completion("openai/gpt-4.1-mini")
+            system_message = "You are a helpful camera advisor."
+            config = {"return_messages": True}
+
+        agent = Advisor()
+
+        # Turn 1
+        result = agent("I'm looking for a compact camera under $500.")
+        print(f"Assistant: {result.response}")
+        messages = result.messages + [mf.ChatBlock.assist(result.response)]
+
+        # Turn 2 - pass previous messages
+        result = agent(
+            "Which one has better low-light performance?",
+            messages=messages
+        )
+        print(f"Assistant: {result.response}")
+        messages = result.messages + [mf.ChatBlock.assist(result.response)]
+
+        # Turn 3 - continue the chain
+        result = agent(
+            "What about battery life?",
+            messages=messages
+        )
+        print(f"Assistant: {result.response}")
+        ```
+
+    === "ChatBot Pattern"
+
+        Complete chatbot loop with streaming:
+
+        ```python
+        # pip install msgflux[openai]
+        import msgflux as mf
+        import msgflux.nn as nn
+
+        # mf.set_envs(OPENAI_API_KEY="...")
+
+        class ChatBot(nn.Agent):
+            model = mf.Model.chat_completion("openai/gpt-4.1-mini")
+            system_message = "You are a helpful assistant."
+            config = {"stream": True, "return_messages": True}
+
+        agent = ChatBot()
+        messages = None  # No history initially
+
+        while True:
+            user_input = input("You: ")
+            if user_input.lower() in ["quit", "exit"]:
+                break
+
+            # Pass previous messages (None on first turn)
+            result = agent(user_input, messages=messages)
+
+            # Handle streaming response
+            full_response = ""
+            print("Assistant: ", end="", flush=True)
+            for chunk in result.consume():
+                print(chunk, end="", flush=True)
+                full_response += chunk
+            print()
+
+            # Update messages for next turn (include the assistant reply)
+            messages = result.messages + [mf.ChatBlock.assist(full_response)]
+        ```

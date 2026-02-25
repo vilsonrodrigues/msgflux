@@ -28,6 +28,40 @@ In msgFlux, a **Tool can be any callable** (function, class with `__call__`/`aca
 
     A good practice is to inform the model in the system prompt when it should use that tool.
 
+### How Tool Calls Work
+
+When the model decides to use a tool, the Agent intercepts the response, executes the function, appends the result to the conversation, and calls the model again. This loop continues until the model produces a final text response.
+
+```
+                        Input
+                          │
+                          ▼
+┌──────────────────────────────────────────────┐
+│            messages + tool schemas           │
+└─────────────────────────┬────────────────────┘
+                          │
+                          ▼
+                  ┌───────────────┐
+                  │     Model     │ ──▶ "call get_weather(city)"
+                  └───────────────┘
+                          │
+                          ▼
+                  ┌───────────────┐
+                  │  get_weather  │ ──▶ "Sunny, 24°C"
+                  └───────────────┘
+                          │  result appended to messages
+                          ▼
+                  ┌───────────────┐
+                  │     Model     │ ──▶ "The weather in Paris is sunny..."
+                  └───────┬───────┘
+                          │
+                     More calls?
+                    /            \
+                  Yes             No
+                   │               │
+             (next cycle)     [ Output ]
+```
+
 ???+ example
 
     === "GitHub API"
@@ -937,6 +971,34 @@ When `handoff=True`, the tool is configured for seamless agent-to-agent handoff:
 - Changes tool name to `transfer_to_{original_name}`
 - Removes input parameters (conversation history is passed instead)
 
+Unlike Agent-as-a-Tool, the Specialist's response bypasses the Coordinator entirely and goes directly to the user. The Coordinator only decides *who* handles the request.
+
+```
+              Input
+                │
+                ▼
+  ┌────────────────────────────────┐
+  │         Coordinator            │
+  │                                │
+  │   ┌──────────┐                 │
+  │   │  Model   │──▶ "transfer_to │
+  │   └──────────┘    Specialist()"│
+  └──────────────┬─────────────────┘
+                 │
+                 │  + full conversation history
+                 ▼
+  ┌──────────────────────────────┐
+  │         Specialist           │
+  │          (Agent)             │
+  │                              │
+  │  receives full conversation  │
+  │  context and takes ownership │
+  └─────────────────┬────────────┘
+                    │
+                    ▼  (direct — Coordinator bypassed)
+                  Output
+```
+
 ???+ example
 
     ```python
@@ -1128,6 +1190,42 @@ By default, all tools have automatic retry enabled using environment variables (
 ### Agent-as-a-Tool
 
 Agents can be used as tools for other agents, enabling hierarchical task delegation, also known as **SubAgents**. Using AutoParams makes this pattern especially clean: the class name becomes the tool name, and the docstring becomes the tool description.
+
+The Coordinator calls the Specialist as any other tool. The result returns to the Coordinator's model, which synthesizes it into the final response.
+
+```
+              Input
+                │
+                ▼
+  ┌──────────────────────────────┐
+  │         Coordinator          │
+  │                              │
+  │   ┌──────────┐               │
+  │   │  Model   │──▶ "call      │
+  │   └──────────┘    Specialist │
+  └─────────────┬────────────────┘
+                │  call(task)
+                ▼
+  ┌──────────────────────────────┐
+  │         Specialist           │
+  │        (SubAgent)            │
+  │                              │
+  │  processes task independently│
+  │  may call its own tools      │
+  └─────────────┬────────────────┘
+                │  result
+                ▼
+  ┌──────────────────────────────┐
+  │         Coordinator          │
+  │                              │
+  │   ┌──────────┐               │
+  │   │  Model   │──▶ synthesized│
+  │   └──────────┘    response   │
+  └─────────────┬────────────────┘
+                │
+                ▼
+                Output
+```
 
 ???+ note "Agent-as-a-Tool Examples"
 
