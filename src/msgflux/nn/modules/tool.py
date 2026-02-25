@@ -8,6 +8,7 @@ import msgspec
 
 from msgflux.auto import AutoParams
 from msgflux.dotdict import dotdict
+from msgflux.exceptions import TaskError
 from msgflux.logger import logger
 from msgflux.nn import functional as F
 from msgflux.nn.modules.container import ModuleDict
@@ -506,8 +507,6 @@ class ToolLibrary(Module, metaclass=AutoParams):
             ToolResponses:
                 Structured object containing all tool call results.
         """
-        # TODO capturar no trace quando o modelo erra algo na tool
-        # TODO capturar no trace o tool config
         if messages is None:
             messages = {}
 
@@ -607,7 +606,8 @@ class ToolLibrary(Module, metaclass=AutoParams):
                         id=meta.id,
                         name=meta.name,
                         parameters=parameters,
-                        result=result,
+                        result=None if isinstance(result, TaskError) else result,
+                        error=str(result) if isinstance(result, TaskError) else None,
                     )
                 )
 
@@ -736,7 +736,8 @@ class ToolLibrary(Module, metaclass=AutoParams):
                         id=meta.id,
                         name=meta.name,
                         parameters=parameters,
-                        result=result,
+                        result=None if isinstance(result, TaskError) else result,
+                        error=str(result) if isinstance(result, TaskError) else None,
                     )
                 )
 

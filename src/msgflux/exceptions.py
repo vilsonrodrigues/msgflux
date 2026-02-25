@@ -37,3 +37,37 @@ class UnsafeModelResponseError(Exception):
 
 class TypedParserNotFoundError(ValueError):
     """Raised when a requested typed parser is not registered."""
+
+
+class TaskError:
+    """Wraps an exception from a failed task in a gather/scatter operation.
+
+    Returned in place of ``None`` when a callable fails during parallel
+    execution (e.g. ``scatter_gather``, ``map_gather``, ``bcast_gather``).
+    This allows callers to inspect failures without losing successful results.
+
+    Attributes:
+        exception: The original exception raised by the task.
+        index: The positional index of the failed task in the callable list.
+
+    Examples:
+        results = F.scatter_gather([agent_a, agent_b])
+        for result in results:
+            if isinstance(result, TaskError):
+                print(f"Failed: {result.exception}")
+            else:
+                print(f"Success: {result}")
+    """
+
+    def __init__(self, exception: Exception, index: int):
+        self.exception = exception
+        self.index = index
+
+    def __repr__(self) -> str:
+        return f"TaskError(index={self.index}, exception={self.exception!r})"
+
+    def __str__(self) -> str:
+        return f"Task {self.index} failed: {self.exception}"
+
+    def __bool__(self) -> bool:
+        return False

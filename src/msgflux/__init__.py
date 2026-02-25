@@ -8,6 +8,7 @@ from .dotdict import dotdict
 from .dsl.signature import InputField, OutputField, Signature
 from .envs import set_envs
 from .examples import Example
+from .exceptions import TaskError
 from .message import Message
 from .models import Model
 from .models.gateway import ModelGateway
@@ -34,6 +35,7 @@ __all__ = [
     "Retriever",
     "Signature",
     "Spans",
+    "TaskError",
     "Video",
     "cprint",
     "dotdict",
