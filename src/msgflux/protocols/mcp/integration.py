@@ -19,25 +19,20 @@ def convert_mcp_schema_to_tool_schema(
     """
     tool_name = f"{namespace}__{mcp_tool.name}" if namespace else mcp_tool.name
 
-    # MCP uses inputSchema which is already JSON Schema format
-    # We need to convert to OpenAI function calling format
-    schema = {
+    # MCP uses inputSchema which is already JSON Schema format.
+    # Copy to avoid mutating the original MCPTool.inputSchema.
+    parameters = {**mcp_tool.inputSchema}
+    parameters.setdefault("type", "object")
+    parameters.setdefault("properties", {})
+
+    return {
         "type": "function",
         "function": {
             "name": tool_name,
             "description": mcp_tool.description,
-            "parameters": mcp_tool.inputSchema,
+            "parameters": parameters,
         },
     }
-
-    # Ensure parameters has required structure
-    if "type" not in schema["function"]["parameters"]:
-        schema["function"]["parameters"]["type"] = "object"
-
-    if "properties" not in schema["function"]["parameters"]:
-        schema["function"]["parameters"]["properties"] = {}
-
-    return schema
 
 
 def filter_tools(

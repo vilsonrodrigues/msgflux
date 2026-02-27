@@ -388,18 +388,29 @@ class ToolLibrary(Module, metaclass=AutoParams):
 
             # Create client based on transport type
             if transport_type == "stdio":
+                command = server_config.get("command")
+                if not command:
+                    raise ValueError(
+                        f"MCP server '{namespace}' stdio transport requires 'command'"
+                    )
                 client = MCPClient.from_stdio(
-                    command=server_config.get("command"),
+                    command=command,
                     args=server_config.get("args"),
                     cwd=server_config.get("cwd"),
                     env=server_config.get("env"),
                     timeout=server_config.get("timeout", 30.0),
                 )
             elif transport_type == "http":
+                base_url = server_config.get("base_url")
+                if not base_url:
+                    raise ValueError(
+                        f"MCP server '{namespace}' http transport requires 'base_url'"
+                    )
                 client = MCPClient.from_http(
-                    base_url=server_config.get("base_url"),
+                    base_url=base_url,
                     timeout=server_config.get("timeout", 30.0),
                     headers=server_config.get("headers"),
+                    auth=server_config.get("auth"),
                 )
             else:
                 raise ValueError(

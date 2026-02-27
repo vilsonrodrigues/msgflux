@@ -241,21 +241,17 @@ class MCPClient:
         if "error" in response:
             raise MCPError(f"Failed to initialize: {response['error']}")
 
-        # Extract session ID from response if available (for HTTP transport)
-        if isinstance(self.transport, HTTPTransport):
-            session_id = None
-
-            # Try to get session ID from response body
-            result = response.get("result", {})
-            session_id = result.get("sessionId") or result.get("session_id")
-
-            # Try meta field as well
-            if not session_id:
-                meta = response.get("meta", {})
-                session_id = meta.get("sessionId") or meta.get("session_id")
-
-            if session_id:
-                self.transport.set_session_id(session_id)
+        # Extract session ID from response body and forward to transport.
+        # BaseTransport.set_session_id is a no-op; only HTTP transport stores it.
+        result = response.get("result", {})
+        session_id = (
+            result.get("sessionId")
+            or result.get("session_id")
+            or response.get("meta", {}).get("sessionId")
+            or response.get("meta", {}).get("session_id")
+        )
+        if session_id:
+            self.transport.set_session_id(session_id)
 
         self._initialized = True
 
@@ -388,6 +384,8 @@ class MCPClient:
     # Prompt Methods
     async def list_prompts(self, *, use_cache: bool = True) -> List[MCPPrompt]:
         """List available prompts."""
+        await self._ensure_connected()
+
         if use_cache and self._prompts_cache is not None:
             return self._prompts_cache
 
@@ -413,6 +411,8 @@ class MCPClient:
         self, name: str, arguments: Optional[Dict[str, Any]] = None
     ) -> List[MCPContent]:
         """Get a prompt with optional arguments."""
+        await self._ensure_connected()
+
         params = {"name": name, "arguments": arguments or {}}
 
         response = await self.transport.send_request("prompts/get", params)
