@@ -162,16 +162,50 @@ unfixable = ["F401"]
 # Jinja templates in string literals cannot be line-wrapped
 "src/msgflux/generation/reasoning/react.py" = ["E501"]
 "tests/**/*" = [
-  "D",
+  "A",        # Builtin shadowing (e.g., vars, input, type in test helpers)
+  "ARG",      # Unused arguments (fixtures, interface compliance)
+  "B007",     # Unused loop control variable
+  "D",        # Docstrings not required in tests
+  "E402",     # Module import not at top (conditional imports for optional deps)
+  "E501",     # Line too long (test strings/assertions can be verbose)
+  "E712",     # Allow == True/False comparisons in assertions
+  "E721",     # Allow type comparisons with == in assertions
+  "E731",     # Allow lambda assignment in tests
+  "F401",     # Unused imports (imported for side effects or fixtures)
+  "F811",     # Redefined while unused (parametrize overrides)
+  "F841",     # Unused variables (e.g., exception capture)
+  "FBT",      # Boolean args in test helper functions
+  "I001",     # Unsorted imports
+  "N803",     # Invalid argument names (test fixtures naming)
+  "N806",     # Non-lowercase variable in function
+  "PLC0415",  # Imports outside top-level (intentional lazy imports in tests)
   "PLR0911",
   "PLR0912",
   "PLR0915",
+  "PLR1711",  # Useless return
   "PLR2004",
+  "RUF006",   # Asyncio dangling task (intentional in test helpers)
+  "RUF013",   # Implicit optional
+  "RUF015",   # Unnecessary iterable allocation for first element
+  "RUF034",   # Useless if-else
   "S101",
   "S105",
   "S106",
   "S107",
+  "T201",     # print() allowed in tests
   "TID252",
+]
+# Parsers use lazy imports for optional heavy dependencies (C901, PLC0415),
+# interface methods must accept **kwargs even if unused (ARG002), and
+# try-except-pass is intentional for optional parsing features (S110).
+"src/msgflux/data/parsers/**/*" = [
+  "ARG002",   # Interface compliance: __call__/acall must accept **kwargs
+  "C901",     # Complex parsing logic is inherent to document parsing
+  "FBT001",   # Boolean args in private helpers
+  "FBT002",   # Boolean default in private helpers
+  "PLC0415",  # Lazy imports for optional dependencies (pypdf, docx, etc.)
+  "PLW2901",  # Loop variable reassignment for row padding
+  "S110",     # try-except-pass intentional for optional parsing steps
 ]
 [tool.ruff.lint.isort]
 known-first-party = ["msgflux"]

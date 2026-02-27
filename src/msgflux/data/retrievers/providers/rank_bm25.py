@@ -47,7 +47,7 @@ class RankBM25LexicalRetriever(BaseLexical, BaseRetriever, LexicalRetriever):
     def _initialize(self):
         self.documents: List[str] = []
         self.tokenized_corpus: List[List[str]] = []
-        self.bm25: Optional["BM25Okapi"] = None
+        self.bm25: Optional[BM25Okapi] = None  # type: ignore[name-defined]
 
     def _tokenize(self, text: str) -> List[str]:
         """Tokenize text into words."""

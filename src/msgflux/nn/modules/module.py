@@ -536,7 +536,7 @@ class Module:
             self.register_buffer("response_mode", response_mode)
         else:
             raise TypeError(
-                f"`response_mode` requires a string or None, given `{type(response_mode)}`"
+                f"`response_mode` requires a string or None, got `{type(response_mode)}`"  # noqa: E501
             )
 
     def _set_prompt(self, prompt: Optional[str] = None):

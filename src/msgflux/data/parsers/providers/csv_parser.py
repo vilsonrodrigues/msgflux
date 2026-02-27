@@ -45,7 +45,7 @@ class StandardCsvParser(BaseParser, CsvParser):
 
         Args:
             delimiter:
-                Field delimiter. If None, auto-detect from ",", "\t", ";", "|".
+                Field delimiter. If None, auto-detect from ",", tab, ";", "|".
             has_header:
                 Whether the first row is a header row.
             table_format:

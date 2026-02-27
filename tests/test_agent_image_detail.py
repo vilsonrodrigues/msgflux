@@ -61,9 +61,8 @@ class TestAgentImageDetail:
         # O agente deve ser criado sem erro, o ChatBlock é quem validará o valor
         assert agent.config["image_block_kwargs"]["detail"] == "invalid"
 
-    @patch("msgflux.nn.modules.agent.ChatBlock")
-    def test_format_image_input_passes_detail_high(self, mock_chatblock):
-        """Test that _format_image_input passes detail='high' to ChatBlock.image."""
+    def test_format_image_input_passes_detail_high(self):
+        """Test that _format_image_input passes detail='high' via image_block_kwargs."""
         model = Mock()
         model.model_type = "chat_completion"
 
@@ -73,26 +72,12 @@ class TestAgentImageDetail:
             config={"image_block_kwargs": {"detail": "high"}},
         )
 
-        # Mock the return value
-        mock_chatblock.image.return_value = {
-            "type": "image_url",
-            "image_url": {"url": "http://example.com/image.jpg", "detail": "high"},
-        }
+        result = agent._format_image_input("http://example.com/image.jpg")
 
-        # Mock _prepare_data_uri to return a URL
-        with patch.object(
-            agent, "_prepare_data_uri", return_value="http://example.com/image.jpg"
-        ):
-            result = agent._format_image_input("http://example.com/image.jpg")
+        assert result["image_url"]["detail"] == "high"
 
-        # Verify ChatBlock.image was called with detail="high"
-        mock_chatblock.image.assert_called_once_with(
-            "http://example.com/image.jpg", detail="high"
-        )
-
-    @patch("msgflux.nn.modules.agent.ChatBlock")
-    def test_format_image_input_passes_detail_low(self, mock_chatblock):
-        """Test that _format_image_input passes detail='low' to ChatBlock.image."""
+    def test_format_image_input_passes_detail_low(self):
+        """Test that _format_image_input passes detail='low' via image_block_kwargs."""
         model = Mock()
         model.model_type = "chat_completion"
 
@@ -102,44 +87,17 @@ class TestAgentImageDetail:
             config={"image_block_kwargs": {"detail": "low"}},
         )
 
-        # Mock the return value
-        mock_chatblock.image.return_value = {
-            "type": "image_url",
-            "image_url": {"url": "http://example.com/image.jpg", "detail": "low"},
-        }
+        result = agent._format_image_input("http://example.com/image.jpg")
 
-        # Mock _prepare_data_uri to return a URL
-        with patch.object(
-            agent, "_prepare_data_uri", return_value="http://example.com/image.jpg"
-        ):
-            result = agent._format_image_input("http://example.com/image.jpg")
+        assert result["image_url"]["detail"] == "low"
 
-        # Verify ChatBlock.image was called with detail="low"
-        mock_chatblock.image.assert_called_once_with(
-            "http://example.com/image.jpg", detail="low"
-        )
-
-    @patch("msgflux.nn.modules.agent.ChatBlock")
-    def test_format_image_input_passes_detail_none(self, mock_chatblock):
-        """Test that _format_image_input passes detail=None when not set."""
+    def test_format_image_input_passes_detail_none(self):
+        """Test that _format_image_input has no detail when not set."""
         model = Mock()
         model.model_type = "chat_completion"
 
         agent = Agent(name="test_agent", model=model)
 
-        # Mock the return value
-        mock_chatblock.image.return_value = {
-            "type": "image_url",
-            "image_url": {"url": "http://example.com/image.jpg"},
-        }
+        result = agent._format_image_input("http://example.com/image.jpg")
 
-        # Mock _prepare_data_uri to return a URL
-        with patch.object(
-            agent, "_prepare_data_uri", return_value="http://example.com/image.jpg"
-        ):
-            result = agent._format_image_input("http://example.com/image.jpg")
-
-        # Verify ChatBlock.image was called with detail=None
-        mock_chatblock.image.assert_called_once_with(
-            "http://example.com/image.jpg", detail=None
-        )
+        assert "detail" not in result["image_url"]

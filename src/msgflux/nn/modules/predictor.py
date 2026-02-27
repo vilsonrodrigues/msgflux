@@ -189,7 +189,7 @@ class Predictor(Module, metaclass=AutoParams):
 
         if not isinstance(message_fields, dict):
             raise TypeError(
-                f"`message_fields` must be a dict or None, given `{type(message_fields)}`"
+                f"`message_fields` must be a dict or None, got `{type(message_fields)}`"
             )
 
         # Check for invalid keys
@@ -219,7 +219,7 @@ class Predictor(Module, metaclass=AutoParams):
             self.register_buffer("model_preference", model_preference)
         else:
             raise TypeError(
-                f"`model_preference` requires a string or None, given `{type(model_preference)}`"
+                f"`model_preference` requires a string or None, got `{type(model_preference)}`"  # noqa: E501
             )
 
     def _set_response_template(self, response_template: Optional[str] = None):
@@ -228,5 +228,5 @@ class Predictor(Module, metaclass=AutoParams):
             self.register_buffer("response_template", response_template)
         else:
             raise TypeError(
-                f"`response_template` requires a string or None, given `{type(response_template)}`"
+                f"`response_template` requires a string or None, got `{type(response_template)}`"  # noqa: E501
             )

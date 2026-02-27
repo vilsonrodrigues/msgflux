@@ -65,17 +65,17 @@ class VLLMChatCompletion(_BaseVLLM, OpenAIChatCompletion):
 
 
 @register_model
-class VLLMTextEmbedder(OpenAITextEmbedder, _BaseVLLM):
+class VLLMTextEmbedder(_BaseVLLM, OpenAITextEmbedder):
     """vLLM Text Embedder."""
 
 
 @register_model
-class VLLMSpeechToText(OpenAISpeechToText, _BaseVLLM):
+class VLLMSpeechToText(_BaseVLLM, OpenAISpeechToText):
     """vLLM Speech to Text."""
 
 
 @register_model
-class VLLMTextReranker(JinaAITextReranker, _BaseVLLM):
+class VLLMTextReranker(_BaseVLLM, JinaAITextReranker):
     """vLLM Text Reranker."""
 
 

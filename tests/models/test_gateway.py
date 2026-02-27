@@ -31,7 +31,7 @@ class MockModel(BaseModel):
     def _initialize(self):
         pass
 
-    def __call__(self, **kwargs):  # noqa: ARG002
+    def __call__(self, **kwargs):
         self.call_count += 1
         if self.should_fail:
             raise RuntimeError(f"Mock failure for {self.model_id}")
@@ -39,7 +39,7 @@ class MockModel(BaseModel):
         response.add(f"Response from {self.model_id}")
         return response
 
-    async def acall(self, **kwargs):  # noqa: ARG002
+    async def acall(self, **kwargs):
         self.call_count += 1
         if self.should_fail:
             raise RuntimeError(f"Mock async failure for {self.model_id}")

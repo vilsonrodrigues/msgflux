@@ -1,7 +1,6 @@
-import email
 from email import policy
 from email.parser import BytesParser
-from typing import Dict, List, Optional, Union
+from typing import Dict, Optional, Union
 
 from msgflux.data.parsers.base import BaseParser
 from msgflux.data.parsers.registry import register_parser

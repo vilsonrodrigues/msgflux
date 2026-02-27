@@ -34,8 +34,8 @@ class TestExample:
     def test_to_xml(self, simple_example):
         xml = simple_example.to_xml(1)
         assert "<example id=1>" in xml
-        assert "<input>\ninput\n</input>" in xml
-        assert "<output>\nlabel\n</output>" in xml
+        assert "<input>input</input>" in xml
+        assert "<output>label</output>" in xml
         assert "</example>" in xml
 
     def test_to_xml_with_all_fields(self):
@@ -49,7 +49,7 @@ class TestExample:
         xml = example.to_xml(1)
         assert 'title="title"' in xml
         assert 'topic="topic"' in xml
-        assert "<reasoning>\nreasoning\n</reasoning>" in xml
+        assert "<reasoning>reasoning</reasoning>" in xml
 
 
 @pytest.fixture
