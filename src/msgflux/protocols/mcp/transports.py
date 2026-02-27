@@ -24,6 +24,21 @@ if TYPE_CHECKING:
 class BaseTransport(ABC):
     """Abstract base class for MCP transports."""
 
+    def __init__(self):
+        self._request_id_counter = 0
+
+    def _get_next_request_id(self) -> str:
+        """Generate next request ID."""
+        self._request_id_counter += 1
+        return str(self._request_id_counter)
+
+    def set_session_id(self, session_id: str):  # noqa: B027
+        """Store a session ID received from the server.
+
+        Transports that support session persistence should override this method.
+        The default implementation is a no-op.
+        """
+
     @abstractmethod
     async def connect(self):
         """Establish connection to MCP server."""
@@ -89,13 +104,8 @@ class HTTPTransport(BaseTransport):
         }
         self.auth = auth
         self._http_client: Optional[httpx.AsyncClient] = None
-        self._request_id_counter = 0
         self._session_id: Optional[str] = None
-
-    def _get_next_request_id(self) -> str:
-        """Generate next request ID."""
-        self._request_id_counter += 1
-        return str(self._request_id_counter)
+        super().__init__()
 
     async def connect(self):
         """Establish HTTP connection with pooling."""
@@ -273,14 +283,9 @@ class StdioTransport(BaseTransport):
         self.env = env
         self.timeout = timeout
         self._process: Optional[asyncio.subprocess.Process] = None
-        self._request_id_counter = 0
         self._pending_requests: Dict[str, asyncio.Future] = {}
         self._read_task: Optional[asyncio.Task] = None
-
-    def _get_next_request_id(self) -> str:
-        """Generate next request ID."""
-        self._request_id_counter += 1
-        return str(self._request_id_counter)
+        super().__init__()
 
     async def connect(self):
         """Launch subprocess and start reading from stdout."""
