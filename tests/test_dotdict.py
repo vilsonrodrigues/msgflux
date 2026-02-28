@@ -666,3 +666,207 @@ class TestEdgeCases:
 
         assert d.get("level5.value") == 5
         assert d.get("level9.value") == 9
+
+
+class TestIterAndContains:
+    """Test suite for __iter__ and __contains__."""
+
+    def test_contains_existing_key(self):
+        """Test that existing key is found with in operator."""
+        d = dotdict({"name": "Alice", "age": 30})
+
+        assert "name" in d
+        assert "age" in d
+
+    def test_contains_nonexistent_key(self):
+        """Test that missing key is not found with in operator."""
+        d = dotdict({"name": "Alice"})
+
+        assert "missing" not in d
+
+    def test_iter_yields_all_keys(self):
+        """Test that iteration yields all keys."""
+        d = dotdict({"a": 1, "b": 2, "c": 3})
+
+        assert set(d) == {"a", "b", "c"}
+
+    def test_iter_empty(self):
+        """Test that empty dotdict yields no keys."""
+        d = dotdict()
+
+        assert list(d) == []
+
+    def test_iter_nested_does_not_recurse(self):
+        """Test that iteration only yields top-level keys."""
+        d = dotdict({"user": {"name": "Bob"}, "score": 10})
+
+        assert set(d) == {"user", "score"}
+
+
+class TestHiddenKeys:
+    """Test suite for hidden_keys behavior."""
+
+    def test_hidden_key_get_returns_value(self):
+        """Test that get() can read hidden keys when accessed directly."""
+        d = dotdict({"api_key": "secret", "name": "Alice"}, hidden_keys=["api_key"])
+
+        assert d.get("api_key") == "secret"
+
+    def test_hidden_key_get_default_when_key_absent(self):
+        """Test that get() returns default when hidden key does not exist in dict."""
+        d = dotdict({"name": "Alice"}, hidden_keys=["api_key"])
+
+        assert d.get("api_key") is None
+        assert d.get("api_key", "fallback") == "fallback"
+
+    def test_hidden_key_in_operator_returns_false(self):
+        """Test that in operator returns False for hidden keys."""
+        d = dotdict({"api_key": "secret", "name": "Alice"}, hidden_keys=["api_key"])
+
+        assert "api_key" not in d
+
+    def test_visible_key_in_operator_unaffected(self):
+        """Test that in operator still works normally for visible keys."""
+        d = dotdict({"api_key": "secret", "name": "Alice"}, hidden_keys=["api_key"])
+
+        assert "name" in d
+        assert "missing" not in d
+
+    def test_hidden_key_iter_excludes(self):
+        """Test that iteration skips hidden keys."""
+        d = dotdict({"api_key": "secret", "name": "Alice"}, hidden_keys=["api_key"])
+
+        assert list(d) == ["name"]
+
+    def test_hidden_key_keys_excludes(self):
+        """Test that keys() excludes hidden keys."""
+        d = dotdict({"api_key": "secret", "name": "Alice"}, hidden_keys=["api_key"])
+
+        assert list(d.keys()) == ["name"]
+
+    def test_hidden_key_values_excludes(self):
+        """Test that values() excludes values of hidden keys."""
+        d = dotdict({"api_key": "secret", "name": "Alice"}, hidden_keys=["api_key"])
+
+        assert list(d.values()) == ["Alice"]
+
+    def test_hidden_key_items_excludes(self):
+        """Test that items() excludes hidden key-value pairs."""
+        d = dotdict({"api_key": "secret", "name": "Alice"}, hidden_keys=["api_key"])
+
+        assert list(d.items()) == [("name", "Alice")]
+
+    def test_hidden_key_to_dict_excludes(self):
+        """Test that to_dict() excludes hidden keys."""
+        d = dotdict({"api_key": "secret", "name": "Alice"}, hidden_keys=["api_key"])
+
+        result = d.to_dict()
+
+        assert "api_key" not in result
+        assert result == {"name": "Alice"}
+
+    def test_hidden_key_to_json_excludes(self):
+        """Test that to_json() excludes hidden keys."""
+        d = dotdict({"api_key": "secret", "name": "Alice"}, hidden_keys=["api_key"])
+
+        decoded = msgspec.json.decode(d.to_json())
+
+        assert "api_key" not in decoded
+        assert decoded == {"name": "Alice"}
+
+    def test_hidden_key_repr_excludes(self):
+        """Test that repr() excludes hidden keys and their values."""
+        d = dotdict({"api_key": "secret", "name": "Alice"}, hidden_keys=["api_key"])
+
+        r = repr(d)
+
+        assert "api_key" not in r
+        assert "secret" not in r
+        assert "Alice" in r
+
+    def test_hidden_key_str_excludes(self):
+        """Test that str() excludes hidden keys and their values."""
+        d = dotdict({"api_key": "secret", "name": "Alice"}, hidden_keys=["api_key"])
+
+        s = str(d)
+
+        assert "api_key" not in s
+        assert "secret" not in s
+        assert "Alice" in s
+
+    def test_hidden_key_dot_access_works(self):
+        """Test that dot notation can read hidden keys."""
+        d = dotdict({"api_key": "secret"}, hidden_keys=["api_key"])
+
+        assert d.api_key == "secret"
+
+    def test_hidden_key_bracket_access_works(self):
+        """Test that bracket notation can read hidden keys."""
+        d = dotdict({"api_key": "secret"}, hidden_keys=["api_key"])
+
+        assert d["api_key"] == "secret"
+
+    def test_hidden_key_nested_path_via_get(self):
+        """Test that get() traverses paths through hidden intermediate keys."""
+        d = dotdict({"secrets": {"token": "abc", "key": "xyz"}}, hidden_keys=["secrets"])
+
+        assert d.get("secrets.token") == "abc"
+        assert d.get("secrets.key") == "xyz"
+
+    def test_hidden_key_set_via_dot(self):
+        """Test that dot notation can overwrite hidden keys."""
+        d = dotdict({"api_key": "old"}, hidden_keys=["api_key"])
+
+        d.api_key = "new"
+
+        assert d.api_key == "new"
+
+    def test_hidden_key_set_via_bracket(self):
+        """Test that bracket notation can overwrite hidden keys."""
+        d = dotdict({"api_key": "old"}, hidden_keys=["api_key"])
+
+        d["api_key"] = "new"
+
+        assert d["api_key"] == "new"
+
+    def test_hidden_keys_multiple(self):
+        """Test that multiple keys can be hidden simultaneously."""
+        d = dotdict(
+            {"api_key": "secret", "password": "pass123", "name": "Alice"},
+            hidden_keys=["api_key", "password"],
+        )
+
+        assert "api_key" not in d
+        assert "password" not in d
+        assert "name" in d
+        assert list(d.keys()) == ["name"]
+        assert d.to_dict() == {"name": "Alice"}
+
+    def test_hidden_key_len_includes_hidden(self):
+        """Test that len() counts all stored keys, including hidden ones."""
+        d = dotdict({"api_key": "secret", "name": "Alice"}, hidden_keys=["api_key"])
+
+        assert len(d) == 2
+
+    def test_hidden_key_propagates_to_nested_dicts(self):
+        """Test that nested dicts created via wrap inherit hidden_keys."""
+        d = dotdict(
+            {"config": {"debug": True}},
+            hidden_keys=["api_key"],
+        )
+
+        nested = d.config
+        assert isinstance(nested, dotdict)
+        assert "api_key" not in nested
+
+    def test_visible_keys_fully_unaffected(self):
+        """Test that hidden_keys does not change behaviour of visible keys."""
+        d = dotdict(
+            {"api_key": "secret", "name": "Alice", "age": 30},
+            hidden_keys=["api_key"],
+        )
+
+        assert d.get("name") == "Alice"
+        assert d.get("age") == 30
+        assert "name" in d
+        assert d.to_dict() == {"name": "Alice", "age": 30}
