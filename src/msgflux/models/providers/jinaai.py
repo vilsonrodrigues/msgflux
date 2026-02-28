@@ -34,6 +34,10 @@ class _BaseJinaAI:
             )
         return key
 
+    @property
+    def _api_key(self):
+        return self._get_api_key()
+
 
 @register_model
 class JinaAITextReranker(_BaseJinaAI, HTTPXModelClient, TextRerankerModel):
