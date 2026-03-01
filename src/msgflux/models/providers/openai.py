@@ -125,7 +125,7 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
         max_tokens: Optional[int] = None,
         reasoning_effort: Optional[str] = None,
         enable_thinking: Optional[bool] = None,
-        return_reasoning: Optional[bool] = False,
+        return_reasoning: Optional[bool] = True,
         reasoning_in_tool_call: Optional[bool] = True,
         validate_typed_parser_output: Optional[bool] = False,
         temperature: Optional[float] = None,
