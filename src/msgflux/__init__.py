@@ -9,6 +9,7 @@ from .dsl.signature import InputField, OutputField, Signature
 from .envs import set_envs
 from .examples import Example
 from .exceptions import TaskError
+from .guard import Guard
 from .message import Message
 from .models import Model
 from .models.gateway import ModelGateway
@@ -26,6 +27,7 @@ __all__ = [
     "ChatML",
     "Example",
     "File",
+    "Guard",
     "Image",
     "InputField",
     "Message",

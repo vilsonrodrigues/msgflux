@@ -33,7 +33,7 @@ An `Agent` combines a language model with instructions and tools to accomplish t
 | [Vars](vars.md) | Unified execution variable space |
 | [Tools](tools.md) | Tool calling, configuration, MCP, agent-as-a-tool |
 | [Signatures](signatures.md) | Declarative input/output specifications |
-| [Guardrails](guardrails.md) | Input and output safety checks |
+| [Guards](guards.md) | Input and output safety checks with configurable policy |
 | [Model Gateway](model-gateway.md) | Multi-model routing |
 | [Prefilling](prefilling.md) | Guide response format with prefilling |
 

@@ -101,17 +101,17 @@ class TestAgentInitialization:
 
         assert hasattr(agent, "_buffers")
 
-    def test_agent_with_guardrails(self):
-        """Test Agent with guardrails."""
+    def test_agent_with_guards(self):
+        """Test Agent with guards."""
+        from msgflux.guard import Guard
+
         mock_model = Mock()
         mock_model.model_type = "chat_completion"
 
-        def input_guard(params):
-            return params
+        guard = Guard(validator=lambda data: {"safe": True}, on="input")
+        agent = Agent(name="agent", model=mock_model, guards=[guard])
 
-        agent = Agent(name="agent", model=mock_model, guardrails={"input": input_guard})
-
-        assert hasattr(agent, "guardrails") and agent.guardrails is not None
+        assert hasattr(agent, "guards") and len(agent.guards) == 1
 
     def test_agent_with_message_fields(self):
         """Test Agent with message fields."""
@@ -602,24 +602,21 @@ class TestAgentTemplates:
         assert result == "Hello Alice"
 
 
-class TestAgentGuardrails:
-    """Test Agent guardrails functionality."""
+class TestAgentGuards:
+    """Test Agent guards functionality."""
 
-    def test_agent_input_guardrail(self):
-        """Test Agent with input guardrail."""
+    def test_agent_input_guard(self):
+        """Test Agent with input guard."""
+        from msgflux.guard import Guard
+
         mock_model = Mock()
         mock_model.model_type = "chat_completion"
 
-        called = []
+        guard = Guard(validator=lambda data: {"safe": True}, on="input")
+        agent = Agent(name="agent", model=mock_model, guards=[guard])
 
-        def input_guard(params):
-            called.append(True)
-            return params
-
-        agent = Agent(name="agent", model=mock_model, guardrails={"input": input_guard})
-
-        assert agent.guardrails is not None
-        assert "input" in agent.guardrails
+        assert len(agent.guards) == 1
+        assert agent.guards[0].on == "input"
 
 
 class TestAgentExamples:

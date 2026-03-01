@@ -33,6 +33,7 @@ from msgflux._private.executor import Executor
 from msgflux.dotdict import dotdict
 from msgflux.envs import envs
 from msgflux.exceptions import UnsafeModelResponseError, UnsafeUserInputError
+from msgflux.guard import Guard, _GuardInterrupt
 from msgflux.message import Message
 from msgflux.models.gateway import ModelGateway
 from msgflux.models.model import Model
@@ -631,53 +632,30 @@ class Module:
                 f"given `{type(model_preference)}`"
             )
 
-    def _set_guardrails(self, guardrails: Optional[Dict[str, Callable]] = None):
-        """Set guardrails for input and output execution.
+    def _set_guards(self, guards: Optional[List["Guard"]] = None):
+        """Set guards for input and output validation.
 
         Args:
-            guardrails: Dictionary mapping guardrail types to callables.
-                Valid keys: "input", "output"
+            guards: List of Guard instances.
 
         Raises:
-            TypeError: If guardrails is not a dict or None
-            ValueError: If invalid keys are provided
+            TypeError: If guards is not a list of Guard instances or None
         """
-        if guardrails is None:
-            self.guardrails = {}
+        if guards is None:
+            self.guards = []
             return
 
-        if not isinstance(guardrails, dict):
-            raise TypeError(
-                f"`guardrails` must be a dict or None, given `{type(guardrails)}`"
-            )
+        if not isinstance(guards, list):
+            raise TypeError(f"`guards` must be a list or None, given `{type(guards)}`")
 
-        # Validate keys
-        valid_keys = {"input", "output"}
-        invalid_keys = set(guardrails.keys()) - valid_keys
-        if invalid_keys:
-            raise ValueError(
-                f"Invalid guardrail keys: {invalid_keys}. Valid keys are: {valid_keys}"
-            )
-
-        # Validate that all values are callable
-        for key, guardrail in guardrails.items():
-            if not isinstance(guardrail, Callable):
+        for i, guard in enumerate(guards):
+            if not isinstance(guard, Guard):
                 raise TypeError(
-                    f"Guardrail for '{key}' must be callable, given `{type(guardrail)}`"
+                    f"Guard at index {i} must be a Guard instance, "
+                    f"given `{type(guard)}`"
                 )
 
-        # Store guardrails, registering as buffers if needed
-        self.guardrails = {}
-        for key, guardrail in guardrails.items():
-            if inspect.isclass(guardrail) and hasattr(guardrail, "serialize"):
-                self.register_buffer(f"{key}_guardrail", guardrail)
-                self.guardrails[key] = getattr(self, f"{key}_guardrail")
-            elif isinstance(guardrail, self.__class__):
-                setattr(self, f"{key}_guardrail", guardrail)
-                self.guardrails[key] = guardrail
-            else:
-                super().__setattr__(f"{key}_guardrail", guardrail)
-                self.guardrails[key] = guardrail
+        self.guards = list(guards)
 
     def _set_message_fields(self, message_fields: Optional[Dict[str, Any]] = None):
         """Set message field mappings.
@@ -763,87 +741,67 @@ class Module:
         # Store templates
         self.templates = templates.copy()
 
-    def _execute_input_guardrail(self, model_execution_params: Dict[str, Any]):
-        input_guardrail = self.guardrails.get("input")
-        if not input_guardrail:
+    def _execute_input_guards(self, model_execution_params: Dict[str, Any]):
+        input_guards = [g for g in self.guards if g.on == "input"]
+        if not input_guards:
             return
 
-        guardrail_params = self._prepare_input_guardrail_execution(
-            model_execution_params
-        )
-        guardrail_response = input_guardrail(**guardrail_params)
+        guard_data = self._prepare_input_guard_data(model_execution_params)
+        for guard in input_guards:
+            result = guard(data=guard_data)
+            if not result.get("safe", True):
+                message = result.get("message")
+                if guard.policy == "message":
+                    raise _GuardInterrupt(message or "Blocked by guard.")
+                raise UnsafeUserInputError(message)
 
-        if isinstance(guardrail_response, ModelResponse):
-            guardrail_response = self._extract_raw_response(guardrail_response)
-
-        if not guardrail_response["safe"]:
-            raise UnsafeUserInputError()  # TODO
-
-    async def _aexecute_input_guardrail(self, model_execution_params: Dict[str, Any]):
-        input_guardrail = self.guardrails.get("input")
-        if not input_guardrail:
+    async def _aexecute_input_guards(self, model_execution_params: Dict[str, Any]):
+        input_guards = [g for g in self.guards if g.on == "input"]
+        if not input_guards:
             return
 
-        guardrail_params = self._prepare_input_guardrail_execution(
-            model_execution_params
-        )
+        guard_data = self._prepare_input_guard_data(model_execution_params)
+        for guard in input_guards:
+            result = await guard.acall(data=guard_data)
+            if not result.get("safe", True):
+                message = result.get("message")
+                if guard.policy == "message":
+                    raise _GuardInterrupt(message or "Blocked by guard.")
+                raise UnsafeUserInputError(message)
 
-        # Check if guardrail has acall method or is a coroutine function
-        if hasattr(input_guardrail, "acall"):
-            guardrail_response = await input_guardrail.acall(**guardrail_params)
-        elif inspect.iscoroutinefunction(input_guardrail):
-            guardrail_response = await input_guardrail(**guardrail_params)
-        else:
-            # Fallback to sync call in executor to avoid blocking event loop
-            loop = asyncio.get_event_loop()
-            guardrail_response = await loop.run_in_executor(
-                None, lambda: input_guardrail(**guardrail_params)
-            )
-
-        if isinstance(guardrail_response, ModelResponse):
-            guardrail_response = self._extract_raw_response(guardrail_response)
-
-        if not guardrail_response["safe"]:
-            raise UnsafeUserInputError()  # TODO
-
-    def _execute_output_guardrail(self, model_response: Dict[str, Any]):
-        output_guardrail = self.guardrails.get("output")
-        if not output_guardrail:
+    def _execute_output_guards(self, model_response: Any):
+        output_guards = [g for g in self.guards if g.on == "output"]
+        if not output_guards:
             return
 
-        guardrail_params = self._prepare_output_guardrail_execution(model_response)
-        guardrail_response = output_guardrail(**guardrail_params)
+        guard_data = self._prepare_output_guard_data(model_response)
+        for guard in output_guards:
+            result = guard(data=guard_data)
+            if not result.get("safe", True):
+                message = result.get("message")
+                if guard.policy == "message":
+                    raise _GuardInterrupt(message or "Blocked by guard.")
+                raise UnsafeModelResponseError(message)
 
-        if isinstance(guardrail_response, ModelResponse):
-            guardrail_response = self._extract_raw_response(guardrail_response)
-
-        if not guardrail_response["safe"]:
-            raise UnsafeModelResponseError()  # TODO
-
-    async def _aexecute_output_guardrail(self, model_response: Dict[str, Any]):
-        output_guardrail = self.guardrails.get("output")
-        if not output_guardrail:
+    async def _aexecute_output_guards(self, model_response: Any):
+        output_guards = [g for g in self.guards if g.on == "output"]
+        if not output_guards:
             return
 
-        guardrail_params = self._prepare_output_guardrail_execution(model_response)
+        guard_data = self._prepare_output_guard_data(model_response)
+        for guard in output_guards:
+            result = await guard.acall(data=guard_data)
+            if not result.get("safe", True):
+                message = result.get("message")
+                if guard.policy == "message":
+                    raise _GuardInterrupt(message or "Blocked by guard.")
+                raise UnsafeModelResponseError(message)
 
-        # Check if guardrail has acall method or is a coroutine function
-        if hasattr(output_guardrail, "acall"):
-            guardrail_response = await output_guardrail.acall(**guardrail_params)
-        elif inspect.iscoroutinefunction(output_guardrail):
-            guardrail_response = await output_guardrail(**guardrail_params)
-        else:
-            # Fallback to sync call in executor to avoid blocking event loop
-            loop = asyncio.get_event_loop()
-            guardrail_response = await loop.run_in_executor(
-                None, lambda: output_guardrail(**guardrail_params)
-            )
+    def _prepare_input_guard_data(self, model_execution_params: Dict[str, Any]) -> Any:
+        return model_execution_params
 
-        if isinstance(guardrail_response, ModelResponse):
-            guardrail_response = self._extract_raw_response(guardrail_response)
-
-        if not guardrail_response["safe"]:
-            raise UnsafeModelResponseError()  # TODO
+    def _prepare_output_guard_data(self, model_response: Any) -> Any:
+        return model_response
 
     def get_model_preference_from_message(self, message: Message) -> Optional[str]:
         if isinstance(message, Message) and isinstance(self.model_preference, str):

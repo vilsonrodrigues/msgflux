@@ -1,4 +1,4 @@
-from typing import Any, Callable, Dict, Literal, Mapping, Optional, Union
+from typing import Any, Dict, Literal, Mapping, Optional, Union
 
 from msgflux.auto import AutoParams
 from msgflux.dotdict import dotdict
@@ -38,7 +38,7 @@ class MediaMaker(Module, metaclass=AutoParams):
         self,
         model: MEDIA_MODEL_TYPES,
         *,
-        guardrails: Optional[Dict[str, Callable]] = None,
+        guards: Optional[list] = None,
         message_fields: Optional[Dict[str, Any]] = None,
         response_format: Optional[Literal["base64", "url"]] = None,
         response_mode: Optional[str] = None,
@@ -51,11 +51,10 @@ class MediaMaker(Module, metaclass=AutoParams):
         Args:
         model:
             MediaMaker Model client.
-        guardrails:
-            Dictionary mapping guardrail types to callables.
-            Valid keys: "input", "output"
+        guards:
+            List of Guard instances for input/output validation.
             !!! example
-                guardrails={"input": input_checker, "output": output_checker}
+                guards=[Guard(validator=checker, on="input", policy="raise")]
         message_fields:
             Dictionary mapping Message field names to their paths in the Message object.
             Valid keys: "task_inputs", "task_multimodal_inputs"
@@ -91,7 +90,7 @@ class MediaMaker(Module, metaclass=AutoParams):
             MediaMaker name in snake case format.
         """
         super().__init__()
-        self._set_guardrails(guardrails)
+        self._set_guards(guards)
         self._set_model(model)
         self._set_negative_prompt(negative_prompt)
         self._set_response_mode(response_mode)
@@ -140,8 +139,7 @@ class MediaMaker(Module, metaclass=AutoParams):
         model_execution_params = self._prepare_model_execution(
             prompt, image, mask, model_preference
         )
-        if self.guardrails.get("input"):
-            self._execute_input_guardrail(model_execution_params)
+        self._execute_input_guards(model_execution_params)
         model_response = self.model(**model_execution_params)
         return model_response
 
@@ -155,8 +153,7 @@ class MediaMaker(Module, metaclass=AutoParams):
         model_execution_params = self._prepare_model_execution(
             prompt, image, mask, model_preference
         )
-        if self.guardrails.get("input"):
-            await self._aexecute_input_guardrail(model_execution_params)
+        await self._aexecute_input_guards(model_execution_params)
         model_response = await self.model.acall(**model_execution_params)
         return model_response
 

@@ -28,11 +28,13 @@ class ModelRouterError(Exception):
 
 
 class UnsafeUserInputError(Exception):
-    pass
+    def __init__(self, message: Optional[str] = None):
+        super().__init__(message or "Unsafe user input detected")
 
 
 class UnsafeModelResponseError(Exception):
-    pass
+    def __init__(self, message: Optional[str] = None):
+        super().__init__(message or "Unsafe model response detected")
 
 
 class TypedParserNotFoundError(ValueError):
