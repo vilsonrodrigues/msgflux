@@ -246,6 +246,9 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
     def _adapt_params(self, params: Dict[str, Any]) -> Dict[str, Any]:
         if self.provider in "openai":
             params["max_completion_tokens"] = params.pop("max_tokens")
+        if not params.get("tools"):
+            params.pop("tools", None)
+            params.pop("tool_choice", None)
         return params
 
     def _execute_model(self, **kwargs):
