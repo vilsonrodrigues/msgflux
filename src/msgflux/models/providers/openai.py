@@ -246,9 +246,6 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
     def _adapt_params(self, params: Dict[str, Any]) -> Dict[str, Any]:
         if self.provider in "openai":
             params["max_completion_tokens"] = params.pop("max_tokens")
-        if not params.get("tools"):
-            params.pop("tools", None)
-            params.pop("tool_choice", None)
         return params
 
     def _execute_model(self, **kwargs):
@@ -629,12 +626,12 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
         generation_params = {
             "messages": messages,
             "prefilling": prefilling,
-            "tool_choice": tool_choice,
-            "tools": tool_schemas,
             "model": self.model_id,
         }
 
         if tool_schemas:
+            generation_params["tools"] = tool_schemas
+            generation_params["tool_choice"] = tool_choice
             generation_params["parallel_tool_calls"] = self.parallel_tool_calls
 
         if stream is True:
@@ -726,12 +723,12 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
         generation_params = {
             "messages": messages,
             "prefilling": prefilling,
-            "tool_choice": tool_choice,
-            "tools": tool_schemas,
             "model": self.model_id,
         }
 
         if tool_schemas:
+            generation_params["tools"] = tool_schemas
+            generation_params["tool_choice"] = tool_choice
             generation_params["parallel_tool_calls"] = self.parallel_tool_calls
 
         if stream is True:
