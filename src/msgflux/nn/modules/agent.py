@@ -26,6 +26,7 @@ from msgflux.dsl.signature import (
 )
 from msgflux.dsl.typed_parsers.registry import typed_parser_registry
 from msgflux.examples import Example, ExampleCollection
+from msgflux.exceptions import _GuardInterrupt
 from msgflux.generation.control_flow import ToolFlowControl
 from msgflux.generation.templates import (
     EXPECTED_OUTPUTS_TEMPLATE,
@@ -36,7 +37,8 @@ from msgflux.message import Message
 from msgflux.models.gateway import ModelGateway
 from msgflux.models.response import ModelResponse, ModelStreamResponse
 from msgflux.models.types import ChatCompletionModel
-from msgflux.nn.modules.lm import LM
+from msgflux.nn.hooks import Hook
+from msgflux.nn.modules.generator import Generator
 from msgflux.nn.modules.module import Module
 from msgflux.nn.modules.tool import ToolLibrary, ToolResponses
 from msgflux.nn.parameter import Parameter
@@ -54,6 +56,28 @@ _RESERVED_KWARGS = {
     "context_inputs",
     "model_preference",
 }
+
+
+def _prepare_agent_guard_input(model_execution_params):
+    """Extract user content from ChatML messages for guard validation."""
+    messages = model_execution_params.get("messages")
+    if not messages:
+        return model_execution_params
+    last_message = messages[-1]
+    if isinstance(last_message.get("content"), list):
+        if last_message.get("content")[0]["type"] == "image_url":
+            return [last_message]
+        else:
+            return last_message.get("content")[-1]
+    else:
+        return last_message.get("content")
+
+
+def _prepare_agent_guard_output(model_response):
+    """Convert model response to string for guard validation."""
+    if isinstance(model_response, str):
+        return model_response
+    return str(model_response)
 
 
 class Agent(Module, metaclass=AutoParams):
@@ -83,14 +107,14 @@ class Agent(Module, metaclass=AutoParams):
     def __init__(  # noqa: C901
         self,
         name: str,
-        model: Union[ChatCompletionModel, ModelGateway, LM],
+        model: Union[ChatCompletionModel, ModelGateway, "Generator"],
         *,
         system_message: Optional[str] = None,
         instructions: Optional[str] = None,
         expected_output: Optional[str] = None,
         examples: Optional[Union[str, List[Union[Example, Mapping[str, Any]]]]] = None,
         system_extra_message: Optional[str] = None,
-        guardrails: Optional[Dict[str, Callable]] = None,
+        hooks: Optional[List["Hook"]] = None,
         message_fields: Optional[Dict[str, Any]] = None,
         config: Optional[Dict[str, Any]] = None,
         templates: Optional[Dict[str, str]] = None,
@@ -122,11 +146,10 @@ class Agent(Module, metaclass=AutoParams):
             Examples of inputs, reasoning and outputs.
         system_extra_message:
             An extra message in system prompt.
-        guardrails:
-            Dictionary mapping guardrail types to callables.
-            Valid keys: "input", "output"
+        hooks:
+            List of Hook instances (e.g. Guard) to register on the model.
             !!! example
-                guardrails={"input": input_checker, "output": output_checker}
+                hooks=[Guard(validator=checker, on="pre", message="Blocked.")]
         message_fields:
             Dictionary mapping Message field names to their paths in the Message object.
             Valid keys: "task_inputs", "task_multimodal_inputs", "messages",
@@ -270,9 +293,9 @@ class Agent(Module, metaclass=AutoParams):
             if generation_schema is not None:
                 raise ValueError("`generation_schema` is not `stream=True` compatible")
 
-            if guardrails is not None and "output" in guardrails:
+            if hooks and any(getattr(h, "on", None) == "post" for h in hooks):
                 raise ValueError(
-                    "`guardrails['output']` is not `stream=True` compatible"
+                    "Hooks with `on='post'` are not `stream=True` compatible"
                 )
 
             if templates is not None and templates.get("response") is not None:
@@ -284,9 +307,15 @@ class Agent(Module, metaclass=AutoParams):
                 raise ValueError("`typed_parser` is not `stream=True` compatible")
 
         self._set_context_cache(context_cache)
-        self._set_guardrails(guardrails)
         self._set_message_fields(message_fields)
         self._set_model(model)
+        self._set_hooks(
+            hooks,
+            processors={
+                "guard_pre": _prepare_agent_guard_input,
+                "guard_post": _prepare_agent_guard_output,
+            },
+        )
         self._set_prefilling(prefilling)
         self._set_system_extra_message(system_extra_message)
 
@@ -370,7 +399,11 @@ class Agent(Module, metaclass=AutoParams):
             >>> agent(name="Vilson", age=27)
         """
         inputs = self._prepare_task(message, **kwargs)
-        model_response = self._execute_model(prefilling=self.prefilling, **inputs)
+        model_response = self._execute_model(
+            message=message, prefilling=self.prefilling, **inputs
+        )
+        if isinstance(model_response, str):
+            return self._define_response_mode(model_response, message)
         response = self._process_model_response(message, model_response, **inputs)
         return response
 
@@ -380,8 +413,10 @@ class Agent(Module, metaclass=AutoParams):
         """Async version of forward."""
         inputs = await self._aprepare_task(message, **kwargs)
         model_response = await self._aexecute_model(
-            prefilling=self.prefilling, **inputs
+            message=message, prefilling=self.prefilling, **inputs
         )
+        if isinstance(model_response, str):
+            return self._define_response_mode(model_response, message)
         response = await self._aprocess_model_response(
             message, model_response, **inputs
         )
@@ -391,40 +426,44 @@ class Agent(Module, metaclass=AutoParams):
         self,
         messages: List[Mapping[str, Any]],
         vars: Mapping[str, Any],
+        message: Optional[Union[str, Mapping[str, Any], Message]] = None,  # noqa: ARG002
         prefilling: Optional[str] = None,
         model_preference: Optional[str] = None,
-    ) -> Union[ModelResponse, ModelStreamResponse]:
+    ) -> Union[str, ModelResponse, ModelStreamResponse]:
         model_execution_params = self._prepare_model_execution(
             messages=messages,
             prefilling=prefilling,
             model_preference=model_preference,
             vars=vars,
         )
-        if self.guardrails.get("input"):
-            self._execute_input_guardrail(model_execution_params)
         if self.config.get("verbose", False):
             cprint(f"[{self.name}][call_model]", bc="br1", ls="b")
-        model_response = self.lm(**model_execution_params)
+        try:
+            model_response = self.generator(**model_execution_params)
+        except _GuardInterrupt as e:
+            return e.response
         return model_response
 
     async def _aexecute_model(
         self,
         messages: List[Mapping[str, Any]],
         vars: Mapping[str, Any],
+        message: Optional[Union[str, Mapping[str, Any], Message]] = None,  # noqa: ARG002
         prefilling: Optional[str] = None,
         model_preference: Optional[str] = None,
-    ) -> Union[ModelResponse, ModelStreamResponse]:
+    ) -> Union[str, ModelResponse, ModelStreamResponse]:
         model_execution_params = self._prepare_model_execution(
             messages=messages,
             prefilling=prefilling,
             model_preference=model_preference,
             vars=vars,
         )
-        if self.guardrails.get("input"):
-            await self._aexecute_input_guardrail(model_execution_params)
         if self.config.get("verbose", False):
             cprint(f"[{self.name}][call_model]", bc="br1", ls="b")
-        model_response = await self.lm.acall(**model_execution_params)
+        try:
+            model_response = await self.generator.acall(**model_execution_params)
+        except _GuardInterrupt as e:
+            return e.response
         return model_response
 
     def _prepare_model_execution(
@@ -468,21 +507,6 @@ class Agent(Module, metaclass=AutoParams):
             model_execution_params.model_preference = model_preference
 
         return model_execution_params
-
-    def _prepare_input_guardrail_execution(
-        self, model_execution_params: Mapping[str, Any]
-    ) -> Mapping[str, Any]:
-        messages = model_execution_params.get("messages")
-        last_message = messages[-1]
-        if isinstance(last_message.get("content"), list):
-            if last_message.get("content")[0]["type"] == "image_url":
-                data = [last_message]
-            else:  # audio, file
-                data = last_message.get("content")[-1]  # text input
-        else:
-            data = last_message.get("content")
-        guardrail_params = {"data": data}
-        return guardrail_params
 
     def _process_model_response(
         self,
@@ -813,8 +837,6 @@ class Agent(Module, metaclass=AutoParams):
             if response_type == "text_generation" or "structured" in response_type:
                 if self.config.get("verbose", False):
                     cprint(f"[{self.name}][response] {raw_response}", bc="y", ls="b")
-                if self.guardrails.get("output"):
-                    self._execute_output_guardrail(raw_response)
                 if self.templates.get("response"):
                     if isinstance(raw_response, str):
                         pre_response = self._format_response_template(vars)
@@ -843,14 +865,12 @@ class Agent(Module, metaclass=AutoParams):
         message: Union[str, Mapping[str, Any], Message],
         vars: Mapping[str, Any],
     ) -> Union[str, Mapping[str, Any], ModelStreamResponse]:
-        """Async version of _prepare_response with async output guardrail support."""
+        """Async version of _prepare_response."""
         formatted_response = None
         if not isinstance(raw_response, ModelStreamResponse):
             if response_type == "text_generation" or "structured" in response_type:
                 if self.config.get("verbose", False):
                     cprint(f"[{self.name}][response] {raw_response}", bc="y", ls="b")
-                if self.guardrails.get("output"):
-                    await self._aexecute_output_guardrail(raw_response)
                 if self.templates.get("response"):
                     if isinstance(raw_response, str):
                         pre_response = self._format_response_template(vars)
@@ -870,16 +890,6 @@ class Agent(Module, metaclass=AutoParams):
             else:
                 result = dotdict(response=result, messages=messages)
         return self._define_response_mode(result, message)
-
-    def _prepare_output_guardrail_execution(
-        self, model_response: Union[str, Mapping[str, Any]]
-    ) -> Mapping[str, Any]:
-        if isinstance(model_response, str):
-            data = model_response
-        else:
-            data = str(model_response)
-        guardrail_params = {"data": data}
-        return guardrail_params
 
     def _prepare_task(  # noqa: C901
         self, message: Optional[Union[str, Message, Mapping[str, Any]]] = None, **kwargs
@@ -1399,28 +1409,26 @@ class Agent(Module, metaclass=AutoParams):
                 f"given `{type(generation_schema)}`"
             )
 
-    def _set_model(self, model: Union[ChatCompletionModel, ModelGateway, LM]):
-        if isinstance(model, LM):  # If already LM, use directly
-            self.lm = model
-        else:  # LM will validate model type
-            self.lm = LM(model)
+    def _set_model(self, model: Union[ChatCompletionModel, ModelGateway, "Generator"]):
+        if isinstance(model, Generator):
+            self.generator = model
+        else:
+            if (
+                not hasattr(model, "model_type")
+                or model.model_type != "chat_completion"
+            ):
+                raise TypeError(
+                    f"`model` must be a `chat_completion` model, given `{type(model)}`"
+                )
+            self.generator = Generator(model)
 
     @property
     def model(self):
-        """Access underlying model for convenience.
-
-        Returns:
-            The wrapped model instance
-        """
-        return self.lm.model
+        """Access underlying model for convenience."""
+        return self.generator.model
 
     @model.setter
-    def model(self, value: Union[ChatCompletionModel, ModelGateway, LM]):
-        """Update the agent's model.
-
-        Args:
-            value: New model (can be Model or LM)
-        """
+    def model(self, value: Union[ChatCompletionModel, ModelGateway, "Generator"]):
         self._set_model(value)
 
     def _set_system_message(self, system_message: Optional[str] = None):

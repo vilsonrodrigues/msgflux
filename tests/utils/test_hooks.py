@@ -2,7 +2,7 @@
 
 from collections import OrderedDict
 
-from msgflux.utils.hooks import RemovableHandle
+from msgflux.nn.hooks import RemovableHandle
 
 
 def test_removable_handle_basic_creation():

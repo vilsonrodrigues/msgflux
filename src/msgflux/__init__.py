@@ -1,3 +1,5 @@
+from msgspec_ext.fast_dotenv import load_dotenv
+
 from .cache import response_cache
 from .data.dbs import DB
 
@@ -12,6 +14,7 @@ from .exceptions import TaskError
 from .message import Message
 from .models import Model
 from .models.gateway import ModelGateway
+from .nn.hooks import Guard
 from .telemetry import Spans
 from .tools.config import tool_config
 from .utils.chat import ChatBlock, ChatML
@@ -26,6 +29,7 @@ __all__ = [
     "ChatML",
     "Example",
     "File",
+    "Guard",
     "Image",
     "InputField",
     "Message",
@@ -41,6 +45,7 @@ __all__ = [
     "dotdict",
     "get_fn_name",
     "load",
+    "load_dotenv",
     "msgspec_dumps",
     "response_cache",
     "save",

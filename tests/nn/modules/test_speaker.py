@@ -136,13 +136,15 @@ class TestSpeaker:
 
         assert result == b"audio_data"
 
-    def test_speaker_with_guardrails(self):
-        """Test Speaker with input guardrails."""
-        mock_model = MockTTSModel()
-        mock_guardrail = Mock()
+    def test_speaker_with_hooks(self):
+        """Test Speaker with hooks."""
+        from msgflux.nn.hooks import Guard
 
-        speaker = Speaker(model=mock_model, guardrails={"input": mock_guardrail})
-        assert speaker.guardrails["input"] is mock_guardrail
+        mock_model = MockTTSModel()
+        guard = Guard(validator=lambda data: {"safe": True}, on="pre")
+
+        speaker = Speaker(model=mock_model, hooks=[guard])
+        assert len(speaker.generator._forward_pre_hooks) == 1
 
     def test_speaker_supported_formats(self):
         """Test all supported audio formats."""

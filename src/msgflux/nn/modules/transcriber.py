@@ -8,6 +8,7 @@ from msgflux.message import Message
 from msgflux.models.gateway import ModelGateway
 from msgflux.models.response import ModelResponse, ModelStreamResponse
 from msgflux.models.types import SpeechToTextModel
+from msgflux.nn.modules.generator import Generator
 from msgflux.nn.modules.module import Module
 
 
@@ -130,14 +131,14 @@ class Transcriber(Module, metaclass=AutoParams):
         self, data: Union[str, bytes], model_preference: Optional[str] = None
     ) -> Union[ModelResponse, ModelStreamResponse]:
         model_execution_params = self._prepare_model_execution(data, model_preference)
-        model_response = self.model(**model_execution_params)
+        model_response = self.generator(**model_execution_params)
         return model_response
 
     async def _aexecute_model(
         self, data: Union[str, bytes], model_preference: Optional[str] = None
     ) -> Union[ModelResponse, ModelStreamResponse]:
         model_execution_params = self._prepare_model_execution(data, model_preference)
-        model_response = await self.model.acall(**model_execution_params)
+        model_response = await self.generator.acall(**model_execution_params)
         return model_response
 
     def _prepare_model_execution(
@@ -236,11 +237,16 @@ class Transcriber(Module, metaclass=AutoParams):
 
     def _set_model(self, model: Union[SpeechToTextModel, ModelGateway]):
         if model.model_type == "speech_to_text":
-            self.register_buffer("model", model)
+            self.generator = Generator(model)
         else:
             raise TypeError(
                 f"`model` need be a `speech_to_text` model, given `{type(model)}`"
             )
+
+    @property
+    def model(self):
+        """Access underlying model."""
+        return self.generator.model
 
     def _set_config(self, config: Optional[Dict[str, Any]] = None):
         if config is None:

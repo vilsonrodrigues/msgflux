@@ -19,7 +19,7 @@ theme:
   features:
     # Navigation
     - navigation.tabs
-    - navigation.sections
+    #- navigation.sections
     - navigation.indexes
     - navigation.top
     - navigation.instant
@@ -33,7 +33,7 @@ theme:
     - blog
     # Table of Contents
     - toc.follow
-    - toc.integrate
+    #- toc.integrate
     # Search
     - search.suggest
     - search.highlight
@@ -65,6 +65,9 @@ theme:
 plugins:
   - blog
   - search
+  - copy-markdown:
+      button_text: "Copy Page"
+      button_position: "after-title"
   - mkdocstrings:
       handlers:
         python:
@@ -119,41 +122,83 @@ nav:
     - index.md
   - Learn:
     - QuickStart: quickstart.md
-    - Docs:
-      - ✧ Models:
-        - learn/models/model.md
-        - learn/models/model_gateway.md
-        - learn/models/chat_completion.md
-        - learn/models/moderation.md
-        - learn/models/text_embedder.md        
-        - learn/models/text_to_speech.md
-        - learn/models/speech_to_text.md        
-        - learn/models/text_to_image.md
-        - learn/models/image_text_to_image.md
-      #- ⛁ DataBases: 
-      #  - core/database.md
-      #  - Vector: databases/vector.md
-      - ⟳ Retrievers:
-        - learn/retrievers/retriever.md
-      - ⎙ Parsers: learn/parsers/parser.md
-      - ⟢ nn:
-        - learn/module.md      
+    - ✧ Models:
+      - learn/models/model.md
+      - learn/models/model_gateway.md
+      - learn/models/chat_completion.md
+      - learn/models/moderation.md
+      - learn/models/text_embedder.md
+      - learn/models/text_to_speech.md
+      - learn/models/speech_to_text.md
+      - learn/models/text_to_image.md
+      - learn/models/image_text_to_image.md
+    #- ⛁ DataBases:
+    #  - core/database.md
+    #  - Vector: databases/vector.md
+    - ⟳ Retrievers:
+      - learn/retrievers/retriever.md
+    - ⎙ Parsers: learn/parsers/parser.md
+    - ◈ dotdict: learn/dotdict.md
+    - ⟢ Modules:
+      - Module:
+        - learn/nn/module/index.md
+        - learn/nn/module/core-concepts.md
+        - learn/nn/module/forward-and-async.md
+        - learn/nn/module/composing.md
+        - learn/nn/module/module-dict.md
+        - learn/nn/module/module-list.md
+        - learn/nn/module/sequential.md
+        - learn/nn/module/visualization.md
+      - Message: learn/nn/message.md
+      - Agent:
+        - learn/nn/agent/index.md
+        - learn/nn/agent/quickstart.md
+        - learn/nn/agent/autoparams.md
+        - learn/nn/agent/async.md
+        - learn/nn/agent/streaming.md
+        - learn/nn/agent/debug.md
+        - learn/nn/agent/system-prompt.md
+        - learn/nn/agent/generation-schemas.md
+        - learn/nn/agent/task-and-context.md
+        - learn/nn/agent/vars.md
+        - learn/nn/agent/tools.md
+        - learn/nn/agent/signatures.md
+        - learn/nn/agent/hooks.md
+        - learn/nn/agent/model-gateway.md
+        - learn/nn/agent/prefilling.md
+      - Functional:
+        - learn/nn/functional/index.md
+        - learn/nn/functional/gather.md
+        - learn/nn/functional/utility.md
+        - learn/nn/functional/inline-dsl.md
+        - learn/nn/functional/best-practices.md
+      - Transcriber:
+        - learn/nn/transcriber.md        
+      - Retriever:
+        - learn/nn/retriever.md
+      - Speaker:
+        - learn/nn/speaker.md
+      - MediaMaker:
+        - learn/nn/mediamaker.md
+      #- Predictor:
+      #  - learn/nn/predictor.md
+    - ◎ Telemetry: learn/telemetry.md
     #- ⇄ Dependency Management: dependency-management.md
-  - API Reference:
-    - Models:
-        - api-reference/models/model.md
-        - api-reference/models/model_gateway.md
-        - Types:
-            - ChatCompletion: api-reference/models/types/chat_completion.md
-    - DataBases:
-        - api-reference/databases/database.md
-        - Types:
-            - KV: api-reference/databases/types/kv.md
-            - Vector: api-reference/databases/types/vector.md
-    - nn:
-        - api-reference/nn/functional.md
-        - api-reference/nn/modules/agent.md       
-  - Changelog: changelog.md
+    - API Reference:
+      - Models:
+          - api-reference/models/model.md
+          - api-reference/models/model_gateway.md
+          - Types:
+              - ChatCompletion: api-reference/models/types/chat_completion.md
+      - DataBases:
+          - api-reference/databases/database.md
+          - Types:
+              - KV: api-reference/databases/types/kv.md
+              - Vector: api-reference/databases/types/vector.md
+      - nn:
+          - api-reference/nn/functional.md
+          - api-reference/nn/modules/agent.md       
+  - Changelog: CHANGELOG.md
   - Dependency Management: dependency-management.md
   - Blog:
     - blog/index.md

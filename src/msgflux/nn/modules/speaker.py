@@ -1,4 +1,4 @@
-from typing import Any, Callable, Dict, Literal, Mapping, Optional, Union
+from typing import Any, Dict, Literal, Mapping, Optional, Union
 
 from msgflux.auto import AutoParams
 from msgflux.dotdict import dotdict
@@ -6,6 +6,7 @@ from msgflux.message import Message
 from msgflux.models.gateway import ModelGateway
 from msgflux.models.response import ModelResponse, ModelStreamResponse
 from msgflux.models.types import TextToSpeechModel
+from msgflux.nn.modules.generator import Generator
 from msgflux.nn.modules.module import Module
 
 
@@ -16,7 +17,7 @@ class Speaker(Module, metaclass=AutoParams):
         self,
         model: Union[TextToSpeechModel, ModelGateway],
         *,
-        guardrails: Optional[Dict[str, Callable]] = None,
+        hooks: Optional[list] = None,
         message_fields: Optional[Dict[str, Any]] = None,
         response_mode: Optional[str] = None,
         response_format: Optional[
@@ -30,12 +31,9 @@ class Speaker(Module, metaclass=AutoParams):
 
         Args:
         model:
-            Transcriber Model client.
-        guardrails:
-            Dictionary mapping guardrail types to callables.
-            Valid keys: "input" (output not supported for Speaker).
-            !!! example
-                guardrails={"input": input_checker}
+            Text-to-Speech Model client.
+        hooks:
+            List of Hook instances to register on the model.
         message_fields:
             Dictionary mapping Message field names to their paths in the Message object.
             Valid keys: "task_inputs" (other fields not supported for Speaker).
@@ -61,11 +59,11 @@ class Speaker(Module, metaclass=AutoParams):
             Configuration option:
             - stream: Transmit response on-the-fly (bool)
         name:
-            Transcriber name in snake case format.
+            Speaker name in snake case format.
         """
         super().__init__()
-        self._set_guardrails(guardrails)
         self._set_model(model)
+        self._set_hooks(hooks)
         self._set_prompt(prompt)
         self._set_response_format(response_format)
         self._set_response_mode(response_mode)
@@ -118,18 +116,14 @@ class Speaker(Module, metaclass=AutoParams):
         self, data: str, model_preference: Optional[str] = None
     ) -> Union[ModelResponse, ModelStreamResponse]:
         model_execution_params = self._prepare_model_execution(data, model_preference)
-        if self.guardrails.get("input"):
-            self._execute_input_guardrail(model_execution_params)
-        model_response = self.model(**model_execution_params)
+        model_response = self.generator(**model_execution_params)
         return model_response
 
     async def _aexecute_model(
         self, data: str, model_preference: Optional[str] = None
     ) -> Union[ModelResponse, ModelStreamResponse]:
         model_execution_params = self._prepare_model_execution(data, model_preference)
-        if self.guardrails.get("input"):
-            await self._aexecute_input_guardrail(model_execution_params)
-        model_response = await self.model.acall(**model_execution_params)
+        model_response = await self.generator.acall(**model_execution_params)
         return model_response
 
     def _prepare_model_execution(
@@ -144,12 +138,6 @@ class Speaker(Module, metaclass=AutoParams):
         if isinstance(self.model, ModelGateway) and model_preference is not None:
             model_execution_params.model_preference = model_preference
         return model_execution_params
-
-    def _prepare_guardrail_execution(
-        self, model_execution_params: Dict[str, Union[str, bool]]
-    ) -> Dict[str, str]:
-        guardrail_params = {"data": model_execution_params.data}
-        return guardrail_params
 
     def _process_model_response(
         self,
@@ -189,11 +177,16 @@ class Speaker(Module, metaclass=AutoParams):
 
     def _set_model(self, model: Union[TextToSpeechModel, ModelGateway]):
         if model.model_type == "text_to_speech":
-            self.register_buffer("model", model)
+            self.generator = Generator(model)
         else:
             raise TypeError(
                 f"`model` need be a `text_to_speech` model, given `{type(model)}`"
             )
+
+    @property
+    def model(self):
+        """Access underlying model."""
+        return self.generator.model
 
     def _set_response_format(self, response_format: str):
         supported_formats = ["mp3", "opus", "aac", "flac", "wav", "pcm"]

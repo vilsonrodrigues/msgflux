@@ -139,13 +139,15 @@ class TestMediaMaker:
 
         assert result == "generated_media_url"
 
-    def test_mediamaker_with_guardrails(self):
-        """Test MediaMaker with input guardrails."""
-        mock_model = MockMediaModel()
-        mock_guardrail = Mock()
+    def test_mediamaker_with_hooks(self):
+        """Test MediaMaker with hooks."""
+        from msgflux.nn.hooks import Guard
 
-        mediamaker = MediaMaker(model=mock_model, guardrails={"input": mock_guardrail})
-        assert mediamaker.guardrails["input"] is mock_guardrail
+        mock_model = MockMediaModel()
+        guard = Guard(validator=lambda data: {"safe": True}, on="pre")
+
+        mediamaker = MediaMaker(model=mock_model, hooks=[guard])
+        assert len(mediamaker.generator._forward_pre_hooks) == 1
 
     def test_mediamaker_response_format_url(self):
         """Test MediaMaker with response_format url."""
