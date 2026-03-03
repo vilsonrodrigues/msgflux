@@ -32,16 +32,14 @@ from opentelemetry.trace import Status, StatusCode
 from msgflux._private.executor import Executor
 from msgflux.dotdict import dotdict
 from msgflux.envs import envs
-from msgflux.exceptions import UnsafeModelResponseError, UnsafeUserInputError
-from msgflux.guard import Guard, _GuardInterrupt
 from msgflux.message import Message
 from msgflux.models.gateway import ModelGateway
 from msgflux.models.model import Model
 from msgflux.models.response import ModelResponse, ModelStreamResponse
+from msgflux.nn.hooks import Hook, RemovableHandle
 from msgflux.nn.parameter import Parameter
 from msgflux.telemetry import Spans
 from msgflux.utils.convert import convert_camel_snake_to_title
-from msgflux.utils.hooks import RemovableHandle
 from msgflux.utils.mermaid import plot_mermaid
 from msgflux.utils.msgspec import StructFactory
 from msgflux.utils.templates import format_template
@@ -632,30 +630,39 @@ class Module:
                 f"given `{type(model_preference)}`"
             )
 
-    def _set_guards(self, guards: Optional[List["Guard"]] = None):
-        """Set guards for input and output validation.
+    def _set_hooks(
+        self,
+        hooks: Optional[List["Hook"]] = None,
+        processors: Optional[Dict[str, Callable]] = None,
+    ):
+        """Register hooks on their declared targets.
+
+        Each hook declares its own ``target`` attribute (submodule name).
+        If ``target`` is ``None``, the hook registers on ``self``.
 
         Args:
-            guards: List of Guard instances.
-
-        Raises:
-            TypeError: If guards is not a list of Guard instances or None
+            hooks: List of Hook instances to register.
+            processors: Optional dict mapping processor keys to callables.
+                Keys are matched via ``hook.processor_key``.
         """
-        if guards is None:
-            self.guards = []
+        if hooks is None:
             return
-
-        if not isinstance(guards, list):
-            raise TypeError(f"`guards` must be a list or None, given `{type(guards)}`")
-
-        for i, guard in enumerate(guards):
-            if not isinstance(guard, Guard):
+        for i, hook in enumerate(hooks):
+            if not isinstance(hook, Hook):
                 raise TypeError(
-                    f"Guard at index {i} must be a Guard instance, "
-                    f"given `{type(guard)}`"
+                    f"Hook at index {i} must be a Hook instance, given `{type(hook)}`"
                 )
-
-        self.guards = list(guards)
+            # Resolve target via hook.target
+            if hook.target is not None:
+                resolved_target = getattr(self, hook.target)
+            else:
+                resolved_target = self
+            # Auto-assign processor via hook.processor_key
+            if processors and hook.processor_key:
+                processor = processors.get(hook.processor_key)
+                if processor is not None and getattr(hook, "processor", None) is None:
+                    hook.processor = processor
+            hook.register(resolved_target)
 
     def _set_message_fields(self, message_fields: Optional[Dict[str, Any]] = None):
         """Set message field mappings.
@@ -740,68 +747,6 @@ class Module:
 
         # Store templates
         self.templates = templates.copy()
-
-    def _execute_input_guards(self, model_execution_params: Dict[str, Any]):
-        input_guards = [g for g in self.guards if g.on == "input"]
-        if not input_guards:
-            return
-
-        guard_data = self._prepare_input_guard_data(model_execution_params)
-        for guard in input_guards:
-            result = guard(data=guard_data)
-            if not result.get("safe", True):
-                message = result.get("message")
-                if guard.policy == "message":
-                    raise _GuardInterrupt(message or "Blocked by guard.")
-                raise UnsafeUserInputError(message)
-
-    async def _aexecute_input_guards(self, model_execution_params: Dict[str, Any]):
-        input_guards = [g for g in self.guards if g.on == "input"]
-        if not input_guards:
-            return
-
-        guard_data = self._prepare_input_guard_data(model_execution_params)
-        for guard in input_guards:
-            result = await guard.acall(data=guard_data)
-            if not result.get("safe", True):
-                message = result.get("message")
-                if guard.policy == "message":
-                    raise _GuardInterrupt(message or "Blocked by guard.")
-                raise UnsafeUserInputError(message)
-
-    def _execute_output_guards(self, model_response: Any):
-        output_guards = [g for g in self.guards if g.on == "output"]
-        if not output_guards:
-            return
-
-        guard_data = self._prepare_output_guard_data(model_response)
-        for guard in output_guards:
-            result = guard(data=guard_data)
-            if not result.get("safe", True):
-                message = result.get("message")
-                if guard.policy == "message":
-                    raise _GuardInterrupt(message or "Blocked by guard.")
-                raise UnsafeModelResponseError(message)
-
-    async def _aexecute_output_guards(self, model_response: Any):
-        output_guards = [g for g in self.guards if g.on == "output"]
-        if not output_guards:
-            return
-
-        guard_data = self._prepare_output_guard_data(model_response)
-        for guard in output_guards:
-            result = await guard.acall(data=guard_data)
-            if not result.get("safe", True):
-                message = result.get("message")
-                if guard.policy == "message":
-                    raise _GuardInterrupt(message or "Blocked by guard.")
-                raise UnsafeModelResponseError(message)
-
-    def _prepare_input_guard_data(self, model_execution_params: Dict[str, Any]) -> Any:
-        return model_execution_params
-
-    def _prepare_output_guard_data(self, model_response: Any) -> Any:
-        return model_response
 
     def get_model_preference_from_message(self, message: Message) -> Optional[str]:
         if isinstance(message, Message) and isinstance(self.model_preference, str):
@@ -1340,21 +1285,24 @@ class Module:
                 module_name_title, module_type, *args, **kwargs
             )
 
+    @staticmethod
+    async def _adispatch_hook(hook, *args):
+        """Dispatch a hook call asynchronously."""
+        if hasattr(hook, "acall"):
+            return await hook.acall(*args)
+        elif inspect.iscoroutinefunction(hook):
+            return await hook(*args)
+        else:
+            loop = asyncio.get_event_loop()
+            return await loop.run_in_executor(None, functools.partial(hook, *args))
+
     async def _acall_impl(self, *args, **kwargs):
         if not (self._forward_hooks or self._forward_pre_hooks):
             return await self._acall(*args, **kwargs)
 
         # Execute forward pre-hooks (sync or async)
         for hook in self._forward_pre_hooks.values():
-            if inspect.iscoroutinefunction(hook):
-                # Async hook - await directly
-                hook_result = await hook(self, args, kwargs)
-            else:
-                # Sync hook - run in executor to avoid blocking event loop
-                loop = asyncio.get_event_loop()
-                hook_result = await loop.run_in_executor(
-                    None, functools.partial(hook, self, args, kwargs)
-                )
+            hook_result = await self._adispatch_hook(hook, self, args, kwargs)
 
             if hook_result is not None:
                 if isinstance(hook_result, tuple) and len(hook_result) == 2:
@@ -1368,15 +1316,7 @@ class Module:
 
         # Execute forward hooks (sync or async)
         for hook in self._forward_hooks.values():
-            if inspect.iscoroutinefunction(hook):
-                # Async hook - await directly
-                hook_result = await hook(self, args, kwargs, result)
-            else:
-                # Sync hook - run in executor to avoid blocking event loop
-                loop = asyncio.get_event_loop()
-                hook_result = await loop.run_in_executor(
-                    None, functools.partial(hook, self, args, kwargs, result)
-                )
+            hook_result = await self._adispatch_hook(hook, self, args, kwargs, result)
 
             if hook_result is not None:
                 result = hook_result

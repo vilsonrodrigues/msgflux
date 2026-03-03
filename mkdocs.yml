@@ -163,7 +163,7 @@ nav:
         - learn/nn/agent/vars.md
         - learn/nn/agent/tools.md
         - learn/nn/agent/signatures.md
-        - learn/nn/agent/guards.md
+        - learn/nn/agent/hooks.md
         - learn/nn/agent/model-gateway.md
         - learn/nn/agent/prefilling.md
       - Functional:

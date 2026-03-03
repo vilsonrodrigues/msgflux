@@ -42,7 +42,7 @@ class TestAgentInitialization:
         agent = Agent(name="test_agent", model=mock_model)
 
         assert agent.name == "test_agent"
-        assert agent.lm.model == mock_model
+        assert agent.generator.model == mock_model
 
     def test_agent_with_system_message(self):
         """Test Agent with system message."""
@@ -101,17 +101,17 @@ class TestAgentInitialization:
 
         assert hasattr(agent, "_buffers")
 
-    def test_agent_with_guards(self):
-        """Test Agent with guards."""
-        from msgflux.guard import Guard
+    def test_agent_with_hooks(self):
+        """Test Agent with hooks."""
+        from msgflux.nn.hooks import Guard
 
         mock_model = Mock()
         mock_model.model_type = "chat_completion"
 
-        guard = Guard(validator=lambda data: {"safe": True}, on="input")
-        agent = Agent(name="agent", model=mock_model, guards=[guard])
+        guard = Guard(validator=lambda data: {"safe": True}, on="pre")
+        agent = Agent(name="agent", model=mock_model, hooks=[guard])
 
-        assert hasattr(agent, "guards") and len(agent.guards) == 1
+        assert len(agent.generator._forward_pre_hooks) == 1
 
     def test_agent_with_message_fields(self):
         """Test Agent with message fields."""
@@ -242,7 +242,7 @@ class TestAgentForward:
         agent = Agent(name="agent", model=mock_model, signature="query -> response")
 
         # Mock the lm forward call
-        agent.lm.forward = Mock(return_value=mock_response)
+        agent.generator.forward = Mock(return_value=mock_response)
 
         result = agent(query="Test input")
 
@@ -263,7 +263,7 @@ class TestAgentForward:
             name="agent", model=mock_model, signature="query, context -> response"
         )
 
-        agent.lm.forward = Mock(return_value=mock_response)
+        agent.generator.forward = Mock(return_value=mock_response)
 
         result = agent(query="What is AI?", context="ML context")
 
@@ -282,7 +282,7 @@ class TestAgentForward:
 
         agent = Agent(name="agent", model=mock_model, signature="query -> response")
 
-        agent.lm.forward = Mock(return_value=mock_response)
+        agent.generator.forward = Mock(return_value=mock_response)
 
         result = agent(query="Test", model_preference="gpt-4")
 
@@ -301,7 +301,7 @@ class TestAgentForward:
 
         agent = Agent(name="agent", model=mock_model, signature="query -> response")
 
-        agent.lm.forward = Mock(return_value=mock_response)
+        agent.generator.forward = Mock(return_value=mock_response)
 
         result = agent(query="Test", vars={"key": "value"})
 
@@ -320,7 +320,7 @@ class TestAgentForward:
 
         agent = Agent(name="agent", model=mock_model, signature="query -> response")
 
-        agent.lm.forward = Mock(return_value=mock_response)
+        agent.generator.forward = Mock(return_value=mock_response)
 
         result = agent(query="Test", messages=[])
 
@@ -602,21 +602,20 @@ class TestAgentTemplates:
         assert result == "Hello Alice"
 
 
-class TestAgentGuards:
-    """Test Agent guards functionality."""
+class TestAgentHooks:
+    """Test Agent hooks functionality."""
 
-    def test_agent_input_guard(self):
-        """Test Agent with input guard."""
-        from msgflux.guard import Guard
+    def test_agent_pre_hook(self):
+        """Test Agent with pre hook."""
+        from msgflux.nn.hooks import Guard
 
         mock_model = Mock()
         mock_model.model_type = "chat_completion"
 
-        guard = Guard(validator=lambda data: {"safe": True}, on="input")
-        agent = Agent(name="agent", model=mock_model, guards=[guard])
+        guard = Guard(validator=lambda data: {"safe": True}, on="pre")
+        agent = Agent(name="agent", model=mock_model, hooks=[guard])
 
-        assert len(agent.guards) == 1
-        assert agent.guards[0].on == "input"
+        assert len(agent.generator._forward_pre_hooks) == 1
 
 
 class TestAgentExamples:
@@ -771,7 +770,7 @@ class TestAgentExecutionPaths:
 
         agent = Agent(name="agent", model=mock_model, signature="query -> response")
 
-        agent.lm.forward = Mock(return_value=mock_response)
+        agent.generator.forward = Mock(return_value=mock_response)
 
         # Test with dict input
         result = agent({"query": "Test"})
@@ -798,7 +797,7 @@ class TestAgentExecutionPaths:
             message_fields={"task_inputs": "query"},
         )
 
-        agent.lm.forward = Mock(return_value=mock_response)
+        agent.generator.forward = Mock(return_value=mock_response)
 
         # Create Message object
         msg = Message()
@@ -821,7 +820,7 @@ class TestAgentExecutionPaths:
 
         agent = Agent(name="agent", model=mock_model, signature="query -> response")
 
-        agent.lm.forward = Mock(return_value=mock_response)
+        agent.generator.forward = Mock(return_value=mock_response)
 
         result = agent(query="Test", context_inputs="Some context")
 

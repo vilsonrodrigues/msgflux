@@ -1,4 +1,4 @@
-from typing import List, Optional, Tuple
+from typing import Any, List, Optional, Tuple
 
 
 class ToolCallTimeOutError(Exception):
@@ -27,14 +27,23 @@ class ModelRouterError(Exception):
         return f"{self.message}\nCaptured Exceptions:\n{details}"
 
 
+class _GuardInterrupt(Exception):  # noqa: N818
+    """Internal exception for short-circuit when message is provided."""
+
+    def __init__(self, response: str):
+        self.response = response
+
+
 class UnsafeUserInputError(Exception):
-    def __init__(self, message: Optional[str] = None):
+    def __init__(self, message: Optional[str] = None, data: Any = None):
         super().__init__(message or "Unsafe user input detected")
+        self.data = data
 
 
 class UnsafeModelResponseError(Exception):
-    def __init__(self, message: Optional[str] = None):
+    def __init__(self, message: Optional[str] = None, data: Any = None):
         super().__init__(message or "Unsafe model response detected")
+        self.data = data
 
 
 class TypedParserNotFoundError(ValueError):

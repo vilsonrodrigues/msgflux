@@ -15,6 +15,7 @@ from msgflux.models.types import (
     VideoTextToAudioModel,
     VideoTextToVideoModel,
 )
+from msgflux.nn.modules.generator import Generator
 from msgflux.nn.modules.module import Module
 
 MEDIA_MODEL_TYPES = Union[
@@ -38,7 +39,7 @@ class MediaMaker(Module, metaclass=AutoParams):
         self,
         model: MEDIA_MODEL_TYPES,
         *,
-        guards: Optional[list] = None,
+        hooks: Optional[list] = None,
         message_fields: Optional[Dict[str, Any]] = None,
         response_format: Optional[Literal["base64", "url"]] = None,
         response_mode: Optional[str] = None,
@@ -51,10 +52,8 @@ class MediaMaker(Module, metaclass=AutoParams):
         Args:
         model:
             MediaMaker Model client.
-        guards:
-            List of Guard instances for input/output validation.
-            !!! example
-                guards=[Guard(validator=checker, on="input", policy="raise")]
+        hooks:
+            List of Hook instances to register on the model.
         message_fields:
             Dictionary mapping Message field names to their paths in the Message object.
             Valid keys: "task_inputs", "task_multimodal_inputs"
@@ -90,8 +89,8 @@ class MediaMaker(Module, metaclass=AutoParams):
             MediaMaker name in snake case format.
         """
         super().__init__()
-        self._set_guards(guards)
         self._set_model(model)
+        self._set_hooks(hooks)
         self._set_negative_prompt(negative_prompt)
         self._set_response_mode(response_mode)
         self._set_response_format(response_format)
@@ -139,8 +138,7 @@ class MediaMaker(Module, metaclass=AutoParams):
         model_execution_params = self._prepare_model_execution(
             prompt, image, mask, model_preference
         )
-        self._execute_input_guards(model_execution_params)
-        model_response = self.model(**model_execution_params)
+        model_response = self.generator(**model_execution_params)
         return model_response
 
     async def _aexecute_model(
@@ -153,8 +151,7 @@ class MediaMaker(Module, metaclass=AutoParams):
         model_execution_params = self._prepare_model_execution(
             prompt, image, mask, model_preference
         )
-        await self._aexecute_input_guards(model_execution_params)
-        model_response = await self.model.acall(**model_execution_params)
+        model_response = await self.generator.acall(**model_execution_params)
         return model_response
 
     def _prepare_model_execution(
@@ -164,11 +161,7 @@ class MediaMaker(Module, metaclass=AutoParams):
         mask: Optional[str] = None,
         model_preference: Optional[str] = None,
     ) -> Dict[str, Any]:
-        # Start with config (contains fps, duration_seconds, aspect_ratio, n,
-        # and any other params)
         model_execution_params = dotdict(self.config) if self.config else dotdict()
-
-        # Add required parameters
         model_execution_params.prompt = prompt
         if image:
             model_execution_params.image = image
@@ -178,27 +171,7 @@ class MediaMaker(Module, metaclass=AutoParams):
             model_execution_params.model_preference = model_preference
         if self.negative_prompt:
             model_execution_params.negative_prompt = self.negative_prompt
-
         return model_execution_params
-
-    def _prepare_guardrail_execution(
-        self, model_execution_params: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        prompt = model_execution_params.prompt
-        image = model_execution_params.image
-        if image is not None:
-            messages = [
-                {"type": "text", "text": prompt},
-                {
-                    "type": "image_url",
-                    "image_url": {"url": f"data:image/jpeg;base64,{image}"},
-                },
-            ]
-            data = {"data": messages}
-        else:
-            data = {"data": prompt}
-        guardrail_params = data
-        return guardrail_params
 
     def _process_model_response(
         self, model_response: ModelResponse, message: Union[str, Message]
@@ -269,12 +242,17 @@ class MediaMaker(Module, metaclass=AutoParams):
 
     def _set_model(self, model: Union[BaseModel, ModelGateway]):
         if isinstance(model, (BaseModel, ModelGateway)):
-            self.register_buffer("model", model)
+            self.generator = Generator(model)
         else:
             raise TypeError(
                 f"`model` need be a `BaseModel` or `ModelGateway` "
                 f"model, given `{type(model)}`"
             )
+
+    @property
+    def model(self):
+        """Access underlying model."""
+        return self.generator.model
 
     def _set_response_format(self, response_format: Optional[str] = None):
         if isinstance(response_format, str) or response_format is None:

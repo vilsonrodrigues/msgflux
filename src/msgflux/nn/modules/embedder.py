@@ -11,6 +11,7 @@ from msgflux.models.types import (
     TextEmbedderModel,
 )
 from msgflux.nn import functional as F
+from msgflux.nn.modules.generator import Generator
 from msgflux.nn.modules.module import Module
 
 EMBEDDER_MODELS = Union[
@@ -119,7 +120,7 @@ class Embedder(Module, metaclass=AutoParams):
             model_execution_params = self._prepare_model_execution(
                 data_list, model_preference
             )
-            model_response = self.model(**model_execution_params)
+            model_response = self.generator(**model_execution_params)
             embeddings = self._extract_raw_response(model_response)
 
             # Ensure list format
@@ -135,7 +136,7 @@ class Embedder(Module, metaclass=AutoParams):
             # since we only have kwargs
             args_list = [()] * len(data_list)
             responses = F.map_gather(
-                self.model, args_list=args_list, kwargs_list=distributed_params
+                self.generator, args_list=args_list, kwargs_list=distributed_params
             )
             embeddings = [
                 self._extract_raw_response(response) for response in responses
@@ -164,7 +165,7 @@ class Embedder(Module, metaclass=AutoParams):
             model_execution_params = self._prepare_model_execution(
                 data_list, model_preference
             )
-            model_response = await self.model.acall(**model_execution_params)
+            model_response = await self.generator.acall(**model_execution_params)
             embeddings = self._extract_raw_response(model_response)
 
             # Ensure list format
@@ -180,7 +181,9 @@ class Embedder(Module, metaclass=AutoParams):
             # since we only have kwargs
             args_list = [()] * len(data_list)
             responses = await F.amap_gather(
-                self.model.acall, args_list=args_list, kwargs_list=distributed_params
+                self.generator.acall,
+                args_list=args_list,
+                kwargs_list=distributed_params,
             )
             embeddings = [
                 self._extract_raw_response(response) for response in responses
@@ -229,11 +232,16 @@ class Embedder(Module, metaclass=AutoParams):
     def _set_model(self, model: EMBEDDER_MODELS):
         """Set and validate embedding model."""
         if "embedder" in model.model_type:
-            self.register_buffer("model", model)
+            self.generator = Generator(model)
         else:
             raise TypeError(
                 f"`model` requires be `embedder` model, given `{type(model)}`"
             )
+
+    @property
+    def model(self):
+        """Access underlying model."""
+        return self.generator.model
 
     def _set_config(self, config: Optional[Dict[str, Any]] = None):
         if config is None:

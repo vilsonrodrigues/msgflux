@@ -1,8 +1,10 @@
+import asyncio
+import functools
 import weakref
 from collections import OrderedDict
-from typing import Any, Tuple
+from typing import Any, Optional, Tuple
 
-__all__ = ["RemovableHandle"]
+__all__ = ["Hook", "RemovableHandle"]
 
 
 class RemovableHandle:
@@ -68,3 +70,54 @@ class RemovableHandle:
 
     def __exit__(self, dtype: Any, value: Any, tb: Any) -> None:
         self.remove()
+
+
+class Hook:
+    """Base class for declarative hooks registrable via ``hooks`` param.
+
+    Subclasses must implement ``__call__`` (sync) and optionally
+    override ``acall`` (async). By default ``acall`` runs ``__call__``
+    in an executor.
+
+    Args:
+        on: ``"pre"`` (before forward) or ``"post"`` (after forward).
+        target: Submodule attribute name to register the hook on.
+            ``None`` registers on the module itself.
+    """
+
+    _VALID_ON = {"pre", "post"}
+
+    def __init__(self, *, on: str, target: Optional[str] = None):
+        if on not in self._VALID_ON:
+            raise ValueError(f"`on` must be one of {self._VALID_ON}, given `{on!r}`")
+        self.on = on
+        self.target = target
+
+    def __call__(self, module: Any, args: tuple, kwargs: dict, output: Any = None):
+        """Sync hook — called by ``_call_impl``. Subclasses must override."""
+        raise NotImplementedError
+
+    async def acall(self, module: Any, args: tuple, kwargs: dict, output: Any = None):
+        """Async hook — called by ``_acall_impl``.
+
+        Default implementation runs ``__call__`` in an executor.
+        """
+        loop = asyncio.get_event_loop()
+        if self.on == "pre":
+            return await loop.run_in_executor(
+                None, functools.partial(self, module, args, kwargs)
+            )
+        return await loop.run_in_executor(
+            None, functools.partial(self, module, args, kwargs, output)
+        )
+
+    def register(self, module: Any) -> "RemovableHandle":
+        """Register this hook on *module*."""
+        if self.on == "pre":
+            return module.register_forward_pre_hook(self)
+        return module.register_forward_hook(self)
+
+    @property
+    def processor_key(self) -> Optional[str]:
+        """Key used to match processors in ``_set_hooks``. ``None`` = no processor."""
+        return None

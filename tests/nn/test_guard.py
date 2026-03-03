@@ -1,11 +1,10 @@
 """Tests for Guard class and guard integration."""
 
-import asyncio
-
 import pytest
 
 from msgflux.exceptions import UnsafeModelResponseError, UnsafeUserInputError
-from msgflux.guard import Guard, _GuardInterrupt
+from msgflux.exceptions import _GuardInterrupt
+from msgflux.nn.hooks import Guard
 
 
 # ---------------------------------------------------------------------------
@@ -15,62 +14,86 @@ from msgflux.guard import Guard, _GuardInterrupt
 
 class TestGuardInit:
     def test_valid_guard(self):
-        guard = Guard(validator=lambda data: {"safe": True}, on="input", policy="raise")
-        assert guard.on == "input"
-        assert guard.policy == "raise"
+        guard = Guard(validator=lambda data: {"safe": True}, on="pre")
+        assert guard.on == "pre"
+        assert guard.message is None
 
-    def test_defaults(self):
-        guard = Guard(validator=lambda data: {"safe": True})
-        assert guard.on == "input"
-        assert guard.policy == "raise"
+    def test_with_message(self):
+        guard = Guard(
+            validator=lambda data: {"safe": True},
+            on="pre",
+            message="Blocked.",
+        )
+        assert guard.message == "Blocked."
 
     def test_invalid_on(self):
         with pytest.raises(ValueError, match="`on` must be one of"):
             Guard(validator=lambda data: {"safe": True}, on="middle")
 
-    def test_invalid_policy(self):
-        with pytest.raises(ValueError, match="`policy` must be one of"):
-            Guard(validator=lambda data: {"safe": True}, policy="ignore")
-
     def test_non_callable_validator(self):
         with pytest.raises(TypeError, match="`validator` must be callable"):
-            Guard(validator="not_callable")
+            Guard(validator="not_callable", on="pre")
 
-    def test_repr(self):
+
+# ---------------------------------------------------------------------------
+# Guard hooks
+# ---------------------------------------------------------------------------
+
+
+class TestGuardHooks:
+    def test_pre_call_safe(self):
+        guard = Guard(validator=lambda data: {"safe": True}, on="pre")
+        guard(None, (), {"data": "hello"})  # Should not raise
+
+    def test_pre_call_unsafe_no_message(self):
+        guard = Guard(validator=lambda data: {"safe": False}, on="pre")
+        with pytest.raises(UnsafeUserInputError):
+            guard(None, (), {"data": "bad"})
+
+    def test_pre_call_unsafe_with_message(self):
         guard = Guard(
-            validator=lambda data: {"safe": True}, on="output", policy="message"
+            validator=lambda data: {"safe": False},
+            on="pre",
+            message="Blocked.",
         )
-        assert repr(guard) == "Guard(on='output', policy='message')"
+        with pytest.raises(_GuardInterrupt) as exc_info:
+            guard(None, (), {"data": "bad"})
+        assert exc_info.value.response == "Blocked."
 
+    def test_post_call_safe(self):
+        guard = Guard(validator=lambda data: {"safe": True}, on="post")
+        guard(None, (), {}, "output")  # Should not raise
 
-# ---------------------------------------------------------------------------
-# Guard __call__ / acall
-# ---------------------------------------------------------------------------
+    def test_post_call_unsafe_no_message(self):
+        guard = Guard(validator=lambda data: {"safe": False}, on="post")
+        with pytest.raises(UnsafeModelResponseError):
+            guard(None, (), {}, "output")
 
-
-class TestGuardCall:
-    def test_sync_call(self):
-        guard = Guard(validator=lambda data: {"safe": data != "bad"})
-        assert guard(data="good") == {"safe": True}
-        assert guard(data="bad") == {"safe": False}
+    def test_post_call_unsafe_with_message(self):
+        guard = Guard(
+            validator=lambda data: {"safe": False},
+            on="post",
+            message="Toxic.",
+        )
+        with pytest.raises(_GuardInterrupt) as exc_info:
+            guard(None, (), {}, "output")
+        assert exc_info.value.response == "Toxic."
 
     @pytest.mark.asyncio
     async def test_acall_with_sync_validator(self):
-        guard = Guard(validator=lambda data: {"safe": True})
-        result = await guard.acall(data="hello")
-        assert result == {"safe": True}
+        guard = Guard(validator=lambda data: {"safe": True}, on="pre")
+        await guard.acall(None, (), {"data": "hello"})  # Should not raise
 
     @pytest.mark.asyncio
     async def test_acall_with_coroutine_validator(self):
         async def async_validator(data):
-            return {"safe": data != "bad", "message": "blocked"}
+            return {"safe": "bad" not in str(data)}
 
-        guard = Guard(validator=async_validator)
-        result = await guard.acall(data="good")
-        assert result["safe"] is True
+        guard = Guard(validator=async_validator, on="pre")
+        await guard.acall(None, (), {"text": "good"})  # Should not raise
 
-        result = await guard.acall(data="bad")
-        assert result["safe"] is False
+        with pytest.raises(UnsafeUserInputError):
+            await guard.acall(None, (), {"text": "bad"})
 
     @pytest.mark.asyncio
     async def test_acall_with_acall_method(self):
@@ -79,12 +102,11 @@ class TestGuardCall:
                 return {"safe": True}
 
             async def acall(self, data):
-                return {"safe": False, "message": "async check"}
+                return {"safe": False}
 
-        guard = Guard(validator=ValidatorWithAcall())
-        result = await guard.acall(data="anything")
-        assert result["safe"] is False
-        assert result["message"] == "async check"
+        guard = Guard(validator=ValidatorWithAcall(), on="pre")
+        with pytest.raises(UnsafeUserInputError):
+            await guard.acall(None, (), {"data": "anything"})
 
 
 # ---------------------------------------------------------------------------
@@ -102,88 +124,116 @@ class TestGuardInterrupt:
 
 
 # ---------------------------------------------------------------------------
-# Policy behaviour (unit-level, no Agent)
+# Guard registration on Module
 # ---------------------------------------------------------------------------
 
 
-class TestGuardPolicy:
-    """Test the guard execution logic extracted from Module."""
+class TestGuardRegistration:
+    def test_register_pre_hook(self):
+        from msgflux.nn.modules.generator import Generator
+        from unittest.mock import Mock
 
-    def _run_guards(self, guards, data):
-        """Simulate what Module._execute_input_guards does."""
-        for guard in guards:
-            result = guard(data=data)
-            if not result.get("safe", True):
-                message = result.get("message")
-                if guard.policy == "message":
-                    raise _GuardInterrupt(message or "Blocked by guard.")
-                raise UnsafeUserInputError(message)
+        model = Mock()
+        gen = Generator(model=model)
+        guard = Guard(validator=lambda data: {"safe": True}, on="pre")
+        handle = guard.register(gen)
 
-    def test_policy_raise(self):
+        assert len(gen._forward_pre_hooks) == 1
+        handle.remove()
+        assert len(gen._forward_pre_hooks) == 0
+
+    def test_register_post_hook(self):
+        from msgflux.nn.modules.generator import Generator
+        from unittest.mock import Mock
+
+        model = Mock()
+        gen = Generator(model=model)
+        guard = Guard(validator=lambda data: {"safe": True}, on="post")
+        handle = guard.register(gen)
+
+        assert len(gen._forward_hooks) == 1
+        handle.remove()
+        assert len(gen._forward_hooks) == 0
+
+
+# ---------------------------------------------------------------------------
+# Guard target and processor_key
+# ---------------------------------------------------------------------------
+
+
+class TestGuardTarget:
+    def test_default_target_is_generator(self):
+        guard = Guard(validator=lambda data: {"safe": True}, on="pre")
+        assert guard.target == "generator"
+
+    def test_custom_target(self):
         guard = Guard(
-            validator=lambda data: {"safe": False, "message": "bad input"},
-            on="input",
-            policy="raise",
+            validator=lambda data: {"safe": True}, on="pre", target="embedder"
         )
-        with pytest.raises(UnsafeUserInputError, match="bad input"):
-            self._run_guards([guard], "test")
+        assert guard.target == "embedder"
 
-    def test_policy_message(self):
+    def test_processor_key_pre(self):
+        guard = Guard(validator=lambda data: {"safe": True}, on="pre")
+        assert guard.processor_key == "guard_pre"
+
+    def test_processor_key_post(self):
+        guard = Guard(validator=lambda data: {"safe": True}, on="post")
+        assert guard.processor_key == "guard_post"
+
+    def test_hook_base_processor_key_is_none(self):
+        from msgflux.nn.hooks import Hook
+
+        hook = Hook(on="pre")
+        assert hook.processor_key is None
+
+    def test_hook_base_target_default_none(self):
+        from msgflux.nn.hooks import Hook
+
+        hook = Hook(on="pre")
+        assert hook.target is None
+
+
+# ---------------------------------------------------------------------------
+# include_data opt-in
+# ---------------------------------------------------------------------------
+
+
+class TestGuardIncludeData:
+    def test_include_data_default_false(self):
+        guard = Guard(validator=lambda data: {"safe": True}, on="pre")
+        assert guard.include_data is False
+
+    def test_include_data_off_no_data_in_exception(self):
+        guard = Guard(validator=lambda data: {"safe": False}, on="pre")
+        with pytest.raises(UnsafeUserInputError) as exc_info:
+            guard(None, (), {"text": "bad input"})
+        assert exc_info.value.data is None
+
+    def test_include_data_on_has_data_in_exception(self):
         guard = Guard(
-            validator=lambda data: {"safe": False, "message": "Sorry, blocked."},
-            on="input",
-            policy="message",
+            validator=lambda data: {"safe": False}, on="pre", include_data=True
         )
-        with pytest.raises(_GuardInterrupt) as exc_info:
-            self._run_guards([guard], "test")
-        assert exc_info.value.response == "Sorry, blocked."
+        with pytest.raises(UnsafeUserInputError) as exc_info:
+            guard(None, (), {"text": "bad input"})
+        assert exc_info.value.data == {"text": "bad input"}
 
-    def test_policy_message_no_message(self):
+    def test_include_data_post_hook(self):
+        guard = Guard(
+            validator=lambda data: {"safe": False}, on="post", include_data=True
+        )
+        with pytest.raises(UnsafeModelResponseError) as exc_info:
+            guard(None, (), {}, "toxic output")
+        assert exc_info.value.data == "toxic output"
+
+    def test_include_data_not_set_on_guard_interrupt(self):
         guard = Guard(
             validator=lambda data: {"safe": False},
-            on="input",
-            policy="message",
+            on="pre",
+            message="Blocked.",
+            include_data=True,
         )
-        with pytest.raises(_GuardInterrupt) as exc_info:
-            self._run_guards([guard], "test")
-        assert exc_info.value.response == "Blocked by guard."
-
-    def test_safe_passes(self):
-        guard = Guard(
-            validator=lambda data: {"safe": True},
-            on="input",
-            policy="raise",
-        )
-        self._run_guards([guard], "test")  # Should not raise
-
-    def test_multiple_guards_first_blocks(self):
-        g1 = Guard(
-            validator=lambda data: {"safe": False, "message": "g1 blocked"},
-            on="input",
-            policy="raise",
-        )
-        g2 = Guard(
-            validator=lambda data: {"safe": True},
-            on="input",
-            policy="raise",
-        )
-        with pytest.raises(UnsafeUserInputError, match="g1 blocked"):
-            self._run_guards([g1, g2], "test")
-
-    def test_multiple_guards_second_blocks(self):
-        g1 = Guard(
-            validator=lambda data: {"safe": True},
-            on="input",
-            policy="raise",
-        )
-        g2 = Guard(
-            validator=lambda data: {"safe": False, "message": "g2 blocked"},
-            on="input",
-            policy="message",
-        )
-        with pytest.raises(_GuardInterrupt) as exc_info:
-            self._run_guards([g1, g2], "test")
-        assert exc_info.value.response == "g2 blocked"
+        with pytest.raises(_GuardInterrupt):
+            guard(None, (), {"text": "bad"})
 
 
 # ---------------------------------------------------------------------------
