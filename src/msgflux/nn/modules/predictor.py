@@ -6,6 +6,7 @@ from msgflux.message import Message
 from msgflux.models.base import BaseModel
 from msgflux.models.gateway import ModelGateway
 from msgflux.models.response import ModelResponse
+from msgflux.nn.modules.generator import Generator
 from msgflux.nn.modules.module import Module
 
 
@@ -95,14 +96,14 @@ class Predictor(Module, metaclass=AutoParams):
         self, data: Any, model_preference: Optional[str] = None
     ) -> ModelResponse:
         model_execution_params = self._prepare_model_execution(data, model_preference)
-        model_response = self.model(**model_execution_params)
+        model_response = self.generator(**model_execution_params)
         return model_response
 
     async def _aexecute_model(
         self, data: Any, model_preference: Optional[str] = None
     ) -> ModelResponse:
         model_execution_params = self._prepare_model_execution(data, model_preference)
-        model_response = await self.model.acall(**model_execution_params)
+        model_response = await self.generator.acall(**model_execution_params)
         return model_response
 
     def _prepare_model_execution(
@@ -153,11 +154,16 @@ class Predictor(Module, metaclass=AutoParams):
 
     def _set_model(self, model: Union[BaseModel, ModelGateway]):
         if isinstance(model, (BaseModel, ModelGateway)):
-            self.register_buffer("model", model)
+            self.generator = Generator(model)
         else:
             raise TypeError(
                 f"`model` need be a `BaseModel` model, given `{type(model)}`"
             )
+
+    @property
+    def model(self):
+        """Access underlying model."""
+        return self.generator.model
 
     def _set_config(self, config: Optional[Dict[str, Any]] = None):
         if config is None:
