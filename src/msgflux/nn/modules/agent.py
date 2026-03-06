@@ -128,6 +128,7 @@ class Agent(Module, metaclass=AutoParams):
         signature: Optional[Union[str, Signature]] = None,
         description: Optional[str] = None,
         annotations: Optional[Mapping[str, type]] = None,
+        checkpoint_store=None,
     ):
         """Initialize the Agent module.
 
@@ -342,6 +343,13 @@ class Agent(Module, metaclass=AutoParams):
             self._set_instructions(instructions)
             self._set_system_message(system_message)
 
+        # Checkpoint support
+        self._session_mgr = None
+        if checkpoint_store is not None:
+            from msgflux.nn.modules.session import AgentSessionManager  # noqa: PLC0415
+
+            self._session_mgr = AgentSessionManager(checkpoint_store, self.name)
+
     def forward(
         self, message: Optional[Union[str, Mapping[str, Any], Message]] = None, **kwargs
     ) -> Union[str, Mapping[str, None], ModelStreamResponse, Message]:
@@ -398,6 +406,11 @@ class Agent(Module, metaclass=AutoParams):
             ... )
             >>> agent(name="Vilson", age=27)
         """
+        session_id = kwargs.pop("session_id", None)
+        if self._session_mgr and session_id:
+            return self._forward_with_checkpoint(
+                message, session_id=session_id, **kwargs
+            )
         inputs = self._prepare_task(message, **kwargs)
         model_response = self._execute_model(
             message=message, prefilling=self.prefilling, **inputs
@@ -411,6 +424,11 @@ class Agent(Module, metaclass=AutoParams):
         self, message: Optional[Union[str, Mapping[str, Any], Message]] = None, **kwargs
     ) -> Union[str, Mapping[str, None], ModelStreamResponse, Message]:
         """Async version of forward."""
+        session_id = kwargs.pop("session_id", None)
+        if self._session_mgr and session_id:
+            return await self._aforward_with_checkpoint(
+                message, session_id=session_id, **kwargs
+            )
         inputs = await self._aprepare_task(message, **kwargs)
         model_response = await self._aexecute_model(
             message=message, prefilling=self.prefilling, **inputs
@@ -421,6 +439,447 @@ class Agent(Module, metaclass=AutoParams):
             message, model_response, **inputs
         )
         return response
+
+    def _forward_with_checkpoint(self, message, *, session_id, **kwargs):
+        """Execute forward with checkpoint/resume support."""
+        from msgflux.context import set_session_id  # noqa: PLC0415
+        from msgflux.data.stores.schemas import SessionStatus  # noqa: PLC0415
+
+        token = set_session_id(session_id)
+        try:
+            # Check for existing checkpoint
+            checkpoint = self._session_mgr.load_checkpoint(session_id)
+
+            if checkpoint and checkpoint["status"] == SessionStatus.COMPLETED.value:
+                # Session already completed — run fresh with new message
+                if message is not None:
+                    checkpoint = None
+
+            if checkpoint:
+                messages = checkpoint["messages"]
+                vars = checkpoint["vars"]
+                model_preference = kwargs.pop("model_preference", None)
+                pending = checkpoint.get("pending_tool_calls")
+
+                if pending:
+                    # Resume from pending tool calls
+                    model_response = self._resume_pending_tool_calls(
+                        pending, messages, vars, model_preference
+                    )
+                else:
+                    # Resume from last messages — call model again
+                    model_response = self._execute_model(
+                        messages=messages,
+                        prefilling=self.prefilling,
+                        vars=vars,
+                        model_preference=model_preference,
+                    )
+
+                self._session_mgr.save_checkpoint(
+                    session_id, messages, vars, status=SessionStatus.ACTIVE
+                )
+            else:
+                inputs = self._prepare_task(message, **kwargs)
+                messages = inputs["messages"]
+                vars = inputs["vars"]
+                model_preference = inputs.get("model_preference")
+
+                model_response = self._execute_model(
+                    message=message, prefilling=self.prefilling, **inputs
+                )
+
+                self._session_mgr.save_checkpoint(
+                    session_id, messages, vars, status=SessionStatus.ACTIVE
+                )
+
+            if isinstance(model_response, str):
+                self._session_mgr.save_checkpoint(
+                    session_id, messages, vars, status=SessionStatus.COMPLETED
+                )
+                return self._define_response_mode(model_response, message)
+
+            response = self._process_model_response_with_checkpoint(
+                message,
+                model_response,
+                messages,
+                vars,
+                session_id=session_id,
+                model_preference=model_preference,
+            )
+
+            self._session_mgr.save_checkpoint(
+                session_id, messages, vars, status=SessionStatus.COMPLETED
+            )
+            return response
+        except Exception as e:
+            if self._session_mgr:
+                try:
+                    inputs_for_err = locals()
+                    err_messages = inputs_for_err.get("messages", [])
+                    err_vars = inputs_for_err.get("vars", {})
+                    self._session_mgr.save_checkpoint(
+                        session_id,
+                        err_messages,
+                        err_vars,
+                        status=SessionStatus.FAILED,
+                        error=str(e),
+                    )
+                except Exception:  # noqa: S110
+                    pass
+            raise
+        finally:
+            from msgflux.context import _current_session_id  # noqa: PLC0415
+
+            _current_session_id.reset(token)
+
+    async def _aforward_with_checkpoint(self, message, *, session_id, **kwargs):
+        """Async execute forward with checkpoint/resume support."""
+        from msgflux.context import set_session_id  # noqa: PLC0415
+        from msgflux.data.stores.schemas import SessionStatus  # noqa: PLC0415
+
+        token = set_session_id(session_id)
+        try:
+            checkpoint = self._session_mgr.load_checkpoint(session_id)
+
+            if checkpoint and checkpoint["status"] == SessionStatus.COMPLETED.value:
+                if message is not None:
+                    checkpoint = None
+
+            if checkpoint:
+                messages = checkpoint["messages"]
+                vars = checkpoint["vars"]
+                model_preference = kwargs.pop("model_preference", None)
+                pending = checkpoint.get("pending_tool_calls")
+
+                if pending:
+                    model_response = await self._aresume_pending_tool_calls(
+                        pending, messages, vars, model_preference
+                    )
+                else:
+                    model_response = await self._aexecute_model(
+                        messages=messages,
+                        prefilling=self.prefilling,
+                        vars=vars,
+                        model_preference=model_preference,
+                    )
+
+                self._session_mgr.save_checkpoint(
+                    session_id, messages, vars, status=SessionStatus.ACTIVE
+                )
+            else:
+                inputs = await self._aprepare_task(message, **kwargs)
+                messages = inputs["messages"]
+                vars = inputs["vars"]
+                model_preference = inputs.get("model_preference")
+
+                model_response = await self._aexecute_model(
+                    message=message, prefilling=self.prefilling, **inputs
+                )
+
+                self._session_mgr.save_checkpoint(
+                    session_id, messages, vars, status=SessionStatus.ACTIVE
+                )
+
+            if isinstance(model_response, str):
+                self._session_mgr.save_checkpoint(
+                    session_id, messages, vars, status=SessionStatus.COMPLETED
+                )
+                return self._define_response_mode(model_response, message)
+
+            response = await self._aprocess_model_response_with_checkpoint(
+                message,
+                model_response,
+                messages,
+                vars,
+                session_id=session_id,
+                model_preference=model_preference,
+            )
+
+            self._session_mgr.save_checkpoint(
+                session_id, messages, vars, status=SessionStatus.COMPLETED
+            )
+            return response
+        except Exception as e:
+            if self._session_mgr:
+                try:
+                    inputs_for_err = locals()
+                    err_messages = inputs_for_err.get("messages", [])
+                    err_vars = inputs_for_err.get("vars", {})
+                    self._session_mgr.save_checkpoint(
+                        session_id,
+                        err_messages,
+                        err_vars,
+                        status=SessionStatus.FAILED,
+                        error=str(e),
+                    )
+                except Exception:  # noqa: S110
+                    pass
+            raise
+        finally:
+            from msgflux.context import _current_session_id  # noqa: PLC0415
+
+            _current_session_id.reset(token)
+
+    def _resume_pending_tool_calls(
+        self, pending_tool_calls, messages, vars, model_preference
+    ):
+        """Resume execution from pending tool calls."""
+        tool_results = self._process_tool_call(pending_tool_calls, messages, vars)
+
+        if tool_results.return_directly:
+            return tool_results
+
+        # Continue with next model call
+        return self._execute_model(
+            messages=messages,
+            vars=vars,
+            model_preference=model_preference,
+        )
+
+    async def _aresume_pending_tool_calls(
+        self, pending_tool_calls, messages, vars, model_preference
+    ):
+        """Async resume execution from pending tool calls."""
+        tool_results = await self._aprocess_tool_call(
+            pending_tool_calls, messages, vars
+        )
+
+        if tool_results.return_directly:
+            return tool_results
+
+        return await self._aexecute_model(
+            messages=messages,
+            vars=vars,
+            model_preference=model_preference,
+        )
+
+    def _process_model_response_with_checkpoint(
+        self,
+        message,
+        model_response,
+        messages,
+        vars,
+        *,
+        session_id,
+        model_preference=None,
+    ):
+        """Process model response with intermediate checkpoints."""
+        if "tool_call" in model_response.response_type:
+            model_response, messages = self._process_tool_call_response_with_checkpoint(
+                model_response,
+                messages,
+                vars,
+                model_preference,
+                session_id=session_id,
+            )
+        elif is_subclass_of(self.generation_schema, ToolFlowControl):
+            model_response, messages = self._process_tool_flow_control_response(
+                model_response, messages, vars, model_preference
+            )
+
+        if isinstance(model_response, (ModelResponse, ModelStreamResponse)):
+            raw_response = self._extract_raw_response(model_response)
+            response_type = model_response.response_type
+        else:
+            raw_response = model_response
+            response_type = "tool_responses"
+
+        if response_type in self._supported_outputs:
+            response = self._prepare_response(
+                raw_response, response_type, messages, message, vars
+            )
+            return response
+        else:
+            raise ValueError(f"Unsupported `response_type={response_type}`")
+
+    async def _aprocess_model_response_with_checkpoint(
+        self,
+        message,
+        model_response,
+        messages,
+        vars,
+        *,
+        session_id,
+        model_preference=None,
+    ):
+        """Async process model response with intermediate checkpoints."""
+        if "tool_call" in model_response.response_type:
+            (
+                model_response,
+                messages,
+            ) = await self._aprocess_tool_call_response_with_checkpoint(
+                model_response,
+                messages,
+                vars,
+                model_preference,
+                session_id=session_id,
+            )
+        elif is_subclass_of(self.generation_schema, ToolFlowControl):
+            model_response, messages = await self._aprocess_tool_flow_control_response(
+                model_response, messages, vars, model_preference
+            )
+
+        if isinstance(model_response, (ModelResponse, ModelStreamResponse)):
+            raw_response = self._extract_raw_response(model_response)
+            response_type = model_response.response_type
+        else:
+            raw_response = model_response
+            response_type = "tool_responses"
+
+        if response_type in self._supported_outputs:
+            response = await self._aprepare_response(
+                raw_response, response_type, messages, message, vars
+            )
+            return response
+        else:
+            raise ValueError(f"Unsupported `response_type={response_type}`")
+
+    def _process_tool_call_response_with_checkpoint(
+        self,
+        model_response,
+        messages,
+        vars,
+        model_preference=None,
+        *,
+        session_id,
+    ):
+        """Tool call loop with intermediate checkpoints."""
+        from msgflux.data.stores.schemas import SessionStatus  # noqa: PLC0415
+
+        while True:
+            if model_response.response_type == "tool_call":
+                raw_response = model_response.data
+                reasoning = raw_response.reasoning
+
+                if self.config.get("verbose", False) and reasoning:
+                    cprint(
+                        f"[{self.name}][tool_calls_reasoning] {reasoning}",
+                        bc="br2",
+                        ls="b",
+                    )
+
+                tool_callings = raw_response.get_calls()
+
+                # Checkpoint before tool execution
+                self._session_mgr.save_checkpoint(
+                    session_id,
+                    messages,
+                    vars,
+                    status=SessionStatus.ACTIVE,
+                    pending_tool_calls=tool_callings,
+                )
+
+                tool_results = self._process_tool_call(tool_callings, messages, vars)
+
+                if tool_results.return_directly:
+                    tool_calls = tool_results.to_dict()
+                    tool_calls.pop("return_directly")
+                    tool_calls["reasoning"] = reasoning
+                    tool_responses = dotdict(tool_responses=tool_calls)
+                    return tool_responses, messages
+
+                id_results = {
+                    call.id: call.result or call.error
+                    for call in tool_results.tool_calls
+                }
+                raw_response.insert_results(id_results)
+                tool_responses_message = raw_response.get_messages()
+                messages.extend(tool_responses_message)
+
+                # Checkpoint after tool execution
+                self._session_mgr.save_checkpoint(
+                    session_id,
+                    messages,
+                    vars,
+                    status=SessionStatus.ACTIVE,
+                )
+            else:
+                return model_response, messages
+
+            model_response = self._execute_model(
+                messages=messages, model_preference=model_preference, vars=vars
+            )
+
+            # Checkpoint after model call
+            self._session_mgr.save_checkpoint(
+                session_id,
+                messages,
+                vars,
+                status=SessionStatus.ACTIVE,
+            )
+
+    async def _aprocess_tool_call_response_with_checkpoint(
+        self,
+        model_response,
+        messages,
+        vars,
+        model_preference=None,
+        *,
+        session_id,
+    ):
+        """Async tool call loop with intermediate checkpoints."""
+        from msgflux.data.stores.schemas import SessionStatus  # noqa: PLC0415
+
+        while True:
+            if model_response.response_type == "tool_call":
+                raw_response = model_response.data
+                reasoning = raw_response.reasoning
+
+                if self.config.get("verbose", False) and reasoning:
+                    cprint(
+                        f"[{self.name}][tool_calls_reasoning] {reasoning}",
+                        bc="br2",
+                        ls="b",
+                    )
+
+                tool_callings = raw_response.get_calls()
+
+                self._session_mgr.save_checkpoint(
+                    session_id,
+                    messages,
+                    vars,
+                    status=SessionStatus.ACTIVE,
+                    pending_tool_calls=tool_callings,
+                )
+
+                tool_results = await self._aprocess_tool_call(
+                    tool_callings, messages, vars
+                )
+
+                if tool_results.return_directly:
+                    tool_calls = tool_results.to_dict()
+                    tool_calls.pop("return_directly")
+                    tool_calls["reasoning"] = reasoning
+                    tool_responses = dotdict(tool_responses=tool_calls)
+                    return tool_responses, messages
+
+                id_results = {
+                    call.id: call.result or call.error
+                    for call in tool_results.tool_calls
+                }
+                raw_response.insert_results(id_results)
+                tool_responses_message = raw_response.get_messages()
+                messages.extend(tool_responses_message)
+
+                self._session_mgr.save_checkpoint(
+                    session_id,
+                    messages,
+                    vars,
+                    status=SessionStatus.ACTIVE,
+                )
+            else:
+                return model_response, messages
+
+            model_response = await self._aexecute_model(
+                messages=messages, model_preference=model_preference, vars=vars
+            )
+
+            self._session_mgr.save_checkpoint(
+                session_id,
+                messages,
+                vars,
+                status=SessionStatus.ACTIVE,
+            )
 
     def _execute_model(
         self,
