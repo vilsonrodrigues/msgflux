@@ -4,6 +4,8 @@ from typing import Any, Dict
 
 import pytest
 
+collect_ignore_glob = ["*lki*"]
+
 
 @pytest.fixture
 def sample_state_dict() -> Dict[str, Any]:

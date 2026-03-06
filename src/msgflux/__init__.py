@@ -5,8 +5,17 @@ from .data.dbs import DB
 
 # from .data.parsers import Parser
 from .data.retrievers import Retriever
+from .data.stores import (
+    AsyncCheckpointStore,
+    AsyncSQLiteCheckpointStore,
+    CheckpointStore,
+    DiskCheckpointStore,
+    MemoryCheckpointStore,
+    SQLiteCheckpointStore,
+)
 from .data.types import Audio, File, Image, Video
 from .dotdict import dotdict
+from .dsl import ainline, inline
 from .dsl.signature import InputField, OutputField, Signature
 from .envs import set_envs
 from .examples import Example
@@ -23,27 +32,35 @@ from .utils.inspect import get_fn_name
 from .utils.msgspec import load, msgspec_dumps, save
 
 __all__ = [
-    "DB",
+    "AsyncCheckpointStore",
+    "AsyncSQLiteCheckpointStore",
     "Audio",
     "ChatBlock",
     "ChatML",
+    "CheckpointStore",
+    "DB",
+    "DiskCheckpointStore",
     "Example",
     "File",
     "Guard",
     "Image",
     "InputField",
+    "MemoryCheckpointStore",
     "Message",
     "Model",
     "ModelGateway",
     "OutputField",
     "Retriever",
+    "SQLiteCheckpointStore",
     "Signature",
     "Spans",
     "TaskError",
     "Video",
+    "ainline",
     "cprint",
     "dotdict",
     "get_fn_name",
+    "inline",
     "load",
     "load_dotenv",
     "msgspec_dumps",

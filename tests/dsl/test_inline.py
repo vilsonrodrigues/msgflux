@@ -1,7 +1,7 @@
 import pytest
 
 from msgflux.dotdict import dotdict
-from msgflux.dsl.inline import ainline, inline
+from msgflux.dsl.inline.parser import ainline, inline
 
 
 @pytest.fixture

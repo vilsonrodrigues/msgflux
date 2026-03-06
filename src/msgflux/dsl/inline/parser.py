@@ -1,9 +1,10 @@
+"""DSL parser and executor for inline workflow pipelines."""
+
 import asyncio
 import re
 from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple
 
 from msgflux.dotdict import dotdict
-from msgflux.nn import functional as F
 
 
 class InlineDSL:
@@ -405,7 +406,9 @@ class InlineDSL:
                         f"in {step['modules']}."
                     )
 
-                current_message = F.msg_bcast_gather(parallel_modules, current_message)
+                from msgflux.nn.functional import msg_bcast_gather  # noqa: PLC0415
+
+                current_message = msg_bcast_gather(parallel_modules, current_message)
 
                 # Check for errors from parallel execution
                 errors = current_message.pop("_errors", None)
@@ -449,16 +452,7 @@ class InlineDSL:
 def inline(
     expression: str, modules: Mapping[str, Callable], message: dotdict
 ) -> dotdict:
-    """Internal implementation for DSL-based workflow execution.
-
-    Note:
-        This is the internal implementation. For public API usage,
-        prefer using `msgflux.nn.functional.inline` which provides
-        full documentation and examples.
-
-    See Also:
-        msgflux.nn.functional.inline: Public API with complete documentation.
-    """
+    """Internal implementation for DSL-based workflow execution."""
     if not isinstance(expression, str):
         raise TypeError("`expression` must be a str")
     if not isinstance(message, dotdict):
@@ -545,7 +539,9 @@ class AsyncInlineDSL(InlineDSL):
                         f"in {step['modules']}."
                     )
 
-                current_message = await F.amsg_bcast_gather(
+                from msgflux.nn.functional import amsg_bcast_gather  # noqa: PLC0415
+
+                current_message = await amsg_bcast_gather(
                     parallel_modules, current_message
                 )
 
@@ -575,7 +571,7 @@ class AsyncInlineDSL(InlineDSL):
                     # Check for acall method first, then coroutine function
                     if hasattr(module, "acall"):
                         current_message = await module.acall(current_message)
-                    elif F.asyncio.iscoroutinefunction(module):
+                    elif asyncio.iscoroutinefunction(module):
                         current_message = await module(current_message)
                     else:
                         # Fallback to sync call
@@ -599,16 +595,7 @@ class AsyncInlineDSL(InlineDSL):
 async def ainline(
     expression: str, modules: Mapping[str, Callable], message: dotdict
 ) -> dotdict:
-    """Internal async implementation for DSL-based workflow execution.
-
-    Note:
-        This is the internal implementation. For public API usage,
-        prefer using `msgflux.nn.functional.ainline` which provides
-        full documentation and examples.
-
-    See Also:
-        msgflux.nn.functional.ainline: Public API with complete documentation.
-    """
+    """Internal async implementation for DSL-based workflow execution."""
     if not isinstance(expression, str):
         raise TypeError("`expression` must be a str")
     if not isinstance(message, dotdict):
