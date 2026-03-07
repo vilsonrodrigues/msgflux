@@ -69,9 +69,10 @@ class MediaMaker(Module, metaclass=AutoParams):
         response_format:
             Data output format.
         response_mode:
-            What the response should be.
-            * `plain_response` (default): Returns the final agent response directly.
-            * other: Write on field in Message object.
+            Controls how the response is returned.
+            * ``None`` (default): Returns the response directly.
+            * ``"<path>"``: Writes to ``msg.<path>`` and returns ``None``
+              (``Message`` is mutated in place).
         negative_prompt:
             Instructions on what not to have.
         config:

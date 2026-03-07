@@ -44,9 +44,10 @@ class Predictor(Module, metaclass=AutoParams):
             - model_preference: Field path for model preference (str, only valid
               with ModelGateway)
         response_mode:
-            What the response should be.
-            * `plain_response` (default): Returns the final agent response directly.
-            * other: Write on field in Message object.
+            Controls how the response is returned.
+            * ``None`` (default): Returns the response directly.
+            * ``"<path>"``: Writes to ``msg.<path>`` and returns ``None``
+              (``Message`` is mutated in place).
         response_template:
             A Jinja template to format response.
         config:
