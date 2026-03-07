@@ -732,9 +732,9 @@ This structure helps the model clearly distinguish between background informatio
         response = scraper("https://example.com/news")
         print(response)  # Direct string response
 
-        # Declarative: Read from Message, write to Message
+        # Declarative: Read from Message, write to Message (returns None)
         msg = mf.Message(content="https://example.com/news")
-        msg = scraper(msg)
+        scraper(msg)
         print(msg.summary)  # Response stored in message
         ```
 
@@ -896,7 +896,7 @@ Templates use **Jinja2** syntax to format inputs and outputs. There are three te
         agent = Assistant()
 
         msg = mf.Message(content="Who was Nikola Tesla?")
-        msg = agent(msg)
+        agent(msg)
         print(msg.get("assistant.output"))
         # Model outputs: {"safe": true, "answer": "Nikola Tesla was..."}
         # Template formats: "Hi! Nikola Tesla was..."
