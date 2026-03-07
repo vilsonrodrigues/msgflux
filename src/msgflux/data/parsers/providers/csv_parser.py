@@ -277,38 +277,3 @@ class StandardCsvParser(BaseParser, CsvParser):
         html += "</table>"
         return html
 
-    async def acall(self, data: Union[str, bytes], **kwargs) -> ParserResponse:
-        """Async version of __call__. Parse a CSV document asynchronously.
-
-        Args:
-            data:
-                CSV file path, URL, or bytes.
-            **kwargs:
-                Additional parsing options (currently unused).
-
-        Returns:
-            ParserResponse containing parsed data.
-
-        Raises:
-            FileNotFoundError:
-                If file path doesn't exist.
-            ValueError:
-                If data type is not supported.
-        """
-        # Validate file type if it's a path
-        if isinstance(data, str) and not data.startswith(("http://", "https://")):
-            self._validate_file_type(data, [".csv", ".tsv", ".txt"])
-
-        # Load file asynchronously if it's a string path/URL
-        if isinstance(data, str):
-            data = await self._aload_file(data)
-
-        # Parse the document
-        result = self._parse(data)
-
-        # Create response
-        response = ParserResponse()
-        response.set_response_type("csv_parse")
-        response.add(result)
-
-        return response

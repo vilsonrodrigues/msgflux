@@ -131,11 +131,14 @@ class PyPDFPdfParser(BaseParser, PdfParser):
             # Add page marker
             md_content += f"\n\n<!-- Page number: {idx + 1} -->\n"
 
-            # Extract text
-            text = page.extract_text(
-                extraction_mode=self.extraction_mode,
-                layout_mode_space_vertically=False,
-            )
+            # Extract text (blank pages have no /Contents stream)
+            try:
+                text = page.extract_text(
+                    extraction_mode=self.extraction_mode,
+                    layout_mode_space_vertically=False,
+                )
+            except KeyError:
+                text = page.extract_text()
             md_content += text.strip() + "\n"
 
             # Extract images from page
@@ -182,41 +185,3 @@ class PyPDFPdfParser(BaseParser, PdfParser):
             "metadata": metadata,
         }
 
-    async def acall(self, data: Union[str, bytes], **kwargs) -> ParserResponse:
-        """Async version of __call__. Parse a PDF document asynchronously.
-
-        Args:
-            data:
-                PDF file path, URL, or bytes.
-            **kwargs:
-                Additional parsing options (currently unused).
-
-        Returns:
-            ParserResponse containing:
-            - text: Markdown-formatted content
-            - images: Dictionary of extracted images
-            - metadata: Document metadata (num_pages, etc.)
-
-        Raises:
-            FileNotFoundError:
-                If file path doesn't exist.
-            ValueError:
-                If data type is not supported.
-        """
-        # Validate file type if it's a path
-        if isinstance(data, str) and not data.startswith(("http://", "https://")):
-            self._validate_file_type(data, ".pdf")
-
-        # Load file asynchronously if needed
-        if isinstance(data, str):
-            data = await self._aload_file(data)
-
-        # Parse the document (synchronous, but file was loaded async)
-        result = self._parse(data)
-
-        # Create response
-        response = ParserResponse()
-        response.set_response_type("pdf_parse")
-        response.add(result)
-
-        return response

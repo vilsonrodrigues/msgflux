@@ -3,7 +3,7 @@ from msgspec_ext.fast_dotenv import load_dotenv
 from .cache import response_cache
 from .data.dbs import DB
 
-# from .data.parsers import Parser
+from .data.parsers import Parser
 from .data.retrievers import Retriever
 from .data.types import Audio, File, Image, Video
 from .dotdict import dotdict
@@ -36,6 +36,7 @@ __all__ = [
     "Model",
     "ModelGateway",
     "OutputField",
+    "Parser",
     "Retriever",
     "Signature",
     "Spans",
