@@ -1190,7 +1190,7 @@ class TestResponseMode:
         m = self._make_module("outputs.result")
         msg = Message(content="input")
         result = m._define_response_mode("answer", msg)
-        assert result is msg
+        assert result is None
         assert msg.get("outputs.result") == "answer"
 
     def test_define_response_mode_message_without_message_raises(self):

@@ -232,7 +232,8 @@ class Agent(Module, metaclass=AutoParams):
         response_mode:
             Controls how the response is returned.
             * ``None`` (default): Returns the response directly.
-            * ``"<path>"``: Writes to ``msg.<path>`` and returns the ``Message``.
+            * ``"<path>"``: Writes to ``msg.<path>`` and returns ``None``
+              (``Message`` is mutated in place).
             * ``"<path>:"``: Returns a new ``dotdict`` with the response stored
               under ``<path>`` (no ``Message`` required).
         tools:

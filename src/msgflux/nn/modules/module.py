@@ -584,7 +584,7 @@ class Module:
             return result
         elif isinstance(message, Message):
             message.set(self.response_mode, response)
-            return message
+            return None
         else:
             raise ValueError("For non-Message objects, `response_mode` must be None")
 
