@@ -43,9 +43,11 @@ class Speaker(Module, metaclass=AutoParams):
             Field description:
             - task_inputs: Field path for task input (str)
         response_mode:
-            What the response should be.
-            * `plain_response` (default): Returns the final agent response directly.
-            * other: Write on field in Message object.
+            Controls how the response is returned.
+            * ``None`` (default): Returns the response directly.
+            * ``"<path>"``: Writes to ``msg.<path>`` and returns the ``Message``.
+            * ``"<path>:"``: Returns a new ``dotdict`` with the response stored
+              under ``<path>`` (no ``Message`` required).
         response_format:
             The format to audio in.
         prompt:

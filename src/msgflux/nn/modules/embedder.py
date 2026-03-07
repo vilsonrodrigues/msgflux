@@ -55,9 +55,11 @@ class Embedder(Module, metaclass=AutoParams):
             - model_preference: Field path for model preference (str, only valid
               with ModelGateway)
         response_mode:
-            What the response should be.
-            * `plain_response` (default): Returns embeddings directly.
-            * other: Write on field in Message object.
+            Controls how the response is returned.
+            * ``None`` (default): Returns the embeddings directly.
+            * ``"<path>"``: Writes to ``msg.<path>`` and returns the ``Message``.
+            * ``"<path>:"``: Returns a new ``dotdict`` with the response stored
+              under ``<path>`` (no ``Message`` required).
         config:
             Dictionary with configuration options. Accepts any keys without validation.
             Additional parameters will be passed directly to model execution.

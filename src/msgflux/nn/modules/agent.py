@@ -230,9 +230,11 @@ class Agent(Module, metaclass=AutoParams):
             Converts the model raw output into a typed-dict. Supported parser:
             `typed_xml`.
         response_mode:
-            What the response should be.
-            * `plain_response` (default): Returns the final agent response directly.
-            * other: Write on field in Message object.
+            Controls how the response is returned.
+            * ``None`` (default): Returns the response directly.
+            * ``"<path>"``: Writes to ``msg.<path>`` and returns the ``Message``.
+            * ``"<path>:"``: Returns a new ``dotdict`` with the response stored
+              under ``<path>`` (no ``Message`` required).
         tools:
             A list of callable objects.
         mcp_servers:
