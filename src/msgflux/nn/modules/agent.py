@@ -232,8 +232,8 @@ class Agent(Module, metaclass=AutoParams):
         response_mode:
             Controls how the response is returned.
             * ``None`` (default): Returns the response directly.
-            * ``"<path>"``: Writes to ``msg.<path>`` and returns ``None``
-              (``Message`` is mutated in place).
+            * ``"<path>"``: Writes to ``obj.<path>`` and returns ``None``
+              (``dotdict`` or ``Message`` is mutated in place).
         tools:
             A list of callable objects.
         mcp_servers:
@@ -929,13 +929,13 @@ class Agent(Module, metaclass=AutoParams):
             )
 
         # Extract vars from Message if not provided
-        if not vars and isinstance(message, Message) and self.vars is not None:
+        if not vars and isinstance(message, dotdict) and self.vars is not None:
             vars = message.get(self.vars, {})
 
         # Extract messages from Message if not provided
         if (
             messages == []
-            and isinstance(message, Message)
+            and isinstance(message, dotdict)
             and self.messages is not None
         ):
             messages = self._get_content_from_message(self.messages, message)
@@ -958,7 +958,7 @@ class Agent(Module, metaclass=AutoParams):
             else:
                 messages.extend(chat_content)
 
-        if model_preference is None and isinstance(message, Message):
+        if model_preference is None and isinstance(message, dotdict):
             model_preference = self.get_model_preference_from_message(message)
 
         return {
@@ -1006,13 +1006,13 @@ class Agent(Module, metaclass=AutoParams):
             )
 
         # Extract vars from Message if not provided
-        if not vars and isinstance(message, Message) and self.vars is not None:
+        if not vars and isinstance(message, dotdict) and self.vars is not None:
             vars = message.get(self.vars, {})
 
         # Extract messages from Message if not provided
         if (
             messages == []
-            and isinstance(message, Message)
+            and isinstance(message, dotdict)
             and self.messages is not None
         ):
             messages = self._get_content_from_message(self.messages, message)
@@ -1036,7 +1036,7 @@ class Agent(Module, metaclass=AutoParams):
                 messages.extend(chat_content)
         # messages is already set when content is None
 
-        if model_preference is None and isinstance(message, Message):
+        if model_preference is None and isinstance(message, dotdict):
             model_preference = self.get_model_preference_from_message(message)
 
         return {
@@ -1057,7 +1057,7 @@ class Agent(Module, metaclass=AutoParams):
         if context_content:
             content += context_content
 
-        if isinstance(message, Message):
+        if isinstance(message, dotdict):
             task_inputs = self._extract_message_values(self.task_inputs, message)
         else:
             task_inputs = message
@@ -1108,7 +1108,7 @@ class Agent(Module, metaclass=AutoParams):
         if context_content:
             content += context_content
 
-        if isinstance(message, Message):
+        if isinstance(message, dotdict):
             task_inputs = self._extract_message_values(self.task_inputs, message)
         else:
             task_inputs = message
@@ -1164,7 +1164,7 @@ class Agent(Module, metaclass=AutoParams):
         runtime_context_inputs = kwargs.pop("context_inputs", None)
         if runtime_context_inputs is not None:
             context_inputs = runtime_context_inputs
-        elif isinstance(message, Message):
+        elif isinstance(message, dotdict):
             context_inputs = self._extract_message_values(self.context_inputs, message)
 
         if context_inputs is not None:
@@ -1207,7 +1207,7 @@ class Agent(Module, metaclass=AutoParams):
         task_multimodal_inputs = kwargs.get("task_multimodal_inputs", None)
         if task_multimodal_inputs is not None:
             multimodal_paths = task_multimodal_inputs
-        elif isinstance(message, Message) and self.task_multimodal_inputs is not None:
+        elif isinstance(message, dotdict) and self.task_multimodal_inputs is not None:
             multimodal_paths = self._extract_message_values(
                 self.task_multimodal_inputs, message
             )
@@ -1247,7 +1247,7 @@ class Agent(Module, metaclass=AutoParams):
         task_multimodal_inputs = kwargs.get("task_multimodal_inputs", None)
         if task_multimodal_inputs is not None:
             multimodal_paths = task_multimodal_inputs
-        elif isinstance(message, Message) and self.task_multimodal_inputs is not None:
+        elif isinstance(message, dotdict) and self.task_multimodal_inputs is not None:
             multimodal_paths = self._extract_message_values(
                 self.task_multimodal_inputs, message
             )

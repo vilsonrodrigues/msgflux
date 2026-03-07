@@ -52,8 +52,8 @@ class Transcriber(Module, metaclass=AutoParams):
         response_mode:
             Controls how the response is returned.
             * ``None`` (default): Returns the response directly.
-            * ``"<path>"``: Writes to ``msg.<path>`` and returns ``None``
-              (``Message`` is mutated in place).
+            * ``"<path>"``: Writes to ``obj.<path>`` and returns ``None``
+              (``dotdict`` or ``Message`` is mutated in place).
         response_format: How the model should format the output. Options:
             * text (default)
             * json
@@ -192,7 +192,7 @@ class Transcriber(Module, metaclass=AutoParams):
         data = self._process_task_multimodal_inputs(message)
 
         model_preference = kwargs.pop("model_preference", None)
-        if model_preference is None and isinstance(message, Message):
+        if model_preference is None and isinstance(message, dotdict):
             model_preference = self.get_model_preference_from_message(message)
 
         return {"data": data, "model_preference": model_preference}
@@ -211,7 +211,7 @@ class Transcriber(Module, metaclass=AutoParams):
     def _process_task_multimodal_inputs(
         self, message: Union[bytes, str, Dict[str, str], Message]
     ) -> bytes:
-        if isinstance(message, Message):
+        if isinstance(message, dotdict):
             audio_content = self._extract_message_values(
                 self.task_multimodal_inputs, message
             )

@@ -71,8 +71,8 @@ class MediaMaker(Module, metaclass=AutoParams):
         response_mode:
             Controls how the response is returned.
             * ``None`` (default): Returns the response directly.
-            * ``"<path>"``: Writes to ``msg.<path>`` and returns ``None``
-              (``Message`` is mutated in place).
+            * ``"<path>"``: Writes to ``obj.<path>`` and returns ``None``
+              (``dotdict`` or ``Message`` is mutated in place).
         negative_prompt:
             Instructions on what not to have.
         config:
@@ -189,7 +189,7 @@ class MediaMaker(Module, metaclass=AutoParams):
     def _prepare_task(self, message: Union[str, Message], **kwargs) -> Dict[str, Any]:
         inputs = dotdict()
 
-        if isinstance(message, Message):
+        if isinstance(message, dotdict):
             prompt = self._extract_message_values(self.task_inputs, message)
         else:
             prompt = message
@@ -203,7 +203,7 @@ class MediaMaker(Module, metaclass=AutoParams):
             inputs.prompt = prompt
 
         model_preference = kwargs.pop("model_preference", None)
-        if model_preference is None and isinstance(message, Message):
+        if model_preference is None and isinstance(message, dotdict):
             model_preference = self.get_model_preference_from_message(message)
 
         if model_preference:
@@ -220,7 +220,7 @@ class MediaMaker(Module, metaclass=AutoParams):
     ) -> Dict[str, Any]:
         """Processes multimodal image inputs."""
         task_multimodal_inputs = kwargs.pop("task_multimodal_inputs", None)
-        if task_multimodal_inputs is None and isinstance(message, Message):
+        if task_multimodal_inputs is None and isinstance(message, dotdict):
             task_multimodal_inputs = self._extract_message_values(
                 self.task_multimodal_inputs, message
             )

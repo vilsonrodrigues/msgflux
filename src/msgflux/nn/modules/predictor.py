@@ -46,8 +46,8 @@ class Predictor(Module, metaclass=AutoParams):
         response_mode:
             Controls how the response is returned.
             * ``None`` (default): Returns the response directly.
-            * ``"<path>"``: Writes to ``msg.<path>`` and returns ``None``
-              (``Message`` is mutated in place).
+            * ``"<path>"``: Writes to ``obj.<path>`` and returns ``None``
+              (``dotdict`` or ``Message`` is mutated in place).
         response_template:
             A Jinja template to format response.
         config:
@@ -131,7 +131,7 @@ class Predictor(Module, metaclass=AutoParams):
     def _prepare_task(self, message: Union[Any, Message], **kwargs) -> Dict[str, Any]:
         inputs = dotdict()
 
-        if isinstance(message, Message):
+        if isinstance(message, dotdict):
             data = self._extract_message_values(self.task_inputs, message)
         else:
             data = message
@@ -139,7 +139,7 @@ class Predictor(Module, metaclass=AutoParams):
         inputs.data = data
 
         model_preference = kwargs.pop("model_preference", None)
-        if model_preference is None and isinstance(message, Message):
+        if model_preference is None and isinstance(message, dotdict):
             model_preference = self.get_model_preference_from_message(message)
 
         if model_preference:

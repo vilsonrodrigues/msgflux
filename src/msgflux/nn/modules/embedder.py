@@ -57,8 +57,8 @@ class Embedder(Module, metaclass=AutoParams):
         response_mode:
             Controls how the response is returned.
             * ``None`` (default): Returns the embeddings directly.
-            * ``"<path>"``: Writes to ``msg.<path>`` and returns ``None``
-              (``Message`` is mutated in place).
+            * ``"<path>"``: Writes to ``obj.<path>`` and returns ``None``
+              (``dotdict`` or ``Message`` is mutated in place).
         config:
             Dictionary with configuration options. Accepts any keys without validation.
             Additional parameters will be passed directly to model execution.
@@ -213,13 +213,13 @@ class Embedder(Module, metaclass=AutoParams):
         self, message: Union[str, List[str], Message], **kwargs
     ) -> Dict[str, Any]:
         """Prepare task inputs."""
-        if isinstance(message, Message):
+        if isinstance(message, dotdict):
             data = self._extract_message_values(self.task_inputs, message)
         else:
             data = message
 
         model_preference = kwargs.pop("model_preference", None)
-        if model_preference is None and isinstance(message, Message):
+        if model_preference is None and isinstance(message, dotdict):
             model_preference = self.get_model_preference_from_message(message)
 
         return {"data": data, "model_preference": model_preference}

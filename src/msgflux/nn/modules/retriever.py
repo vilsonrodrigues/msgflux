@@ -59,8 +59,8 @@ class Retriever(Module, metaclass=AutoParams):
         response_mode:
             Controls how the response is returned.
             * ``None`` (default): Returns the response directly.
-            * ``"<path>"``: Writes to ``msg.<path>`` and returns ``None``
-              (``Message`` is mutated in place).
+            * ``"<path>"``: Writes to ``obj.<path>`` and returns ``None``
+              (``dotdict`` or ``Message`` is mutated in place).
         templates:
             Dictionary mapping template types to Jinja template strings.
             Valid keys: "response"
@@ -204,7 +204,7 @@ class Retriever(Module, metaclass=AutoParams):
     def _prepare_task(
         self, message: Union[str, List[str], List[Dict[str, Any]], Message], **kwargs
     ) -> List[str]:
-        if isinstance(message, Message):
+        if isinstance(message, dotdict):
             queries = self._extract_message_values(self.task_inputs, message)
         else:
             queries = message
@@ -216,7 +216,7 @@ class Retriever(Module, metaclass=AutoParams):
                 queries = self._process_list_of_dict_inputs(queries)
 
         model_preference = kwargs.pop("model_preference", None)
-        if model_preference is None and isinstance(message, Message):
+        if model_preference is None and isinstance(message, dotdict):
             model_preference = self.get_model_preference_from_message(message)
 
         return {"queries": queries, "model_preference": model_preference}

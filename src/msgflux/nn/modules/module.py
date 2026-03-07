@@ -470,7 +470,7 @@ class Module:
 
     def _get_content_from_message(self, path: str, message: Message):
         content = None
-        if isinstance(message, Message):
+        if isinstance(message, dotdict):
             if isinstance(path, tuple):  # OR inputs
                 content = self._get_content_from_or_input(path, message)
             else:
@@ -577,11 +577,11 @@ class Module:
     def _define_response_mode(self, response: Any, message: Any) -> Any:
         if self.response_mode is None:
             return response
-        elif isinstance(message, Message):
+        elif isinstance(message, dotdict):
             message.set(self.response_mode, response)
             return None
         else:
-            raise ValueError("For non-Message objects, `response_mode` must be None")
+            raise ValueError("For non-dotdict objects, `response_mode` must be None")
 
     def _set_task_inputs(
         self, task_inputs: Optional[Union[str, Dict[str, str], Tuple[str, ...]]] = None
@@ -749,7 +749,7 @@ class Module:
         self.templates = templates.copy()
 
     def get_model_preference_from_message(self, message: Message) -> Optional[str]:
-        if isinstance(message, Message) and isinstance(self.model_preference, str):
+        if isinstance(message, dotdict) and isinstance(self.model_preference, str):
             return message.get(self.model_preference)
         else:
             return None

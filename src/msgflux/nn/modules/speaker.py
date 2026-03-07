@@ -45,8 +45,8 @@ class Speaker(Module, metaclass=AutoParams):
         response_mode:
             Controls how the response is returned.
             * ``None`` (default): Returns the response directly.
-            * ``"<path>"``: Writes to ``msg.<path>`` and returns ``None``
-              (``Message`` is mutated in place).
+            * ``"<path>"``: Writes to ``obj.<path>`` and returns ``None``
+              (``dotdict`` or ``Message`` is mutated in place).
         response_format:
             The format to audio in.
         prompt:
@@ -155,7 +155,7 @@ class Speaker(Module, metaclass=AutoParams):
             )
 
     def _prepare_task(self, message: Union[str, Message], **kwargs) -> Dict[str, str]:
-        if isinstance(message, Message):
+        if isinstance(message, dotdict):
             data = self._extract_message_values(self.task_inputs, message)
             if data is None:
                 raise ValueError(f"No text found in paths: `{self.task_inputs}`")
@@ -165,7 +165,7 @@ class Speaker(Module, metaclass=AutoParams):
             raise ValueError(f"Unsupported message type: `{type(message)}`")
 
         model_preference = kwargs.pop("model_preference", None)
-        if model_preference is None and isinstance(message, Message):
+        if model_preference is None and isinstance(message, dotdict):
             model_preference = self.get_model_preference_from_message(message)
 
         return {"data": data, "model_preference": model_preference}
