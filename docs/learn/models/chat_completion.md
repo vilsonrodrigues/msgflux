@@ -1,0 +1,1370 @@
+# Chat Completion
+
+The `chat_completion` model is the most versatile model type for natural language interactions. It processes messages in conversational format and supports advanced features like multimodal input/output, structured generation, and tool calling.
+
+!!! info "Dependencies"
+    Most providers use the OpenAI Python client under the hood, so a single extra covers all of them:
+
+    === "uv"
+        ```bash
+        uv add msgflux[openai]
+        ```
+
+    === "pip"
+        ```bash
+        pip install msgflux[openai]
+        ```
+
+    See [Dependency Management](../../dependency-management.md) for the complete provider matrix.
+
+## Overview
+
+Chat completion models are stateless - they don't maintain conversation history between calls. You must provide all context (previous messages, system prompt, etc.) in each request.
+
+### Quick Start
+
+???+ example
+
+    ```python
+    # pip install msgflux[openai]
+    import msgflux as mf
+
+    # mf.set_envs(OPENAI_API_KEY="...")
+
+    # Create model
+    model = mf.Model.chat_completion("openai/gpt-4.1-mini")
+
+    response = model("Hello!")
+    print(response.consume())
+    ```
+
+!!! tip
+
+    `consume()` is an alias for `.data`.
+
+## Model Initialization
+
+### Basic Parameters
+
+???+ example
+
+    ```python
+    import msgflux as mf
+
+    model = mf.Model.chat_completion(
+        "openai/gpt-4.1-mini",
+        # --- Generation ---
+        temperature=0.7,               # Randomness (0-2)
+        max_tokens=1000,               # Max output tokens (includes reasoning tokens)
+        top_p=0.9,                     # Nucleus sampling (alternative to temperature)
+        stop=["\n\n"],                 # Stop sequences (up to 4)
+        # --- Reasoning ---
+        reasoning_effort="medium",     # "minimal", "low", "medium", "high"
+        enable_thinking=True,          # Enable extended model reasoning
+        return_reasoning=True,         # Include reasoning content in response
+        reasoning_max_tokens=4096,     # Max tokens reserved for reasoning/thinking
+        reasoning_in_tool_call=True,   # Preserve reasoning context across tool calls
+        # --- Output ---
+        modalities=["text"],           # ["text"], ["audio"] or ["text", "audio"]
+        audio={"voice": "alloy", "format": "mp3"},  # Audio output config
+        verbosity="medium",            # Response verbosity: "low", "medium", "high"
+        parallel_tool_calls=True,      # Allow model to call multiple tools in parallel
+        validate_typed_parser_output=False,  # Validate typed parser output with schema
+        verbose=False,                 # Print raw output before transformation
+        # --- Search ---
+        web_search_options={},         # Web search config (OpenAI / OpenRouter only)
+        # --- Infrastructure ---
+        base_url="https://api.openai.com/v1",  # Override provider API endpoint
+        context_length=128000,         # Override maximum context window
+        enable_cache=True,             # Cache identical API responses in-process
+        cache_size=128,                # Max number of cached entries
+        retry=None,                    # Custom tenacity retry configuration
+    )
+    ```
+
+## System Prompt
+
+The `system_prompt` parameter sets the model's overarching behavior and role before any user messages. It is a convenience shorthand: when provided, msgFlux automatically inserts a `system` message at the beginning of the conversation, so you don't have to do it manually in the messages list.
+
+???+ example
+
+    === "Basic Usage"
+
+        ```python
+        import msgflux as mf
+
+        model = mf.Model.chat_completion("openai/gpt-4.1-mini")
+
+        response = model(
+            messages="What is recursion?",
+            system_prompt="You are a computer science teacher. Explain concepts clearly with short examples."
+        )
+
+        print(response.consume())
+        # Recursion is when a function calls itself to solve a smaller version of the same problem...
+        ```
+
+    === "Persona and Tone"
+
+        ```python
+        import msgflux as mf
+
+        model = mf.Model.chat_completion("openai/gpt-4.1-mini")
+
+        # Customer support assistant
+        response = model(
+            messages="My order hasn't arrived yet.",
+            system_prompt=(
+                "You are a friendly customer support agent for an online store. "
+                "Always be empathetic, offer concrete next steps, and avoid technical jargon."
+            )
+        )
+
+        print(response.consume())
+        ```
+
+    === "Format Instructions"
+
+        ```python
+        import msgflux as mf
+
+        model = mf.Model.chat_completion("openai/gpt-4.1-mini")
+
+        response = model(
+            messages="Summarize the water cycle.",
+            system_prompt=(
+                "Always respond in bullet points. "
+                "Use at most 5 bullets per answer. "
+                "Be concise."
+            )
+        )
+
+        print(response.consume())
+        # - Water evaporates from oceans and lakes due to solar heat.
+        # - Water vapor rises and cools, forming clouds (condensation).
+        # - Clouds release water as rain or snow (precipitation).
+        # - Water flows into rivers and groundwater (collection).
+        # - The cycle repeats continuously.
+        ```
+
+!!! note
+    If your messages list already contains a `{"role": "system", ...}` entry, passing `system_prompt` will insert a **second** system message at position 0. Avoid mixing both approaches in the same call.
+
+## Response Caching
+
+Response caching avoids redundant API calls by caching identical requests:
+
+???+ example
+
+    === "Enabling Cache"
+
+        ```python
+        import msgflux as mf
+
+        # Enable cache on initialization
+        model = mf.Model.chat_completion(
+            "openai/gpt-4.1-mini",
+            enable_cache=True,   # Enable caching
+            cache_size=128       # Cache up to 128 responses
+        )
+
+        # First call - hits API
+        response1 = model(messages=[{"role": "user", "content": "Hello"}])
+        print(response1.consume())
+
+        # Second identical call - returns cached response (no API call)
+        response2 = model(messages=[{"role": "user", "content": "Hello"}])
+        print(response2.consume())
+
+        # Different call - hits API again
+        response3 = model(messages=[{"role": "user", "content": "Hi"}])
+        print(response3.consume())
+        ```
+
+    === "Cache Statistics"
+
+        ```python
+        import msgflux as mf
+
+        model = mf.Model.chat_completion(
+            "openai/gpt-4.1-mini",
+            enable_cache=True,
+            cache_size=128
+        )
+
+        # Make some calls
+        model(messages=[{"role": "user", "content": "Test 1"}])
+        model(messages=[{"role": "user", "content": "Test 1"}])  # Cache hit
+        model(messages=[{"role": "user", "content": "Test 2"}])
+
+        # Check cache stats
+        if model._response_cache:
+            stats = model._response_cache.cache_info()
+            print(stats)
+            # {
+            #     'hits': 1,
+            #     'misses': 2,
+            #     'maxsize': 128,
+            #     'currsize': 2
+            # }
+
+            # Clear cache
+            model._response_cache.cache_clear()
+        ```
+
+### Cache Behavior
+
+The cache is sensitive to:
+- Message content
+- System prompt
+- Temperature and sampling parameters
+- Generation schema
+- Tool schemas
+
+Changing any of these creates a new cache entry.
+
+## Message Formats
+
+???+ example
+
+    === "Simple String"
+
+        ```python
+        response = model(
+            messages="What is Python?",
+            system_prompt="You are a programming expert."
+        )
+        ```
+
+    === "ChatML Format"
+
+        ```python
+        messages = [
+            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "user", "content": "Hello!"},
+            {"role": "assistant", "content": "Hi! How can I help?"},
+            {"role": "user", "content": "Tell me a joke."}
+        ]
+
+        response = model(messages=messages)
+        ```
+
+    === "ChatBlock Format"
+
+        ```python
+        import msgflux as mf
+
+        # Text only
+        messages = [
+            mf.ChatBlock.user("What's in this image?")
+        ]
+
+        # With images
+        messages = [
+            mf.ChatBlock.user(
+                "Describe this image",
+                media=mf.ChatBlock.image("https://example.com/image.jpg")
+            )
+        ]
+
+        # Multiple media
+        messages = [
+            mf.ChatBlock.user(
+                "Compare these images",
+                media=[
+                    mf.ChatBlock.image("https://example.com/image1.jpg"),
+                    mf.ChatBlock.image("https://example.com/image2.jpg")
+                ]
+            )
+        ]
+
+        response = model(messages=messages)
+        ```
+
+## Async Support
+
+Async version for concurrent operations:
+
+???+ example
+
+    ```python
+    import msgflux as mf
+    import asyncio
+
+    model = mf.Model.chat_completion("openai/gpt-4.1-mini")
+
+    response = await model.acall(
+        messages=[{"role": "user", "content": prompt}]
+    )
+    return response.consume()
+    ```
+
+## Streaming
+
+Stream tokens as they're generated:
+
+???+ example
+
+    === "Basic Streaming"
+
+        ```python
+        import msgflux as mf
+
+        model = mf.Model.chat_completion("openai/gpt-4.1-mini")
+
+        response = model(
+            messages=[{"role": "user", "content": "Count to 10"}],
+            stream=True
+        )
+
+        async for chunk in response.consume():
+            print(chunk, end="", flush=True)
+        ```
+
+    === "Async Streaming"
+
+        ```python
+        import msgflux as mf
+
+        model = mf.Model.chat_completion("openai/gpt-4.1-mini")
+
+        response = await model.acall(
+            messages=[{"role": "user", "content": "Write a short poem"}],
+            stream=True
+        )
+
+        async for chunk in response.consume():
+            print(chunk, end="", flush=True)
+        ```
+
+    === "FastAPI"
+
+        ```python
+        from fastapi import FastAPI
+        from fastapi.responses import StreamingResponse
+        import msgflux as mf
+
+        app = FastAPI()
+        model = mf.Model.chat_completion("openai/gpt-4.1-mini")
+
+        @app.get("/chat")
+        async def chat(query: str):
+            response = model(
+                messages=[{"role": "user", "content": query}],
+                stream=True
+            )
+
+            return StreamingResponse(
+                response.consume(),
+                media_type="text/plain"
+            )
+        ```
+
+## Multimodal Inputs
+
+Modern models support multiple input modalities:
+
+???+ example
+
+    === "Image Understanding"
+
+        ```python
+        import msgflux as mf
+
+        model = mf.Model.chat_completion("openai/gpt-4.1-mini")
+
+        messages = [{
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "What's in this image?"},
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": "https://upload.wikimedia.org/wikipedia/commons/3/3a/Cat03.jpg"
+                    }
+                }
+            ]
+        }]
+
+        response = model(messages=messages)
+        print(response.consume())
+        ```
+
+    === "ChatBlock Helper"
+
+        ```python
+        import msgflux as mf
+
+        model = mf.Model.chat_completion("openai/gpt-4.1-mini")
+
+        messages = [
+            mf.ChatBlock.user(
+                "Describe this image",
+                media=mf.ChatBlock.image("https://upload.wikimedia.org/wikipedia/commons/3/3a/Cat03.jpg")
+            )
+        ]
+
+        response = model(messages=messages)
+        print(response.consume())
+        ```
+
+    === "Base64"
+
+        ```python
+        import msgflux as mf
+        import base64
+
+        # Read and encode image
+        with open("image.jpg", "rb") as f:
+            image_data = base64.b64encode(f.read()).decode()
+
+        messages = [{
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "What's in this image?"},
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:image/jpeg;base64,{image_data}"
+                    }
+                }
+            ]
+        }]
+
+        model = mf.Model.chat_completion("openai/gpt-4.1-mini")
+        response = model(messages=messages)
+        ```
+
+## Structured Generation
+
+Generate structured data conforming to a schema:
+
+???+ example
+
+    === "Basic Schema"
+
+        ```python
+        import msgflux as mf
+        from msgspec import Struct
+
+        class CalendarEvent(Struct):
+            name: str
+            date: str
+            participants: list[str]
+
+        model = mf.Model.chat_completion("openai/gpt-4.1-mini")
+
+        response = model(
+            messages="Alice and Bob are going to a science fair on Friday.",
+            system_prompt="Extract the event information.",
+            generation_schema=CalendarEvent
+        )
+
+        event = response.consume()
+        print(event)
+        # {'name': 'science fair', 'date': 'Friday', 'participants': ['Alice', 'Bob']}
+        ```
+
+    === "Nested Schemas"
+
+        ```python
+        import msgflux as mf
+        from msgspec import Struct
+
+        class Address(Struct):
+            street: str
+            city: str
+            country: str
+
+        class Person(Struct):
+            name: str
+            age: int
+            address: Address
+
+        model = mf.Model.chat_completion("openai/gpt-4.1-mini")
+
+        response = model(
+            messages="John Doe, 30 years old, lives at 123 Main St, New York, USA.",
+            system_prompt="Extract person information.",
+            generation_schema=Person
+        )
+
+        person = response.consume()
+        print(person)
+        # {
+        #     'name': 'John Doe',
+        #     'age': 30,
+        #     'address': {
+        #         'street': '123 Main St',
+        #         'city': 'New York',
+        #         'country': 'USA'
+        #     }
+        # }
+        ```
+
+    === "With System Prompt"
+
+        `system_prompt` and `generation_schema` compose naturally: the system prompt shapes the model's role while the schema enforces the output structure.
+
+        ```python
+        import msgflux as mf
+        from msgspec import Struct
+
+        class Sentiment(Struct):
+            label: str   # "positive", "neutral", or "negative"
+            score: float # confidence from 0.0 to 1.0
+
+        model = mf.Model.chat_completion("openai/gpt-4.1-mini")
+
+        response = model(
+            messages="I absolutely loved the new product update!",
+            system_prompt="You are a sentiment analysis engine. Classify the user's message.",
+            generation_schema=Sentiment
+        )
+
+        result = response.consume()
+        print(result)
+        # {'label': 'positive', 'score': 0.98}
+        ```
+
+    === "Planning Schemas"
+
+        ```python
+        import msgflux as mf
+
+        # Access built-in planning schemas
+        ChainOfThoughts = mf.generation.plan.ChainOfThoughts
+        ReAct = mf.generation.plan.ReAct
+        SelfConsistency = mf.generation.plan.SelfConsistency
+
+        model = mf.Model.chat_completion("openai/gpt-4.1-mini")
+
+        # Use Chain of Thoughts
+        response = model(
+            messages="What is 25 * 4 + 17?",
+            generation_schema=ChainOfThoughts
+        )
+
+        result = response.consume()
+        print(result)
+        ```
+
+## Tool Calling
+
+Models can suggest calling functions (tools) to gather information:
+
+???+ example
+
+    === "Defining Tools"
+
+        ```python
+        import msgflux as mf
+
+        # Define tool schema
+        tools = [{
+            "type": "function",
+            "function": {
+                "name": "get_weather",
+                "description": "Get current weather for a location.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "location": {
+                            "type": "string",
+                            "description": "City and country, e.g. Paris, France"
+                        },
+                        "unit": {
+                            "type": "string",
+                            "enum": ["celsius", "fahrenheit"],
+                            "description": "Temperature unit"
+                        }
+                    },
+                    "required": ["location"],
+                    "additionalProperties": False
+                }
+            }
+        }]
+
+        model = mf.Model.chat_completion("openai/gpt-4.1-mini")
+
+        response = model(
+            messages=[{"role": "user", "content": "What's the weather in Paris?"}],
+            tool_schemas=tools
+        )
+
+        # Get tool calls
+        tool_call_agg = response.consume()
+        calls = tool_call_agg.get_calls()
+
+        for call in calls:
+            print(f"Tool: {call['function']['name']}")
+            print(f"Arguments: {call['function']['arguments']}")
+        # Tool: get_weather
+        # Arguments: {'location': 'Paris, France', 'unit': 'celsius'}
+        ```
+
+    === "Tool Choice"
+
+        ```python
+        import msgflux as mf
+
+        model = mf.Model.chat_completion("openai/gpt-4.1-mini")
+
+        # Auto - model decides
+        response = model(
+            messages=[{"role": "user", "content": "What's the weather?"}],
+            tool_schemas=tools,
+            tool_choice="auto"  # Default
+        )
+
+        # Required - must call at least one tool
+        response = model(
+            messages=[{"role": "user", "content": "What's the weather?"}],
+            tool_schemas=tools,
+            tool_choice="required"
+        )
+
+        # Specific function - must call this exact function
+        response = model(
+            messages=[{"role": "user", "content": "Paris weather"}],
+            tool_schemas=tools,
+            tool_choice="get_weather"
+        )
+        ```
+
+    === "Full Flow"
+
+        ```python
+        import msgflux as mf
+
+        def get_weather(location, unit="celsius"):
+            """Simulate weather API call."""
+            return f"The weather in {location} is 22°{unit[0].upper()}"
+
+        tools = [{
+            "type": "function",
+            "function": {
+                "name": "get_weather",
+                "description": "Get weather for a location.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "location": {"type": "string"},
+                        "unit": {"type": "string", "enum": ["celsius", "fahrenheit"]}
+                    },
+                    "required": ["location"]
+                }
+            }
+        }]
+
+        model = mf.Model.chat_completion("openai/gpt-4.1-mini")
+
+        # Initial request
+        messages = [{"role": "user", "content": "What's the weather in Paris?"}]
+
+        response = model(messages=messages, tool_schemas=tools)
+        tool_call_agg = response.consume()
+
+        # Execute tool calls
+        tool_functions = {"get_weather": get_weather}
+        calls = tool_call_agg.get_calls()
+
+        for call in calls:
+            func_name = call['function']['name']
+            func_args = call['function']['arguments']
+
+            # Execute function
+            result = tool_functions[func_name](**func_args)
+
+            # Add result to aggregator
+            tool_call_agg.insert_results(call['id'], result)
+
+        # Get messages with tool results
+        tool_messages = tool_call_agg.get_messages()
+        messages.extend(tool_messages)
+
+        # Final response with tool results
+        final_response = model(messages=messages)
+        print(final_response.consume())
+        # "The weather in Paris is currently 22°C."
+        ```
+
+    === "Streaming"
+
+        ```python
+        import msgflux as mf
+
+        model = mf.Model.chat_completion("openai/gpt-4.1-mini")
+
+        response = model(
+            messages=[{"role": "user", "content": "What's the weather in Tokyo?"}],
+            tool_schemas=tools,
+            stream=True
+        )
+
+        # Tool calls are aggregated during streaming
+        tool_call_agg = response.consume()
+
+        # After stream completes, get calls
+        calls = tool_call_agg.get_calls()
+        print(calls)
+        ```
+
+## Prefilling
+
+Force the model to start its response with specific text:
+
+???+ example
+
+    ```python
+    import msgflux as mf
+
+    model = mf.Model.chat_completion("openai/gpt-4.1-mini")
+
+    response = model(
+        messages=[{"role": "user", "content": "What is 30 * 3 + 33?"}],
+        prefilling="Let's think step by step:"
+    )
+
+    print(response.consume())
+    # Let's think step by step:
+    # First, calculate 30 × 3 = 90.
+    # Then, add 33 to that: 90 + 33 = 123.
+    # So, the answer is 123.
+    ```
+
+## Web Search
+
+The `web_search_options` parameter enables real-time web search, letting the model ground its answers in up-to-date information retrieved from the internet. It is currently supported by OpenAI search models (`gpt-4o-search-preview`, `gpt-4o-mini-search-preview`) and OpenRouter.
+
+!!! info "Dependencies"
+    Install the OpenAI extra if you haven't already:
+
+    === "uv"
+        ```bash
+        uv add msgflux[openai]
+        ```
+
+    === "pip"
+        ```bash
+        pip install msgflux[openai]
+        ```
+
+???+ example
+
+    === "Basic Search"
+
+        ```python
+        import msgflux as mf
+
+        model = mf.Model.chat_completion(
+            "openai/gpt-4o-search-preview",
+            web_search_options={"search_context_size": "low"},
+        )
+
+        response = model("What is the latest Python version released?")
+        print(response.consume())
+        # As of March 2026, the latest stable release of Python is version 3.14,
+        # released on October 7, 2025. (liquidweb.com) ...
+        ```
+
+    === "With User Location"
+
+        Restrict search results to a specific geographic area by providing an approximate user location:
+
+        ```python
+        import msgflux as mf
+
+        model = mf.Model.chat_completion(
+            "openai/gpt-4o-search-preview",
+            web_search_options={
+                "search_context_size": "high",
+                "user_location": {
+                    "type": "approximate",
+                    "approximate": {
+                        "country": "BR",           # ISO 3166-1 alpha-2
+                        "city": "São Paulo",
+                        "region": "São Paulo",
+                        "timezone": "America/Sao_Paulo",  # IANA timezone
+                    },
+                },
+            },
+        )
+
+        response = model("What are the top tech events happening this month?")
+        print(response.consume())
+        ```
+
+### search_context_size
+
+Controls how much web content is retrieved and included in the model's context window:
+
+| Value | Behaviour |
+|---|---|
+| `"low"` | Minimal context — fastest response, lower cost, may reduce answer depth |
+| `"medium"` | Balanced context (default) |
+| `"high"` | Maximum context — most comprehensive answers, higher cost |
+
+### Annotations
+
+Search responses include inline citations. The raw URLs are also available in `response.metadata.annotations`:
+
+???+ example
+
+    ```python
+    import msgflux as mf
+
+    model = mf.Model.chat_completion(
+        "openai/gpt-4o-search-preview",
+        web_search_options={"search_context_size": "low"},
+    )
+
+    response = model("What is the latest Python version?")
+    response.consume()
+
+    for annotation in response.metadata.get("annotations", []):
+        print(annotation["url_citation"]["url"])
+    # https://www.liquidweb.com/blog/latest-python-version/
+    # ...
+    ```
+
+## Reasoning Models
+
+Reasoning models "think before answering" — they generate an internal chain of thought before producing a final response. This improves accuracy on complex tasks such as multi-step math, code generation, and logical deduction, at the cost of additional latency and tokens.
+
+msgFlux exposes five parameters that control reasoning behaviour:
+
+| Parameter | Description |
+|---|---|
+| `reasoning_effort` | How much reasoning to do. One of `"minimal"`, `"low"`, `"medium"`, `"high"`. |
+| `reasoning_max_tokens` | Hard cap (in tokens) on the internal thinking budget. |
+| `return_reasoning` | Return the reasoning trace alongside the final answer (provider must support it). Defaults to `True`. |
+| `enable_thinking` | Activate extended model reasoning (provider-level switch, e.g. Anthropic). |
+| `reasoning_in_tool_call` | Preserve reasoning context across tool calls so the model keeps its chain of thought intact. |
+
+### Provider behaviour
+
+Not all reasoning providers behave the same way:
+
+| Provider | Exposes trace via `return_reasoning` | Reasoning tokens in metadata |
+|---|---|---|
+| **Groq** (`groq/openai/gpt-oss-20b`) | Yes — `response.data.think` | Yes |
+| **OpenAI** (`openai/gpt-5-mini`) | No — reasoning is fully internal | Yes |
+
+### Reasoning Effort
+
+`reasoning_effort` is the primary knob. Higher effort means the model spends more tokens on internal reasoning, which typically improves answer quality on hard problems.
+
+???+ example
+
+    === "Low Effort — Quick Tasks"
+
+        ```python
+        import msgflux as mf
+
+        # Good for tasks where speed matters more than depth
+        model = mf.Model.chat_completion(
+            "groq/openai/gpt-oss-20b",
+            reasoning_effort="low",
+        )
+
+        response = model("What is the capital of France?")
+        print(response.consume())
+        # Paris
+        ```
+
+    === "High Effort — Hard Problems"
+
+        ```python
+        import msgflux as mf
+
+        # Maximum reasoning for complex, multi-step problems
+        model = mf.Model.chat_completion(
+            "groq/openai/gpt-oss-20b",
+            reasoning_effort="high",
+        )
+
+        response = model(
+            "Prove that there are infinitely many prime numbers."
+        )
+        print(response.consume())
+        ```
+
+### Inspecting the Reasoning Trace
+
+Providers like Groq return the chain of thought as a separate field when `return_reasoning=True`. The response becomes a `dotdict` with `think` (the trace) and `answer` (the final response):
+
+???+ example
+
+    ```python
+    import msgflux as mf
+
+    model = mf.Model.chat_completion(
+        "groq/openai/gpt-oss-20b",
+        reasoning_effort="high",
+    )
+
+    response = model("Prove that sqrt(2) is irrational.")
+    result = response.consume()
+
+    print(result.think)
+    # The user: "Prove that sqrt(2) is irrational." This is a classic proof.
+    # Provide a proof by contradiction: Suppose sqrt(2)=a/b in lowest terms...
+
+    print(result.answer)
+    # **Proof that √2 is irrational**
+    # We prove the statement by contradiction...
+    ```
+
+!!! tip
+    Comparing `result.think` with `result.answer` is a great debugging tool: if the final answer is wrong, the trace usually reveals where the reasoning went astray.
+
+Providers that keep reasoning internal (like OpenAI) still report how many tokens were spent via `response.metadata`:
+
+???+ example
+
+    ```python
+    import msgflux as mf
+
+    model = mf.Model.chat_completion(
+        "openai/gpt-5-mini",
+        reasoning_effort="high",
+    )
+
+    response = model("A train travels 120 km in 1.5 hours. What is its average speed?")
+    print(response.consume())
+    # Average speed = distance / time = 120 km ÷ 1.5 h = 80 km/h.
+
+    usage = response.metadata.usage
+    print(f"Reasoning tokens used: {usage['completion_tokens_details']['reasoning_tokens']}")
+    # Reasoning tokens used: 64
+    ```
+
+### Controlling the Reasoning Budget
+
+`reasoning_max_tokens` caps how many tokens the model can use for internal thinking. Use it to bound latency and cost while still enabling reasoning:
+
+???+ example
+
+    ```python
+    import msgflux as mf
+
+    model = mf.Model.chat_completion(
+        "groq/openai/gpt-oss-20b",
+        reasoning_effort="high",
+        reasoning_max_tokens=512,   # Cap the thinking budget
+    )
+
+    response = model("Solve: if 3x + 7 = 22, what is x?")
+    result = response.consume()
+    print(result.think)   # Kept short by the token cap
+    print(result.answer)
+    # x = 5
+    ```
+
+### Reasoning Across Tool Calls
+
+When a reasoning model uses tools it normally loses its chain of thought between calls. `reasoning_in_tool_call=True` preserves the reasoning context so the model can continue thinking coherently after each tool result:
+
+???+ example
+
+    ```python
+    import msgflux as mf
+
+    tools = [{
+        "type": "function",
+        "function": {
+            "name": "calculate",
+            "description": "Evaluate a mathematical expression.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "expression": {"type": "string"}
+                },
+                "required": ["expression"],
+                "additionalProperties": False,
+            }
+        }
+    }]
+
+    model = mf.Model.chat_completion(
+        "groq/openai/gpt-oss-20b",
+        reasoning_effort="high",
+        reasoning_in_tool_call=True,   # Keep reasoning across tool calls
+    )
+
+    response = model(
+        messages=[{"role": "user", "content": "What is (14 + 28) × 3 − 7?"}],
+        tool_schemas=tools,
+    )
+
+    tool_call_agg = response.consume()
+    calls = tool_call_agg.get_calls()
+    print(calls)
+    ```
+
+### Structured Output with Reasoning
+
+Reasoning models pair well with `generation_schema` — the model uses its thinking budget to produce more accurate structured output:
+
+???+ example
+
+    ```python
+    import msgflux as mf
+    from msgspec import Struct
+
+    class MathSolution(Struct):
+        answer: float
+        confidence: str   # "high", "medium", "low"
+        explanation: str
+
+    model = mf.Model.chat_completion(
+        "openai/gpt-5-mini",
+        reasoning_effort="high",
+    )
+
+    response = model(
+        messages="A train travels 120 km in 1.5 hours. What is its average speed?",
+        system_prompt="You are a precise problem solver.",
+        generation_schema=MathSolution,
+    )
+
+    result = response.consume()
+    print(result)
+    # {'answer': 80.0, 'confidence': 'high', 'explanation': '120 km / 1.5 h = 80 km/h'}
+    ```
+
+### Choosing the Right Effort Level
+
+| Task | Recommended effort |
+|---|---|
+| Simple factual lookup | `"low"` |
+| Summarisation, translation | `"low"` – `"medium"` |
+| Code generation, debugging | `"medium"` – `"high"` |
+| Complex math / formal proofs | `"high"` |
+| Multi-step planning with tools | `"high"` + `reasoning_in_tool_call=True` |
+
+## Response Metadata
+
+All responses include metadata with usage information:
+
+???+ example
+
+    ```python
+    import msgflux as mf
+
+    model = mf.Model.chat_completion("openai/gpt-4.1-mini")
+
+    response = model(messages=[{"role": "user", "content": "Hello"}])
+
+    # Access metadata
+    print(response.metadata)
+    # {
+    #     'usage': {
+    #         'completion_tokens': 9,
+    #         'prompt_tokens': 19,
+    #         'total_tokens': 28
+    #     }
+    # }
+
+    # Calculate cost using profile
+    from msgflux.models.profiles import get_model_profile
+
+    profile = get_model_profile("gpt-4.1-mini", provider_id="openai")
+    if profile:
+        usage = response.metadata.usage
+        cost = profile.cost.calculate(
+            input_tokens=usage.prompt_tokens,
+            output_tokens=usage.completion_tokens
+        )
+        print(f"Request cost: ${cost:.4f}")
+    ```
+
+## Error Handling
+
+Handle common errors gracefully:
+
+???+ example
+
+    ```python
+    import msgflux as mf
+
+    model = mf.Model.chat_completion("openai/gpt-4.1-mini")
+
+    try:
+        response = model(messages=[{"role": "user", "content": "Hello"}])
+        result = response.consume()
+    except ImportError:
+        print("Provider not installed")
+    except ValueError as e:
+        print(f"Invalid parameters: {e}")
+    except Exception as e:
+        print(f"API error: {e}")
+    ```
+
+## Model Profiles
+
+Model profiles provide metadata about capabilities, pricing, and limits from [models.dev](https://models.dev).
+
+Every initialized model exposes a `.profile` property that returns this metadata without any extra setup:
+
+???+ example
+
+    === "Instance Profile"
+
+        ```python
+        import msgflux as mf
+
+        model = mf.Model.chat_completion("openai/gpt-4.1-mini")
+
+        # Access profile directly from the instance
+        profile = model.profile  # ModelProfile | None
+        if profile:
+            print(f"Context window: {profile.limits.context}")
+            print(f"Tool calling: {profile.capabilities.tool_call}")
+        ```
+
+    === "Profile Information"
+
+        ```python
+        import msgflux as mf
+        from msgflux.models.profiles import get_model_profile
+
+        # Get profile for a model
+        profile = get_model_profile("gpt-4.1-mini", provider_id="openai")
+
+        if profile:
+            # Check capabilities
+            print(f"Tool calling: {profile.capabilities.tool_call}")
+            print(f"Structured output: {profile.capabilities.structured_output}")
+            print(f"Reasoning: {profile.capabilities.reasoning}")
+
+            # Check modalities
+            print(f"Input: {profile.modalities.input}")   # ['text', 'image']
+            print(f"Output: {profile.modalities.output}") # ['text']
+
+            # Check limits
+            print(f"Context window: {profile.limits.context}")  # 128000
+            print(f"Max output: {profile.limits.output}")       # 16384
+
+            # Check pricing
+            print(f"Input: ${profile.cost.input_per_million}/M tokens")
+            print(f"Output: ${profile.cost.output_per_million}/M tokens")
+        ```
+
+    === "Cost Calculation"
+
+        ```python
+        from msgflux.models.profiles import get_model_profile
+
+        profile = get_model_profile("gpt-4.1-mini", provider_id="openai")
+
+        if profile:
+            # Calculate cost for a request
+            cost = profile.cost.calculate(
+                input_tokens=1000,
+                output_tokens=500
+            )
+            print(f"Estimated cost: ${cost:.4f}")
+        ```
+
+## Adding a Custom Provider
+
+If the service you want to use exposes an **OpenAI-compatible API**, you can add it as a provider by subclassing `OpenAIChatCompletion`. The process has two stages depending on how compatible the endpoint is.
+
+### Stage 1 — URL and API key only
+
+When the target API is fully OpenAI-compatible and only requires a different base URL and authentication key, the entire subclass is a small configuration mixin plus the `@register_model` decorator.
+
+???+ example "Custom provider — minimal setup"
+
+    ```python
+    from os import getenv
+    from msgflux.models.providers.openai import OpenAIChatCompletion
+    from msgflux.models.registry import register_model
+
+
+    class _BaseMyProvider:
+        """Configuration mixin for MyProvider."""
+
+        provider: str = "myprovider"  # used in "myprovider/model-name"
+
+        def _get_base_url(self):
+            return getenv("MYPROVIDER_BASE_URL", "https://api.myprovider.com/v1")
+
+        def _get_api_key(self):
+            key = getenv("MYPROVIDER_API_KEY")
+            if not key:
+                raise ValueError("Please set `MYPROVIDER_API_KEY`")
+            return key
+
+
+    @register_model
+    class MyProviderChatCompletion(_BaseMyProvider, OpenAIChatCompletion):
+        """MyProvider Chat Completion."""
+    ```
+
+After registering, the model is available through the standard factory. The string before the `/` must match the `provider` class attribute:
+
+???+ example "Using the custom provider"
+
+    ```python
+    import msgflux as mf
+
+    model = mf.Model.chat_completion("myprovider/my-model-name")
+    response = model("Hello!")
+    print(response.consume())
+    ```
+
+### Stage 2 — Adapting parameters
+
+Some providers are mostly OpenAI-compatible but have small differences: renamed fields, required extra headers, or unsupported parameters. Override `_adapt_params` to transform the parameter dict before it reaches the API.
+
+`_adapt_params` receives the fully-populated `params: dict` (call kwargs merged with model-level sampling params) and must return the modified dict.
+
+The built-in OpenRouter provider is a real-world example:
+
+???+ example "Custom provider — with parameter adaptation"
+
+    ```python
+    from os import getenv
+    from typing import Any, Dict
+
+    from msgflux.models.providers.openai import OpenAIChatCompletion
+    from msgflux.models.registry import register_model
+
+
+    class _BaseMyProvider:
+        provider: str = "myprovider"
+
+        def _get_base_url(self):
+            return getenv("MYPROVIDER_BASE_URL", "https://api.myprovider.com/v1")
+
+        def _get_api_key(self):
+            key = getenv("MYPROVIDER_API_KEY")
+            if not key:
+                raise ValueError("Please set `MYPROVIDER_API_KEY`")
+            return key
+
+
+    @register_model
+    class MyProviderChatCompletion(_BaseMyProvider, OpenAIChatCompletion):
+        """MyProvider Chat Completion."""
+
+        def _adapt_params(self, params: Dict[str, Any]) -> Dict[str, Any]:
+            # 1. Rename max_tokens to the provider-specific field
+            params["max_completion_tokens"] = params.pop("max_tokens")
+
+            # 2. Provider requires tool_choice to be set explicitly
+            if params["tool_choice"] is None:
+                params["tool_choice"] = "auto" if params["tools"] else "none"
+
+            # 3. Map reasoning_effort to the provider format
+            reasoning_effort = params.pop("reasoning_effort", None)
+            if reasoning_effort is not None:
+                extra_body = params.get("extra_body", {})
+                extra_body["reasoning"] = {"effort": reasoning_effort}
+                params["extra_body"] = extra_body
+
+            # 4. Add required headers
+            params["extra_headers"] = {
+                "X-App-Name": "myapp",
+            }
+
+            return params
+    ```
+
+Common adaptations inside `_adapt_params`:
+
+| Situation | What to do |
+|---|---|
+| Provider uses `max_completion_tokens` instead of `max_tokens` | `params["max_completion_tokens"] = params.pop("max_tokens")` |
+| Provider rejects `tool_choice=None` | Set it explicitly to `"auto"` or `"none"` |
+| Provider uses a different field for reasoning | `params.pop("reasoning_effort")` and remap into `extra_body` |
+| Provider requires extra headers | Add keys to `params["extra_headers"]` |
+| Provider accepts non-standard extensions | Add keys to `params["extra_body"]` |
+
+### Stage 3 — Using a different client
+
+The two previous stages assume the service is reached through the `openai` Python package. If you want to use a completely different HTTP client or SDK — one that is **not** the `openai` package but still exposes a compatible interface — override `_initialize` instead.
+
+`_initialize` is called once at construction time. Its job is to populate three things on `self`:
+
+| Attribute | Type | Purpose |
+|---|---|---|
+| `self.client` | any object | Sync client; must expose `.chat.completions.create(**params)` |
+| `self.aclient` | any object | Async client; must expose `await .chat.completions.create(**params)` |
+| `self._response_cache` | `ResponseCache \| None` | In-memory response cache (set to `None` to disable) |
+
+It must also wrap `self.__call__` and `self.acall` with the retry decorator so that the model's retry logic still works.
+
+The response object returned by `.chat.completions.create()` must be OpenAI-compatible: it needs `.choices[0].message` and `.usage` attributes. Any SDK that advertises OpenAI compatibility will satisfy this contract.
+
+???+ example "Custom provider — with a different client"
+
+    ```python
+    from os import getenv
+
+    from msgflux.models.cache import ResponseCache
+    from msgflux.models.providers.openai import OpenAIChatCompletion
+    from msgflux.models.registry import register_model
+    from msgflux.utils.tenacity import apply_retry, default_model_retry
+
+    # Replace with the SDK you actually want to use.
+    # It must expose client.chat.completions.create() / aclient.chat.completions.create().
+    import my_sdk
+
+
+    class _BaseMyProvider:
+        provider: str = "myprovider"
+
+        def _get_base_url(self):
+            return getenv("MYPROVIDER_BASE_URL", "https://api.myprovider.com/v1")
+
+        def _get_api_key(self):
+            key = getenv("MYPROVIDER_API_KEY")
+            if not key:
+                raise ValueError("Please set `MYPROVIDER_API_KEY`")
+            return key
+
+        def _initialize(self):
+            base_url = self._get_base_url()
+            api_key = self._get_api_key()
+
+            # Sync and async clients from your chosen SDK.
+            self.client = my_sdk.Client(base_url=base_url, api_key=api_key)
+            self.aclient = my_sdk.AsyncClient(base_url=base_url, api_key=api_key)
+
+            # Preserve response caching (reads enable_cache / cache_size set by __init__).
+            cache_size = getattr(self, "cache_size", 128)
+            enable_cache = getattr(self, "enable_cache", None)
+            self._response_cache = (
+                ResponseCache(maxsize=cache_size) if enable_cache else None
+            )
+
+            # Preserve retry logic.
+            retry_config = getattr(self, "retry", None)
+            self.__call__ = apply_retry(
+                self.__call__, retry_config, default=default_model_retry
+            )
+            self.acall = apply_retry(
+                self.acall, retry_config, default=default_model_retry
+            )
+
+
+    @register_model
+    class MyProviderChatCompletion(_BaseMyProvider, OpenAIChatCompletion):
+        """MyProvider Chat Completion using a custom SDK."""
+    ```
+
+The pattern above keeps caching and retry behaviour identical to every other built-in provider. The only thing that changes is the objects assigned to `self.client` and `self.aclient`.
+
+!!! note
+    The response returned by `.chat.completions.create()` is consumed by `_process_model_output`. That method reads `model_output.choices[0].message` and `model_output.usage.to_dict()`. If your SDK returns a different structure, also override `_process_model_output` to adapt it.
+
+## See Also
+
+- [Model](model.md) - Model factory and registry
+- [Text Embeddings](text_embedder.md) - Text embedding models
+- [Tool Usage](../tools.md) - Working with tools
+- [Generation Schemas](../generation.md) - Planning schemas
