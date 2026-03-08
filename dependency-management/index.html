@@ -3382,7 +3382,7 @@
 </div>
         
         <script>
-        window.pageMarkdown = '# Models\n\n## Chat Completion\n\n| Provider    | Dependency        |\n|-------------|-------------------|\n| Ollama      | `msgflux[openai]` |\n| OpenAI      | `msgflux[openai]` |\n| OpenRouter  | `msgflux[openai]` |\n| SambaNova   | `msgflux[openai]` |\n| Together    | `msgflux[openai]` |\n| vLLM        | `msgflux[openai]` |\n\n## Image Classifier\n\n| Provider    | Dependency         |\n|-------------|--------------------|\n| JinaAI      | `msgflux[httpx]`   |\n\n## Image Embedder\n\n| Provider    | Dependency         |\n|-------------|--------------------|\n| JinaAI      | `msgflux[httpx]`   |\n\n## Image Text To Image\n\n| Provider    | Dependency         |\n|-------------|--------------------|\n| OpenAI      | `msgflux[openai]`  |\n\n## Moderation\n\n| Provider    | Dependency         |\n|-------------|--------------------|\n| OpenAI      | `msgflux[openai]`  |\n\n## Speech To Text\n\n| Provider    | Dependency         |\n|-------------|--------------------|\n| OpenAI      | `msgflux[openai]`  |\n| vLLM        | `msgflux[openai]`  |\n\n## Text Classifier\n\n| Provider    | Dependency         |\n|-------------|--------------------|\n| JinaAI      | `msgflux[httpx]`   |\n| vLLM        | `msgflux[openai]`  |\n\n## Text Embedder\n\n| Provider    | Dependency         |\n|-------------|--------------------|\n| JinaAI      | `msgflux[httpx]`   |\n| Ollama      | `msgflux[openai]`  |\n| OpenAI      | `msgflux[openai]`  |\n| Together    | `msgflux[openai]`  |\n| vLLM        | `msgflux[openai]`  |\n\n## Text Reranker\n\n| Provider    | Dependency         |\n|-------------|--------------------|\n| JinaAI      | `msgflux[httpx]`   |\n| vLLM        | `msgflux[openai]`  |\n\n## Text To Image\n\n| Provider    | Dependency         |\n|-------------|--------------------|\n| OpenAI      | `msgflux[openai]`  |\n\n## Text To Speech\n\n| Provider    | Dependency         |\n|-------------|--------------------|\n| OpenAI      | `msgflux[openai]`  |\n| Together    | `msgflux[openai]`  |\n\n# Retrievers\n\n## Lexical\n\n| Provider    | Dependency        |\n|-------------|-------------------|\n| BM25        |         -         |\n| BM25s       |     `bm25s`       |\n| Rank BM25   |   `rank-bm25s`    |\n\n## Web Search\n\n| Provider    | Dependency        |\n|-------------|-------------------|\n| Wikipedia   |   `wikipedia`     |\n';
+        window.pageMarkdown = '# Models\n\n## Chat Completion\n\n| Provider    | Dependency        |\n|-------------|-------------------|\n| Ollama      | `msgflux[openai]` |\n| OpenAI      | `msgflux[openai]` |\n| OpenRouter  | `msgflux[openai]` |\n| SambaNova   | `msgflux[openai]` |\n| Together    | `msgflux[openai]` |\n| vLLM        | `msgflux[openai]` |\n\n## Image Classifier\n\n| Provider    | Dependency         |\n|-------------|--------------------|\n| JinaAI      | `msgflux[httpx]`   |\n\n## Image Embedder\n\n| Provider    | Dependency         |\n|-------------|--------------------|\n| JinaAI      | `msgflux[httpx]`   |\n\n## Image Text To Image\n\n| Provider    | Dependency         |\n|-------------|--------------------|\n| OpenAI      | `msgflux[openai]`  |\n\n## Moderation\n\n| Provider    | Dependency         |\n|-------------|--------------------|\n| OpenAI      | `msgflux[openai]`  |\n\n## Speech To Text\n\n| Provider    | Dependency         |\n|-------------|--------------------|\n| OpenAI      | `msgflux[openai]`  |\n| vLLM        | `msgflux[openai]`  |\n\n## Text Classifier\n\n| Provider    | Dependency         |\n|-------------|--------------------|\n| JinaAI      | `msgflux[httpx]`   |\n| vLLM        | `msgflux[openai]`  |\n\n## Text Embedder\n\n| Provider    | Dependency         |\n|-------------|--------------------|\n| JinaAI      | `msgflux[httpx]`   |\n| Ollama      | `msgflux[openai]`  |\n| OpenAI      | `msgflux[openai]`  |\n| Together    | `msgflux[openai]`  |\n| vLLM        | `msgflux[openai]`  |\n\n## Text Reranker\n\n| Provider    | Dependency         |\n|-------------|--------------------|\n| JinaAI      | `msgflux[httpx]`   |\n| vLLM        | `msgflux[openai]`  |\n\n## Text To Image\n\n| Provider    | Dependency         |\n|-------------|--------------------|\n| OpenAI      | `msgflux[openai]`  |\n\n## Text To Speech\n\n| Provider    | Dependency         |\n|-------------|--------------------|\n| OpenAI      | `msgflux[openai]`  |\n| Together    | `msgflux[openai]`  |\n\n# Parsers\n\n## PDF\n\n| Provider | Dependency |\n|----------|------------|\n| `pypdf` | `pip install pypdf` |\n\n## Word (.docx)\n\n| Provider | Dependency |\n|----------|------------|\n| `python_docx` | `pip install python-docx` |\n\n## PowerPoint (.pptx)\n\n| Provider | Dependency |\n|----------|------------|\n| `python_pptx` | `pip install python-pptx` |\n\n## Excel (.xlsx)\n\n| Provider | Dependency |\n|----------|------------|\n| `openpyxl` | `pip install openpyxl` |\n\n## HTML\n\n| Provider | Dependency |\n|----------|------------|\n| `beautifulsoup` | `pip install beautifulsoup4` |\n\n## CSV / TSV\n\n| Provider | Dependency |\n|----------|------------|\n| `csv` | built-in |\n\n## Email (.eml)\n\n| Provider | Dependency |\n|----------|------------|\n| `email` | built-in |\n\n# Retrievers\n\n## Lexical\n\n| Provider    | Dependency        |\n|-------------|-------------------|\n| BM25        |         -         |\n| BM25s       |     `bm25s`       |\n| Rank BM25   |   `rank-bm25s`    |\n\n## Web Search\n\n| Provider    | Dependency        |\n|-------------|-------------------|\n| Wikipedia   |   `wikipedia`     |\n';
         let isAnimating = false;
         
         function copyMarkdownToClipboard() {
@@ -3715,6 +3715,112 @@
 <tr>
 <td>Together</td>
 <td><code>msgflux[openai]</code></td>
+</tr>
+</tbody>
+</table>
+<h1 id="parsers">Parsers</h1>
+<h2 id="pdf">PDF</h2>
+<table>
+<thead>
+<tr>
+<th>Provider</th>
+<th>Dependency</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>pypdf</code></td>
+<td><code>pip install pypdf</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="word-docx">Word (.docx)</h2>
+<table>
+<thead>
+<tr>
+<th>Provider</th>
+<th>Dependency</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>python_docx</code></td>
+<td><code>pip install python-docx</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="powerpoint-pptx">PowerPoint (.pptx)</h2>
+<table>
+<thead>
+<tr>
+<th>Provider</th>
+<th>Dependency</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>python_pptx</code></td>
+<td><code>pip install python-pptx</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="excel-xlsx">Excel (.xlsx)</h2>
+<table>
+<thead>
+<tr>
+<th>Provider</th>
+<th>Dependency</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>openpyxl</code></td>
+<td><code>pip install openpyxl</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="html">HTML</h2>
+<table>
+<thead>
+<tr>
+<th>Provider</th>
+<th>Dependency</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>beautifulsoup</code></td>
+<td><code>pip install beautifulsoup4</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="csv-tsv">CSV / TSV</h2>
+<table>
+<thead>
+<tr>
+<th>Provider</th>
+<th>Dependency</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>csv</code></td>
+<td>built-in</td>
+</tr>
+</tbody>
+</table>
+<h2 id="email-eml">Email (.eml)</h2>
+<table>
+<thead>
+<tr>
+<th>Provider</th>
+<th>Dependency</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>email</code></td>
+<td>built-in</td>
 </tr>
 </tbody>
 </table>
