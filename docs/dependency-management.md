@@ -85,31 +85,31 @@
 
 | Provider | Dependency |
 |----------|------------|
-| `pypdf` | `pip install pypdf` |
+| `pypdf` | `pypdf` |
 
 ## Word (.docx)
 
 | Provider | Dependency |
 |----------|------------|
-| `python_docx` | `pip install python-docx` |
+| `python_docx` | `python-docx` |
 
 ## PowerPoint (.pptx)
 
 | Provider | Dependency |
 |----------|------------|
-| `python_pptx` | `pip install python-pptx` |
+| `python_pptx` | `python-pptx` |
 
 ## Excel (.xlsx)
 
 | Provider | Dependency |
 |----------|------------|
-| `openpyxl` | `pip install openpyxl` |
+| `openpyxl` | `openpyxl` |
 
 ## HTML
 
 | Provider | Dependency |
 |----------|------------|
-| `beautifulsoup` | `pip install beautifulsoup4` |
+| `beautifulsoup` | `beautifulsoup4` |
 
 ## CSV / TSV
 
@@ -129,7 +129,7 @@
 
 | Provider    | Dependency        |
 |-------------|-------------------|
-| BM25        |         -         |
+| BM25        |     built-in      |
 | BM25s       |     `bm25s`       |
 | Rank BM25   |   `rank-bm25s`    |
 
