@@ -387,7 +387,7 @@ class InlineDSL:
                 module = modules.get(step["module"])
                 if not module:
                     raise ValueError(f"Module `{step['module']}` not found.")
-                current_message = module(current_message)
+                module(current_message)
 
             elif step["type"] == "parallel":
                 parallel_modules = []
@@ -405,7 +405,7 @@ class InlineDSL:
                         f"in {step['modules']}."
                     )
 
-                current_message = F.msg_bcast_gather(parallel_modules, current_message)
+                F.msg_bcast_gather(parallel_modules, current_message)
 
                 # Check for errors from parallel execution
                 errors = current_message.pop("_errors", None)
@@ -429,7 +429,7 @@ class InlineDSL:
                         raise ValueError(
                             f"Module `{module_name}` not found in conditional branch."
                         )
-                    current_message = module(current_message)
+                    module(current_message)
 
             elif step["type"] == "while":
                 current_message = self._execute_while_loop(
@@ -522,12 +522,12 @@ class AsyncInlineDSL(InlineDSL):
 
                 # Check for acall method first, then coroutine function
                 if hasattr(module, "acall"):
-                    current_message = await module.acall(current_message)
+                    await module.acall(current_message)
                 elif asyncio.iscoroutinefunction(module):
-                    current_message = await module(current_message)
+                    await module(current_message)
                 else:
                     # Fallback to sync call
-                    current_message = module(current_message)
+                    module(current_message)
 
             elif step["type"] == "parallel":
                 parallel_modules = []
@@ -545,9 +545,7 @@ class AsyncInlineDSL(InlineDSL):
                         f"in {step['modules']}."
                     )
 
-                current_message = await F.amsg_bcast_gather(
-                    parallel_modules, current_message
-                )
+                await F.amsg_bcast_gather(parallel_modules, current_message)
 
                 # Check for errors from parallel execution
                 errors = current_message.pop("_errors", None)
@@ -574,12 +572,12 @@ class AsyncInlineDSL(InlineDSL):
 
                     # Check for acall method first, then coroutine function
                     if hasattr(module, "acall"):
-                        current_message = await module.acall(current_message)
+                        await module.acall(current_message)
                     elif F.asyncio.iscoroutinefunction(module):
-                        current_message = await module(current_message)
+                        await module(current_message)
                     else:
                         # Fallback to sync call
-                        current_message = module(current_message)
+                        module(current_message)
 
             elif step["type"] == "while":
                 current_message = await self._aexecute_while_loop(
