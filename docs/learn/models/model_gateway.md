@@ -5,7 +5,7 @@ The [`ModelGateway`](../../api-reference/models/gateway.md) class is an **orches
 
 - 🔁 **Automatic fallback** between models.
 - ⏱️ **Time-based** model availability constraints.
-- ✅ **Model preference** selection.
+- ✅ **Model preference** selection via aliases.
 - 📃 **Control of execution attempts** with exception handling.
 - 🔎 **Consistent model typing validation**.
 
@@ -23,7 +23,8 @@ All you need is:
 
 - All models **must inherit from `BaseModel`**.
 - All models **must be of the same `model_type`**.
-- At least **2 models** must be provided.
+- Each deployment **must have a unique `model_name`**.
+- At least **2 deployments** are recommended for effective fallback.
 ---
 
 ### 1.1 **Query**
@@ -33,12 +34,18 @@ import msgflux as mf
 
 mf.set_envs(OPENAI_API_KEY="sk-...", TOGETHER_API_KEY="<>")
 
-model_openai = mf.Model.chat_completion("openai/gpt-4.1-nano")
-model_together = mf.Model.chat_completion("together/mistral-7b")
+gateway = mf.ModelGateway([
+    {
+        "model_name": "primary",
+        "model": mf.Model.chat_completion("openai/gpt-4.1-nano"),
+    },
+    {
+        "model_name": "fallback",
+        "model": mf.Model.chat_completion("together/mistral-7b"),
+    },
+])
 
-gateway = mf.ModelGateway([model_openai, model_together], max_model_failures=3)
-
-response = gateway("Who was Frank Rosenblatt?")
+response = gateway(messages="Who was Frank Rosenblatt?")
 print(response.consume())
 ```
 
@@ -58,9 +65,12 @@ class BrokenModel(BaseModel, ChatCompletionModel):
 broken = BrokenModel()
 fallback = Model.chat_completion("openai/gpt-4.1-nano")
 
-gateway_broken = ModelGateway([broken, fallback], max_model_failures=1)
+gateway_broken = ModelGateway([
+    {"model_name": "broken", "model": broken},
+    {"model_name": "fallback", "model": fallback},
+])
 
-response = gateway_broken("Who were Warren McCulloch and Walter Pitts?")
+response = gateway_broken(messages="Who were Warren McCulloch and Walter Pitts?")
 print(response.consume())
 ```
 
@@ -68,6 +78,8 @@ print(response.consume())
 
 ```python
 import random
+from typing import Any
+
 from msgflux.exceptions import ModelRouterError
 from msgflux.models.base import BaseModel
 from msgflux.models.gateway import ModelGateway
@@ -79,9 +91,9 @@ class MockChatCompletion(BaseModel, ChatCompletionModel):
     provider = "mock"
 
     def __init__(
-        self, 
-        model_id: str, 
-        fail_sometimes: bool = False, 
+        self,
+        model_id: str,
+        fail_sometimes: bool = False,
         success_rate: float = 0.7
     ):
         self.model_id = model_id
@@ -97,27 +109,35 @@ class MockChatCompletion(BaseModel, ChatCompletionModel):
             if random.random() > self._success_rate:
                 raise ValueError(f"Simulated failure for {self.model_id}")
         messages = kwargs.get("messages", "Default prompt")
-        response_text = f"Response from {self.model_id} to messages: '{messages}' (Call #{self._call_count})";
+        response_text = f"Response from {self.model_id} to messages: '{messages}' (Call #{self._call_count})"
         response.add(response_text)
         return response
 
-model1 = MockBaseModel(model_id="model-A", fail_sometimes=True, success_rate=0.3)
-model2 = MockBaseModel(model_id="model-B", fail_sometimes=True, success_rate=0.5)
-model3 = MockBaseModel(model_id="model-C") # Always works
-model4 = MockBaseModel(model_id="model-D") # Always works
+model1 = MockChatCompletion(model_id="model-A", fail_sometimes=True, success_rate=0.3)
+model2 = MockChatCompletion(model_id="model-B", fail_sometimes=True, success_rate=0.5)
+model3 = MockChatCompletion(model_id="model-C") # Always works
+model4 = MockChatCompletion(model_id="model-D") # Always works
 
-models_list = [model1, model2, model3, model4]
-
-constraints = {
-    "model-B": [("23:00", "07:00")],
-    "model-C": [("10:00", "11:00")]
-}
-
-gateway_mock = ModelGateway(
-    models=models_list,
-    max_model_failures=2,
-    time_constraints=constraints
-)
+gateway_mock = ModelGateway([
+    {
+        "model_name": "unstable-A",
+        "model": model1,
+    },
+    {
+        "model_name": "unstable-B",
+        "model": model2,
+        "time_constraints": [("23:00", "07:00")],
+    },
+    {
+        "model_name": "reliable-C",
+        "model": model3,
+        "time_constraints": [("10:00", "11:00")],
+    },
+    {
+        "model_name": "reliable-D",
+        "model": model4,
+    },
+])
 
 try:
     response = gateway_mock(messages="Hi")
@@ -165,46 +185,50 @@ print(gateway.serialize())
 
 ```python
 {
-    'msgflux_type': 'model_gateway', 
+    'msgflux_type': 'model_gateway',
     'state': {
-        'max_model_failures': 3,
         'models': [
             {
-                'msgflux_type': 'model',
-                'provider': 'openai',
-                'model_type': 'chat_completion',
-                'state': {
-                    'model_id': 'gpt-4.1-nano',
-                    'sampling_params': {'organization': None, 'project': None},
-                    'sampling_run_params': {
-                        'max_tokens': 512,
-                        'temperature': None,
-                        'top_p': None,
-                        'modalities': ['text'],
-                        'audio': None
-                    }
-                }
-            },
-            {
-                'msgflux_type': 'model',
-                'provider': 'together',
-                'model_type': 'chat_completion',
-                'state': {
-                    'model_id': 'mistral-7b',
-                    'sampling_params': {'organization': None, 'project': None},
-                    'sampling_run_params': {
+                'model_name': 'primary',
+                'model': {
+                    'msgflux_type': 'model',
+                    'provider': 'openai',
+                    'model_type': 'chat_completion',
+                    'state': {
+                        'model_id': 'gpt-4.1-nano',
+                        'sampling_params': {'organization': None, 'project': None},
+                        'sampling_run_params': {
                             'max_tokens': 512,
                             'temperature': None,
                             'top_p': None,
                             'modalities': ['text'],
                             'audio': None
+                        }
                     }
                 }
-            },            
+            },
+            {
+                'model_name': 'fallback',
+                'model': {
+                    'msgflux_type': 'model',
+                    'provider': 'together',
+                    'model_type': 'chat_completion',
+                    'state': {
+                        'model_id': 'mistral-7b',
+                        'sampling_params': {'organization': None, 'project': None},
+                        'sampling_run_params': {
+                                'max_tokens': 512,
+                                'temperature': None,
+                                'top_p': None,
+                                'modalities': ['text'],
+                                'audio': None
+                        }
+                    }
+                }
+            },
         ]
     }
 }
 ```
 
 ---
-

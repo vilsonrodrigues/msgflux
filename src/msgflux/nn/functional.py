@@ -2,22 +2,25 @@
 import asyncio
 import concurrent.futures
 from concurrent.futures import Future
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple
 
 from msgflux._private.executor import Executor
 from msgflux.dotdict import dotdict
+from msgflux.exceptions import TaskError
 from msgflux.logger import logger
 from msgflux.nn.modules.module import get_callable_name
 from msgflux.telemetry import Spans
 
 __all__ = [
-    "abackground_task",
+    "afire_and_forget",
+    "ainline",
     "amap_gather",
     "amsg_bcast_gather",
     "ascatter_gather",
     "await_for_event",
-    "background_task",
+    "fire_and_forget",
     "bcast_gather",
+    "inline",
     "map_gather",
     "msg_bcast_gather",
     "msg_scatter_gather",
@@ -54,7 +57,7 @@ def map_gather(
 
     Returns:
         A tuple containing the results of each call to the `f` function. If a call
-        fails or times out, the corresponding result will be `None`.
+        fails or times out, the corresponding result will be a `TaskError` instance.
 
     Raises:
         TypeError:
@@ -98,12 +101,12 @@ def map_gather(
 
     concurrent.futures.wait(futures, timeout=timeout)
     responses: List[Any] = []
-    for future in futures:
+    for i, future in enumerate(futures):
         try:
             responses.append(future.result())
         except Exception as e:
             logger.error(str(e))
-            responses.append(None)
+            responses.append(TaskError(exception=e, index=i))
     return tuple(responses)
 
 
@@ -143,7 +146,7 @@ def scatter_gather(
     Returns:
         Tuple containing the responses for each callable. If an error or
         timeout occurs for a specific callable, its corresponding response
-        in the tuple will be `None`.
+        in the tuple will be a `TaskError` instance.
 
     Raises:
         TypeError:
@@ -189,12 +192,12 @@ def scatter_gather(
 
     concurrent.futures.wait(futures, timeout=timeout)
     responses: List[Any] = []
-    for future in futures:
+    for i, future in enumerate(futures):
         try:
             responses.append(future.result())
         except Exception as e:
             logger.error(str(e))
-            responses.append(None)
+            responses.append(TaskError(exception=e, index=i))
     return tuple(responses)
 
 
@@ -241,12 +244,13 @@ def msg_scatter_gather(
     futures = [executor.submit(f, msg) for f, msg in zip(to_send, messages)]
 
     concurrent.futures.wait(futures, timeout=timeout)
-    for f, future in zip(to_send, futures):
+    for i, (f, future) in enumerate(zip(to_send, futures)):
         f_name = get_callable_name(f)
         try:
             future.result()
         except Exception as e:
             logger.error(f"Error in scattered task for `{f_name}`: {e}")
+            messages[i]["_error"] = TaskError(exception=e, index=i)
     return tuple(messages)
 
 
@@ -284,7 +288,7 @@ def bcast_gather(
 
         # Example 2: Simulate error
         results = F.bcast_gather([square, fail, cube], 2)
-        print(results)  # (4, None, 8)
+        print(results)  # (4, TaskError(...), 8)
 
         # Example 3: Timeout
         results = F.bcast_gather([square, cube], 4, timeout=0.01)
@@ -298,12 +302,12 @@ def bcast_gather(
 
     concurrent.futures.wait(futures, timeout=timeout)
     responses: List[Any] = []
-    for future in futures:
+    for i, future in enumerate(futures):
         try:
             responses.append(future.result())
         except Exception as e:
             logger.error(str(e))
-            responses.append(None)
+            responses.append(TaskError(exception=e, index=i))
     return tuple(responses)
 
 
@@ -341,12 +345,13 @@ def msg_bcast_gather(
     futures = [executor.submit(f, message) for f in to_send]
 
     concurrent.futures.wait(futures, timeout=timeout)
-    for f, future in zip(to_send, futures):
+    for i, (f, future) in enumerate(zip(to_send, futures)):
         f_name = get_callable_name(f)
         try:
             future.result()
         except Exception as e:
             logger.error(f"Error in scattered task for `{f_name}`: {e}")
+            message.setdefault("_errors", {})[f_name] = TaskError(exception=e, index=i)
     return message
 
 
@@ -391,7 +396,7 @@ def wait_for(
         return future.result()
     except Exception as e:
         logger.error(str(e))
-        return None
+        return TaskError(exception=e, index=0)
 
 
 @Spans.instrument()
@@ -418,9 +423,9 @@ def wait_for_event(event: asyncio.Event) -> None:
 
 
 @Spans.instrument()
-def background_task(to_send: Callable, *args, **kwargs) -> None:
-    """Executes a task in the background asynchronously without blocking,
-    using the AsyncExecutorPool. This function is "fire-and-forget".
+def fire_and_forget(to_send: Callable, *args, **kwargs) -> None:
+    """Dispatches a task without waiting for a result.
+    Uses the AsyncExecutorPool. The task is not tracked and no return is provided.
 
     Args:
         to_send:
@@ -439,19 +444,19 @@ def background_task(to_send: Callable, *args, **kwargs) -> None:
         def print_message(message: str):
             time.sleep(1)
             print(f"[Sync] Message: {message}")
-        F.background_task(print_message, "Hello from sync function")
+        F.fire_and_forget(print_message, "Hello from sync function")
 
         # Example 2:
         import asyncio
         async def async_print_message(message: str):
             await asyncio.sleep(1)
             print(f"[Async] Message: {message}")
-        F.background_task(async_print_message, "Hello from async function")
+        F.fire_and_forget(async_print_message, "Hello from async function")
 
         # Example 3 (with error):
         def failing_task():
             raise ValueError("This task failed!")
-        F.background_task(failing_task)  # Error will be logged
+        F.fire_and_forget(failing_task)  # Error will be logged
     """
     if not callable(to_send):
         raise TypeError("`to_send` must be a callable object")
@@ -461,7 +466,7 @@ def background_task(to_send: Callable, *args, **kwargs) -> None:
         try:
             future.result()
         except Exception as e:
-            logger.error(f"Background task error: {e!s}", exc_info=True)
+            logger.error(f"Fire-and-forget task error: {e!s}", exc_info=True)
 
     executor = Executor.get_instance()
     future = executor.submit(to_send, *args, **kwargs)
@@ -469,9 +474,9 @@ def background_task(to_send: Callable, *args, **kwargs) -> None:
 
 
 @Spans.ainstrument()
-async def abackground_task(to_send: Callable, *args, **kwargs) -> None:
-    """Executes an async task in the background without blocking.
-    This is a truly async "fire-and-forget" function.
+async def afire_and_forget(to_send: Callable, *args, **kwargs) -> None:
+    """Dispatches an async task without waiting for a result.
+    The task is not tracked and no return is provided.
 
     Args:
         to_send:
@@ -490,12 +495,12 @@ async def abackground_task(to_send: Callable, *args, **kwargs) -> None:
         async def async_print_message(message: str):
             await asyncio.sleep(1)
             print(f"[Async] Message: {message}")
-        await F.abackground_task(async_print_message, "Hello from async function")
+        await F.afire_and_forget(async_print_message, "Hello from async function")
 
         # Example 2 (with error):
         async def failing_task():
             raise ValueError("This task failed!")
-        await F.abackground_task(failing_task)  # Error will be logged
+        await F.afire_and_forget(failing_task)  # Error will be logged
     """
     if not callable(to_send):
         raise TypeError("`to_send` must be a callable object")
@@ -512,7 +517,7 @@ async def abackground_task(to_send: Callable, *args, **kwargs) -> None:
                 loop = asyncio.get_event_loop()
                 await loop.run_in_executor(None, lambda: to_send(*args, **kwargs))
         except Exception as e:
-            logger.error(f"Async background task error: {e!s}", exc_info=True)
+            logger.error(f"Fire-and-forget task error: {e!s}", exc_info=True)
 
     asyncio.create_task(run_task())  # noqa: RUF006
 
@@ -546,6 +551,272 @@ async def await_for_event(event: asyncio.Event) -> None:
         raise TypeError("`event` must be an instance of asyncio.Event")
 
     await event.wait()
+
+
+def inline(
+    expression: str, modules: Mapping[str, Callable], message: dotdict
+) -> dotdict:
+    """Executes a workflow defined in DSL expression over a given `message`.
+
+    Args:
+        expression:
+            A string describing the execution pipeline using a
+            Domain-Specific Language (DSL).
+
+            The DSL supports:
+
+            **Sequential execution**:
+                Use `->` to define a linear pipeline.
+                !!! example
+
+                    `"prep -> transform -> output"`
+
+            **Parallel execution**:
+                Use square brackets `[...]` to group modules that run in parallel.
+                !!! example
+
+                    `"prep -> [feat_a, feat_b] -> combine"`
+
+            **Conditional execution**:
+                Use curly braces with a ternary-like structure:
+                `{condition ? then_module, else_module}`.
+                !!! example
+
+                    `"{user.age > 18 ? adult_module, child_module}"`
+
+            **While loops**:
+                Use `@{condition}: actions;` to execute actions repeatedly
+                while condition is true.
+                !!! example
+
+                    `"@{counter < 10}: increment;"`
+
+            **Logical operations in conditions**:
+                - **AND**: `cond1 & cond2`
+                - **OR**: `cond1 || cond2`
+                - **NOT**: `!cond`
+                Example: `"{user.is_active & !user.is_banned ? allow, deny}"`
+
+            **None checking in conditions**:
+                - `is None`: Example: `user.name is None`
+                - `is not None`: Example: `user.name is not None`
+
+            These conditionals are evaluated against the `message` object context.
+
+        modules:
+            A dictionary mapping module names (as strings) to callables.
+            Each function must accept and return a `message` object.
+
+        message:
+            The input message (dotdict) to be passed through the pipeline.
+
+    Returns:
+        The resulting `message` after executing the defined workflow.
+
+    Raises:
+        TypeError:
+            If expression is not a str.
+        TypeError:
+            If message is not a `msgflux.dotdict` instance.
+        TypeError:
+            If modules is not a Mapping.
+        ValueError:
+            If a module is not found, if the DSL syntax is invalid,
+            or if a condition cannot be parsed.
+        RuntimeError:
+            If a while loop exceeds the maximum iteration limit
+            (prevents infinite loops).
+
+    Examples:
+        from msgflux import dotdict
+        import msgflux.nn.functional as F
+
+        def prep(msg: dotdict) -> dotdict:
+            print(f"Executing prep, current msg: {msg}")
+            msg['output'] = {'agent': 'xpto', 'score': 10, 'status': 'success'}
+            msg['counter'] = 0
+            return msg
+
+        def increment(msg: dotdict) -> dotdict:
+            print(f"Executing increment, current msg: {msg}")
+            msg['counter'] = msg.get('counter', 0) + 1
+            return msg
+
+        def feat_a(msg: dotdict) -> dotdict:
+            print(f"Executing feat_a, current msg: {msg}")
+            msg['feat_a'] = 'result_a'
+            return msg
+
+        def feat_b(msg: dotdict) -> dotdict:
+            print(f"Executing feat_b, current msg: {msg}")
+            msg['feat_b'] = 'result_b'
+            return msg
+
+        def final(msg: dotdict) -> dotdict:
+            print(f"Executing final, current msg: {msg}")
+            msg['final'] = 'done'
+            return msg
+
+        my_modules = {
+            "prep": prep,
+            "increment": increment,
+            "feat_a": feat_a,
+            "feat_b": feat_b,
+            "final": final
+        }
+        input_msg = dotdict()
+
+        # Example with while loop
+        result = F.inline(
+            "prep -> @{counter < 5}: increment; -> final",
+            modules=my_modules,
+            message=input_msg
+        )
+
+        # Example with nested while loop and other constructs
+        result = F.inline(
+            "prep -> @{counter < 3}: increment -> [feat_a, feat_b]; -> final",
+            modules=my_modules,
+            message=input_msg
+        )
+    """
+    from msgflux.dsl.inline import inline as _inline  # noqa: PLC0415
+
+    return _inline(expression, modules, message)
+
+
+async def ainline(
+    expression: str, modules: Mapping[str, Callable], message: dotdict
+) -> dotdict:
+    """Async version of inline. Executes a workflow defined in DSL
+    expression over a given `message`.
+
+    Args:
+        expression:
+            A string describing the execution pipeline using a
+            Domain-Specific Language (DSL).
+
+            The DSL supports:
+
+            **Sequential execution**:
+                Use `->` to define a linear pipeline.
+                !!! example
+
+                    `"prep -> transform -> output"`
+
+            **Parallel execution**:
+                Use square brackets `[...]` to group modules that run in parallel.
+                !!! example
+
+                    `"prep -> [feat_a, feat_b] -> combine"`
+
+            **Conditional execution**:
+                Use curly braces with a ternary-like structure:
+                `{condition ? then_module, else_module}`.
+                !!! example
+
+                    `"{user.age > 18 ? adult_module, child_module}"`
+
+            **While loops**:
+                Use `@{condition}: actions;` to execute actions repeatedly
+                while condition is true.
+                !!! example
+
+                    `"@{counter < 10}: increment;"`
+
+            **Logical operations in conditions**:
+                - **AND**: `cond1 & cond2`
+                - **OR**: `cond1 || cond2`
+                - **NOT**: `!cond`
+                Example: `"{user.is_active & !user.is_banned ? allow, deny}"`
+
+            **None checking in conditions**:
+                - `is None`: Example: `user.name is None`
+                - `is not None`: Example: `user.name is not None`
+
+            These conditionals are evaluated against the `message` object context.
+
+        modules:
+            A dictionary mapping module names (as strings) to callables.
+            Each function must accept and return a `message` object.
+            Supports both sync and async modules.
+
+        message:
+            The input message (dotdict) to be passed through the pipeline.
+
+    Returns:
+        The resulting `message` after executing the defined workflow.
+
+    Raises:
+        TypeError:
+            If expression is not a str.
+        TypeError:
+            If message is not a `msgflux.dotdict` instance.
+        TypeError:
+            If modules is not a Mapping.
+        ValueError:
+            If a module is not found, if the DSL syntax is invalid,
+            or if a condition cannot be parsed.
+        RuntimeError:
+            If a while loop exceeds the maximum iteration limit
+            (prevents infinite loops).
+
+    Examples:
+        from msgflux import dotdict
+        import msgflux.nn.functional as F
+
+        async def prep(msg: dotdict) -> dotdict:
+            print(f"Executing prep, current msg: {msg}")
+            msg['output'] = {'agent': 'xpto', 'score': 10, 'status': 'success'}
+            msg['counter'] = 0
+            return msg
+
+        async def increment(msg: dotdict) -> dotdict:
+            print(f"Executing increment, current msg: {msg}")
+            msg['counter'] = msg.get('counter', 0) + 1
+            return msg
+
+        async def feat_a(msg: dotdict) -> dotdict:
+            print(f"Executing feat_a, current msg: {msg}")
+            msg['feat_a'] = 'result_a'
+            return msg
+
+        async def feat_b(msg: dotdict) -> dotdict:
+            print(f"Executing feat_b, current msg: {msg}")
+            msg['feat_b'] = 'result_b'
+            return msg
+
+        async def final(msg: dotdict) -> dotdict:
+            print(f"Executing final, current msg: {msg}")
+            msg['final'] = 'done'
+            return msg
+
+        my_modules = {
+            "prep": prep,
+            "increment": increment,
+            "feat_a": feat_a,
+            "feat_b": feat_b,
+            "final": final
+        }
+        input_msg = dotdict()
+
+        # Example with while loop
+        result = await F.ainline(
+            "prep -> @{counter < 5}: increment; -> final",
+            modules=my_modules,
+            message=input_msg
+        )
+
+        # Example with nested while loop and other constructs
+        result = await F.ainline(
+            "prep -> @{counter < 3}: increment -> [feat_a, feat_b]; -> final",
+            modules=my_modules,
+            message=input_msg
+        )
+    """
+    from msgflux.dsl.inline import ainline as _ainline  # noqa: PLC0415
+
+    return await _ainline(expression, modules, message)
 
 
 @Spans.ainstrument()
@@ -600,12 +871,11 @@ async def amap_gather(
 
     responses = await asyncio.gather(*tasks, return_exceptions=True)
 
-    # Convert exceptions to None and log errors
     results = []
-    for response in responses:
+    for i, response in enumerate(responses):
         if isinstance(response, Exception):
             logger.error(str(response))
-            results.append(None)
+            results.append(TaskError(exception=response, index=i))
         else:
             results.append(response)
 
@@ -664,12 +934,11 @@ async def ascatter_gather(
 
     responses = await asyncio.gather(*tasks, return_exceptions=True)
 
-    # Convert exceptions to None and log errors
     results = []
-    for response in responses:
+    for i, response in enumerate(responses):
         if isinstance(response, Exception):
             logger.error(str(response))
-            results.append(None)
+            results.append(TaskError(exception=response, index=i))
         else:
             results.append(response)
 
@@ -734,9 +1003,12 @@ async def amsg_bcast_gather(
 
     responses = await asyncio.gather(*tasks, return_exceptions=True)
 
-    for f, response in zip(to_send, responses):
+    for i, (f, response) in enumerate(zip(to_send, responses)):
         f_name = get_callable_name(f)
         if isinstance(response, Exception):
             logger.error(f"Error in async bcast task for `{f_name}`: {response}")
+            message.setdefault("_errors", {})[f_name] = TaskError(
+                exception=response, index=i
+            )
 
     return message

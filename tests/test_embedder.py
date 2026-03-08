@@ -10,7 +10,7 @@ from msgflux.nn.modules import Embedder
 class MockBatchEmbedder:
     """Mock embedder that supports batch processing."""
 
-    batch = True
+    batch_support = True
     model_type = "text_embedder"
 
     def __init__(self):
@@ -40,7 +40,7 @@ class MockBatchEmbedder:
 class MockNonBatchEmbedder:
     """Mock embedder that does NOT support batch processing."""
 
-    batch = False
+    batch_support = False
     model_type = "text_embedder"
 
     def __init__(self):
@@ -150,9 +150,7 @@ def test_embedder_with_non_batch_model_single_text():
 def test_embedder_with_message_object():
     """Test Embedder with Message object using message_fields."""
     model = MockBatchEmbedder()
-    embedder = Embedder(
-        name="test_embedder", model=model, message_fields={"task_inputs": "texts"}
-    )
+    embedder = Embedder(model=model, message_fields={"task_inputs": "texts"})
 
     # Create message with texts field
     msg = Message(texts=["text1", "text2"])
@@ -170,9 +168,7 @@ def test_embedder_with_message_object():
 def test_embedder_with_config():
     """Test Embedder with config parameters."""
     model = MockBatchEmbedder()
-    embedder = Embedder(
-        name="test_embedder", model=model, config={"normalize": True, "truncate": True}
-    )
+    embedder = Embedder(model=model, config={"normalize": True, "truncate": True})
 
     result = embedder("Hello")
 
@@ -203,11 +199,9 @@ def test_embedder_async():
 
 
 def test_embedder_response_mode_plain():
-    """Test Embedder with plain_response mode."""
+    """Test Embedder with default response_mode (None)."""
     model = MockBatchEmbedder()
-    embedder = Embedder(
-        name="test_embedder", model=model, response_mode="plain_response"
-    )
+    embedder = Embedder(model=model, response_mode=None)
 
     result = embedder("Hello")
 

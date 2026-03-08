@@ -9,7 +9,7 @@ except Exception as e:
 from msgflux.envs import envs
 from msgflux.models.base import BaseModel
 from msgflux.models.profiles import ensure_profiles_loaded
-from msgflux.utils.tenacity import model_retry
+from msgflux.utils.tenacity import apply_retry, default_model_retry
 
 
 class HTTPXModelClient(BaseModel):
@@ -35,7 +35,15 @@ class HTTPXModelClient(BaseModel):
         # Trigger lazy load of model profiles in background
         ensure_profiles_loaded(background=True)
 
-    @model_retry
+        # Apply retry
+        retry_config = getattr(self, "retry", None)
+        self._execute = apply_retry(
+            self._execute, retry_config, default=default_model_retry
+        )
+        self._aexecute = apply_retry(
+            self._aexecute, retry_config, default=default_model_retry
+        )
+
     def _execute(self, **kwargs):
         params = {"model": self.model_id, **kwargs}
         if hasattr(self, "sampling_run_params"):
@@ -54,7 +62,6 @@ class HTTPXModelClient(BaseModel):
         model_output = response.json()
         return model_output
 
-    @model_retry
     async def _aexecute(self, **kwargs):
         params = {"model": self.model_id, **kwargs}
         if hasattr(self, "sampling_run_params"):

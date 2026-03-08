@@ -78,3 +78,63 @@
 |-------------|--------------------|
 | OpenAI      | `msgflux[openai]`  |
 | Together    | `msgflux[openai]`  |
+
+# Parsers
+
+## PDF
+
+| Provider | Dependency |
+|----------|------------|
+| `pypdf` | `pypdf` |
+
+## Word (.docx)
+
+| Provider | Dependency |
+|----------|------------|
+| `python_docx` | `python-docx` |
+
+## PowerPoint (.pptx)
+
+| Provider | Dependency |
+|----------|------------|
+| `python_pptx` | `python-pptx` |
+
+## Excel (.xlsx)
+
+| Provider | Dependency |
+|----------|------------|
+| `openpyxl` | `openpyxl` |
+
+## HTML
+
+| Provider | Dependency |
+|----------|------------|
+| `beautifulsoup` | `beautifulsoup4` |
+
+## CSV / TSV
+
+| Provider | Dependency |
+|----------|------------|
+| `csv` | built-in |
+
+## Email (.eml)
+
+| Provider | Dependency |
+|----------|------------|
+| `email` | built-in |
+
+# Retrievers
+
+## Lexical
+
+| Provider    | Dependency        |
+|-------------|-------------------|
+| BM25        |     built-in      |
+| BM25s       |     `bm25s`       |
+| Rank BM25   |   `rank-bm25s`    |
+
+## Web Search
+
+| Provider    | Dependency        |
+|-------------|-------------------|
+| Wikipedia   |   `wikipedia`     |

@@ -3,7 +3,7 @@
 from unittest.mock import Mock
 
 from msgflux.auto import AutoParams
-from msgflux.nn.modules import LM, Agent, Predictor
+from msgflux.nn.modules import Agent, Generator, Predictor
 
 
 def test_autoparams_basic_example():
@@ -40,7 +40,7 @@ def test_autoparams_with_agent():
     # Note: We only set params that don't conflict with Agent's internal state
     class MyAssistant(Agent):
         name = "assistant"
-        response_mode = "plain_response"
+        response_mode = None
 
     # Create a mock model
     mock_model = Mock()
@@ -87,22 +87,20 @@ def test_autoparams_inheritance():
     assert m2.c == 3
 
 
-def test_autoparams_with_lm():
-    """Test that LM works with AutoParams."""
+def test_autoparams_with_generator():
+    """Test that Generator works with AutoParams."""
 
-    # LM only has one required param (model), so we can test with AutoParams
     mock_model = Mock()
-    mock_model.model_type = "chat_completion"
 
-    lm = LM(model=mock_model)
-    assert lm.model == mock_model
+    gen = Generator(model=mock_model)
+    assert gen.model == mock_model
 
-    # Custom LM with autoparams
-    class MyLM(LM):
+    # Custom Generator with autoparams
+    class MyGenerator(Generator):
         pass
 
-    lm2 = MyLM(model=mock_model)
-    assert lm2.model == mock_model
+    gen2 = MyGenerator(model=mock_model)
+    assert gen2.model == mock_model
 
 
 def test_autoparams_does_not_capture_methods():

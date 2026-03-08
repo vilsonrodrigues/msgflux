@@ -1,4 +1,4 @@
-from typing import List, Optional, Tuple
+from typing import Any, List, Optional, Tuple
 
 
 class ToolCallTimeOutError(Exception):
@@ -27,71 +27,58 @@ class ModelRouterError(Exception):
         return f"{self.message}\nCaptured Exceptions:\n{details}"
 
 
+class _GuardInterrupt(Exception):  # noqa: N818
+    """Internal exception for short-circuit when message is provided."""
+
+    def __init__(self, response: str):
+        self.response = response
+
+
 class UnsafeUserInputError(Exception):
-    pass
+    def __init__(self, message: Optional[str] = None, data: Any = None):
+        super().__init__(message or "Unsafe user input detected")
+        self.data = data
 
 
 class UnsafeModelResponseError(Exception):
-    pass
+    def __init__(self, message: Optional[str] = None, data: Any = None):
+        super().__init__(message or "Unsafe model response detected")
+        self.data = data
 
 
 class TypedParserNotFoundError(ValueError):
     """Raised when a requested typed parser is not registered."""
 
 
-class AutoModuleError(Exception):
-    """Base error for AutoModule operations."""
+class TaskError:
+    """Wraps an exception from a failed task in a gather/scatter operation.
 
+    Returned in place of ``None`` when a callable fails during parallel
+    execution (e.g. ``scatter_gather``, ``map_gather``, ``bcast_gather``).
+    This allows callers to inspect failures without losing successful results.
 
-class SecurityError(AutoModuleError):
-    """trust_remote_code=True required but not provided."""
+    Attributes:
+        exception: The original exception raised by the task.
+        index: The positional index of the failed task in the callable list.
 
-    def __init__(self, repo_id: str, message: Optional[str] = None):
-        self.repo_id = repo_id
-        if message is None:
-            message = (
-                f"Loading '{repo_id}' requires trust_remote_code=True.\n"
-                "This module has sharing_mode='instance' which executes remote code.\n"
-                "Only enable this if you trust the repository author."
-            )
-        super().__init__(message)
+    Examples:
+        results = F.scatter_gather([agent_a, agent_b])
+        for result in results:
+            if isinstance(result, TaskError):
+                print(f"Failed: {result.exception}")
+            else:
+                print(f"Success: {result}")
+    """
 
+    def __init__(self, exception: Exception, index: int):
+        self.exception = exception
+        self.index = index
 
-class IncompatibleVersionError(AutoModuleError):
-    """msgflux version is incompatible with module requirements."""
+    def __repr__(self) -> str:
+        return f"TaskError(index={self.index}, exception={self.exception!r})"
 
-    def __init__(
-        self,
-        repo_id: str,
-        required_version: str,
-        current_version: str,
-    ):
-        self.repo_id = repo_id
-        self.required_version = required_version
-        self.current_version = current_version
-        message = (
-            f"Module '{repo_id}' requires msgflux{required_version}, "
-            f"but current version is {current_version}"
-        )
-        super().__init__(message)
+    def __str__(self) -> str:
+        return f"Task {self.index} failed: {self.exception}"
 
-
-class ConfigurationError(AutoModuleError):
-    """config.json is invalid or missing."""
-
-    def __init__(self, repo_id: str, reason: str):
-        self.repo_id = repo_id
-        self.reason = reason
-        message = f"Invalid configuration for '{repo_id}': {reason}"
-        super().__init__(message)
-
-
-class DownloadError(AutoModuleError):
-    """Failed to download files from remote repository."""
-
-    def __init__(self, repo_id: str, filename: str, reason: str):
-        self.repo_id = repo_id
-        self.filename = filename
-        self.reason = reason
-        message = f"Failed to download '{filename}' from '{repo_id}': {reason}"
-        super().__init__(message)
+    def __bool__(self) -> bool:
+        return False

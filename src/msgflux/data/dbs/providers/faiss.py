@@ -28,8 +28,8 @@ class FAISSVectorDB(BaseVector, BaseDB, VectorDB):
     def __init__(
         self,
         dimension: int,
-        metric_type: Optional[str] = "cosine",
-        index_type: Optional[str] = "flat",
+        metric_type: str = "cosine",
+        index_type: str = "flat",
     ):
         """Args:
         dimension:
@@ -119,10 +119,10 @@ class FAISSVectorDB(BaseVector, BaseDB, VectorDB):
     def _search(  # noqa: C901
         self,
         queries: Union[List[List[float]], "np.ndarray"],
-        top_k: Optional[int] = 4,
+        top_k: int = 4,
         threshold: Optional[float] = None,
         *,
-        return_score: Optional[bool] = False,
+        return_score: bool = False,
     ) -> List[List[Dict]]:
         if len(np.array(queries).shape) == 1:
             queries = [queries]

@@ -367,7 +367,7 @@ def generate_annotations_from_signature(
     Returns:
         Dict mapping parameter names to types, excluding multimodal types
     """
-    from msgflux.utils.msgspec import StructFactory
+    from msgflux.utils.msgspec import StructFactory  # noqa: PLC0415
 
     annotations = {}
 

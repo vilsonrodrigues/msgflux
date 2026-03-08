@@ -150,8 +150,7 @@ def test_agent_without_image_block_kwargs():
 
     agent = Agent(name="test_agent", model=model)
 
-    agent._prepare_data_uri = MagicMock(return_value="https://example.com/image.jpg")
-    result = agent._format_image_input("test.jpg")
+    result = agent._format_image_input("https://example.com/image.jpg")
 
     # Should work, just without extra kwargs
     assert result["image_url"]["url"] == "https://example.com/image.jpg"

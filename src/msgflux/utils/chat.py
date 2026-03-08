@@ -15,11 +15,9 @@ from typing import (
 
 import msgspec
 
-from msgflux.generation.control_flow import ToolFlowControl
 from msgflux.logger import logger
 from msgflux.utils.inspect import get_mime_type
 from msgflux.utils.msgspec import msgspec_dumps
-from msgflux.utils.validation import is_subclass_of
 
 
 class ChatBlockMeta(type):
@@ -183,35 +181,6 @@ class ChatML:
         self.history = []
 
 
-complex_arguments_schema = {
-    "anyOf": [
-        {
-            "type": "object",
-            # 'additionalProperties' agora define o schema para os VALORES
-            "additionalProperties": {
-                "anyOf": [
-                    {"type": "string"},
-                    {"type": "integer"},
-                    {"type": "number"},
-                    {"type": "boolean"},
-                    {
-                        "type": "array",
-                        "items": {
-                            "anyOf": [
-                                {"type": "string"},
-                                {"type": "integer"},
-                                {"type": "number"},
-                            ]
-                        },
-                    },
-                ]
-            },
-        },
-        {"type": "null"},
-    ]
-}
-
-
 def response_format_from_msgspec_struct(  # noqa: C901
     struct_class: Type[msgspec.Struct],
 ) -> Dict[str, Any]:
@@ -260,22 +229,6 @@ def response_format_from_msgspec_struct(  # noqa: C901
             for item in schema_node:
                 _ensure_all_properties_are_required(item)
 
-    def _find_and_patch_property(
-        schema_node: Any, prop_name: str, patch_schema: Dict[str, Any]
-    ):
-        """Recursively finds a property by name and replaces its schema."""
-        if isinstance(schema_node, dict):
-            if "properties" in schema_node and prop_name in schema_node["properties"]:
-                schema_node["properties"][prop_name] = patch_schema
-
-            # Continue the recursive search
-            for value in schema_node.values():
-                _find_and_patch_property(value, prop_name, patch_schema)
-
-        elif isinstance(schema_node, list):
-            for item in schema_node:
-                _find_and_patch_property(item, prop_name, patch_schema)
-
     msgspec_schema = msgspec.json.schema(struct_class)
     definitions = msgspec_schema.get("$defs", {})
     root_ref = msgspec_schema.get("$ref")
@@ -284,12 +237,6 @@ def response_format_from_msgspec_struct(  # noqa: C901
     inlined_schema = _dereference_schema(root_definition, definitions)
     _add_additional_properties_false(inlined_schema)
     _ensure_all_properties_are_required(inlined_schema)
-
-    if is_subclass_of(struct_class, ToolFlowControl):
-        # Hack: LM providers NOT support `Any` type. ToolFlowControl needs receive
-        # arguments, msgspec not render complex types as a long Union.
-        # Force a complex type in `arguments`.
-        _find_and_patch_property(inlined_schema, "arguments", complex_arguments_schema)
 
     inlined_schema.pop("title", None)
     response_format = {

@@ -50,7 +50,6 @@ class TestHTTPTransport:
         assert transport.pool_limits["max_keepalive_connections"] == 20
 
     @pytest.mark.asyncio
-    @patch("msgflux.protocols.mcp.transports.HTTPX_AVAILABLE", True)
     @patch("msgflux.protocols.mcp.transports.httpx")
     async def test_connect(self, mock_httpx):
         """Test connecting creates AsyncClient."""
@@ -66,22 +65,25 @@ class TestHTTPTransport:
         mock_httpx.AsyncClient.assert_called_once()
 
     @pytest.mark.asyncio
-    @patch("msgflux.protocols.mcp.transports.HTTPX_AVAILABLE", True)
     @patch("msgflux.protocols.mcp.transports.httpx")
     async def test_send_request(self, mock_httpx):
         """Test sending JSON-RPC request."""
         mock_client = AsyncMock()
-        mock_response = AsyncMock()
+        mock_response = MagicMock()
         mock_response.json.return_value = {
             "jsonrpc": "2.0",
             "id": "1",
             "result": {"tools": []},
         }
+        mock_response.raise_for_status = MagicMock()
+        mock_response.headers.get.return_value = "application/json"
         mock_client.post.return_value = mock_response
 
         mock_httpx.AsyncClient.return_value = mock_client
         mock_httpx.Timeout = MagicMock()
         mock_httpx.Limits = MagicMock()
+        mock_httpx.TimeoutException = TimeoutError
+        mock_httpx.HTTPStatusError = ValueError
 
         transport = HTTPTransport(base_url="http://localhost:8080")
         await transport.connect()
@@ -91,10 +93,9 @@ class TestHTTPTransport:
         assert "result" in result
         mock_client.post.assert_called_once()
         call_args = mock_client.post.call_args
-        assert "http://localhost:8080/" in call_args[0]
+        assert "http://localhost:8080" in call_args[0]
 
     @pytest.mark.asyncio
-    @patch("msgflux.protocols.mcp.transports.HTTPX_AVAILABLE", True)
     @patch("msgflux.protocols.mcp.transports.httpx")
     async def test_send_notification(self, mock_httpx):
         """Test sending notification (fire-and-forget)."""
@@ -112,7 +113,6 @@ class TestHTTPTransport:
         mock_client.post.assert_called_once()
 
     @pytest.mark.asyncio
-    @patch("msgflux.protocols.mcp.transports.HTTPX_AVAILABLE", True)
     @patch("msgflux.protocols.mcp.transports.httpx")
     async def test_disconnect(self, mock_httpx):
         """Test disconnect closes client."""
@@ -153,6 +153,7 @@ class TestStdioTransport:
         mock_process = AsyncMock()
         mock_process.stdin = AsyncMock()
         mock_process.stdout = AsyncMock()
+        mock_process.stdout.readline = AsyncMock(return_value=b"")  # EOF stops read loop
         mock_process.stderr = AsyncMock()
         mock_subprocess.return_value = mock_process
 
@@ -168,23 +169,24 @@ class TestStdioTransport:
         """Test sending request via stdin."""
         mock_process = AsyncMock()
         mock_process.stdin = AsyncMock()
+        mock_process.stdin.write = MagicMock()  # write() is sync in StreamWriter
         mock_process.stdout = AsyncMock()
         mock_process.stderr = AsyncMock()
 
         # Mock stdout to return a response
         response_data = {"jsonrpc": "2.0", "id": "1", "result": {"success": True}}
-        mock_process.stdout.readline = AsyncMock(
-            return_value=(json.dumps(response_data) + "\n").encode("utf-8")
-        )
+        mock_process.stdout.readline = AsyncMock(side_effect=[
+            (json.dumps(response_data) + "\n").encode("utf-8"),
+            b"",  # EOF stops read loop after delivering the response
+        ])
 
         mock_subprocess.return_value = mock_process
 
         transport = StdioTransport(command="test-command", timeout=5.0)
         await transport.connect()
 
-        # Give time for read task to start
-        await asyncio.sleep(0.1)
-
+        # Do NOT sleep before send_request: if we yield here, _read_responses
+        # will consume the response before the future is registered.
         result = await transport.send_request("test/method", {"param": "value"})
 
         assert "result" in result
@@ -197,7 +199,9 @@ class TestStdioTransport:
         """Test sending notification via stdin."""
         mock_process = AsyncMock()
         mock_process.stdin = AsyncMock()
+        mock_process.stdin.write = MagicMock()  # write() is sync in StreamWriter
         mock_process.stdout = AsyncMock()
+        mock_process.stdout.readline = AsyncMock(return_value=b"")  # EOF stops read loop
         mock_process.stderr = AsyncMock()
         mock_subprocess.return_value = mock_process
 
@@ -219,6 +223,7 @@ class TestStdioTransport:
         mock_process = AsyncMock()
         mock_process.stdin = AsyncMock()
         mock_process.stdout = AsyncMock()
+        mock_process.stdout.readline = AsyncMock(return_value=b"")  # EOF stops read loop
         mock_process.stderr = AsyncMock()
         mock_process.terminate = Mock()
         mock_process.wait = AsyncMock()
@@ -248,6 +253,7 @@ class TestStdioTransport:
         """Test request timeout raises MCPTimeoutError."""
         mock_process = AsyncMock()
         mock_process.stdin = AsyncMock()
+        mock_process.stdin.write = MagicMock()  # write() is sync in StreamWriter
         mock_process.stdout = AsyncMock()
         mock_process.stderr = AsyncMock()
 

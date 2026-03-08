@@ -77,7 +77,9 @@ class TestPredictor:
     def test_prepare_task_with_message(self):
         """Test _prepare_task with Message input."""
         model = MockModel()
-        predictor = Predictor(name="test", model=model, message_fields={"task_inputs": "content"})
+        predictor = Predictor(
+            name="test", model=model, message_fields={"task_inputs": "content"}
+        )
 
         message = Message(content="test input")
         inputs = predictor._prepare_task(message)
@@ -97,7 +99,9 @@ class TestPredictor:
         """Test _prepare_task with model preference."""
         model = MockModel()
         predictor = Predictor(
-            name="test", model=model, message_fields={"model_preference": "context.preferred_model"}
+            name="test",
+            model=model,
+            message_fields={"model_preference": "context.preferred_model"},
         )
 
         message = Message(content="test")
@@ -110,9 +114,7 @@ class TestPredictor:
     def test_prepare_model_execution(self):
         """Test _prepare_model_execution."""
         model = MockModel()
-        predictor = Predictor(
-            name="test", model=model, config={"temperature": 0.5}
-        )
+        predictor = Predictor(name="test", model=model, config={"temperature": 0.5})
 
         params = predictor._prepare_model_execution("test data")
 
@@ -169,13 +171,13 @@ class TestPredictor:
         assert "result" in result.outputs
 
     def test_forward_with_plain_data(self):
-        """Test forward with plain data and plain_response mode."""
+        """Test forward with plain data and default response_mode (None)."""
         model = MockModel()
-        predictor = Predictor(name="test", model=model, response_mode="plain_response")
+        predictor = Predictor(name="test", model=model, response_mode=None)
 
         result = predictor("plain input")
 
-        # With plain_response mode, should return the processed response
+        # With response_mode=None, should return the processed response directly
         assert result is not None
 
     @pytest.mark.asyncio

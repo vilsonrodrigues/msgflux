@@ -224,17 +224,17 @@ class TestWaitFor:
             F.wait_for("not_callable", 1)
 
 
-class TestBackgroundTask:
-    """Test suite for background_task function."""
+class TestFireAndForget:
+    """Test suite for fire_and_forget function."""
 
-    def test_background_task_basic(self):
-        """Test basic background_task functionality."""
+    def test_fire_and_forget_basic(self):
+        """Test basic fire_and_forget functionality."""
         results = []
 
         def append_value(value):
             results.append(value)
 
-        F.background_task(append_value, 42)
+        F.fire_and_forget(append_value, 42)
         # Give it a moment to execute
         import time
 
@@ -242,10 +242,10 @@ class TestBackgroundTask:
 
         assert 42 in results
 
-    def test_background_task_not_callable(self):
-        """Test background_task raises TypeError for non-callable."""
+    def test_fire_and_forget_not_callable(self):
+        """Test fire_and_forget raises TypeError for non-callable."""
         with pytest.raises(TypeError, match="`to_send` must be a callable"):
-            F.background_task("not_callable")
+            F.fire_and_forget("not_callable")
 
 
 class TestWaitForEvent:
@@ -347,21 +347,21 @@ class TestAsyncFunctions:
             await F.await_for_event("not_event")
 
     @pytest.mark.asyncio
-    async def test_abackground_task_basic(self):
-        """Test basic abackground_task functionality."""
+    async def test_afire_and_forget_basic(self):
+        """Test basic afire_and_forget functionality."""
         results = []
 
         async def append_value(value):
             results.append(value)
 
-        await F.abackground_task(append_value, 99)
+        await F.afire_and_forget(append_value, 99)
         # Give it a moment to execute
         await asyncio.sleep(0.1)
 
         assert 99 in results
 
     @pytest.mark.asyncio
-    async def test_abackground_task_not_callable(self):
-        """Test abackground_task raises TypeError for non-callable."""
+    async def test_afire_and_forget_not_callable(self):
+        """Test afire_and_forget raises TypeError for non-callable."""
         with pytest.raises(TypeError, match="`to_send` must be a callable"):
-            await F.abackground_task("not_callable")
+            await F.afire_and_forget("not_callable")

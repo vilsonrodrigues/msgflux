@@ -41,32 +41,34 @@ dependencies = [
 [tool.hatch.version]
 path = "src/msgflux/version.py"
 
+[tool.pytest.ini_options]
+asyncio_mode = "strict"
+
 [dependency-groups]
 dev = [
     "pytest>=8.4.1",
     "pytest-asyncio>=1.1.0",
     "pytest-cov>=6.2.1",
     "pytest-mock>=3.14.0",
+    "pytest-xdist[psutil]>=3.6.1",
     "ruff>=0.12.5",
     "twine>=6.0.1",
     "packaging>=24.0",
+    # Dependencies for testing retrievers
+    "httpx>=0.28.1",
+    "numpy>=1.24.0",
+    "rank-bm25>=0.2.2",
+    "bm25s>=0.1.0",
+    "wikipedia>=1.4.0",
 ]
 doc = [
     "markdown-include>=0.8.1",
     "mkdocs>=1.6.1",
+    "mkdocs-copy-markdown>=0.1.0",
     "mkdocs-material>=9.6.21",
     "mkdocstrings>=0.30.1",
     "mkdocstrings-python>=1.18.2",
     "pymdown-extensions>=10.16.1",
-]
-msgtrace = [
-    "fastapi>=0.109.0",
-    "uvicorn[standard]>=0.27.0",
-    "pydantic>=2.0.0",
-    "websockets>=12.0",
-    "aiohttp>=3.9.0",
-    "python-multipart>=0.0.6",
-    "httpx>=0.28.1",
 ]
 
 [project.urls]
@@ -82,22 +84,9 @@ openai = [
 httpx = [
     "httpx>=0.28.1",
 ]
-xml = [
-    "defusedxml>=0.7.1",
-]
 plot = [
     "code2mermaid>=0.3.0",
     "mermaid-py>=0.8.0",
-]
-fal = [
-    "fal-client>=0.8.0",
-]
-google = [
-    "google-genai>=1.42.0",
-    "opentelemetry-instrumentation-google-genai>=0.3b0",
-]
-hub = [
-    "huggingface_hub>=0.20.0",
 ]
 
 [tool.ruff]
@@ -172,20 +161,55 @@ unfixable = ["F401"]
 "src/msgflux/nn/modules/tool.py" = ["A001","A002"]
 # Allow MCP protocol's camelCase naming convention
 "src/msgflux/protocols/mcp/types.py" = ["N815"]
-# AutoModule: Allow lazy imports, boolean args, global state, and complexity
-"src/msgflux/auto/*.py" = ["PLC0415", "FBT001", "FBT002", "PLW0603", "C901"]
-"src/msgflux/auto/sources/*.py" = ["PLC0415", "FBT001", "FBT002"]
+# Regex patterns in html.py are inherently long and cannot be split
+"src/msgflux/utils/html.py" = ["E501"]
+# Jinja templates in string literals cannot be line-wrapped
+"src/msgflux/generation/reasoning/react.py" = ["E501"]
 "tests/**/*" = [
-  "D",
+  "A",        # Builtin shadowing (e.g., vars, input, type in test helpers)
+  "ARG",      # Unused arguments (fixtures, interface compliance)
+  "B007",     # Unused loop control variable
+  "D",        # Docstrings not required in tests
+  "E402",     # Module import not at top (conditional imports for optional deps)
+  "E501",     # Line too long (test strings/assertions can be verbose)
+  "E712",     # Allow == True/False comparisons in assertions
+  "E721",     # Allow type comparisons with == in assertions
+  "E731",     # Allow lambda assignment in tests
+  "F401",     # Unused imports (imported for side effects or fixtures)
+  "F811",     # Redefined while unused (parametrize overrides)
+  "F841",     # Unused variables (e.g., exception capture)
+  "FBT",      # Boolean args in test helper functions
+  "I001",     # Unsorted imports
+  "N803",     # Invalid argument names (test fixtures naming)
+  "N806",     # Non-lowercase variable in function
+  "PLC0415",  # Imports outside top-level (intentional lazy imports in tests)
   "PLR0911",
   "PLR0912",
   "PLR0915",
+  "PLR1711",  # Useless return
   "PLR2004",
+  "RUF006",   # Asyncio dangling task (intentional in test helpers)
+  "RUF013",   # Implicit optional
+  "RUF015",   # Unnecessary iterable allocation for first element
+  "RUF034",   # Useless if-else
   "S101",
   "S105",
   "S106",
   "S107",
+  "T201",     # print() allowed in tests
   "TID252",
+]
+# Parsers use lazy imports for optional heavy dependencies (C901, PLC0415),
+# interface methods must accept **kwargs even if unused (ARG002), and
+# try-except-pass is intentional for optional parsing features (S110).
+"src/msgflux/data/parsers/**/*" = [
+  "ARG002",   # Interface compliance: __call__/acall must accept **kwargs
+  "C901",     # Complex parsing logic is inherent to document parsing
+  "FBT001",   # Boolean args in private helpers
+  "FBT002",   # Boolean default in private helpers
+  "PLC0415",  # Lazy imports for optional dependencies (pypdf, docx, etc.)
+  "PLW2901",  # Loop variable reassignment for row padding
+  "S110",     # try-except-pass intentional for optional parsing steps
 ]
 [tool.ruff.lint.isort]
 known-first-party = ["msgflux"]
