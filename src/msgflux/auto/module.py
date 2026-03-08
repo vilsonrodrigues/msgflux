@@ -9,14 +9,14 @@ from typing import Any, Dict, Literal, Optional, Type, Union
 
 from msgflux.auto.cache import CacheManager, get_default_cache_dir
 from msgflux.auto.config import ModuleConfig
-from msgflux.auto.sources.base import Source
-from msgflux.auto.sources.github import GitHubSource
-from msgflux.auto.sources.huggingface import HuggingFaceSource
-from msgflux.exceptions import (
+from msgflux.auto.exceptions import (
     ConfigurationError,
     DownloadError,
     SecurityError,
 )
+from msgflux.auto.sources.base import Source
+from msgflux.auto.sources.github import GitHubSource
+from msgflux.auto.sources.huggingface import HuggingFaceSource
 from msgflux.logger import init_logger
 
 logger = init_logger(__name__)
@@ -115,11 +115,14 @@ class AutoModule:
 
         # Download config.json first
         if local_files_only:
-            config_path = cache_manager.get_module_path(
-                source,
-                clean_repo_id,
-                revision or "main",
-            ) / "config.json"
+            config_path = (
+                cache_manager.get_module_path(
+                    source,
+                    clean_repo_id,
+                    revision or "main",
+                )
+                / "config.json"
+            )
             if not config_path.exists():
                 raise DownloadError(
                     clean_repo_id,
@@ -225,11 +228,14 @@ class AutoModule:
         )
 
         if local_files_only:
-            config_path = cache_manager.get_module_path(
-                source,
-                clean_repo_id,
-                revision or "main",
-            ) / "config.json"
+            config_path = (
+                cache_manager.get_module_path(
+                    source,
+                    clean_repo_id,
+                    revision or "main",
+                )
+                / "config.json"
+            )
         else:
             config_path = source_handler.download_file("config.json", force_download)
 
@@ -288,11 +294,14 @@ class AutoModule:
         )
 
         if local_files_only:
-            config_path = cache_manager.get_module_path(
-                source,
-                clean_repo_id,
-                revision or "main",
-            ) / "config.json"
+            config_path = (
+                cache_manager.get_module_path(
+                    source,
+                    clean_repo_id,
+                    revision or "main",
+                )
+                / "config.json"
+            )
         else:
             config_path = source_handler.download_file("config.json", force_download)
 

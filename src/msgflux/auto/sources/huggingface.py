@@ -3,8 +3,8 @@
 from pathlib import Path
 from typing import List, Optional
 
+from msgflux.auto.exceptions import DownloadError
 from msgflux.auto.sources.base import Source
-from msgflux.exceptions import DownloadError
 from msgflux.logger import init_logger
 
 logger = init_logger(__name__)
@@ -41,7 +41,7 @@ class HuggingFaceSource(Source):
             ImportError: If huggingface_hub is not installed.
         """
         try:
-            import huggingface_hub
+            import huggingface_hub  # noqa: PLC0415
 
             return huggingface_hub
         except ImportError as e:
@@ -54,6 +54,7 @@ class HuggingFaceSource(Source):
     def download_file(
         self,
         filename: str,
+        *,
         force_download: bool = False,
     ) -> Path:
         """Download a single file from Hugging Face Hub.
@@ -114,6 +115,7 @@ class HuggingFaceSource(Source):
     def download_files(
         self,
         filenames: List[str],
+        *,
         force_download: bool = False,
     ) -> Path:
         """Download multiple files from Hugging Face Hub.

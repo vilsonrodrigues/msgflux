@@ -200,18 +200,18 @@ class CacheManager:
 
                     # Calculate size
                     size = sum(
-                        f.stat().st_size
-                        for f in revision_dir.rglob("*")
-                        if f.is_file()
+                        f.stat().st_size for f in revision_dir.rglob("*") if f.is_file()
                     )
 
-                    modules.append({
-                        "source": source_name,
-                        "repo_id": repo_id,
-                        "revision": revision,
-                        "path": str(revision_dir),
-                        "size_bytes": size,
-                    })
+                    modules.append(
+                        {
+                            "source": source_name,
+                            "repo_id": repo_id,
+                            "revision": revision,
+                            "path": str(revision_dir),
+                            "size_bytes": size,
+                        }
+                    )
 
         return modules
 
@@ -229,7 +229,7 @@ def get_cache_manager(cache_dir: Optional[Path] = None) -> CacheManager:
     Returns:
         CacheManager instance.
     """
-    global _cache_manager
+    global _cache_manager  # noqa: PLW0603
     if _cache_manager is None:
         _cache_manager = CacheManager(cache_dir)
     return _cache_manager

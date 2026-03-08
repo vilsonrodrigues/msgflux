@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from msgflux.auto.module import AutoModule
-from msgflux.exceptions import ConfigurationError, DownloadError, SecurityError
+from msgflux.auto.exceptions import ConfigurationError, DownloadError, SecurityError
 
 
 class TestAutoModuleParseRepoId:

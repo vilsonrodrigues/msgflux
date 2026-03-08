@@ -3,8 +3,8 @@
 from pathlib import Path
 from typing import List, Optional
 
+from msgflux.auto.exceptions import DownloadError
 from msgflux.auto.sources.base import Source
-from msgflux.exceptions import DownloadError
 from msgflux.logger import init_logger
 
 logger = init_logger(__name__)
@@ -18,7 +18,9 @@ class GitHubSource(Source):
 
     name: str = "github"
 
-    RAW_URL_TEMPLATE = "https://raw.githubusercontent.com/{owner}/{repo}/{revision}/{path}"
+    RAW_URL_TEMPLATE = (
+        "https://raw.githubusercontent.com/{owner}/{repo}/{revision}/{path}"
+    )
     API_URL_TEMPLATE = "https://api.github.com/repos/{owner}/{repo}/contents/{path}"
 
     def __init__(
@@ -71,6 +73,7 @@ class GitHubSource(Source):
     def download_file(
         self,
         filename: str,
+        *,
         force_download: bool = False,
     ) -> Path:
         """Download a single file from GitHub.
@@ -86,7 +89,7 @@ class GitHubSource(Source):
             DownloadError: If download fails.
         """
         try:
-            import httpx
+            import httpx  # noqa: PLC0415
         except ImportError as e:
             msg = "httpx is required for GitHub source. Install with: pip install httpx"
             raise ImportError(msg) from e
@@ -135,6 +138,7 @@ class GitHubSource(Source):
     def download_files(
         self,
         filenames: List[str],
+        *,
         force_download: bool = False,
     ) -> Path:
         """Download multiple files from GitHub.
@@ -163,7 +167,7 @@ class GitHubSource(Source):
             True if the file exists, False otherwise.
         """
         try:
-            import httpx
+            import httpx  # noqa: PLC0415
         except ImportError:
             return False
 

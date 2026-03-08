@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from msgflux.auto.config import ModuleConfig, ModuleDependencies, ModuleMetadata
-from msgflux.exceptions import ConfigurationError, IncompatibleVersionError
+from msgflux.auto.exceptions import ConfigurationError, IncompatibleVersionError
 
 
 class TestModuleConfig:

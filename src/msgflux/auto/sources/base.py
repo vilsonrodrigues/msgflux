@@ -40,6 +40,7 @@ class Source(ABC):
     def download_file(
         self,
         filename: str,
+        *,
         force_download: bool = False,
     ) -> Path:
         """Download a single file from the repository.
@@ -60,6 +61,7 @@ class Source(ABC):
     def download_files(
         self,
         filenames: List[str],
+        *,
         force_download: bool = False,
     ) -> Path:
         """Download multiple files from the repository.

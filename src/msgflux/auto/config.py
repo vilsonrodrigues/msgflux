@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional
 
-from msgflux.exceptions import ConfigurationError, IncompatibleVersionError
+from msgflux.auto.exceptions import ConfigurationError, IncompatibleVersionError
 from msgflux.logger import init_logger
 from msgflux.utils.msgspec import read_json
 from msgflux.version import __version__
@@ -149,8 +149,8 @@ class ModuleConfig:
             IncompatibleVersionError: If version requirement is not met.
         """
         try:
-            from packaging.specifiers import SpecifierSet
-            from packaging.version import Version
+            from packaging.specifiers import SpecifierSet  # noqa: PLC0415
+            from packaging.version import Version  # noqa: PLC0415
         except ImportError:
             logger.warning(
                 "packaging library not installed, skipping version validation"
@@ -192,27 +192,19 @@ class ModuleConfig:
                 result["missing"].append(package)
 
         # Check msgflux extras
-        # These are typically optional dependencies in msgflux
-        # We just note them for now
+        _extra_to_module = {
+            "openai": "openai",
+            "httpx": "httpx",
+            "google": "google.genai",
+            "xml": "defusedxml",
+            "fal": "fal_client",
+            "hub": "huggingface_hub",
+        }
         for extra in self.dependencies.msgflux_extras:
-            # Try to check if the extra is installed
-            # This is a simplified check
+            module_name = _extra_to_module.get(extra)
             try:
-                if extra == "openai":
-                    __import__("openai")
-                elif extra == "httpx":
-                    __import__("httpx")
-                elif extra == "google":
-                    __import__("google.genai")
-                elif extra == "xml":
-                    __import__("defusedxml")
-                elif extra == "fal":
-                    __import__("fal_client")
-                elif extra == "hub":
-                    __import__("huggingface_hub")
-                else:
-                    # Unknown extra, assume available
-                    pass
+                if module_name:
+                    __import__(module_name)
                 result["available"].append(f"msgflux[{extra}]")
             except ImportError:
                 result["missing"].append(f"msgflux[{extra}]")
