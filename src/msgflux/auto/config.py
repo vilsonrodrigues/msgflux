@@ -44,6 +44,7 @@ class ModuleConfig:
     msgflux_entrypoint: str
     msgflux_version: str
     sharing_mode: SharingMode
+    models: Dict[str, Any] = field(default_factory=dict)
     metadata: ModuleMetadata = field(default_factory=ModuleMetadata)
     dependencies: ModuleDependencies = field(default_factory=ModuleDependencies)
 
@@ -108,6 +109,7 @@ class ModuleConfig:
             msgflux_entrypoint=data["msgflux_entrypoint"],
             msgflux_version=data["msgflux_version"],
             sharing_mode=sharing_mode,
+            models=data.get("models", {}),
             metadata=metadata,
             dependencies=dependencies,
             _raw=data,

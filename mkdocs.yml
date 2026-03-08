@@ -139,6 +139,7 @@ nav:
         - ⍗ AutoParams: learn/autoparams.md        
       - ⟢ Modules:
         - ⮔ Module: learn/nn/module.md
+        - AutoModule: learn/nn/auto_module.md
         - ➤ Message: learn/message.md
         - ∑ Functional: learn/nn/functional.md
         - ∀ Agent: learn/nn/agent.md
