@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Tuple, Union
 
 try:
     from openpyxl import load_workbook
@@ -38,8 +38,8 @@ class OpenPyxlXlsxParser(BaseParser, XlsxParser):
     def __init__(
         self,
         *,
-        table_format: Optional[str] = "markdown",
-        encode_images_base64: Optional[bool] = True,
+        table_format: str = "markdown",
+        encode_images_base64: bool = True,
     ):
         """Initialize OpenPyxl parser.
 

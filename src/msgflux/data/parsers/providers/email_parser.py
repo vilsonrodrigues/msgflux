@@ -1,6 +1,6 @@
 from email import policy
 from email.parser import BytesParser
-from typing import Dict, Optional, Union
+from typing import Dict, Union
 
 from msgflux.data.parsers.base import BaseParser
 from msgflux.data.parsers.registry import register_parser
@@ -36,9 +36,9 @@ class StandardEmailParser(BaseParser, EmailParser):
     def __init__(
         self,
         *,
-        extract_attachments: Optional[bool] = True,
-        extract_html: Optional[bool] = True,
-        encode_attachments_base64: Optional[bool] = True,
+        extract_attachments: bool = True,
+        extract_html: bool = True,
+        encode_attachments_base64: bool = True,
     ):
         """Initialize Email parser.
 

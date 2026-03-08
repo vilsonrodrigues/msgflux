@@ -1,4 +1,4 @@
-from typing import Dict, Optional, Union
+from typing import Dict, Union
 
 try:
     from pypdf import PdfReader
@@ -37,8 +37,8 @@ class PyPDFPdfParser(BaseParser, PdfParser):
     def __init__(
         self,
         *,
-        extraction_mode: Optional[str] = "layout",
-        encode_images_base64: Optional[bool] = True,
+        extraction_mode: str = "layout",
+        encode_images_base64: bool = True,
     ):
         """Initialize PyPDF parser.
 

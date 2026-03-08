@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Union
 
 try:
     from docx import Document
@@ -42,8 +42,8 @@ class PythonDocxDocxParser(BaseParser, DocxParser):
     def __init__(
         self,
         *,
-        table_format: Optional[str] = "markdown",
-        encode_images_base64: Optional[bool] = True,
+        table_format: str = "markdown",
+        encode_images_base64: bool = True,
     ):
         """Initialize Python-DOCX parser.
 

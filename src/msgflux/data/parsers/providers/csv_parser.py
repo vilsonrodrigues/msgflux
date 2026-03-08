@@ -36,10 +36,10 @@ class StandardCsvParser(BaseParser, CsvParser):
         self,
         *,
         delimiter: Optional[str] = None,
-        has_header: Optional[bool] = True,
-        table_format: Optional[str] = "markdown",
-        encoding: Optional[str] = "utf-8",
-        quotechar: Optional[str] = '"',
+        has_header: bool = True,
+        table_format: str = "markdown",
+        encoding: str = "utf-8",
+        quotechar: str = '"',
     ):
         """Initialize CSV parser.
 

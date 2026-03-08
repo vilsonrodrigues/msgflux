@@ -1,4 +1,4 @@
-from typing import Dict, Optional, Union
+from typing import Dict, Union
 
 try:
     from bs4 import BeautifulSoup
@@ -38,10 +38,10 @@ class BeautifulSoupHtmlParser(BaseParser, HtmlParser):
     def __init__(
         self,
         *,
-        extract_links: Optional[bool] = True,
-        extract_images: Optional[bool] = True,
-        remove_scripts: Optional[bool] = True,
-        remove_styles: Optional[bool] = True,
+        extract_links: bool = True,
+        extract_images: bool = True,
+        remove_scripts: bool = True,
+        remove_styles: bool = True,
     ):
         """Initialize HTML parser.
 

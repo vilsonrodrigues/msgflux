@@ -1,4 +1,4 @@
-from typing import Dict, Optional, Union
+from typing import Dict, Union
 
 try:
     from pptx import Presentation
@@ -38,8 +38,8 @@ class PythonPptxPptxParser(BaseParser, PptxParser):
     def __init__(
         self,
         *,
-        include_notes: Optional[bool] = True,
-        encode_images_base64: Optional[bool] = True,
+        include_notes: bool = True,
+        encode_images_base64: bool = True,
     ):
         """Initialize Python-PPTX parser.
 
