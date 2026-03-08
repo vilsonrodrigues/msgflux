@@ -74,7 +74,6 @@ _build/
 
 # Temporary ignore (to be committed later)
 /next_version/
-/docs/
 /examples/
 
 # MCP documentation (to be moved to /docs later)
