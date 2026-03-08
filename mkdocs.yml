@@ -137,7 +137,8 @@ nav:
     #  - Vector: databases/vector.md
     - ⟳ Retrievers:
       - learn/retrievers/retriever.md
-    - ⎙ Parsers: learn/parsers/parser.md
+    - ⎙ Parsers:
+      - learn/parsers/index.md
     - ◈ dotdict: learn/dotdict.md
     - ⟢ Modules:
       - Module:
@@ -198,8 +199,8 @@ nav:
       - nn:
           - api-reference/nn/functional.md
           - api-reference/nn/modules/agent.md       
-  - Changelog: CHANGELOG.md
   - Dependency Management: dependency-management.md
+  - Changelog: CHANGELOG.md
   - Blog:
     - blog/index.md
 
