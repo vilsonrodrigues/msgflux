@@ -79,6 +79,50 @@
 | OpenAI      | `msgflux[openai]`  |
 | Together    | `msgflux[openai]`  |
 
+# Parsers
+
+## PDF
+
+| Provider | Dependency |
+|----------|------------|
+| `pypdf` | `pip install pypdf` |
+
+## Word (.docx)
+
+| Provider | Dependency |
+|----------|------------|
+| `python_docx` | `pip install python-docx` |
+
+## PowerPoint (.pptx)
+
+| Provider | Dependency |
+|----------|------------|
+| `python_pptx` | `pip install python-pptx` |
+
+## Excel (.xlsx)
+
+| Provider | Dependency |
+|----------|------------|
+| `openpyxl` | `pip install openpyxl` |
+
+## HTML
+
+| Provider | Dependency |
+|----------|------------|
+| `beautifulsoup` | `pip install beautifulsoup4` |
+
+## CSV / TSV
+
+| Provider | Dependency |
+|----------|------------|
+| `csv` | built-in |
+
+## Email (.eml)
+
+| Provider | Dependency |
+|----------|------------|
+| `email` | built-in |
+
 # Retrievers
 
 ## Lexical
