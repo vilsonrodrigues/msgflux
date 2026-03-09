@@ -155,7 +155,7 @@ class TestPredictor:
         assert response.response_type == "audio_generation"
 
     def test_forward_with_message(self):
-        """Test forward with Message."""
+        """Test forward with Message mutated in-place."""
         model = MockModel()
         predictor = Predictor(
             name="test",
@@ -167,8 +167,8 @@ class TestPredictor:
         message = Message(content="test content")
         result = predictor(message)
 
-        assert isinstance(result, Message)
-        assert "result" in result.outputs
+        assert result is None
+        assert "result" in message.outputs
 
     def test_forward_with_plain_data(self):
         """Test forward with plain data and default response_mode (None)."""
@@ -182,7 +182,7 @@ class TestPredictor:
 
     @pytest.mark.asyncio
     async def test_aforward_with_message(self):
-        """Test async forward with Message."""
+        """Test async forward with Message mutated in-place."""
         model = MockModel()
         predictor = Predictor(
             name="test",
@@ -194,8 +194,8 @@ class TestPredictor:
         message = Message(content="async test")
         result = await predictor.acall(message)
 
-        assert isinstance(result, Message)
-        assert "result" in result.outputs
+        assert result is None
+        assert "result" in message.outputs
 
     def test_inspect_model_execution_params(self):
         """Test inspect_model_execution_params for debugging."""
