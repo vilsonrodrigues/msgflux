@@ -305,6 +305,9 @@ class Agent(Module, metaclass=AutoParams):
 
         stream = config.get("stream", False) if config else False
 
+        if checkpointer is not None and stream is True:
+            raise ValueError("`checkpointer` is not `stream=True` compatible")
+
         if stream is True:
             if generation_schema is not None:
                 raise ValueError("`generation_schema` is not `stream=True` compatible")
@@ -414,29 +417,47 @@ class Agent(Module, metaclass=AutoParams):
             ... )
             >>> agent(name="Vilson", age=27)
         """
-        inputs = self._prepare_task(message, **kwargs)
-        model_response = self._execute_model(
-            message=message, prefilling=self.prefilling, **inputs
-        )
-        if isinstance(model_response, str):
-            return self._define_response_mode(model_response, message)
-        response = self._process_model_response(message, model_response, **inputs)
-        return response
+        resumed = self._try_resume_from_checkpoint(kwargs.get("messages"))
+        if resumed is not None:
+            inputs = resumed
+        else:
+            inputs = self._prepare_task(message, **kwargs)
+
+        try:
+            model_response = self._execute_model(
+                message=message, prefilling=self.prefilling, **inputs
+            )
+            if isinstance(model_response, str):
+                return self._define_response_mode(model_response, message)
+            response = self._process_model_response(message, model_response, **inputs)
+            return response
+        except Exception:
+            self._checkpoint_save_on_error(inputs)
+            raise
 
     async def aforward(
         self, message: Optional[Union[str, Mapping[str, Any], Message]] = None, **kwargs
     ) -> Union[str, Mapping[str, None], ModelStreamResponse, Message]:
         """Async version of forward."""
-        inputs = await self._aprepare_task(message, **kwargs)
-        model_response = await self._aexecute_model(
-            message=message, prefilling=self.prefilling, **inputs
-        )
-        if isinstance(model_response, str):
-            return self._define_response_mode(model_response, message)
-        response = await self._aprocess_model_response(
-            message, model_response, **inputs
-        )
-        return response
+        resumed = await self._atry_resume_from_checkpoint(kwargs.get("messages"))
+        if resumed is not None:
+            inputs = resumed
+        else:
+            inputs = await self._aprepare_task(message, **kwargs)
+
+        try:
+            model_response = await self._aexecute_model(
+                message=message, prefilling=self.prefilling, **inputs
+            )
+            if isinstance(model_response, str):
+                return self._define_response_mode(model_response, message)
+            response = await self._aprocess_model_response(
+                message, model_response, **inputs
+            )
+            return response
+        except Exception:
+            await self._acheckpoint_save_on_error(inputs)
+            raise
 
     def _execute_model(
         self,
@@ -997,6 +1018,101 @@ class Agent(Module, metaclass=AutoParams):
             await self.checkpointer.asave_state(namespace, session_id, run_id, state)
         else:
             self.checkpointer.save_state(namespace, session_id, run_id, state)
+
+    def _checkpoint_save_on_error(self, inputs: Mapping[str, Any]) -> None:
+        if self.checkpointer is None:
+            return
+        messages = inputs.get("messages")
+        vars = inputs.get("vars", {})
+        self._checkpoint_save(messages, vars, status="failed")
+
+    async def _acheckpoint_save_on_error(self, inputs: Mapping[str, Any]) -> None:
+        if self.checkpointer is None:
+            return
+        messages = inputs.get("messages")
+        vars = inputs.get("vars", {})
+        await self._acheckpoint_save(messages, vars, status="failed")
+
+    def _try_resume_from_checkpoint(
+        self,
+        messages_kwarg: Optional[Union[ChatMessages, List[Mapping[str, Any]]]],
+    ) -> Optional[Mapping[str, Any]]:
+        """Check for incomplete runs and resume execution.
+
+        Returns a dict with ``messages``, ``vars``, ``model_preference``
+        suitable for passing directly to ``_execute_model``, or ``None``
+        if there is nothing to resume.
+        """
+        if self.checkpointer is None:
+            return None
+
+        if isinstance(messages_kwarg, ChatMessages):
+            session_id = messages_kwarg.session_id or "default"
+        else:
+            session_id = "default"
+
+        namespace = self.get_module_name()
+        incomplete = self.checkpointer.find_incomplete_runs(namespace, session_id)
+        if not incomplete:
+            return None
+
+        run = incomplete[0]
+        state = self.checkpointer.load_state(namespace, session_id, run["run_id"])
+        if state is None:
+            return None
+
+        restored = ChatMessages()
+        restored._hydrate_state(state["messages"])
+        return {
+            "messages": restored,
+            "vars": state.get("vars", {}),
+            "model_preference": None,
+        }
+
+    async def _atry_resume_from_checkpoint(
+        self,
+        messages_kwarg: Optional[Union[ChatMessages, List[Mapping[str, Any]]]],
+    ) -> Optional[Mapping[str, Any]]:
+        """Async version of _try_resume_from_checkpoint."""
+        if self.checkpointer is None:
+            return None
+
+        if isinstance(messages_kwarg, ChatMessages):
+            session_id = messages_kwarg.session_id or "default"
+        else:
+            session_id = "default"
+
+        namespace = self.get_module_name()
+
+        if hasattr(self.checkpointer, "afind_incomplete_runs"):
+            incomplete = await self.checkpointer.afind_incomplete_runs(
+                namespace, session_id
+            )
+        else:
+            incomplete = self.checkpointer.find_incomplete_runs(namespace, session_id)
+
+        if not incomplete:
+            return None
+
+        run = incomplete[0]
+
+        if hasattr(self.checkpointer, "aload_state"):
+            state = await self.checkpointer.aload_state(
+                namespace, session_id, run["run_id"]
+            )
+        else:
+            state = self.checkpointer.load_state(namespace, session_id, run["run_id"])
+
+        if state is None:
+            return None
+
+        restored = ChatMessages()
+        restored._hydrate_state(state["messages"])
+        return {
+            "messages": restored,
+            "vars": state.get("vars", {}),
+            "model_preference": None,
+        }
 
     def _start_chat_turn_if_needed(
         self,

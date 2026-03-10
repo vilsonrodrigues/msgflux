@@ -169,10 +169,17 @@ class TestConvenienceQueries:
 
     def test_find_incomplete_runs(self, store):
         store.save_state(NS, SID, "r1", {"status": "completed"})
-        store.save_state(NS, SID, "r2", {"status": "incomplete"})
-        store.save_state(NS, SID, "r3", {"status": "incomplete"})
+        store.save_state(NS, SID, "r2", {"status": "running"})
+        store.save_state(NS, SID, "r3", {"status": "running"})
         incomplete = store.find_incomplete_runs(NS, SID)
         assert len(incomplete) == 2
+
+    def test_find_incomplete_excludes_failed(self, store):
+        store.save_state(NS, SID, "r1", {"status": "failed"})
+        store.save_state(NS, SID, "r2", {"status": "running"})
+        incomplete = store.find_incomplete_runs(NS, SID)
+        assert len(incomplete) == 1
+        assert incomplete[0]["run_id"] == "r2"
 
 
 class TestClear:

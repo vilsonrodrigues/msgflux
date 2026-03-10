@@ -170,6 +170,7 @@ nav:
         - learn/nn/agent/chat-messages.md
         - learn/nn/agent/model-gateway.md
         - learn/nn/agent/prefilling.md
+        - learn/nn/agent/durable.md
       - Functional:
         - learn/nn/functional/index.md
         - learn/nn/functional/gather.md

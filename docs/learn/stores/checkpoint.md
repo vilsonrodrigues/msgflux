@@ -156,7 +156,7 @@ Each `save_state` is a **full snapshot** - not a diff. Recovery is a single `loa
 
 ## Agent Integration
 
-Pass a `checkpointer` to the Agent constructor to enable automatic checkpointing. The Agent saves state after **each tool-call iteration** and at the end of execution.
+Pass a `checkpointer` to the Agent constructor to enable automatic checkpointing. The Agent saves state after **each tool-call iteration** and at the end of execution. See [Durable Execution](../nn/agent/durable.md) for resume-on-failure details.
 
 ```python
 import msgflux as mf

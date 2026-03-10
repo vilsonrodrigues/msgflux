@@ -1,6 +1,8 @@
 from abc import ABC, abstractmethod
 from typing import Any, List, Mapping, Optional
 
+_TERMINAL_STATUSES = frozenset({"completed", "failed"})
+
 
 class CheckpointStore(ABC):
     """Unified store for agent and pipeline checkpoints.
@@ -124,7 +126,8 @@ class CheckpointStore(ABC):
         session_id: str,
     ) -> List[Mapping[str, Any]]:
         """Find runs that did not reach a terminal status."""
-        return self.list_runs(namespace, session_id, status="incomplete")
+        all_runs = self.list_runs(namespace, session_id)
+        return [r for r in all_runs if r.get("status") not in _TERMINAL_STATUSES]
 
     # --- Cleanup ---
 
@@ -238,7 +241,8 @@ class AsyncCheckpointStore(ABC):
         namespace: str,
         session_id: str,
     ) -> List[Mapping[str, Any]]:
-        return await self.alist_runs(namespace, session_id, status="incomplete")
+        all_runs = await self.alist_runs(namespace, session_id)
+        return [r for r in all_runs if r.get("status") not in _TERMINAL_STATUSES]
 
     @abstractmethod
     async def aclear(
