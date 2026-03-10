@@ -5,6 +5,7 @@ from .chat_messages import ChatMessages
 from .data.dbs import DB
 from .data.parsers import Parser
 from .data.retrievers import Retriever
+from .data.stores import CheckpointStore, InMemoryCheckpointStore, SQLiteCheckpointStore
 from .data.types import Audio, File, Image, Video
 from .dotdict import dotdict
 from .dsl.signature import InputField, OutputField, Signature
@@ -28,11 +29,13 @@ __all__ = [
     "ChatBlock",
     "ChatML",
     "ChatMessages",
+    "CheckpointStore",
     "Example",
     "File",
     "Guard",
     "Image",
     "InputField",
+    "InMemoryCheckpointStore",
     "Message",
     "Model",
     "ModelGateway",
@@ -40,6 +43,7 @@ __all__ = [
     "Parser",
     "Retriever",
     "Signature",
+    "SQLiteCheckpointStore",
     "Spans",
     "TaskError",
     "Video",

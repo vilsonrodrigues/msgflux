@@ -139,6 +139,8 @@ nav:
       - learn/retrievers/retriever.md
     - ⎙ Parsers:
       - learn/parsers/index.md
+    - ⛁ Stores:
+      - learn/stores/checkpoint.md
     - ◈ dotdict: learn/dotdict.md
     - ⟢ Modules:
       - Module:

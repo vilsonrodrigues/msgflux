@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 from inspect import cleandoc
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
     Dict,
@@ -14,6 +15,9 @@ from typing import (
 )
 
 import msgspec
+
+if TYPE_CHECKING:
+    from msgflux.data.stores.base import CheckpointStore
 
 from msgflux.auto import AutoParams
 from msgflux.chat_messages import ChatMessages
@@ -128,6 +132,7 @@ class Agent(Module, metaclass=AutoParams):
         signature: Optional[Union[str, Signature]] = None,
         description: Optional[str] = None,
         annotations: Optional[Mapping[str, type]] = None,
+        checkpointer: Optional["CheckpointStore"] = None,
     ):
         """Initialize the Agent module.
 
@@ -267,6 +272,10 @@ class Agent(Module, metaclass=AutoParams):
             The Agent description. It's useful when using an agent-as-a-tool.
         annotations
             Define the input and output annotations to use the agent-as-a-function.
+        checkpointer:
+            A :class:`CheckpointStore` instance for durable execution.
+            When provided, the agent saves state after each tool-call
+            iteration so that progress is not lost on failure.
         """
         if annotations is None:
             annotations = {"message": str, "return": str}
@@ -292,6 +301,7 @@ class Agent(Module, metaclass=AutoParams):
             self.set_annotations({"message": str, "return": str})
 
         self._set_config(config)
+        self.checkpointer = checkpointer
 
         stream = config.get("stream", False) if config else False
 
@@ -547,6 +557,7 @@ class Agent(Module, metaclass=AutoParams):
         self._finalize_chat_turn(
             messages, raw_response, response_type, response_metadata
         )
+        self._checkpoint_save(messages, vars, status="completed")
 
         if response_type in self._supported_outputs:
             response = self._prepare_response(
@@ -592,6 +603,7 @@ class Agent(Module, metaclass=AutoParams):
         self._finalize_chat_turn(
             messages, raw_response, response_type, response_metadata
         )
+        await self._acheckpoint_save(messages, vars, status="completed")
 
         if response_type in self._supported_outputs:
             response = await self._aprepare_response(
@@ -644,6 +656,7 @@ class Agent(Module, metaclass=AutoParams):
 
                 # Use interface to build history
                 messages = flow_control.build_history(raw_response, messages)
+                self._checkpoint_save(messages, vars)
 
             model_response = self._execute_model(
                 messages=messages, model_preference=model_preference, vars=vars
@@ -696,6 +709,7 @@ class Agent(Module, metaclass=AutoParams):
 
                 # Use interface to build history (async version)
                 messages = await flow_control.abuild_history(raw_response, messages)
+                await self._acheckpoint_save(messages, vars)
 
             model_response = await self._aexecute_model(
                 messages=messages, model_preference=model_preference, vars=vars
@@ -741,6 +755,7 @@ class Agent(Module, metaclass=AutoParams):
                 raw_response.insert_results(id_results)
                 tool_responses_message = raw_response.get_messages()
                 messages.extend(tool_responses_message)
+                self._checkpoint_save(messages, vars)
             else:
                 return model_response, messages
 
@@ -790,6 +805,7 @@ class Agent(Module, metaclass=AutoParams):
                 raw_response.insert_results(id_results)
                 tool_responses_message = raw_response.get_messages()
                 messages.extend(tool_responses_message)
+                await self._acheckpoint_save(messages, vars)
             else:
                 return model_response, messages
 
@@ -938,6 +954,49 @@ class Agent(Module, metaclass=AutoParams):
             "`messages` must be a `ChatMessages`, a list of mappings or None, "
             f"given `{type(messages)}`"
         )
+
+    def _checkpoint_save(
+        self,
+        messages: Union[ChatMessages, List[Mapping[str, Any]]],
+        vars: Mapping[str, Any],
+        status: str = "running",
+    ) -> None:
+        if self.checkpointer is None:
+            return
+        if not isinstance(messages, ChatMessages):
+            return
+        session_id = messages.session_id or "default"
+        namespace = self.get_module_name()
+        run_id = messages.turns[-1]["turn_id"] if messages.turns else "run"
+        state = {
+            "status": status,
+            "messages": messages._to_state(),
+            "vars": dict(vars) if vars else {},
+        }
+        self.checkpointer.save_state(namespace, session_id, run_id, state)
+
+    async def _acheckpoint_save(
+        self,
+        messages: Union[ChatMessages, List[Mapping[str, Any]]],
+        vars: Mapping[str, Any],
+        status: str = "running",
+    ) -> None:
+        if self.checkpointer is None:
+            return
+        if not isinstance(messages, ChatMessages):
+            return
+        session_id = messages.session_id or "default"
+        namespace = self.get_module_name()
+        run_id = messages.turns[-1]["turn_id"] if messages.turns else "run"
+        state = {
+            "status": status,
+            "messages": messages._to_state(),
+            "vars": dict(vars) if vars else {},
+        }
+        if hasattr(self.checkpointer, "asave_state"):
+            await self.checkpointer.asave_state(namespace, session_id, run_id, state)
+        else:
+            self.checkpointer.save_state(namespace, session_id, run_id, state)
 
     def _start_chat_turn_if_needed(
         self,
