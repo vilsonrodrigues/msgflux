@@ -165,6 +165,7 @@ nav:
         - learn/nn/agent/tools.md
         - learn/nn/agent/signatures.md
         - learn/nn/agent/hooks.md
+        - learn/nn/agent/chat-messages.md
         - learn/nn/agent/model-gateway.md
         - learn/nn/agent/prefilling.md
       - Functional:

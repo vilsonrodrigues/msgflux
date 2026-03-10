@@ -1,8 +1,8 @@
 from msgspec_ext.fast_dotenv import load_dotenv
 
 from .cache import response_cache
+from .chat_messages import ChatMessages
 from .data.dbs import DB
-
 from .data.parsers import Parser
 from .data.retrievers import Retriever
 from .data.types import Audio, File, Image, Video
@@ -27,6 +27,7 @@ __all__ = [
     "Audio",
     "ChatBlock",
     "ChatML",
+    "ChatMessages",
     "Example",
     "File",
     "Guard",
