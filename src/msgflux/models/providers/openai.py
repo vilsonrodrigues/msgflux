@@ -22,6 +22,7 @@ except ImportError:
     AsyncOpenAI = None
 
 import msgflux.nn.functional as F
+from msgflux.chat_messages import ChatMessages
 from msgflux.core.dotdict import dotdict
 from msgflux.dsl.typed_parsers import typed_parser_registry
 from msgflux.exceptions import TypedParserNotFoundError
@@ -320,11 +321,25 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
             return
         response_content.reasoning = reasoning_content
 
+    def _ensure_chat_messages(
+        self, messages: Union[ChatMessages, List[Dict[str, Any]], None]
+    ) -> ChatMessages:
+        if isinstance(messages, ChatMessages):
+            return messages.copy()
+        if messages is None:
+            return ChatMessages()
+        return ChatMessages.from_chatml(messages)
+
     def _execute_model(self, **kwargs):
         prefilling = kwargs.pop("prefilling")
+        messages = self._ensure_chat_messages(kwargs.pop("messages", None))
         if prefilling:
-            kwargs.get("messages").append({"role": "assistant", "content": prefilling})
-        params = {**kwargs, **self.sampling_run_params}
+            messages.add_assistant(prefilling)
+        params = {
+            "messages": messages.to_chatml(),
+            **kwargs,
+            **self.sampling_run_params,
+        }
         adapted_params = self._adapt_params(params)
         model_output = self.client.chat.completions.create(**adapted_params)
 
@@ -332,9 +347,14 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
 
     async def _aexecute_model(self, **kwargs):
         prefilling = kwargs.pop("prefilling")
+        messages = self._ensure_chat_messages(kwargs.pop("messages", None))
         if prefilling:
-            kwargs.get("messages").append({"role": "assistant", "content": prefilling})
-        params = {**kwargs, **self.sampling_run_params}
+            messages.add_assistant(prefilling)
+        params = {
+            "messages": messages.to_chatml(),
+            **kwargs,
+            **self.sampling_run_params,
+        }
         adapted_params = self._adapt_params(params)
         model_output = await self.aclient.chat.completions.create(**adapted_params)
 
@@ -622,7 +642,7 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
 
     def _build_generation_params(
         self,
-        messages: Union[str, List[Dict[str, Any]]],
+        messages: Union[str, ChatMessages, List[Dict[str, Any]]],
         system_prompt: Optional[str],
         prefilling: Optional[str],
         tool_schemas: Optional[Dict],
@@ -630,6 +650,8 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
     ) -> Dict[str, Any]:
         if isinstance(messages, str):
             messages = [ChatBlock.user(messages)]
+        elif isinstance(messages, ChatMessages):
+            messages = messages.to_chatml()
         if isinstance(system_prompt, str):
             messages.insert(0, ChatBlock.system(system_prompt))
 
@@ -655,7 +677,7 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
 
     def __call__(
         self,
-        messages: Union[str, List[Dict[str, Any]]],
+        messages: Union[str, List[Dict[str, Any]], ChatMessages],
         *,
         system_prompt: Optional[str] = None,
         prefilling: Optional[str] = None,
@@ -667,7 +689,8 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
     ) -> Union[ModelResponse, ModelStreamResponse]:
         """Args:
             messages:
-                Conversation history. Can be simple string or list of messages.
+                Conversation history. Can be simple string, list of messages,
+                or ChatMessages container.
             system_prompt:
                 A set of instructions that defines the overarching behavior
                 and role of the model across all interactions.
@@ -733,7 +756,7 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
 
     async def acall(
         self,
-        messages: Union[str, List[Dict[str, Any]]],
+        messages: Union[str, List[Dict[str, Any]], ChatMessages],
         *,
         system_prompt: Optional[str] = None,
         prefilling: Optional[str] = None,
@@ -745,7 +768,8 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
     ) -> Union[ModelResponse, ModelStreamResponse]:
         """Async version of __call__. Args:
             messages:
-                Conversation history. Can be simple string or list of messages.
+                Conversation history. Can be simple string, list of messages,
+                or ChatMessages container.
             system_prompt:
                 A set of instructions that defines the overarching behavior
                 and role of the model across all interactions.

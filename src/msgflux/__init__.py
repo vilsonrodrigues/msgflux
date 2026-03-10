@@ -5,6 +5,7 @@ if TYPE_CHECKING:
     from msgspec_ext import load_dotenv
 
     from msgflux.cache import response_cache
+    from msgflux.chat_messages import ChatMessages
     from msgflux.core.dotdict import dotdict
     from msgflux.core.examples import Example
     from msgflux.core.message import Message
@@ -30,6 +31,7 @@ __all__ = [
     "Audio",
     "ChatBlock",
     "ChatML",
+    "ChatMessages",
     "Example",
     "File",
     "Image",
