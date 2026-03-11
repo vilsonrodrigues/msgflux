@@ -30,6 +30,7 @@ from opentelemetry import trace
 from opentelemetry.trace import Status, StatusCode
 
 from msgflux._private.executor import Executor
+from msgflux.chat_messages import ChatMessages
 from msgflux.dotdict import dotdict
 from msgflux.envs import envs
 from msgflux.message import Message
@@ -762,6 +763,31 @@ class Module:
         else:
             raise ValueError("`description` requires a string not empty")
 
+    def _get_chat_session_context(self, kwargs: Dict[str, Any]):
+        """Extract ``session_id`` from *kwargs* and return a session context.
+
+        When a caller passes ``session_id="..."`` as a keyword argument to any
+        Module, it is popped from *kwargs* (so it never reaches ``forward``)
+        and used to enter ``ChatMessages.session_context()``.  Every
+        ``ChatMessages`` created within that scope inherits the session_id via
+        :class:`contextvars.ContextVar`.
+        """
+        runtime_session_id = kwargs.pop("session_id", None)
+        kwargs.pop("session_namespace", None)
+
+        if runtime_session_id is not None and not isinstance(
+            runtime_session_id, str
+        ):
+            raise TypeError(
+                "`session_id` requires a string or None, "
+                f"given `{type(runtime_session_id)}`"
+            )
+
+        return ChatMessages.session_context(
+            session_id=runtime_session_id,
+            namespace=self.get_module_name(),
+        )
+
     def get_module_name(self):
         module_name = getattr(self, "name", None)
         if module_name is None:
@@ -1200,27 +1226,30 @@ class Module:
         return handle
 
     def _call_impl(self, *args, **kwargs):
-        if not (self._forward_hooks or self._forward_pre_hooks):
-            return self._call(*args, **kwargs)
+        kwargs = dict(kwargs)
+        with self._get_chat_session_context(kwargs):
+            if not (self._forward_hooks or self._forward_pre_hooks):
+                return self._call(*args, **kwargs)
 
-        for hook in self._forward_pre_hooks.values():
-            hook_result = hook(self, args, kwargs)
-            if hook_result is not None:
-                if isinstance(hook_result, tuple) and len(hook_result) == 2:
-                    args, kwargs = hook_result
-                else:
-                    raise RuntimeError(
-                        "forward pre-hook must return None or a tuple of (args, kwargs)"
-                    )
+            for hook in self._forward_pre_hooks.values():
+                hook_result = hook(self, args, kwargs)
+                if hook_result is not None:
+                    if isinstance(hook_result, tuple) and len(hook_result) == 2:
+                        args, kwargs = hook_result
+                    else:
+                        raise RuntimeError(
+                            "forward pre-hook must return None or "
+                        "a tuple of (args, kwargs)"
+                        )
 
-        result = self._call(*args, **kwargs)
+            result = self._call(*args, **kwargs)
 
-        for hook in self._forward_hooks.values():
-            hook_result = hook(self, args, kwargs, result)
-            if hook_result is not None:
-                result = hook_result
+            for hook in self._forward_hooks.values():
+                hook_result = hook(self, args, kwargs, result)
+                if hook_result is not None:
+                    result = hook_result
 
-        return result
+            return result
 
     def _execute_with_span(
         self, module_name_title: str, module_type: str, *args, **kwargs
@@ -1297,31 +1326,36 @@ class Module:
             return await loop.run_in_executor(None, functools.partial(hook, *args))
 
     async def _acall_impl(self, *args, **kwargs):
-        if not (self._forward_hooks or self._forward_pre_hooks):
-            return await self._acall(*args, **kwargs)
+        kwargs = dict(kwargs)
+        with self._get_chat_session_context(kwargs):
+            if not (self._forward_hooks or self._forward_pre_hooks):
+                return await self._acall(*args, **kwargs)
 
-        # Execute forward pre-hooks (sync or async)
-        for hook in self._forward_pre_hooks.values():
-            hook_result = await self._adispatch_hook(hook, self, args, kwargs)
+            # Execute forward pre-hooks (sync or async)
+            for hook in self._forward_pre_hooks.values():
+                hook_result = await self._adispatch_hook(hook, self, args, kwargs)
 
-            if hook_result is not None:
-                if isinstance(hook_result, tuple) and len(hook_result) == 2:
-                    args, kwargs = hook_result
-                else:
-                    raise RuntimeError(
-                        "forward pre-hook must return None or a tuple of (args, kwargs)"
-                    )
+                if hook_result is not None:
+                    if isinstance(hook_result, tuple) and len(hook_result) == 2:
+                        args, kwargs = hook_result
+                    else:
+                        raise RuntimeError(
+                            "forward pre-hook must return None or "
+                        "a tuple of (args, kwargs)"
+                        )
 
-        result = await self._acall(*args, **kwargs)
+            result = await self._acall(*args, **kwargs)
 
-        # Execute forward hooks (sync or async)
-        for hook in self._forward_hooks.values():
-            hook_result = await self._adispatch_hook(hook, self, args, kwargs, result)
+            # Execute forward hooks (sync or async)
+            for hook in self._forward_hooks.values():
+                hook_result = await self._adispatch_hook(
+                    hook, self, args, kwargs, result
+                )
 
-            if hook_result is not None:
-                result = hook_result
+                if hook_result is not None:
+                    result = hook_result
 
-        return result
+            return result
 
     async def _aexecute_with_span(
         self, module_name_title: str, module_type: str, *args, **kwargs

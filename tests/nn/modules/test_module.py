@@ -3,6 +3,7 @@
 import pytest
 from unittest.mock import Mock, MagicMock, patch
 
+from msgflux.chat_messages import ChatMessages
 from msgflux.nn.modules.module import (
     Module,
     _IncompatibleKeys,
@@ -1087,3 +1088,101 @@ class TestModuleMisc:
         desc = module.get_module_description()
         # Should be docstring or empty
         assert isinstance(desc, str)
+
+
+class TestSessionIdPropagation:
+    """Test session_id propagation via Module kwargs."""
+
+    def test_session_id_kwarg_sets_context(self):
+        """Passing session_id as kwarg sets ChatMessages.session_context."""
+        captured = {}
+
+        class CapturingModule(Module):
+            def forward(self, x):
+                ctx = ChatMessages.get_session_context()
+                captured["session_id"] = ctx["session_id"]
+                captured["namespace"] = ctx["namespace"]
+                return x
+
+        module = CapturingModule()
+        module.set_name("my_module")
+        module(42, session_id="sess_xyz")
+
+        assert captured["session_id"] == "sess_xyz"
+        assert captured["namespace"] == "my_module"
+
+    def test_session_id_not_passed_to_forward(self):
+        """session_id kwarg is popped before reaching forward."""
+        received_kwargs = {}
+
+        class KwargsModule(Module):
+            def forward(self, x, **kwargs):
+                received_kwargs.update(kwargs)
+                return x
+
+        module = KwargsModule()
+        module(1, session_id="s1")
+
+        assert "session_id" not in received_kwargs
+
+    def test_session_namespace_not_passed_to_forward(self):
+        """session_namespace kwarg is also popped."""
+        received_kwargs = {}
+
+        class KwargsModule(Module):
+            def forward(self, x, **kwargs):
+                received_kwargs.update(kwargs)
+                return x
+
+        module = KwargsModule()
+        module(1, session_id="s1", session_namespace="ns1")
+
+        assert "session_namespace" not in received_kwargs
+        assert "session_id" not in received_kwargs
+
+    def test_no_session_id_auto_generates(self):
+        """Without session_id kwarg, session_context auto-generates a session."""
+        captured = {}
+
+        class CapturingModule(Module):
+            def forward(self, x):
+                ctx = ChatMessages.get_session_context()
+                captured["session_id"] = ctx["session_id"]
+                return x
+
+        module = CapturingModule()
+        module(42)
+
+        # ChatMessages.session_context generates a session_id automatically
+        assert captured["session_id"] is not None
+        assert captured["session_id"].startswith("sess_")
+
+    def test_session_id_invalid_type_raises(self):
+        """Non-string session_id raises TypeError."""
+        module = SimpleModule()
+
+        with pytest.raises(TypeError, match="session_id"):
+            module(1, session_id=123)
+
+    def test_session_context_cleaned_up(self):
+        """session_id context is restored after module call."""
+        module = SimpleModule()
+        module(1, session_id="temp")
+
+        ctx = ChatMessages.get_session_context()
+        assert ctx["session_id"] is None
+
+    def test_chatmessages_inherits_session_from_module(self):
+        """ChatMessages created during forward() inherits session_id."""
+        captured_sessions = []
+
+        class ChatCreator(Module):
+            def forward(self, x):
+                chat = ChatMessages()
+                captured_sessions.append(chat.session_id)
+                return x
+
+        module = ChatCreator()
+        module(1, session_id="inherited_session")
+
+        assert captured_sessions == ["inherited_session"]

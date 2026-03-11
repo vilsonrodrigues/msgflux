@@ -2,6 +2,7 @@
 
 import pytest
 
+from msgflux.chat_messages import ChatMessages
 from msgflux.data.stores import InMemoryCheckpointStore
 from msgflux.dotdict import DELETE, dotdict
 from msgflux.dsl.inline import DurableInlineDSL, InlineDSL, inline
@@ -491,3 +492,81 @@ class TestAsyncDurableInline:
         assert result["final"] == "done"
         state = store.load_state("test", "s1", "r1")
         assert state["status"] == "completed"
+
+
+# ── Session context propagation ───────────────────────────────────────────────
+
+
+class TestSessionContextPropagation:
+    def test_durable_inline_propagates_session_id(self):
+        """DurableInlineDSL sets ChatMessages.session_context during execution."""
+        store = InMemoryCheckpointStore()
+        captured = {}
+
+        def capture_session(msg):
+            ctx = ChatMessages.get_session_context()
+            captured["session_id"] = ctx["session_id"]
+            captured["namespace"] = ctx["namespace"]
+            return {"captured": True}
+
+        modules = {"capture": capture_session}
+        dsl = DurableInlineDSL(
+            store, namespace="my_pipeline", session_id="user_42", run_id="r1",
+        )
+        dsl("capture", modules, dotdict())
+
+        assert captured["session_id"] == "user_42"
+        assert captured["namespace"] == "my_pipeline"
+
+    def test_chatmessages_inherits_session_from_durable_inline(self):
+        """ChatMessages created inside DurableInlineDSL inherit session_id."""
+        store = InMemoryCheckpointStore()
+        captured_sessions = []
+
+        def create_chat(msg):
+            chat = ChatMessages()
+            captured_sessions.append(chat.session_id)
+            return {"chat_created": True}
+
+        modules = {"create_chat": create_chat}
+        dsl = DurableInlineDSL(
+            store, namespace="test", session_id="sess_abc", run_id="r1",
+        )
+        dsl("create_chat", modules, dotdict())
+
+        assert captured_sessions == ["sess_abc"]
+
+    def test_no_session_leak_after_durable_inline(self):
+        """Session context is cleaned up after DurableInlineDSL completes."""
+        store = InMemoryCheckpointStore()
+
+        def noop(msg):
+            return {"done": True}
+
+        modules = {"noop": noop}
+        dsl = DurableInlineDSL(
+            store, namespace="test", session_id="temp_sess", run_id="r1",
+        )
+        dsl("noop", modules, dotdict())
+
+        ctx = ChatMessages.get_session_context()
+        assert ctx["session_id"] is None
+
+    @pytest.mark.asyncio
+    async def test_async_durable_propagates_session_id(self):
+        """AsyncDurableInlineDSL propagates session_id via ContextVar."""
+        store = InMemoryCheckpointStore()
+        captured = {}
+
+        async def capture_session(msg):
+            ctx = ChatMessages.get_session_context()
+            captured["session_id"] = ctx["session_id"]
+            return {"captured": True}
+
+        modules = {"capture": capture_session}
+        dsl = AsyncDurableInlineDSL(
+            store, namespace="async_pipe", session_id="async_user", run_id="r1",
+        )
+        await dsl("capture", modules, dotdict())
+
+        assert captured["session_id"] == "async_user"

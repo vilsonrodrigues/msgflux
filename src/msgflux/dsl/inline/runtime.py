@@ -3,6 +3,7 @@
 import uuid
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Mapping, Optional
 
+from msgflux.chat_messages import ChatMessages
 from msgflux.dotdict import dotdict
 from msgflux.dsl.inline.core import AsyncInlineDSL, InlineDSL
 from msgflux.logger import logger
@@ -270,31 +271,35 @@ class DurableInlineDSL(InlineDSL):
     def __call__(
         self, expression: str, modules: Mapping[str, Callable], message: dotdict
     ) -> dotdict:
-        start_index, frames, resumed_msg = self._try_resume(expression)
-        if resumed_msg is not None:
-            logger.info(
-                "Resuming inline run '%s' from step %d",
-                self.run_id, start_index,
+        with ChatMessages.session_context(
+            session_id=self.session_id,
+            namespace=self.namespace,
+        ):
+            start_index, frames, resumed_msg = self._try_resume(expression)
+            if resumed_msg is not None:
+                logger.info(
+                    "Resuming inline run '%s' from step %d",
+                    self.run_id, start_index,
+                )
+                current = resumed_msg
+            else:
+                current = message
+
+            result = self._execute_steps(
+                self.parse(expression),
+                modules,
+                current,
+                _expression=expression,
+                _start_index=start_index,
+                _frames=frames,
             )
-            current = resumed_msg
-        else:
-            current = message
 
-        result = self._execute_steps(
-            self.parse(expression),
-            modules,
-            current,
-            _expression=expression,
-            _start_index=start_index,
-            _frames=frames,
-        )
-
-        # Mark completed
-        total = len(self.parse(expression))
-        self._save(
-            expression, _make_cursor(total), result, status="completed",
-        )
-        return result
+            # Mark completed
+            total = len(self.parse(expression))
+            self._save(
+                expression, _make_cursor(total), result, status="completed",
+            )
+            return result
 
 
 # ── Async durable DSL ────────────────────────────────────────────────────────
@@ -506,29 +511,33 @@ class AsyncDurableInlineDSL(AsyncInlineDSL):
     async def __call__(
         self, expression: str, modules: Mapping[str, Callable], message: dotdict
     ) -> dotdict:
-        start_index, frames, resumed_msg = await self._atry_resume(expression)
-        if resumed_msg is not None:
-            logger.info(
-                "Resuming async inline run '%s' from step %d",
-                self.run_id, start_index,
+        with ChatMessages.session_context(
+            session_id=self.session_id,
+            namespace=self.namespace,
+        ):
+            start_index, frames, resumed_msg = await self._atry_resume(expression)
+            if resumed_msg is not None:
+                logger.info(
+                    "Resuming async inline run '%s' from step %d",
+                    self.run_id, start_index,
+                )
+                current = resumed_msg
+            else:
+                current = message
+
+            result = await self._aexecute_steps(
+                self.parse(expression),
+                modules,
+                current,
+                _expression=expression,
+                _start_index=start_index,
+                _frames=frames,
             )
-            current = resumed_msg
-        else:
-            current = message
 
-        result = await self._aexecute_steps(
-            self.parse(expression),
-            modules,
-            current,
-            _expression=expression,
-            _start_index=start_index,
-            _frames=frames,
-        )
-
-        await self._asave(
-            expression,
-            _make_cursor(len(self.parse(expression))),
-            result,
-            status="completed",
-        )
-        return result
+            await self._asave(
+                expression,
+                _make_cursor(len(self.parse(expression))),
+                result,
+                status="completed",
+            )
+            return result
