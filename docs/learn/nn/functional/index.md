@@ -10,6 +10,7 @@ The functional API offers both **synchronous** and **asynchronous** interfaces f
 
 - **Concurrent Execution**: Thread pools and async event loops for parallel processing
 - **Gather Patterns**: Map, scatter, and broadcast primitives for different use cases
+- **Durable Execution**: Erlang-style one-for-one supervision with retry and checkpoint
 - **Message Passing**: First-class support for `dotdict` message routing
 - **Inline DSL**: Declarative workflow language for runtime orchestration
 - **Zero Overhead**: No performance penalty for single-task execution
@@ -111,6 +112,7 @@ All core functions have async counterparts prefixed with `a`:
 | Topic | Description |
 |-------|-------------|
 | [Gather Functions](gather.md) | map_gather, scatter_gather, bcast_gather and message variants |
+| [Durable Gather](durable.md) | One-for-one supervision, retry with backoff, checkpoint and resume |
 | [Utility Functions](utility.md) | wait_for, wait_for_event, fire_and_forget |
 | [Inline DSL](inline-dsl.md) | Declarative workflow language |
 | [Best Practices](best-practices.md) | Patterns, performance, and error handling |

@@ -64,7 +64,7 @@ Apply the same function to multiple inputs concurrently.
         )
         ```
 
-**Async version:** `amap_gather`
+**Async version:** `amap_gather` | **With retry:** see [Durable Gather](durable.md)
 
 ## scatter_gather
 
@@ -122,7 +122,7 @@ Distribute different functions across corresponding inputs.
         print(results)  # ("Hello, World", "Hello, Earth", "Goodbye, Commander")
         ```
 
-**Async version:** `ascatter_gather`
+**Async version:** `ascatter_gather` | **With retry:** see [Durable Gather](durable.md)
 
 ## bcast_gather
 
@@ -266,4 +266,4 @@ Broadcast a single message to multiple processors for concurrent modification.
 !!! warning "Race Conditions"
     In parallel execution, modules should modify **different paths** of the message. Modifying the same path from multiple concurrent functions may cause race conditions.
 
-**Async version:** `amsg_bcast_gather`
+**Async version:** `amsg_bcast_gather` | **With retry:** see [Durable Gather](durable.md)

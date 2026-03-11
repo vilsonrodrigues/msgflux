@@ -37,6 +37,30 @@ successes = [r for r in results if not isinstance(r, TaskError)]
 errors = [r for r in results if isinstance(r, TaskError)]
 ```
 
+## Use Retries for Unreliable Operations
+
+```python
+# Add max_retries for network calls, LLM APIs, etc.
+results = F.map_gather(
+    call_external_api,
+    args_list=[(url,) for url in urls],
+    max_retries=3,        # retry up to 3 times
+    retry_delay=1.0,      # exponential backoff from 1s
+)
+
+# With checkpoint for long-running jobs
+results = F.scatter_gather(
+    workers,
+    args_list=inputs,
+    max_retries=2,
+    store=store,          # persist partial results
+    namespace="pipeline",
+    session_id="batch_1",
+)
+```
+
+See [Durable Gather](durable.md) for full documentation.
+
 ## Use Timeouts in Production
 
 ```python

@@ -174,6 +174,7 @@ nav:
       - Functional:
         - learn/nn/functional/index.md
         - learn/nn/functional/gather.md
+        - learn/nn/functional/durable.md
         - learn/nn/functional/utility.md
         - learn/nn/functional/inline-dsl.md
         - learn/nn/functional/best-practices.md

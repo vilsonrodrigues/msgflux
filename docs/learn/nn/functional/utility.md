@@ -41,6 +41,21 @@ Execute a callable and wait for the result with optional timeout.
         result = F.wait_for(slow_computation, 10, timeout=0.5)
         ```
 
+    === "With Retry"
+
+        ```python
+        import msgflux.nn.functional as F
+
+        result = F.wait_for(
+            flaky_api_call, "query",
+            max_retries=3,
+            retry_delay=1.0,
+        )
+        # Retries up to 3 times with exponential backoff
+        ```
+
+        See [Durable Gather](durable.md) for more details.
+
 ## wait_for_event
 
 Wait for an `asyncio.Event` in synchronous code.
