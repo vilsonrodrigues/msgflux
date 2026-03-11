@@ -52,6 +52,8 @@ class dotdict(dict):  # noqa: N801
         *,
         frozen: Optional[bool] = False,
         hidden_keys: Optional[list[str]] = None,
+        backend=None,
+        backend_prefix: Optional[str] = None,
         **kwargs,
     ):
         """Initializes an instance of dotdict.
@@ -64,27 +66,60 @@ class dotdict(dict):  # noqa: N801
             hidden_keys:
                 List of keys that should not be returned by get() method.
                 These keys will return None (or default) when accessed via get().
+            backend:
+                Optional persistent backend (e.g. ``diskcache.Cache``). Must support
+                ``__getitem__``, ``__setitem__``, ``__delitem__``, and ``__iter__``.
+                Every top-level key write is persisted automatically. On creation,
+                existing keys in the backend are loaded first; ``initial_data`` then
+                overrides them.
+
+                .. warning::
+                    Nested mutations (``d.user.name = "x"`` or ``d.set("a.b", v)``)
+                    are **not** automatically persisted. Reassign the top-level key to
+                    trigger persistence: ``d.user = {**d.user, "name": "x"}``.
+
+            backend_prefix:
+                Optional namespace prefix for backend keys (e.g. ``"run_42"`` stores
+                keys as ``"run_42.key"``). Useful when multiple dotdicts share the
+                same backend instance.
             **kwargs:
-                Additional key=value pairs.
+                Additional key=value pairs merged with ``initial_data``.
 
         ::: example:
             d = dotdict({"user": {"name": "Maria"}}, frozen=False)
             print(d.user.name)
             >> Maria
 
-            # With hidden keys
-            d = dotdict({"api_key": "secret", "name": "John"}, hidden_keys=["api_key"])
-            print(d.get("api_key"))   # None
-            print("api_key" in d)     # False
-            print(d.to_dict())        # {"name": "John"}
-            print(d.api_key)          # "secret"  (direct access)
+            # With persistent backend
+            import diskcache
+            cache = diskcache.Cache("./state")
+            d = dotdict(backend=cache, backend_prefix="run_1")
+            d.x = 1   # persisted immediately
+            d.y = 2   # persisted immediately
         """
         initial_data = initial_data or {}
-        self._frozen = frozen
+        self._backend = backend
+        self._backend_prefix = backend_prefix
+        self._frozen = False  # defer frozen enforcement to allow loading
         self._hidden_keys = set(hidden_keys or [])
         super().__init__()
+
+        if backend is not None:
+            prefix = backend_prefix
+            for bkey in backend:
+                if prefix:
+                    if not bkey.startswith(f"{prefix}."):
+                        continue
+                    key = bkey[len(f"{prefix}."):]
+                else:
+                    key = bkey
+                if "." not in key:
+                    super().__setitem__(key, self._wrap(backend[bkey]))
+
         for key, value in {**initial_data, **kwargs}.items():
-            super().__setitem__(key, self._wrap(value))
+            self[key] = value
+
+        self._frozen = frozen
 
     def __iter__(self):
         hidden = getattr(self, "_hidden_keys", set())
@@ -127,7 +162,22 @@ class dotdict(dict):  # noqa: N801
     def __setitem__(self, key: str, value: Any):
         if getattr(self, "_frozen", False):
             raise AttributeError("Cannot modify frozen dotdict")
-        super().__setitem__(key, self._wrap(value))
+        wrapped = self._wrap(value)
+        super().__setitem__(key, wrapped)
+        backend = getattr(self, "_backend", None)
+        if backend is not None:
+            backend[self._backend_key(key)] = self._serialize(wrapped)
+
+    def __delitem__(self, key: str):
+        if getattr(self, "_frozen", False):
+            raise AttributeError("Cannot delete from frozen dotdict")
+        super().__delitem__(key)
+        backend = getattr(self, "_backend", None)
+        if backend is not None:
+            try:
+                del backend[self._backend_key(key)]
+            except KeyError:
+                pass
 
     def __delattr__(self, key: str):
         if getattr(self, "_frozen", False):
@@ -136,6 +186,17 @@ class dotdict(dict):  # noqa: N801
             del self[key]
         except KeyError as e:
             raise AttributeError(f"`dotdict` object has no attribute `{key}`") from e
+
+    def _backend_key(self, key: str) -> str:
+        prefix = getattr(self, "_backend_prefix", None)
+        return f"{prefix}.{key}" if prefix else key
+
+    def _serialize(self, value: Any) -> Any:
+        if isinstance(value, dotdict):
+            return value.to_dict()
+        elif isinstance(value, list):
+            return [self._serialize(item) for item in value]
+        return value
 
     def _wrap(self, value: Any):
         if isinstance(value, dict):
