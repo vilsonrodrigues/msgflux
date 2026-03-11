@@ -657,7 +657,16 @@ async def await_for_event(event: asyncio.Event) -> None:
 
 
 def inline(
-    expression: str, modules: Mapping[str, Callable], message: dotdict
+    expression: str,
+    modules: Mapping[str, Callable],
+    message: dotdict,
+    *,
+    store: Optional["CheckpointStore"] = None,
+    run_id: Optional[str] = None,
+    namespace: str = "inline",
+    session_id: str = "default",
+    max_retries: int = 0,
+    retry_delay: float = 1.0,
 ) -> dotdict:
     """Executes a workflow defined in DSL expression over a given `message`.
 
@@ -785,11 +794,33 @@ def inline(
     """
     from msgflux.dsl.inline import inline as _inline  # noqa: PLC0415
 
+    if store is not None:
+        from msgflux.dsl.inline.runtime import DurableInlineDSL  # noqa: PLC0415
+
+        dsl = DurableInlineDSL(
+            store,
+            namespace=namespace,
+            session_id=session_id,
+            run_id=run_id,
+            max_retries=max_retries,
+            retry_delay=retry_delay,
+        )
+        return dsl(expression, modules, message)
+
     return _inline(expression, modules, message)
 
 
 async def ainline(
-    expression: str, modules: Mapping[str, Callable], message: dotdict
+    expression: str,
+    modules: Mapping[str, Callable],
+    message: dotdict,
+    *,
+    store: Optional["CheckpointStore"] = None,
+    run_id: Optional[str] = None,
+    namespace: str = "inline",
+    session_id: str = "default",
+    max_retries: int = 0,
+    retry_delay: float = 1.0,
 ) -> dotdict:
     """Async version of inline. Executes a workflow defined in DSL
     expression over a given `message`.
@@ -918,6 +949,19 @@ async def ainline(
         )
     """
     from msgflux.dsl.inline import ainline as _ainline  # noqa: PLC0415
+
+    if store is not None:
+        from msgflux.dsl.inline.runtime import AsyncDurableInlineDSL  # noqa: PLC0415
+
+        dsl = AsyncDurableInlineDSL(
+            store,
+            namespace=namespace,
+            session_id=session_id,
+            run_id=run_id,
+            max_retries=max_retries,
+            retry_delay=retry_delay,
+        )
+        return await dsl(expression, modules, message)
 
     return await _ainline(expression, modules, message)
 

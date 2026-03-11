@@ -373,6 +373,44 @@ class InlineDSL:
 
         return current_message
 
+    @staticmethod
+    def _apply_result(message: dotdict, result: Any) -> None:
+        """Apply a module result to the message.
+
+        If the module returned a ``dict`` it is treated as a delta and
+        merged via :meth:`dotdict.apply`.  ``None`` means the module
+        already mutated the message in-place (legacy pattern).
+        """
+        if isinstance(result, dict):
+            message.apply(result)
+
+    def _call_module(self, module: Callable, message: dotdict) -> Any:
+        """Call *module* and apply its delta to *message*."""
+        result = module(message)
+        self._apply_result(message, result)
+        return result
+
+    def _execute_parallel(
+        self,
+        parallel_modules: List[Callable],
+        message: dotdict,
+    ) -> None:
+        """Run modules in parallel and merge deltas into *message*."""
+        from msgflux.exceptions import TaskError  # noqa: PLC0415
+
+        results = F.bcast_gather(parallel_modules, message)
+        errors = {}
+        for i, result in enumerate(results):
+            if isinstance(result, TaskError):
+                errors[i] = result
+            else:
+                self._apply_result(message, result)
+        if errors:
+            failed = ", ".join(
+                f"worker {i}: {err.exception}" for i, err in errors.items()
+            )
+            raise RuntimeError(f"Parallel execution failed: {failed}")
+
     def _execute_steps(  # noqa: C901
         self,
         steps: List[Dict[str, Any]],
@@ -387,7 +425,7 @@ class InlineDSL:
                 module = modules.get(step["module"])
                 if not module:
                     raise ValueError(f"Module `{step['module']}` not found.")
-                module(current_message)
+                self._call_module(module, current_message)
 
             elif step["type"] == "parallel":
                 parallel_modules = []
@@ -405,15 +443,7 @@ class InlineDSL:
                         f"in {step['modules']}."
                     )
 
-                F.msg_bcast_gather(parallel_modules, current_message)
-
-                # Check for errors from parallel execution
-                errors = current_message.pop("_errors", None)
-                if errors:
-                    failed = ", ".join(
-                        f"`{name}`: {err.exception}" for name, err in errors.items()
-                    )
-                    raise RuntimeError(f"Parallel execution failed for: {failed}")
+                self._execute_parallel(parallel_modules, current_message)
 
             elif step["type"] == "conditional":
                 condition_result = self._evaluate_condition(
@@ -429,7 +459,7 @@ class InlineDSL:
                         raise ValueError(
                             f"Module `{module_name}` not found in conditional branch."
                         )
-                    module(current_message)
+                    self._call_module(module, current_message)
 
             elif step["type"] == "while":
                 current_message = self._execute_while_loop(
@@ -505,6 +535,41 @@ class AsyncInlineDSL(InlineDSL):
 
         return current_message
 
+    async def _acall_module(self, module: Callable, message: dotdict) -> Any:
+        """Async call *module* and apply its delta to *message*."""
+        if hasattr(module, "acall"):
+            result = await module.acall(message)
+        elif asyncio.iscoroutinefunction(module):
+            result = await module(message)
+        else:
+            result = module(message)
+        self._apply_result(message, result)
+        return result
+
+    async def _aexecute_parallel(
+        self,
+        parallel_modules: List[Callable],
+        message: dotdict,
+    ) -> None:
+        """Async parallel execution with delta merge."""
+        from msgflux.exceptions import TaskError  # noqa: PLC0415
+
+        results = await F.ascatter_gather(
+            parallel_modules,
+            args_list=[(message,)] * len(parallel_modules),
+        )
+        errors = {}
+        for i, result in enumerate(results):
+            if isinstance(result, TaskError):
+                errors[i] = result
+            else:
+                self._apply_result(message, result)
+        if errors:
+            failed = ", ".join(
+                f"worker {i}: {err.exception}" for i, err in errors.items()
+            )
+            raise RuntimeError(f"Parallel execution failed: {failed}")
+
     async def _aexecute_steps(  # noqa: C901
         self,
         steps: List[Dict[str, Any]],
@@ -519,15 +584,7 @@ class AsyncInlineDSL(InlineDSL):
                 module = modules.get(step["module"])
                 if not module:
                     raise ValueError(f"Module `{step['module']}` not found.")
-
-                # Check for acall method first, then coroutine function
-                if hasattr(module, "acall"):
-                    await module.acall(current_message)
-                elif asyncio.iscoroutinefunction(module):
-                    await module(current_message)
-                else:
-                    # Fallback to sync call
-                    module(current_message)
+                await self._acall_module(module, current_message)
 
             elif step["type"] == "parallel":
                 parallel_modules = []
@@ -545,15 +602,7 @@ class AsyncInlineDSL(InlineDSL):
                         f"in {step['modules']}."
                     )
 
-                await F.amsg_bcast_gather(parallel_modules, current_message)
-
-                # Check for errors from parallel execution
-                errors = current_message.pop("_errors", None)
-                if errors:
-                    failed = ", ".join(
-                        f"`{name}`: {err.exception}" for name, err in errors.items()
-                    )
-                    raise RuntimeError(f"Parallel execution failed for: {failed}")
+                await self._aexecute_parallel(parallel_modules, current_message)
 
             elif step["type"] == "conditional":
                 condition_result = self._evaluate_condition(
@@ -569,15 +618,7 @@ class AsyncInlineDSL(InlineDSL):
                         raise ValueError(
                             f"Module `{module_name}` not found in conditional branch."
                         )
-
-                    # Check for acall method first, then coroutine function
-                    if hasattr(module, "acall"):
-                        await module.acall(current_message)
-                    elif F.asyncio.iscoroutinefunction(module):
-                        await module(current_message)
-                    else:
-                        # Fallback to sync call
-                        module(current_message)
+                    await self._acall_module(module, current_message)
 
             elif step["type"] == "while":
                 current_message = await self._aexecute_while_loop(

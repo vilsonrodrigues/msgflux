@@ -2,6 +2,13 @@ from typing import Any, Dict, Optional
 
 import msgspec
 
+# Sentinel for field deletion in :meth:`dotdict.apply`.
+DELETE = type(
+    "DELETE",
+    (),
+    {"__repr__": lambda self: "<DELETE>", "__bool__": lambda self: False},  # noqa: ARG005
+)()
+
 
 class dotdict(dict):  # noqa: N801
     """A dictionary with dot access and nested path support.
@@ -263,6 +270,32 @@ class dotdict(dict):  # noqa: N801
                 ):
                     current[key] = dotdict()
                 current = current[key]
+
+    def apply(self, update):
+        """Apply a dict of updates to this message.
+
+        Modules return dicts with the changes they want to apply.
+        ``None`` return is a no-op.  Keys whose value is the
+        :data:`DELETE` sentinel are removed.
+        """
+        if update is None:
+            return self
+        if not isinstance(update, dict):
+            raise TypeError(
+                f"`update` must be a dict or None, got {type(update).__name__}"
+            )
+        for key, value in update.items():
+            if value is DELETE:
+                self.pop(key, None)
+            elif (
+                isinstance(value, dict)
+                and key in self
+                and isinstance(self[key], dotdict)
+            ):
+                self[key].update(value)
+            else:
+                self[key] = value
+        return self
 
     def update(self, *args, **kwargs):
         """Extends dict.update to support nested keys while maintaining DotDict."""
