@@ -1,15 +1,20 @@
 # https://mpitutorial.com/tutorials/mpi-scatter-gather-and-allgather/
 import asyncio
 import concurrent.futures
+import time
 from concurrent.futures import Future
-from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Mapping, Optional, Tuple
 
 from msgflux._private.executor import Executor
+from msgflux._private.supervision import gather_durable_async, gather_durable_sync
 from msgflux.dotdict import dotdict
 from msgflux.exceptions import TaskError
 from msgflux.logger import logger
 from msgflux.nn.modules.module import get_callable_name
 from msgflux.telemetry import Spans
+
+if TYPE_CHECKING:
+    from msgflux.data.stores.base import CheckpointStore
 
 __all__ = [
     "afire_and_forget",
@@ -18,8 +23,8 @@ __all__ = [
     "amsg_bcast_gather",
     "ascatter_gather",
     "await_for_event",
-    "fire_and_forget",
     "bcast_gather",
+    "fire_and_forget",
     "inline",
     "map_gather",
     "msg_bcast_gather",
@@ -37,6 +42,12 @@ def map_gather(
     args_list: List[Tuple[Any, ...]],
     kwargs_list: Optional[List[Dict[str, Any]]] = None,
     timeout: Optional[float] = None,
+    max_retries: Optional[int] = None,
+    retry_delay: float = 1.0,
+    store: Optional["CheckpointStore"] = None,
+    run_id: Optional[str] = None,
+    namespace: str = "gather",
+    session_id: str = "default",
 ) -> Tuple[Any, ...]:
     """Applies the `to_send` function to each set of arguments in `args_list`
     and `kwargs_list` using Executor and collects the results.
@@ -91,6 +102,25 @@ def map_gather(
                 "`kwargs_list` must be a list with the same length as `args_list`"
             )
 
+    # Durable path
+    if max_retries is not None or store is not None:
+        workers = [
+            (to_send, args_list[i], kwargs_list[i] if kwargs_list else {})
+            for i in range(len(args_list))
+        ]
+        return tuple(
+            gather_durable_sync(
+                workers,
+                timeout=timeout,
+                max_retries=max_retries,
+                retry_delay=retry_delay,
+                store=store,
+                run_id=run_id,
+                namespace=namespace,
+                session_id=session_id,
+            )
+        )
+
     executor = Executor.get_instance()
     futures = []
 
@@ -117,6 +147,12 @@ def scatter_gather(
     kwargs_list: Optional[List[Dict[str, Any]]] = None,
     *,
     timeout: Optional[float] = None,
+    max_retries: Optional[int] = None,
+    retry_delay: float = 1.0,
+    store: Optional["CheckpointStore"] = None,
+    run_id: Optional[str] = None,
+    namespace: str = "gather",
+    session_id: str = "default",
 ) -> Tuple[Any, ...]:
     """Sends different sets of arguments/kwargs to a list of modules
     and collects the responses.
@@ -182,6 +218,29 @@ def scatter_gather(
     """
     if not isinstance(to_send, list) or not all(callable(f) for f in to_send):
         raise TypeError("`to_send` must be a non-empty list of callable objects")
+
+    # Durable path
+    if max_retries is not None or store is not None:
+        workers = [
+            (
+                to_send[i],
+                args_list[i] if args_list and i < len(args_list) else (),
+                kwargs_list[i] if kwargs_list and i < len(kwargs_list) else {},
+            )
+            for i in range(len(to_send))
+        ]
+        return tuple(
+            gather_durable_sync(
+                workers,
+                timeout=timeout,
+                max_retries=max_retries,
+                retry_delay=retry_delay,
+                store=store,
+                run_id=run_id,
+                namespace=namespace,
+                session_id=session_id,
+            )
+        )
 
     executor = Executor.get_instance()
     futures = []
@@ -256,7 +315,12 @@ def msg_scatter_gather(
 
 @Spans.instrument()
 def bcast_gather(
-    to_send: List[Callable], *args, timeout: Optional[float] = None, **kwargs
+    to_send: List[Callable],
+    *args,
+    timeout: Optional[float] = None,
+    max_retries: Optional[int] = None,
+    retry_delay: float = 1.0,
+    **kwargs,
 ) -> Tuple[Any, ...]:
     """Broadcasts arguments to multiple callables and gathers the responses.
 
@@ -296,6 +360,22 @@ def bcast_gather(
     """
     if not to_send or not all(isinstance(f, Callable) for f in to_send):
         raise TypeError("`to_send` must be a non-empty list of callable objects")
+
+    # Durable path
+    if max_retries is not None:
+        workers = [(f, args, kwargs) for f in to_send]
+        return tuple(
+            gather_durable_sync(
+                workers,
+                timeout=timeout,
+                max_retries=max_retries,
+                retry_delay=retry_delay,
+                store=None,
+                run_id=None,
+                namespace="gather",
+                session_id="default",
+            )
+        )
 
     executor = Executor.get_instance()
     futures = [executor.submit(f, *args, **kwargs) for f in to_send]
@@ -357,7 +437,12 @@ def msg_bcast_gather(
 
 @Spans.instrument()
 def wait_for(
-    to_send: Callable, *args, timeout: Optional[float] = None, **kwargs
+    to_send: Callable,
+    *args,
+    timeout: Optional[float] = None,
+    max_retries: Optional[int] = None,
+    retry_delay: float = 1.0,
+    **kwargs,
 ) -> Any:
     """Wait for a callable execution.
 
@@ -388,6 +473,24 @@ def wait_for(
     """
     if not callable(to_send):
         raise TypeError("`to_send` must be a callable object")
+
+    # Retry path
+    if max_retries is not None:
+        retries = 0
+        executor = Executor.get_instance()
+        while True:
+            future = executor.submit(to_send, *args, **kwargs)
+            concurrent.futures.wait([future], timeout=timeout)
+            try:
+                return future.result()
+            except Exception as e:
+                retries += 1
+                if retries > max_retries:
+                    logger.error(str(e))
+                    return TaskError(exception=e, index=0)
+                from msgflux._private.supervision import _backoff_delay  # noqa: PLC0415
+
+                time.sleep(_backoff_delay(retries, retry_delay))
 
     executor = Executor.get_instance()
     future = executor.submit(to_send, *args, **kwargs)
@@ -825,6 +928,13 @@ async def amap_gather(
     *,
     args_list: List[Tuple[Any, ...]],
     kwargs_list: Optional[List[Dict[str, Any]]] = None,
+    max_retries: Optional[int] = None,
+    retry_delay: float = 1.0,
+    timeout: Optional[float] = None,
+    store: Optional["CheckpointStore"] = None,
+    run_id: Optional[str] = None,
+    namespace: str = "gather",
+    session_id: str = "default",
 ) -> Tuple[Any, ...]:
     """Async version of map_gather. Applies the `to_send` async function to each
     set of arguments in `args_list` and `kwargs_list` and collects the results.
@@ -863,6 +973,25 @@ async def amap_gather(
                 "`kwargs_list` must be a list with the same length as `args_list`"
             )
 
+    # Durable path
+    if max_retries is not None or store is not None:
+        workers = [
+            (to_send, args_list[i], kwargs_list[i] if kwargs_list else {})
+            for i in range(len(args_list))
+        ]
+        return tuple(
+            await gather_durable_async(
+                workers,
+                timeout=timeout,
+                max_retries=max_retries,
+                retry_delay=retry_delay,
+                store=store,
+                run_id=run_id,
+                namespace=namespace,
+                session_id=session_id,
+            )
+        )
+
     tasks = []
     for i in range(len(args_list)):
         args = args_list[i]
@@ -887,6 +1016,14 @@ async def ascatter_gather(
     to_send: List[Callable],
     args_list: Optional[List[Tuple[Any, ...]]] = None,
     kwargs_list: Optional[List[Dict[str, Any]]] = None,
+    *,
+    max_retries: Optional[int] = None,
+    retry_delay: float = 1.0,
+    timeout: Optional[float] = None,
+    store: Optional["CheckpointStore"] = None,
+    run_id: Optional[str] = None,
+    namespace: str = "gather",
+    session_id: str = "default",
 ) -> Tuple[Any, ...]:
     """Async version of scatter_gather. Sends different sets of arguments/kwargs
     to a list of async callables and collects the responses.
@@ -925,6 +1062,29 @@ async def ascatter_gather(
     """
     if not isinstance(to_send, list) or not all(callable(f) for f in to_send):
         raise TypeError("`to_send` must be a non-empty list of callable objects")
+
+    # Durable path
+    if max_retries is not None or store is not None:
+        workers = [
+            (
+                to_send[i],
+                args_list[i] if args_list and i < len(args_list) else (),
+                kwargs_list[i] if kwargs_list and i < len(kwargs_list) else {},
+            )
+            for i in range(len(to_send))
+        ]
+        return tuple(
+            await gather_durable_async(
+                workers,
+                timeout=timeout,
+                max_retries=max_retries,
+                retry_delay=retry_delay,
+                store=store,
+                run_id=run_id,
+                namespace=namespace,
+                session_id=session_id,
+            )
+        )
 
     tasks = []
     for i, f in enumerate(to_send):
