@@ -30,7 +30,7 @@ from opentelemetry import trace
 from opentelemetry.trace import Status, StatusCode
 
 from msgflux._private.executor import Executor
-from msgflux.chat_messages import ChatMessages
+from msgflux.context import session_context
 from msgflux.dotdict import dotdict
 from msgflux.envs import envs
 from msgflux.message import Message
@@ -768,8 +768,8 @@ class Module:
 
         When a caller passes ``session_id="..."`` as a keyword argument to any
         Module, it is popped from *kwargs* (so it never reaches ``forward``)
-        and used to enter ``ChatMessages.session_context()``.  Every
-        ``ChatMessages`` created within that scope inherits the session_id via
+        and used to enter :func:`msgflux.context.session_context`.  Every
+        component created within that scope inherits the session_id via
         :class:`contextvars.ContextVar`.
         """
         runtime_session_id = kwargs.pop("session_id", None)
@@ -783,7 +783,7 @@ class Module:
                 f"given `{type(runtime_session_id)}`"
             )
 
-        return ChatMessages.session_context(
+        return session_context(
             session_id=runtime_session_id,
             namespace=self.get_module_name(),
         )

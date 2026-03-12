@@ -4,6 +4,7 @@ import pytest
 from unittest.mock import Mock, MagicMock, patch
 
 from msgflux.chat_messages import ChatMessages
+from msgflux.context import get_session_context
 from msgflux.nn.modules.module import (
     Module,
     _IncompatibleKeys,
@@ -1099,7 +1100,7 @@ class TestSessionIdPropagation:
 
         class CapturingModule(Module):
             def forward(self, x):
-                ctx = ChatMessages.get_session_context()
+                ctx = get_session_context()
                 captured["session_id"] = ctx["session_id"]
                 captured["namespace"] = ctx["namespace"]
                 return x
@@ -1146,7 +1147,7 @@ class TestSessionIdPropagation:
 
         class CapturingModule(Module):
             def forward(self, x):
-                ctx = ChatMessages.get_session_context()
+                ctx = get_session_context()
                 captured["session_id"] = ctx["session_id"]
                 return x
 
@@ -1169,7 +1170,7 @@ class TestSessionIdPropagation:
         module = SimpleModule()
         module(1, session_id="temp")
 
-        ctx = ChatMessages.get_session_context()
+        ctx = get_session_context()
         assert ctx["session_id"] is None
 
     def test_chatmessages_inherits_session_from_module(self):

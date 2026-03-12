@@ -3,6 +3,7 @@
 import pytest
 
 from msgflux.chat_messages import ChatMessages
+from msgflux.context import get_session_context
 from msgflux.data.stores import InMemoryCheckpointStore
 from msgflux.dotdict import DELETE, dotdict
 from msgflux.dsl.inline import DurableInlineDSL, Inline, InlineDSL, inline
@@ -504,7 +505,7 @@ class TestSessionContextPropagation:
         captured = {}
 
         def capture_session(msg):
-            ctx = ChatMessages.get_session_context()
+            ctx = get_session_context()
             captured["session_id"] = ctx["session_id"]
             captured["namespace"] = ctx["namespace"]
             return {"captured": True}
@@ -549,7 +550,7 @@ class TestSessionContextPropagation:
         )
         dsl("noop", modules, dotdict())
 
-        ctx = ChatMessages.get_session_context()
+        ctx = get_session_context()
         assert ctx["session_id"] is None
 
     @pytest.mark.asyncio
@@ -559,7 +560,7 @@ class TestSessionContextPropagation:
         captured = {}
 
         async def capture_session(msg):
-            ctx = ChatMessages.get_session_context()
+            ctx = get_session_context()
             captured["session_id"] = ctx["session_id"]
             return {"captured": True}
 
@@ -608,7 +609,7 @@ class TestInlineClass:
         captured = {}
 
         def capture(msg):
-            ctx = ChatMessages.get_session_context()
+            ctx = get_session_context()
             captured["session_id"] = ctx["session_id"]
             return {"captured": True}
 

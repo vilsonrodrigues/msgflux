@@ -8,23 +8,19 @@ Provides a unified abstraction for conversation history management with:
 - Multimodal content support (images, audio, video, files)
 """
 
-import contextvars
-from contextlib import contextmanager
 from copy import deepcopy
 from datetime import datetime, timezone
 from typing import Any, Iterable, Iterator, List, Mapping, Optional
-from uuid import uuid4
 
+from msgflux.context import (
+    _CURRENT_NAMESPACE,
+    _CURRENT_SESSION_ID,
+    get_session_context,
+    session_context,
+)
 from msgflux.data.types import Audio, File, Image, MediaType, Video
 from msgflux.examples import Example
 from msgflux.utils.msgspec import msgspec_dumps
-
-_CURRENT_CHAT_SESSION_ID: contextvars.ContextVar[Optional[str]] = (
-    contextvars.ContextVar("msgflux_chat_session_id", default=None)
-)
-_CURRENT_CHAT_NAMESPACE: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
-    "msgflux_chat_namespace", default=None
-)
 
 
 class ChatMessages:
@@ -43,10 +39,10 @@ class ChatMessages:
         self.reasoning_text: Optional[str] = None
         self.response_id: Optional[str] = None
         self.session_id: Optional[str] = (
-            session_id if session_id is not None else _CURRENT_CHAT_SESSION_ID.get()
+            session_id if session_id is not None else _CURRENT_SESSION_ID.get()
         )
         self.namespace: Optional[str] = (
-            namespace if namespace is not None else _CURRENT_CHAT_NAMESPACE.get()
+            namespace if namespace is not None else _CURRENT_NAMESPACE.get()
         )
         self._turns: List[dict[str, Any]] = []
         self._active_turn_index: Optional[int] = None
@@ -127,38 +123,9 @@ class ChatMessages:
 
     # --- Session management ---
 
-    @classmethod
-    @contextmanager
-    def session_context(
-        cls,
-        *,
-        session_id: Optional[str] = None,
-        namespace: Optional[str] = None,
-    ):
-        current_session_id = _CURRENT_CHAT_SESSION_ID.get()
-        resolved_session_id = (
-            session_id if session_id is not None else current_session_id
-        )
-        if resolved_session_id is None:
-            resolved_session_id = f"sess_{uuid4().hex}"
-
-        current_namespace = _CURRENT_CHAT_NAMESPACE.get()
-        resolved_namespace = namespace if namespace is not None else current_namespace
-
-        session_token = _CURRENT_CHAT_SESSION_ID.set(resolved_session_id)
-        namespace_token = _CURRENT_CHAT_NAMESPACE.set(resolved_namespace)
-        try:
-            yield
-        finally:
-            _CURRENT_CHAT_SESSION_ID.reset(session_token)
-            _CURRENT_CHAT_NAMESPACE.reset(namespace_token)
-
-    @classmethod
-    def get_session_context(cls) -> Mapping[str, Optional[str]]:
-        return {
-            "session_id": _CURRENT_CHAT_SESSION_ID.get(),
-            "namespace": _CURRENT_CHAT_NAMESPACE.get(),
-        }
+    # Delegate to msgflux.context — kept as classmethods for backward compat.
+    session_context = staticmethod(session_context)
+    get_session_context = staticmethod(get_session_context)
 
     def configure_session(
         self,
@@ -172,14 +139,14 @@ class ChatMessages:
             else (
                 self.session_id
                 if self.session_id is not None
-                else _CURRENT_CHAT_SESSION_ID.get()
+                else _CURRENT_SESSION_ID.get()
             )
         )
         self.session_id = resolved_session_id
         if namespace is not None:
             self.namespace = namespace
         elif self.namespace is None:
-            self.namespace = _CURRENT_CHAT_NAMESPACE.get()
+            self.namespace = _CURRENT_NAMESPACE.get()
 
     # --- Turn lifecycle ---
 

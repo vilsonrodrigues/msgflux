@@ -8,7 +8,7 @@ with optional checkpoint-per-step durability.
 import uuid
 from typing import TYPE_CHECKING, Callable, Mapping, Optional
 
-from msgflux.chat_messages import ChatMessages
+from msgflux.context import session_context
 from msgflux.dotdict import dotdict
 from msgflux.dsl.inline.core import AsyncInlineDSL, InlineDSL
 from msgflux.dsl.inline.runtime import AsyncDurableInlineDSL, DurableInlineDSL
@@ -108,7 +108,7 @@ class Inline:
         """
         resolved_session = session_id or "default"
 
-        with ChatMessages.session_context(
+        with session_context(
             session_id=resolved_session,
             namespace=namespace,
         ):
@@ -144,7 +144,7 @@ class Inline:
         """
         resolved_session = session_id or "default"
 
-        with ChatMessages.session_context(
+        with session_context(
             session_id=resolved_session,
             namespace=namespace,
         ):

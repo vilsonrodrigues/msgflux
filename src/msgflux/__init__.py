@@ -2,6 +2,7 @@ from msgspec_ext.fast_dotenv import load_dotenv
 
 from .cache import response_cache
 from .chat_messages import ChatMessages
+from .context import get_session_context, session_context
 from .data.dbs import DB
 from .data.parsers import Parser
 from .data.retrievers import Retriever
@@ -33,6 +34,7 @@ __all__ = [
     "CheckpointStore",
     "Example",
     "File",
+    "get_session_context",
     "Guard",
     "Image",
     "Inline",
@@ -57,6 +59,7 @@ __all__ = [
     "msgspec_dumps",
     "response_cache",
     "save",
+    "session_context",
     "set_envs",
     "tool_config",
 ]

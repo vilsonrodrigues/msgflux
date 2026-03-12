@@ -3,7 +3,7 @@
 import uuid
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Mapping, Optional
 
-from msgflux.chat_messages import ChatMessages
+from msgflux.context import session_context
 from msgflux.dotdict import dotdict
 from msgflux.dsl.inline.core import AsyncInlineDSL, InlineDSL
 from msgflux.logger import logger
@@ -271,7 +271,7 @@ class DurableInlineDSL(InlineDSL):
     def __call__(
         self, expression: str, modules: Mapping[str, Callable], message: dotdict
     ) -> dotdict:
-        with ChatMessages.session_context(
+        with session_context(
             session_id=self.session_id,
             namespace=self.namespace,
         ):
@@ -511,7 +511,7 @@ class AsyncDurableInlineDSL(AsyncInlineDSL):
     async def __call__(
         self, expression: str, modules: Mapping[str, Callable], message: dotdict
     ) -> dotdict:
-        with ChatMessages.session_context(
+        with session_context(
             session_id=self.session_id,
             namespace=self.namespace,
         ):
