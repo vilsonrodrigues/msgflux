@@ -1,5 +1,7 @@
 """Tests for durable inline DSL — checkpoint per step, resume, and delta pattern."""
 
+from unittest.mock import patch
+
 import pytest
 
 from msgflux.chat_messages import ChatMessages
@@ -676,3 +678,169 @@ class TestInlineClass:
         import msgflux
         assert hasattr(msgflux, "Inline")
         assert msgflux.Inline is Inline
+
+
+# ── Retry logic ─────────────────────────────────────────────────────────────
+
+
+class TestRetry:
+    def test_retry_succeeds_on_second_attempt(self):
+        """Step fails once then succeeds — no error raised."""
+        store = InMemoryCheckpointStore()
+        call_count = {"n": 0}
+
+        def flaky(msg):
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                raise RuntimeError("transient")
+            return {"ok": True}
+
+        modules = {"flaky": flaky}
+        dsl = DurableInlineDSL(
+            store, namespace="t", session_id="s", run_id="r",
+            max_retries=2, retry_delay=0,
+        )
+        result = dsl("flaky", modules, dotdict())
+
+        assert result["ok"] is True
+        assert call_count["n"] == 2
+
+        state = store.load_state("t", "s", "r")
+        assert state["status"] == "completed"
+
+    def test_retry_exhausted_raises(self):
+        """All retry attempts fail — saves failed state and raises."""
+        store = InMemoryCheckpointStore()
+        call_count = {"n": 0}
+
+        def always_fail(msg):
+            call_count["n"] += 1
+            raise ValueError("permanent")
+
+        modules = {"fail": always_fail}
+        dsl = DurableInlineDSL(
+            store, namespace="t", session_id="s", run_id="r",
+            max_retries=2, retry_delay=0,
+        )
+
+        with pytest.raises(ValueError, match="permanent"):
+            dsl("fail", modules, dotdict())
+
+        # 1 initial + 2 retries = 3 attempts
+        assert call_count["n"] == 3
+
+        state = store.load_state("t", "s", "r")
+        assert state["status"] == "failed"
+        assert "permanent" in state["error"]
+
+    def test_retry_zero_means_no_retry(self):
+        """max_retries=0 means single attempt, no retry."""
+        store = InMemoryCheckpointStore()
+        call_count = {"n": 0}
+
+        def fail_once(msg):
+            call_count["n"] += 1
+            raise RuntimeError("fail")
+
+        modules = {"fail": fail_once}
+        dsl = DurableInlineDSL(
+            store, namespace="t", session_id="s", run_id="r",
+            max_retries=0, retry_delay=0,
+        )
+
+        with pytest.raises(RuntimeError):
+            dsl("fail", modules, dotdict())
+
+        assert call_count["n"] == 1
+
+    @patch("msgflux.dsl.inline.runtime.time.sleep")
+    def test_retry_delay_is_respected(self, mock_sleep):
+        """Retry delay is called between attempts."""
+        store = InMemoryCheckpointStore()
+        call_count = {"n": 0}
+
+        def flaky(msg):
+            call_count["n"] += 1
+            if call_count["n"] <= 2:
+                raise RuntimeError("transient")
+            return {"ok": True}
+
+        modules = {"flaky": flaky}
+        dsl = DurableInlineDSL(
+            store, namespace="t", session_id="s", run_id="r",
+            max_retries=3, retry_delay=2.5,
+        )
+        dsl("flaky", modules, dotdict())
+
+        assert mock_sleep.call_count == 2
+        mock_sleep.assert_called_with(2.5)
+
+    def test_retry_preserves_message_state(self):
+        """Message state from earlier steps is preserved across retries."""
+        store = InMemoryCheckpointStore()
+        call_count = {"n": 0}
+
+        def flaky_final(msg):
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                raise RuntimeError("transient")
+            return {"final": "done"}
+
+        modules = {
+            "prep": _delta_prep,
+            "flaky": flaky_final,
+        }
+        dsl = DurableInlineDSL(
+            store, namespace="t", session_id="s", run_id="r",
+            max_retries=1, retry_delay=0,
+        )
+        result = dsl("prep -> flaky", modules, dotdict())
+
+        assert result["counter"] == 0  # prep ran before retry
+        assert result["final"] == "done"
+
+    @pytest.mark.asyncio
+    async def test_async_retry_succeeds_on_second_attempt(self):
+        """Async: step fails once then succeeds."""
+        store = InMemoryCheckpointStore()
+        call_count = {"n": 0}
+
+        async def flaky(msg):
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                raise RuntimeError("transient")
+            return {"ok": True}
+
+        modules = {"flaky": flaky}
+        dsl = AsyncDurableInlineDSL(
+            store, namespace="t", session_id="s", run_id="r",
+            max_retries=2, retry_delay=0,
+        )
+        result = await dsl("flaky", modules, dotdict())
+
+        assert result["ok"] is True
+        assert call_count["n"] == 2
+
+    @pytest.mark.asyncio
+    async def test_async_retry_exhausted_raises(self):
+        """Async: all retries fail — raises and saves failed state."""
+        store = InMemoryCheckpointStore()
+        call_count = {"n": 0}
+
+        async def always_fail(msg):
+            call_count["n"] += 1
+            raise ValueError("permanent")
+
+        modules = {"fail": always_fail}
+        dsl = AsyncDurableInlineDSL(
+            store, namespace="t", session_id="s", run_id="r",
+            max_retries=1, retry_delay=0,
+        )
+
+        with pytest.raises(ValueError, match="permanent"):
+            await dsl("fail", modules, dotdict())
+
+        assert call_count["n"] == 2
+
+        state = store.load_state("t", "s", "r")
+        assert state["status"] == "failed"

@@ -1,5 +1,7 @@
 """Durable inline DSL — checkpoint per step with cursor-based resume."""
 
+import asyncio
+import time
 import uuid
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Mapping, Optional
 
@@ -107,7 +109,7 @@ class DurableInlineDSL(InlineDSL):
 
     # ── Execution (overrides) ────────────────────────────────────────────
 
-    def _execute_steps(
+    def _execute_steps(  # noqa: C901
         self,
         steps: List[Dict[str, Any]],
         modules: Mapping[str, Callable],
@@ -118,42 +120,61 @@ class DurableInlineDSL(InlineDSL):
         _frames: Optional[List[Dict[str, Any]]] = None,
     ) -> dotdict:
         current_message = message
+        attempts = self.max_retries + 1
 
         for i, step in enumerate(steps):
             if i < _start_index:
                 continue
 
-            try:
-                if step["type"] == "module":
-                    module = modules.get(step["module"])
-                    if not module:
-                        raise ValueError(f"Module `{step['module']}` not found.")
-                    self._call_module(module, current_message)
+            for attempt in range(attempts):
+                try:
+                    if step["type"] == "module":
+                        module = modules.get(step["module"])
+                        if not module:
+                            raise ValueError(
+                                f"Module `{step['module']}` not found."
+                            )
+                        self._call_module(module, current_message)
 
-                elif step["type"] == "parallel":
-                    parallel_modules = self._resolve_parallel(step, modules)
-                    self._execute_parallel(parallel_modules, current_message)
+                    elif step["type"] == "parallel":
+                        parallel_modules = self._resolve_parallel(
+                            step, modules,
+                        )
+                        self._execute_parallel(
+                            parallel_modules, current_message,
+                        )
 
-                elif step["type"] == "conditional":
-                    self._execute_conditional(step, modules, current_message)
+                    elif step["type"] == "conditional":
+                        self._execute_conditional(
+                            step, modules, current_message,
+                        )
 
-                elif step["type"] == "while":
-                    current_message = self._execute_while_durable(
-                        step, modules, current_message,
-                        expression=_expression,
-                        outer_step_index=i,
-                        frames=_frames,
+                    elif step["type"] == "while":
+                        current_message = self._execute_while_durable(
+                            step, modules, current_message,
+                            expression=_expression,
+                            outer_step_index=i,
+                            frames=_frames,
+                        )
+
+                    break  # step succeeded
+
+                except Exception as e:
+                    if attempt >= self.max_retries:
+                        self._save(
+                            _expression,
+                            _make_cursor(i, _frames),
+                            current_message,
+                            status="failed",
+                            error=str(e),
+                        )
+                        raise
+                    logger.warning(
+                        "Step %d failed (attempt %d/%d): %s. "
+                        "Retrying in %.1fs…",
+                        i, attempt + 1, attempts, e, self.retry_delay,
                     )
-
-            except Exception as e:
-                self._save(
-                    _expression,
-                    _make_cursor(i, _frames),
-                    current_message,
-                    status="failed",
-                    error=str(e),
-                )
-                raise
+                    time.sleep(self.retry_delay)
 
             # Checkpoint after each completed step
             self._save(
@@ -370,7 +391,7 @@ class AsyncDurableInlineDSL(AsyncInlineDSL):
 
     # ── Execution (overrides) ────────────────────────────────────────────
 
-    async def _aexecute_steps(
+    async def _aexecute_steps(  # noqa: C901
         self,
         steps: List[Dict[str, Any]],
         modules: Mapping[str, Callable],
@@ -381,42 +402,63 @@ class AsyncDurableInlineDSL(AsyncInlineDSL):
         _frames: Optional[List[Dict[str, Any]]] = None,
     ) -> dotdict:
         current_message = message
+        attempts = self.max_retries + 1
 
         for i, step in enumerate(steps):
             if i < _start_index:
                 continue
 
-            try:
-                if step["type"] == "module":
-                    module = modules.get(step["module"])
-                    if not module:
-                        raise ValueError(f"Module `{step['module']}` not found.")
-                    await self._acall_module(module, current_message)
+            for attempt in range(attempts):
+                try:
+                    if step["type"] == "module":
+                        module = modules.get(step["module"])
+                        if not module:
+                            raise ValueError(
+                                f"Module `{step['module']}` not found."
+                            )
+                        await self._acall_module(module, current_message)
 
-                elif step["type"] == "parallel":
-                    parallel_modules = DurableInlineDSL._resolve_parallel(step, modules)
-                    await self._aexecute_parallel(parallel_modules, current_message)
+                    elif step["type"] == "parallel":
+                        parallel_modules = (
+                            DurableInlineDSL._resolve_parallel(step, modules)
+                        )
+                        await self._aexecute_parallel(
+                            parallel_modules, current_message,
+                        )
 
-                elif step["type"] == "conditional":
-                    await self._aexecute_conditional(step, modules, current_message)
+                    elif step["type"] == "conditional":
+                        await self._aexecute_conditional(
+                            step, modules, current_message,
+                        )
 
-                elif step["type"] == "while":
-                    current_message = await self._aexecute_while_durable(
-                        step, modules, current_message,
-                        expression=_expression,
-                        outer_step_index=i,
-                        frames=_frames,
+                    elif step["type"] == "while":
+                        current_message = (
+                            await self._aexecute_while_durable(
+                                step, modules, current_message,
+                                expression=_expression,
+                                outer_step_index=i,
+                                frames=_frames,
+                            )
+                        )
+
+                    break  # step succeeded
+
+                except Exception as e:
+                    if attempt >= self.max_retries:
+                        await self._asave(
+                            _expression,
+                            _make_cursor(i, _frames),
+                            current_message,
+                            status="failed",
+                            error=str(e),
+                        )
+                        raise
+                    logger.warning(
+                        "Step %d failed (attempt %d/%d): %s. "
+                        "Retrying in %.1fs…",
+                        i, attempt + 1, attempts, e, self.retry_delay,
                     )
-
-            except Exception as e:
-                await self._asave(
-                    _expression,
-                    _make_cursor(i, _frames),
-                    current_message,
-                    status="failed",
-                    error=str(e),
-                )
-                raise
+                    await asyncio.sleep(self.retry_delay)
 
             await self._asave(
                 _expression,
