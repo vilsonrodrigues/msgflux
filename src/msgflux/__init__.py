@@ -8,6 +8,7 @@ from .data.retrievers import Retriever
 from .data.stores import CheckpointStore, InMemoryCheckpointStore, SQLiteCheckpointStore
 from .data.types import Audio, File, Image, Video
 from .dotdict import dotdict
+from .dsl.inline import Inline
 from .dsl.signature import InputField, OutputField, Signature
 from .envs import set_envs
 from .examples import Example
@@ -34,6 +35,7 @@ __all__ = [
     "File",
     "Guard",
     "Image",
+    "Inline",
     "InputField",
     "InMemoryCheckpointStore",
     "Message",

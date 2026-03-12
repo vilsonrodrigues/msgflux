@@ -5,7 +5,7 @@ import pytest
 from msgflux.chat_messages import ChatMessages
 from msgflux.data.stores import InMemoryCheckpointStore
 from msgflux.dotdict import DELETE, dotdict
-from msgflux.dsl.inline import DurableInlineDSL, InlineDSL, inline
+from msgflux.dsl.inline import DurableInlineDSL, Inline, InlineDSL, inline
 from msgflux.dsl.inline.runtime import AsyncDurableInlineDSL
 
 
@@ -570,3 +570,108 @@ class TestSessionContextPropagation:
         await dsl("capture", modules, dotdict())
 
         assert captured["session_id"] == "async_user"
+
+
+# ── Inline first-class object ────────────────────────────────────────────────
+
+
+class TestInlineClass:
+    def test_basic_call(self):
+        """Inline() works as a first-class callable."""
+        pipeline = Inline("prep -> final", DELTA_MODULES)
+        result = pipeline(dotdict())
+
+        assert result["counter"] == 0
+        assert result["final"] == "done"
+
+    def test_call_with_store(self):
+        """Inline() supports durable mode via store kwarg."""
+        store = InMemoryCheckpointStore()
+        pipeline = Inline("prep -> feat_a -> final", DELTA_MODULES)
+
+        result = pipeline(
+            dotdict(),
+            store=store,
+            session_id="s1",
+            run_id="r1",
+            namespace="test",
+        )
+
+        assert result["feat_a"] == "result_a"
+        assert result["final"] == "done"
+
+        state = store.load_state("test", "s1", "r1")
+        assert state["status"] == "completed"
+
+    def test_session_propagation(self):
+        """Inline() propagates session_id to ChatMessages context."""
+        captured = {}
+
+        def capture(msg):
+            ctx = ChatMessages.get_session_context()
+            captured["session_id"] = ctx["session_id"]
+            return {"captured": True}
+
+        pipeline = Inline("capture", {"capture": capture})
+        pipeline(dotdict(), session_id="user_99")
+
+        assert captured["session_id"] == "user_99"
+
+    def test_repr(self):
+        pipeline = Inline("a -> b", {"a": lambda m: m, "b": lambda m: m})
+        assert "Inline(" in repr(pipeline)
+        assert "a -> b" in repr(pipeline)
+
+    def test_reusable(self):
+        """Same Inline instance can be called multiple times."""
+        pipeline = Inline("prep -> increment -> final", DELTA_MODULES)
+
+        r1 = pipeline(dotdict())
+        r2 = pipeline(dotdict())
+
+        assert r1["counter"] == 1
+        assert r2["counter"] == 1
+        assert r1 is not r2
+
+    @pytest.mark.asyncio
+    async def test_acall(self):
+        """Inline.acall() works asynchronously."""
+        async def async_prep(msg):
+            return {"counter": 0}
+
+        async def async_final(msg):
+            return {"final": "done"}
+
+        modules = {"prep": async_prep, "final": async_final}
+        pipeline = Inline("prep -> final", modules)
+
+        result = await pipeline.acall(dotdict())
+        assert result["final"] == "done"
+
+    @pytest.mark.asyncio
+    async def test_acall_with_store(self):
+        """Inline.acall() supports durable mode."""
+        store = InMemoryCheckpointStore()
+
+        async def async_prep(msg):
+            return {"counter": 0}
+
+        async def async_final(msg):
+            return {"final": "done"}
+
+        modules = {"prep": async_prep, "final": async_final}
+        pipeline = Inline("prep -> final", modules)
+
+        result = await pipeline.acall(
+            dotdict(), store=store, session_id="s1", run_id="r1",
+        )
+        assert result["final"] == "done"
+
+        state = store.load_state("inline", "s1", "r1")
+        assert state["status"] == "completed"
+
+    def test_import_from_msgflux(self):
+        """Inline is importable from msgflux root."""
+        import msgflux
+        assert hasattr(msgflux, "Inline")
+        assert msgflux.Inline is Inline

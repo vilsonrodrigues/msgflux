@@ -131,81 +131,6 @@ class TestBcastGather:
             F.bcast_gather(["not_callable"], 1)
 
 
-class TestMsgScatterGather:
-    """Test suite for msg_scatter_gather function."""
-
-    def test_msg_scatter_gather_basic(self):
-        """Test basic msg_scatter_gather functionality."""
-
-        def add_field_a(msg):
-            msg["field_a"] = "value_a"
-            return msg
-
-        def add_field_b(msg):
-            msg["field_b"] = "value_b"
-            return msg
-
-        messages = [dotdict(), dotdict()]
-        results = F.msg_scatter_gather([add_field_a, add_field_b], messages)
-
-        assert len(results) == 2
-        assert results[0]["field_a"] == "value_a"
-        assert results[1]["field_b"] == "value_b"
-
-    def test_msg_scatter_gather_invalid_messages(self):
-        """Test msg_scatter_gather raises TypeError for invalid messages."""
-
-        def dummy(msg):
-            return msg
-
-        with pytest.raises(TypeError, match="`messages` must be a non-empty list"):
-            F.msg_scatter_gather([dummy], ["not_dotdict"])
-
-    def test_msg_scatter_gather_length_mismatch(self):
-        """Test msg_scatter_gather raises ValueError for length mismatch."""
-
-        def dummy(msg):
-            return msg
-
-        with pytest.raises(ValueError, match="The size of `messages`"):
-            F.msg_scatter_gather([dummy], [dotdict(), dotdict()])
-
-
-class TestMsgBcastGather:
-    """Test suite for msg_bcast_gather function."""
-
-    def test_msg_bcast_gather_basic(self):
-        """Test basic msg_bcast_gather functionality."""
-
-        def add_field_a(msg):
-            msg["field_a"] = "value_a"
-            return msg
-
-        def add_field_b(msg):
-            msg["field_b"] = "value_b"
-            return msg
-
-        message = dotdict()
-        result = F.msg_bcast_gather([add_field_a, add_field_b], message)
-
-        assert result["field_a"] == "value_a"
-        assert result["field_b"] == "value_b"
-
-    def test_msg_bcast_gather_invalid_message(self):
-        """Test msg_bcast_gather raises TypeError for invalid message."""
-
-        def dummy(msg):
-            return msg
-
-        with pytest.raises(TypeError, match="`message` must be an instance"):
-            F.msg_bcast_gather([dummy], "not_dotdict")
-
-    def test_msg_bcast_gather_not_callable_list(self):
-        """Test msg_bcast_gather raises TypeError for non-callable list."""
-        with pytest.raises(TypeError, match="`to_send` must be a non-empty list"):
-            F.msg_bcast_gather(["not_callable"], dotdict())
-
-
 class TestWaitFor:
     """Test suite for wait_for function."""
 
@@ -297,34 +222,6 @@ class TestAsyncFunctions:
         """Test ascatter_gather raises TypeError for non-callable list."""
         with pytest.raises(TypeError, match="`to_send` must be a non-empty list"):
             await F.ascatter_gather("not_a_list")
-
-    @pytest.mark.asyncio
-    async def test_amsg_bcast_gather_basic(self):
-        """Test basic amsg_bcast_gather functionality."""
-
-        async def add_field_a(msg):
-            msg["field_a"] = "value_a"
-            return msg
-
-        async def add_field_b(msg):
-            msg["field_b"] = "value_b"
-            return msg
-
-        message = dotdict()
-        result = await F.amsg_bcast_gather([add_field_a, add_field_b], message)
-
-        assert result["field_a"] == "value_a"
-        assert result["field_b"] == "value_b"
-
-    @pytest.mark.asyncio
-    async def test_amsg_bcast_gather_invalid_message(self):
-        """Test amsg_bcast_gather raises TypeError for invalid message."""
-
-        async def dummy(msg):
-            return msg
-
-        with pytest.raises(TypeError, match="`message` must be an instance"):
-            await F.amsg_bcast_gather([dummy], "not_dotdict")
 
     @pytest.mark.asyncio
     async def test_await_for_event_basic(self):

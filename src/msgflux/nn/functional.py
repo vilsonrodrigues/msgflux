@@ -10,7 +10,6 @@ from msgflux._private.supervision import gather_durable_async, gather_durable_sy
 from msgflux.dotdict import dotdict
 from msgflux.exceptions import TaskError
 from msgflux.logger import logger
-from msgflux.nn.modules.module import get_callable_name
 from msgflux.telemetry import Spans
 
 if TYPE_CHECKING:
@@ -20,15 +19,12 @@ __all__ = [
     "afire_and_forget",
     "ainline",
     "amap_gather",
-    "amsg_bcast_gather",
     "ascatter_gather",
     "await_for_event",
     "bcast_gather",
     "fire_and_forget",
     "inline",
     "map_gather",
-    "msg_bcast_gather",
-    "msg_scatter_gather",
     "scatter_gather",
     "wait_for",
     "wait_for_event",
@@ -261,59 +257,6 @@ def scatter_gather(
 
 
 @Spans.instrument()
-def msg_scatter_gather(
-    to_send: List[Callable],
-    messages: List[dotdict],
-    *,
-    timeout: Optional[float] = None,
-) -> Tuple[dotdict, ...]:
-    """Scatter a list of messages to a list of modules and gather the responses.
-
-    Args:
-        to_send:
-            List of callable objects (e.g. functions or `Module` instances).
-        messages:
-            List of `msgflux.dotdict` instances to be distributed.
-        timeout:
-            Maximum time (in seconds) to wait for responses.
-
-    Returns:
-        Tuple containing the messages updated with the responses.
-
-    Raises:
-        TypeError:
-            If `messages` is not a list of `dotdict`, `to_send` is not a list
-            of callables, or `prefix` is not a string.
-    """
-    if not messages or not all(isinstance(msg, dotdict) for msg in messages):
-        raise TypeError(
-            "`messages` must be a non-empty list of `msgflux.dotdict` instances"
-        )
-
-    if not to_send or not all(isinstance(f, Callable) for f in to_send):
-        raise TypeError("`to_send` must be a non-empty list of callable objects")
-
-    if len(messages) != len(to_send):
-        raise ValueError(
-            f"The size of `messages` ({len(messages)}) "
-            f"must be equal to that of `to_send`: ({len(to_send)})"
-        )
-
-    executor = Executor.get_instance()
-    futures = [executor.submit(f, msg) for f, msg in zip(to_send, messages)]
-
-    concurrent.futures.wait(futures, timeout=timeout)
-    for i, (f, future) in enumerate(zip(to_send, futures)):
-        f_name = get_callable_name(f)
-        try:
-            future.result()
-        except Exception as e:
-            logger.error(f"Error in scattered task for `{f_name}`: {e}")
-            messages[i]["_error"] = TaskError(exception=e, index=i)
-    return tuple(messages)
-
-
-@Spans.instrument()
 def bcast_gather(
     to_send: List[Callable],
     *args,
@@ -389,50 +332,6 @@ def bcast_gather(
             logger.error(str(e))
             responses.append(TaskError(exception=e, index=i))
     return tuple(responses)
-
-
-@Spans.instrument()
-def msg_bcast_gather(
-    to_send: List[Callable],
-    message: dotdict,
-    *,
-    timeout: Optional[float] = None,
-) -> dotdict:
-    """Broadcasts a single message to multiple modules and gathers the responses.
-
-    Args:
-        to_send:
-            List of callable objects (e.g. functions or `Module` instances).
-        message:
-            Instance of `msgflux.dotdict` to broadcast.
-        timeout:
-            Maximum time (in seconds) to wait for responses.
-
-    Returns:
-        The original message with the module responses added.
-
-    Raises:
-        TypeError:
-            If `message` is not an instance of `dotdict`, `to_send` is not a list
-            of callables.
-    """
-    if not isinstance(message, dotdict):
-        raise TypeError("`message` must be an instance of `msgflux.dotdict`")
-    if not to_send or not all(isinstance(module, Callable) for module in to_send):
-        raise TypeError("`to_send` must be a non-empty list of callable objects")
-
-    executor = Executor.get_instance()
-    futures = [executor.submit(f, message) for f in to_send]
-
-    concurrent.futures.wait(futures, timeout=timeout)
-    for i, (f, future) in enumerate(zip(to_send, futures)):
-        f_name = get_callable_name(f)
-        try:
-            future.result()
-        except Exception as e:
-            logger.error(f"Error in scattered task for `{f_name}`: {e}")
-            message.setdefault("_errors", {})[f_name] = TaskError(exception=e, index=i)
-    return message
 
 
 @Spans.instrument()
@@ -792,22 +691,18 @@ def inline(
             message=input_msg
         )
     """
-    from msgflux.dsl.inline import inline as _inline  # noqa: PLC0415
+    from msgflux.dsl.inline.module import Inline  # noqa: PLC0415
 
-    if store is not None:
-        from msgflux.dsl.inline.runtime import DurableInlineDSL  # noqa: PLC0415
-
-        dsl = DurableInlineDSL(
-            store,
-            namespace=namespace,
-            session_id=session_id,
-            run_id=run_id,
-            max_retries=max_retries,
-            retry_delay=retry_delay,
-        )
-        return dsl(expression, modules, message)
-
-    return _inline(expression, modules, message)
+    pipeline = Inline(expression, modules)
+    return pipeline(
+        message,
+        store=store,
+        run_id=run_id,
+        namespace=namespace,
+        session_id=session_id,
+        max_retries=max_retries,
+        retry_delay=retry_delay,
+    )
 
 
 async def ainline(
@@ -948,22 +843,18 @@ async def ainline(
             message=input_msg
         )
     """
-    from msgflux.dsl.inline import ainline as _ainline  # noqa: PLC0415
+    from msgflux.dsl.inline.module import Inline  # noqa: PLC0415
 
-    if store is not None:
-        from msgflux.dsl.inline.runtime import AsyncDurableInlineDSL  # noqa: PLC0415
-
-        dsl = AsyncDurableInlineDSL(
-            store,
-            namespace=namespace,
-            session_id=session_id,
-            run_id=run_id,
-            max_retries=max_retries,
-            retry_delay=retry_delay,
-        )
-        return await dsl(expression, modules, message)
-
-    return await _ainline(expression, modules, message)
+    pipeline = Inline(expression, modules)
+    return await pipeline.acall(
+        message,
+        store=store,
+        run_id=run_id,
+        namespace=namespace,
+        session_id=session_id,
+        max_retries=max_retries,
+        retry_delay=retry_delay,
+    )
 
 
 @Spans.ainstrument()
@@ -1147,72 +1038,3 @@ async def ascatter_gather(
             results.append(response)
 
     return tuple(results)
-
-
-@Spans.ainstrument()
-async def amsg_bcast_gather(
-    to_send: List[Callable],
-    message: dotdict,
-) -> dotdict:
-    """Async version of msg_bcast_gather. Broadcasts a single message to multiple
-    async modules and gathers the responses.
-
-    Args:
-        to_send:
-            List of callable objects (e.g. async functions or `Module` instances
-            with acall).
-        message:
-            Instance of `msgflux.dotdict` to broadcast.
-
-    Returns:
-        The original message with the module responses added.
-
-    Raises:
-        TypeError:
-            If `message` is not an instance of `dotdict`, `to_send` is not a list
-            of callables.
-
-    Examples:
-        async def add_feat_a(msg: dotdict) -> dotdict:
-            msg['feat_a'] = 'result_a'
-            return msg
-
-        async def add_feat_b(msg: dotdict) -> dotdict:
-            msg['feat_b'] = 'result_b'
-            return msg
-
-        message = dotdict()
-        result = await F.amsg_bcast_gather([add_feat_a, add_feat_b], message)
-        # message now contains both feat_a and feat_b
-    """
-    if not isinstance(message, dotdict):
-        raise TypeError("`message` must be an instance of `msgflux.dotdict`")
-    if not to_send or not all(isinstance(module, Callable) for module in to_send):
-        raise TypeError("`to_send` must be a non-empty list of callable objects")
-
-    tasks = []
-    for f in to_send:
-        # Check for acall method first, then coroutine function
-        if hasattr(f, "acall"):
-            tasks.append(f.acall(message))
-        elif asyncio.iscoroutinefunction(f):
-            tasks.append(f(message))
-        else:
-            # Fallback to sync call (will be executed in current event loop)
-            # Wrap in coroutine
-            async def _run_sync(func, msg):
-                return func(msg)
-
-            tasks.append(_run_sync(f, message))
-
-    responses = await asyncio.gather(*tasks, return_exceptions=True)
-
-    for i, (f, response) in enumerate(zip(to_send, responses)):
-        f_name = get_callable_name(f)
-        if isinstance(response, Exception):
-            logger.error(f"Error in async bcast task for `{f_name}`: {response}")
-            message.setdefault("_errors", {})[f_name] = TaskError(
-                exception=response, index=i
-            )
-
-    return message
