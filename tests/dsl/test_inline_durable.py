@@ -844,3 +844,118 @@ class TestRetry:
 
         state = store.load_state("t", "s", "r")
         assert state["status"] == "failed"
+
+
+# ── Event emission ──────────────────────────────────────────────────────────
+
+
+class TestEventEmission:
+    def test_events_emitted_per_step(self):
+        """Each completed step emits a step_completed event."""
+        store = InMemoryCheckpointStore()
+        dsl = DurableInlineDSL(
+            store, namespace="t", session_id="s", run_id="r",
+        )
+        dsl("prep -> feat_a -> final", DELTA_MODULES, dotdict())
+
+        events = store.load_events("t", "s", "r")
+        types = [e["type"] for e in events]
+
+        assert types[0] == "run_started"
+        assert types[-1] == "run_completed"
+        # 3 steps = 3 step_completed events
+        step_events = [e for e in events if e["type"] == "step_completed"]
+        assert len(step_events) == 3
+        assert step_events[0]["step_name"] == "prep"
+        assert step_events[1]["step_name"] == "feat_a"
+        assert step_events[2]["step_name"] == "final"
+
+    def test_events_contain_timestamp(self):
+        """All events have a timestamp field."""
+        store = InMemoryCheckpointStore()
+        dsl = DurableInlineDSL(
+            store, namespace="t", session_id="s", run_id="r",
+        )
+        dsl("prep -> final", DELTA_MODULES, dotdict())
+
+        events = store.load_events("t", "s", "r")
+        for event in events:
+            assert "timestamp" in event
+            assert isinstance(event["timestamp"], float)
+
+    def test_step_failed_event_on_error(self):
+        """A failed step emits a step_failed event with error info."""
+        store = InMemoryCheckpointStore()
+
+        def crasher(msg):
+            raise ValueError("boom")
+
+        modules = {"prep": _delta_prep, "crash": crasher}
+        dsl = DurableInlineDSL(
+            store, namespace="t", session_id="s", run_id="r",
+        )
+
+        with pytest.raises(ValueError, match="boom"):
+            dsl("prep -> crash", modules, dotdict())
+
+        events = store.load_events("t", "s", "r")
+        failed = [e for e in events if e["type"] == "step_failed"]
+        assert len(failed) == 1
+        assert failed[0]["step_name"] == "crash"
+        assert "boom" in failed[0]["error"]
+
+    def test_run_resumed_event(self):
+        """Resuming emits run_resumed instead of run_started."""
+        store = InMemoryCheckpointStore()
+
+        store.save_state("t", "s", "r", {
+            "run_id": "r",
+            "expression": "prep -> final",
+            "status": "running",
+            "cursor": {"step_index": 1, "frames": []},
+            "message_snapshot": {"counter": 0},
+        })
+
+        dsl = DurableInlineDSL(
+            store, namespace="t", session_id="s", run_id="r",
+        )
+        dsl("prep -> final", DELTA_MODULES, dotdict())
+
+        events = store.load_events("t", "s", "r")
+        assert events[0]["type"] == "run_resumed"
+
+    def test_parallel_step_event_name(self):
+        """Parallel steps include module names in step_name."""
+        store = InMemoryCheckpointStore()
+        dsl = DurableInlineDSL(
+            store, namespace="t", session_id="s", run_id="r",
+        )
+        dsl("prep -> [feat_a, feat_b] -> final", DELTA_MODULES, dotdict())
+
+        events = store.load_events("t", "s", "r")
+        step_events = [e for e in events if e["type"] == "step_completed"]
+        names = [e["step_name"] for e in step_events]
+        assert "[feat_a, feat_b]" in names
+
+    @pytest.mark.asyncio
+    async def test_async_events_emitted(self):
+        """Async durable also emits events."""
+        store = InMemoryCheckpointStore()
+
+        async def async_prep(msg):
+            return {"counter": 0}
+
+        async def async_final(msg):
+            return {"final": "done"}
+
+        modules = {"prep": async_prep, "final": async_final}
+        dsl = AsyncDurableInlineDSL(
+            store, namespace="t", session_id="s", run_id="r",
+        )
+        await dsl("prep -> final", modules, dotdict())
+
+        events = store.load_events("t", "s", "r")
+        types = [e["type"] for e in events]
+        assert "run_started" in types
+        assert "run_completed" in types
+        assert types.count("step_completed") == 2

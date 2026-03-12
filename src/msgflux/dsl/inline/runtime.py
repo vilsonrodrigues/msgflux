@@ -44,6 +44,39 @@ def _make_state(
     return state
 
 
+def _step_name(step: Dict[str, Any]) -> str:
+    """Return a human-readable name for a parsed step."""
+    if step["type"] == "module":
+        return step["module"]
+    if step["type"] == "parallel":
+        return f"[{', '.join(step['modules'])}]"
+    if step["type"] == "conditional":
+        return f"{{{step['condition']}?...}}"
+    if step["type"] == "while":
+        return f"@{{{step['condition']}}}"
+    return step["type"]
+
+
+def _make_event(
+    event_type: str,
+    *,
+    step_index: Optional[int] = None,
+    step_name: Optional[str] = None,
+    error: Optional[str] = None,
+) -> Dict[str, Any]:
+    event: Dict[str, Any] = {
+        "type": event_type,
+        "timestamp": time.time(),
+    }
+    if step_index is not None:
+        event["step_index"] = step_index
+    if step_name is not None:
+        event["step_name"] = step_name
+    if error is not None:
+        event["error"] = error
+    return event
+
+
 # ── Sync durable DSL ────────────────────────────────────────────────────────
 
 
@@ -99,13 +132,19 @@ class DurableInlineDSL(InlineDSL):
         message: dotdict,
         status: str = "running",
         error: Optional[str] = None,
+        event: Optional[Dict[str, Any]] = None,
     ) -> None:
-        self.store.save_state(
-            self.namespace,
-            self.session_id,
-            self.run_id,
-            _make_state(self.run_id, expression, status, cursor, message, error),
+        state = _make_state(
+            self.run_id, expression, status, cursor, message, error,
         )
+        if event is not None:
+            self.store.save_with_event(
+                self.namespace, self.session_id, self.run_id, state, event,
+            )
+        else:
+            self.store.save_state(
+                self.namespace, self.session_id, self.run_id, state,
+            )
 
     # ── Execution (overrides) ────────────────────────────────────────────
 
@@ -161,12 +200,19 @@ class DurableInlineDSL(InlineDSL):
 
                 except Exception as e:
                     if attempt >= self.max_retries:
+                        name = _step_name(step)
                         self._save(
                             _expression,
                             _make_cursor(i, _frames),
                             current_message,
                             status="failed",
                             error=str(e),
+                            event=_make_event(
+                                "step_failed",
+                                step_index=i,
+                                step_name=name,
+                                error=str(e),
+                            ),
                         )
                         raise
                     logger.warning(
@@ -176,11 +222,16 @@ class DurableInlineDSL(InlineDSL):
                     )
                     time.sleep(self.retry_delay)
 
-            # Checkpoint after each completed step
+            # Checkpoint + event after each completed step
             self._save(
                 _expression,
                 _make_cursor(i + 1, _frames),
                 current_message,
+                event=_make_event(
+                    "step_completed",
+                    step_index=i,
+                    step_name=_step_name(step),
+                ),
             )
 
         return current_message
@@ -303,8 +354,15 @@ class DurableInlineDSL(InlineDSL):
                     self.run_id, start_index,
                 )
                 current = resumed_msg
+                event_type = "run_resumed"
             else:
                 current = message
+                event_type = "run_started"
+
+            self.store.append_event(
+                self.namespace, self.session_id, self.run_id,
+                _make_event(event_type),
+            )
 
             result = self._execute_steps(
                 self.parse(expression),
@@ -319,6 +377,7 @@ class DurableInlineDSL(InlineDSL):
             total = len(self.parse(expression))
             self._save(
                 expression, _make_cursor(total), result, status="completed",
+                event=_make_event("run_completed"),
             )
             return result
 
@@ -378,9 +437,23 @@ class AsyncDurableInlineDSL(AsyncInlineDSL):
         message: dotdict,
         status: str = "running",
         error: Optional[str] = None,
+        event: Optional[Dict[str, Any]] = None,
     ) -> None:
-        state = _make_state(self.run_id, expression, status, cursor, message, error)
-        if hasattr(self.store, "asave_state"):
+        state = _make_state(
+            self.run_id, expression, status, cursor, message, error,
+        )
+        if event is not None:
+            if hasattr(self.store, "asave_with_event"):
+                await self.store.asave_with_event(
+                    self.namespace, self.session_id, self.run_id,
+                    state, event,
+                )
+            else:
+                self.store.save_with_event(
+                    self.namespace, self.session_id, self.run_id,
+                    state, event,
+                )
+        elif hasattr(self.store, "asave_state"):
             await self.store.asave_state(
                 self.namespace, self.session_id, self.run_id, state,
             )
@@ -445,12 +518,19 @@ class AsyncDurableInlineDSL(AsyncInlineDSL):
 
                 except Exception as e:
                     if attempt >= self.max_retries:
+                        name = _step_name(step)
                         await self._asave(
                             _expression,
                             _make_cursor(i, _frames),
                             current_message,
                             status="failed",
                             error=str(e),
+                            event=_make_event(
+                                "step_failed",
+                                step_index=i,
+                                step_name=name,
+                                error=str(e),
+                            ),
                         )
                         raise
                     logger.warning(
@@ -460,10 +540,16 @@ class AsyncDurableInlineDSL(AsyncInlineDSL):
                     )
                     await asyncio.sleep(self.retry_delay)
 
+            # Checkpoint + event after each completed step
             await self._asave(
                 _expression,
                 _make_cursor(i + 1, _frames),
                 current_message,
+                event=_make_event(
+                    "step_completed",
+                    step_index=i,
+                    step_name=_step_name(step),
+                ),
             )
 
         return current_message
@@ -550,6 +636,17 @@ class AsyncDurableInlineDSL(AsyncInlineDSL):
 
         return current_message
 
+    async def _aemit_event(self, event: Dict[str, Any]) -> None:
+        """Append an event to the store (async-aware)."""
+        if hasattr(self.store, "aappend_event"):
+            await self.store.aappend_event(
+                self.namespace, self.session_id, self.run_id, event,
+            )
+        else:
+            self.store.append_event(
+                self.namespace, self.session_id, self.run_id, event,
+            )
+
     async def __call__(
         self, expression: str, modules: Mapping[str, Callable], message: dotdict
     ) -> dotdict:
@@ -564,8 +661,12 @@ class AsyncDurableInlineDSL(AsyncInlineDSL):
                     self.run_id, start_index,
                 )
                 current = resumed_msg
+                event_type = "run_resumed"
             else:
                 current = message
+                event_type = "run_started"
+
+            await self._aemit_event(_make_event(event_type))
 
             result = await self._aexecute_steps(
                 self.parse(expression),
@@ -581,5 +682,6 @@ class AsyncDurableInlineDSL(AsyncInlineDSL):
                 _make_cursor(len(self.parse(expression))),
                 result,
                 status="completed",
+                event=_make_event("run_completed"),
             )
             return result
