@@ -356,6 +356,7 @@ class InlineDSL:
         """Execute a while loop with the given condition and actions."""
         iterations = 0
         current_message = message
+        actions_steps = self.parse(actions)
 
         while self._evaluate_condition(condition, current_message):
             if iterations >= self.max_iterations:
@@ -364,8 +365,6 @@ class InlineDSL:
                     f"Possible infinite loop detected. Condition: {condition}"
                 )
 
-            # Parse and execute the actions as a sub-pipeline
-            actions_steps = self.parse(actions)
             current_message = self._execute_steps(
                 actions_steps, modules, current_message
             )
@@ -518,6 +517,7 @@ class AsyncInlineDSL(InlineDSL):
         """Async version of _execute_while_loop."""
         iterations = 0
         current_message = message
+        actions_steps = self.parse(actions)
 
         while self._evaluate_condition(condition, current_message):
             if iterations >= self.max_iterations:
@@ -526,8 +526,6 @@ class AsyncInlineDSL(InlineDSL):
                     f"Possible infinite loop detected. Condition: {condition}"
                 )
 
-            # Parse and execute the actions as a sub-pipeline
-            actions_steps = self.parse(actions)
             current_message = await self._aexecute_steps(
                 actions_steps, modules, current_message
             )

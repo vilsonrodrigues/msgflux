@@ -278,14 +278,14 @@ class DurableInlineDSL(InlineDSL):
                 current_frames = current_frames[:-1]  # pop consumed frame
 
         iteration = 0
+        actions_steps = self.parse(actions)
+
         while self._evaluate_condition(condition, current_message):
             if iteration >= self.max_iterations:
                 raise RuntimeError(
                     f"While loop exceeded maximum iterations ({self.max_iterations}). "
                     f"Possible infinite loop detected. Condition: {condition}"
                 )
-
-            actions_steps = self.parse(actions)
 
             # Skip to the right inner position when resuming
             effective_start = inner_start if iteration == start_iteration else 0
@@ -595,6 +595,8 @@ class AsyncDurableInlineDSL(AsyncInlineDSL):
                 current_frames = current_frames[:-1]
 
         iteration = 0
+        actions_steps = self.parse(actions)
+
         while self._evaluate_condition(condition, current_message):
             if iteration >= self.max_iterations:
                 raise RuntimeError(
@@ -602,7 +604,6 @@ class AsyncDurableInlineDSL(AsyncInlineDSL):
                     f"Possible infinite loop detected. Condition: {condition}"
                 )
 
-            actions_steps = self.parse(actions)
             effective_start = inner_start if iteration == start_iteration else 0
 
             frame = {
