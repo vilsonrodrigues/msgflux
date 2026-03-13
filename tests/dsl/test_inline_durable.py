@@ -8,7 +8,7 @@ from msgflux.chat_messages import ChatMessages
 from msgflux.context import get_session_context
 from msgflux.data.stores import InMemoryCheckpointStore
 from msgflux.dotdict import DELETE, dotdict
-from msgflux.dsl.inline import DurableInlineDSL, Inline, InlineDSL, inline
+from msgflux.dsl.inline import DurableInlineDSL, Inline, InlineDSL
 from msgflux.dsl.inline.runtime import AsyncDurableInlineDSL
 
 
@@ -136,34 +136,32 @@ class TestDeltaPattern:
     def test_delta_sequential(self):
         """Modules returning dicts get applied correctly."""
         msg = dotdict()
-        result = inline("prep -> final", DELTA_MODULES, msg)
+        result = Inline("prep -> final", DELTA_MODULES)(msg)
         assert result["counter"] == 0
         assert result["final"] == "done"
 
     def test_delta_parallel(self):
         msg = dotdict()
-        result = inline("prep -> [feat_a, feat_b] -> final", DELTA_MODULES, msg)
+        result = Inline("prep -> [feat_a, feat_b] -> final", DELTA_MODULES)(msg)
         assert result["feat_a"] == "result_a"
         assert result["feat_b"] == "result_b"
         assert result["final"] == "done"
 
     def test_delta_while_loop(self):
         msg = dotdict()
-        result = inline(
+        result = Inline(
             "prep -> @{counter < 3}: increment; -> final",
             DELTA_MODULES,
-            msg,
-        )
+        )(msg)
         assert result["counter"] == 3
         assert result["final"] == "done"
 
     def test_delta_conditional(self):
         msg = dotdict()
-        result = inline(
+        result = Inline(
             "prep -> {output.agent == 'xpto'?feat_a,feat_b} -> final",
             DELTA_MODULES,
-            msg,
-        )
+        )(msg)
         assert result["feat_a"] == "result_a"
         assert "feat_b" not in result
         assert result["final"] == "done"
@@ -176,7 +174,7 @@ class TestDeltaPattern:
             "final": _final,         # legacy
         }
         msg = dotdict()
-        result = inline("prep -> feat_a -> final", mixed, msg)
+        result = Inline("prep -> feat_a -> final", mixed)(msg)
         assert result["counter"] == 0
         assert result["feat_a"] == "result_a"
         assert result["final"] == "done"
@@ -359,40 +357,6 @@ class TestDurableWhileResume:
         assert result["final"] == "done"
 
 
-# ── F.inline with store param ────────────────────────────────────────────────
-
-
-class TestFInlineDurable:
-    def test_inline_with_store(self):
-        import msgflux.nn.functional as F
-
-        store = InMemoryCheckpointStore()
-        msg = dotdict()
-
-        result = F.inline(
-            "prep -> feat_a -> final",
-            DELTA_MODULES,
-            msg,
-            store=store,
-            namespace="test",
-            session_id="s1",
-            run_id="r1",
-        )
-
-        assert result["feat_a"] == "result_a"
-        assert result["final"] == "done"
-
-        state = store.load_state("test", "s1", "r1")
-        assert state["status"] == "completed"
-
-    def test_inline_without_store_unchanged(self):
-        import msgflux.nn.functional as F
-
-        msg = dotdict()
-        result = F.inline("prep -> final", DELTA_MODULES, msg)
-        assert result["final"] == "done"
-
-
 # ── Async durable ────────────────────────────────────────────────────────────
 
 
@@ -467,34 +431,6 @@ class TestAsyncDurableInline:
         assert result["final"] == "done"
         assert ran == ["feat_a", "final"]
 
-    @pytest.mark.asyncio
-    async def test_ainline_with_store(self):
-        import msgflux.nn.functional as F
-
-        store = InMemoryCheckpointStore()
-
-        async def async_prep(msg):
-            return {"counter": 0}
-
-        async def async_final(msg):
-            return {"final": "done"}
-
-        modules = {"prep": async_prep, "final": async_final}
-        msg = dotdict()
-
-        result = await F.ainline(
-            "prep -> final",
-            modules,
-            msg,
-            store=store,
-            namespace="test",
-            session_id="s1",
-            run_id="r1",
-        )
-
-        assert result["final"] == "done"
-        state = store.load_state("test", "s1", "r1")
-        assert state["status"] == "completed"
 
 
 # ── Session context propagation ───────────────────────────────────────────────

@@ -1,7 +1,17 @@
 import pytest
 
 from msgflux.dotdict import dotdict
-from msgflux.dsl.inline import ainline, inline
+from msgflux.dsl.inline import Inline
+
+
+def inline(expression, modules, message):
+    """Test helper — delegates to Inline class."""
+    return Inline(expression, modules)(message)
+
+
+async def ainline(expression, modules, message):
+    """Test helper — async delegate to Inline class."""
+    return await Inline(expression, modules).acall(message)
 
 
 @pytest.fixture
@@ -630,3 +640,46 @@ async def test_async_while_loop_zero_iterations(async_modules):
     input_msg = dotdict()
     result = await ainline(expression, modules_ext, input_msg)
     assert result["counter"] == 100
+
+
+# ── Parallel key conflict warning ────────────────────────────────────────────
+
+
+def test_parallel_key_conflict_warns(modules):
+    """Two parallel modules writing the same key should emit a warning."""
+    from unittest.mock import patch
+
+    def writer_a(msg):
+        return {"shared_key": "from_a"}
+
+    def writer_b(msg):
+        return {"shared_key": "from_b"}
+
+    mods = {**modules, "writer_a": writer_a, "writer_b": writer_b}
+    with patch("msgflux.dsl.inline.core.logger") as mock_logger:
+        result = inline("prep -> [writer_a, writer_b] -> final", mods, dotdict())
+
+    mock_logger.warning.assert_called()
+    call_args = mock_logger.warning.call_args[0][0]
+    assert "Parallel key conflict" in call_args
+    assert result["shared_key"] in ("from_a", "from_b")
+    assert result["final"] == "done"
+
+
+def test_parallel_no_conflict_no_warning(modules):
+    """Parallel modules with distinct keys should not warn."""
+    from unittest.mock import patch
+
+    def delta_a(msg):
+        return {"feat_a": "result_a"}
+
+    def delta_b(msg):
+        return {"feat_b": "result_b"}
+
+    mods = {**modules, "delta_a": delta_a, "delta_b": delta_b}
+    with patch("msgflux.dsl.inline.core.logger") as mock_logger:
+        result = inline("prep -> [delta_a, delta_b] -> final", mods, dotdict())
+
+    mock_logger.warning.assert_not_called()
+    assert result["feat_a"] == "result_a"
+    assert result["feat_b"] == "result_b"

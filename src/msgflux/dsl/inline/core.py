@@ -3,6 +3,7 @@ import re
 from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple
 
 from msgflux.dotdict import dotdict
+from msgflux.logger import logger
 from msgflux.nn import functional as F
 
 
@@ -88,6 +89,13 @@ class InlineDSL:
             "identifier": r"[a-zA-Z_][a-zA-Z0-9_]*",
             "comparison": r"([a-zA-Z0-9_.]+)\s*(==|!=|<=|>=|<|>|is not|is)\s*(.*)",
         }
+        # Pre-compiled regexes for hot paths (while loops, conditions)
+        self._re_while = re.compile(self.patterns["while_loop"])
+        self._re_arrow = re.compile(self.patterns["arrow"])
+        self._re_conditional = re.compile(self.patterns["conditional"])
+        self._re_parallel = re.compile(self.patterns["parallel"])
+        self._re_identifier = re.compile(self.patterns["identifier"])
+        self._re_comparison = re.compile(self.patterns["comparison"])
 
     def parse(self, expression: str) -> List[Dict[str, Any]]:
         """Parse DSL expression into a list of steps."""
@@ -96,7 +104,7 @@ class InlineDSL:
 
         while remaining:
             # Try to match while loop first (since it's more complex)
-            while_match = re.match(self.patterns["while_loop"], remaining)
+            while_match = self._re_while.match(remaining)
             if while_match:
                 condition = while_match.group(1).strip()
                 actions = while_match.group(2).strip()
@@ -114,14 +122,14 @@ class InlineDSL:
                 continue
 
             # Split by arrow for other patterns
-            arrow_split = re.split(self.patterns["arrow"], remaining, maxsplit=1)
+            arrow_split = self._re_arrow.split(remaining, maxsplit=1)
             part = arrow_split[0].strip()
             remaining = arrow_split[1].strip() if len(arrow_split) > 1 else ""
 
             if not part:
                 continue
 
-            conditional_match = re.match(self.patterns["conditional"], part)
+            conditional_match = self._re_conditional.match(part)
             if conditional_match:
                 condition, true_branch, false_branch = conditional_match.groups()
                 steps.append(
@@ -136,13 +144,13 @@ class InlineDSL:
                 )
                 continue
 
-            parallel_match = re.match(self.patterns["parallel"], part)
+            parallel_match = self._re_parallel.match(part)
             if parallel_match:
                 modules = [m.strip() for m in parallel_match.group(1).split(",")]
                 steps.append({"type": "parallel", "modules": modules})
                 continue
 
-            if re.match(self.patterns["identifier"], part):
+            if self._re_identifier.match(part):
                 steps.append({"type": "module", "module": part})
             else:
                 raise ValueError(f"Invalid DSL syntax or unknown module: {part}")
@@ -226,7 +234,7 @@ class InlineDSL:
 
     def _evaluate_comparison(self, comparison_str: str, message: dotdict) -> bool:  # noqa: C901
         """Evaluate a single comparison expression."""
-        match = re.match(self.patterns["comparison"], comparison_str.strip())
+        match = self._re_comparison.match(comparison_str.strip())
         if not match:
             raise ValueError(
                 f"Invalid condition format: {comparison_str}. "
@@ -399,9 +407,20 @@ class InlineDSL:
 
         results = F.bcast_gather(parallel_modules, message)
         errors = {}
+        seen_keys: Dict[str, int] = {}
         for i, result in enumerate(results):
             if isinstance(result, TaskError):
                 errors[i] = result
+            elif isinstance(result, dict):
+                for key in result:
+                    if key in seen_keys:
+                        logger.warning(
+                            "Parallel key conflict: key '%s' written by "
+                            "workers %d and %d — last write wins.",
+                            key, seen_keys[key], i,
+                        )
+                    seen_keys[key] = i
+                self._apply_result(message, result)
             else:
                 self._apply_result(message, result)
         if errors:
@@ -410,7 +429,48 @@ class InlineDSL:
             )
             raise RuntimeError(f"Parallel execution failed: {failed}")
 
-    def _execute_steps(  # noqa: C901
+    @staticmethod
+    def _resolve_parallel(
+        step: Dict[str, Any], modules: Mapping[str, Callable],
+    ) -> list:
+        """Resolve module callables for a parallel step."""
+        parallel_modules = []
+        for mod_name in step["modules"]:
+            module = modules.get(mod_name)
+            if not module:
+                raise ValueError(
+                    f"Module {mod_name} not found for parallel execution."
+                )
+            parallel_modules.append(module)
+        if not parallel_modules:
+            raise ValueError(
+                f"No valid modules found for parallel execution "
+                f"in {step['modules']}."
+            )
+        return parallel_modules
+
+    def _execute_conditional(
+        self,
+        step: Dict[str, Any],
+        modules: Mapping[str, Callable],
+        message: dotdict,
+    ) -> None:
+        """Execute a conditional branch."""
+        condition_result = self._evaluate_condition(
+            step["condition"], message,
+        )
+        branch = (
+            step["true_branch"] if condition_result else step["false_branch"]
+        )
+        for module_name in branch:
+            module = modules.get(module_name)
+            if not module:
+                raise ValueError(
+                    f"Module `{module_name}` not found in conditional branch."
+                )
+            self._call_module(module, message)
+
+    def _execute_steps(
         self,
         steps: List[Dict[str, Any]],
         modules: Mapping[str, Callable],
@@ -427,42 +487,16 @@ class InlineDSL:
                 self._call_module(module, current_message)
 
             elif step["type"] == "parallel":
-                parallel_modules = []
-                for mod_name in step["modules"]:
-                    module = modules.get(mod_name)
-                    if not module:
-                        raise ValueError(
-                            f"Module {mod_name} not found for parallel execution."
-                        )
-                    parallel_modules.append(module)
-
-                if not parallel_modules:
-                    raise ValueError(
-                        "No valid modules found for parallel execution "
-                        f"in {step['modules']}."
-                    )
-
+                parallel_modules = self._resolve_parallel(step, modules)
                 self._execute_parallel(parallel_modules, current_message)
 
             elif step["type"] == "conditional":
-                condition_result = self._evaluate_condition(
-                    step["condition"], current_message
-                )
-                branch = (
-                    step["true_branch"] if condition_result else step["false_branch"]
-                )
-
-                for module_name in branch:
-                    module = modules.get(module_name)
-                    if not module:
-                        raise ValueError(
-                            f"Module `{module_name}` not found in conditional branch."
-                        )
-                    self._call_module(module, current_message)
+                self._execute_conditional(step, modules, current_message)
 
             elif step["type"] == "while":
                 current_message = self._execute_while_loop(
-                    step["condition"], step["actions"], modules, current_message
+                    step["condition"], step["actions"], modules,
+                    current_message,
                 )
 
         return current_message
@@ -473,30 +507,6 @@ class InlineDSL:
         """Execute the DSL pipeline."""
         steps = self.parse(expression)
         return self._execute_steps(steps, modules, message)
-
-
-def inline(
-    expression: str, modules: Mapping[str, Callable], message: dotdict
-) -> dotdict:
-    """Internal implementation for DSL-based workflow execution.
-
-    Note:
-        This is the internal implementation. For public API usage,
-        prefer using `msgflux.nn.functional.inline` which provides
-        full documentation and examples.
-
-    See Also:
-        msgflux.nn.functional.inline: Public API with complete documentation.
-    """
-    if not isinstance(expression, str):
-        raise TypeError("`expression` must be a str")
-    if not isinstance(message, dotdict):
-        raise TypeError("`message` must be an instance of `msgflux.dotdict`")
-    if not isinstance(modules, Mapping):
-        raise TypeError("`modules` must be a `Mapping`")
-    dsl = InlineDSL()
-    message = dsl(expression, modules, message)
-    return message
 
 
 class AsyncInlineDSL(InlineDSL):
@@ -557,9 +567,20 @@ class AsyncInlineDSL(InlineDSL):
             args_list=[(message,)] * len(parallel_modules),
         )
         errors = {}
+        seen_keys: Dict[str, int] = {}
         for i, result in enumerate(results):
             if isinstance(result, TaskError):
                 errors[i] = result
+            elif isinstance(result, dict):
+                for key in result:
+                    if key in seen_keys:
+                        logger.warning(
+                            "Parallel key conflict: key '%s' written by "
+                            "workers %d and %d — last write wins.",
+                            key, seen_keys[key], i,
+                        )
+                    seen_keys[key] = i
+                self._apply_result(message, result)
             else:
                 self._apply_result(message, result)
         if errors:
@@ -568,7 +589,28 @@ class AsyncInlineDSL(InlineDSL):
             )
             raise RuntimeError(f"Parallel execution failed: {failed}")
 
-    async def _aexecute_steps(  # noqa: C901
+    async def _aexecute_conditional(
+        self,
+        step: Dict[str, Any],
+        modules: Mapping[str, Callable],
+        message: dotdict,
+    ) -> None:
+        """Async execute a conditional branch."""
+        condition_result = self._evaluate_condition(
+            step["condition"], message,
+        )
+        branch = (
+            step["true_branch"] if condition_result else step["false_branch"]
+        )
+        for module_name in branch:
+            module = modules.get(module_name)
+            if not module:
+                raise ValueError(
+                    f"Module `{module_name}` not found in conditional branch."
+                )
+            await self._acall_module(module, message)
+
+    async def _aexecute_steps(
         self,
         steps: List[Dict[str, Any]],
         modules: Mapping[str, Callable],
@@ -585,42 +627,20 @@ class AsyncInlineDSL(InlineDSL):
                 await self._acall_module(module, current_message)
 
             elif step["type"] == "parallel":
-                parallel_modules = []
-                for mod_name in step["modules"]:
-                    module = modules.get(mod_name)
-                    if not module:
-                        raise ValueError(
-                            f"Module {mod_name} not found for parallel execution."
-                        )
-                    parallel_modules.append(module)
-
-                if not parallel_modules:
-                    raise ValueError(
-                        "No valid modules found for parallel execution "
-                        f"in {step['modules']}."
-                    )
-
-                await self._aexecute_parallel(parallel_modules, current_message)
+                parallel_modules = self._resolve_parallel(step, modules)
+                await self._aexecute_parallel(
+                    parallel_modules, current_message,
+                )
 
             elif step["type"] == "conditional":
-                condition_result = self._evaluate_condition(
-                    step["condition"], current_message
+                await self._aexecute_conditional(
+                    step, modules, current_message,
                 )
-                branch = (
-                    step["true_branch"] if condition_result else step["false_branch"]
-                )
-
-                for module_name in branch:
-                    module = modules.get(module_name)
-                    if not module:
-                        raise ValueError(
-                            f"Module `{module_name}` not found in conditional branch."
-                        )
-                    await self._acall_module(module, current_message)
 
             elif step["type"] == "while":
                 current_message = await self._aexecute_while_loop(
-                    step["condition"], step["actions"], modules, current_message
+                    step["condition"], step["actions"], modules,
+                    current_message,
                 )
 
         return current_message
@@ -631,27 +651,3 @@ class AsyncInlineDSL(InlineDSL):
         """Async execute the DSL pipeline."""
         steps = self.parse(expression)
         return await self._aexecute_steps(steps, modules, message)
-
-
-async def ainline(
-    expression: str, modules: Mapping[str, Callable], message: dotdict
-) -> dotdict:
-    """Internal async implementation for DSL-based workflow execution.
-
-    Note:
-        This is the internal implementation. For public API usage,
-        prefer using `msgflux.nn.functional.ainline` which provides
-        full documentation and examples.
-
-    See Also:
-        msgflux.nn.functional.ainline: Public API with complete documentation.
-    """
-    if not isinstance(expression, str):
-        raise TypeError("`expression` must be a str")
-    if not isinstance(message, dotdict):
-        raise TypeError("`message` must be an instance of `msgflux.dotdict`")
-    if not isinstance(modules, Mapping):
-        raise TypeError("`modules` must be a `Mapping`")
-    dsl = AsyncInlineDSL()
-    message = await dsl(expression, modules, message)
-    return message

@@ -1,6 +1,6 @@
 """Inline DSL — declarative workflow language for module orchestration."""
 
-from msgflux.dsl.inline.core import AsyncInlineDSL, InlineDSL, ainline, inline
+from msgflux.dsl.inline.core import AsyncInlineDSL, InlineDSL
 from msgflux.dsl.inline.module import Inline
 from msgflux.dsl.inline.runtime import AsyncDurableInlineDSL, DurableInlineDSL
 
@@ -10,6 +10,4 @@ __all__ = [
     "DurableInlineDSL",
     "Inline",
     "InlineDSL",
-    "ainline",
-    "inline",
 ]

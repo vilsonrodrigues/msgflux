@@ -236,22 +236,6 @@ class DurableInlineDSL(InlineDSL):
 
         return current_message
 
-    def _execute_conditional(
-        self,
-        step: Dict[str, Any],
-        modules: Mapping[str, Callable],
-        message: dotdict,
-    ) -> None:
-        condition_result = self._evaluate_condition(step["condition"], message)
-        branch = step["true_branch"] if condition_result else step["false_branch"]
-        for module_name in branch:
-            module = modules.get(module_name)
-            if not module:
-                raise ValueError(
-                    f"Module `{module_name}` not found in conditional branch."
-                )
-            self._call_module(module, message)
-
     def _execute_while_durable(
         self,
         step: Dict[str, Any],
@@ -322,24 +306,6 @@ class DurableInlineDSL(InlineDSL):
 
         return current_message
 
-    @staticmethod
-    def _resolve_parallel(
-        step: Dict[str, Any], modules: Mapping[str, Callable]
-    ) -> list:
-        parallel_modules = []
-        for mod_name in step["modules"]:
-            module = modules.get(mod_name)
-            if not module:
-                raise ValueError(
-                    f"Module {mod_name} not found for parallel execution."
-                )
-            parallel_modules.append(module)
-        if not parallel_modules:
-            raise ValueError(
-                f"No valid modules found for parallel execution in {step['modules']}."
-            )
-        return parallel_modules
-
     def __call__(
         self, expression: str, modules: Mapping[str, Callable], message: dotdict
     ) -> dotdict:
@@ -407,11 +373,15 @@ class AsyncDurableInlineDSL(AsyncInlineDSL):
         self.max_retries = max_retries
         self.retry_delay = retry_delay
 
+        from msgflux.data.stores.base import AsyncCheckpointStore  # noqa: PLC0415
+
+        self._async_store = isinstance(store, AsyncCheckpointStore)
+
     # ── Resume ───────────────────────────────────────────────────────────
 
     async def _atry_resume(self, expression: str) -> tuple:
         store = self.store
-        if hasattr(store, "aload_state"):
+        if self._async_store:
             state = await store.aload_state(
                 self.namespace, self.session_id, self.run_id,
             )
@@ -443,7 +413,7 @@ class AsyncDurableInlineDSL(AsyncInlineDSL):
             self.run_id, expression, status, cursor, message, error,
         )
         if event is not None:
-            if hasattr(self.store, "asave_with_event"):
+            if self._async_store:
                 await self.store.asave_with_event(
                     self.namespace, self.session_id, self.run_id,
                     state, event,
@@ -453,7 +423,7 @@ class AsyncDurableInlineDSL(AsyncInlineDSL):
                     self.namespace, self.session_id, self.run_id,
                     state, event,
                 )
-        elif hasattr(self.store, "asave_state"):
+        elif self._async_store:
             await self.store.asave_state(
                 self.namespace, self.session_id, self.run_id, state,
             )
@@ -493,7 +463,7 @@ class AsyncDurableInlineDSL(AsyncInlineDSL):
 
                     elif step["type"] == "parallel":
                         parallel_modules = (
-                            DurableInlineDSL._resolve_parallel(step, modules)
+                            self._resolve_parallel(step, modules)
                         )
                         await self._aexecute_parallel(
                             parallel_modules, current_message,
@@ -553,22 +523,6 @@ class AsyncDurableInlineDSL(AsyncInlineDSL):
             )
 
         return current_message
-
-    async def _aexecute_conditional(
-        self,
-        step: Dict[str, Any],
-        modules: Mapping[str, Callable],
-        message: dotdict,
-    ) -> None:
-        condition_result = self._evaluate_condition(step["condition"], message)
-        branch = step["true_branch"] if condition_result else step["false_branch"]
-        for module_name in branch:
-            module = modules.get(module_name)
-            if not module:
-                raise ValueError(
-                    f"Module `{module_name}` not found in conditional branch."
-                )
-            await self._acall_module(module, message)
 
     async def _aexecute_while_durable(
         self,
@@ -639,7 +593,7 @@ class AsyncDurableInlineDSL(AsyncInlineDSL):
 
     async def _aemit_event(self, event: Dict[str, Any]) -> None:
         """Append an event to the store (async-aware)."""
-        if hasattr(self.store, "aappend_event"):
+        if self._async_store:
             await self.store.aappend_event(
                 self.namespace, self.session_id, self.run_id, event,
             )
