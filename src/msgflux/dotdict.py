@@ -108,6 +108,7 @@ class dotdict(dict):  # noqa: N801
         self._backend = backend
         self._backend_prefix = backend_prefix
         self._frozen = False  # defer frozen enforcement to allow loading
+        self._frozen_target = frozen  # intended final value, used by _wrap
         self._hidden_keys = set(hidden_keys or [])
         super().__init__()
 
@@ -209,7 +210,7 @@ class dotdict(dict):  # noqa: N801
         if isinstance(value, dict):
             return dotdict(
                 value,
-                frozen=getattr(self, "_frozen", False),
+                frozen=getattr(self, "_frozen_target", getattr(self, "_frozen", False)),
                 hidden_keys=list(getattr(self, "_hidden_keys", set())),
             )
         elif isinstance(value, list):
