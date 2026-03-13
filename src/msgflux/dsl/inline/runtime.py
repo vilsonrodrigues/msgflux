@@ -14,6 +14,15 @@ if TYPE_CHECKING:
     from msgflux.data.stores.base import CheckpointStore
 
 
+# ── Event type constants ─────────────────────────────────────────────────────
+
+_EV_RUN_STARTED = "run_started"
+_EV_RUN_RESUMED = "run_resumed"
+_EV_RUN_COMPLETED = "run_completed"
+_EV_STEP_COMPLETED = "step_completed"
+_EV_STEP_FAILED = "step_failed"
+
+
 # ── Cursor helpers ───────────────────────────────────────────────────────────
 
 
@@ -208,7 +217,7 @@ class DurableInlineDSL(InlineDSL):
                             status="failed",
                             error=str(e),
                             event=_make_event(
-                                "step_failed",
+                                _EV_STEP_FAILED,
                                 step_index=i,
                                 step_name=name,
                                 error=str(e),
@@ -228,7 +237,7 @@ class DurableInlineDSL(InlineDSL):
                 _make_cursor(i + 1, _frames),
                 current_message,
                 event=_make_event(
-                    "step_completed",
+                    _EV_STEP_COMPLETED,
                     step_index=i,
                     step_name=_step_name(step),
                 ),
@@ -320,18 +329,19 @@ class DurableInlineDSL(InlineDSL):
                     self.run_id, start_index,
                 )
                 current = resumed_msg
-                event_type = "run_resumed"
+                event_type = _EV_RUN_RESUMED
             else:
                 current = message
-                event_type = "run_started"
+                event_type = _EV_RUN_STARTED
 
             self.store.append_event(
                 self.namespace, self.session_id, self.run_id,
                 _make_event(event_type),
             )
 
+            steps = self.parse(expression)
             result = self._execute_steps(
-                self.parse(expression),
+                steps,
                 modules,
                 current,
                 _expression=expression,
@@ -339,11 +349,9 @@ class DurableInlineDSL(InlineDSL):
                 _frames=frames,
             )
 
-            # Mark completed
-            total = len(self.parse(expression))
             self._save(
-                expression, _make_cursor(total), result, status="completed",
-                event=_make_event("run_completed"),
+                expression, _make_cursor(len(steps)), result, status="completed",
+                event=_make_event(_EV_RUN_COMPLETED),
             )
             return result
 
@@ -496,7 +504,7 @@ class AsyncDurableInlineDSL(AsyncInlineDSL):
                             status="failed",
                             error=str(e),
                             event=_make_event(
-                                "step_failed",
+                                _EV_STEP_FAILED,
                                 step_index=i,
                                 step_name=name,
                                 error=str(e),
@@ -516,7 +524,7 @@ class AsyncDurableInlineDSL(AsyncInlineDSL):
                 _make_cursor(i + 1, _frames),
                 current_message,
                 event=_make_event(
-                    "step_completed",
+                    _EV_STEP_COMPLETED,
                     step_index=i,
                     step_name=_step_name(step),
                 ),
@@ -616,15 +624,16 @@ class AsyncDurableInlineDSL(AsyncInlineDSL):
                     self.run_id, start_index,
                 )
                 current = resumed_msg
-                event_type = "run_resumed"
+                event_type = _EV_RUN_RESUMED
             else:
                 current = message
-                event_type = "run_started"
+                event_type = _EV_RUN_STARTED
 
             await self._aemit_event(_make_event(event_type))
 
+            steps = self.parse(expression)
             result = await self._aexecute_steps(
-                self.parse(expression),
+                steps,
                 modules,
                 current,
                 _expression=expression,
@@ -634,9 +643,9 @@ class AsyncDurableInlineDSL(AsyncInlineDSL):
 
             await self._asave(
                 expression,
-                _make_cursor(len(self.parse(expression))),
+                _make_cursor(len(steps)),
                 result,
                 status="completed",
-                event=_make_event("run_completed"),
+                event=_make_event(_EV_RUN_COMPLETED),
             )
             return result
