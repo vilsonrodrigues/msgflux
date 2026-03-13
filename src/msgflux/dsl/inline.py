@@ -1,12 +1,16 @@
 import asyncio
+import functools
 import re
 from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple
 
 from msgflux.dotdict import dotdict
+from msgflux.exceptions import TaskError
 from msgflux.nn import functional as F
 
+__all__ = ["Inline"]
 
-class InlineDSL:
+
+class Inline:
     """Parses and executes a mini domain-specific language (DSL) for
     defining workflow pipelines over modules.
 
@@ -26,9 +30,8 @@ class InlineDSL:
         Syntax:
             `"[module1, module2, ...]"`
         Description:
-            Executes multiple modules in parallel using broadcast and gather.
-            The same input message is passed to all modules, and their results
-            are merged.
+            Executes multiple modules in parallel. The same input message is
+            passed to all modules and all mutations are applied in place.
 
     !!! example
 
@@ -38,8 +41,8 @@ class InlineDSL:
         Syntax:
             `"{condition?true_branch[,false_branch]}"`
         Description:
-            Conditionally executes a branch of modules depending on the evaluation
-            of the condition against the `message`.
+            Conditionally executes a branch of modules depending on the
+            evaluation of the condition against the `message`.
             The condition must follow the format `key_path operator value`,
             e.g., `output.agent == "xpto"`.
             The `true_branch` and `false_branch` are comma-separated module names.
@@ -78,8 +81,21 @@ class InlineDSL:
             `"prep -> [feat_a, feat_b] -> combine"`
     """
 
-    def __init__(self, max_iterations: int = 1000):
-        self.max_iterations = max_iterations  # Safety limit to prevent infinite loops
+    def __init__(
+        self,
+        expression: str,
+        modules: Mapping[str, Callable],
+        *,
+        max_iterations: int = 1000,
+    ):
+        if not isinstance(expression, str):
+            raise TypeError("`expression` must be a str")
+        if not isinstance(modules, Mapping):
+            raise TypeError("`modules` must be a `Mapping`")
+
+        self.expression = expression
+        self.modules = modules
+        self.max_iterations = max_iterations  # Safety limit for while loops
         self.patterns = {
             "arrow": r"\s*->\s*",
             "parallel": r"\[(.*?)\]",
@@ -88,32 +104,36 @@ class InlineDSL:
             "identifier": r"[a-zA-Z_][a-zA-Z0-9_]*",
             "comparison": r"([a-zA-Z0-9_.]+)\s*(==|!=|<=|>=|<|>|is not|is)\s*(.*)",
         }
+        self.steps = self.parse(expression)
+
+    @staticmethod
+    def _validate_message(message: dotdict) -> None:
+        if not isinstance(message, dotdict):
+            raise TypeError("`message` must be an instance of `msgflux.dotdict`")
 
     def parse(self, expression: str) -> List[Dict[str, Any]]:
-        """Parse DSL expression into a list of steps."""
-        steps = []
+        """Parse DSL expression into a list of execution steps."""
+        steps: List[Dict[str, Any]] = []
         remaining = expression.strip()
 
         while remaining:
-            # Try to match while loop first (since it's more complex)
             while_match = re.match(self.patterns["while_loop"], remaining)
             if while_match:
                 condition = while_match.group(1).strip()
                 actions = while_match.group(2).strip()
-
                 steps.append(
-                    {"type": "while", "condition": condition, "actions": actions}
+                    {
+                        "type": "while",
+                        "condition": condition,
+                        "actions": self.parse(actions),
+                    }
                 )
 
-                # Remove the matched while loop from remaining string
                 remaining = remaining[while_match.end() :].strip()
-
-                # Check if there's an arrow after the while loop
                 if remaining.startswith("->"):
                     remaining = remaining[2:].strip()
                 continue
 
-            # Split by arrow for other patterns
             arrow_split = re.split(self.patterns["arrow"], remaining, maxsplit=1)
             part = arrow_split[0].strip()
             remaining = arrow_split[1].strip() if len(arrow_split) > 1 else ""
@@ -150,82 +170,64 @@ class InlineDSL:
         return steps
 
     def _parse_branch(self, branch: str) -> List[str]:
-        """Parse a conditional branch into a list of modules."""
         if not branch:
             return []
-        # Ensures that even a single entry without a comma is treated as a list
         return [m.strip() for m in branch.split(",") if m.strip()]
 
     def _tokenize_condition(self, condition: str) -> List[str]:
-        """Tokenize condition string into logical components."""
-        condition = condition.strip()  # Remove black spaces
-
-        # Pattern for tokenization that captures logical operators
-        # parentheses and expressions
+        condition = condition.strip()
         token_pattern = r"(\|\||&|!|\(|\)|[^&|!()]+)"  # noqa: S105
         tokens = re.findall(token_pattern, condition)
-
-        # Removes empty tokens and trim
         return [token.strip() for token in tokens if token.strip()]
 
     def _parse_logical_expression(
         self, tokens: List[str], index: Optional[int] = 0
     ) -> Tuple:
-        """Parse logical expression recursively."""
         result, index = self._parse_or_expression(tokens, index)
         return result, index
 
     def _parse_or_expression(self, tokens: List[str], index: int) -> Tuple:
-        """Parse OR expressions (lowest precedence)."""
         left, index = self._parse_and_expression(tokens, index)
 
         while index < len(tokens) and tokens[index] == "||":
-            index += 1  # skip "||"
+            index += 1
             right, index = self._parse_and_expression(tokens, index)
             left = ("OR", left, right)
 
         return left, index
 
     def _parse_and_expression(self, tokens: List[str], index: int) -> Tuple:
-        """Parse AND expressions (medium precedence)."""
         left, index = self._parse_not_expression(tokens, index)
 
         while index < len(tokens) and tokens[index] == "&":
-            index += 1  # skip "&"
+            index += 1
             right, index = self._parse_not_expression(tokens, index)
             left = ("AND", left, right)
 
         return left, index
 
     def _parse_not_expression(self, tokens: List[str], index: int) -> Tuple:
-        """Parse NOT expressions (highest precedence)."""
         if index < len(tokens) and tokens[index] == "!":
-            index += 1  # skip "!"
+            index += 1
             expr, index = self._parse_primary_expression(tokens, index)
             return ("NOT", expr), index
-        else:
-            return self._parse_primary_expression(tokens, index)
+        return self._parse_primary_expression(tokens, index)
 
     def _parse_primary_expression(self, tokens: List[str], index: int) -> Tuple:
-        """Parse primary expressions (comparisons or parenthesized expressions)."""
         if index < len(tokens) and tokens[index] == "(":
-            index += 1  # skip "("
+            index += 1
             expr, index = self._parse_logical_expression(tokens, index)
             if index < len(tokens) and tokens[index] == ")":
-                index += 1  # skip ")"
+                index += 1
                 return expr, index
-            else:
-                raise ValueError("Missing closing parenthesis")
-        # This should be a comparison expression
-        elif index < len(tokens):
+            raise ValueError("Missing closing parenthesis")
+        if index < len(tokens):
             comparison_expr = tokens[index]
             index += 1
             return ("COMPARISON", comparison_expr), index
-        else:
-            raise ValueError("Expected comparison expression")
+        raise ValueError("Expected comparison expression")
 
     def _evaluate_comparison(self, comparison_str: str, message: dotdict) -> bool:  # noqa: C901
-        """Evaluate a single comparison expression."""
         match = re.match(self.patterns["comparison"], comparison_str.strip())
         if not match:
             raise ValueError(
@@ -234,34 +236,25 @@ class InlineDSL:
             )
 
         key_path, operator, expected_value_str = match.groups()
-
         actual_value = message.get(key_path, None)
         expected_value_str = expected_value_str.strip()
 
-        # Handle None/null checks
         if operator in ["is", "is not"]:
             if expected_value_str.lower() in ["none", "null"]:
                 if operator == "is":
                     return actual_value is None
-                else:  # is not
-                    return actual_value is not None
-            else:
-                raise ValueError(
-                    "`is` and `is not` operators only "
-                    "support `None` or `null` comparisons"
-                )
+                return actual_value is not None
+            raise ValueError(
+                "`is` and `is not` operators only support `None` or `null` comparisons"
+            )
 
-        # Remove quotes from the expected value and attempt
-        # to convert to the appropriate type
         expected_value_str = expected_value_str.strip("'\"")
 
         try:
-            # Handle boolean values
             if expected_value_str.lower() == "true":
                 expected_value = True
             elif expected_value_str.lower() == "false":
                 expected_value = False
-            # Attempts to convert to int or float for numeric comparisons
             elif "." in expected_value_str:
                 expected_value = float(expected_value_str)
             else:
@@ -270,13 +263,9 @@ class InlineDSL:
                 except ValueError:
                     expected_value = expected_value_str
 
-            # Try to convert the actual value also to the same type for comparison
             if actual_value is None:
-                # If the value does not exist in the message
-                # we cannot compare numerically
                 return False
 
-            # Handle boolean conversion for actual value
             if isinstance(expected_value, bool):
                 if isinstance(actual_value, str):
                     actual_value = actual_value.lower() == "true"
@@ -286,333 +275,193 @@ class InlineDSL:
                 actual_value = type(expected_value)(actual_value)
 
         except (ValueError, TypeError):
-            # If conversion fails, treat as string
             expected_value = expected_value_str
-            # Ensures the current value is a string for consistent
-            # comparison if not None
             actual_value = str(actual_value) if actual_value is not None else None
 
-        # Performs comparison based on the operator
         if actual_value is None and operator not in ["==", "!="]:
             return False
 
         if operator == "==":
             return actual_value == expected_value
-        elif operator == "!=":
+        if operator == "!=":
             return actual_value != expected_value
-        elif operator == "<":
+        if operator == "<":
             return actual_value < expected_value
-        elif operator == ">":
+        if operator == ">":
             return actual_value > expected_value
-        elif operator == "<=":
+        if operator == "<=":
             return actual_value <= expected_value
-        elif operator == ">=":
+        if operator == ">=":
             return actual_value >= expected_value
-        else:
-            raise ValueError(f"Unknown comparison operator: {operator}")
+        raise ValueError(f"Unknown comparison operator: {operator}")
 
     def _evaluate_logical_tree(self, tree: tuple, message: dotdict) -> bool:
-        """Evaluate a logical expression tree."""
         if tree[0] == "COMPARISON":
             return self._evaluate_comparison(tree[1], message)
-        elif tree[0] == "AND":
+        if tree[0] == "AND":
             left_result = self._evaluate_logical_tree(tree[1], message)
             right_result = self._evaluate_logical_tree(tree[2], message)
             return left_result and right_result
-        elif tree[0] == "OR":
+        if tree[0] == "OR":
             left_result = self._evaluate_logical_tree(tree[1], message)
             right_result = self._evaluate_logical_tree(tree[2], message)
             return left_result or right_result
-        elif tree[0] == "NOT":
+        if tree[0] == "NOT":
             expr_result = self._evaluate_logical_tree(tree[1], message)
             return not expr_result
-        else:
-            raise ValueError(f"Unknown logical operator: {tree[0]}")
+        raise ValueError(f"Unknown logical operator: {tree[0]}")
 
     def _evaluate_condition(self, condition: str, message: dotdict) -> bool:
-        """Evaluates a condition with logical operators support."""
-        # Tokenize the condition
         tokens = self._tokenize_condition(condition)
-
         if not tokens:
             raise ValueError("Empty condition")
 
-        # Parse the logical expression
         tree, final_index = self._parse_logical_expression(tokens)
-
         if final_index != len(tokens):
             raise ValueError(f"Unexpected tokens after parsing: {tokens[final_index:]}")
 
-        # Evaluate the tree
         return self._evaluate_logical_tree(tree, message)
 
-    def _execute_while_loop(
-        self,
-        condition: str,
-        actions: str,
-        modules: Mapping[str, Callable],
-        message: dotdict,
-    ) -> dotdict:
-        """Execute a while loop with the given condition and actions."""
-        iterations = 0
-        current_message = message
+    def _get_module(self, module_name: str) -> Callable:
+        module = self.modules.get(module_name)
+        if module is None:
+            raise ValueError(f"Module `{module_name}` not found.")
+        return module
 
-        while self._evaluate_condition(condition, current_message):
+    def _validate_task_result(self, module_name: str, result: Any) -> None:
+        if isinstance(result, TaskError):
+            raise RuntimeError(
+                f"Execution failed for `{module_name}`: {result.exception}"
+            )
+
+    def _validate_parallel_results(
+        self, module_names: List[str], results: Tuple[Any, ...]
+    ) -> None:
+        failures = [
+            (name, result)
+            for name, result in zip(module_names, results)
+            if isinstance(result, TaskError)
+        ]
+        if failures:
+            failed = ", ".join(
+                f"`{name}`: {task_error.exception}" for name, task_error in failures
+            )
+            raise RuntimeError(f"Parallel execution failed for: {failed}")
+
+    def _call_module(self, module_name: str, message: dotdict) -> None:
+        module = self._get_module(module_name)
+        result = module(message)
+        if asyncio.iscoroutine(result):
+            raise RuntimeError(
+                f"Module `{module_name}` returned a coroutine in sync execution. "
+                "Use `acall` instead."
+            )
+        self._validate_task_result(module_name, result)
+
+    async def _acall_module(self, module_name: str, message: dotdict) -> None:
+        module = self._get_module(module_name)
+
+        if hasattr(module, "acall"):
+            result = await module.acall(message)
+        elif asyncio.iscoroutinefunction(module):
+            result = await module(message)
+        else:
+            result = module(message)
+
+        self._validate_task_result(module_name, result)
+
+    def _execute_while_loop(
+        self, condition: str, actions: List[Dict[str, Any]], message: dotdict
+    ) -> None:
+        iterations = 0
+
+        while self._evaluate_condition(condition, message):
             if iterations >= self.max_iterations:
                 raise RuntimeError(
                     f"While loop exceeded maximum iterations ({self.max_iterations}). "
                     f"Possible infinite loop detected. Condition: {condition}"
                 )
 
-            # Parse and execute the actions as a sub-pipeline
-            actions_steps = self.parse(actions)
-            current_message = self._execute_steps(
-                actions_steps, modules, current_message
-            )
+            self._execute_steps(actions, message)
             iterations += 1
-
-        return current_message
-
-    def _execute_steps(  # noqa: C901
-        self,
-        steps: List[Dict[str, Any]],
-        modules: Mapping[str, Callable],
-        message: dotdict,
-    ) -> dotdict:
-        """Execute a list of steps."""
-        current_message = message
-
-        for step in steps:
-            if step["type"] == "module":
-                module = modules.get(step["module"])
-                if not module:
-                    raise ValueError(f"Module `{step['module']}` not found.")
-                module(current_message)
-
-            elif step["type"] == "parallel":
-                parallel_modules = []
-                for mod_name in step["modules"]:
-                    module = modules.get(mod_name)
-                    if not module:
-                        raise ValueError(
-                            f"Module {mod_name} not found for parallel execution."
-                        )
-                    parallel_modules.append(module)
-
-                if not parallel_modules:
-                    raise ValueError(
-                        "No valid modules found for parallel execution "
-                        f"in {step['modules']}."
-                    )
-
-                F.msg_bcast_gather(parallel_modules, current_message)
-
-                # Check for errors from parallel execution
-                errors = current_message.pop("_errors", None)
-                if errors:
-                    failed = ", ".join(
-                        f"`{name}`: {err.exception}" for name, err in errors.items()
-                    )
-                    raise RuntimeError(f"Parallel execution failed for: {failed}")
-
-            elif step["type"] == "conditional":
-                condition_result = self._evaluate_condition(
-                    step["condition"], current_message
-                )
-                branch = (
-                    step["true_branch"] if condition_result else step["false_branch"]
-                )
-
-                for module_name in branch:
-                    module = modules.get(module_name)
-                    if not module:
-                        raise ValueError(
-                            f"Module `{module_name}` not found in conditional branch."
-                        )
-                    module(current_message)
-
-            elif step["type"] == "while":
-                current_message = self._execute_while_loop(
-                    step["condition"], step["actions"], modules, current_message
-                )
-
-        return current_message
-
-    def __call__(
-        self, expression: str, modules: Mapping[str, Callable], message: dotdict
-    ) -> dotdict:
-        """Execute the DSL pipeline."""
-        steps = self.parse(expression)
-        return self._execute_steps(steps, modules, message)
-
-
-def inline(
-    expression: str, modules: Mapping[str, Callable], message: dotdict
-) -> dotdict:
-    """Internal implementation for DSL-based workflow execution.
-
-    Note:
-        This is the internal implementation. For public API usage,
-        prefer using `msgflux.nn.functional.inline` which provides
-        full documentation and examples.
-
-    See Also:
-        msgflux.nn.functional.inline: Public API with complete documentation.
-    """
-    if not isinstance(expression, str):
-        raise TypeError("`expression` must be a str")
-    if not isinstance(message, dotdict):
-        raise TypeError("`message` must be an instance of `msgflux.dotdict`")
-    if not isinstance(modules, Mapping):
-        raise TypeError("`modules` must be a `Mapping`")
-    dsl = InlineDSL()
-    message = dsl(expression, modules, message)
-    return message
-
-
-class AsyncInlineDSL(InlineDSL):
-    """Async version of InlineDSL. Parses and executes workflow pipelines
-    with async support.
-
-    Inherits parsing logic from InlineDSL but overrides execution methods
-    for async.
-    """
 
     async def _aexecute_while_loop(
-        self,
-        condition: str,
-        actions: str,
-        modules: Mapping[str, Callable],
-        message: dotdict,
-    ) -> dotdict:
-        """Async version of _execute_while_loop."""
+        self, condition: str, actions: List[Dict[str, Any]], message: dotdict
+    ) -> None:
         iterations = 0
-        current_message = message
 
-        while self._evaluate_condition(condition, current_message):
+        while self._evaluate_condition(condition, message):
             if iterations >= self.max_iterations:
                 raise RuntimeError(
                     f"While loop exceeded maximum iterations ({self.max_iterations}). "
                     f"Possible infinite loop detected. Condition: {condition}"
                 )
 
-            # Parse and execute the actions as a sub-pipeline
-            actions_steps = self.parse(actions)
-            current_message = await self._aexecute_steps(
-                actions_steps, modules, current_message
-            )
+            await self._aexecute_steps(actions, message)
             iterations += 1
 
-        return current_message
-
-    async def _aexecute_steps(  # noqa: C901
-        self,
-        steps: List[Dict[str, Any]],
-        modules: Mapping[str, Callable],
-        message: dotdict,
-    ) -> dotdict:
-        """Async version of _execute_steps."""
-        current_message = message
-
+    def _execute_steps(self, steps: List[Dict[str, Any]], message: dotdict) -> None:
         for step in steps:
             if step["type"] == "module":
-                module = modules.get(step["module"])
-                if not module:
-                    raise ValueError(f"Module `{step['module']}` not found.")
-
-                # Check for acall method first, then coroutine function
-                if hasattr(module, "acall"):
-                    await module.acall(current_message)
-                elif asyncio.iscoroutinefunction(module):
-                    await module(current_message)
-                else:
-                    # Fallback to sync call
-                    module(current_message)
+                self._call_module(step["module"], message)
 
             elif step["type"] == "parallel":
-                parallel_modules = []
-                for mod_name in step["modules"]:
-                    module = modules.get(mod_name)
-                    if not module:
-                        raise ValueError(
-                            f"Module {mod_name} not found for parallel execution."
-                        )
-                    parallel_modules.append(module)
-
-                if not parallel_modules:
-                    raise ValueError(
-                        "No valid modules found for parallel execution "
-                        f"in {step['modules']}."
-                    )
-
-                await F.amsg_bcast_gather(parallel_modules, current_message)
-
-                # Check for errors from parallel execution
-                errors = current_message.pop("_errors", None)
-                if errors:
-                    failed = ", ".join(
-                        f"`{name}`: {err.exception}" for name, err in errors.items()
-                    )
-                    raise RuntimeError(f"Parallel execution failed for: {failed}")
+                module_names = step["modules"]
+                parallel_modules = [
+                    self._get_module(module_name) for module_name in module_names
+                ]
+                results = F.bcast_gather(parallel_modules, message)
+                self._validate_parallel_results(module_names, results)
 
             elif step["type"] == "conditional":
-                condition_result = self._evaluate_condition(
-                    step["condition"], current_message
-                )
+                condition_result = self._evaluate_condition(step["condition"], message)
                 branch = (
                     step["true_branch"] if condition_result else step["false_branch"]
                 )
 
                 for module_name in branch:
-                    module = modules.get(module_name)
-                    if not module:
-                        raise ValueError(
-                            f"Module `{module_name}` not found in conditional branch."
-                        )
-
-                    # Check for acall method first, then coroutine function
-                    if hasattr(module, "acall"):
-                        await module.acall(current_message)
-                    elif F.asyncio.iscoroutinefunction(module):
-                        await module(current_message)
-                    else:
-                        # Fallback to sync call
-                        module(current_message)
+                    self._call_module(module_name, message)
 
             elif step["type"] == "while":
-                current_message = await self._aexecute_while_loop(
-                    step["condition"], step["actions"], modules, current_message
+                self._execute_while_loop(step["condition"], step["actions"], message)
+
+    async def _aexecute_steps(
+        self, steps: List[Dict[str, Any]], message: dotdict
+    ) -> None:
+        for step in steps:
+            if step["type"] == "module":
+                await self._acall_module(step["module"], message)
+
+            elif step["type"] == "parallel":
+                module_names = step["modules"]
+                parallel_modules = [
+                    functools.partial(self._acall_module, module_name)
+                    for module_name in module_names
+                ]
+                args_list = [(message,)] * len(parallel_modules)
+                results = await F.ascatter_gather(parallel_modules, args_list=args_list)
+                self._validate_parallel_results(module_names, results)
+
+            elif step["type"] == "conditional":
+                condition_result = self._evaluate_condition(step["condition"], message)
+                branch = (
+                    step["true_branch"] if condition_result else step["false_branch"]
                 )
 
-        return current_message
+                for module_name in branch:
+                    await self._acall_module(module_name, message)
 
-    async def __call__(
-        self, expression: str, modules: Mapping[str, Callable], message: dotdict
-    ) -> dotdict:
-        """Async execute the DSL pipeline."""
-        steps = self.parse(expression)
-        return await self._aexecute_steps(steps, modules, message)
+            elif step["type"] == "while":
+                await self._aexecute_while_loop(
+                    step["condition"], step["actions"], message
+                )
 
+    def __call__(self, message: dotdict) -> dotdict:
+        self._validate_message(message)
+        self._execute_steps(self.steps, message)
+        return message
 
-async def ainline(
-    expression: str, modules: Mapping[str, Callable], message: dotdict
-) -> dotdict:
-    """Internal async implementation for DSL-based workflow execution.
-
-    Note:
-        This is the internal implementation. For public API usage,
-        prefer using `msgflux.nn.functional.ainline` which provides
-        full documentation and examples.
-
-    See Also:
-        msgflux.nn.functional.ainline: Public API with complete documentation.
-    """
-    if not isinstance(expression, str):
-        raise TypeError("`expression` must be a str")
-    if not isinstance(message, dotdict):
-        raise TypeError("`message` must be an instance of `msgflux.dotdict`")
-    if not isinstance(modules, Mapping):
-        raise TypeError("`modules` must be a `Mapping`")
-    dsl = AsyncInlineDSL()
-    message = await dsl(expression, modules, message)
-    return message
+    async def acall(self, message: dotdict) -> dotdict:
+        self._validate_message(message)
+        await self._aexecute_steps(self.steps, message)
+        return message

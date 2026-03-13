@@ -1,31 +1,34 @@
 import pytest
 
 from msgflux.dotdict import dotdict
-from msgflux.dsl.inline import ainline, inline
+from msgflux.dsl.inline import Inline
+
+
+def inline(expression: str, modules, message: dotdict) -> dotdict:
+    return Inline(expression, modules)(message)
+
+
+async def ainline(expression: str, modules, message: dotdict) -> dotdict:
+    return await Inline(expression, modules).acall(message)
 
 
 @pytest.fixture
 def modules():
-    def prep(msg: dotdict) -> dotdict:
+    def prep(msg: dotdict) -> None:
         msg["output"] = {"agent": "xpto", "score": 10, "status": "success"}
         msg["counter"] = 0
-        return msg
 
-    def increment(msg: dotdict) -> dotdict:
+    def increment(msg: dotdict) -> None:
         msg["counter"] = msg.get("counter", 0) + 1
-        return msg
 
-    def feat_a(msg: dotdict) -> dotdict:
+    def feat_a(msg: dotdict) -> None:
         msg["feat_a"] = "result_a"
-        return msg
 
-    def feat_b(msg: dotdict) -> dotdict:
+    def feat_b(msg: dotdict) -> None:
         msg["feat_b"] = "result_b"
-        return msg
 
-    def final(msg: dotdict) -> dotdict:
+    def final(msg: dotdict) -> None:
         msg["final"] = "done"
-        return msg
 
     return {
         "prep": prep,
@@ -38,26 +41,21 @@ def modules():
 
 @pytest.fixture
 def async_modules():
-    async def prep(msg: dotdict) -> dotdict:
+    async def prep(msg: dotdict) -> None:
         msg["output"] = {"agent": "xpto", "score": 10, "status": "success"}
         msg["counter"] = 0
-        return msg
 
-    async def increment(msg: dotdict) -> dotdict:
+    async def increment(msg: dotdict) -> None:
         msg["counter"] = msg.get("counter", 0) + 1
-        return msg
 
-    async def feat_a(msg: dotdict) -> dotdict:
+    async def feat_a(msg: dotdict) -> None:
         msg["feat_a"] = "result_a"
-        return msg
 
-    async def feat_b(msg: dotdict) -> dotdict:
+    async def feat_b(msg: dotdict) -> None:
         msg["feat_b"] = "result_b"
-        return msg
 
-    async def final(msg: dotdict) -> dotdict:
+    async def final(msg: dotdict) -> None:
         msg["final"] = "done"
-        return msg
 
     return {
         "prep": prep,
@@ -66,6 +64,23 @@ def async_modules():
         "feat_b": feat_b,
         "final": final,
     }
+
+
+def test_inline_class_flow(modules):
+    pipeline = Inline("prep -> final", modules)
+    result = pipeline(dotdict())
+
+    assert result["final"] == "done"
+    assert "output" in result
+
+
+@pytest.mark.asyncio
+async def test_inline_class_async_flow(async_modules):
+    pipeline = Inline("prep -> final", async_modules)
+    result = await pipeline.acall(dotdict())
+
+    assert result["final"] == "done"
+    assert "output" in result
 
 
 def test_simple_sequential_flow(modules):
@@ -468,6 +483,33 @@ async def test_async_sequential_multiple_steps(async_modules):
     input_msg = dotdict()
     result = await ainline(expression, async_modules, input_msg)
     assert result["counter"] == 2
+
+
+def test_parallel_task_error_raises_runtime_error():
+    def ok(msg: dotdict) -> None:
+        msg["ok"] = True
+
+    def fail(msg: dotdict) -> None:
+        raise ValueError("boom")
+
+    pipeline = Inline("[ok, fail]", {"ok": ok, "fail": fail})
+
+    with pytest.raises(RuntimeError, match="Parallel execution failed"):
+        pipeline(dotdict())
+
+
+@pytest.mark.asyncio
+async def test_async_parallel_task_error_raises_runtime_error():
+    async def ok(msg: dotdict) -> None:
+        msg["ok"] = True
+
+    async def fail(msg: dotdict) -> None:
+        raise ValueError("boom")
+
+    pipeline = Inline("[ok, fail]", {"ok": ok, "fail": fail})
+
+    with pytest.raises(RuntimeError, match="Parallel execution failed"):
+        await pipeline.acall(dotdict())
 
 
 def test_conditional_missing_closing_parenthesis_raises_error(modules):

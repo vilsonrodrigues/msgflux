@@ -185,13 +185,12 @@ Broadcast the same arguments to multiple functions.
         )
         ```
 
-## Message-Based Functions
+## Using `dotdict` Messages
 
-These functions operate on `msgflux.dotdict` objects, enabling message-passing patterns common in workflow orchestration.
+The generic gather helpers work directly with `msgflux.dotdict` objects. You no
+longer need message-specific variants.
 
-### msg_scatter_gather
-
-Route different messages to different processors.
+### scatter_gather with messages
 
 ???+ example
 
@@ -202,37 +201,30 @@ Route different messages to different processors.
     def process_user(msg):
         msg.type = "user"
         msg.processed = True
-        return msg
 
     def process_admin(msg):
         msg.type = "admin"
         msg.permissions = ["read", "write", "delete"]
-        return msg
 
     def process_guest(msg):
         msg.type = "guest"
         msg.permissions = ["read"]
-        return msg
 
     msg1 = mf.dotdict({"id": 1, "name": "Alice"})
     msg2 = mf.dotdict({"id": 2, "name": "Bob"})
     msg3 = mf.dotdict({"id": 3, "name": "Charlie"})
 
-    results = F.msg_scatter_gather(
+    F.scatter_gather(
         [process_user, process_admin, process_guest],
-        [msg1, msg2, msg3]
+        args_list=[(msg1,), (msg2,), (msg3,)]
     )
 
-    for msg in results:
-        print(f"{msg.name}: {msg.type}")
-    # Alice: user
-    # Bob: admin
-    # Charlie: guest
+    print(msg1.type)  # user
+    print(msg2.type)  # admin
+    print(msg3.type)  # guest
     ```
 
-### msg_bcast_gather
-
-Broadcast a single message to multiple processors for concurrent modification.
+### bcast_gather with a shared message
 
 ???+ example
 
@@ -240,23 +232,23 @@ Broadcast a single message to multiple processors for concurrent modification.
     import msgflux as mf
     import msgflux.nn.functional as F
     from datetime import datetime
+    from msgflux import TaskError
 
     def add_timestamp(msg):
         msg.timestamp = datetime.now().isoformat()
-        return msg
 
     def add_metadata(msg):
         msg.set("metadata.version", "1.0")
         msg.set("metadata.source", "api")
-        return msg
 
     def validate(msg):
         msg.validated = True
-        return msg
 
     message = mf.dotdict({"data": "important"})
+    results = F.bcast_gather([add_timestamp, add_metadata, validate], message)
 
-    F.msg_bcast_gather([add_timestamp, add_metadata, validate], message)
+    if any(isinstance(result, TaskError) for result in results):
+        raise RuntimeError("One of the parallel steps failed")
 
     print(message.timestamp)          # 2024-01-15T10:30:00.123456
     print(message.metadata.version)   # 1.0
@@ -264,6 +256,6 @@ Broadcast a single message to multiple processors for concurrent modification.
     ```
 
 !!! warning "Race Conditions"
-    In parallel execution, modules should modify **different paths** of the message. Modifying the same path from multiple concurrent functions may cause race conditions.
-
-**Async version:** `amsg_bcast_gather`
+    In parallel execution, modules should modify different paths of the shared
+    message. Modifying the same path from multiple concurrent functions may
+    cause race conditions.

@@ -42,7 +42,9 @@ class PIX(nn.Module):
         self.register_buffer("flux", "{user_audio is not None? transcriber} -> extractor")
 
     def forward(self, msg):
-        return mf.inline(self.flux, self.components, msg)
+        from msgflux.dsl.inline import Inline
+
+        return Inline(self.flux, self.components)(msg)
 
 pix = PIX(agent_configs, transcriber_configs)
 
@@ -690,23 +692,20 @@ In addition to a notation, you must pass a mapping containing the name of the mo
 You must also pass a `dotdict` (or `Message`) object.
 
 ```python
-from msgflux import Message, dotdict, inline
+from msgflux import Message, dotdict
+from msgflux.dsl.inline import Inline
 
 #### **Sequential pipeline**
 
-# pass an empty message and enrich during execution
 def prep(msg):
     msg.prep_done = True
-    return msg
 
 def transform(msg):
     if msg.get("prep_done"):
         msg.transformed = "ok"
-    return msg
 
 def output(msg):
     print("Result:", msg.transformed)
-    return msg
 
 modules = {
     "prep": prep,
@@ -715,34 +714,25 @@ modules = {
 }
 
 message = dotdict()
-inline("prep -> transform -> output", modules, message)
+Inline("prep -> transform -> output", modules)(message)
 
 #### **Parallel Execution**
 
-Parallel use `msg_bcast_gather`.
-
-It is essential that you do **not modify** the message within the function. This can cause race condition.
-
-You can still access the message values. To make modifications you must return the value.
-
-'msg_bcast_gather' will save as .set("module_name", response)
+Parallel stages mutate the same message in place. Each module should write to a
+different path.
 
 def ingestion(msg):
-    message.set("features.a", 1)
-    message.set("features.b", 2)
-    return message
+    msg.set("features.a", 1)
+    msg.set("features.b", 2)
 
 def feat_a(msg):
-    new_features = msg.features.a + 1
-    return {"new_features": new_features}
+    msg.set("features.a_plus_one", msg.features.a + 1)
 
 def feat_b(msg):
-    new_features = msg.features.b + 1
-    return {"new_features": new_features}
+    msg.set("features.b_plus_one", msg.features.b + 1)
 
 def combine(msg):
-    msg.result = msg.feat_a.new_features + msg.feat_b.new_features
-    return msg
+    msg.result = msg.features.a_plus_one + msg.features.b_plus_one
 
 modules = {
     "prep": ingestion,
@@ -752,17 +742,15 @@ modules = {
 }
 
 message = dotdict()
-inline("prep -> [feat_a, feat_b] -> combine", modules, message)
+Inline("prep -> [feat_a, feat_b] -> combine", modules)(message)
 
 #### **Simple Conditional**
 
 def adult(msg):
     msg.result = "Welcome, adult"
-    return msg
 
 def child(msg):
     msg.result = "Hi, young one"
-    return msg
 
 modules = {
     "adult_module": adult,
@@ -772,7 +760,7 @@ modules = {
 message = dotdict()
 message.set("user.age", 21)
 
-inline("{user.age > 18 ? adult_module, child_module}", modules, message)
+Inline("{user.age > 18 ? adult_module, child_module}", modules)(message)
 print(message.result)  # "Welcome, adult"
 ```
 
@@ -781,11 +769,9 @@ print(message.result)  # "Welcome, adult"
 ```python
 def grant(msg):
     msg.access = "granted"
-    return msg
 
 def deny(msg):
     msg.access = "denied"
-    return msg
 
 modules = {
     "grant_access": grant,
@@ -796,7 +782,10 @@ message = dotdict()
 message.set("user.is_active", True)
 message.set("user.is_banned", False)
 
-inline("{user.is_active == True & !user.is_banned  == True ? grant_access, deny_access}", modules, message)
+Inline(
+    "{user.is_active == True & !user.is_banned == True ? grant_access, deny_access}",
+    modules,
+)(message)
 print(message.access)  # "granted"
 ```
 
@@ -805,11 +794,9 @@ print(message.access)  # "granted"
 ```python
 def ask_name(msg):
     msg.prompt = "Please enter your name"
-    return msg
 
 def greet(msg):
     msg.greeting = f"Hello, {msg.user.name}"
-    return msg
 
 modules = {
     "ask_name": ask_name,
@@ -819,11 +806,11 @@ modules = {
 message = dotdict()
 message.set("user.name", None)
 
-inline("{user.name is None ? ask_name, greet_user}", modules, message)
+Inline("{user.name is None ? ask_name, greet_user}", modules)(message)
 print(message.prompt)  # "Please enter your name"
 
 message.user.name = "Bruce"
-inline("{user.name is None ? ask_name, greet_user}", modules, message)
+Inline("{user.name is None ? ask_name, greet_user}", modules)(message)
 print(message.greeting)  # "Hello, Bruce"
 ```
 
@@ -832,11 +819,9 @@ print(message.greeting)  # "Hello, Bruce"
 ```python
 def premium_flow(msg):
     msg.flow = "premium"
-    return msg
 
 def standard_flow(msg):
     msg.flow = "standard"
-    return msg
 
 modules = {
     "premium_flow": premium_flow,
@@ -848,12 +833,10 @@ message.set("user.type", "premium")
 message.set("user.credits", 50)
 message.set("user.status", "active")
 
-# OR
-inline(
+Inline(
     "{user.type == 'premium' || user.credits > 100 ? premium_flow, standard_flow}",
     modules,
-    message,
-)
+)(message)
 print(message.flow)  # "premium"
 ```
 
@@ -862,11 +845,9 @@ print(message.flow)  # "premium"
 ```python
 def process_request(msg):
     msg.result = "processed"
-    return msg
 
 def deny_request(msg):
     msg.result = "denied"
-    return msg
 
 modules = {
     "process_request": process_request,
@@ -877,70 +858,48 @@ message = dotdict()
 message.set("user.banned", False)
 message.set("user.credits", 50)
 
-inline(
+Inline(
     "{!(user.banned == true || user.credits <= 0) ? process_request, deny_request}",
     modules,
-    message,
-)
+)(message)
 print(message.result)  # "processed"
 ```
 
 #### **Async**
 
-Waitable version of `inline`
-
 ```python
-from msgflux import ainline, dotdict
+from msgflux import dotdict
+from msgflux.dsl.inline import Inline
 
-async def prep(msg: dotdict) -> dotdict:
-    print(f"Executing prep, current msg: {msg}")
-    msg['output'] = {'agent': 'xpto', 'score': 10, 'status': 'success'}
-    msg['counter'] = 0
-    return msg
+async def prep(msg: dotdict) -> None:
+    msg["output"] = {"agent": "xpto", "score": 10, "status": "success"}
+    msg["counter"] = 0
 
-async def increment(msg: dotdict) -> dotdict:
-    print(f"Executing increment, current msg: {msg}")
-    msg['counter'] = msg.get('counter', 0) + 1
-    return msg
+async def increment(msg: dotdict) -> None:
+    msg["counter"] = msg.get("counter", 0) + 1
 
-async def feat_a(msg: dotdict) -> dotdict:
-    print(f"Executing feat_a, current msg: {msg}")
-    msg['feat_a'] = 'result_a'
-    return msg
+async def feat_a(msg: dotdict) -> None:
+    msg["feat_a"] = "result_a"
 
-async def feat_b(msg: dotdict) -> dotdict:
-    print(f"Executing feat_b, current msg: {msg}")
-    msg['feat_b'] = 'result_b'
-    return msg
+async def feat_b(msg: dotdict) -> None:
+    msg["feat_b"] = "result_b"
 
-async def final(msg: dotdict) -> dotdict:
-    print(f"Executing final, current msg: {msg}")
-    msg['final'] = 'done'
-    return msg
+async def final(msg: dotdict) -> None:
+    msg["final"] = "done"
 
 my_modules = {
     "prep": prep,
     "increment": increment,
     "feat_a": feat_a,
     "feat_b": feat_b,
-    "final": final
+    "final": final,
 }
 input_msg = dotdict()
 
-# Example with while loop
-result = await ainline(
+result = await Inline(
     "prep -> @{counter < 5}: increment; -> final",
-    modules=my_modules,
-    message=input_msg
-)
-result
-
-# Example with nested while loop and other constructs
-result = await ainline(
-    "prep -> @{counter < 3}: increment -> [feat_a, feat_b]; -> final",
-    modules=my_modules,
-    message=input_msg
-)
+    my_modules,
+).acall(input_msg)
 result
 ```
 
@@ -1207,13 +1166,9 @@ results = F.scatter_gather(funcs, kwargs_list=kwargs_for_funcs)
 print(results) # ("Hello, World", "Hello, Earth", "Goodbye, Commander")
 ```
 
-**msg_scatter_gather**
-
-Similarly, you can use the `msg_scatter_gather` version where you use a `dotdict`-based object to pass and modify information in the object itself.
+**scatter_gather with messages**
 
 ```python
-F.msg_scatter_gather
-
 msg1, msg2 = mf.Message(), mf.Message()
 
 msg1.user_input = "hi, how are you?"
@@ -1222,14 +1177,12 @@ msg2.data = "I want to visit Dortmund"
 def agent(msg):
     print(msg.user_input)
     msg.response = "I am fine, thank you!"
-    return msg
 
 def retriever(msg):
     print(msg.data)
     msg.retrieved = "The user likes to travel."
-    return msg
 
-msg1, msg2 = F.msg_scatter_gather([agent, retriever], [msg1, msg2])
+F.scatter_gather([agent, retriever], args_list=[(msg1,), (msg2,)])
 
 msg1
 
@@ -1281,31 +1234,29 @@ print(results)  # (9, 27)
 
 # Example 2: Simulate error
 results = F.bcast_gather([square, fail, cube], 2)
-print(results)  # (4, None, 8)
+print(results)  # (4, TaskError(index=1, ...), 8)
 
 # Example 3: Timeout
 results = F.bcast_gather([square, cube], 4, timeout=0.01)
 print(results) # (16, 64)
 ```
 
-**msg_bcast_gather**
+**bcast_gather with a shared message**
 
 ```python
-F.msg_bcast_gather
-
 msg = mf.Message()
 
 msg.user_input = "I want to visit Natal"
 
 def web_search(msg):
     msg.web_search = "Natal is the capital of the sun..."
-    return msg
 
 def memory(msg):
     msg.memory = "The user likes to travel."
-    return msg
 
-msg = F.msg_bcast_gather([web_search, memory], msg)
+results = F.bcast_gather([web_search, memory], msg)
+errors = [result for result in results if isinstance(result, mf.TaskError)]
+assert not errors
 
 msg
 ```

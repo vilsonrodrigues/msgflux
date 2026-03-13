@@ -213,8 +213,8 @@ All operations in `msgflux.nn.functional` are automatically traced:
 |----------|-------------|
 | `map_gather` / `amap_gather` | Map over args and gather results |
 | `scatter_gather` / `ascatter_gather` | Scatter inputs and gather outputs |
-| `bcast_gather` / `amsg_bcast_gather` | Broadcast and gather |
-| `inline` / `ainline` | DSL workflow execution |
+| `bcast_gather` | Broadcast and gather |
+| `Inline` | DSL workflow execution |
 | `fire_and_forget` | Background execution |
 
 ---

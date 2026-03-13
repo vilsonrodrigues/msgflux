@@ -54,13 +54,12 @@ results = F.bcast_gather(
 # Good - Different paths, safe for parallel
 def add_user_data(msg):
     msg.set("user.name", "Alice")
-    return msg
 
 def add_timestamp(msg):
     msg.set("meta.timestamp", "2024-01-15")
-    return msg
 
-F.msg_bcast_gather([add_user_data, add_timestamp], message)
+results = F.bcast_gather([add_user_data, add_timestamp], message)
+assert all(result is None for result in results)
 ```
 
 ## Common Patterns
@@ -75,19 +74,16 @@ F.msg_bcast_gather([add_user_data, add_timestamp], message)
 
     def prepare(msg):
         msg.data = [1, 2, 3, 4, 5]
-        return msg
 
     def filter_even(msg):
         msg.set("results.even", [x for x in msg.data if x % 2 == 0])
-        return msg
 
     def filter_odd(msg):
         msg.set("results.odd", [x for x in msg.data if x % 2 != 0])
-        return msg
 
     message = mf.dotdict()
     prepare(message)
-    F.msg_bcast_gather([filter_even, filter_odd], message)
+    F.bcast_gather([filter_even, filter_odd], message)
 
     print(message.results.even)  # [2, 4]
     print(message.results.odd)   # [1, 3, 5]

@@ -1,6 +1,6 @@
 # nn.functional
 
-The `msgflux.nn.functional` module provides concurrent execution primitives and a declarative workflow DSL. It enables concurrent processing, message passing, and workflow orchestration.
+The `msgflux.nn.functional` module provides concurrent execution primitives. For workflow orchestration, use the `Inline` runtime from `msgflux.dsl.inline`.
 
 ## Overview
 
@@ -10,8 +10,8 @@ The functional API offers both **synchronous** and **asynchronous** interfaces f
 
 - **Concurrent Execution**: Thread pools and async event loops for parallel processing
 - **Gather Patterns**: Map, scatter, and broadcast primitives for different use cases
-- **Message Passing**: First-class support for `dotdict` message routing
-- **Inline DSL**: Declarative workflow language for runtime orchestration
+- **Message Passing**: `dotdict` works directly with the generic gather helpers
+- **Inline DSL**: `Inline` provides declarative workflow orchestration
 - **Zero Overhead**: No performance penalty for single-task execution
 - **Error Handling**: Typed `TaskError` results for failed tasks — no silent `None`
 
@@ -34,21 +34,19 @@ The functional API offers both **synchronous** and **asynchronous** interfaces f
 ???+ example "Workflow DSL"
 
     ```python
-    import msgflux.nn.functional as F
     from msgflux import dotdict
+    from msgflux.dsl.inline import Inline
 
     def step1(msg):
         msg.data = "processed"
-        return msg
 
     def step2(msg):
         msg.result = f"{msg.data} -> done"
-        return msg
 
     modules = {"step1": step1, "step2": step2}
     message = dotdict()
 
-    F.inline("step1 -> step2", modules, message)
+    Inline("step1 -> step2", modules)(message)
     print(message.result)  # "processed -> done"
     ```
 
@@ -81,10 +79,8 @@ All core functions have async counterparts prefixed with `a`:
 |---------------|------------------|
 | `map_gather` | `amap_gather` |
 | `scatter_gather` | `ascatter_gather` |
-| `msg_bcast_gather` | `amsg_bcast_gather` |
 | `wait_for_event` | `await_for_event` |
 | `fire_and_forget` | `afire_and_forget` |
-| `inline` | `ainline` |
 
 ???+ example "Async Usage"
 
@@ -110,7 +106,7 @@ All core functions have async counterparts prefixed with `a`:
 
 | Topic | Description |
 |-------|-------------|
-| [Gather Functions](gather.md) | map_gather, scatter_gather, bcast_gather and message variants |
+| [Gather Functions](gather.md) | map_gather, scatter_gather and bcast_gather |
 | [Utility Functions](utility.md) | wait_for, wait_for_event, fire_and_forget |
-| [Inline DSL](inline-dsl.md) | Declarative workflow language |
+| [Inline DSL](inline-dsl.md) | Declarative workflow language with `Inline` |
 | [Best Practices](best-practices.md) | Patterns, performance, and error handling |

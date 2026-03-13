@@ -14,7 +14,7 @@ module.plot()  # Displays a flow diagram
 ```python
 import msgflux as mf
 import msgflux.nn as nn
-import msgflux.nn.functional as F
+from msgflux.dsl.inline import Inline
 
 class QAWorkflow(nn.Module):
     """A question-answering workflow with retrieval."""
@@ -44,12 +44,12 @@ class QAWorkflow(nn.Module):
 
     def forward(self, question: str) -> str:
         msg = mf.dotdict(query=question)
-        msg = F.inline(self.flux, self.components, msg)
+        msg = Inline(self.flux, self.components)(msg)
         return msg.answer
 
     async def aforward(self, question: str) -> str:
         msg = mf.dotdict(query=question)
-        msg = await F.ainline(self.flux, self.components, msg)
+        msg = await Inline(self.flux, self.components).acall(msg)
         return msg.answer
 
 # Use it
