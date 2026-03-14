@@ -2,11 +2,11 @@ from msgspec_ext.fast_dotenv import load_dotenv
 
 from .cache import response_cache
 from .data.dbs import DB
-
 from .data.parsers import Parser
 from .data.retrievers import Retriever
 from .data.types import Audio, File, Image, Video
 from .dotdict import dotdict
+from .dsl.inline import Inline
 from .dsl.signature import InputField, OutputField, Signature
 from .envs import set_envs
 from .examples import Example
@@ -31,6 +31,7 @@ __all__ = [
     "File",
     "Guard",
     "Image",
+    "Inline",
     "InputField",
     "Message",
     "Model",

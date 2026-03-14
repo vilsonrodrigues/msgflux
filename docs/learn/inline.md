@@ -1,8 +1,12 @@
-# Inline DSL
+# Inline
 
 `Inline` orchestrates modules with a declarative workflow string. The workflow
 is configured once in `__init__`, and execution happens through `__call__` or
 `acall`.
+
+```python
+from msgflux import Inline
+```
 
 ## Syntax Overview
 
@@ -19,8 +23,7 @@ is configured once in `__init__`, and execution happens through `__call__` or
 ???+ example
 
     ```python
-    from msgflux import dotdict
-    from msgflux.dsl.inline import Inline
+    from msgflux import dotdict, Inline
 
     def step1(msg):
         msg.step1 = "done"
@@ -49,8 +52,7 @@ different path.
 ???+ example
 
     ```python
-    from msgflux import dotdict
-    from msgflux.dsl.inline import Inline
+    from msgflux import dotdict, Inline
 
     def prep(msg):
         msg.base = 10
@@ -88,8 +90,7 @@ different path.
 ???+ example "If / Else"
 
     ```python
-    from msgflux import dotdict
-    from msgflux.dsl.inline import Inline
+    from msgflux import dotdict, Inline
 
     def adult_flow(msg):
         msg.result = "Welcome, adult"
@@ -138,8 +139,7 @@ different path.
 ???+ example
 
     ```python
-    from msgflux import dotdict
-    from msgflux.dsl.inline import Inline
+    from msgflux import dotdict, Inline
 
     async def prep(msg):
         msg.counter = 0
@@ -174,8 +174,9 @@ different path.
 ???+ example
 
     ```python
+    import msgflux as mf
     import msgflux.nn as nn
-    from msgflux.dsl.inline import Inline
+    from msgflux import Inline
 
     class Pipeline(nn.Module):
         def __init__(self):
@@ -203,7 +204,7 @@ different path.
 ???+ example
 
     ```python
-    from msgflux.dsl.inline import Inline
+    from msgflux import Inline
 
     workflow = """
         prep

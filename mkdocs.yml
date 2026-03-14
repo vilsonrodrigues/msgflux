@@ -140,6 +140,7 @@ nav:
     - ⎙ Parsers:
       - learn/parsers/index.md
     - ◈ dotdict: learn/dotdict.md
+    - ⊕ Inline: learn/inline.md
     - ⟢ Modules:
       - Module:
         - learn/nn/module/index.md
@@ -171,7 +172,6 @@ nav:
         - learn/nn/functional/index.md
         - learn/nn/functional/gather.md
         - learn/nn/functional/utility.md
-        - learn/nn/functional/inline-dsl.md
         - learn/nn/functional/best-practices.md
       - Transcriber:
         - learn/nn/transcriber.md        
