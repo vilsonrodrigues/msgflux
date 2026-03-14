@@ -1,8 +1,10 @@
-from typing import Any, Mapping, Type
+from typing import TYPE_CHECKING, Any, Mapping
 
-from msgflux.data.dbs.base import BaseDB
 from msgflux.data.dbs.registry import db_registry
 from msgflux.data.dbs.types import KVDB, VectorDB
+
+if TYPE_CHECKING:
+    from msgflux.data.dbs.base import BaseDB
 
 
 class DB:
@@ -15,7 +17,7 @@ class DB:
         return list(db_registry.keys())
 
     @classmethod
-    def _get_db_class(cls, db_type: str, provider: str) -> Type[BaseDB]:
+    def _get_db_class(cls, db_type: str, provider: str) -> type["BaseDB"]:
         if db_type not in db_registry:
             raise ValueError(f"DB type `{db_type}` is not supported")
         if provider not in db_registry[db_type]:
@@ -26,14 +28,14 @@ class DB:
         return db_cls
 
     @classmethod
-    def _create_db(cls, db_type: str, provider: str, **kwargs) -> Type[BaseDB]:
+    def _create_db(cls, db_type: str, provider: str, **kwargs) -> type["BaseDB"]:
         db_cls = cls._get_db_class(db_type, provider)
         return db_cls(**kwargs)
 
     @classmethod
     def from_serialized(
         cls, provider: str, db_type: str, params: Mapping[str, Any]
-    ) -> Type[BaseDB]:
+    ) -> type["BaseDB"]:
         """Creates a db instance from serialized parameters.
 
         Args:

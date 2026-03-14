@@ -1,6 +1,7 @@
 from functools import partial
 from typing import Any, Dict, List, Mapping, Optional, Union
 
+import msgflux.nn.functional as F
 from msgflux.auto import AutoParams
 from msgflux.dotdict import dotdict
 from msgflux.message import Message
@@ -10,7 +11,6 @@ from msgflux.models.types import (
     ImageEmbedderModel,
     TextEmbedderModel,
 )
-from msgflux.nn import functional as F
 from msgflux.nn.modules.generator import Generator
 from msgflux.nn.modules.module import Module
 

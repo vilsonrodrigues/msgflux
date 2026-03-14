@@ -1,16 +1,18 @@
 from functools import wraps
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
-from msgflux.data.dbs.base import BaseDB
 from msgflux.message import Message
-from msgflux.models.types import TextEmbedderModel
+
+if TYPE_CHECKING:
+    from msgflux.data.dbs.base import BaseDB
+    from msgflux.models.types import TextEmbedderModel
 
 
 def response_cache(
-    db: BaseDB,
+    db: "BaseDB",
     task_inputs: Optional[str] = None,
     response_mode: Optional[str] = None,
-    model: Optional[TextEmbedderModel] = None,
+    model: Optional["TextEmbedderModel"] = None,
 ):
     def decorator(func):
         @wraps(func)

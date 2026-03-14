@@ -8,11 +8,11 @@ except ImportError:
     BM25Okapi = None
     np = None
 
+import msgflux.nn.functional as F
 from msgflux.data.retrievers.base import BaseLexical, BaseRetriever
 from msgflux.data.retrievers.registry import register_retriever
 from msgflux.data.retrievers.types import LexicalRetriever
 from msgflux.dotdict import dotdict
-from msgflux.nn import functional as F
 
 
 @register_retriever

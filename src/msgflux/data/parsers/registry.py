@@ -1,9 +1,14 @@
-from msgflux.data.parsers.base import BaseParser
+from typing import TYPE_CHECKING
 
-parser_registry = {}  # parser_registry[parser_type][provider] = cls
+from msgflux.utils.imports import AutoloadRegistry
+
+if TYPE_CHECKING:
+    from msgflux.data.parsers.base import BaseParser
+
+parser_registry = AutoloadRegistry("msgflux.data.parsers.providers")
 
 
-def register_parser(cls: type[BaseParser]):
+def register_parser(cls: type["BaseParser"]):
     parser_type = getattr(cls, "parser_type", None)
     provider = getattr(cls, "provider", None)
 

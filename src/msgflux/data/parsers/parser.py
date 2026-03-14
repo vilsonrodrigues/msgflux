@@ -1,7 +1,10 @@
-from typing import Any, Mapping, Type
+from typing import TYPE_CHECKING, Any, Mapping
 
-from msgflux.data.parsers.base import BaseParser
 from msgflux.data.parsers.registry import parser_registry
+
+if TYPE_CHECKING:
+    from msgflux.data.parsers.base import BaseParser
+
 from msgflux.data.parsers.types import (
     CsvParser,
     DocxParser,
@@ -24,7 +27,7 @@ class Parser:
         return list(parser_registry.keys())
 
     @classmethod
-    def _get_parser_class(cls, parser_type: str, provider: str) -> Type[BaseParser]:
+    def _get_parser_class(cls, parser_type: str, provider: str) -> type["BaseParser"]:
         if parser_type not in parser_registry:
             raise ValueError(f"Parser type `{parser_type}` is not supported")
         if provider not in parser_registry[parser_type]:
@@ -37,14 +40,14 @@ class Parser:
     @classmethod
     def _create_parser(
         cls, parser_type: str, provider: str, **kwargs
-    ) -> Type[BaseParser]:
+    ) -> type["BaseParser"]:
         parser_cls = cls._get_parser_class(parser_type, provider)
         return parser_cls(**kwargs)
 
     @classmethod
     def from_serialized(
         cls, provider: str, parser_type: str, params: Mapping[str, Any]
-    ) -> Type[BaseParser]:
+    ) -> type["BaseParser"]:
         """Creates a parser instance from serialized parameters.
 
         Args:

@@ -3,9 +3,9 @@ import functools
 import re
 from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple
 
+import msgflux.nn.functional as F
 from msgflux.dotdict import dotdict
 from msgflux.exceptions import TaskError
-from msgflux.nn import functional as F
 
 __all__ = ["Inline"]
 

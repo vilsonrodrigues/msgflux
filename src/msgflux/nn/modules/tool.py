@@ -6,11 +6,11 @@ from typing import Any, Callable, Dict, Iterator, List, Mapping, Optional, Tuple
 
 import msgspec
 
+import msgflux.nn.functional as F
 from msgflux.auto import AutoParams
 from msgflux.dotdict import dotdict
 from msgflux.exceptions import TaskError
 from msgflux.logger import logger
-from msgflux.nn import functional as F
 from msgflux.nn.modules.container import ModuleDict
 from msgflux.nn.modules.module import Module
 from msgflux.protocols.mcp import (
