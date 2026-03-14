@@ -22,9 +22,9 @@ _CSS = """\
 <link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css">
 <style>
 .copy-markdown-button {
-    background: #007acc;
-    color: white;
-    border: none;
+    background: transparent;
+    color: inherit;
+    border: 1px solid currentColor;
     padding: 8px 16px;
     border-radius: 4px;
     cursor: pointer;
@@ -33,8 +33,9 @@ _CSS = """\
     align-items: center;
     gap: 6px;
     margin: 10px 0;
+    opacity: 0.7;
 }
-.copy-markdown-button:hover { background: #005a9e; }
+.copy-markdown-button:hover { opacity: 1; }
 .copy-markdown-button:active { transform: translateY(1px); }
 #copy-icon { transition: opacity 0.1s ease; }
 </style>"""
