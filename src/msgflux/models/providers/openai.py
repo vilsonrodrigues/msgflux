@@ -21,6 +21,7 @@ except ImportError:
     OpenAI = None
     AsyncOpenAI = None
 
+import msgflux.nn.functional as F
 from msgflux.dotdict import dotdict
 from msgflux.dsl.typed_parsers import typed_parser_registry
 from msgflux.exceptions import TypedParserNotFoundError
@@ -39,7 +40,6 @@ from msgflux.models.types import (
     TextToImageModel,
     TextToSpeechModel,
 )
-from msgflux.nn import functional as F
 from msgflux.utils.chat import ChatBlock, response_format_from_msgspec_struct
 from msgflux.utils.console import cprint
 from msgflux.utils.encode import encode_data_to_bytes

@@ -1,7 +1,10 @@
-from typing import Any, Mapping, Type
+from typing import TYPE_CHECKING, Any, Mapping
 
-from msgflux.models.base import BaseModel
 from msgflux.models.registry import model_registry
+
+if TYPE_CHECKING:
+    from msgflux.models.base import BaseModel
+
 from msgflux.models.types import (
     ChatCompletionModel,
     ImageClassifierModel,
@@ -32,7 +35,7 @@ class Model:
         return provider, model_id
 
     @classmethod
-    def _get_model_class(cls, model_type: str, provider: str) -> Type[BaseModel]:
+    def _get_model_class(cls, model_type: str, provider: str) -> type["BaseModel"]:
         if model_type not in model_registry:
             raise ValueError(f"Model type `{model_type}` is not supported")
         if provider not in model_registry[model_type]:
@@ -45,7 +48,7 @@ class Model:
     @classmethod
     def _create_model(
         cls, model_type: str, model_path: str, **kwargs
-    ) -> Type[BaseModel]:
+    ) -> type["BaseModel"]:
         provider, model_id = cls._model_path_parser(model_path)
         model_cls = cls._get_model_class(model_type, provider)
         return model_cls(model_id=model_id, **kwargs)
@@ -53,7 +56,7 @@ class Model:
     @classmethod
     def from_serialized(
         cls, provider: str, model_type: str, state: Mapping[str, Any]
-    ) -> Type[BaseModel]:
+    ) -> type["BaseModel"]:
         """Creates a model instance from serialized parameters.
 
         Args:

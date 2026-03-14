@@ -1,11 +1,14 @@
-from typing import Type
+from typing import TYPE_CHECKING
 
-from msgflux.dsl.typed_parsers.base import BaseTypedParser
+from msgflux.utils.imports import AutoloadRegistry
 
-typed_parser_registry = {}  # typed_parser_registry[type] = cls
+if TYPE_CHECKING:
+    from msgflux.dsl.typed_parsers.base import BaseTypedParser
+
+typed_parser_registry = AutoloadRegistry("msgflux.dsl.typed_parsers.providers")
 
 
-def register_typed_parser(cls: Type[BaseTypedParser]):
+def register_typed_parser(cls: type["BaseTypedParser"]):
     key = cls.typed_parser_type
     typed_parser_registry[key] = cls
     return cls
