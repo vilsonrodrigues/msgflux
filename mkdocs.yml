@@ -62,12 +62,12 @@ theme:
     text: Roboto
     code: Roboto Mono
 
+hooks:
+  - docs/hooks/copy_markdown.py
+
 plugins:
   - blog
   - search
-  - copy-markdown:
-      button_text: "Copy Page"
-      button_position: "after-title"
   - mkdocstrings:
       handlers:
         python:
