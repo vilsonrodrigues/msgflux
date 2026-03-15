@@ -9,7 +9,7 @@ except ImportError:
     defused_ET = None  # noqa: N816
     minidom = None
 
-from msgflux.dotdict import dotdict
+from msgflux.core.dotdict import dotdict
 from msgflux.dsl.typed_parsers.base import BaseTypedParser
 from msgflux.dsl.typed_parsers.registry import register_typed_parser
 from msgflux.utils.xml import apply_xml_tags

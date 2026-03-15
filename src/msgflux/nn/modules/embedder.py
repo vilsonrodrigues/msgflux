@@ -3,8 +3,8 @@ from typing import Any, Dict, List, Mapping, Optional, Union
 
 import msgflux.nn.functional as F
 from msgflux.auto import AutoParams
-from msgflux.dotdict import dotdict
-from msgflux.message import Message
+from msgflux.core.dotdict import dotdict
+from msgflux.core.message import Message
 from msgflux.models.gateway import ModelGateway
 from msgflux.models.types import (
     AudioEmbedderModel,

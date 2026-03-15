@@ -21,7 +21,7 @@ import msgspec
 from msgspec import Meta, Struct, defstruct
 from typing_extensions import Annotated
 
-from msgflux.dotdict import dotdict
+from msgflux.core.dotdict import dotdict
 from msgflux.dsl.signature import FieldInfo
 from msgflux.logger import logger
 from msgflux.utils.common import type_mapping

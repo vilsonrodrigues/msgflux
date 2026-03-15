@@ -4,7 +4,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from msgflux.message import Message
+from msgflux.core.message import Message
 from msgflux.nn.modules.agent import Agent
 
 

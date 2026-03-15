@@ -1,7 +1,7 @@
 from typing import List, Mapping, Optional, Union
 
 from msgflux._private.client import BaseClient
-from msgflux.dotdict import dotdict
+from msgflux.core.dotdict import dotdict
 
 
 class BaseRetriever(BaseClient):

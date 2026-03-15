@@ -13,7 +13,7 @@ from msgflux.data.parsers.base import BaseParser
 from msgflux.data.parsers.registry import register_parser
 from msgflux.data.parsers.response import ParserResponse
 from msgflux.data.parsers.types import DocxParser
-from msgflux.dotdict import dotdict
+from msgflux.core.dotdict import dotdict
 
 
 @register_parser

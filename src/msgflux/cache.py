@@ -1,7 +1,7 @@
 from functools import wraps
 from typing import TYPE_CHECKING, Optional
 
-from msgflux.message import Message
+from msgflux.core.message import Message
 
 if TYPE_CHECKING:
     from msgflux.data.dbs.base import BaseDB

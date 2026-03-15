@@ -5,17 +5,17 @@ if TYPE_CHECKING:
     from msgspec_ext.fast_dotenv import load_dotenv
 
     from msgflux.cache import response_cache
+    from msgflux.core.dotdict import dotdict
+    from msgflux.core.message import Message
     from msgflux.data.dbs import DB
     from msgflux.data.parsers import Parser
     from msgflux.data.retrievers import Retriever
     from msgflux.data.types import Audio, File, Image, Video
-    from msgflux.dotdict import dotdict
     from msgflux.dsl.inline import Inline
     from msgflux.dsl.signature import InputField, OutputField, Signature
     from msgflux.envs import set_envs
     from msgflux.examples import Example
     from msgflux.exceptions import TaskError
-    from msgflux.message import Message
     from msgflux.models import Model
     from msgflux.models.gateway import ModelGateway
     from msgflux.telemetry import Spans
@@ -67,7 +67,7 @@ _LAZY_IMPORTS = {
     "Image": ("msgflux.data.types", "Image"),
     "Inline": ("msgflux.dsl.inline", "Inline"),
     "InputField": ("msgflux.dsl.signature", "InputField"),
-    "Message": ("msgflux.message", "Message"),
+    "Message": ("msgflux.core.message", "Message"),
     "Model": ("msgflux.models", "Model"),
     "ModelGateway": ("msgflux.models.gateway", "ModelGateway"),
     "OutputField": ("msgflux.dsl.signature", "OutputField"),
@@ -78,7 +78,7 @@ _LAZY_IMPORTS = {
     "TaskError": ("msgflux.exceptions", "TaskError"),
     "Video": ("msgflux.data.types", "Video"),
     "cprint": ("msgflux.utils.console", "cprint"),
-    "dotdict": ("msgflux.dotdict", "dotdict"),
+    "dotdict": ("msgflux.core.dotdict", "dotdict"),
     "get_fn_name": ("msgflux.utils.inspect", "get_fn_name"),
     "load": ("msgflux.utils.msgspec", "load"),
     "load_dotenv": ("msgspec_ext.fast_dotenv", "load_dotenv"),

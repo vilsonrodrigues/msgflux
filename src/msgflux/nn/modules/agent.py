@@ -18,7 +18,7 @@ import msgspec
 
 from msgflux.auto import AutoParams
 from msgflux.data.types import Audio, File, Image, Video
-from msgflux.dotdict import dotdict
+from msgflux.core.dotdict import dotdict
 from msgflux.dsl.signature import (
     Signature,
     SignatureFactory,
@@ -33,7 +33,7 @@ from msgflux.generation.templates import (
     SYSTEM_PROMPT_TEMPLATE,
     PromptSpec,
 )
-from msgflux.message import Message
+from msgflux.core.message import Message
 from msgflux.models.gateway import ModelGateway
 from msgflux.models.response import ModelResponse, ModelStreamResponse
 from msgflux.models.types import ChatCompletionModel
