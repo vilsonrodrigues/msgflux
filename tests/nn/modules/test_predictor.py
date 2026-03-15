@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-from msgflux.message import Message
+from msgflux.core.message import Message
 from msgflux.models.base import BaseModel
 from msgflux.models.response import ModelResponse
 from msgflux.nn.modules.predictor import Predictor

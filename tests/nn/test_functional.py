@@ -5,7 +5,7 @@ import asyncio
 import pytest
 
 from msgflux import TaskError
-from msgflux.dotdict import dotdict
+from msgflux.core.dotdict import dotdict
 from msgflux.nn import functional as F
 
 

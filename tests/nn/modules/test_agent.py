@@ -4,7 +4,7 @@ import pytest
 from unittest.mock import Mock, MagicMock, patch, AsyncMock
 
 from msgflux.nn.modules.agent import Agent, _RESERVED_KWARGS
-from msgflux.message import Message
+from msgflux.core.message import Message
 from msgflux.models.response import ModelResponse
 from msgflux.nn.modules.tool import ToolLibrary, ToolResponses, ToolCall
 from msgflux.examples import Example
@@ -779,7 +779,7 @@ class TestAgentExecutionPaths:
 
     def test_agent_execute_with_message_input(self):
         """Test Agent execution with Message input."""
-        from msgflux.message import Message
+        from msgflux.core.message import Message
 
         mock_model = Mock()
         mock_model.model_type = "chat_completion"

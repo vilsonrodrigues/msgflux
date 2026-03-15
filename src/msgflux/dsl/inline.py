@@ -4,7 +4,7 @@ import re
 from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple
 
 import msgflux.nn.functional as F
-from msgflux.dotdict import dotdict
+from msgflux.core.dotdict import dotdict
 from msgflux.exceptions import TaskError
 
 __all__ = ["Inline"]

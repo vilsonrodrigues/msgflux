@@ -8,7 +8,7 @@ import msgspec
 
 import msgflux.nn.functional as F
 from msgflux.auto import AutoParams
-from msgflux.dotdict import dotdict
+from msgflux.core.dotdict import dotdict
 from msgflux.exceptions import TaskError
 from msgflux.logger import logger
 from msgflux.nn.modules.container import ModuleDict

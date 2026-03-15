@@ -30,9 +30,9 @@ from opentelemetry import trace
 from opentelemetry.trace import Status, StatusCode
 
 from msgflux._private.executor import Executor
-from msgflux.dotdict import dotdict
+from msgflux.core.dotdict import dotdict
 from msgflux.envs import envs
-from msgflux.message import Message
+from msgflux.core.message import Message
 from msgflux.models.gateway import ModelGateway
 from msgflux.models.model import Model
 from msgflux.models.response import ModelResponse, ModelStreamResponse

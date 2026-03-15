@@ -22,7 +22,7 @@ except ImportError:
     AsyncOpenAI = None
 
 import msgflux.nn.functional as F
-from msgflux.dotdict import dotdict
+from msgflux.core.dotdict import dotdict
 from msgflux.dsl.typed_parsers import typed_parser_registry
 from msgflux.exceptions import TypedParserNotFoundError
 from msgflux.models.base import BaseModel

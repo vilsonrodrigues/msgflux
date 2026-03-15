@@ -4,7 +4,7 @@ import pytest
 from unittest.mock import Mock
 
 from msgflux.nn.modules.mediamaker import MediaMaker
-from msgflux.message import Message
+from msgflux.core.message import Message
 from msgflux.models.base import BaseModel
 from msgflux.models.response import ModelResponse
 
