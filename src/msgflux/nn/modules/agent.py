@@ -25,7 +25,7 @@ from msgflux.dsl.signature import (
     generate_annotations_from_signature,
 )
 from msgflux.dsl.typed_parsers.registry import typed_parser_registry
-from msgflux.examples import Example, ExampleCollection
+from msgflux.core.examples import Example, ExampleCollection
 from msgflux.exceptions import _GuardInterrupt
 from msgflux.generation.control_flow import ToolFlowControl
 from msgflux.generation.templates import (

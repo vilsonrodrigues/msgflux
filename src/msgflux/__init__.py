@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     from msgflux.dsl.inline import Inline
     from msgflux.dsl.signature import InputField, OutputField, Signature
     from msgflux.envs import set_envs
-    from msgflux.examples import Example
+    from msgflux.core.examples import Example
     from msgflux.exceptions import TaskError
     from msgflux.models import Model
     from msgflux.models.gateway import ModelGateway
@@ -62,7 +62,7 @@ _LAZY_IMPORTS = {
     "ChatBlock": ("msgflux.utils.chat", "ChatBlock"),
     "ChatML": ("msgflux.utils.chat", "ChatML"),
     "DB": ("msgflux.data.dbs", "DB"),
-    "Example": ("msgflux.examples", "Example"),
+    "Example": ("msgflux.core.examples", "Example"),
     "File": ("msgflux.data.types", "File"),
     "Image": ("msgflux.data.types", "Image"),
     "Inline": ("msgflux.dsl.inline", "Inline"),
