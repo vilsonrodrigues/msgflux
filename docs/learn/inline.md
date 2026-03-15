@@ -1,18 +1,11 @@
 # Inline
 
-`Inline` is a small domain-specific language (DSL) for defining
-**message-centric workflows**.
+`Inline` is a lightweight domain-specific language (DSL) for composing
+**message-centric workflows** from small, focused functions.
 
-Each pipeline step executes a module that **mutates a shared `dotdict` message
-in place**. The DSL describes *control flow* — sequence, branching, parallelism,
-and loops — while the modules implement the actual logic.
-
-The pipeline expression is parsed once at construction and reused across
-executions.
-
-```python
-from msgflux import Inline
-```
+You describe the pipeline as a string — sequences, branches, parallel stages,
+and loops — and `Inline` takes care of executing it. Every step receives a
+shared `dotdict` message, reads what it needs, and writes its results back.
 
 ---
 
@@ -29,7 +22,7 @@ value.
 ```python
 # Correct — write to msg, return nothing
 def enrich(msg):
-    msg.score = compute_score(msg.text)
+    msg.score = len(msg.text)
 
 # Return value is silently discarded — still works, but misleading
 def tag(msg):
@@ -37,15 +30,16 @@ def tag(msg):
     return msg  # has no effect
 ```
 
-`Inline` reads the message's current state before each step, so every module
-sees all changes written by the modules that ran before it.
+Because every step mutates the same object, later steps automatically see
+everything written by earlier ones — no need to thread outputs through function
+arguments.
 
 ### Compiled execution
 
-Internally, the pipeline expression is parsed into a list of execution steps
-representing an abstract syntax tree (AST). This structure is built once at
-`__init__` and reused on every `__call__` or `acall`, so execution does not
-require re-parsing the DSL.
+The pipeline expression is parsed once at construction time into an internal
+execution tree (AST). This means syntax errors are caught immediately when you
+create the `Inline` object, not at runtime, and the same parsed structure is
+reused across every call without re-parsing the string.
 
 ---
 
@@ -62,24 +56,24 @@ Inline(expression, modules, *, max_iterations=1000)
 | `max_iterations` | `int` | Maximum number of iterations any `@{…}` while loop may run before a `RuntimeError` is raised. Default: `1000`. |
 
 ```python
-flux = Inline(
+import msgflux as mf
+
+def prep(msg):
+    msg.ready = True
+
+def feat_a(msg):
+    msg.score_a = 1
+
+def feat_b(msg):
+    msg.score_b = 2
+
+def combine(msg):
+    msg.total = msg.score_a + msg.score_b
+
+flux = mf.Inline(
     "prep -> [feat_a, feat_b] -> combine",
     {"prep": prep, "feat_a": feat_a, "feat_b": feat_b, "combine": combine},
 )
-```
-
-### Reusing a pipeline
-
-Because parsing happens at construction, the same `flux` object can be applied
-to many messages without re-parsing the expression each time.
-
-```python
-flux = Inline("validate -> enrich -> rank", modules)
-
-for request in batch:
-    msg = dotdict(text=request)
-    flux(msg)
-    results.append(msg.rank)
 ```
 
 ---
@@ -101,26 +95,34 @@ Both return the same `msg` object after all steps have run.
 |---------|-------------|---------|
 | `->` | Sequential | `"a -> b -> c"` |
 | `[…]` | Parallel | `"[b, c]"` |
-| `{msg.key op val? a}` | Conditional (if) | `"{msg.score > 0.9? accept}"` |
-| `{msg.key op val? a, b}` | Conditional (if-else) | `"{msg.is_vip == true? vip, standard}"` |
-| `@{msg.key op val}: …;` | While loop | `"@{msg.retries < 3}: fetch;"` |
+| `{field op value ? a}` | Conditional (if) | `"{score > 0.9 ? accept}"` |
+| `{field op value ? a, b}` | Conditional (if-else) | `"{is_vip == true ? vip, standard}"` |
+| `@{field op value}: …;` | While loop | `"@{retries < 3}: fetch;"` |
 
-`msg.key` represents a **field path read from the current message** at runtime
-(e.g. `score`, `user.age`, `output.confidence`). Conditions are never
-free-form Python — they are always a comparison between a message field and a
-literal value.
+`field` represents a **path read from the current message** at runtime
+(e.g. `score`, `user.age`, `output.confidence`).
+
+Fields are resolved against the `dotdict` message passed to the pipeline:
+
+```
+{confidence > 0.8}
+{user.profile.age >= 18}
+```
+
+Conditions are not free-form Python — they are always a comparison between a
+message field and a literal value.
 
 ---
 
 ## Sequential Execution
 
-Modules run in the order listed, each seeing the message as left by the
-previous step.
+Modules run in the order listed. Each step sees the message exactly as the
+previous step left it, so earlier results are always available to later stages.
 
 ???+ example
 
     ```python
-    from msgflux import Inline, dotdict
+    import msgflux as mf
 
     def load(msg):
         msg.raw = "hello world"
@@ -131,14 +133,13 @@ previous step.
     def count(msg):
         msg.n_tokens = len(msg.tokens)
 
-    flux = Inline("load -> tokenize -> count", {
-        "load": load,
-        "tokenize": tokenize,
-        "count": count,
-    })
+    flux = mf.Inline(
+        "load -> tokenize -> count",
+        {"load": load, "tokenize": tokenize, "count": count},
+    )
 
-    msg = dotdict()
-    flux(msg)
+    msg = mf.dotdict()
+    msg = flux(msg)
 
     print(msg.tokens)    # ["hello", "world"]
     print(msg.n_tokens)  # 2
@@ -149,7 +150,8 @@ previous step.
 ## Parallel Execution
 
 Modules inside `[…]` run concurrently in a thread pool. All of them receive
-**the same message object**.
+**the same message object**, so they execute as a group before the pipeline
+moves on.
 
 ### Design rule
 
@@ -157,19 +159,25 @@ Parallel modules must write to **disjoint message paths**. Writing to the same
 key from two concurrent modules is a data race.
 
 ```python
-# Safe — each module owns its own subtree
-def fetch_weather(msg): msg.weather = "sunny"
-def fetch_news(msg):    msg.news = ["headline_1"]
+# Safe — each module owns its own key
+def fetch_weather(msg):
+    msg.weather = "sunny"
+
+def fetch_news(msg):
+    msg.news = ["headline_1"]
 
 # Unsafe — both mutate the same list
-def feat_a(msg): msg.results.append("a")
-def feat_b(msg): msg.results.append("b")
+def feat_a(msg):
+    msg.results.append("a")
+
+def feat_b(msg):
+    msg.results.append("b")
 ```
 
 ???+ example
 
     ```python
-    from msgflux import Inline, dotdict
+    import msgflux as mf
 
     def fetch_weather(msg):
         msg.weather = "sunny"
@@ -180,7 +188,7 @@ def feat_b(msg): msg.results.append("b")
     def summarize(msg):
         msg.summary = f"{msg.weather} | {msg.news[0]}"
 
-    flux = Inline(
+    flux = mf.Inline(
         "[fetch_weather, fetch_news] -> summarize",
         {
             "fetch_weather": fetch_weather,
@@ -189,8 +197,8 @@ def feat_b(msg): msg.results.append("b")
         },
     )
 
-    msg = dotdict()
-    flux(msg)
+    msg = mf.dotdict()
+    msg = flux(msg)
 
     print(msg.summary)  # "sunny | headline_1"
     ```
@@ -204,7 +212,8 @@ def feat_b(msg): msg.results.append("b")
 
 ## Conditionals
 
-Conditions are evaluated against the current message state at runtime.
+A conditional evaluates a condition against the current message at runtime and
+executes either the true branch, the false branch, or nothing.
 
 ### Syntax
 
@@ -213,10 +222,10 @@ Conditions are evaluated against the current message state at runtime.
 {key_path operator value ? true_module, false_module}
 ```
 
-If the false branch is omitted, nothing is executed when the condition is false.
+If the false branch is omitted, nothing runs when the condition is false.
 
 ```python
-# Only runs accept when score > 0.9; does nothing otherwise
+# Runs accept when score > 0.9; skips otherwise
 "{score > 0.9 ? accept}"
 
 # Equivalent to: if score > 0.9: accept(msg) else: reject(msg)
@@ -226,7 +235,7 @@ If the false branch is omitted, nothing is executed when the condition is false.
 ???+ example
 
     ```python
-    from msgflux import Inline, dotdict
+    import msgflux as mf
 
     def flag_urgent(msg):
         msg.label = "urgent"
@@ -234,19 +243,19 @@ If the false branch is omitted, nothing is executed when the condition is false.
     def flag_normal(msg):
         msg.label = "normal"
 
-    flux = Inline(
+    flux = mf.Inline(
         "{priority > 7 ? flag_urgent, flag_normal}",
         {"flag_urgent": flag_urgent, "flag_normal": flag_normal},
     )
 
-    msg = dotdict(priority=9)
-    flux(msg)
+    msg = mf.dotdict(priority=9)
+    msg = flux(msg)
     print(msg.label)  # "urgent"
     ```
 
 ### Key Paths
 
-Conditions access message fields using dot notation resolved via
+Conditions access nested message fields using dot notation resolved via
 `message.get(key_path)`.
 
 ```
@@ -255,15 +264,47 @@ request.headers.authorization
 output.agent
 ```
 
-If a key path does not exist in the message, its value is treated as `None`.
-This means `is None` checks work naturally for absent keys.
+If the key path does not exist in the message, its value is treated as `None`,
+so `is None` checks work naturally for absent keys.
 
 ### None Checks
 
-```python
-"{user.audio is not None ? transcribe}"
-"{user.name is None ? ask_name, greet}"
-```
+Use `is None` / `is not None` to branch on the presence or absence of a field.
+
+???+ example
+
+    ```python
+    import msgflux as mf
+
+    def transcribe(msg):
+        msg.text = f"[transcript of {msg.user.audio}]"
+
+    def ask_name(msg):
+        msg.prompt = "What is your name?"
+
+    def greet(msg):
+        msg.greeting = f"Hello, {msg.user.name}!"
+
+    # Runs transcribe only when audio is present
+    flux1 = mf.Inline(
+        "{user.audio is not None ? transcribe}",
+        {"transcribe": transcribe},
+    )
+
+    msg1 = mf.dotdict(user=mf.dotdict(audio="clip.wav"))
+    msg1 = flux1(msg1)
+    print(msg1.text)  # "[transcript of clip.wav]"
+
+    # Routes based on whether name is set
+    flux2 = mf.Inline(
+        "{user.name is None ? ask_name, greet}",
+        {"ask_name": ask_name, "greet": greet},
+    )
+
+    msg2 = mf.dotdict(user=mf.dotdict(name=None))
+    msg2 = flux2(msg2)
+    print(msg2.prompt)  # "What is your name?"
+    ```
 
 ### Comparison Operators
 
@@ -280,19 +321,53 @@ This means `is None` checks work naturally for absent keys.
 
 ### Type Coercion
 
-Comparison values are automatically coerced to the type of the expected value
-when possible.
+The comparison value in the DSL is always a string literal. Before comparing,
+`Inline` tries to coerce it to the type of the actual message value. This lets
+you write natural conditions even when the message holds strings.
 
-```python
-msg.count = "10"
+???+ example
 
-"{count > 5 ? ...}"       # "10" is coerced to int → True
-"{enabled == true ? ...}" # string "true" is coerced to bool
-```
+    ```python
+    import msgflux as mf
+
+    def accept(msg):
+        msg.accepted = True
+
+    def reject(msg):
+        msg.accepted = False
+
+    def enable(msg):
+        msg.action = "enabled"
+
+    def disable(msg):
+        msg.action = "disabled"
+
+    # String "10" is coerced to int before comparison with literal 5
+    flux1 = mf.Inline(
+        "{count > 5 ? accept, reject}",
+        {"accept": accept, "reject": reject},
+    )
+
+    msg1 = mf.dotdict(count="10")  # count is a string
+    msg1 = flux1(msg1)
+    print(msg1.accepted)  # True  ("10" coerced to 10, 10 > 5)
+
+    # String "true" is coerced to bool
+    flux2 = mf.Inline(
+        "{enabled == true ? enable, disable}",
+        {"enable": enable, "disable": disable},
+    )
+
+    msg2 = mf.dotdict(enabled="true")  # enabled is a string
+    msg2 = flux2(msg2)
+    print(msg2.action)  # "enabled"
+    ```
 
 If coercion fails, values are compared as strings.
 
 ### Logical Operators
+
+Conditions can be combined with logical operators to express multi-part rules.
 
 | Operator | Description |
 |----------|-------------|
@@ -303,13 +378,44 @@ If coercion fails, values are compared as strings.
 Precedence order (highest to lowest): `!`, `&`, `||`. Use parentheses to make
 intent explicit when combining operators.
 
-```python
-# ! binds tightest: reads as (active == true) AND (NOT banned == true)
-"{active == true & !banned == true ? allow, deny}"
+???+ example
 
-# Parentheses make precedence unambiguous
-"{(plan == 'premium' & credits > 0) || trial == true ? access, block}"
-```
+    ```python
+    import msgflux as mf
+
+    def allow(msg):
+        msg.access = "allowed"
+
+    def deny(msg):
+        msg.access = "denied"
+
+    def grant(msg):
+        msg.access = "granted"
+
+    def block(msg):
+        msg.access = "blocked"
+
+    # AND with NOT: active AND NOT banned
+    # Reads as: (active == true) AND (NOT (banned == true))
+    flux1 = mf.Inline(
+        "{active == true & !banned == true ? allow, deny}",
+        {"allow": allow, "deny": deny},
+    )
+
+    msg1 = mf.dotdict(active=True, banned=False)
+    msg1 = flux1(msg1)
+    print(msg1.access)  # "allowed"
+
+    # OR with AND grouping: parentheses make evaluation order explicit
+    flux2 = mf.Inline(
+        "{(plan == 'premium' & credits > 0) || trial == true ? grant, block}",
+        {"grant": grant, "block": block},
+    )
+
+    msg2 = mf.dotdict(plan="premium", credits=5, trial=False)
+    msg2 = flux2(msg2)
+    print(msg2.access)  # "granted"
+    ```
 
 ---
 
@@ -317,13 +423,14 @@ intent explicit when combining operators.
 
 Syntax: `@{condition}: pipeline;`
 
-The body is any valid pipeline expression. The condition is re-evaluated against
-the current message before each iteration.
+The body runs repeatedly as long as the condition holds. The condition is
+re-evaluated from the current message before every iteration, so modules inside
+the loop can write values that cause it to stop.
 
 ???+ example
 
     ```python
-    from msgflux import Inline, dotdict
+    import msgflux as mf
 
     def init(msg):
         msg.counter = 0
@@ -331,18 +438,18 @@ the current message before each iteration.
 
     def step(msg):
         msg.counter += 1
-        msg.total += msg.counter     # accumulates: 1 + 2 + 3 + 4 + 5
+        msg.total += msg.counter  # accumulates: 1 + 2 + 3 + 4 + 5
 
     def done(msg):
         msg.finished = True
 
-    flux = Inline(
+    flux = mf.Inline(
         "init -> @{counter < 5}: step; -> done",
         {"init": init, "step": step, "done": done},
     )
 
-    msg = dotdict()
-    flux(msg)
+    msg = mf.dotdict()
+    msg = flux(msg)
 
     print(msg.counter)   # 5
     print(msg.total)     # 15
@@ -351,21 +458,35 @@ the current message before each iteration.
 
 ### `max_iterations`
 
-`max_iterations` caps the number of times a while body may run. When the limit
-is reached, `Inline` raises a `RuntimeError` instead of looping forever.
+`max_iterations` caps how many times a while body may run. When the limit is
+reached, `Inline` raises a `RuntimeError` instead of looping forever. This
+makes infinite-loop bugs loud and immediate rather than causing the process to
+hang silently.
 
-```python
-# Default: raises after 1000 iterations
-flux = Inline("@{active}: poll;", modules)
+???+ example
 
-# Explicit retry budget — raises after 10 attempts
-flux = Inline("@{active}: poll;", modules, max_iterations=10)
-```
+    ```python
+    import msgflux as mf
 
-```
-RuntimeError: While loop exceeded maximum iterations (10).
-Possible infinite loop detected. Condition: active
-```
+    def poll(msg):
+        msg.attempts = msg.get("attempts", 0) + 1
+
+    # active stays True forever — max_iterations=5 stops it after 5 runs.
+    flux = mf.Inline(
+        "@{active == true}: poll;",
+        {"poll": poll},
+        max_iterations=5,
+    )
+
+    msg = mf.dotdict(active=True)
+    try:
+        flux(msg)
+    except RuntimeError as e:
+        print(e)
+        # While loop exceeded maximum iterations (5).
+        # Possible infinite loop detected. Condition: active == true
+        print(msg.attempts)  # 5
+    ```
 
 !!! tip
     Set `max_iterations` to a small, intentional value when the loop represents
@@ -376,11 +497,12 @@ Possible infinite loop detected. Condition: active
 
 ## Error Handling
 
-If a module raises an exception, `Inline` wraps it and raises a `RuntimeError`
-with the module name included.
+If a module raises an exception, `Inline` wraps it in a `RuntimeError` that
+includes the module name, making it easy to trace the failure back to the
+right step.
 
-In parallel stages, all branches run to completion before errors are reported,
-so all failures are surfaced together.
+In parallel stages, `Inline` waits for all branches to complete before
+reporting errors. If multiple branches fail, all failures are reported together.
 
 ```
 RuntimeError: Parallel execution failed for:
@@ -398,32 +520,31 @@ RuntimeError: Execution failed for `enrich`: KeyError('text')
 
 ## Async Execution
 
-Use `await flux.acall(msg)` when modules are async functions or `nn.Module`
-instances with an `acall` method.
+Use `await flux.acall(msg)` when any module in the pipeline is an async
+function or an `nn.Module` with an `acall` method. The snippet below runs
+natively in Jupyter and IPython, where top-level `await` is supported.
 
-Sync modules inside an async pipeline are executed directly instead of being
-offloaded to a thread pool, avoiding unnecessary scheduling overhead.
-
-Parallel stages in async mode run each branch as a separate coroutine via
+Sync modules inside an async pipeline are called directly — no thread-pool
+overhead. Parallel stages run each branch as a separate coroutine via
 `ascatter_gather`.
 
 ???+ example
 
     ```python
     import asyncio
-    from msgflux import Inline, dotdict
+    import msgflux as mf
 
     async def fetch(msg):
-        await asyncio.sleep(0)   # simulate I/O
+        await asyncio.sleep(0)  # simulate I/O
         msg.data = "fetched"
 
     async def process(msg):
         msg.result = msg.data.upper()
 
-    flux = Inline("fetch -> process", {"fetch": fetch, "process": process})
+    flux = mf.Inline("fetch -> process", {"fetch": fetch, "process": process})
 
-    msg = dotdict()
-    asyncio.run(flux.acall(msg))
+    msg = mf.dotdict()
+    msg = await flux.acall(msg)
 
     print(msg.result)  # "FETCHED"
     ```
@@ -432,29 +553,84 @@ Parallel stages in async mode run each branch as a separate coroutine via
 
 ## Complex Workflow
 
-All constructs compose freely. The expression below combines every DSL feature
-in a single pipeline, reading from a message with `audio`, `confidence`, and
-`is_urgent` fields.
+All constructs compose freely. The example below combines every DSL feature
+in a single pipeline: a conditional transcription step, two parallel analysis
+modules, a refinement loop, a routing branch, and a final cleanup step.
 
-```python
-workflow = """
-    ingest
-    -> {msg.audio is not None? transcribe}
-    -> [extract_entities, analyze_sentiment]
-    -> @{msg.confidence < 0.8}: refine;
-    -> {msg.is_urgent == true? priority_handler, standard_handler}
-    -> finalize
-"""
-```
+???+ example
 
-Execution order for `msg = dotdict(audio="call.wav", confidence=0.4, is_urgent=True)`:
+    ```python
+    import msgflux as mf
+
+    def ingest(msg):
+        msg.text = msg.get("raw_input", "incoming message")
+
+    def transcribe(msg):
+        msg.text = f"[transcript of {msg.audio}]"
+
+    def extract_entities(msg):
+        msg.entities = ["Alice", "Bob"]
+
+    def analyze_sentiment(msg):
+        msg.sentiment = "positive"
+        msg.confidence = 0.5  # starts below 0.8, triggers the refinement loop
+
+    def refine(msg):
+        msg.confidence = min(msg.confidence + 0.25, 1.0)
+
+    def priority_handler(msg):
+        msg.queue = "priority"
+
+    def standard_handler(msg):
+        msg.queue = "standard"
+
+    def finalize(msg):
+        msg.done = True
+
+    workflow = """
+        ingest
+        -> {audio is not None ? transcribe}
+        -> [extract_entities, analyze_sentiment]
+        -> @{confidence < 0.8}: refine;
+        -> {is_urgent == true ? priority_handler, standard_handler}
+        -> finalize
+    """
+
+    flux = mf.Inline(
+        workflow,
+        {
+            "ingest": ingest,
+            "transcribe": transcribe,
+            "extract_entities": extract_entities,
+            "analyze_sentiment": analyze_sentiment,
+            "refine": refine,
+            "priority_handler": priority_handler,
+            "standard_handler": standard_handler,
+            "finalize": finalize,
+        },
+    )
+
+    msg = mf.dotdict(raw_input="important call", audio="call.wav", is_urgent=True)
+    msg = flux(msg)
+
+    print(msg.text)        # "[transcript of call.wav]"
+    print(msg.entities)    # ["Alice", "Bob"]
+    print(msg.confidence)  # 1.0  (0.5 → 0.75 → 1.0, two refine iterations)
+    print(msg.queue)       # "priority"
+    print(msg.done)        # True
+    ```
+
+Execution order:
 
 1. `ingest` — always runs
-2. `transcribe` — runs because `msg.audio` is not `None`
+2. `transcribe` — runs because `audio` is not `None`
 3. `extract_entities` and `analyze_sentiment` — run in parallel
-4. `refine` — loops until `msg.confidence >= 0.8` (capped at 1 000 iterations)
-5. `priority_handler` — runs because `msg.is_urgent == True`
+4. `refine` — loops until `confidence >= 0.8` (capped at 1000 iterations)
+5. `priority_handler` — runs because `is_urgent == true`
 6. `finalize` — always runs
+
+Field names used in conditions (e.g. `audio`, `confidence`, `is_urgent`)
+always refer to values stored in the message passed to the pipeline.
 
 ---
 
