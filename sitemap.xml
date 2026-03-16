@@ -181,6 +181,10 @@
          <lastmod>2026-03-16</lastmod>
     </url>
     <url>
+         <loc>https://msgflux.com/learn/parsers/</loc>
+         <lastmod>2026-03-16</lastmod>
+    </url>
+    <url>
          <loc>https://msgflux.com/learn/telemetry/</loc>
          <lastmod>2026-03-16</lastmod>
     </url>
@@ -230,6 +234,10 @@
     </url>
     <url>
          <loc>https://msgflux.com/learn/models/text_to_speech/</loc>
+         <lastmod>2026-03-16</lastmod>
+    </url>
+    <url>
+         <loc>https://msgflux.com/learn/nn/functional/</loc>
          <lastmod>2026-03-16</lastmod>
     </url>
     <url>
@@ -313,22 +321,6 @@
          <lastmod>2026-03-16</lastmod>
     </url>
     <url>
-         <loc>https://msgflux.com/learn/nn/functional/</loc>
-         <lastmod>2026-03-16</lastmod>
-    </url>
-    <url>
-         <loc>https://msgflux.com/learn/nn/functional/best-practices/</loc>
-         <lastmod>2026-03-16</lastmod>
-    </url>
-    <url>
-         <loc>https://msgflux.com/learn/nn/functional/gather/</loc>
-         <lastmod>2026-03-16</lastmod>
-    </url>
-    <url>
-         <loc>https://msgflux.com/learn/nn/functional/utility/</loc>
-         <lastmod>2026-03-16</lastmod>
-    </url>
-    <url>
          <loc>https://msgflux.com/learn/nn/module/</loc>
          <lastmod>2026-03-16</lastmod>
     </url>
@@ -361,7 +353,15 @@
          <lastmod>2026-03-16</lastmod>
     </url>
     <url>
-         <loc>https://msgflux.com/learn/parsers/</loc>
+         <loc>https://msgflux.com/learn/retrievers/bm25/</loc>
+         <lastmod>2026-03-16</lastmod>
+    </url>
+    <url>
+         <loc>https://msgflux.com/learn/retrievers/retriever/</loc>
+         <lastmod>2026-03-16</lastmod>
+    </url>
+    <url>
+         <loc>https://msgflux.com/learn/retrievers/wikipedia/</loc>
          <lastmod>2026-03-16</lastmod>
     </url>
     <url>

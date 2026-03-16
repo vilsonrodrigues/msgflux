@@ -888,6 +888,10 @@
       
         
       
+        
+      
+        
+      
     
     
     
@@ -929,12 +933,58 @@
   
   
     <li class="md-nav__item">
-      <a href="../retrievers/retriever.md" class="md-nav__link">
+      <a href="../retrievers/retriever/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
-    None
+    Retriever
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../retrievers/bm25/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    BM25 Retrievers
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../retrievers/wikipedia/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Wikipedia Retriever
     
   </span>
   
@@ -959,30 +1009,9 @@
   
   
   
-    
-    
-      
+    <li class="md-nav__item">
+      <a href="../parsers/" class="md-nav__link">
         
-          
-        
-      
-    
-    
-    
-      
-      
-    
-    
-    <li class="md-nav__item md-nav__item--nested">
-      
-        
-        
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_4" >
-        
-          
-          <div class="md-nav__link md-nav__container">
-            <a href="../parsers/" class="md-nav__link ">
-              
   
   
   <span class="md-ellipsis">
@@ -991,22 +1020,7 @@
   </span>
   
 
-            </a>
-            
-          </div>
-        
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_4_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_2_4">
-            <span class="md-nav__icon md-icon"></span>
-            ⎙ Parsers
-          </label>
-          <ul class="md-nav__list" data-md-scrollfix>
-            
-              
-            
-          </ul>
-        </nav>
-      
+      </a>
     </li>
   
 
@@ -1069,13 +1083,22 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#creating-a-dotdict" class="md-nav__link">
+  <a href="#overview" class="md-nav__link">
     <span class="md-ellipsis">
-      Creating a dotdict
+      ✦₊⁺ Overview
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Creating a dotdict">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-creating-a-dotdict" class="md-nav__link">
+    <span class="md-ellipsis">
+      1. Creating a dotdict
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1. Creating a dotdict">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -1120,13 +1143,13 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#reading-values" class="md-nav__link">
+  <a href="#2-reading-values" class="md-nav__link">
     <span class="md-ellipsis">
-      Reading Values
+      2. Reading Values
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Reading Values">
+    <nav class="md-nav" aria-label="2. Reading Values">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -1162,13 +1185,13 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#writing-values" class="md-nav__link">
+  <a href="#3-writing-values" class="md-nav__link">
     <span class="md-ellipsis">
-      Writing Values
+      3. Writing Values
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Writing Values">
+    <nav class="md-nav" aria-label="3. Writing Values">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -1204,13 +1227,13 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#nested-paths" class="md-nav__link">
+  <a href="#4-nested-paths" class="md-nav__link">
     <span class="md-ellipsis">
-      Nested Paths
+      4. Nested Paths
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Nested Paths">
+    <nav class="md-nav" aria-label="4. Nested Paths">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -1228,31 +1251,31 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#auto-wrapping" class="md-nav__link">
+  <a href="#5-auto-wrapping" class="md-nav__link">
     <span class="md-ellipsis">
-      Auto-wrapping
+      5. Auto-wrapping
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#update" class="md-nav__link">
+  <a href="#6-update" class="md-nav__link">
     <span class="md-ellipsis">
-      update()
+      6. update()
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#serialization" class="md-nav__link">
+  <a href="#7-serialization" class="md-nav__link">
     <span class="md-ellipsis">
-      Serialization
+      7. Serialization
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Serialization">
+    <nav class="md-nav" aria-label="7. Serialization">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -1279,78 +1302,27 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#immutability" class="md-nav__link">
+  <a href="#8-immutability" class="md-nav__link">
     <span class="md-ellipsis">
-      Immutability
+      8. Immutability
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#hidden-keys" class="md-nav__link">
+  <a href="#9-hidden-keys" class="md-nav__link">
     <span class="md-ellipsis">
-      Hidden Keys
+      9. Hidden Keys
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#persistent-backend" class="md-nav__link">
+  <a href="#10-extending-dotdict" class="md-nav__link">
     <span class="md-ellipsis">
-      Persistent Backend
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Persistent Backend">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#recovery-after-failure" class="md-nav__link">
-    <span class="md-ellipsis">
-      Recovery after failure
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#concurrent-writes-from-multiple-instances" class="md-nav__link">
-    <span class="md-ellipsis">
-      Concurrent writes from multiple instances
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#namespacing-with-backend_prefix" class="md-nav__link">
-    <span class="md-ellipsis">
-      Namespacing with backend_prefix
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#nested-values" class="md-nav__link">
-    <span class="md-ellipsis">
-      Nested values
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#extending-dotdict" class="md-nav__link">
-    <span class="md-ellipsis">
-      Extending dotdict
+      10. Extending dotdict
     </span>
   </a>
   
@@ -2133,14 +2105,6 @@
     
       
         
-          
-        
-      
-        
-      
-        
-      
-        
       
     
     
@@ -2156,9 +2120,8 @@
         <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_7_4" >
         
           
-          <div class="md-nav__link md-nav__container">
-            <a href="../nn/functional/" class="md-nav__link ">
-              
+          <label class="md-nav__link" for="__nav_2_7_4" id="__nav_2_7_4_label" tabindex="0">
+            
   
   
   <span class="md-ellipsis">
@@ -2167,14 +2130,8 @@
   </span>
   
 
-            </a>
-            
-              
-              <label class="md-nav__link " for="__nav_2_7_4" id="__nav_2_7_4_label" tabindex="0">
-                <span class="md-nav__icon md-icon"></span>
-              </label>
-            
-          </div>
+            <span class="md-nav__icon md-icon"></span>
+          </label>
         
         <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_2_7_4_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_2_7_4">
@@ -2184,66 +2141,18 @@
           <ul class="md-nav__list" data-md-scrollfix>
             
               
-            
-              
                 
   
   
   
   
     <li class="md-nav__item">
-      <a href="../nn/functional/gather/" class="md-nav__link">
+      <a href="../nn/functional/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
-    Gather Functions
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../nn/functional/utility/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    Utility Functions
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../nn/functional/best-practices/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    Best Practices
+    nn.functional
     
   </span>
   
@@ -3522,13 +3431,22 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#creating-a-dotdict" class="md-nav__link">
+  <a href="#overview" class="md-nav__link">
     <span class="md-ellipsis">
-      Creating a dotdict
+      ✦₊⁺ Overview
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Creating a dotdict">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-creating-a-dotdict" class="md-nav__link">
+    <span class="md-ellipsis">
+      1. Creating a dotdict
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1. Creating a dotdict">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -3573,13 +3491,13 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#reading-values" class="md-nav__link">
+  <a href="#2-reading-values" class="md-nav__link">
     <span class="md-ellipsis">
-      Reading Values
+      2. Reading Values
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Reading Values">
+    <nav class="md-nav" aria-label="2. Reading Values">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -3615,13 +3533,13 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#writing-values" class="md-nav__link">
+  <a href="#3-writing-values" class="md-nav__link">
     <span class="md-ellipsis">
-      Writing Values
+      3. Writing Values
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Writing Values">
+    <nav class="md-nav" aria-label="3. Writing Values">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -3657,13 +3575,13 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#nested-paths" class="md-nav__link">
+  <a href="#4-nested-paths" class="md-nav__link">
     <span class="md-ellipsis">
-      Nested Paths
+      4. Nested Paths
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Nested Paths">
+    <nav class="md-nav" aria-label="4. Nested Paths">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -3681,31 +3599,31 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#auto-wrapping" class="md-nav__link">
+  <a href="#5-auto-wrapping" class="md-nav__link">
     <span class="md-ellipsis">
-      Auto-wrapping
+      5. Auto-wrapping
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#update" class="md-nav__link">
+  <a href="#6-update" class="md-nav__link">
     <span class="md-ellipsis">
-      update()
+      6. update()
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#serialization" class="md-nav__link">
+  <a href="#7-serialization" class="md-nav__link">
     <span class="md-ellipsis">
-      Serialization
+      7. Serialization
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Serialization">
+    <nav class="md-nav" aria-label="7. Serialization">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -3732,78 +3650,27 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#immutability" class="md-nav__link">
+  <a href="#8-immutability" class="md-nav__link">
     <span class="md-ellipsis">
-      Immutability
+      8. Immutability
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#hidden-keys" class="md-nav__link">
+  <a href="#9-hidden-keys" class="md-nav__link">
     <span class="md-ellipsis">
-      Hidden Keys
+      9. Hidden Keys
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#persistent-backend" class="md-nav__link">
+  <a href="#10-extending-dotdict" class="md-nav__link">
     <span class="md-ellipsis">
-      Persistent Backend
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Persistent Backend">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#recovery-after-failure" class="md-nav__link">
-    <span class="md-ellipsis">
-      Recovery after failure
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#concurrent-writes-from-multiple-instances" class="md-nav__link">
-    <span class="md-ellipsis">
-      Concurrent writes from multiple instances
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#namespacing-with-backend_prefix" class="md-nav__link">
-    <span class="md-ellipsis">
-      Namespacing with backend_prefix
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#nested-values" class="md-nav__link">
-    <span class="md-ellipsis">
-      Nested values
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#extending-dotdict" class="md-nav__link">
-    <span class="md-ellipsis">
-      Extending dotdict
+      10. Extending dotdict
     </span>
   </a>
   
@@ -3850,6 +3717,8 @@
 </style>
 <div class="copy-markdown-container" data-markdown="# dotdict
 
+## ✦₊⁺ Overview
+
 `dotdict` is a dictionary with **dot notation access** and **nested path support**. It extends Python&#x27;s built-in `dict`, so anything that works with a regular dict works here too.
 
 It is the foundation of [`Message`](nn/message.md) and can be used standalone wherever flexible, deeply-nested data structures are needed.
@@ -3857,9 +3726,9 @@ It is the foundation of [`Message`](nn/message.md) and can be used standalone wh
 ???+ example
 
     ```python
-    from msgflux import dotdict
+    import msgflux as mf
 
-    d = dotdict({&quot;user&quot;: {&quot;name&quot;: &quot;Maria&quot;, &quot;age&quot;: 30}})
+    d = mf.dotdict({&quot;user&quot;: {&quot;name&quot;: &quot;Maria&quot;, &quot;age&quot;: 30}})
 
     print(d.user.name)   # &quot;Maria&quot;
     print(d.user.age)    # 30
@@ -3867,16 +3736,16 @@ It is the foundation of [`Message`](nn/message.md) and can be used standalone wh
 
 ---
 
-## Creating a dotdict
+## 1. **Creating a dotdict**
 
 ### From a dict
 
 ???+ example
 
     ```python
-    from msgflux import dotdict
+    import msgflux as mf
 
-    d = dotdict({&quot;key&quot;: &quot;value&quot;, &quot;nested&quot;: {&quot;x&quot;: 1}})
+    d = mf.dotdict({&quot;key&quot;: &quot;value&quot;, &quot;nested&quot;: {&quot;x&quot;: 1}})
     ```
 
 ### From keyword arguments
@@ -3884,9 +3753,9 @@ It is the foundation of [`Message`](nn/message.md) and can be used standalone wh
 ???+ example
 
     ```python
-    from msgflux import dotdict
+    import msgflux as mf
 
-    d = dotdict(name=&quot;Alice&quot;, score=100)
+    d = mf.dotdict(name=&quot;Alice&quot;, score=100)
     ```
 
 ### Combined
@@ -3894,9 +3763,9 @@ It is the foundation of [`Message`](nn/message.md) and can be used standalone wh
 ???+ example
 
     ```python
-    from msgflux import dotdict
+    import msgflux as mf
 
-    d = dotdict({&quot;role&quot;: &quot;admin&quot;}, name=&quot;Alice&quot;, score=100)
+    d = mf.dotdict({&quot;role&quot;: &quot;admin&quot;}, name=&quot;Alice&quot;, score=100)
     ```
 
 ### Empty
@@ -3904,24 +3773,24 @@ It is the foundation of [`Message`](nn/message.md) and can be used standalone wh
 ???+ example
 
     ```python
-    from msgflux import dotdict
+    import msgflux as mf
 
-    d = dotdict()
+    d = mf.dotdict()
     d.name = &quot;Bob&quot;
     ```
 
 ---
 
-## Reading Values
+## 2. **Reading Values**
 
 ### Dot access
 
 ???+ example
 
     ```python
-    from msgflux import dotdict
+    import msgflux as mf
 
-    d = dotdict({&quot;user&quot;: {&quot;name&quot;: &quot;Clark&quot;}})
+    d = mf.dotdict({&quot;user&quot;: {&quot;name&quot;: &quot;Clark&quot;}})
 
     print(d.user.name)  # &quot;Clark&quot;
     ```
@@ -3931,9 +3800,9 @@ It is the foundation of [`Message`](nn/message.md) and can be used standalone wh
 ???+ example
 
     ```python
-    from msgflux import dotdict
+    import msgflux as mf
 
-    d = dotdict({&quot;user&quot;: {&quot;name&quot;: &quot;Clark&quot;}})
+    d = mf.dotdict({&quot;user&quot;: {&quot;name&quot;: &quot;Clark&quot;}})
 
     print(d[&quot;user&quot;][&quot;name&quot;])  # &quot;Clark&quot;
     ```
@@ -3945,9 +3814,9 @@ Use `get(path, default=None)` to traverse nested keys via a dot-separated string
 ???+ example
 
     ```python
-    from msgflux import dotdict
+    import msgflux as mf
 
-    d = dotdict({&quot;user&quot;: {&quot;profile&quot;: {&quot;city&quot;: &quot;Gotham&quot;}}})
+    d = mf.dotdict({&quot;user&quot;: {&quot;profile&quot;: {&quot;city&quot;: &quot;Gotham&quot;}}})
 
     print(d.get(&quot;user.profile.city&quot;))        # &quot;Gotham&quot;
     print(d.get(&quot;user.profile.zip&quot;, &quot;N/A&quot;))  # &quot;N/A&quot; (key doesn&#x27;t exist)
@@ -3957,16 +3826,16 @@ Use `get(path, default=None)` to traverse nested keys via a dot-separated string
 
 ---
 
-## Writing Values
+## 3. **Writing Values**
 
 ### Dot assignment
 
 ???+ example
 
     ```python
-    from msgflux import dotdict
+    import msgflux as mf
 
-    d = dotdict()
+    d = mf.dotdict()
     d.name = &quot;Diana&quot;
     d.score = 99
     ```
@@ -3976,9 +3845,9 @@ Use `get(path, default=None)` to traverse nested keys via a dot-separated string
 ???+ example
 
     ```python
-    from msgflux import dotdict
+    import msgflux as mf
 
-    d = dotdict()
+    d = mf.dotdict()
     d[&quot;name&quot;] = &quot;Diana&quot;
     ```
 
@@ -3989,9 +3858,9 @@ Use `set(path, value)` to write deeply nested values. Intermediate keys are crea
 ???+ example
 
     ```python
-    from msgflux import dotdict
+    import msgflux as mf
 
-    d = dotdict()
+    d = mf.dotdict()
 
     d.set(&quot;user.profile.city&quot;, &quot;Metropolis&quot;)
     d.set(&quot;user.profile.age&quot;, 28)
@@ -4002,16 +3871,16 @@ Use `set(path, value)` to write deeply nested values. Intermediate keys are crea
 
 ---
 
-## Nested Paths
+## 4. **Nested Paths**
 
 Both `get()` and `set()` accept dot-separated strings to traverse any depth:
 
 ???+ example
 
     ```python
-    from msgflux import dotdict
+    import msgflux as mf
 
-    d = dotdict()
+    d = mf.dotdict()
 
     d.set(&quot;a.b.c.d&quot;, &quot;deep value&quot;)
     print(d.get(&quot;a.b.c.d&quot;))  # &quot;deep value&quot;
@@ -4024,9 +3893,9 @@ Use integer segments in the path to index into lists:
 ???+ example
 
     ```python
-    from msgflux import dotdict
+    import msgflux as mf
 
-    d = dotdict()
+    d = mf.dotdict()
     d.set(&quot;items&quot;, [{&quot;name&quot;: &quot;Alpha&quot;}, {&quot;name&quot;: &quot;Beta&quot;}])
 
     print(d.get(&quot;items.0.name&quot;))  # &quot;Alpha&quot;
@@ -4038,9 +3907,9 @@ Use integer segments in the path to index into lists:
 ???+ example
 
     ```python
-    from msgflux import dotdict
+    import msgflux as mf
 
-    d = dotdict()
+    d = mf.dotdict()
     d.set(&quot;items&quot;, [{&quot;name&quot;: &quot;Alpha&quot;}, {&quot;name&quot;: &quot;Beta&quot;}])
 
     d.set(&quot;items.0.name&quot;, &quot;Updated&quot;)
@@ -4049,16 +3918,16 @@ Use integer segments in the path to index into lists:
 
 ---
 
-## Auto-wrapping
+## 5. **Auto-wrapping**
 
 Any `dict` assigned to a `dotdict` — whether at creation, via `set()`, or via attribute assignment — is automatically converted to a `dotdict`, so dot access always works:
 
 ???+ example
 
     ```python
-    from msgflux import dotdict
+    import msgflux as mf
 
-    d = dotdict()
+    d = mf.dotdict()
     d.config = {&quot;debug&quot;: True, &quot;timeout&quot;: 30}
 
     print(d.config.debug)    # True
@@ -4070,9 +3939,9 @@ Lists of dicts are also wrapped recursively:
 ???+ example
 
     ```python
-    from msgflux import dotdict
+    import msgflux as mf
 
-    d = dotdict()
+    d = mf.dotdict()
     d.users = [{&quot;name&quot;: &quot;A&quot;}, {&quot;name&quot;: &quot;B&quot;}]
 
     print(d.users[0].name)  # &quot;A&quot;
@@ -4080,7 +3949,7 @@ Lists of dicts are also wrapped recursively:
 
 ---
 
-## `update()`
+## 6. **`update()`**
 
 `update()` extends `dict.update` with two extras:
 
@@ -4089,9 +3958,9 @@ Lists of dicts are also wrapped recursively:
 ???+ example
 
     ```python
-    from msgflux import dotdict
+    import msgflux as mf
 
-    d = dotdict()
+    d = mf.dotdict()
     d.update({&quot;user.name&quot;: &quot;Bruce&quot;, &quot;user.age&quot;: 35})
 
     print(d.user.name)  # &quot;Bruce&quot;
@@ -4102,9 +3971,9 @@ Lists of dicts are also wrapped recursively:
 ???+ example
 
     ```python
-    from msgflux import dotdict
+    import msgflux as mf
 
-    d = dotdict({&quot;config&quot;: {&quot;debug&quot;: False, &quot;timeout&quot;: 30}})
+    d = mf.dotdict({&quot;config&quot;: {&quot;debug&quot;: False, &quot;timeout&quot;: 30}})
     d.update({&quot;config&quot;: {&quot;debug&quot;: True}})
 
     print(d.config.debug)    # True   (updated)
@@ -4116,16 +3985,16 @@ Standard positional argument and keyword argument forms are both supported:
 ???+ example
 
     ```python
-    from msgflux import dotdict
+    import msgflux as mf
 
-    d = dotdict()
+    d = mf.dotdict()
     d.update({&quot;key&quot;: &quot;value&quot;})
     d.update(key=&quot;other&quot;)
     ```
 
 ---
 
-## Serialization
+## 7. **Serialization**
 
 ### `to_dict()`
 
@@ -4134,9 +4003,9 @@ Converts the `dotdict` (and all nested `dotdict` values) back to a plain Python 
 ???+ example
 
     ```python
-    from msgflux import dotdict
+    import msgflux as mf
 
-    d = dotdict({&quot;user&quot;: {&quot;name&quot;: &quot;Lois&quot;}})
+    d = mf.dotdict({&quot;user&quot;: {&quot;name&quot;: &quot;Lois&quot;}})
 
     plain = d.to_dict()
     print(type(plain))           # &lt;class &#x27;dict&#x27;&gt;
@@ -4150,25 +4019,25 @@ Returns a JSON-encoded `bytes` object, powered by `msgspec`:
 ???+ example
 
     ```python
-    from msgflux import dotdict
+    import msgflux as mf
 
-    d = dotdict({&quot;score&quot;: 42})
+    d = mf.dotdict({&quot;score&quot;: 42})
 
     print(d.to_json())  # b&#x27;{&quot;score&quot;:42}&#x27;
     ```
 
 ---
 
-## Immutability
+## 8. **Immutability**
 
 Pass `frozen=True` to create a read-only `dotdict`. Any attempt to write raises `AttributeError`:
 
 ???+ example
 
     ```python
-    from msgflux import dotdict
+    import msgflux as mf
 
-    d = dotdict({&quot;key&quot;: &quot;value&quot;}, frozen=True)
+    d = mf.dotdict({&quot;key&quot;: &quot;value&quot;}, frozen=True)
 
     d.key = &quot;new&quot;        # raises AttributeError: Cannot modify frozen dotdict
     d[&quot;key&quot;] = &quot;new&quot;     # raises AttributeError
@@ -4181,25 +4050,25 @@ Nested dicts inherit the `frozen` flag automatically:
 ???+ example
 
     ```python
-    from msgflux import dotdict
+    import msgflux as mf
 
-    d = dotdict({&quot;user&quot;: {&quot;name&quot;: &quot;Bruce&quot;}}, frozen=True)
+    d = mf.dotdict({&quot;user&quot;: {&quot;name&quot;: &quot;Bruce&quot;}}, frozen=True)
 
     d.user.name = &quot;Clark&quot;  # raises AttributeError
     ```
 
 ---
 
-## Hidden Keys
+## 9. **Hidden Keys**
 
 `hidden_keys` marks keys as invisible to enumeration and discovery. They won&#x27;t appear in iteration, serialization, or string representations — but can always be accessed directly if you know they exist.
 
 ???+ example
 
     ```python
-    from msgflux import dotdict
+    import msgflux as mf
 
-    d = dotdict(
+    d = mf.dotdict(
         {&quot;api_key&quot;: &quot;sk-secret&quot;, &quot;username&quot;: &quot;john&quot;},
         hidden_keys=[&quot;api_key&quot;]
     )
@@ -4224,143 +4093,17 @@ Nested dicts inherit the `frozen` flag automatically:
 
 ---
 
-## Persistent Backend
-
-Pass a `backend` to persist every top-level key write to disk automatically. Any object that supports `__getitem__`, `__setitem__`, `__delitem__`, and `__iter__` works — [`diskcache.Cache`](https://grantjenks.com/docs/diskcache/) is the recommended choice.
-
-On creation, existing keys in the backend are loaded first. `initial_data` and `**kwargs` are applied on top and override them.
-
-???+ example &quot;Basic usage&quot;
-
-    ```python
-    import diskcache
-    from msgflux import dotdict
-
-    cache = diskcache.Cache(&quot;./state&quot;)
-
-    d = dotdict(backend=cache)
-    d.x = 42   # written to disk immediately
-    d.y = 99   # written to disk immediately
-    ```
-
-### Recovery after failure
-
-Because writes hit the backend on every assignment, a new instance picks up exactly where the previous one left off:
-
-???+ example
-
-    ```python
-    import diskcache
-    from msgflux import dotdict
-
-    cache = diskcache.Cache(&quot;./state&quot;)
-
-    # --- first run ---
-    d = dotdict(backend=cache)
-    d.step = 3
-    d.results = [0.91, 0.87, 0.94]
-    # process crashes here...
-
-    # --- after restart ---
-    d = dotdict(backend=cache)
-    print(d.step)     # 3
-    print(d.results)  # [0.91, 0.87, 0.94]
-    ```
-
-### Concurrent writes from multiple instances
-
-Each top-level key is stored as an independent entry in the backend, so two instances writing **different keys** never overwrite each other:
-
-???+ example
-
-    ```python
-    import diskcache
-    from msgflux import dotdict
-
-    cache = diskcache.Cache(&quot;./state&quot;)
-
-    a = dotdict(backend=cache)
-    b = dotdict(backend=cache)
-
-    a.x = 1   # cache[&quot;x&quot;] = 1
-    b.y = 2   # cache[&quot;y&quot;] = 2  — does not touch &quot;x&quot;
-
-    c = dotdict(backend=cache)
-    print(c.x, c.y)  # 1  2
-    ```
-
-!!! warning &quot;Same key, concurrent writes&quot;
-    Two instances writing to the **same key** concurrently will still race. Use `diskcache.Lock` to guard shared keys:
-
-    ```python
-    with diskcache.Lock(cache, &quot;counter&quot;):
-        d = dotdict(backend=cache)
-        d.counter = d.get(&quot;counter&quot;, 0) + 1
-    ```
-
-### Namespacing with `backend_prefix`
-
-Use `backend_prefix` to share a single cache between multiple dotdicts without key collisions. Keys are stored as `&quot;&lt;prefix&gt;.&lt;key&gt;&quot;`:
-
-???+ example
-
-    ```python
-    import diskcache
-    from msgflux import dotdict
-
-    cache = diskcache.Cache(&quot;./state&quot;)
-
-    run1 = dotdict(backend=cache, backend_prefix=&quot;run_1&quot;)
-    run2 = dotdict(backend=cache, backend_prefix=&quot;run_2&quot;)
-
-    run1.score = 0.91   # cache[&quot;run_1.score&quot;] = 0.91
-    run2.score = 0.73   # cache[&quot;run_2.score&quot;] = 0.73
-
-    print(run1.score)  # 0.91
-    print(run2.score)  # 0.73
-    ```
-
-### Nested values
-
-Nested dicts are serialized to plain dicts when written to the backend and re-wrapped as `dotdict` on load, so dot access works after recovery:
-
-???+ example
-
-    ```python
-    import diskcache
-    from msgflux import dotdict
-
-    cache = diskcache.Cache(&quot;./state&quot;)
-
-    d = dotdict(backend=cache)
-    d.user = {&quot;name&quot;: &quot;Maria&quot;, &quot;age&quot;: 30}
-
-    d2 = dotdict(backend=cache)
-    print(d2.user.name)  # &quot;Maria&quot;
-    print(d2.user.age)   # 30
-    ```
-
-!!! warning &quot;Nested mutations are not auto-persisted&quot;
-    Mutations on a nested key (`d.user.name = &quot;x&quot;`) update only the in-memory dotdict.
-    Reassign the top-level key to trigger persistence:
-
-    ```python
-    d.user = {**d.user, &quot;name&quot;: &quot;x&quot;}   # persisted
-    ```
-
----
-
-## Extending dotdict
+## 10. **Extending dotdict**
 
 `dotdict` is designed to be subclassed. You can add default fields, metadata, or custom behavior by overriding `__init__`:
 
 ???+ example
 
     ```python
-    from msgflux import dotdict
+    import msgflux as mf
 
 
-    class Config(dotdict):
+    class Config(mf.dotdict):
         def __init__(self, env=&quot;production&quot;, **kwargs):
             super().__init__(**kwargs)
             self.env = env
@@ -4443,61 +4186,62 @@ Nested dicts are serialized to plain dicts when written to the backend and re-wr
     window.copyMarkdownToClipboard = copyMarkdownToClipboard;
 }());
 </script>
+<h2 id="overview">✦₊⁺ Overview</h2>
 <p><code>dotdict</code> is a dictionary with <strong>dot notation access</strong> and <strong>nested path support</strong>. It extends Python's built-in <code>dict</code>, so anything that works with a regular dict works here too.</p>
 <p>It is the foundation of <a href="nn/message.md"><code>Message</code></a> and can be used standalone wherever flexible, deeply-nested data structures are needed.</p>
 <details class="example" open="open">
 <summary>Example</summary>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="kn">import</span> <span class="n">dotdict</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
 </span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="n">d</span> <span class="o">=</span> <span class="n">dotdict</span><span class="p">({</span><span class="s2">&quot;user&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;Maria&quot;</span><span class="p">,</span> <span class="s2">&quot;age&quot;</span><span class="p">:</span> <span class="mi">30</span><span class="p">}})</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="n">d</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">dotdict</span><span class="p">({</span><span class="s2">&quot;user&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;Maria&quot;</span><span class="p">,</span> <span class="s2">&quot;age&quot;</span><span class="p">:</span> <span class="mi">30</span><span class="p">}})</span>
 </span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>
 </span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="nb">print</span><span class="p">(</span><span class="n">d</span><span class="o">.</span><span class="n">user</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>   <span class="c1"># &quot;Maria&quot;</span>
 </span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="nb">print</span><span class="p">(</span><span class="n">d</span><span class="o">.</span><span class="n">user</span><span class="o">.</span><span class="n">age</span><span class="p">)</span>    <span class="c1"># 30</span>
 </span></code></pre></div>
 </details>
 <hr />
-<h2 id="creating-a-dotdict">Creating a dotdict</h2>
+<h2 id="1-creating-a-dotdict">1. <strong>Creating a dotdict</strong></h2>
 <h3 id="from-a-dict">From a dict</h3>
 <details class="example" open="open">
 <summary>Example</summary>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="kn">import</span> <span class="n">dotdict</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
 </span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>
-</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="n">d</span> <span class="o">=</span> <span class="n">dotdict</span><span class="p">({</span><span class="s2">&quot;key&quot;</span><span class="p">:</span> <span class="s2">&quot;value&quot;</span><span class="p">,</span> <span class="s2">&quot;nested&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;x&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">}})</span>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="n">d</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">dotdict</span><span class="p">({</span><span class="s2">&quot;key&quot;</span><span class="p">:</span> <span class="s2">&quot;value&quot;</span><span class="p">,</span> <span class="s2">&quot;nested&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;x&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">}})</span>
 </span></code></pre></div>
 </details>
 <h3 id="from-keyword-arguments">From keyword arguments</h3>
 <details class="example" open="open">
 <summary>Example</summary>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="kn">import</span> <span class="n">dotdict</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
 </span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>
-</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="n">d</span> <span class="o">=</span> <span class="n">dotdict</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;Alice&quot;</span><span class="p">,</span> <span class="n">score</span><span class="o">=</span><span class="mi">100</span><span class="p">)</span>
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="n">d</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">dotdict</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;Alice&quot;</span><span class="p">,</span> <span class="n">score</span><span class="o">=</span><span class="mi">100</span><span class="p">)</span>
 </span></code></pre></div>
 </details>
 <h3 id="combined">Combined</h3>
 <details class="example" open="open">
 <summary>Example</summary>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="kn">import</span> <span class="n">dotdict</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
 </span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>
-</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="n">d</span> <span class="o">=</span> <span class="n">dotdict</span><span class="p">({</span><span class="s2">&quot;role&quot;</span><span class="p">:</span> <span class="s2">&quot;admin&quot;</span><span class="p">},</span> <span class="n">name</span><span class="o">=</span><span class="s2">&quot;Alice&quot;</span><span class="p">,</span> <span class="n">score</span><span class="o">=</span><span class="mi">100</span><span class="p">)</span>
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="n">d</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">dotdict</span><span class="p">({</span><span class="s2">&quot;role&quot;</span><span class="p">:</span> <span class="s2">&quot;admin&quot;</span><span class="p">},</span> <span class="n">name</span><span class="o">=</span><span class="s2">&quot;Alice&quot;</span><span class="p">,</span> <span class="n">score</span><span class="o">=</span><span class="mi">100</span><span class="p">)</span>
 </span></code></pre></div>
 </details>
 <h3 id="empty">Empty</h3>
 <details class="example" open="open">
 <summary>Example</summary>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="kn">import</span> <span class="n">dotdict</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
 </span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>
-</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="n">d</span> <span class="o">=</span> <span class="n">dotdict</span><span class="p">()</span>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="n">d</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">dotdict</span><span class="p">()</span>
 </span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="n">d</span><span class="o">.</span><span class="n">name</span> <span class="o">=</span> <span class="s2">&quot;Bob&quot;</span>
 </span></code></pre></div>
 </details>
 <hr />
-<h2 id="reading-values">Reading Values</h2>
+<h2 id="2-reading-values">2. <strong>Reading Values</strong></h2>
 <h3 id="dot-access">Dot access</h3>
 <details class="example" open="open">
 <summary>Example</summary>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="kn">import</span> <span class="n">dotdict</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
 </span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>
-</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="n">d</span> <span class="o">=</span> <span class="n">dotdict</span><span class="p">({</span><span class="s2">&quot;user&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;Clark&quot;</span><span class="p">}})</span>
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="n">d</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">dotdict</span><span class="p">({</span><span class="s2">&quot;user&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;Clark&quot;</span><span class="p">}})</span>
 </span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>
 </span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="nb">print</span><span class="p">(</span><span class="n">d</span><span class="o">.</span><span class="n">user</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>  <span class="c1"># &quot;Clark&quot;</span>
 </span></code></pre></div>
@@ -4505,9 +4249,9 @@ Nested dicts are serialized to plain dicts when written to the backend and re-wr
 <h3 id="bracket-access">Bracket access</h3>
 <details class="example" open="open">
 <summary>Example</summary>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="kn">import</span> <span class="n">dotdict</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
 </span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>
-</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="n">d</span> <span class="o">=</span> <span class="n">dotdict</span><span class="p">({</span><span class="s2">&quot;user&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;Clark&quot;</span><span class="p">}})</span>
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="n">d</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">dotdict</span><span class="p">({</span><span class="s2">&quot;user&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;Clark&quot;</span><span class="p">}})</span>
 </span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>
 </span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="nb">print</span><span class="p">(</span><span class="n">d</span><span class="p">[</span><span class="s2">&quot;user&quot;</span><span class="p">][</span><span class="s2">&quot;name&quot;</span><span class="p">])</span>  <span class="c1"># &quot;Clark&quot;</span>
 </span></code></pre></div>
@@ -4516,9 +4260,9 @@ Nested dicts are serialized to plain dicts when written to the backend and re-wr
 <p>Use <code>get(path, default=None)</code> to traverse nested keys via a dot-separated string:</p>
 <details class="example" open="open">
 <summary>Example</summary>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="kn">import</span> <span class="n">dotdict</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
 </span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>
-</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="n">d</span> <span class="o">=</span> <span class="n">dotdict</span><span class="p">({</span><span class="s2">&quot;user&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;profile&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;city&quot;</span><span class="p">:</span> <span class="s2">&quot;Gotham&quot;</span><span class="p">}}})</span>
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="n">d</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">dotdict</span><span class="p">({</span><span class="s2">&quot;user&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;profile&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;city&quot;</span><span class="p">:</span> <span class="s2">&quot;Gotham&quot;</span><span class="p">}}})</span>
 </span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>
 </span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="nb">print</span><span class="p">(</span><span class="n">d</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;user.profile.city&quot;</span><span class="p">))</span>        <span class="c1"># &quot;Gotham&quot;</span>
 </span><span id="__span-7-6"><a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="nb">print</span><span class="p">(</span><span class="n">d</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;user.profile.zip&quot;</span><span class="p">,</span> <span class="s2">&quot;N/A&quot;</span><span class="p">))</span>  <span class="c1"># &quot;N/A&quot; (key doesn&#39;t exist)</span>
@@ -4526,13 +4270,13 @@ Nested dicts are serialized to plain dicts when written to the backend and re-wr
 </details>
 <p><code>get()</code> never raises — it returns <code>default</code> when any key in the path is missing.</p>
 <hr />
-<h2 id="writing-values">Writing Values</h2>
+<h2 id="3-writing-values">3. <strong>Writing Values</strong></h2>
 <h3 id="dot-assignment">Dot assignment</h3>
 <details class="example" open="open">
 <summary>Example</summary>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="kn">import</span> <span class="n">dotdict</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
 </span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>
-</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="n">d</span> <span class="o">=</span> <span class="n">dotdict</span><span class="p">()</span>
+</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="n">d</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">dotdict</span><span class="p">()</span>
 </span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="n">d</span><span class="o">.</span><span class="n">name</span> <span class="o">=</span> <span class="s2">&quot;Diana&quot;</span>
 </span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="n">d</span><span class="o">.</span><span class="n">score</span> <span class="o">=</span> <span class="mi">99</span>
 </span></code></pre></div>
@@ -4540,9 +4284,9 @@ Nested dicts are serialized to plain dicts when written to the backend and re-wr
 <h3 id="bracket-assignment">Bracket assignment</h3>
 <details class="example" open="open">
 <summary>Example</summary>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="kn">import</span> <span class="n">dotdict</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
 </span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>
-</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="n">d</span> <span class="o">=</span> <span class="n">dotdict</span><span class="p">()</span>
+</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="n">d</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">dotdict</span><span class="p">()</span>
 </span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="n">d</span><span class="p">[</span><span class="s2">&quot;name&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;Diana&quot;</span>
 </span></code></pre></div>
 </details>
@@ -4550,9 +4294,9 @@ Nested dicts are serialized to plain dicts when written to the backend and re-wr
 <p>Use <code>set(path, value)</code> to write deeply nested values. Intermediate keys are created automatically:</p>
 <details class="example" open="open">
 <summary>Example</summary>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="kn">import</span> <span class="n">dotdict</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
 </span><span id="__span-10-2"><a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>
-</span><span id="__span-10-3"><a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="n">d</span> <span class="o">=</span> <span class="n">dotdict</span><span class="p">()</span>
+</span><span id="__span-10-3"><a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="n">d</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">dotdict</span><span class="p">()</span>
 </span><span id="__span-10-4"><a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>
 </span><span id="__span-10-5"><a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="n">d</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">&quot;user.profile.city&quot;</span><span class="p">,</span> <span class="s2">&quot;Metropolis&quot;</span><span class="p">)</span>
 </span><span id="__span-10-6"><a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a><span class="n">d</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">&quot;user.profile.age&quot;</span><span class="p">,</span> <span class="mi">28</span><span class="p">)</span>
@@ -4562,13 +4306,13 @@ Nested dicts are serialized to plain dicts when written to the backend and re-wr
 </span></code></pre></div>
 </details>
 <hr />
-<h2 id="nested-paths">Nested Paths</h2>
+<h2 id="4-nested-paths">4. <strong>Nested Paths</strong></h2>
 <p>Both <code>get()</code> and <code>set()</code> accept dot-separated strings to traverse any depth:</p>
 <details class="example" open="open">
 <summary>Example</summary>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="kn">import</span> <span class="n">dotdict</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
 </span><span id="__span-11-2"><a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>
-</span><span id="__span-11-3"><a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="n">d</span> <span class="o">=</span> <span class="n">dotdict</span><span class="p">()</span>
+</span><span id="__span-11-3"><a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="n">d</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">dotdict</span><span class="p">()</span>
 </span><span id="__span-11-4"><a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>
 </span><span id="__span-11-5"><a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a><span class="n">d</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">&quot;a.b.c.d&quot;</span><span class="p">,</span> <span class="s2">&quot;deep value&quot;</span><span class="p">)</span>
 </span><span id="__span-11-6"><a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a><span class="nb">print</span><span class="p">(</span><span class="n">d</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;a.b.c.d&quot;</span><span class="p">))</span>  <span class="c1"># &quot;deep value&quot;</span>
@@ -4578,9 +4322,9 @@ Nested dicts are serialized to plain dicts when written to the backend and re-wr
 <p>Use integer segments in the path to index into lists:</p>
 <details class="example" open="open">
 <summary>Example</summary>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="kn">import</span> <span class="n">dotdict</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
 </span><span id="__span-12-2"><a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>
-</span><span id="__span-12-3"><a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="n">d</span> <span class="o">=</span> <span class="n">dotdict</span><span class="p">()</span>
+</span><span id="__span-12-3"><a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="n">d</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">dotdict</span><span class="p">()</span>
 </span><span id="__span-12-4"><a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="n">d</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">&quot;items&quot;</span><span class="p">,</span> <span class="p">[{</span><span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;Alpha&quot;</span><span class="p">},</span> <span class="p">{</span><span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;Beta&quot;</span><span class="p">}])</span>
 </span><span id="__span-12-5"><a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a>
 </span><span id="__span-12-6"><a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a><span class="nb">print</span><span class="p">(</span><span class="n">d</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;items.0.name&quot;</span><span class="p">))</span>  <span class="c1"># &quot;Alpha&quot;</span>
@@ -4590,9 +4334,9 @@ Nested dicts are serialized to plain dicts when written to the backend and re-wr
 <p><code>set()</code> also supports writing into existing list positions:</p>
 <details class="example" open="open">
 <summary>Example</summary>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="kn">import</span> <span class="n">dotdict</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
 </span><span id="__span-13-2"><a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>
-</span><span id="__span-13-3"><a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="n">d</span> <span class="o">=</span> <span class="n">dotdict</span><span class="p">()</span>
+</span><span id="__span-13-3"><a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="n">d</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">dotdict</span><span class="p">()</span>
 </span><span id="__span-13-4"><a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a><span class="n">d</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">&quot;items&quot;</span><span class="p">,</span> <span class="p">[{</span><span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;Alpha&quot;</span><span class="p">},</span> <span class="p">{</span><span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;Beta&quot;</span><span class="p">}])</span>
 </span><span id="__span-13-5"><a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a>
 </span><span id="__span-13-6"><a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a><span class="n">d</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">&quot;items.0.name&quot;</span><span class="p">,</span> <span class="s2">&quot;Updated&quot;</span><span class="p">)</span>
@@ -4600,13 +4344,13 @@ Nested dicts are serialized to plain dicts when written to the backend and re-wr
 </span></code></pre></div>
 </details>
 <hr />
-<h2 id="auto-wrapping">Auto-wrapping</h2>
+<h2 id="5-auto-wrapping">5. <strong>Auto-wrapping</strong></h2>
 <p>Any <code>dict</code> assigned to a <code>dotdict</code> — whether at creation, via <code>set()</code>, or via attribute assignment — is automatically converted to a <code>dotdict</code>, so dot access always works:</p>
 <details class="example" open="open">
 <summary>Example</summary>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-14-1"><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="kn">import</span> <span class="n">dotdict</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-14-1"><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
 </span><span id="__span-14-2"><a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>
-</span><span id="__span-14-3"><a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="n">d</span> <span class="o">=</span> <span class="n">dotdict</span><span class="p">()</span>
+</span><span id="__span-14-3"><a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="n">d</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">dotdict</span><span class="p">()</span>
 </span><span id="__span-14-4"><a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a><span class="n">d</span><span class="o">.</span><span class="n">config</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;debug&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span> <span class="s2">&quot;timeout&quot;</span><span class="p">:</span> <span class="mi">30</span><span class="p">}</span>
 </span><span id="__span-14-5"><a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a>
 </span><span id="__span-14-6"><a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a><span class="nb">print</span><span class="p">(</span><span class="n">d</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">debug</span><span class="p">)</span>    <span class="c1"># True</span>
@@ -4616,23 +4360,23 @@ Nested dicts are serialized to plain dicts when written to the backend and re-wr
 <p>Lists of dicts are also wrapped recursively:</p>
 <details class="example" open="open">
 <summary>Example</summary>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-15-1"><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="kn">import</span> <span class="n">dotdict</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-15-1"><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
 </span><span id="__span-15-2"><a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>
-</span><span id="__span-15-3"><a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a><span class="n">d</span> <span class="o">=</span> <span class="n">dotdict</span><span class="p">()</span>
+</span><span id="__span-15-3"><a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a><span class="n">d</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">dotdict</span><span class="p">()</span>
 </span><span id="__span-15-4"><a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a><span class="n">d</span><span class="o">.</span><span class="n">users</span> <span class="o">=</span> <span class="p">[{</span><span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;A&quot;</span><span class="p">},</span> <span class="p">{</span><span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;B&quot;</span><span class="p">}]</span>
 </span><span id="__span-15-5"><a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a>
 </span><span id="__span-15-6"><a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a><span class="nb">print</span><span class="p">(</span><span class="n">d</span><span class="o">.</span><span class="n">users</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>  <span class="c1"># &quot;A&quot;</span>
 </span></code></pre></div>
 </details>
 <hr />
-<h2 id="update"><code>update()</code></h2>
+<h2 id="6-update">6. <strong><code>update()</code></strong></h2>
 <p><code>update()</code> extends <code>dict.update</code> with two extras:</p>
 <p><strong>1. Dotted keys are written as nested paths:</strong></p>
 <details class="example" open="open">
 <summary>Example</summary>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-16-1"><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="kn">import</span> <span class="n">dotdict</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-16-1"><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
 </span><span id="__span-16-2"><a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>
-</span><span id="__span-16-3"><a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a><span class="n">d</span> <span class="o">=</span> <span class="n">dotdict</span><span class="p">()</span>
+</span><span id="__span-16-3"><a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a><span class="n">d</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">dotdict</span><span class="p">()</span>
 </span><span id="__span-16-4"><a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a><span class="n">d</span><span class="o">.</span><span class="n">update</span><span class="p">({</span><span class="s2">&quot;user.name&quot;</span><span class="p">:</span> <span class="s2">&quot;Bruce&quot;</span><span class="p">,</span> <span class="s2">&quot;user.age&quot;</span><span class="p">:</span> <span class="mi">35</span><span class="p">})</span>
 </span><span id="__span-16-5"><a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a>
 </span><span id="__span-16-6"><a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a><span class="nb">print</span><span class="p">(</span><span class="n">d</span><span class="o">.</span><span class="n">user</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>  <span class="c1"># &quot;Bruce&quot;</span>
@@ -4641,9 +4385,9 @@ Nested dicts are serialized to plain dicts when written to the backend and re-wr
 <p><strong>2. Dict values are merged recursively when the key already holds a <code>dotdict</code>:</strong></p>
 <details class="example" open="open">
 <summary>Example</summary>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-17-1"><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="kn">import</span> <span class="n">dotdict</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-17-1"><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
 </span><span id="__span-17-2"><a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>
-</span><span id="__span-17-3"><a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a><span class="n">d</span> <span class="o">=</span> <span class="n">dotdict</span><span class="p">({</span><span class="s2">&quot;config&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;debug&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span> <span class="s2">&quot;timeout&quot;</span><span class="p">:</span> <span class="mi">30</span><span class="p">}})</span>
+</span><span id="__span-17-3"><a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a><span class="n">d</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">dotdict</span><span class="p">({</span><span class="s2">&quot;config&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;debug&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span> <span class="s2">&quot;timeout&quot;</span><span class="p">:</span> <span class="mi">30</span><span class="p">}})</span>
 </span><span id="__span-17-4"><a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a><span class="n">d</span><span class="o">.</span><span class="n">update</span><span class="p">({</span><span class="s2">&quot;config&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;debug&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">}})</span>
 </span><span id="__span-17-5"><a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a>
 </span><span id="__span-17-6"><a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a><span class="nb">print</span><span class="p">(</span><span class="n">d</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">debug</span><span class="p">)</span>    <span class="c1"># True   (updated)</span>
@@ -4653,22 +4397,22 @@ Nested dicts are serialized to plain dicts when written to the backend and re-wr
 <p>Standard positional argument and keyword argument forms are both supported:</p>
 <details class="example" open="open">
 <summary>Example</summary>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-18-1"><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="kn">import</span> <span class="n">dotdict</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-18-1"><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
 </span><span id="__span-18-2"><a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a>
-</span><span id="__span-18-3"><a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a><span class="n">d</span> <span class="o">=</span> <span class="n">dotdict</span><span class="p">()</span>
+</span><span id="__span-18-3"><a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a><span class="n">d</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">dotdict</span><span class="p">()</span>
 </span><span id="__span-18-4"><a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a><span class="n">d</span><span class="o">.</span><span class="n">update</span><span class="p">({</span><span class="s2">&quot;key&quot;</span><span class="p">:</span> <span class="s2">&quot;value&quot;</span><span class="p">})</span>
 </span><span id="__span-18-5"><a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a><span class="n">d</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">key</span><span class="o">=</span><span class="s2">&quot;other&quot;</span><span class="p">)</span>
 </span></code></pre></div>
 </details>
 <hr />
-<h2 id="serialization">Serialization</h2>
+<h2 id="7-serialization">7. <strong>Serialization</strong></h2>
 <h3 id="to_dict"><code>to_dict()</code></h3>
 <p>Converts the <code>dotdict</code> (and all nested <code>dotdict</code> values) back to a plain Python <code>dict</code>:</p>
 <details class="example" open="open">
 <summary>Example</summary>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-19-1"><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="kn">import</span> <span class="n">dotdict</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-19-1"><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
 </span><span id="__span-19-2"><a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a>
-</span><span id="__span-19-3"><a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a><span class="n">d</span> <span class="o">=</span> <span class="n">dotdict</span><span class="p">({</span><span class="s2">&quot;user&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;Lois&quot;</span><span class="p">}})</span>
+</span><span id="__span-19-3"><a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a><span class="n">d</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">dotdict</span><span class="p">({</span><span class="s2">&quot;user&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;Lois&quot;</span><span class="p">}})</span>
 </span><span id="__span-19-4"><a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a>
 </span><span id="__span-19-5"><a id="__codelineno-19-5" name="__codelineno-19-5" href="#__codelineno-19-5"></a><span class="n">plain</span> <span class="o">=</span> <span class="n">d</span><span class="o">.</span><span class="n">to_dict</span><span class="p">()</span>
 </span><span id="__span-19-6"><a id="__codelineno-19-6" name="__codelineno-19-6" href="#__codelineno-19-6"></a><span class="nb">print</span><span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="n">plain</span><span class="p">))</span>           <span class="c1"># &lt;class &#39;dict&#39;&gt;</span>
@@ -4679,21 +4423,21 @@ Nested dicts are serialized to plain dicts when written to the backend and re-wr
 <p>Returns a JSON-encoded <code>bytes</code> object, powered by <code>msgspec</code>:</p>
 <details class="example" open="open">
 <summary>Example</summary>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-20-1"><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="kn">import</span> <span class="n">dotdict</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-20-1"><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
 </span><span id="__span-20-2"><a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a>
-</span><span id="__span-20-3"><a id="__codelineno-20-3" name="__codelineno-20-3" href="#__codelineno-20-3"></a><span class="n">d</span> <span class="o">=</span> <span class="n">dotdict</span><span class="p">({</span><span class="s2">&quot;score&quot;</span><span class="p">:</span> <span class="mi">42</span><span class="p">})</span>
+</span><span id="__span-20-3"><a id="__codelineno-20-3" name="__codelineno-20-3" href="#__codelineno-20-3"></a><span class="n">d</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">dotdict</span><span class="p">({</span><span class="s2">&quot;score&quot;</span><span class="p">:</span> <span class="mi">42</span><span class="p">})</span>
 </span><span id="__span-20-4"><a id="__codelineno-20-4" name="__codelineno-20-4" href="#__codelineno-20-4"></a>
 </span><span id="__span-20-5"><a id="__codelineno-20-5" name="__codelineno-20-5" href="#__codelineno-20-5"></a><span class="nb">print</span><span class="p">(</span><span class="n">d</span><span class="o">.</span><span class="n">to_json</span><span class="p">())</span>  <span class="c1"># b&#39;{&quot;score&quot;:42}&#39;</span>
 </span></code></pre></div>
 </details>
 <hr />
-<h2 id="immutability">Immutability</h2>
+<h2 id="8-immutability">8. <strong>Immutability</strong></h2>
 <p>Pass <code>frozen=True</code> to create a read-only <code>dotdict</code>. Any attempt to write raises <code>AttributeError</code>:</p>
 <details class="example" open="open">
 <summary>Example</summary>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-21-1"><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="kn">import</span> <span class="n">dotdict</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-21-1"><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
 </span><span id="__span-21-2"><a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a>
-</span><span id="__span-21-3"><a id="__codelineno-21-3" name="__codelineno-21-3" href="#__codelineno-21-3"></a><span class="n">d</span> <span class="o">=</span> <span class="n">dotdict</span><span class="p">({</span><span class="s2">&quot;key&quot;</span><span class="p">:</span> <span class="s2">&quot;value&quot;</span><span class="p">},</span> <span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</span><span id="__span-21-3"><a id="__codelineno-21-3" name="__codelineno-21-3" href="#__codelineno-21-3"></a><span class="n">d</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">dotdict</span><span class="p">({</span><span class="s2">&quot;key&quot;</span><span class="p">:</span> <span class="s2">&quot;value&quot;</span><span class="p">},</span> <span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 </span><span id="__span-21-4"><a id="__codelineno-21-4" name="__codelineno-21-4" href="#__codelineno-21-4"></a>
 </span><span id="__span-21-5"><a id="__codelineno-21-5" name="__codelineno-21-5" href="#__codelineno-21-5"></a><span class="n">d</span><span class="o">.</span><span class="n">key</span> <span class="o">=</span> <span class="s2">&quot;new&quot;</span>        <span class="c1"># raises AttributeError: Cannot modify frozen dotdict</span>
 </span><span id="__span-21-6"><a id="__codelineno-21-6" name="__codelineno-21-6" href="#__codelineno-21-6"></a><span class="n">d</span><span class="p">[</span><span class="s2">&quot;key&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;new&quot;</span>     <span class="c1"># raises AttributeError</span>
@@ -4704,21 +4448,21 @@ Nested dicts are serialized to plain dicts when written to the backend and re-wr
 <p>Nested dicts inherit the <code>frozen</code> flag automatically:</p>
 <details class="example" open="open">
 <summary>Example</summary>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-22-1"><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="kn">import</span> <span class="n">dotdict</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-22-1"><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
 </span><span id="__span-22-2"><a id="__codelineno-22-2" name="__codelineno-22-2" href="#__codelineno-22-2"></a>
-</span><span id="__span-22-3"><a id="__codelineno-22-3" name="__codelineno-22-3" href="#__codelineno-22-3"></a><span class="n">d</span> <span class="o">=</span> <span class="n">dotdict</span><span class="p">({</span><span class="s2">&quot;user&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;Bruce&quot;</span><span class="p">}},</span> <span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</span><span id="__span-22-3"><a id="__codelineno-22-3" name="__codelineno-22-3" href="#__codelineno-22-3"></a><span class="n">d</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">dotdict</span><span class="p">({</span><span class="s2">&quot;user&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;Bruce&quot;</span><span class="p">}},</span> <span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 </span><span id="__span-22-4"><a id="__codelineno-22-4" name="__codelineno-22-4" href="#__codelineno-22-4"></a>
 </span><span id="__span-22-5"><a id="__codelineno-22-5" name="__codelineno-22-5" href="#__codelineno-22-5"></a><span class="n">d</span><span class="o">.</span><span class="n">user</span><span class="o">.</span><span class="n">name</span> <span class="o">=</span> <span class="s2">&quot;Clark&quot;</span>  <span class="c1"># raises AttributeError</span>
 </span></code></pre></div>
 </details>
 <hr />
-<h2 id="hidden-keys">Hidden Keys</h2>
+<h2 id="9-hidden-keys">9. <strong>Hidden Keys</strong></h2>
 <p><code>hidden_keys</code> marks keys as invisible to enumeration and discovery. They won't appear in iteration, serialization, or string representations — but can always be accessed directly if you know they exist.</p>
 <details class="example" open="open">
 <summary>Example</summary>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-23-1"><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="kn">import</span> <span class="n">dotdict</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-23-1"><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
 </span><span id="__span-23-2"><a id="__codelineno-23-2" name="__codelineno-23-2" href="#__codelineno-23-2"></a>
-</span><span id="__span-23-3"><a id="__codelineno-23-3" name="__codelineno-23-3" href="#__codelineno-23-3"></a><span class="n">d</span> <span class="o">=</span> <span class="n">dotdict</span><span class="p">(</span>
+</span><span id="__span-23-3"><a id="__codelineno-23-3" name="__codelineno-23-3" href="#__codelineno-23-3"></a><span class="n">d</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">dotdict</span><span class="p">(</span>
 </span><span id="__span-23-4"><a id="__codelineno-23-4" name="__codelineno-23-4" href="#__codelineno-23-4"></a>    <span class="p">{</span><span class="s2">&quot;api_key&quot;</span><span class="p">:</span> <span class="s2">&quot;sk-secret&quot;</span><span class="p">,</span> <span class="s2">&quot;username&quot;</span><span class="p">:</span> <span class="s2">&quot;john&quot;</span><span class="p">},</span>
 </span><span id="__span-23-5"><a id="__codelineno-23-5" name="__codelineno-23-5" href="#__codelineno-23-5"></a>    <span class="n">hidden_keys</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;api_key&quot;</span><span class="p">]</span>
 </span><span id="__span-23-6"><a id="__codelineno-23-6" name="__codelineno-23-6" href="#__codelineno-23-6"></a><span class="p">)</span>
@@ -4742,132 +4486,25 @@ Nested dicts are serialized to plain dicts when written to the backend and re-wr
 </span></code></pre></div>
 </details>
 <hr />
-<h2 id="persistent-backend">Persistent Backend</h2>
-<p>Pass a <code>backend</code> to persist every top-level key write to disk automatically. Any object that supports <code>__getitem__</code>, <code>__setitem__</code>, <code>__delitem__</code>, and <code>__iter__</code> works — <a href="https://grantjenks.com/docs/diskcache/"><code>diskcache.Cache</code></a> is the recommended choice.</p>
-<p>On creation, existing keys in the backend are loaded first. <code>initial_data</code> and <code>**kwargs</code> are applied on top and override them.</p>
-<details class="example" open="open">
-<summary>Basic usage</summary>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-24-1"><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">diskcache</span>
-</span><span id="__span-24-2"><a id="__codelineno-24-2" name="__codelineno-24-2" href="#__codelineno-24-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="kn">import</span> <span class="n">dotdict</span>
-</span><span id="__span-24-3"><a id="__codelineno-24-3" name="__codelineno-24-3" href="#__codelineno-24-3"></a>
-</span><span id="__span-24-4"><a id="__codelineno-24-4" name="__codelineno-24-4" href="#__codelineno-24-4"></a><span class="n">cache</span> <span class="o">=</span> <span class="n">diskcache</span><span class="o">.</span><span class="n">Cache</span><span class="p">(</span><span class="s2">&quot;./state&quot;</span><span class="p">)</span>
-</span><span id="__span-24-5"><a id="__codelineno-24-5" name="__codelineno-24-5" href="#__codelineno-24-5"></a>
-</span><span id="__span-24-6"><a id="__codelineno-24-6" name="__codelineno-24-6" href="#__codelineno-24-6"></a><span class="n">d</span> <span class="o">=</span> <span class="n">dotdict</span><span class="p">(</span><span class="n">backend</span><span class="o">=</span><span class="n">cache</span><span class="p">)</span>
-</span><span id="__span-24-7"><a id="__codelineno-24-7" name="__codelineno-24-7" href="#__codelineno-24-7"></a><span class="n">d</span><span class="o">.</span><span class="n">x</span> <span class="o">=</span> <span class="mi">42</span>   <span class="c1"># written to disk immediately</span>
-</span><span id="__span-24-8"><a id="__codelineno-24-8" name="__codelineno-24-8" href="#__codelineno-24-8"></a><span class="n">d</span><span class="o">.</span><span class="n">y</span> <span class="o">=</span> <span class="mi">99</span>   <span class="c1"># written to disk immediately</span>
-</span></code></pre></div>
-</details>
-<h3 id="recovery-after-failure">Recovery after failure</h3>
-<p>Because writes hit the backend on every assignment, a new instance picks up exactly where the previous one left off:</p>
-<details class="example" open="open">
-<summary>Example</summary>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-25-1"><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">diskcache</span>
-</span><span id="__span-25-2"><a id="__codelineno-25-2" name="__codelineno-25-2" href="#__codelineno-25-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="kn">import</span> <span class="n">dotdict</span>
-</span><span id="__span-25-3"><a id="__codelineno-25-3" name="__codelineno-25-3" href="#__codelineno-25-3"></a>
-</span><span id="__span-25-4"><a id="__codelineno-25-4" name="__codelineno-25-4" href="#__codelineno-25-4"></a><span class="n">cache</span> <span class="o">=</span> <span class="n">diskcache</span><span class="o">.</span><span class="n">Cache</span><span class="p">(</span><span class="s2">&quot;./state&quot;</span><span class="p">)</span>
-</span><span id="__span-25-5"><a id="__codelineno-25-5" name="__codelineno-25-5" href="#__codelineno-25-5"></a>
-</span><span id="__span-25-6"><a id="__codelineno-25-6" name="__codelineno-25-6" href="#__codelineno-25-6"></a><span class="c1"># --- first run ---</span>
-</span><span id="__span-25-7"><a id="__codelineno-25-7" name="__codelineno-25-7" href="#__codelineno-25-7"></a><span class="n">d</span> <span class="o">=</span> <span class="n">dotdict</span><span class="p">(</span><span class="n">backend</span><span class="o">=</span><span class="n">cache</span><span class="p">)</span>
-</span><span id="__span-25-8"><a id="__codelineno-25-8" name="__codelineno-25-8" href="#__codelineno-25-8"></a><span class="n">d</span><span class="o">.</span><span class="n">step</span> <span class="o">=</span> <span class="mi">3</span>
-</span><span id="__span-25-9"><a id="__codelineno-25-9" name="__codelineno-25-9" href="#__codelineno-25-9"></a><span class="n">d</span><span class="o">.</span><span class="n">results</span> <span class="o">=</span> <span class="p">[</span><span class="mf">0.91</span><span class="p">,</span> <span class="mf">0.87</span><span class="p">,</span> <span class="mf">0.94</span><span class="p">]</span>
-</span><span id="__span-25-10"><a id="__codelineno-25-10" name="__codelineno-25-10" href="#__codelineno-25-10"></a><span class="c1"># process crashes here...</span>
-</span><span id="__span-25-11"><a id="__codelineno-25-11" name="__codelineno-25-11" href="#__codelineno-25-11"></a>
-</span><span id="__span-25-12"><a id="__codelineno-25-12" name="__codelineno-25-12" href="#__codelineno-25-12"></a><span class="c1"># --- after restart ---</span>
-</span><span id="__span-25-13"><a id="__codelineno-25-13" name="__codelineno-25-13" href="#__codelineno-25-13"></a><span class="n">d</span> <span class="o">=</span> <span class="n">dotdict</span><span class="p">(</span><span class="n">backend</span><span class="o">=</span><span class="n">cache</span><span class="p">)</span>
-</span><span id="__span-25-14"><a id="__codelineno-25-14" name="__codelineno-25-14" href="#__codelineno-25-14"></a><span class="nb">print</span><span class="p">(</span><span class="n">d</span><span class="o">.</span><span class="n">step</span><span class="p">)</span>     <span class="c1"># 3</span>
-</span><span id="__span-25-15"><a id="__codelineno-25-15" name="__codelineno-25-15" href="#__codelineno-25-15"></a><span class="nb">print</span><span class="p">(</span><span class="n">d</span><span class="o">.</span><span class="n">results</span><span class="p">)</span>  <span class="c1"># [0.91, 0.87, 0.94]</span>
-</span></code></pre></div>
-</details>
-<h3 id="concurrent-writes-from-multiple-instances">Concurrent writes from multiple instances</h3>
-<p>Each top-level key is stored as an independent entry in the backend, so two instances writing <strong>different keys</strong> never overwrite each other:</p>
-<details class="example" open="open">
-<summary>Example</summary>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-26-1"><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">diskcache</span>
-</span><span id="__span-26-2"><a id="__codelineno-26-2" name="__codelineno-26-2" href="#__codelineno-26-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="kn">import</span> <span class="n">dotdict</span>
-</span><span id="__span-26-3"><a id="__codelineno-26-3" name="__codelineno-26-3" href="#__codelineno-26-3"></a>
-</span><span id="__span-26-4"><a id="__codelineno-26-4" name="__codelineno-26-4" href="#__codelineno-26-4"></a><span class="n">cache</span> <span class="o">=</span> <span class="n">diskcache</span><span class="o">.</span><span class="n">Cache</span><span class="p">(</span><span class="s2">&quot;./state&quot;</span><span class="p">)</span>
-</span><span id="__span-26-5"><a id="__codelineno-26-5" name="__codelineno-26-5" href="#__codelineno-26-5"></a>
-</span><span id="__span-26-6"><a id="__codelineno-26-6" name="__codelineno-26-6" href="#__codelineno-26-6"></a><span class="n">a</span> <span class="o">=</span> <span class="n">dotdict</span><span class="p">(</span><span class="n">backend</span><span class="o">=</span><span class="n">cache</span><span class="p">)</span>
-</span><span id="__span-26-7"><a id="__codelineno-26-7" name="__codelineno-26-7" href="#__codelineno-26-7"></a><span class="n">b</span> <span class="o">=</span> <span class="n">dotdict</span><span class="p">(</span><span class="n">backend</span><span class="o">=</span><span class="n">cache</span><span class="p">)</span>
-</span><span id="__span-26-8"><a id="__codelineno-26-8" name="__codelineno-26-8" href="#__codelineno-26-8"></a>
-</span><span id="__span-26-9"><a id="__codelineno-26-9" name="__codelineno-26-9" href="#__codelineno-26-9"></a><span class="n">a</span><span class="o">.</span><span class="n">x</span> <span class="o">=</span> <span class="mi">1</span>   <span class="c1"># cache[&quot;x&quot;] = 1</span>
-</span><span id="__span-26-10"><a id="__codelineno-26-10" name="__codelineno-26-10" href="#__codelineno-26-10"></a><span class="n">b</span><span class="o">.</span><span class="n">y</span> <span class="o">=</span> <span class="mi">2</span>   <span class="c1"># cache[&quot;y&quot;] = 2  — does not touch &quot;x&quot;</span>
-</span><span id="__span-26-11"><a id="__codelineno-26-11" name="__codelineno-26-11" href="#__codelineno-26-11"></a>
-</span><span id="__span-26-12"><a id="__codelineno-26-12" name="__codelineno-26-12" href="#__codelineno-26-12"></a><span class="n">c</span> <span class="o">=</span> <span class="n">dotdict</span><span class="p">(</span><span class="n">backend</span><span class="o">=</span><span class="n">cache</span><span class="p">)</span>
-</span><span id="__span-26-13"><a id="__codelineno-26-13" name="__codelineno-26-13" href="#__codelineno-26-13"></a><span class="nb">print</span><span class="p">(</span><span class="n">c</span><span class="o">.</span><span class="n">x</span><span class="p">,</span> <span class="n">c</span><span class="o">.</span><span class="n">y</span><span class="p">)</span>  <span class="c1"># 1  2</span>
-</span></code></pre></div>
-</details>
-<div class="admonition warning">
-<p class="admonition-title">Same key, concurrent writes</p>
-<p>Two instances writing to the <strong>same key</strong> concurrently will still race. Use <code>diskcache.Lock</code> to guard shared keys:</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-27-1"><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a><span class="k">with</span> <span class="n">diskcache</span><span class="o">.</span><span class="n">Lock</span><span class="p">(</span><span class="n">cache</span><span class="p">,</span> <span class="s2">&quot;counter&quot;</span><span class="p">):</span>
-</span><span id="__span-27-2"><a id="__codelineno-27-2" name="__codelineno-27-2" href="#__codelineno-27-2"></a>    <span class="n">d</span> <span class="o">=</span> <span class="n">dotdict</span><span class="p">(</span><span class="n">backend</span><span class="o">=</span><span class="n">cache</span><span class="p">)</span>
-</span><span id="__span-27-3"><a id="__codelineno-27-3" name="__codelineno-27-3" href="#__codelineno-27-3"></a>    <span class="n">d</span><span class="o">.</span><span class="n">counter</span> <span class="o">=</span> <span class="n">d</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;counter&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span> <span class="o">+</span> <span class="mi">1</span>
-</span></code></pre></div>
-</div>
-<h3 id="namespacing-with-backend_prefix">Namespacing with <code>backend_prefix</code></h3>
-<p>Use <code>backend_prefix</code> to share a single cache between multiple dotdicts without key collisions. Keys are stored as <code>"&lt;prefix&gt;.&lt;key&gt;"</code>:</p>
-<details class="example" open="open">
-<summary>Example</summary>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-28-1"><a id="__codelineno-28-1" name="__codelineno-28-1" href="#__codelineno-28-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">diskcache</span>
-</span><span id="__span-28-2"><a id="__codelineno-28-2" name="__codelineno-28-2" href="#__codelineno-28-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="kn">import</span> <span class="n">dotdict</span>
-</span><span id="__span-28-3"><a id="__codelineno-28-3" name="__codelineno-28-3" href="#__codelineno-28-3"></a>
-</span><span id="__span-28-4"><a id="__codelineno-28-4" name="__codelineno-28-4" href="#__codelineno-28-4"></a><span class="n">cache</span> <span class="o">=</span> <span class="n">diskcache</span><span class="o">.</span><span class="n">Cache</span><span class="p">(</span><span class="s2">&quot;./state&quot;</span><span class="p">)</span>
-</span><span id="__span-28-5"><a id="__codelineno-28-5" name="__codelineno-28-5" href="#__codelineno-28-5"></a>
-</span><span id="__span-28-6"><a id="__codelineno-28-6" name="__codelineno-28-6" href="#__codelineno-28-6"></a><span class="n">run1</span> <span class="o">=</span> <span class="n">dotdict</span><span class="p">(</span><span class="n">backend</span><span class="o">=</span><span class="n">cache</span><span class="p">,</span> <span class="n">backend_prefix</span><span class="o">=</span><span class="s2">&quot;run_1&quot;</span><span class="p">)</span>
-</span><span id="__span-28-7"><a id="__codelineno-28-7" name="__codelineno-28-7" href="#__codelineno-28-7"></a><span class="n">run2</span> <span class="o">=</span> <span class="n">dotdict</span><span class="p">(</span><span class="n">backend</span><span class="o">=</span><span class="n">cache</span><span class="p">,</span> <span class="n">backend_prefix</span><span class="o">=</span><span class="s2">&quot;run_2&quot;</span><span class="p">)</span>
-</span><span id="__span-28-8"><a id="__codelineno-28-8" name="__codelineno-28-8" href="#__codelineno-28-8"></a>
-</span><span id="__span-28-9"><a id="__codelineno-28-9" name="__codelineno-28-9" href="#__codelineno-28-9"></a><span class="n">run1</span><span class="o">.</span><span class="n">score</span> <span class="o">=</span> <span class="mf">0.91</span>   <span class="c1"># cache[&quot;run_1.score&quot;] = 0.91</span>
-</span><span id="__span-28-10"><a id="__codelineno-28-10" name="__codelineno-28-10" href="#__codelineno-28-10"></a><span class="n">run2</span><span class="o">.</span><span class="n">score</span> <span class="o">=</span> <span class="mf">0.73</span>   <span class="c1"># cache[&quot;run_2.score&quot;] = 0.73</span>
-</span><span id="__span-28-11"><a id="__codelineno-28-11" name="__codelineno-28-11" href="#__codelineno-28-11"></a>
-</span><span id="__span-28-12"><a id="__codelineno-28-12" name="__codelineno-28-12" href="#__codelineno-28-12"></a><span class="nb">print</span><span class="p">(</span><span class="n">run1</span><span class="o">.</span><span class="n">score</span><span class="p">)</span>  <span class="c1"># 0.91</span>
-</span><span id="__span-28-13"><a id="__codelineno-28-13" name="__codelineno-28-13" href="#__codelineno-28-13"></a><span class="nb">print</span><span class="p">(</span><span class="n">run2</span><span class="o">.</span><span class="n">score</span><span class="p">)</span>  <span class="c1"># 0.73</span>
-</span></code></pre></div>
-</details>
-<h3 id="nested-values">Nested values</h3>
-<p>Nested dicts are serialized to plain dicts when written to the backend and re-wrapped as <code>dotdict</code> on load, so dot access works after recovery:</p>
-<details class="example" open="open">
-<summary>Example</summary>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-29-1"><a id="__codelineno-29-1" name="__codelineno-29-1" href="#__codelineno-29-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">diskcache</span>
-</span><span id="__span-29-2"><a id="__codelineno-29-2" name="__codelineno-29-2" href="#__codelineno-29-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="kn">import</span> <span class="n">dotdict</span>
-</span><span id="__span-29-3"><a id="__codelineno-29-3" name="__codelineno-29-3" href="#__codelineno-29-3"></a>
-</span><span id="__span-29-4"><a id="__codelineno-29-4" name="__codelineno-29-4" href="#__codelineno-29-4"></a><span class="n">cache</span> <span class="o">=</span> <span class="n">diskcache</span><span class="o">.</span><span class="n">Cache</span><span class="p">(</span><span class="s2">&quot;./state&quot;</span><span class="p">)</span>
-</span><span id="__span-29-5"><a id="__codelineno-29-5" name="__codelineno-29-5" href="#__codelineno-29-5"></a>
-</span><span id="__span-29-6"><a id="__codelineno-29-6" name="__codelineno-29-6" href="#__codelineno-29-6"></a><span class="n">d</span> <span class="o">=</span> <span class="n">dotdict</span><span class="p">(</span><span class="n">backend</span><span class="o">=</span><span class="n">cache</span><span class="p">)</span>
-</span><span id="__span-29-7"><a id="__codelineno-29-7" name="__codelineno-29-7" href="#__codelineno-29-7"></a><span class="n">d</span><span class="o">.</span><span class="n">user</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;Maria&quot;</span><span class="p">,</span> <span class="s2">&quot;age&quot;</span><span class="p">:</span> <span class="mi">30</span><span class="p">}</span>
-</span><span id="__span-29-8"><a id="__codelineno-29-8" name="__codelineno-29-8" href="#__codelineno-29-8"></a>
-</span><span id="__span-29-9"><a id="__codelineno-29-9" name="__codelineno-29-9" href="#__codelineno-29-9"></a><span class="n">d2</span> <span class="o">=</span> <span class="n">dotdict</span><span class="p">(</span><span class="n">backend</span><span class="o">=</span><span class="n">cache</span><span class="p">)</span>
-</span><span id="__span-29-10"><a id="__codelineno-29-10" name="__codelineno-29-10" href="#__codelineno-29-10"></a><span class="nb">print</span><span class="p">(</span><span class="n">d2</span><span class="o">.</span><span class="n">user</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>  <span class="c1"># &quot;Maria&quot;</span>
-</span><span id="__span-29-11"><a id="__codelineno-29-11" name="__codelineno-29-11" href="#__codelineno-29-11"></a><span class="nb">print</span><span class="p">(</span><span class="n">d2</span><span class="o">.</span><span class="n">user</span><span class="o">.</span><span class="n">age</span><span class="p">)</span>   <span class="c1"># 30</span>
-</span></code></pre></div>
-</details>
-<div class="admonition warning">
-<p class="admonition-title">Nested mutations are not auto-persisted</p>
-<p>Mutations on a nested key (<code>d.user.name = "x"</code>) update only the in-memory dotdict.
-Reassign the top-level key to trigger persistence:</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-30-1"><a id="__codelineno-30-1" name="__codelineno-30-1" href="#__codelineno-30-1"></a><span class="n">d</span><span class="o">.</span><span class="n">user</span> <span class="o">=</span> <span class="p">{</span><span class="o">**</span><span class="n">d</span><span class="o">.</span><span class="n">user</span><span class="p">,</span> <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;x&quot;</span><span class="p">}</span>   <span class="c1"># persisted</span>
-</span></code></pre></div>
-</div>
-<hr />
-<h2 id="extending-dotdict">Extending dotdict</h2>
+<h2 id="10-extending-dotdict">10. <strong>Extending dotdict</strong></h2>
 <p><code>dotdict</code> is designed to be subclassed. You can add default fields, metadata, or custom behavior by overriding <code>__init__</code>:</p>
 <details class="example" open="open">
 <summary>Example</summary>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-31-1"><a id="__codelineno-31-1" name="__codelineno-31-1" href="#__codelineno-31-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="kn">import</span> <span class="n">dotdict</span>
-</span><span id="__span-31-2"><a id="__codelineno-31-2" name="__codelineno-31-2" href="#__codelineno-31-2"></a>
-</span><span id="__span-31-3"><a id="__codelineno-31-3" name="__codelineno-31-3" href="#__codelineno-31-3"></a>
-</span><span id="__span-31-4"><a id="__codelineno-31-4" name="__codelineno-31-4" href="#__codelineno-31-4"></a><span class="k">class</span><span class="w"> </span><span class="nc">Config</span><span class="p">(</span><span class="n">dotdict</span><span class="p">):</span>
-</span><span id="__span-31-5"><a id="__codelineno-31-5" name="__codelineno-31-5" href="#__codelineno-31-5"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">env</span><span class="o">=</span><span class="s2">&quot;production&quot;</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-</span><span id="__span-31-6"><a id="__codelineno-31-6" name="__codelineno-31-6" href="#__codelineno-31-6"></a>        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
-</span><span id="__span-31-7"><a id="__codelineno-31-7" name="__codelineno-31-7" href="#__codelineno-31-7"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">env</span> <span class="o">=</span> <span class="n">env</span>
-</span><span id="__span-31-8"><a id="__codelineno-31-8" name="__codelineno-31-8" href="#__codelineno-31-8"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">debug</span> <span class="o">=</span> <span class="n">env</span> <span class="o">!=</span> <span class="s2">&quot;production&quot;</span>
-</span><span id="__span-31-9"><a id="__codelineno-31-9" name="__codelineno-31-9" href="#__codelineno-31-9"></a>
-</span><span id="__span-31-10"><a id="__codelineno-31-10" name="__codelineno-31-10" href="#__codelineno-31-10"></a>
-</span><span id="__span-31-11"><a id="__codelineno-31-11" name="__codelineno-31-11" href="#__codelineno-31-11"></a><span class="n">cfg</span> <span class="o">=</span> <span class="n">Config</span><span class="p">(</span><span class="n">env</span><span class="o">=</span><span class="s2">&quot;development&quot;</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="mi">30</span><span class="p">)</span>
-</span><span id="__span-31-12"><a id="__codelineno-31-12" name="__codelineno-31-12" href="#__codelineno-31-12"></a>
-</span><span id="__span-31-13"><a id="__codelineno-31-13" name="__codelineno-31-13" href="#__codelineno-31-13"></a><span class="nb">print</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">env</span><span class="p">)</span>      <span class="c1"># &quot;development&quot;</span>
-</span><span id="__span-31-14"><a id="__codelineno-31-14" name="__codelineno-31-14" href="#__codelineno-31-14"></a><span class="nb">print</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">debug</span><span class="p">)</span>    <span class="c1"># True</span>
-</span><span id="__span-31-15"><a id="__codelineno-31-15" name="__codelineno-31-15" href="#__codelineno-31-15"></a><span class="nb">print</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">timeout</span><span class="p">)</span>  <span class="c1"># 30</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-24-1"><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
+</span><span id="__span-24-2"><a id="__codelineno-24-2" name="__codelineno-24-2" href="#__codelineno-24-2"></a>
+</span><span id="__span-24-3"><a id="__codelineno-24-3" name="__codelineno-24-3" href="#__codelineno-24-3"></a>
+</span><span id="__span-24-4"><a id="__codelineno-24-4" name="__codelineno-24-4" href="#__codelineno-24-4"></a><span class="k">class</span><span class="w"> </span><span class="nc">Config</span><span class="p">(</span><span class="n">mf</span><span class="o">.</span><span class="n">dotdict</span><span class="p">):</span>
+</span><span id="__span-24-5"><a id="__codelineno-24-5" name="__codelineno-24-5" href="#__codelineno-24-5"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">env</span><span class="o">=</span><span class="s2">&quot;production&quot;</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+</span><span id="__span-24-6"><a id="__codelineno-24-6" name="__codelineno-24-6" href="#__codelineno-24-6"></a>        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+</span><span id="__span-24-7"><a id="__codelineno-24-7" name="__codelineno-24-7" href="#__codelineno-24-7"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">env</span> <span class="o">=</span> <span class="n">env</span>
+</span><span id="__span-24-8"><a id="__codelineno-24-8" name="__codelineno-24-8" href="#__codelineno-24-8"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">debug</span> <span class="o">=</span> <span class="n">env</span> <span class="o">!=</span> <span class="s2">&quot;production&quot;</span>
+</span><span id="__span-24-9"><a id="__codelineno-24-9" name="__codelineno-24-9" href="#__codelineno-24-9"></a>
+</span><span id="__span-24-10"><a id="__codelineno-24-10" name="__codelineno-24-10" href="#__codelineno-24-10"></a>
+</span><span id="__span-24-11"><a id="__codelineno-24-11" name="__codelineno-24-11" href="#__codelineno-24-11"></a><span class="n">cfg</span> <span class="o">=</span> <span class="n">Config</span><span class="p">(</span><span class="n">env</span><span class="o">=</span><span class="s2">&quot;development&quot;</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="mi">30</span><span class="p">)</span>
+</span><span id="__span-24-12"><a id="__codelineno-24-12" name="__codelineno-24-12" href="#__codelineno-24-12"></a>
+</span><span id="__span-24-13"><a id="__codelineno-24-13" name="__codelineno-24-13" href="#__codelineno-24-13"></a><span class="nb">print</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">env</span><span class="p">)</span>      <span class="c1"># &quot;development&quot;</span>
+</span><span id="__span-24-14"><a id="__codelineno-24-14" name="__codelineno-24-14" href="#__codelineno-24-14"></a><span class="nb">print</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">debug</span><span class="p">)</span>    <span class="c1"># True</span>
+</span><span id="__span-24-15"><a id="__codelineno-24-15" name="__codelineno-24-15" href="#__codelineno-24-15"></a><span class="nb">print</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">timeout</span><span class="p">)</span>  <span class="c1"># 30</span>
 </span></code></pre></div>
 </details>
 <p><a href="nn/message.md"><code>Message</code></a> follows this exact pattern — it extends <code>dotdict</code> with default AI workflow fields (<code>content</code>, <code>images</code>, <code>context</code>, etc.) and metadata (<code>user_id</code>, <code>chat_id</code>, <code>execution_id</code>).</p>
@@ -4908,7 +4545,7 @@ Reassign the top-level key to trigger persistence:</p>
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../parsers/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Parsers">
+          <a href="../parsers/" class="md-footer__link md-footer__link--prev" aria-label="Previous: ⎙ Parsers">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
@@ -4918,7 +4555,7 @@ Reassign the top-level key to trigger persistence:</p>
                 Previous
               </span>
               <div class="md-ellipsis">
-                Parsers
+                ⎙ Parsers
               </div>
             </div>
           </a>

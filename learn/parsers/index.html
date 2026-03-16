@@ -15,7 +15,7 @@
         <link rel="canonical" href="https://msgflux.com/learn/parsers/">
       
       
-        <link rel="prev" href="../models/text_reranker/">
+        <link rel="prev" href="../retrievers/wikipedia/">
       
       
         <link rel="next" href="../dotdict/">
@@ -26,7 +26,7 @@
     
     
       
-        <title>Parsers - msgFlux</title>
+        <title>⎙ Parsers - msgFlux</title>
       
     
     
@@ -117,7 +117,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Parsers
+              ⎙ Parsers
             
           </span>
         </div>
@@ -888,6 +888,10 @@
       
         
       
+        
+      
+        
+      
     
     
     
@@ -929,12 +933,58 @@
   
   
     <li class="md-nav__item">
-      <a href="../retrievers/retriever.md" class="md-nav__link">
+      <a href="../retrievers/retriever/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
-    None
+    Retriever
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../retrievers/bm25/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    BM25 Retrievers
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../retrievers/wikipedia/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Wikipedia Retriever
     
   </span>
   
@@ -961,30 +1011,16 @@
   
   
   
-    
-    
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
       
         
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
           
-        
-      
-    
-    
-    
-      
-      
-    
-    
-    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
-      
-        
-        
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_4" checked>
-        
-          
-          <div class="md-nav__link md-nav__container">
-            <a href="./" class="md-nav__link md-nav__link--active">
-              
   
   
   <span class="md-ellipsis">
@@ -993,21 +1029,144 @@
   </span>
   
 
-            </a>
-            
-          </div>
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_4_label" aria-expanded="true">
-          <label class="md-nav__title" for="__nav_2_4">
-            <span class="md-nav__icon md-icon"></span>
-            ⎙ Parsers
-          </label>
-          <ul class="md-nav__list" data-md-scrollfix>
-            
-              
-            
-          </ul>
-        </nav>
+  
+  
+  <span class="md-ellipsis">
+    ⎙ Parsers
+    
+  </span>
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      ✦₊⁺ Overview
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-supported-formats" class="md-nav__link">
+    <span class="md-ellipsis">
+      1. Supported Formats
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-parserresponse" class="md-nav__link">
+    <span class="md-ellipsis">
+      2. ParserResponse
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. ParserResponse">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#common-data-keys" class="md-nav__link">
+    <span class="md-ellipsis">
+      Common data keys
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-pdf" class="md-nav__link">
+    <span class="md-ellipsis">
+      3. PDF
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-word-docx" class="md-nav__link">
+    <span class="md-ellipsis">
+      4. Word (.docx)
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-powerpoint-pptx" class="md-nav__link">
+    <span class="md-ellipsis">
+      5. PowerPoint (.pptx)
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-excel-xlsx" class="md-nav__link">
+    <span class="md-ellipsis">
+      6. Excel (.xlsx)
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-csv-tsv" class="md-nav__link">
+    <span class="md-ellipsis">
+      7. CSV / TSV
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-html" class="md-nav__link">
+    <span class="md-ellipsis">
+      8. HTML
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-email-eml" class="md-nav__link">
+    <span class="md-ellipsis">
+      9. Email (.eml)
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
       
     </li>
   
@@ -1805,14 +1964,6 @@
     
       
         
-          
-        
-      
-        
-      
-        
-      
-        
       
     
     
@@ -1828,9 +1979,8 @@
         <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_7_4" >
         
           
-          <div class="md-nav__link md-nav__container">
-            <a href="../nn/functional/" class="md-nav__link ">
-              
+          <label class="md-nav__link" for="__nav_2_7_4" id="__nav_2_7_4_label" tabindex="0">
+            
   
   
   <span class="md-ellipsis">
@@ -1839,14 +1989,8 @@
   </span>
   
 
-            </a>
-            
-              
-              <label class="md-nav__link " for="__nav_2_7_4" id="__nav_2_7_4_label" tabindex="0">
-                <span class="md-nav__icon md-icon"></span>
-              </label>
-            
-          </div>
+            <span class="md-nav__icon md-icon"></span>
+          </label>
         
         <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_2_7_4_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_2_7_4">
@@ -1856,66 +2000,18 @@
           <ul class="md-nav__list" data-md-scrollfix>
             
               
-            
-              
                 
   
   
   
   
     <li class="md-nav__item">
-      <a href="../nn/functional/gather/" class="md-nav__link">
+      <a href="../nn/functional/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
-    Gather Functions
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../nn/functional/utility/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    Utility Functions
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../nn/functional/best-practices/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    Best Practices
+    nn.functional
     
   </span>
   
@@ -3194,22 +3290,31 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#supported-formats" class="md-nav__link">
+  <a href="#overview" class="md-nav__link">
     <span class="md-ellipsis">
-      Supported Formats
+      ✦₊⁺ Overview
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#parserresponse" class="md-nav__link">
+  <a href="#1-supported-formats" class="md-nav__link">
     <span class="md-ellipsis">
-      ParserResponse
+      1. Supported Formats
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="ParserResponse">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-parserresponse" class="md-nav__link">
+    <span class="md-ellipsis">
+      2. ParserResponse
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. ParserResponse">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -3227,63 +3332,63 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#pdf" class="md-nav__link">
+  <a href="#3-pdf" class="md-nav__link">
     <span class="md-ellipsis">
-      PDF
+      3. PDF
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#word-docx" class="md-nav__link">
+  <a href="#4-word-docx" class="md-nav__link">
     <span class="md-ellipsis">
-      Word (.docx)
+      4. Word (.docx)
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#powerpoint-pptx" class="md-nav__link">
+  <a href="#5-powerpoint-pptx" class="md-nav__link">
     <span class="md-ellipsis">
-      PowerPoint (.pptx)
+      5. PowerPoint (.pptx)
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#excel-xlsx" class="md-nav__link">
+  <a href="#6-excel-xlsx" class="md-nav__link">
     <span class="md-ellipsis">
-      Excel (.xlsx)
+      6. Excel (.xlsx)
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#csv-tsv" class="md-nav__link">
+  <a href="#7-csv-tsv" class="md-nav__link">
     <span class="md-ellipsis">
-      CSV / TSV
+      7. CSV / TSV
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#html" class="md-nav__link">
+  <a href="#8-html" class="md-nav__link">
     <span class="md-ellipsis">
-      HTML
+      8. HTML
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#email-eml" class="md-nav__link">
+  <a href="#9-email-eml" class="md-nav__link">
     <span class="md-ellipsis">
-      Email (.eml)
+      9. Email (.eml)
     </span>
   </a>
   
@@ -3330,6 +3435,8 @@
 </style>
 <div class="copy-markdown-container" data-markdown="# Parsers
 
+## ✦₊⁺ Overview
+
 The `Parser` class provides a unified interface for extracting text, images, and metadata from a wide variety of document formats. Every parser converts its input into a consistent `ParserResponse` with a `data` dict containing at minimum a `text` field in Markdown format.
 
 All code examples use the recommended import pattern:
@@ -3340,7 +3447,7 @@ import msgflux as mf
 
 ---
 
-## Supported Formats
+## 1. **Supported Formats**
 
 | Format | Factory method | Provider |
 |--------|---------------|----------|
@@ -3363,7 +3470,7 @@ mf.Parser.providers()
 
 ---
 
-## ParserResponse
+## 2. **ParserResponse**
 
 Every parser returns a `ParserResponse`. Its main attributes are:
 
@@ -3383,7 +3490,7 @@ Every parser returns a `ParserResponse`. Its main attributes are:
 
 ---
 
-## PDF
+## 3. **PDF**
 
 ```python
 from io import BytesIO
@@ -3411,7 +3518,7 @@ print(response.data[&quot;metadata&quot;].extraction_mode)  # &quot;layout&quot;
 
 ---
 
-## Word (.docx)
+## 4. **Word (.docx)**
 
 ```python
 from io import BytesIO
@@ -3452,7 +3559,7 @@ print(response.data[&quot;metadata&quot;].num_tables)  # 1
 
 ---
 
-## PowerPoint (.pptx)
+## 5. **PowerPoint (.pptx)**
 
 ```python
 from io import BytesIO
@@ -3486,7 +3593,7 @@ print(response.data[&quot;metadata&quot;].num_slides)  # 1
 
 ---
 
-## Excel (.xlsx)
+## 6. **Excel (.xlsx)**
 
 ```python
 from io import BytesIO
@@ -3522,7 +3629,7 @@ print(response.data[&quot;metadata&quot;].num_sheets)  # 1
 
 ---
 
-## CSV / TSV
+## 7. **CSV / TSV**
 
 ```python
 import msgflux as mf
@@ -3549,7 +3656,7 @@ print(response.data[&quot;metadata&quot;].delimiter)  # &quot;,&quot;
 
 ---
 
-## HTML
+## 8. **HTML**
 
 ```python
 import msgflux as mf
@@ -3584,7 +3691,7 @@ print(response.data[&quot;metadata&quot;].title)  # &quot;My Page&quot;
 
 ---
 
-## Email (.eml)
+## 9. **Email (.eml)**
 
 ```python
 import msgflux as mf
@@ -3687,12 +3794,13 @@ print(response.data[&quot;body&quot;])                # &quot;Hi Bob, this is a 
     window.copyMarkdownToClipboard = copyMarkdownToClipboard;
 }());
 </script>
+<h2 id="overview">✦₊⁺ Overview</h2>
 <p>The <code>Parser</code> class provides a unified interface for extracting text, images, and metadata from a wide variety of document formats. Every parser converts its input into a consistent <code>ParserResponse</code> with a <code>data</code> dict containing at minimum a <code>text</code> field in Markdown format.</p>
 <p>All code examples use the recommended import pattern:</p>
 <div class="language-python highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
 </span></code></pre></div>
 <hr />
-<h2 id="supported-formats">Supported Formats</h2>
+<h2 id="1-supported-formats">1. <strong>Supported Formats</strong></h2>
 <table>
 <thead>
 <tr>
@@ -3739,13 +3847,13 @@ print(response.data[&quot;body&quot;])                # &quot;Hi Bob, this is a 
 </tr>
 </tbody>
 </table>
-<p>For installation instructions see <a href="../../dependency-management/#parsers">Dependency Management</a>.</p>
+<p>For installation instructions see <a href="../../dependency-management.md#parsers">Dependency Management</a>.</p>
 <p>To inspect available providers at runtime:</p>
 <div class="language-python highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">mf</span><span class="o">.</span><span class="n">Parser</span><span class="o">.</span><span class="n">providers</span><span class="p">()</span>
 </span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="c1"># {&quot;pdf&quot;: [&quot;pypdf&quot;], &quot;docx&quot;: [&quot;python_docx&quot;], ...}</span>
 </span></code></pre></div>
 <hr />
-<h2 id="parserresponse">ParserResponse</h2>
+<h2 id="2-parserresponse">2. <strong>ParserResponse</strong></h2>
 <p>Every parser returns a <code>ParserResponse</code>. Its main attributes are:</p>
 <table>
 <thead>
@@ -3801,7 +3909,7 @@ print(response.data[&quot;body&quot;])                # &quot;Hi Bob, this is a 
 </tbody>
 </table>
 <hr />
-<h2 id="pdf">PDF</h2>
+<h2 id="3-pdf">3. <strong>PDF</strong></h2>
 <div class="language-python highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">io</span><span class="w"> </span><span class="kn">import</span> <span class="n">BytesIO</span>
 </span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
 </span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">pypdf</span><span class="w"> </span><span class="kn">import</span> <span class="n">PdfWriter</span>
@@ -3823,7 +3931,7 @@ print(response.data[&quot;body&quot;])                # &quot;Hi Bob, this is a 
 <p><strong><code>data</code> keys:</strong> <code>text</code>, <code>images</code>, <code>metadata</code></p>
 <p><strong><code>metadata</code> fields:</strong> <code>num_pages</code>, <code>extraction_mode</code>, <code>pdf_info</code> <em>(optional — title, author, subject)</em></p>
 <hr />
-<h2 id="word-docx">Word (.docx)</h2>
+<h2 id="4-word-docx">4. <strong>Word (.docx)</strong></h2>
 <div class="language-python highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">io</span><span class="w"> </span><span class="kn">import</span> <span class="n">BytesIO</span>
 </span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
 </span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">docx</span><span class="w"> </span><span class="kn">import</span> <span class="n">Document</span>
@@ -3858,7 +3966,7 @@ print(response.data[&quot;body&quot;])                # &quot;Hi Bob, this is a 
 <p><strong><code>data</code> keys:</strong> <code>text</code>, <code>images</code>, <code>metadata</code></p>
 <p><strong><code>metadata</code> fields:</strong> <code>num_paragraphs</code>, <code>num_tables</code>, <code>num_images</code>, <code>table_format</code>, <code>docx_info</code> <em>(optional)</em></p>
 <hr />
-<h2 id="powerpoint-pptx">PowerPoint (.pptx)</h2>
+<h2 id="5-powerpoint-pptx">5. <strong>PowerPoint (.pptx)</strong></h2>
 <div class="language-python highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">io</span><span class="w"> </span><span class="kn">import</span> <span class="n">BytesIO</span>
 </span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
 </span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">pptx</span><span class="w"> </span><span class="kn">import</span> <span class="n">Presentation</span>
@@ -3886,7 +3994,7 @@ print(response.data[&quot;body&quot;])                # &quot;Hi Bob, this is a 
 <p><strong><code>data</code> keys:</strong> <code>text</code>, <code>images</code>, <code>metadata</code></p>
 <p><strong><code>metadata</code> fields:</strong> <code>num_slides</code>, <code>include_notes</code>, <code>pptx_info</code> <em>(optional)</em></p>
 <hr />
-<h2 id="excel-xlsx">Excel (.xlsx)</h2>
+<h2 id="6-excel-xlsx">6. <strong>Excel (.xlsx)</strong></h2>
 <div class="language-python highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">io</span><span class="w"> </span><span class="kn">import</span> <span class="n">BytesIO</span>
 </span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
 </span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">openpyxl</span><span class="w"> </span><span class="kn">import</span> <span class="n">Workbook</span>
@@ -3916,7 +4024,7 @@ print(response.data[&quot;body&quot;])                # &quot;Hi Bob, this is a 
 <p><strong><code>data</code> keys:</strong> <code>text</code>, <code>images</code>, <code>metadata</code></p>
 <p><strong><code>metadata</code> fields:</strong> <code>num_sheets</code>, <code>sheet_names</code>, <code>table_format</code></p>
 <hr />
-<h2 id="csv-tsv">CSV / TSV</h2>
+<h2 id="7-csv-tsv">7. <strong>CSV / TSV</strong></h2>
 <div class="language-python highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
 </span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>
 </span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="n">csv_content</span> <span class="o">=</span> <span class="sa">b</span><span class="s2">&quot;product,qty,price</span><span class="se">\n</span><span class="s2">widget,10,5.99</span><span class="se">\n</span><span class="s2">gadget,3,19.99</span><span class="se">\n</span><span class="s2">&quot;</span>
@@ -3937,7 +4045,7 @@ print(response.data[&quot;body&quot;])                # &quot;Hi Bob, this is a 
 <p><strong><code>data</code> keys:</strong> <code>text</code>, <code>metadata</code></p>
 <p><strong><code>metadata</code> fields:</strong> <code>num_rows</code>, <code>num_cols</code>, <code>total_rows</code>, <code>has_header</code>, <code>delimiter</code>, <code>table_format</code>, <code>encoding</code></p>
 <hr />
-<h2 id="html">HTML</h2>
+<h2 id="8-html">8. <strong>HTML</strong></h2>
 <div class="language-python highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
 </span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>
 </span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="n">html_content</span> <span class="o">=</span> <span class="s2">&quot;&quot;&quot;</span><span class="se">\</span>
@@ -3966,7 +4074,7 @@ print(response.data[&quot;body&quot;])                # &quot;Hi Bob, this is a 
 <p><strong><code>data</code> keys:</strong> <code>text</code>, <code>links</code>, <code>images</code>, <code>metadata</code></p>
 <p><strong><code>metadata</code> fields:</strong> <code>title</code>, <code>num_links</code>, <code>num_images</code>, <code>extract_links</code>, <code>extract_images</code></p>
 <hr />
-<h2 id="email-eml">Email (.eml)</h2>
+<h2 id="9-email-eml">9. <strong>Email (.eml)</strong></h2>
 <div class="language-python highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
 </span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>
 </span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="n">email_content</span> <span class="o">=</span> <span class="p">(</span>
@@ -4034,7 +4142,7 @@ print(response.data[&quot;body&quot;])                # &quot;Hi Bob, this is a 
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../models/text_reranker/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Text Reranker">
+          <a href="../retrievers/wikipedia/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Wikipedia Retriever">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
@@ -4044,7 +4152,7 @@ print(response.data[&quot;body&quot;])                # &quot;Hi Bob, this is a 
                 Previous
               </span>
               <div class="md-ellipsis">
-                Text Reranker
+                Wikipedia Retriever
               </div>
             </div>
           </a>
