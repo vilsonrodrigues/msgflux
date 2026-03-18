@@ -1752,6 +1752,39 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#declarative-mode-with-message" class="md-nav__link">
+    <span class="md-ellipsis">
+      Declarative Mode with Message
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Declarative Mode with Message">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#path-formats" class="md-nav__link">
+    <span class="md-ellipsis">
+      Path Formats
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#or-inputs-flexible-path-resolution" class="md-nav__link">
+    <span class="md-ellipsis">
+      OR Inputs — Flexible Path Resolution
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -3296,6 +3329,39 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#declarative-mode-with-message" class="md-nav__link">
+    <span class="md-ellipsis">
+      Declarative Mode with Message
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Declarative Mode with Message">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#path-formats" class="md-nav__link">
+    <span class="md-ellipsis">
+      Path Formats
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#or-inputs-flexible-path-resolution" class="md-nav__link">
+    <span class="md-ellipsis">
+      OR Inputs — Flexible Path Resolution
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -4067,6 +4133,102 @@ Use `config={&quot;return_messages&quot;: True}` to get back both the agent&#x27
             # Update messages for next turn (include the assistant reply)
             messages = result.messages + [mf.ChatBlock.assist(full_response)]
         ```
+
+## Declarative Mode with Message
+
+In declarative mode, you configure the agent once with `message_fields` and `response_mode`, then pass a `mf.Message` object. The agent reads its inputs from the Message and writes its output back into it — no manual wiring needed.
+
+```python
+class MyAgent(nn.Agent):
+    model = mf.Model.chat_completion(&quot;openai/gpt-4.1-mini&quot;)
+    message_fields = {
+        &quot;task_inputs&quot;: &quot;user.query&quot;,            # Read task from msg.user.query
+        &quot;context_inputs&quot;: &quot;context.background&quot;  # Read context from msg.context.background
+    }
+    response_mode = &quot;agent.output&quot;              # Write response to msg.agent.output
+```
+
+### Path Formats
+
+| Path type | Syntax | Behavior |
+|-----------|--------|----------|
+| Simple field | `&quot;query&quot;` | Reads the top-level `query` field |
+| Nested field | `&quot;user.question&quot;` | Reads `msg.user.question` via dot notation |
+| **OR inputs** | `(&quot;path1&quot;, &quot;path2&quot;, ...)` | Returns the **first non-None value** found |
+
+### OR Inputs — Flexible Path Resolution
+
+When a path is defined as a **tuple**, the agent tries each path in order and uses the first one that returns a non-None value. This is the **OR inputs** pattern.
+
+It is especially powerful in dynamic pipelines where the same agent may receive input from different upstream steps — for example, when an `inline` function may or may not have produced a refined output:
+
+```python
+class QAAgent(nn.Agent):
+    model = mf.Model.chat_completion(&quot;openai/gpt-4.1-mini&quot;)
+    message_fields = {
+        &quot;task_inputs&quot;: (&quot;refined.question&quot;, &quot;user.question&quot;, &quot;user.raw_input&quot;)
+    }
+    response_mode = &quot;qa.answer&quot;
+```
+
+If `refined.question` is present in the message, it is used. Otherwise the agent falls back to `user.question`, and then to `user.raw_input`.
+
+OR inputs also work inside dict-valued fields (e.g. `task_multimodal_inputs`):
+
+```python
+class VisionAgent(nn.Agent):
+    model = mf.Model.chat_completion(&quot;openai/gpt-4.1-mini&quot;)
+    message_fields = {
+        &quot;task_inputs&quot;: (&quot;user.query&quot;, &quot;user.raw_input&quot;),        # OR on task
+        &quot;task_multimodal_inputs&quot;: {
+            &quot;image&quot;: (&quot;user.photo_url&quot;, &quot;user.image&quot;)           # OR on image
+        }
+    }
+    response_mode = &quot;vision.result&quot;
+```
+
+???+ example &quot;OR Inputs in a Pipeline&quot;
+
+    A `Refiner` agent is an optional step that rewrites the user&#x27;s question. The `Answerer` uses OR inputs so it works correctly whether or not the refiner ran:
+
+    ```python
+    # pip install msgflux[openai]
+    import msgflux as mf
+    import msgflux.nn as nn
+
+    # mf.set_envs(OPENAI_API_KEY=&quot;...&quot;)
+
+    class Refiner(nn.Agent):
+        model = mf.Model.chat_completion(&quot;openai/gpt-4.1-mini&quot;)
+        instructions = &quot;Rewrite the question to be clearer and more specific.&quot;
+        message_fields = {&quot;task_inputs&quot;: &quot;user.question&quot;}
+        response_mode = &quot;refined.question&quot;
+
+    class Answerer(nn.Agent):
+        model = mf.Model.chat_completion(&quot;openai/gpt-4.1-mini&quot;)
+        message_fields = {
+            # Use refined question if available, fall back to original
+            &quot;task_inputs&quot;: (&quot;refined.question&quot;, &quot;user.question&quot;)
+        }
+        response_mode = &quot;answer&quot;
+
+    refiner = Refiner()
+    answerer = Answerer()
+
+    # With refinement
+    msg_a = mf.Message()
+    msg_a.set(&quot;user.question&quot;, &quot;how do i make it go faster?&quot;)
+    refiner(msg_a)   # writes to msg_a.refined.question
+    answerer(msg_a)  # uses refined.question
+    print(msg_a.answer)
+
+    # Without refinement — answerer falls back to user.question
+    msg_b = mf.Message()
+    msg_b.set(&quot;user.question&quot;, &quot;What is the capital of France?&quot;)
+    answerer(msg_b)  # uses user.question directly
+    print(msg_b.answer)
+    ```
+
 ">
   <button class="copy-markdown-button" onclick="copyMarkdownToClipboard(this)">
     <i id="copy-icon" class="ph ph-clipboard" style="font-size:16px;"></i>
@@ -4915,6 +5077,105 @@ Use `config={&quot;return_messages&quot;: True}` to get back both the agent&#x27
 </div>
 </div>
 </div>
+</details>
+<h2 id="declarative-mode-with-message">Declarative Mode with Message</h2>
+<p>In declarative mode, you configure the agent once with <code>message_fields</code> and <code>response_mode</code>, then pass a <code>mf.Message</code> object. The agent reads its inputs from the Message and writes its output back into it — no manual wiring needed.</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-18-1"><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">MyAgent</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">):</span>
+</span><span id="__span-18-2"><a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a>    <span class="n">model</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">chat_completion</span><span class="p">(</span><span class="s2">&quot;openai/gpt-4.1-mini&quot;</span><span class="p">)</span>
+</span><span id="__span-18-3"><a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a>    <span class="n">message_fields</span> <span class="o">=</span> <span class="p">{</span>
+</span><span id="__span-18-4"><a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a>        <span class="s2">&quot;task_inputs&quot;</span><span class="p">:</span> <span class="s2">&quot;user.query&quot;</span><span class="p">,</span>            <span class="c1"># Read task from msg.user.query</span>
+</span><span id="__span-18-5"><a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a>        <span class="s2">&quot;context_inputs&quot;</span><span class="p">:</span> <span class="s2">&quot;context.background&quot;</span>  <span class="c1"># Read context from msg.context.background</span>
+</span><span id="__span-18-6"><a id="__codelineno-18-6" name="__codelineno-18-6" href="#__codelineno-18-6"></a>    <span class="p">}</span>
+</span><span id="__span-18-7"><a id="__codelineno-18-7" name="__codelineno-18-7" href="#__codelineno-18-7"></a>    <span class="n">response_mode</span> <span class="o">=</span> <span class="s2">&quot;agent.output&quot;</span>              <span class="c1"># Write response to msg.agent.output</span>
+</span></code></pre></div>
+<h3 id="path-formats">Path Formats</h3>
+<table>
+<thead>
+<tr>
+<th>Path type</th>
+<th>Syntax</th>
+<th>Behavior</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Simple field</td>
+<td><code>"query"</code></td>
+<td>Reads the top-level <code>query</code> field</td>
+</tr>
+<tr>
+<td>Nested field</td>
+<td><code>"user.question"</code></td>
+<td>Reads <code>msg.user.question</code> via dot notation</td>
+</tr>
+<tr>
+<td><strong>OR inputs</strong></td>
+<td><code>("path1", "path2", ...)</code></td>
+<td>Returns the <strong>first non-None value</strong> found</td>
+</tr>
+</tbody>
+</table>
+<h3 id="or-inputs-flexible-path-resolution">OR Inputs — Flexible Path Resolution</h3>
+<p>When a path is defined as a <strong>tuple</strong>, the agent tries each path in order and uses the first one that returns a non-None value. This is the <strong>OR inputs</strong> pattern.</p>
+<p>It is especially powerful in dynamic pipelines where the same agent may receive input from different upstream steps — for example, when an <code>inline</code> function may or may not have produced a refined output:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-19-1"><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">QAAgent</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">):</span>
+</span><span id="__span-19-2"><a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a>    <span class="n">model</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">chat_completion</span><span class="p">(</span><span class="s2">&quot;openai/gpt-4.1-mini&quot;</span><span class="p">)</span>
+</span><span id="__span-19-3"><a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a>    <span class="n">message_fields</span> <span class="o">=</span> <span class="p">{</span>
+</span><span id="__span-19-4"><a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a>        <span class="s2">&quot;task_inputs&quot;</span><span class="p">:</span> <span class="p">(</span><span class="s2">&quot;refined.question&quot;</span><span class="p">,</span> <span class="s2">&quot;user.question&quot;</span><span class="p">,</span> <span class="s2">&quot;user.raw_input&quot;</span><span class="p">)</span>
+</span><span id="__span-19-5"><a id="__codelineno-19-5" name="__codelineno-19-5" href="#__codelineno-19-5"></a>    <span class="p">}</span>
+</span><span id="__span-19-6"><a id="__codelineno-19-6" name="__codelineno-19-6" href="#__codelineno-19-6"></a>    <span class="n">response_mode</span> <span class="o">=</span> <span class="s2">&quot;qa.answer&quot;</span>
+</span></code></pre></div>
+<p>If <code>refined.question</code> is present in the message, it is used. Otherwise the agent falls back to <code>user.question</code>, and then to <code>user.raw_input</code>.</p>
+<p>OR inputs also work inside dict-valued fields (e.g. <code>task_multimodal_inputs</code>):</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-20-1"><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">VisionAgent</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">):</span>
+</span><span id="__span-20-2"><a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a>    <span class="n">model</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">chat_completion</span><span class="p">(</span><span class="s2">&quot;openai/gpt-4.1-mini&quot;</span><span class="p">)</span>
+</span><span id="__span-20-3"><a id="__codelineno-20-3" name="__codelineno-20-3" href="#__codelineno-20-3"></a>    <span class="n">message_fields</span> <span class="o">=</span> <span class="p">{</span>
+</span><span id="__span-20-4"><a id="__codelineno-20-4" name="__codelineno-20-4" href="#__codelineno-20-4"></a>        <span class="s2">&quot;task_inputs&quot;</span><span class="p">:</span> <span class="p">(</span><span class="s2">&quot;user.query&quot;</span><span class="p">,</span> <span class="s2">&quot;user.raw_input&quot;</span><span class="p">),</span>        <span class="c1"># OR on task</span>
+</span><span id="__span-20-5"><a id="__codelineno-20-5" name="__codelineno-20-5" href="#__codelineno-20-5"></a>        <span class="s2">&quot;task_multimodal_inputs&quot;</span><span class="p">:</span> <span class="p">{</span>
+</span><span id="__span-20-6"><a id="__codelineno-20-6" name="__codelineno-20-6" href="#__codelineno-20-6"></a>            <span class="s2">&quot;image&quot;</span><span class="p">:</span> <span class="p">(</span><span class="s2">&quot;user.photo_url&quot;</span><span class="p">,</span> <span class="s2">&quot;user.image&quot;</span><span class="p">)</span>           <span class="c1"># OR on image</span>
+</span><span id="__span-20-7"><a id="__codelineno-20-7" name="__codelineno-20-7" href="#__codelineno-20-7"></a>        <span class="p">}</span>
+</span><span id="__span-20-8"><a id="__codelineno-20-8" name="__codelineno-20-8" href="#__codelineno-20-8"></a>    <span class="p">}</span>
+</span><span id="__span-20-9"><a id="__codelineno-20-9" name="__codelineno-20-9" href="#__codelineno-20-9"></a>    <span class="n">response_mode</span> <span class="o">=</span> <span class="s2">&quot;vision.result&quot;</span>
+</span></code></pre></div>
+<details class="example" open="open">
+<summary>OR Inputs in a Pipeline</summary>
+<p>A <code>Refiner</code> agent is an optional step that rewrites the user's question. The <code>Answerer</code> uses OR inputs so it works correctly whether or not the refiner ran:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-21-1"><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a><span class="c1"># pip install msgflux[openai]</span>
+</span><span id="__span-21-2"><a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
+</span><span id="__span-21-3"><a id="__codelineno-21-3" name="__codelineno-21-3" href="#__codelineno-21-3"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">nn</span>
+</span><span id="__span-21-4"><a id="__codelineno-21-4" name="__codelineno-21-4" href="#__codelineno-21-4"></a>
+</span><span id="__span-21-5"><a id="__codelineno-21-5" name="__codelineno-21-5" href="#__codelineno-21-5"></a><span class="c1"># mf.set_envs(OPENAI_API_KEY=&quot;...&quot;)</span>
+</span><span id="__span-21-6"><a id="__codelineno-21-6" name="__codelineno-21-6" href="#__codelineno-21-6"></a>
+</span><span id="__span-21-7"><a id="__codelineno-21-7" name="__codelineno-21-7" href="#__codelineno-21-7"></a><span class="k">class</span><span class="w"> </span><span class="nc">Refiner</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">):</span>
+</span><span id="__span-21-8"><a id="__codelineno-21-8" name="__codelineno-21-8" href="#__codelineno-21-8"></a>    <span class="n">model</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">chat_completion</span><span class="p">(</span><span class="s2">&quot;openai/gpt-4.1-mini&quot;</span><span class="p">)</span>
+</span><span id="__span-21-9"><a id="__codelineno-21-9" name="__codelineno-21-9" href="#__codelineno-21-9"></a>    <span class="n">instructions</span> <span class="o">=</span> <span class="s2">&quot;Rewrite the question to be clearer and more specific.&quot;</span>
+</span><span id="__span-21-10"><a id="__codelineno-21-10" name="__codelineno-21-10" href="#__codelineno-21-10"></a>    <span class="n">message_fields</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;task_inputs&quot;</span><span class="p">:</span> <span class="s2">&quot;user.question&quot;</span><span class="p">}</span>
+</span><span id="__span-21-11"><a id="__codelineno-21-11" name="__codelineno-21-11" href="#__codelineno-21-11"></a>    <span class="n">response_mode</span> <span class="o">=</span> <span class="s2">&quot;refined.question&quot;</span>
+</span><span id="__span-21-12"><a id="__codelineno-21-12" name="__codelineno-21-12" href="#__codelineno-21-12"></a>
+</span><span id="__span-21-13"><a id="__codelineno-21-13" name="__codelineno-21-13" href="#__codelineno-21-13"></a><span class="k">class</span><span class="w"> </span><span class="nc">Answerer</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">):</span>
+</span><span id="__span-21-14"><a id="__codelineno-21-14" name="__codelineno-21-14" href="#__codelineno-21-14"></a>    <span class="n">model</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">chat_completion</span><span class="p">(</span><span class="s2">&quot;openai/gpt-4.1-mini&quot;</span><span class="p">)</span>
+</span><span id="__span-21-15"><a id="__codelineno-21-15" name="__codelineno-21-15" href="#__codelineno-21-15"></a>    <span class="n">message_fields</span> <span class="o">=</span> <span class="p">{</span>
+</span><span id="__span-21-16"><a id="__codelineno-21-16" name="__codelineno-21-16" href="#__codelineno-21-16"></a>        <span class="c1"># Use refined question if available, fall back to original</span>
+</span><span id="__span-21-17"><a id="__codelineno-21-17" name="__codelineno-21-17" href="#__codelineno-21-17"></a>        <span class="s2">&quot;task_inputs&quot;</span><span class="p">:</span> <span class="p">(</span><span class="s2">&quot;refined.question&quot;</span><span class="p">,</span> <span class="s2">&quot;user.question&quot;</span><span class="p">)</span>
+</span><span id="__span-21-18"><a id="__codelineno-21-18" name="__codelineno-21-18" href="#__codelineno-21-18"></a>    <span class="p">}</span>
+</span><span id="__span-21-19"><a id="__codelineno-21-19" name="__codelineno-21-19" href="#__codelineno-21-19"></a>    <span class="n">response_mode</span> <span class="o">=</span> <span class="s2">&quot;answer&quot;</span>
+</span><span id="__span-21-20"><a id="__codelineno-21-20" name="__codelineno-21-20" href="#__codelineno-21-20"></a>
+</span><span id="__span-21-21"><a id="__codelineno-21-21" name="__codelineno-21-21" href="#__codelineno-21-21"></a><span class="n">refiner</span> <span class="o">=</span> <span class="n">Refiner</span><span class="p">()</span>
+</span><span id="__span-21-22"><a id="__codelineno-21-22" name="__codelineno-21-22" href="#__codelineno-21-22"></a><span class="n">answerer</span> <span class="o">=</span> <span class="n">Answerer</span><span class="p">()</span>
+</span><span id="__span-21-23"><a id="__codelineno-21-23" name="__codelineno-21-23" href="#__codelineno-21-23"></a>
+</span><span id="__span-21-24"><a id="__codelineno-21-24" name="__codelineno-21-24" href="#__codelineno-21-24"></a><span class="c1"># With refinement</span>
+</span><span id="__span-21-25"><a id="__codelineno-21-25" name="__codelineno-21-25" href="#__codelineno-21-25"></a><span class="n">msg_a</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Message</span><span class="p">()</span>
+</span><span id="__span-21-26"><a id="__codelineno-21-26" name="__codelineno-21-26" href="#__codelineno-21-26"></a><span class="n">msg_a</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">&quot;user.question&quot;</span><span class="p">,</span> <span class="s2">&quot;how do i make it go faster?&quot;</span><span class="p">)</span>
+</span><span id="__span-21-27"><a id="__codelineno-21-27" name="__codelineno-21-27" href="#__codelineno-21-27"></a><span class="n">refiner</span><span class="p">(</span><span class="n">msg_a</span><span class="p">)</span>   <span class="c1"># writes to msg_a.refined.question</span>
+</span><span id="__span-21-28"><a id="__codelineno-21-28" name="__codelineno-21-28" href="#__codelineno-21-28"></a><span class="n">answerer</span><span class="p">(</span><span class="n">msg_a</span><span class="p">)</span>  <span class="c1"># uses refined.question</span>
+</span><span id="__span-21-29"><a id="__codelineno-21-29" name="__codelineno-21-29" href="#__codelineno-21-29"></a><span class="nb">print</span><span class="p">(</span><span class="n">msg_a</span><span class="o">.</span><span class="n">answer</span><span class="p">)</span>
+</span><span id="__span-21-30"><a id="__codelineno-21-30" name="__codelineno-21-30" href="#__codelineno-21-30"></a>
+</span><span id="__span-21-31"><a id="__codelineno-21-31" name="__codelineno-21-31" href="#__codelineno-21-31"></a><span class="c1"># Without refinement — answerer falls back to user.question</span>
+</span><span id="__span-21-32"><a id="__codelineno-21-32" name="__codelineno-21-32" href="#__codelineno-21-32"></a><span class="n">msg_b</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Message</span><span class="p">()</span>
+</span><span id="__span-21-33"><a id="__codelineno-21-33" name="__codelineno-21-33" href="#__codelineno-21-33"></a><span class="n">msg_b</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">&quot;user.question&quot;</span><span class="p">,</span> <span class="s2">&quot;What is the capital of France?&quot;</span><span class="p">)</span>
+</span><span id="__span-21-34"><a id="__codelineno-21-34" name="__codelineno-21-34" href="#__codelineno-21-34"></a><span class="n">answerer</span><span class="p">(</span><span class="n">msg_b</span><span class="p">)</span>  <span class="c1"># uses user.question directly</span>
+</span><span id="__span-21-35"><a id="__codelineno-21-35" name="__codelineno-21-35" href="#__codelineno-21-35"></a><span class="nb">print</span><span class="p">(</span><span class="n">msg_b</span><span class="o">.</span><span class="n">answer</span><span class="p">)</span>
+</span></code></pre></div>
 </details>
 
 
