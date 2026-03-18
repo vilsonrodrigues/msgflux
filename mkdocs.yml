@@ -4,7 +4,7 @@ site_author: Vilson Rodrigues
 site_description: >-
   An engine for build dynamic AI systems.
 copyright: |
-    &copy; 2025 <a href="https://github.com/msgflux"  target="_blank" rel="noopener">msgFlux</a>
+    &copy; 2026 <a href="https://github.com/msgflux"  target="_blank" rel="noopener">msgFlux</a>
 
 repo_url: https://github.com/msgflux/msgflux
 repo_name: msgflux/msgflux
@@ -19,7 +19,7 @@ theme:
   features:
     # Navigation
     - navigation.tabs
-    - navigation.sections
+    #- navigation.sections
     - navigation.indexes
     - navigation.top
     - navigation.instant
@@ -33,7 +33,7 @@ theme:
     - blog
     # Table of Contents
     - toc.follow
-    - toc.integrate
+    #- toc.integrate
     # Search
     - search.suggest
     - search.highlight
@@ -61,6 +61,9 @@ theme:
   font:
     text: Roboto
     code: Roboto Mono
+
+hooks:
+  - docs/hooks/copy_markdown.py
 
 plugins:
   - blog
@@ -119,42 +122,101 @@ nav:
     - index.md
   - Learn:
     - QuickStart: quickstart.md
-    - Docs:
-      - ✧ Models:
-        - learn/models/model.md
-        - learn/models/model_gateway.md
-        - learn/models/chat_completion.md
-        - learn/models/moderation.md
-        - learn/models/text_embedder.md        
-        - learn/models/text_to_speech.md
-        - learn/models/speech_to_text.md        
-        - learn/models/text_to_image.md
-        - learn/models/image_text_to_image.md
-      #- ⛁ DataBases: 
-      #  - core/database.md
-      #  - Vector: databases/vector.md
-      - ⟳ Retrievers:
-        - learn/retrievers/retriever.md
-      - ⎙ Parsers: learn/parsers/parser.md
-      - ⟢ nn:
-        - learn/module.md      
+    - ✧ Models:
+      - learn/models/model.md
+      - learn/models/model_gateway.md
+      - learn/models/chat_completion.md
+      - learn/models/moderation.md
+      - learn/models/text_embedder.md
+      - learn/models/text_to_speech.md
+      - learn/models/speech_to_text.md
+      - learn/models/text_to_image.md
+      - learn/models/image_text_to_image.md
+      - learn/models/text_classifier.md
+      - learn/models/image_embedder.md
+      - learn/models/text_reranker.md
+    #- ⛁ DataBases:
+    #  - core/database.md
+    #  - Vector: databases/vector.md
+    - ⟳ Retriever:
+      - learn/retrievers/retriever.md
+      - learn/retrievers/bm25.md
+      - learn/retrievers/wikipedia.md
+    - ⎙ Parsers: learn/parsers.md
+    - ◈ dotdict: learn/dotdict.md
+    - ⊕ Inline: learn/inline.md
+    - ⟢ Modules:
+      - Module:
+        - learn/nn/module/index.md
+        - learn/nn/module/core-concepts.md
+        - learn/nn/module/forward-and-async.md
+        - learn/nn/module/composing.md
+        - learn/nn/module/module-dict.md
+        - learn/nn/module/module-list.md
+        - learn/nn/module/sequential.md
+        - learn/nn/module/visualization.md
+      - Message: learn/nn/message.md
+      - Agent:
+        - learn/nn/agent/index.md
+        - learn/nn/agent/quickstart.md
+        - learn/nn/agent/autoparams.md
+        - learn/nn/agent/async.md
+        - learn/nn/agent/streaming.md
+        - learn/nn/agent/debug.md
+        - learn/nn/agent/system-prompt.md
+        - learn/nn/agent/generation-schemas.md
+        - learn/nn/agent/task-and-context.md
+        - learn/nn/agent/vars.md
+        - learn/nn/agent/tools.md
+        - learn/nn/agent/signatures.md
+        - learn/nn/agent/hooks.md
+        - learn/nn/agent/model-gateway.md
+        - learn/nn/agent/prefilling.md
+      - Functional:
+        - learn/nn/functional.md
+      - Transcriber:
+        - learn/nn/transcriber.md        
+      - Retriever:
+        - learn/nn/retriever.md
+      - Speaker:
+        - learn/nn/speaker.md
+      - MediaMaker:
+        - learn/nn/mediamaker.md
+      #- Predictor:
+      #  - learn/nn/predictor.md
+    - ◎ Telemetry: learn/telemetry.md
     #- ⇄ Dependency Management: dependency-management.md
-  - API Reference:
-    - Models:
-        - api-reference/models/model.md
-        - api-reference/models/model_gateway.md
-        - Types:
-            - ChatCompletion: api-reference/models/types/chat_completion.md
-    - DataBases:
-        - api-reference/databases/database.md
-        - Types:
-            - KV: api-reference/databases/types/kv.md
-            - Vector: api-reference/databases/types/vector.md
-    - nn:
-        - api-reference/nn/functional.md
-        - api-reference/nn/modules/agent.md       
-  - Changelog: changelog.md
+    - API Reference:
+      - Models:
+          - api-reference/models/model.md
+          - api-reference/models/model_gateway.md
+          - Types:
+              - ChatCompletion: api-reference/models/types/chat_completion.md
+      - DataBases:
+          - api-reference/databases/database.md
+          - Types:
+              - KV: api-reference/databases/types/kv.md
+              - Vector: api-reference/databases/types/vector.md
+      - nn:
+          - api-reference/nn/functional.md
+          - api-reference/nn/modules/agent.md       
+  - Tutorials:
+    - tutorials/tutorials.md
+    - Product Poster Generator: tutorials/product-poster.md
+    - Intent Router: tutorials/intent-router.md
+    - Visit Report Assistant: tutorials/visit-report.md
+    - Query Router with Signatures: tutorials/signature-router.md
+    - YouTube Video Cut Detector: tutorials/youtube-cut-detector.md
+    - Call Transcript Analysis: tutorials/call-transcript-analysis.md
+    - Research Scholar Agent: tutorials/research-scholar.md
+    - Email Auto Responder: tutorials/email-auto-responder.md
+    - Meeting Assistant: tutorials/meeting-assistant.md
+    - Code Generation & Debugging Agent: tutorials/code-debug-agent.md
+    - Legal Document Review: tutorials/legal-document-review.md
+    - Lead Scoring: tutorials/lead-scoring.md
+    - README Generator: tutorials/readme-generator.md
   - Dependency Management: dependency-management.md
+  - Changelog: CHANGELOG.md
   - Blog:
     - blog/index.md
 
@@ -174,6 +236,7 @@ extra:
       name: Follow us on Twitter
 
 extra_css:
+  - https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@700&display=swap
   - https://unpkg.com/mermaid@8.5.1/dist/mermaid.css
   - stylesheets/extra.css
 

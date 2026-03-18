@@ -4,7 +4,8 @@ import asyncio
 
 import pytest
 
-from msgflux.dotdict import dotdict
+from msgflux import TaskError
+from msgflux.core.dotdict import dotdict
 from msgflux.nn import functional as F
 
 
@@ -130,80 +131,33 @@ class TestBcastGather:
         with pytest.raises(TypeError, match="`to_send` must be a non-empty list"):
             F.bcast_gather(["not_callable"], 1)
 
-
-class TestMsgScatterGather:
-    """Test suite for msg_scatter_gather function."""
-
-    def test_msg_scatter_gather_basic(self):
-        """Test basic msg_scatter_gather functionality."""
+    def test_bcast_gather_supports_inplace_message_mutation(self):
+        """Test bcast_gather with shared mutable message."""
 
         def add_field_a(msg):
             msg["field_a"] = "value_a"
-            return msg
 
         def add_field_b(msg):
             msg["field_b"] = "value_b"
-            return msg
-
-        messages = [dotdict(), dotdict()]
-        results = F.msg_scatter_gather([add_field_a, add_field_b], messages)
-
-        assert len(results) == 2
-        assert results[0]["field_a"] == "value_a"
-        assert results[1]["field_b"] == "value_b"
-
-    def test_msg_scatter_gather_invalid_messages(self):
-        """Test msg_scatter_gather raises TypeError for invalid messages."""
-
-        def dummy(msg):
-            return msg
-
-        with pytest.raises(TypeError, match="`messages` must be a non-empty list"):
-            F.msg_scatter_gather([dummy], ["not_dotdict"])
-
-    def test_msg_scatter_gather_length_mismatch(self):
-        """Test msg_scatter_gather raises ValueError for length mismatch."""
-
-        def dummy(msg):
-            return msg
-
-        with pytest.raises(ValueError, match="The size of `messages`"):
-            F.msg_scatter_gather([dummy], [dotdict(), dotdict()])
-
-
-class TestMsgBcastGather:
-    """Test suite for msg_bcast_gather function."""
-
-    def test_msg_bcast_gather_basic(self):
-        """Test basic msg_bcast_gather functionality."""
-
-        def add_field_a(msg):
-            msg["field_a"] = "value_a"
-            return msg
-
-        def add_field_b(msg):
-            msg["field_b"] = "value_b"
-            return msg
 
         message = dotdict()
-        result = F.msg_bcast_gather([add_field_a, add_field_b], message)
+        results = F.bcast_gather([add_field_a, add_field_b], message)
 
-        assert result["field_a"] == "value_a"
-        assert result["field_b"] == "value_b"
+        assert results == (None, None)
+        assert message["field_a"] == "value_a"
+        assert message["field_b"] == "value_b"
 
-    def test_msg_bcast_gather_invalid_message(self):
-        """Test msg_bcast_gather raises TypeError for invalid message."""
+    def test_bcast_gather_returns_task_error(self):
+        """Test bcast_gather captures callable failures as TaskError."""
 
-        def dummy(msg):
-            return msg
+        def fail(_):
+            raise ValueError("boom")
 
-        with pytest.raises(TypeError, match="`message` must be an instance"):
-            F.msg_bcast_gather([dummy], "not_dotdict")
+        results = F.bcast_gather([fail], dotdict())
 
-    def test_msg_bcast_gather_not_callable_list(self):
-        """Test msg_bcast_gather raises TypeError for non-callable list."""
-        with pytest.raises(TypeError, match="`to_send` must be a non-empty list"):
-            F.msg_bcast_gather(["not_callable"], dotdict())
+        assert len(results) == 1
+        assert isinstance(results[0], TaskError)
+        assert str(results[0]) == "Task 0 failed: boom"
 
 
 class TestWaitFor:
@@ -224,17 +178,17 @@ class TestWaitFor:
             F.wait_for("not_callable", 1)
 
 
-class TestBackgroundTask:
-    """Test suite for background_task function."""
+class TestFireAndForget:
+    """Test suite for fire_and_forget function."""
 
-    def test_background_task_basic(self):
-        """Test basic background_task functionality."""
+    def test_fire_and_forget_basic(self):
+        """Test basic fire_and_forget functionality."""
         results = []
 
         def append_value(value):
             results.append(value)
 
-        F.background_task(append_value, 42)
+        F.fire_and_forget(append_value, 42)
         # Give it a moment to execute
         import time
 
@@ -242,10 +196,10 @@ class TestBackgroundTask:
 
         assert 42 in results
 
-    def test_background_task_not_callable(self):
-        """Test background_task raises TypeError for non-callable."""
+    def test_fire_and_forget_not_callable(self):
+        """Test fire_and_forget raises TypeError for non-callable."""
         with pytest.raises(TypeError, match="`to_send` must be a callable"):
-            F.background_task("not_callable")
+            F.fire_and_forget("not_callable")
 
 
 class TestWaitForEvent:
@@ -299,32 +253,24 @@ class TestAsyncFunctions:
             await F.ascatter_gather("not_a_list")
 
     @pytest.mark.asyncio
-    async def test_amsg_bcast_gather_basic(self):
-        """Test basic amsg_bcast_gather functionality."""
+    async def test_ascatter_gather_supports_inplace_message_mutation(self):
+        """Test ascatter_gather with shared mutable message."""
 
         async def add_field_a(msg):
             msg["field_a"] = "value_a"
-            return msg
 
         async def add_field_b(msg):
             msg["field_b"] = "value_b"
-            return msg
 
         message = dotdict()
-        result = await F.amsg_bcast_gather([add_field_a, add_field_b], message)
+        results = await F.ascatter_gather(
+            [add_field_a, add_field_b],
+            args_list=[(message,), (message,)],
+        )
 
-        assert result["field_a"] == "value_a"
-        assert result["field_b"] == "value_b"
-
-    @pytest.mark.asyncio
-    async def test_amsg_bcast_gather_invalid_message(self):
-        """Test amsg_bcast_gather raises TypeError for invalid message."""
-
-        async def dummy(msg):
-            return msg
-
-        with pytest.raises(TypeError, match="`message` must be an instance"):
-            await F.amsg_bcast_gather([dummy], "not_dotdict")
+        assert results == (None, None)
+        assert message["field_a"] == "value_a"
+        assert message["field_b"] == "value_b"
 
     @pytest.mark.asyncio
     async def test_await_for_event_basic(self):
@@ -347,21 +293,21 @@ class TestAsyncFunctions:
             await F.await_for_event("not_event")
 
     @pytest.mark.asyncio
-    async def test_abackground_task_basic(self):
-        """Test basic abackground_task functionality."""
+    async def test_afire_and_forget_basic(self):
+        """Test basic afire_and_forget functionality."""
         results = []
 
         async def append_value(value):
             results.append(value)
 
-        await F.abackground_task(append_value, 99)
+        await F.afire_and_forget(append_value, 99)
         # Give it a moment to execute
         await asyncio.sleep(0.1)
 
         assert 99 in results
 
     @pytest.mark.asyncio
-    async def test_abackground_task_not_callable(self):
-        """Test abackground_task raises TypeError for non-callable."""
+    async def test_afire_and_forget_not_callable(self):
+        """Test afire_and_forget raises TypeError for non-callable."""
         with pytest.raises(TypeError, match="`to_send` must be a callable"):
-            await F.abackground_task("not_callable")
+            await F.afire_and_forget("not_callable")

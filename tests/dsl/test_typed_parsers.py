@@ -7,7 +7,10 @@ pytest.importorskip("defusedxml")
 
 from msgflux.dsl.typed_parsers.base import BaseTypedParser
 from msgflux.dsl.typed_parsers.providers.xml import TypedXMLParser
-from msgflux.dsl.typed_parsers.registry import register_typed_parser, typed_parser_registry
+from msgflux.dsl.typed_parsers.registry import (
+    register_typed_parser,
+    typed_parser_registry,
+)
 
 
 class TestBaseTypedParser:
@@ -15,7 +18,10 @@ class TestBaseTypedParser:
 
     def test_subclass_must_define_typed_parser_type(self):
         """Test that subclass must define typed_parser_type attribute."""
-        with pytest.raises(TypeError, match="must define class attribute `typed_parser_type`"):
+        with pytest.raises(
+            TypeError, match="must define class attribute `typed_parser_type`"
+        ):
+
             class InvalidParser1(BaseTypedParser):
                 template = "test"
 
@@ -31,6 +37,7 @@ class TestBaseTypedParser:
     def test_subclass_must_define_template(self):
         """Test that subclass must define template attribute."""
         with pytest.raises(TypeError, match="must define class attribute `template`"):
+
             class InvalidParser2(BaseTypedParser):
                 typed_parser_type = "test"
 
@@ -45,6 +52,7 @@ class TestBaseTypedParser:
 
     def test_valid_subclass(self):
         """Test that valid subclass can be created."""
+
         class ValidParser(BaseTypedParser):
             typed_parser_type = "test"
             template = "test template"
@@ -72,6 +80,7 @@ class TestTypedXMLParserRegistry:
 
     def test_register_custom_parser(self):
         """Test registering a custom parser."""
+
         @register_typed_parser
         class CustomParser(BaseTypedParser):
             typed_parser_type = "custom"

@@ -1,18 +1,15 @@
 from os import getenv
-from typing import List, Optional, Union
+from typing import Any, List, Optional, Union
 
 from msgflux.models.cache import ResponseCache, generate_cache_key
 from msgflux.models.httpx import HTTPXModelClient
 from msgflux.models.registry import register_model
 from msgflux.models.response import ModelResponse
 from msgflux.models.types import (
-    ImageClassifierModel,
     ImageEmbedderModel,
-    TextClassifierModel,
     TextEmbedderModel,
     TextRerankerModel,
 )
-from msgflux.utils.tenacity import model_retry
 
 
 class _BaseJinaAI:
@@ -35,6 +32,10 @@ class _BaseJinaAI:
             )
         return key
 
+    @property
+    def _api_key(self):
+        return self._get_api_key()
+
 
 @register_model
 class JinaAITextReranker(_BaseJinaAI, HTTPXModelClient, TextRerankerModel):
@@ -49,6 +50,7 @@ class JinaAITextReranker(_BaseJinaAI, HTTPXModelClient, TextRerankerModel):
         *,
         enable_cache: Optional[bool] = False,
         cache_size: Optional[int] = 128,
+        retry: Optional[Any] = None,
     ):
         """Args:
         model_id:
@@ -59,6 +61,8 @@ class JinaAITextReranker(_BaseJinaAI, HTTPXModelClient, TextRerankerModel):
             If True, enables response caching to avoid redundant API calls.
         cache_size:
             Maximum number of responses to cache (default: 128).
+        retry:
+            Retry config. A tenacity decorator, False to disable, or None for default.
         """
         super().__init__()
         self.model_id = model_id
@@ -68,6 +72,8 @@ class JinaAITextReranker(_BaseJinaAI, HTTPXModelClient, TextRerankerModel):
         self._response_cache = (
             ResponseCache(maxsize=cache_size) if enable_cache else None
         )
+        self.retry = retry
+        self._initialize()
 
     def _generate(self, **kwargs):
         # Check cache if enabled
@@ -109,7 +115,6 @@ class JinaAITextReranker(_BaseJinaAI, HTTPXModelClient, TextRerankerModel):
 
         return response
 
-    @model_retry
     def __call__(self, query: str, documents: List[str]) -> ModelResponse:
         """Args:
         query:
@@ -120,7 +125,6 @@ class JinaAITextReranker(_BaseJinaAI, HTTPXModelClient, TextRerankerModel):
         response = self._generate(query=query, documents=documents)
         return response
 
-    @model_retry
     async def acall(self, query: str, documents: List[str]) -> ModelResponse:
         """Async version of __call__. Args:
         query:
@@ -147,6 +151,7 @@ class JinaAITextEmbedder(TextEmbedderModel, HTTPXModelClient, _BaseJinaAI):
         base_url: Optional[str] = None,
         enable_cache: Optional[bool] = False,
         cache_size: Optional[int] = 128,
+        retry: Optional[Any] = None,
     ):
         """Args:
         model_id:
@@ -169,6 +174,7 @@ class JinaAITextEmbedder(TextEmbedderModel, HTTPXModelClient, _BaseJinaAI):
         self._response_cache = (
             ResponseCache(maxsize=cache_size) if enable_cache else None
         )
+        self.retry = retry
         self._initialize()
         self._get_api_key()
 
@@ -216,7 +222,6 @@ class JinaAITextEmbedder(TextEmbedderModel, HTTPXModelClient, _BaseJinaAI):
 
         return response
 
-    @model_retry
     def __call__(
         self,
         data: Union[str, List[str]],
@@ -231,7 +236,6 @@ class JinaAITextEmbedder(TextEmbedderModel, HTTPXModelClient, _BaseJinaAI):
         response = self._generate(input=inputs)
         return response
 
-    @model_retry
     async def acall(
         self,
         data: Union[str, List[str]],
@@ -298,7 +302,6 @@ class JinaAIImageEmbedder(ImageEmbedderModel, JinaAITextEmbedder):
 
         return response
 
-    @model_retry
     def __call__(
         self,
         data: Union[str, List[str]],
@@ -313,7 +316,6 @@ class JinaAIImageEmbedder(ImageEmbedderModel, JinaAITextEmbedder):
         response = self._generate(input=inputs)
         return response
 
-    @model_retry
     async def acall(
         self,
         data: Union[str, List[str]],
@@ -328,192 +330,3 @@ class JinaAIImageEmbedder(ImageEmbedderModel, JinaAITextEmbedder):
         response = await self._agenerate(input=inputs)
         return response
 
-
-@register_model
-class JinaAITextClassifier(TextClassifierModel, HTTPXModelClient, _BaseJinaAI):
-    """JinaAI Text Classifier."""
-
-    endpoint: str = "/classify"
-    batch_support = True
-
-    def __init__(
-        self,
-        model_id,
-        labels: List[str],
-        base_url: Optional[str] = None,
-        *,
-        enable_cache: Optional[bool] = False,
-        cache_size: Optional[int] = 128,
-    ):
-        super().__init__()
-        self.model_id = model_id
-        self.sampling_params = {"base_url": base_url or self._get_base_url()}
-        self.sampling_run_params = {"labels": labels}
-        self.enable_cache = enable_cache
-        self.cache_size = cache_size
-        self._response_cache = (
-            ResponseCache(maxsize=cache_size) if enable_cache else None
-        )
-        self._initialize()
-        self._get_api_key()
-
-    def _generate(self, **kwargs):
-        # Check cache if enabled
-        if self.enable_cache and self._response_cache:
-            cache_key = generate_cache_key(**kwargs)
-            hit, cached_response = self._response_cache.get(cache_key)
-            if hit:
-                return cached_response
-
-        response = ModelResponse()
-        response.set_response_type("text_classification")
-        model_output = self._execute(**kwargs)
-        data = model_output["data"]
-        pred = [{"label": item["prediction"], "score": item["score"]} for item in data]
-        if len(pred) == 1:  # Compatibility
-            pred = pred[0]
-        response.add(pred)
-
-        # Store in cache if enabled
-        if self.enable_cache and self._response_cache:
-            cache_key = generate_cache_key(**kwargs)
-            self._response_cache.set(cache_key, response)
-
-        return response
-
-    async def _agenerate(self, **kwargs):
-        # Check cache if enabled
-        if self.enable_cache and self._response_cache:
-            cache_key = generate_cache_key(**kwargs)
-            hit, cached_response = self._response_cache.get(cache_key)
-            if hit:
-                return cached_response
-
-        response = ModelResponse()
-        response.set_response_type("text_classification")
-        model_output = await self._aexecute(**kwargs)
-        data = model_output["data"]
-        pred = [{"label": item["prediction"], "score": item["score"]} for item in data]
-        if len(pred) == 1:  # Compatibility
-            pred = pred[0]
-        response.add(pred)
-
-        # Store in cache if enabled
-        if self.enable_cache and self._response_cache:
-            cache_key = generate_cache_key(**kwargs)
-            self._response_cache.set(cache_key, response)
-
-        return response
-
-    @model_retry
-    def __call__(
-        self,
-        data: Union[str, List[str]],
-    ) -> ModelResponse:
-        """Args:
-        data:
-            Input text to classify.
-        """
-        if isinstance(data, str):
-            data = [data]
-        inputs = [{"text": item} for item in data]
-        response = self._generate(input=inputs)
-        return response
-
-    @model_retry
-    async def acall(
-        self,
-        data: Union[str, List[str]],
-    ) -> ModelResponse:
-        """Async version of __call__. Args:
-        data:
-            Input text to classify.
-        """
-        if isinstance(data, str):
-            data = [data]
-        inputs = [{"text": item} for item in data]
-        response = await self._agenerate(input=inputs)
-        return response
-
-
-@register_model
-class JinaAIImageClassifier(JinaAITextClassifier, ImageClassifierModel):
-    """JinaAI Image Classifier."""
-
-    def _generate(self, **kwargs):
-        # Check cache if enabled
-        if self.enable_cache and self._response_cache:
-            cache_key = generate_cache_key(**kwargs)
-            hit, cached_response = self._response_cache.get(cache_key)
-            if hit:
-                return cached_response
-
-        response = ModelResponse()
-        response.set_response_type("image_classification")
-        model_output = self._execute(**kwargs)
-        data = model_output["data"]
-        pred = [{"label": item["prediction"], "score": item["score"]} for item in data]
-        if len(pred) == 1:  # Compatibility
-            pred = pred[0]
-        response.add(pred)
-
-        # Store in cache if enabled
-        if self.enable_cache and self._response_cache:
-            cache_key = generate_cache_key(**kwargs)
-            self._response_cache.set(cache_key, response)
-
-        return response
-
-    async def _agenerate(self, **kwargs):
-        # Check cache if enabled
-        if self.enable_cache and self._response_cache:
-            cache_key = generate_cache_key(**kwargs)
-            hit, cached_response = self._response_cache.get(cache_key)
-            if hit:
-                return cached_response
-
-        response = ModelResponse()
-        response.set_response_type("image_classification")
-        model_output = await self._aexecute(**kwargs)
-        data = model_output["data"]
-        pred = [{"label": item["prediction"], "score": item["score"]} for item in data]
-        if len(pred) == 1:  # Compatibility
-            pred = pred[0]
-        response.add(pred)
-
-        # Store in cache if enabled
-        if self.enable_cache and self._response_cache:
-            cache_key = generate_cache_key(**kwargs)
-            self._response_cache.set(cache_key, response)
-
-        return response
-
-    @model_retry
-    def __call__(
-        self,
-        data: Union[str, List[str]],
-    ) -> ModelResponse:
-        """Args:
-        data:
-            Input image to embed.
-        """
-        if isinstance(data, str):
-            data = [data]
-        inputs = [{"image": item} for item in data]
-        response = self._generate(input=inputs)
-        return response
-
-    @model_retry
-    async def acall(
-        self,
-        data: Union[str, List[str]],
-    ) -> ModelResponse:
-        """Async version of __call__. Args:
-        data:
-            Input image to embed.
-        """
-        if isinstance(data, str):
-            data = [data]
-        inputs = [{"image": item} for item in data]
-        response = await self._agenerate(input=inputs)
-        return response

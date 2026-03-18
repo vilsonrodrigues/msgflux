@@ -8,8 +8,6 @@ try:
 except ImportError:
     httpx = None
 
-import asyncio
-
 from msgflux._private.client import BaseClient
 
 
@@ -139,61 +137,6 @@ class BaseParser(BaseClient):
                 for name, data in images.items()
             }
         return images
-
-    async def _aload_file(self, data: Union[str, bytes, BytesIO]) -> bytes:
-        """Async version of _load_file. Load file from various sources.
-
-        Args:
-            data:
-                Can be:
-                - str: file path or URL
-                - bytes: raw file data
-                - BytesIO: file buffer
-
-        Returns:
-            File content as bytes.
-
-        Raises:
-            ValueError:
-                If data type is not supported.
-            FileNotFoundError:
-                If file path doesn't exist.
-        """
-        if isinstance(data, bytes):
-            return data
-
-        if isinstance(data, BytesIO):
-            return data.getvalue()
-
-        if isinstance(data, str):
-            # Check if it's a URL
-            if data.startswith(("http://", "https://")):
-                if httpx is None:
-                    raise ImportError(
-                        "`httpx` is required to load files from URLs. "
-                        "Install with `pip install httpx`"
-                    )
-                async with httpx.AsyncClient() as client:
-                    response = await client.get(data)
-                    response.raise_for_status()
-                    return response.content
-
-            # Otherwise treat as file path - use asyncio to read file
-            file_path = pathlib.Path(data)
-            if not file_path.exists():
-                raise FileNotFoundError(f"File not found: {data}")
-
-            # Read file asynchronously
-            loop = asyncio.get_event_loop()
-            content = await loop.run_in_executor(
-                None, lambda: open(file_path, "rb").read()
-            )
-            return content
-
-        raise ValueError(
-            f"Unsupported data type: {type(data)}. "
-            "Expected str (path/URL), bytes, or BytesIO"
-        )
 
     def chunk_text(
         self,

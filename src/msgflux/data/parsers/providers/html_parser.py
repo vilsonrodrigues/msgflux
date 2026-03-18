@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional, Union
+from typing import Dict, Union
 
 try:
     from bs4 import BeautifulSoup
@@ -9,7 +9,7 @@ from msgflux.data.parsers.base import BaseParser
 from msgflux.data.parsers.registry import register_parser
 from msgflux.data.parsers.response import ParserResponse
 from msgflux.data.parsers.types import HtmlParser
-from msgflux.dotdict import dotdict
+from msgflux.core.dotdict import dotdict
 
 
 @register_parser
@@ -38,10 +38,10 @@ class BeautifulSoupHtmlParser(BaseParser, HtmlParser):
     def __init__(
         self,
         *,
-        extract_links: Optional[bool] = True,
-        extract_images: Optional[bool] = True,
-        remove_scripts: Optional[bool] = True,
-        remove_styles: Optional[bool] = True,
+        extract_links: bool = True,
+        extract_images: bool = True,
+        remove_scripts: bool = True,
+        remove_styles: bool = True,
     ):
         """Initialize HTML parser.
 
@@ -264,41 +264,3 @@ class BeautifulSoupHtmlParser(BaseParser, HtmlParser):
 
         return result
 
-    async def acall(self, data: Union[str, bytes], **kwargs) -> ParserResponse:
-        """Async version of __call__. Parse an HTML document asynchronously.
-
-        Args:
-            data:
-                HTML file path, URL, or bytes/string content.
-            **kwargs:
-                Additional parsing options (currently unused).
-
-        Returns:
-            ParserResponse containing parsed data.
-
-        Raises:
-            FileNotFoundError:
-                If file path doesn't exist.
-            ValueError:
-                If data type is not supported.
-        """
-        # Validate file type if it's a path
-        if isinstance(data, str) and not data.startswith(("http://", "https://")):
-            if "." in data:  # Has extension
-                self._validate_file_type(data, [".html", ".htm"])
-
-        # Load file asynchronously if it's a string path/URL (but not HTML content)
-        if isinstance(data, str) and not data.startswith(
-            ("<!DOCTYPE", "<html", "<?xml")
-        ):
-            data = await self._aload_file(data)
-
-        # Parse the document
-        result = self._parse(data)
-
-        # Create response
-        response = ParserResponse()
-        response.set_response_type("html_parse")
-        response.add(result)
-
-        return response

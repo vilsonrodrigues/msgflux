@@ -21,7 +21,8 @@ except ImportError:
     OpenAI = None
     AsyncOpenAI = None
 
-from msgflux.dotdict import dotdict
+import msgflux.nn.functional as F
+from msgflux.core.dotdict import dotdict
 from msgflux.dsl.typed_parsers import typed_parser_registry
 from msgflux.exceptions import TypedParserNotFoundError
 from msgflux.models.base import BaseModel
@@ -39,12 +40,11 @@ from msgflux.models.types import (
     TextToImageModel,
     TextToSpeechModel,
 )
-from msgflux.nn import functional as F
 from msgflux.utils.chat import ChatBlock, response_format_from_msgspec_struct
 from msgflux.utils.console import cprint
 from msgflux.utils.encode import encode_data_to_bytes
 from msgflux.utils.msgspec import struct_to_dict
-from msgflux.utils.tenacity import model_retry
+from msgflux.utils.tenacity import apply_retry, default_model_retry
 
 
 class _BaseOpenAI(BaseModel):
@@ -85,6 +85,13 @@ class _BaseOpenAI(BaseModel):
             ResponseCache(maxsize=cache_size) if enable_cache else None
         )
 
+        # Apply retry
+        retry_config = getattr(self, "retry", None)
+        self.__call__ = apply_retry(
+            self.__call__, retry_config, default=default_model_retry
+        )
+        self.acall = apply_retry(self.acall, retry_config, default=default_model_retry)
+
     def _get_base_url(self):
         return None
 
@@ -118,7 +125,7 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
         max_tokens: Optional[int] = None,
         reasoning_effort: Optional[str] = None,
         enable_thinking: Optional[bool] = None,
-        return_reasoning: Optional[bool] = False,
+        return_reasoning: Optional[bool] = True,
         reasoning_in_tool_call: Optional[bool] = True,
         validate_typed_parser_output: Optional[bool] = False,
         temperature: Optional[float] = None,
@@ -135,6 +142,7 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
         reasoning_max_tokens: Optional[int] = None,
         enable_cache: Optional[bool] = False,
         cache_size: Optional[int] = 128,
+        retry: Optional[Any] = None,
     ):
         """Args:
         model_id:
@@ -231,6 +239,7 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
         self.validate_typed_parser_output = validate_typed_parser_output
         self.return_reasoning = return_reasoning
         self.verbose = verbose
+        self.retry = retry
         self._initialize()
         self._get_api_key()
 
@@ -312,15 +321,12 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
                 response_content = dotdict(parser.decode(choice.message.content))
                 # Type validation
                 if generation_schema and self.validate_typed_parser_output:
-                    encoded_response_content = msgspec.json.encode(response_content)
-                    msgspec.json.decode(
-                        encoded_response_content, type=generation_schema
-                    )
+                    decoder = self._get_decoder(generation_schema)
+                    decoder.decode(self._encoder.encode(response_content))
             elif generation_schema is not None:
                 response.set_response_type(f"{prefix_response_type}structured")
-                struct = msgspec.json.decode(
-                    choice.message.content, type=generation_schema
-                )
+                decoder = self._get_decoder(generation_schema)
+                struct = decoder.decode(choice.message.content)
                 response_content = dotdict(struct_to_dict(struct))
             else:
                 response.set_response_type(f"{prefix_response_type}text_generation")
@@ -556,7 +562,6 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
         stream_response.set_metadata(metadata)
         stream_response.add(None)
 
-    @model_retry
     def __call__(
         self,
         messages: Union[str, List[Dict[str, Any]]],
@@ -627,12 +632,12 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
         generation_params = {
             "messages": messages,
             "prefilling": prefilling,
-            "tool_choice": tool_choice,
-            "tools": tool_schemas,
             "model": self.model_id,
         }
 
         if tool_schemas:
+            generation_params["tools"] = tool_schemas
+            generation_params["tool_choice"] = tool_choice
             generation_params["parallel_tool_calls"] = self.parallel_tool_calls
 
         if stream is True:
@@ -640,7 +645,7 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
                 raise ValueError("`typed_parser` is not `stream=True` compatible")
 
             stream_response = ModelStreamResponse()
-            F.background_task(
+            F.fire_and_forget(
                 self._stream_generate,
                 **generation_params,
                 stream=stream,
@@ -663,7 +668,6 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
             )
             return response
 
-    @model_retry
     async def acall(
         self,
         messages: Union[str, List[Dict[str, Any]]],
@@ -734,12 +738,12 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
         generation_params = {
             "messages": messages,
             "prefilling": prefilling,
-            "tool_choice": tool_choice,
-            "tools": tool_schemas,
             "model": self.model_id,
         }
 
         if tool_schemas:
+            generation_params["tools"] = tool_schemas
+            generation_params["tool_choice"] = tool_choice
             generation_params["parallel_tool_calls"] = self.parallel_tool_calls
 
         if stream is True:
@@ -747,7 +751,7 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
                 raise ValueError("`typed_parser` is not `stream=True` compatible")
 
             stream_response = ModelStreamResponse()
-            await F.abackground_task(
+            await F.afire_and_forget(
                 self._astream_generate,
                 **generation_params,
                 stream=stream,
@@ -781,6 +785,7 @@ class OpenAITextToSpeech(_BaseOpenAI, TextToSpeechModel):
         voice: Optional[str] = "alloy",
         speed: Optional[float] = 1.0,
         base_url: Optional[str] = None,
+        retry: Optional[Any] = None,
     ):
         """Args:
         model_id:
@@ -792,6 +797,8 @@ class OpenAITextToSpeech(_BaseOpenAI, TextToSpeechModel):
             from 0.25 to 4.0. 1.0 is the default.
         base_url:
             URL to model provider.
+        retry:
+            Retry config. A tenacity decorator, False to disable, or None for default.
         """
         super().__init__()
         self.model_id = model_id
@@ -800,6 +807,7 @@ class OpenAITextToSpeech(_BaseOpenAI, TextToSpeechModel):
             "voice": voice,
             "speed": speed,
         }
+        self.retry = retry
         self._initialize()
         self._get_api_key()
 
@@ -871,7 +879,6 @@ class OpenAITextToSpeech(_BaseOpenAI, TextToSpeechModel):
 
         stream_response.add(None)
 
-    @model_retry
     def __call__(
         self,
         data: str,
@@ -898,14 +905,13 @@ class OpenAITextToSpeech(_BaseOpenAI, TextToSpeechModel):
         if stream:
             stream_response = ModelStreamResponse()
             params.stream_response = stream_response
-            F.background_task(self._stream_generate, **params)
+            F.fire_and_forget(self._stream_generate, **params)
             F.wait_for_event(stream_response.first_chunk_event)
             return stream_response
         else:
             response = self._generate(**params)
             return response
 
-    @model_retry
     async def acall(
         self,
         data: str,
@@ -932,7 +938,7 @@ class OpenAITextToSpeech(_BaseOpenAI, TextToSpeechModel):
         if stream:
             stream_response = ModelStreamResponse()
             params.stream_response = stream_response
-            await F.abackground_task(self._astream_generate, **params)
+            await F.afire_and_forget(self._astream_generate, **params)
             await F.await_for_event(stream_response.first_chunk_event)
             return stream_response
         else:
@@ -950,6 +956,7 @@ class OpenAITextToImage(_BaseOpenAI, TextToImageModel):
         model_id: str,
         moderation: Optional[Literal["auto", "low"]] = None,
         base_url: Optional[str] = None,
+        retry: Optional[Any] = None,
     ):
         """Args:
         model_id:
@@ -958,6 +965,8 @@ class OpenAITextToImage(_BaseOpenAI, TextToImageModel):
             Control the content-moderation level for images generated.
         base_url:
             URL to model provider.
+        retry:
+            Retry config. A tenacity decorator, False to disable, or None for default.
         """
         super().__init__()
         self.model_id = model_id
@@ -966,6 +975,7 @@ class OpenAITextToImage(_BaseOpenAI, TextToImageModel):
         if moderation:
             sampling_run_params["moderation"] = moderation
         self.sampling_run_params = sampling_run_params
+        self.retry = retry
         self._initialize()
         self._get_api_key()
 
@@ -981,12 +991,12 @@ class OpenAITextToImage(_BaseOpenAI, TextToImageModel):
 
     def _get_metadata(self, model_output):
         metadata = dotdict(
-            usage=model_output.usage.to_dict(),
+            usage=model_output.usage.to_dict() if model_output.usage is not None else {},
             details={
-                "size": model_output.size,
-                "quality": model_output.quality,
-                "output_format": model_output.output_format,
-                "background": model_output.background,
+                "size": getattr(model_output, "size", None),
+                "quality": getattr(model_output, "quality", None),
+                "output_format": getattr(model_output, "output_format", None),
+                "background": getattr(model_output, "background", None),
             },
         )
         return metadata
@@ -1037,15 +1047,14 @@ class OpenAITextToImage(_BaseOpenAI, TextToImageModel):
 
         return response
 
-    @model_retry
     def __call__(
         self,
         prompt: str,
         *,
         response_format: Optional[Literal["url", "base64"]] = None,
         n: Optional[int] = 1,
-        size: Optional[str] = "auto",
-        quality: Optional[str] = "auto",
+        size: Optional[str] = None,
+        quality: Optional[str] = None,
         background: Optional[Literal["transparent", "opaque", "auto"]] = None,
     ) -> ModelResponse:
         """Args:
@@ -1062,15 +1071,14 @@ class OpenAITextToImage(_BaseOpenAI, TextToImageModel):
         background:
             Allows to set transparency for the background of the generated image(s).
         """
-        generation_params = dotdict(
-            prompt=prompt,
-            n=n,
-            size=size,
-            quality=quality,
-            background=background,
-            model=self.model_id,
-        )
+        generation_params = dotdict(prompt=prompt, n=n, model=self.model_id)
 
+        if size is not None:
+            generation_params.size = size
+        if quality is not None:
+            generation_params.quality = quality
+        if background is not None:
+            generation_params.background = background
         if response_format is not None:
             if response_format == "base64":
                 response_format = "b64_json"
@@ -1079,15 +1087,14 @@ class OpenAITextToImage(_BaseOpenAI, TextToImageModel):
         response = self._generate(**generation_params)
         return response
 
-    @model_retry
     async def acall(
         self,
         prompt: str,
         *,
         response_format: Optional[Literal["url", "base64"]] = None,
         n: Optional[int] = 1,
-        size: Optional[str] = "auto",
-        quality: Optional[str] = "auto",
+        size: Optional[str] = None,
+        quality: Optional[str] = None,
         background: Optional[Literal["transparent", "opaque", "auto"]] = None,
     ) -> ModelResponse:
         """Async version of __call__. Args:
@@ -1104,15 +1111,14 @@ class OpenAITextToImage(_BaseOpenAI, TextToImageModel):
         background:
             Allows to set transparency for the background of the generated image(s).
         """
-        generation_params = dotdict(
-            prompt=prompt,
-            n=n,
-            size=size,
-            quality=quality,
-            background=background,
-            model=self.model_id,
-        )
+        generation_params = dotdict(prompt=prompt, n=n, model=self.model_id)
 
+        if size is not None:
+            generation_params.size = size
+        if quality is not None:
+            generation_params.quality = quality
+        if background is not None:
+            generation_params.background = background
         if response_format is not None:
             if response_format == "base64":
                 response_format = "b64_json"
@@ -1123,7 +1129,7 @@ class OpenAITextToImage(_BaseOpenAI, TextToImageModel):
 
 
 @register_model
-class OpenAIImageTextToImage(OpenAITextToImage, ImageTextToImageModel):
+class OpenAIImageTextToImage(ImageTextToImageModel, OpenAITextToImage):
     """OpenAI Image Edit."""
 
     def _execute_model(self, **kwargs):
@@ -1138,14 +1144,13 @@ class OpenAIImageTextToImage(OpenAITextToImage, ImageTextToImageModel):
 
     def _prepare_inputs(self, image, mask):
         inputs = {}
-        if isinstance(image, str):
+        if isinstance(image, (str, bytes)):
             image = [image]
         inputs["image"] = [encode_data_to_bytes(item) for item in image]
         if mask:
             inputs["mask"] = encode_data_to_bytes(mask)
         return inputs
 
-    @model_retry
     def __call__(
         self,
         prompt: str,
@@ -1181,7 +1186,6 @@ class OpenAIImageTextToImage(OpenAITextToImage, ImageTextToImageModel):
         response = self._generate(**generation_params, **inputs)
         return response
 
-    @model_retry
     async def acall(
         self,
         prompt: str,
@@ -1228,6 +1232,7 @@ class OpenAISpeechToText(_BaseOpenAI, SpeechToTextModel):
         model_id: str,
         temperature: Optional[float] = 0.0,
         base_url: Optional[str] = None,
+        retry: Optional[Any] = None,
     ):
         """Args:
         model_id:
@@ -1236,11 +1241,14 @@ class OpenAISpeechToText(_BaseOpenAI, SpeechToTextModel):
             The sampling temperature, between 0 and 1.
         base_url:
             URL to model provider.
+        retry:
+            Retry config. A tenacity decorator, False to disable, or None for default.
         """
         super().__init__()
         self.model_id = model_id
         self.sampling_params = {"base_url": base_url or self._get_base_url()}
         self.sampling_run_params = {"temperature": temperature}
+        self.retry = retry
         self._initialize()
         self._get_api_key()
 
@@ -1352,7 +1360,6 @@ class OpenAISpeechToText(_BaseOpenAI, SpeechToTextModel):
 
         return stream_response
 
-    @model_retry
     def __call__(
         self,
         data: str,
@@ -1400,14 +1407,13 @@ class OpenAISpeechToText(_BaseOpenAI, SpeechToTextModel):
             stream_response = ModelStreamResponse()
             params["stream_response"] = stream_response
             params["stream"] = stream
-            F.background_task(self._stream_generate, **params)
+            F.fire_and_forget(self._stream_generate, **params)
             F.wait_for_event(stream_response.first_chunk_event)
             return stream_response
         else:
             response = self._generate(**params)
             return response
 
-    @model_retry
     async def acall(
         self,
         data: str,
@@ -1455,7 +1461,7 @@ class OpenAISpeechToText(_BaseOpenAI, SpeechToTextModel):
             stream_response = ModelStreamResponse()
             params["stream_response"] = stream_response
             params["stream"] = stream
-            await F.abackground_task(self._astream_generate, **params)
+            await F.afire_and_forget(self._astream_generate, **params)
             await F.await_for_event(stream_response.first_chunk_event)
             return stream_response
         else:
@@ -1477,6 +1483,7 @@ class OpenAITextEmbedder(_BaseOpenAI, TextEmbedderModel):
         base_url: Optional[str] = None,
         enable_cache: Optional[bool] = False,
         cache_size: Optional[int] = 128,
+        retry: Optional[Any] = None,
     ):
         """Args:
         model_id:
@@ -1489,6 +1496,8 @@ class OpenAITextEmbedder(_BaseOpenAI, TextEmbedderModel):
             If True, enables response caching to avoid redundant API calls.
         cache_size:
             Maximum number of responses to cache (default: 128).
+        retry:
+            Retry config. A tenacity decorator, False to disable, or None for default.
         """
         super().__init__()
         self.model_id = model_id
@@ -1496,6 +1505,7 @@ class OpenAITextEmbedder(_BaseOpenAI, TextEmbedderModel):
         self.sampling_run_params = {"dimensions": dimensions}
         self.enable_cache = enable_cache
         self.cache_size = cache_size
+        self.retry = retry
         self._initialize()
         self._get_api_key()
 
@@ -1559,7 +1569,6 @@ class OpenAITextEmbedder(_BaseOpenAI, TextEmbedderModel):
 
         return response
 
-    @model_retry
     def __call__(
         self,
         data: Union[str, List[str]],
@@ -1571,7 +1580,6 @@ class OpenAITextEmbedder(_BaseOpenAI, TextEmbedderModel):
         response = self._generate(input=data, model=self.model_id)
         return response
 
-    @model_retry
     async def acall(
         self,
         data: Union[str, List[str]],
@@ -1595,6 +1603,7 @@ class OpenAIModeration(_BaseOpenAI, ModerationModel):
         base_url: Optional[str] = None,
         enable_cache: Optional[bool] = False,
         cache_size: Optional[int] = 128,
+        retry: Optional[Any] = None,
     ):
         """Args:
         model_id:
@@ -1605,12 +1614,15 @@ class OpenAIModeration(_BaseOpenAI, ModerationModel):
             If True, enables response caching to avoid redundant API calls.
         cache_size:
             Maximum number of responses to cache (default: 128).
+        retry:
+            Retry config. A tenacity decorator, False to disable, or None for default.
         """
         super().__init__()
         self.model_id = model_id
         self.sampling_params = {"base_url": base_url or self._get_base_url()}
         self.enable_cache = enable_cache
         self.cache_size = cache_size
+        self.retry = retry
         self._initialize()
         self._get_api_key()
 
@@ -1666,7 +1678,6 @@ class OpenAIModeration(_BaseOpenAI, ModerationModel):
 
         return response
 
-    @model_retry
     def __call__(
         self,
         data: Union[str, List[Dict[str, Any]]],
@@ -1680,7 +1691,6 @@ class OpenAIModeration(_BaseOpenAI, ModerationModel):
         response = self._generate(input=data, model=self.model_id)
         return response
 
-    @model_retry
     async def acall(
         self,
         data: Union[str, List[Dict[str, Any]]],

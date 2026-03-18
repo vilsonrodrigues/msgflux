@@ -312,7 +312,6 @@ class TestMCPClient:
         # After exiting context
         assert client._initialized is False
 
-    @patch("msgflux.protocols.mcp.transports.HTTPX_AVAILABLE", True)
     def test_from_stdio_factory(self):
         """Test creating client from stdio factory method."""
         client = MCPClient.from_stdio(
@@ -327,7 +326,6 @@ class TestMCPClient:
         assert client.retry_delay == 2.0
         assert client.auto_reconnect is False
 
-    @patch("msgflux.protocols.mcp.transports.HTTPX_AVAILABLE", True)
     def test_from_http_factory(self):
         """Test creating client from http factory method."""
         client = MCPClient.from_http(

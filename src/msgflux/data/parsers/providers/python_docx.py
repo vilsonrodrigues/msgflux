@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Union
 
 try:
     from docx import Document
@@ -13,7 +13,7 @@ from msgflux.data.parsers.base import BaseParser
 from msgflux.data.parsers.registry import register_parser
 from msgflux.data.parsers.response import ParserResponse
 from msgflux.data.parsers.types import DocxParser
-from msgflux.dotdict import dotdict
+from msgflux.core.dotdict import dotdict
 
 
 @register_parser
@@ -42,8 +42,8 @@ class PythonDocxDocxParser(BaseParser, DocxParser):
     def __init__(
         self,
         *,
-        table_format: Optional[str] = "markdown",
-        encode_images_base64: Optional[bool] = True,
+        table_format: str = "markdown",
+        encode_images_base64: bool = True,
     ):
         """Initialize Python-DOCX parser.
 
@@ -332,42 +332,3 @@ class PythonDocxDocxParser(BaseParser, DocxParser):
         html += "</table>"
 
         return html
-
-    async def acall(self, data: Union[str, bytes], **kwargs) -> ParserResponse:
-        """Async version of __call__. Parse a DOCX document asynchronously.
-
-        Args:
-            data:
-                DOCX file path, URL, or bytes.
-            **kwargs:
-                Additional parsing options (currently unused).
-
-        Returns:
-            ParserResponse containing:
-            - text: Markdown-formatted content
-            - images: Dictionary of extracted images
-            - metadata: Document metadata (num_paragraphs, num_tables, etc.)
-
-        Raises:
-            FileNotFoundError:
-                If file path doesn't exist.
-            ValueError:
-                If data type is not supported.
-        """
-        # Validate file type if it's a path
-        if isinstance(data, str) and not data.startswith(("http://", "https://")):
-            self._validate_file_type(data, ".docx")
-
-        # Load file asynchronously if needed
-        if isinstance(data, str):
-            data = await self._aload_file(data)
-
-        # Parse the document
-        result = self._parse(data)
-
-        # Create response
-        response = ParserResponse()
-        response.set_response_type("docx_parse")
-        response.add(result)
-
-        return response

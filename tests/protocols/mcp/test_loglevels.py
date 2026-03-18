@@ -43,8 +43,14 @@ class TestLogLevel:
     def test_loglevel_all_values(self):
         """Test that all log levels are defined."""
         expected_levels = {
-            "debug", "info", "notice", "warning",
-            "error", "critical", "alert", "emergency"
+            "debug",
+            "info",
+            "notice",
+            "warning",
+            "error",
+            "critical",
+            "alert",
+            "emergency",
         }
         actual_levels = {level.value for level in LogLevel}
         assert actual_levels == expected_levels
@@ -52,6 +58,7 @@ class TestLogLevel:
     def test_loglevel_is_enum(self):
         """Test that LogLevel is an enum."""
         from enum import Enum
+
         assert issubclass(LogLevel, Enum)
 
     def test_loglevel_string_conversion(self):

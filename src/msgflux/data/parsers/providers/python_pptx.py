@@ -1,4 +1,4 @@
-from typing import Dict, Optional, Union
+from typing import Dict, Union
 
 try:
     from pptx import Presentation
@@ -9,7 +9,7 @@ from msgflux.data.parsers.base import BaseParser
 from msgflux.data.parsers.registry import register_parser
 from msgflux.data.parsers.response import ParserResponse
 from msgflux.data.parsers.types import PptxParser
-from msgflux.dotdict import dotdict
+from msgflux.core.dotdict import dotdict
 
 
 @register_parser
@@ -38,8 +38,8 @@ class PythonPptxPptxParser(BaseParser, PptxParser):
     def __init__(
         self,
         *,
-        include_notes: Optional[bool] = True,
-        encode_images_base64: Optional[bool] = True,
+        include_notes: bool = True,
+        encode_images_base64: bool = True,
     ):
         """Initialize Python-PPTX parser.
 
@@ -195,42 +195,3 @@ class PythonPptxPptxParser(BaseParser, PptxParser):
             "images": images_dict,
             "metadata": metadata,
         }
-
-    async def acall(self, data: Union[str, bytes], **kwargs) -> ParserResponse:
-        """Async version of __call__. Parse a PPTX document asynchronously.
-
-        Args:
-            data:
-                PPTX file path, URL, or bytes.
-            **kwargs:
-                Additional parsing options (currently unused).
-
-        Returns:
-            ParserResponse containing:
-            - text: Markdown-formatted content
-            - images: Dictionary of extracted images
-            - metadata: Document metadata (num_slides, etc.)
-
-        Raises:
-            FileNotFoundError:
-                If file path doesn't exist.
-            ValueError:
-                If data type is not supported.
-        """
-        # Validate file type if it's a path
-        if isinstance(data, str) and not data.startswith(("http://", "https://")):
-            self._validate_file_type(data, ".pptx")
-
-        # Load file asynchronously if needed
-        if isinstance(data, str):
-            data = await self._aload_file(data)
-
-        # Parse the document
-        result = self._parse(data)
-
-        # Create response
-        response = ParserResponse()
-        response.set_response_type("pptx_parse")
-        response.add(result)
-
-        return response

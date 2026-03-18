@@ -1,29 +1,24 @@
-from typing import TYPE_CHECKING, Any, ClassVar, List, Mapping, Optional
+from typing import TYPE_CHECKING, Any, List, Mapping, Optional, Union
 from uuid import uuid4
 
 import msgspec
 from msgspec import Struct
 
-from msgflux.generation.control_flow import FlowControl, FlowResult
+from msgflux.generation.control_flow import ToolFlowControl, ToolFlowResult
 from msgflux.utils.chat import ChatBlock
 
 if TYPE_CHECKING:
     from msgflux.nn.modules.tool import ToolResponses
-
-
-def _generate_short_id() -> str:
-    """Generate a short unique ID for tool calls."""
-    return str(uuid4())[:8]
 
 REACT_SYSTEM_MESSAGE = """
 You are an Agent. In each episode, you will be given the task as input.
 And you can see your past trajectory so far.
 
 Your goal is to use one or more of the supplied tools to collect any necessary
-information for producing the `final_response`.
+information for producing the `final_answer`.
 
 To do this, you will generate a `thought` containing your reasoning and plan.
-Identify and define necessary `actions` by creating a list of `toolcall` objects.
+Identify and define necessary `actions` by creating a list of action objects.
 You MUST use the available tools when needed to achieve the objective.
 Include the function `name` and `arguments` for each call.
 Await the observations for the tool calls.
@@ -40,130 +35,138 @@ You are a function calling AI model. You may call one or more functions
 to assist with the user query. Don't make assumptions about what values
 to plug into functions. Here are the available tools:
 
-{%- macro render_properties(properties, indent=0) -%}
+{%- set type_map = {"integer": "int", "number": "float", "string": "string", "boolean": "bool", "object": "object"} -%}
+{%- macro render_type(spec) -%}
+{%- set raw = spec.get('type', 'unknown') -%}
+{%- set mapped = type_map.get(raw, raw) -%}
+{%- if raw == 'array' and spec.get('items') -%}
+list[{{ type_map.get(spec['items'].get('type', 'unknown'), spec['items'].get('type', 'unknown')) }}]
+{%- elif raw == 'array' -%}
+list
+{%- else -%}
+{{ mapped }}
+{%- endif -%}
+{%- endmacro -%}
+
+{%- macro render_properties(properties, required, indent=0) -%}
 {%- for arg, spec in properties.items() %}
-{{ "  " * indent }}- {{ arg }} ({{ spec.get('type', 'unknown') }})
+{{ "  " * indent }}- {{ arg }} ({{ render_type(spec) }}
+{%- if arg in required %}, required{% endif %})
 {%- if spec.get('description') %}
 {{ "  " * (indent + 1) }}{{ spec['description'] }}
-{% endif %}
+{%- endif %}
 {%- if spec.get('enum') %}
 {{ "  " * (indent + 1) }}Options: {{ spec['enum'] | join(', ') }}
 {%- endif %}
 {%- if spec.get('type') == "object" and spec.get('properties') %}
-{{ render_properties(spec['properties'], indent + 1) }}
+{{ render_properties(spec['properties'], spec.get('required', []), indent + 1) }}
 {%- elif spec.get('type') == "array" and spec.get('items') and
 spec['items'].get('type') == "object" %}
 {{ "  " * (indent + 1) }}Array items:
-{{ render_properties(spec['items']['properties'], indent + 2) }}
+{{ render_properties(spec['items']['properties'], spec['items'].get('required', []), indent + 2) }}
 {%- endif %}
 {%- endfor %}
 {%- endmacro %}
 
 {%- for tool in tool_schemas %}
+{%- set params = tool['function']['parameters'] %}
 <tool>{{ tool['function']['name'] }}
 {{ tool['function']['description'] }}
-{{ render_properties(tool['function']['parameters']['properties']) }}
+Parameters:
+{{ render_properties(params['properties'], params.get('required', [])) }}
 </tool>
 {%- endfor %}
 
 Tool choice: {{ tool_choice }}
 
-For each function call return a encoded json object with function name and arguments.
+Each action must include the function name and its arguments as a list of
+{"name": "<param_name>", "value": <param_value>} objects.
 """
 
 
-class ToolCall(Struct):
-    """A tool call representation.
-
-    The model generates `name` and `arguments`. The `id` and `result` fields
-    are injected by the system during flow control processing.
-    """
+class Argument(Struct):
+    """A single named argument for a tool call."""
 
     name: str
-    arguments: Optional[Any] = None
+    value: Union[str, int, float, bool, List[str]]
 
 
-class ReActStep(Struct):
-    """A single step in ReAct reasoning."""
+class Action(Struct):
+    """A tool call action with name and typed arguments."""
 
+    name: str
+    arguments: Optional[List[Argument]] = None
+
+
+class ReAct(Struct, ToolFlowControl):
     thought: str
-    actions: List[ToolCall]
-
-
-class ReActSchema(Struct):
-    """Schema for ReAct responses.
-
-    This schema defines the structure of ReAct model outputs without
-    FlowControl logic, allowing reuse for parsing and validation.
-
-    Attributes:
-        current_step: The current reasoning step with thought and actions.
-        final_answer: The final answer when reasoning is complete.
-    """
-
-    current_step: Optional[ReActStep] = None
+    actions: Optional[List[Action]] = None
     final_answer: Optional[str] = None
 
-
-class ReAct(ReActSchema, FlowControl):
-    """ReAct (Reasoning + Acting) flow control.
-
-    This implements the ReAct pattern where the LLM alternates between
-    reasoning (thought) and acting (tool calls) until it reaches a final answer.
-    """
-
-    system_message: ClassVar[str] = REACT_SYSTEM_MESSAGE
-    tools_template: ClassVar[str] = REACT_TOOLS_TEMPLATE
-
     @classmethod
-    def extract_flow_result(
-        cls,
-        raw_response: Mapping[str, Any],
-        vars: Mapping[str, Any],  # noqa: ARG003
-    ) -> FlowResult:
+    def extract_flow_result(cls, raw_response: Mapping[str, Any]) -> ToolFlowResult:
         """Extract flow information from ReAct response."""
         final_answer = raw_response.get("final_answer")
         if final_answer is not None:
-            return FlowResult(
+            raw_response.pop("actions", None)
+            return ToolFlowResult(
                 is_complete=True,
+                tool_calls=None,
+                reasoning=None,
                 final_response=raw_response,
             )
 
-        current_step = raw_response.get("current_step")
-        if current_step is not None:
-            actions = current_step.get("actions", [])
+        actions = raw_response.get("actions")
+        if actions:
             tool_calls = []
             for act in actions:
-                tool_id = _generate_short_id()
-                act["id"] = tool_id
-                tool_calls.append((tool_id, act.get("name"), act.get("arguments")))
+                tool_id = str(uuid4())
+                act["_id"] = tool_id
+                # Convert List[Argument] to dict for tool executor
+                args = act.get("arguments")
+                if isinstance(args, list):
+                    args_dict = {
+                        a["name"] if isinstance(a, dict) else a.name: (
+                            a["value"] if isinstance(a, dict) else a.value
+                        )
+                        for a in args
+                    }
+                else:
+                    args_dict = args
+                tool_calls.append((tool_id, act.get("name"), args_dict))
 
-            return FlowResult(
+            return ToolFlowResult(
                 is_complete=False,
                 tool_calls=tool_calls,
-                reasoning=current_step.get("thought"),
+                reasoning=raw_response.get("thought"),
+                final_response=None,
             )
 
-        return FlowResult(
+        raw_response.pop("actions", None)
+        return ToolFlowResult(
             is_complete=True,
+            tool_calls=None,
+            reasoning=None,
             final_response=raw_response,
         )
 
     @classmethod
-    def inject_tool_results(
-        cls,
-        raw_response: Mapping[str, Any],
-        tool_results: "ToolResponses",
-        vars: Mapping[str, Any],  # noqa: ARG003
+    def inject_results(
+        cls, raw_response: Mapping[str, Any], tool_results: "ToolResponses"
     ) -> Mapping[str, Any]:
-        """Inject tool results back into ReAct structure."""
-        current_step = raw_response.get("current_step")
-        if current_step is not None:
-            actions = current_step.get("actions", [])
-            for act in actions:
-                call = tool_results.get_by_id(act.get("id"))
-                if call is not None:
-                    act["result"] = call.result or call.error
+        """Inject tool results back into ReAct structure as observations."""
+        actions = raw_response.get("actions") or []
+        observations = []
+        for act in actions:
+            call = tool_results.get_by_id(act.get("_id"))
+            if call is not None:
+                observations.append(
+                    {
+                        "tool": act.get("name"),
+                        "result": call.result or call.error,
+                    }
+                )
+        raw_response["observations"] = observations
         return raw_response
 
     @classmethod
@@ -173,12 +176,24 @@ class ReAct(ReActSchema, FlowControl):
         messages: List[Mapping[str, Any]],
     ) -> List[Mapping[str, Any]]:
         """Build history message for next iteration."""
+        step = {
+            "thought": raw_response.get("thought"),
+            "actions": [
+                {"name": a.get("name"), "arguments": a.get("arguments")}
+                for a in (raw_response.get("actions") or [])
+            ],
+            "observations": raw_response.get("observations", []),
+        }
         if messages and messages[-1].get("role") == "assistant":
             last_react_msg = messages[-1].get("content")
             react_state = msgspec.json.decode(last_react_msg)
-            react_state.append(raw_response)
+            react_state.append(step)
             messages[-1] = ChatBlock.assist(react_state)
         else:
-            react_state = [raw_response]
+            react_state = [step]
             messages.append(ChatBlock.assist(react_state))
         return messages
+
+
+ReAct.system_message = REACT_SYSTEM_MESSAGE
+ReAct.tools_template = REACT_TOOLS_TEMPLATE

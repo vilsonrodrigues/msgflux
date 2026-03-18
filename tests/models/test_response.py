@@ -59,15 +59,15 @@ class TestModelStreamResponse:
         """Test adding data and consuming from ModelStreamResponse."""
         response = ModelStreamResponse()
         chunks = ["Hello", " ", "world", "!"]
-        
+
         for chunk in chunks:
             response.add(chunk)
         response.add(None)
-        
+
         consumed_chunks = []
         async for chunk in response.consume():
             consumed_chunks.append(chunk)
-        
+
         assert consumed_chunks == chunks
 
     @pytest.mark.asyncio
@@ -75,9 +75,9 @@ class TestModelStreamResponse:
         """Test consuming from empty ModelStreamResponse."""
         response = ModelStreamResponse()
         response.add(None)
-        
+
         consumed_chunks = []
         async for chunk in response.consume():
             consumed_chunks.append(chunk)
-        
+
         assert consumed_chunks == []

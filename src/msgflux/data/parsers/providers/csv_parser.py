@@ -6,7 +6,7 @@ from msgflux.data.parsers.base import BaseParser
 from msgflux.data.parsers.registry import register_parser
 from msgflux.data.parsers.response import ParserResponse
 from msgflux.data.parsers.types import CsvParser
-from msgflux.dotdict import dotdict
+from msgflux.core.dotdict import dotdict
 
 
 @register_parser
@@ -36,16 +36,16 @@ class StandardCsvParser(BaseParser, CsvParser):
         self,
         *,
         delimiter: Optional[str] = None,
-        has_header: Optional[bool] = True,
-        table_format: Optional[str] = "markdown",
-        encoding: Optional[str] = "utf-8",
-        quotechar: Optional[str] = '"',
+        has_header: bool = True,
+        table_format: str = "markdown",
+        encoding: str = "utf-8",
+        quotechar: str = '"',
     ):
         """Initialize CSV parser.
 
         Args:
             delimiter:
-                Field delimiter. If None, auto-detect from ",", "\t", ";", "|".
+                Field delimiter. If None, auto-detect from ",", tab, ";", "|".
             has_header:
                 Whether the first row is a header row.
             table_format:
@@ -277,38 +277,3 @@ class StandardCsvParser(BaseParser, CsvParser):
         html += "</table>"
         return html
 
-    async def acall(self, data: Union[str, bytes], **kwargs) -> ParserResponse:
-        """Async version of __call__. Parse a CSV document asynchronously.
-
-        Args:
-            data:
-                CSV file path, URL, or bytes.
-            **kwargs:
-                Additional parsing options (currently unused).
-
-        Returns:
-            ParserResponse containing parsed data.
-
-        Raises:
-            FileNotFoundError:
-                If file path doesn't exist.
-            ValueError:
-                If data type is not supported.
-        """
-        # Validate file type if it's a path
-        if isinstance(data, str) and not data.startswith(("http://", "https://")):
-            self._validate_file_type(data, [".csv", ".tsv", ".txt"])
-
-        # Load file asynchronously if it's a string path/URL
-        if isinstance(data, str):
-            data = await self._aload_file(data)
-
-        # Parse the document
-        result = self._parse(data)
-
-        # Create response
-        response = ParserResponse()
-        response.set_response_type("csv_parse")
-        response.add(result)
-
-        return response

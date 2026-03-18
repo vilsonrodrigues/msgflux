@@ -146,9 +146,9 @@ class ProfileRegistry:
             if background:
                 self._loading = True
                 # Lazy import to avoid circular dependency
-                from msgflux.nn.functional import background_task  # noqa: PLC0415
+                from msgflux.nn.functional import fire_and_forget  # noqa: PLC0415
 
-                background_task(self._fetch_and_cache)
+                fire_and_forget(self._fetch_and_cache)
             else:
                 self._fetch_and_cache()
 

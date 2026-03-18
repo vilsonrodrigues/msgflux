@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Tuple, Union
 
 try:
     from openpyxl import load_workbook
@@ -9,7 +9,7 @@ from msgflux.data.parsers.base import BaseParser
 from msgflux.data.parsers.registry import register_parser
 from msgflux.data.parsers.response import ParserResponse
 from msgflux.data.parsers.types import XlsxParser
-from msgflux.dotdict import dotdict
+from msgflux.core.dotdict import dotdict
 
 
 @register_parser
@@ -38,8 +38,8 @@ class OpenPyxlXlsxParser(BaseParser, XlsxParser):
     def __init__(
         self,
         *,
-        table_format: Optional[str] = "markdown",
-        encode_images_base64: Optional[bool] = True,
+        table_format: str = "markdown",
+        encode_images_base64: bool = True,
     ):
         """Initialize OpenPyxl parser.
 
@@ -332,41 +332,3 @@ class OpenPyxlXlsxParser(BaseParser, XlsxParser):
 
         return html
 
-    async def acall(self, data: Union[str, bytes], **kwargs) -> ParserResponse:
-        """Async version of __call__. Parse an XLSX document asynchronously.
-
-        Args:
-            data:
-                XLSX file path, URL, or bytes.
-            **kwargs:
-                Additional parsing options (currently unused).
-
-        Returns:
-            ParserResponse containing:
-            - text: Markdown-formatted content with tables
-            - images: Dictionary of extracted images
-            - metadata: Document metadata (num_sheets, sheet_names, etc.)
-
-        Raises:
-            FileNotFoundError:
-                If file path doesn't exist.
-            ValueError:
-                If data type is not supported or file type is invalid.
-        """
-        # Validate file type if it's a path
-        if isinstance(data, str) and not data.startswith(("http://", "https://")):
-            self._validate_file_type(data, [".xlsx", ".xlsm"])
-
-        # Load file asynchronously if needed
-        if isinstance(data, str):
-            data = await self._aload_file(data)
-
-        # Parse the document
-        result = self._parse(data)
-
-        # Create response
-        response = ParserResponse()
-        response.set_response_type("xlsx_parse")
-        response.add(result)
-
-        return response

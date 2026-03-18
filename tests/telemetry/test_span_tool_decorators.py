@@ -8,6 +8,7 @@ from msgflux.telemetry.span import set_tool_attributes, aset_tool_attributes
 
 class MockTool:
     """Mock tool class for testing."""
+
     def __init__(self, name, description=None):
         self.name = name
         self.description = description
@@ -16,9 +17,9 @@ class MockTool:
 class TestSetToolAttributes:
     """Test suite for set_tool_attributes decorator."""
 
-    @patch('msgflux.telemetry.span.trace.get_current_span')
-    @patch('msgflux.telemetry.span.MsgTraceAttributes')
-    @patch('msgflux.telemetry.span.envs')
+    @patch("msgflux.telemetry.span.trace.get_current_span")
+    @patch("msgflux.telemetry.span.MsgTraceAttributes")
+    @patch("msgflux.telemetry.span.envs")
     def test_decorator_with_local_execution(self, mock_envs, mock_attrs, mock_get_span):
         """Test decorator with local execution type."""
         mock_span = Mock()
@@ -40,10 +41,12 @@ class TestSetToolAttributes:
         mock_attrs.set_tool_description.assert_called_with("Test description")
         mock_attrs.set_tool_execution_type.assert_called_with("local")
 
-    @patch('msgflux.telemetry.span.trace.get_current_span')
-    @patch('msgflux.telemetry.span.MsgTraceAttributes')
-    @patch('msgflux.telemetry.span.envs')
-    def test_decorator_with_remote_execution_and_protocol(self, mock_envs, mock_attrs, mock_get_span):
+    @patch("msgflux.telemetry.span.trace.get_current_span")
+    @patch("msgflux.telemetry.span.MsgTraceAttributes")
+    @patch("msgflux.telemetry.span.envs")
+    def test_decorator_with_remote_execution_and_protocol(
+        self, mock_envs, mock_attrs, mock_get_span
+    ):
         """Test decorator with remote execution and MCP protocol."""
         mock_span = Mock()
         mock_span.is_recording.return_value = True
@@ -62,9 +65,9 @@ class TestSetToolAttributes:
         mock_attrs.set_tool_execution_type.assert_called_with("remote")
         mock_attrs.set_tool_protocol.assert_called_with("mcp")
 
-    @patch('msgflux.telemetry.span.trace.get_current_span')
-    @patch('msgflux.telemetry.span.MsgTraceAttributes')
-    @patch('msgflux.telemetry.span.envs')
+    @patch("msgflux.telemetry.span.trace.get_current_span")
+    @patch("msgflux.telemetry.span.MsgTraceAttributes")
+    @patch("msgflux.telemetry.span.envs")
     def test_decorator_with_tool_call_id(self, mock_envs, mock_attrs, mock_get_span):
         """Test decorator captures tool_call_id."""
         mock_span = Mock()
@@ -83,7 +86,7 @@ class TestSetToolAttributes:
         assert result == "result"
         mock_attrs.set_tool_call_id.assert_called_with("call_123")
 
-    @patch('msgflux.telemetry.span.trace.get_current_span')
+    @patch("msgflux.telemetry.span.trace.get_current_span")
     def test_decorator_when_span_not_recording(self, mock_get_span):
         """Test decorator when span is not recording."""
         mock_span = Mock()
@@ -106,10 +109,12 @@ class TestAsetToolAttributes:
     """Test suite for aset_tool_attributes async decorator."""
 
     @pytest.mark.asyncio
-    @patch('msgflux.telemetry.span.trace.get_current_span')
-    @patch('msgflux.telemetry.span.MsgTraceAttributes')
-    @patch('msgflux.telemetry.span.envs')
-    async def test_async_decorator_with_local_execution(self, mock_envs, mock_attrs, mock_get_span):
+    @patch("msgflux.telemetry.span.trace.get_current_span")
+    @patch("msgflux.telemetry.span.MsgTraceAttributes")
+    @patch("msgflux.telemetry.span.envs")
+    async def test_async_decorator_with_local_execution(
+        self, mock_envs, mock_attrs, mock_get_span
+    ):
         """Test async decorator with local execution type."""
         mock_span = Mock()
         mock_span.is_recording.return_value = True
@@ -131,10 +136,12 @@ class TestAsetToolAttributes:
         mock_attrs.set_tool_execution_type.assert_called_with("local")
 
     @pytest.mark.asyncio
-    @patch('msgflux.telemetry.span.trace.get_current_span')
-    @patch('msgflux.telemetry.span.MsgTraceAttributes')
-    @patch('msgflux.telemetry.span.envs')
-    async def test_async_decorator_with_protocol(self, mock_envs, mock_attrs, mock_get_span):
+    @patch("msgflux.telemetry.span.trace.get_current_span")
+    @patch("msgflux.telemetry.span.MsgTraceAttributes")
+    @patch("msgflux.telemetry.span.envs")
+    async def test_async_decorator_with_protocol(
+        self, mock_envs, mock_attrs, mock_get_span
+    ):
         """Test async decorator with protocol."""
         mock_span = Mock()
         mock_span.is_recording.return_value = True
@@ -153,7 +160,7 @@ class TestAsetToolAttributes:
         mock_attrs.set_tool_protocol.assert_called_with("mcp")
 
     @pytest.mark.asyncio
-    @patch('msgflux.telemetry.span.trace.get_current_span')
+    @patch("msgflux.telemetry.span.trace.get_current_span")
     async def test_async_decorator_when_span_not_recording(self, mock_get_span):
         """Test async decorator when span is not recording."""
         mock_span = Mock()

@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-from msgflux.message import Message
+from msgflux.core.message import Message
 from msgflux.models.base import BaseModel
 from msgflux.models.response import ModelResponse
 from msgflux.nn.modules.predictor import Predictor
@@ -77,7 +77,9 @@ class TestPredictor:
     def test_prepare_task_with_message(self):
         """Test _prepare_task with Message input."""
         model = MockModel()
-        predictor = Predictor(name="test", model=model, message_fields={"task_inputs": "content"})
+        predictor = Predictor(
+            name="test", model=model, message_fields={"task_inputs": "content"}
+        )
 
         message = Message(content="test input")
         inputs = predictor._prepare_task(message)
@@ -97,7 +99,9 @@ class TestPredictor:
         """Test _prepare_task with model preference."""
         model = MockModel()
         predictor = Predictor(
-            name="test", model=model, message_fields={"model_preference": "context.preferred_model"}
+            name="test",
+            model=model,
+            message_fields={"model_preference": "context.preferred_model"},
         )
 
         message = Message(content="test")
@@ -110,9 +114,7 @@ class TestPredictor:
     def test_prepare_model_execution(self):
         """Test _prepare_model_execution."""
         model = MockModel()
-        predictor = Predictor(
-            name="test", model=model, config={"temperature": 0.5}
-        )
+        predictor = Predictor(name="test", model=model, config={"temperature": 0.5})
 
         params = predictor._prepare_model_execution("test data")
 
@@ -153,7 +155,7 @@ class TestPredictor:
         assert response.response_type == "audio_generation"
 
     def test_forward_with_message(self):
-        """Test forward with Message."""
+        """Test forward with Message mutated in-place."""
         model = MockModel()
         predictor = Predictor(
             name="test",
@@ -165,8 +167,8 @@ class TestPredictor:
         message = Message(content="test content")
         result = predictor(message)
 
-        assert isinstance(result, Message)
-        assert "result" in result.outputs
+        assert result is None
+        assert "result" in message.outputs
 
     def test_forward_with_plain_data(self):
         """Test forward with plain data and default response_mode (None)."""
@@ -180,7 +182,7 @@ class TestPredictor:
 
     @pytest.mark.asyncio
     async def test_aforward_with_message(self):
-        """Test async forward with Message."""
+        """Test async forward with Message mutated in-place."""
         model = MockModel()
         predictor = Predictor(
             name="test",
@@ -192,8 +194,8 @@ class TestPredictor:
         message = Message(content="async test")
         result = await predictor.acall(message)
 
-        assert isinstance(result, Message)
-        assert "result" in result.outputs
+        assert result is None
+        assert "result" in message.outputs
 
     def test_inspect_model_execution_params(self):
         """Test inspect_model_execution_params for debugging."""

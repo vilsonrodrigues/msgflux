@@ -1,6 +1,7 @@
 import asyncio
 from copy import deepcopy
 from datetime import datetime, timezone
+from inspect import cleandoc
 from typing import (
     Any,
     Callable,
@@ -18,28 +19,30 @@ import msgspec
 
 from msgflux.auto import AutoParams
 from msgflux.data.types import Audio, File, Image, Video
-from msgflux.dotdict import dotdict
+from msgflux.core.dotdict import dotdict
 from msgflux.dsl.signature import (
     Signature,
     SignatureFactory,
     generate_annotations_from_signature,
 )
 from msgflux.dsl.typed_parsers.registry import typed_parser_registry
-from msgflux.examples import Example, ExampleCollection
-from msgflux.generation.control_flow import FlowControl
+from msgflux.core.examples import Example, ExampleCollection
+from msgflux.exceptions import _GuardInterrupt
+from msgflux.generation.control_flow import ToolFlowControl
 from msgflux.generation.templates import (
     EXPECTED_OUTPUTS_TEMPLATE,
     SYSTEM_PROMPT_TEMPLATE,
     VARS_INFO_TEMPLATE,
     PromptSpec,
 )
-from msgflux.message import Message
+from msgflux.core.message import Message
 from msgflux.models.gateway import ModelGateway
 from msgflux.models.response import ModelResponse, ModelStreamResponse
 from msgflux.models.types import ChatCompletionModel
 from msgflux.nn import functional as F
+from msgflux.nn.hooks import Hook
 from msgflux.nn.modules.environment import Environment
-from msgflux.nn.modules.lm import LM
+from msgflux.nn.modules.generator import Generator
 from msgflux.nn.modules.module import Module
 from msgflux.nn.modules.tool import ToolLibrary, ToolResponses
 from msgflux.nn.parameter import Parameter
@@ -57,6 +60,28 @@ _RESERVED_KWARGS = {
     "context_inputs",
     "model_preference",
 }
+
+
+def _prepare_agent_guard_input(model_execution_params):
+    """Extract user content from ChatML messages for guard validation."""
+    messages = model_execution_params.get("messages")
+    if not messages:
+        return model_execution_params
+    last_message = messages[-1]
+    if isinstance(last_message.get("content"), list):
+        if last_message.get("content")[0]["type"] == "image_url":
+            return [last_message]
+        else:
+            return last_message.get("content")[-1]
+    else:
+        return last_message.get("content")
+
+
+def _prepare_agent_guard_output(model_response):
+    """Convert model response to string for guard validation."""
+    if isinstance(model_response, str):
+        return model_response
+    return str(model_response)
 
 
 class Agent(Module, metaclass=AutoParams):
@@ -83,17 +108,17 @@ class Agent(Module, metaclass=AutoParams):
         "tool_responses",
     ]
 
-    def __init__(
+    def __init__(  # noqa: C901
         self,
         name: str,
-        model: Union[ChatCompletionModel, ModelGateway, LM],
+        model: Union[ChatCompletionModel, ModelGateway, "Generator"],
         *,
         system_message: Optional[str] = None,
         instructions: Optional[str] = None,
         expected_output: Optional[str] = None,
         examples: Optional[Union[str, List[Union[Example, Mapping[str, Any]]]]] = None,
         system_extra_message: Optional[str] = None,
-        guardrails: Optional[Dict[str, Callable]] = None,
+        hooks: Optional[List["Hook"]] = None,
         message_fields: Optional[Dict[str, Any]] = None,
         config: Optional[Dict[str, Any]] = None,
         templates: Optional[Dict[str, str]] = None,
@@ -109,7 +134,9 @@ class Agent(Module, metaclass=AutoParams):
         description: Optional[str] = None,
         annotations: Optional[Mapping[str, type]] = None,
     ):
-        """Args:
+        """Initialize the Agent module.
+
+        Args:
         name:
             Agent name in snake case format.
         model:
@@ -120,16 +147,14 @@ class Agent(Module, metaclass=AutoParams):
             What the Agent should do.
         expected_output:
             What the response should be like.
-
-        Examples:
+        examples:
             Examples of inputs, reasoning and outputs.
         system_extra_message:
             An extra message in system prompt.
-        guardrails:
-            Dictionary mapping guardrail types to callables.
-            Valid keys: "input", "output"
+        hooks:
+            List of Hook instances (e.g. Guard) to register on the model.
             !!! example
-                guardrails={"input": input_checker, "output": output_checker}
+                hooks=[Guard(validator=checker, on="pre", message="Blocked.")]
         message_fields:
             Dictionary mapping Message field names to their paths in the Message object.
             Valid keys: "task_inputs", "task_multimodal_inputs", "messages",
@@ -178,7 +203,7 @@ class Agent(Module, metaclass=AutoParams):
             - video_block_kwargs: Dict of kwargs to pass to ChatBlock.video
               (e.g., {"format": "mp4"})
             - include_date: Include current date with weekday in system prompt
-              (bool). Format: "Weekday, Month DD, YYYY" (e.g., "Monday, December 09, 2025")
+              (bool). Format: "Weekday, Month DD, YYYY"
         templates:
             Dictionary mapping template types to Jinja template strings.
             Valid keys: "task", "response", "context", "system_prompt"
@@ -187,16 +212,18 @@ class Agent(Module, metaclass=AutoParams):
                     "task": "Who was {{person}}?",
                     "response": "{{final_answer}}",
                     "context": "Context: {{context}}",
-                    "system_prompt": "Custom system prompt: {% if system_message %}{{ system_message }}{% endif %}"
+                    "system_prompt": "Custom system prompt: ..."
                 }
 
             Template descriptions:
             - task: Formats the task/prompt sent to the model
             - response: Formats the model's response
             - context: Formats context_inputs (does NOT apply to context_cache)
-            - system_prompt: Overrides the default system prompt template. If not provided,
-              uses SYSTEM_PROMPT_TEMPLATE. Available variables: system_message, instructions,
-              expected_output, examples, system_extra_message, current_date (if include_date=True)
+            - system_prompt: Overrides the default system prompt
+              template. If not provided, uses SYSTEM_PROMPT_TEMPLATE.
+              Available variables: system_message, instructions,
+              expected_output, examples, system_extra_message,
+              current_date (if include_date=True)
         context_cache:
             A fixed context.
         prefilling:
@@ -208,9 +235,10 @@ class Agent(Module, metaclass=AutoParams):
             Converts the model raw output into a typed-dict. Supported parser:
             `typed_xml`.
         response_mode:
-            What the response should be.
-            * `plain_response` (default): Returns the final agent response directly.
-            * other: Write on field in Message object.
+            Controls how the response is returned.
+            * ``None`` (default): Returns the response directly.
+            * ``"<path>"``: Writes to ``obj.<path>`` and returns ``None``
+              (``dotdict`` or ``Message`` is mutated in place).
         tools:
             A list of callable objects.
         mcp_servers:
@@ -278,9 +306,9 @@ class Agent(Module, metaclass=AutoParams):
             if generation_schema is not None:
                 raise ValueError("`generation_schema` is not `stream=True` compatible")
 
-            if guardrails is not None and "output" in guardrails:
+            if hooks and any(getattr(h, "on", None) == "post" for h in hooks):
                 raise ValueError(
-                    "`guardrails['output']` is not `stream=True` compatible"
+                    "Hooks with `on='post'` are not `stream=True` compatible"
                 )
 
             if templates is not None and templates.get("response") is not None:
@@ -292,9 +320,15 @@ class Agent(Module, metaclass=AutoParams):
                 raise ValueError("`typed_parser` is not `stream=True` compatible")
 
         self._set_context_cache(context_cache)
-        self._set_guardrails(guardrails)
         self._set_message_fields(message_fields)
         self._set_model(model)
+        self._set_hooks(
+            hooks,
+            processors={
+                "guard_pre": _prepare_agent_guard_input,
+                "guard_post": _prepare_agent_guard_output,
+            },
+        )
         self._set_prefilling(prefilling)
         self._set_system_extra_message(system_extra_message)
 
@@ -379,7 +413,11 @@ class Agent(Module, metaclass=AutoParams):
             >>> agent(name="Vilson", age=27)
         """
         inputs = self._prepare_task(message, **kwargs)
-        model_response = self._execute_model(prefilling=self.prefilling, **inputs)
+        model_response = self._execute_model(
+            message=message, prefilling=self.prefilling, **inputs
+        )
+        if isinstance(model_response, str):
+            return self._define_response_mode(model_response, message)
         response = self._process_model_response(message, model_response, **inputs)
         return response
 
@@ -389,8 +427,10 @@ class Agent(Module, metaclass=AutoParams):
         """Async version of forward."""
         inputs = await self._aprepare_task(message, **kwargs)
         model_response = await self._aexecute_model(
-            prefilling=self.prefilling, **inputs
+            message=message, prefilling=self.prefilling, **inputs
         )
+        if isinstance(model_response, str):
+            return self._define_response_mode(model_response, message)
         response = await self._aprocess_model_response(
             message, model_response, **inputs
         )
@@ -400,40 +440,44 @@ class Agent(Module, metaclass=AutoParams):
         self,
         messages: List[Mapping[str, Any]],
         vars: Mapping[str, Any],
+        message: Optional[Union[str, Mapping[str, Any], Message]] = None,  # noqa: ARG002
         prefilling: Optional[str] = None,
         model_preference: Optional[str] = None,
-    ) -> Union[ModelResponse, ModelStreamResponse]:
+    ) -> Union[str, ModelResponse, ModelStreamResponse]:
         model_execution_params = self._prepare_model_execution(
             messages=messages,
             prefilling=prefilling,
             model_preference=model_preference,
             vars=vars,
         )
-        if self.guardrails.get("input"):
-            self._execute_input_guardrail(model_execution_params)
         if self.config.get("verbose", False):
             cprint(f"[{self.name}][call_model]", bc="br1", ls="b")
-        model_response = self.lm(**model_execution_params)
+        try:
+            model_response = self.generator(**model_execution_params)
+        except _GuardInterrupt as e:
+            return e.response
         return model_response
 
     async def _aexecute_model(
         self,
         messages: List[Mapping[str, Any]],
         vars: Mapping[str, Any],
+        message: Optional[Union[str, Mapping[str, Any], Message]] = None,  # noqa: ARG002
         prefilling: Optional[str] = None,
         model_preference: Optional[str] = None,
-    ) -> Union[ModelResponse, ModelStreamResponse]:
+    ) -> Union[str, ModelResponse, ModelStreamResponse]:
         model_execution_params = self._prepare_model_execution(
             messages=messages,
             prefilling=prefilling,
             model_preference=model_preference,
             vars=vars,
         )
-        if self.guardrails.get("input"):
-            await self._aexecute_input_guardrail(model_execution_params)
         if self.config.get("verbose", False):
             cprint(f"[{self.name}][call_model]", bc="br1", ls="b")
-        model_response = await self.lm.acall(**model_execution_params)
+        try:
+            model_response = await self.generator.acall(**model_execution_params)
+        except _GuardInterrupt as e:
+            return e.response
         return model_response
 
     def _prepare_model_execution(
@@ -498,21 +542,6 @@ class Agent(Module, metaclass=AutoParams):
             model_execution_params.model_preference = model_preference
 
         return model_execution_params
-
-    def _prepare_input_guardrail_execution(
-        self, model_execution_params: Mapping[str, Any]
-    ) -> Mapping[str, Any]:
-        messages = model_execution_params.get("messages")
-        last_message = messages[-1]
-        if isinstance(last_message.get("content"), list):
-            if last_message.get("content")[0]["type"] == "image_url":
-                data = [last_message]
-            else:  # audio, file
-                data = last_message.get("content")[-1]  # text input
-        else:
-            data = last_message.get("content")
-        guardrail_params = {"data": data}
-        return guardrail_params
 
     def _process_model_response(
         self,
@@ -760,11 +789,8 @@ class Agent(Module, metaclass=AutoParams):
             flow_result = flow_control.extract_flow_result(raw_response, vars)
 
             if flow_result.is_complete:
-                # Use final_response if available (e.g., LKI resolves vars)
-                if flow_result.final_response:
-                    model_response = ModelResponse()
-                    model_response.add(flow_result.final_response)
-                    model_response.set_response_type("structured")
+                if flow_result.final_response is not None:
+                    model_response.data = flow_result.final_response
                 return model_response, messages
 
             self._log_flow_reasoning(flow_result.reasoning)
@@ -876,11 +902,8 @@ class Agent(Module, metaclass=AutoParams):
             flow_result = await flow_control.aextract_flow_result(raw_response, vars)
 
             if flow_result.is_complete:
-                # Use final_response if available (e.g., LKI resolves vars)
-                if flow_result.final_response:
-                    model_response = ModelResponse()
-                    model_response.add(flow_result.final_response)
-                    model_response.set_response_type("structured")
+                if flow_result.final_response is not None:
+                    model_response.data = flow_result.final_response
                 return model_response, messages
 
             self._log_flow_reasoning(flow_result.reasoning)
@@ -908,9 +931,8 @@ class Agent(Module, metaclass=AutoParams):
             # Check if flow is now complete after injection (e.g., LKI resolves vars)
             flow_result = await flow_control.aextract_flow_result(raw_response, vars)
             if flow_result.is_complete:
-                model_response = ModelResponse()
-                model_response.add(flow_result.final_response or raw_response)
-                model_response.set_response_type("structured")
+                if flow_result.final_response is not None:
+                    model_response.data = flow_result.final_response
                 return model_response, messages
 
             model_response = await self._aexecute_model(
@@ -1108,8 +1130,6 @@ class Agent(Module, metaclass=AutoParams):
             if response_type == "text_generation" or "structured" in response_type:
                 if self.config.get("verbose", False):
                     cprint(f"[{self.name}][response] {raw_response}", bc="y", ls="b")
-                if self.guardrails.get("output"):
-                    self._execute_output_guardrail(raw_response)
                 if self.templates.get("response"):
                     if isinstance(raw_response, str):
                         pre_response = self._format_response_template(vars)
@@ -1148,8 +1168,6 @@ class Agent(Module, metaclass=AutoParams):
             if response_type == "text_generation" or "structured" in response_type:
                 if self.config.get("verbose", False):
                     cprint(f"[{self.name}][response] {raw_response}", bc="y", ls="b")
-                if self.guardrails.get("output"):
-                    await self._aexecute_output_guardrail(raw_response)
                 if self.templates.get("response"):
                     if isinstance(raw_response, str):
                         pre_response = self._format_response_template(vars)
@@ -1170,17 +1188,7 @@ class Agent(Module, metaclass=AutoParams):
                 result = dotdict(response=result, messages=messages)
         return self._define_response_mode(result, message)
 
-    def _prepare_output_guardrail_execution(
-        self, model_response: Union[str, Mapping[str, Any]]
-    ) -> Mapping[str, Any]:
-        if isinstance(model_response, str):
-            data = model_response
-        else:
-            data = str(model_response)
-        guardrail_params = {"data": data}
-        return guardrail_params
-
-    def _prepare_task(
+    def _prepare_task(  # noqa: C901
         self, message: Optional[Union[str, Message, Mapping[str, Any]]] = None, **kwargs
     ) -> Mapping[str, Any]:
         """Prepare model input in ChatML format and execution params."""
@@ -1217,13 +1225,13 @@ class Agent(Module, metaclass=AutoParams):
             )
 
         # Extract vars from Message if not provided
-        if not vars and isinstance(message, Message) and self.vars is not None:
+        if not vars and isinstance(message, dotdict) and self.vars is not None:
             vars = message.get(self.vars, {})
 
         # Extract messages from Message if not provided
         if (
             messages == []
-            and isinstance(message, Message)
+            and isinstance(message, dotdict)
             and self.messages is not None
         ):
             messages = self._get_content_from_message(self.messages, message)
@@ -1246,7 +1254,7 @@ class Agent(Module, metaclass=AutoParams):
             else:
                 messages.extend(chat_content)
 
-        if model_preference is None and isinstance(message, Message):
+        if model_preference is None and isinstance(message, dotdict):
             model_preference = self.get_model_preference_from_message(message)
 
         return {
@@ -1255,7 +1263,7 @@ class Agent(Module, metaclass=AutoParams):
             "vars": vars,
         }
 
-    async def _aprepare_task(
+    async def _aprepare_task(  # noqa: C901
         self, message: Optional[Union[str, Message, Mapping[str, Any]]] = None, **kwargs
     ) -> Mapping[str, Any]:
         """Async version of _prepare_task.
@@ -1294,13 +1302,13 @@ class Agent(Module, metaclass=AutoParams):
             )
 
         # Extract vars from Message if not provided
-        if not vars and isinstance(message, Message) and self.vars is not None:
+        if not vars and isinstance(message, dotdict) and self.vars is not None:
             vars = message.get(self.vars, {})
 
         # Extract messages from Message if not provided
         if (
             messages == []
-            and isinstance(message, Message)
+            and isinstance(message, dotdict)
             and self.messages is not None
         ):
             messages = self._get_content_from_message(self.messages, message)
@@ -1324,7 +1332,7 @@ class Agent(Module, metaclass=AutoParams):
                 messages.extend(chat_content)
         # messages is already set when content is None
 
-        if model_preference is None and isinstance(message, Message):
+        if model_preference is None and isinstance(message, dotdict):
             model_preference = self.get_model_preference_from_message(message)
 
         return {
@@ -1333,7 +1341,7 @@ class Agent(Module, metaclass=AutoParams):
             "vars": vars,
         }
 
-    def _process_task_inputs(
+    def _process_task_inputs(  # noqa: C901
         self,
         message: Union[str, Message, Mapping[str, Any]],
         vars: Mapping[str, Any],
@@ -1345,7 +1353,7 @@ class Agent(Module, metaclass=AutoParams):
         if context_content:
             content += context_content
 
-        if isinstance(message, Message):
+        if isinstance(message, dotdict):
             task_inputs = self._extract_message_values(self.task_inputs, message)
         else:
             task_inputs = message
@@ -1383,7 +1391,7 @@ class Agent(Module, metaclass=AutoParams):
             return multimodal_content
         return content
 
-    async def _aprocess_task_inputs(
+    async def _aprocess_task_inputs(  # noqa: C901
         self,
         message: Union[str, Message, Mapping[str, Any]],
         vars: Mapping[str, Any],
@@ -1396,7 +1404,7 @@ class Agent(Module, metaclass=AutoParams):
         if context_content:
             content += context_content
 
-        if isinstance(message, Message):
+        if isinstance(message, dotdict):
             task_inputs = self._extract_message_values(self.task_inputs, message)
         else:
             task_inputs = message
@@ -1436,7 +1444,7 @@ class Agent(Module, metaclass=AutoParams):
             return multimodal_content
         return content
 
-    def _context_manager(
+    def _context_manager(  # noqa: C901
         self,
         message: Union[str, Message, Mapping[str, Any]],
         vars: Mapping[str, Any],
@@ -1452,7 +1460,7 @@ class Agent(Module, metaclass=AutoParams):
         runtime_context_inputs = kwargs.pop("context_inputs", None)
         if runtime_context_inputs is not None:
             context_inputs = runtime_context_inputs
-        elif isinstance(message, Message):
+        elif isinstance(message, dotdict):
             context_inputs = self._extract_message_values(self.context_inputs, message)
 
         if context_inputs is not None:
@@ -1495,7 +1503,7 @@ class Agent(Module, metaclass=AutoParams):
         task_multimodal_inputs = kwargs.get("task_multimodal_inputs", None)
         if task_multimodal_inputs is not None:
             multimodal_paths = task_multimodal_inputs
-        elif isinstance(message, Message) and self.task_multimodal_inputs is not None:
+        elif isinstance(message, dotdict) and self.task_multimodal_inputs is not None:
             multimodal_paths = self._extract_message_values(
                 self.task_multimodal_inputs, message
             )
@@ -1535,7 +1543,7 @@ class Agent(Module, metaclass=AutoParams):
         task_multimodal_inputs = kwargs.get("task_multimodal_inputs", None)
         if task_multimodal_inputs is not None:
             multimodal_paths = task_multimodal_inputs
-        elif isinstance(message, Message) and self.task_multimodal_inputs is not None:
+        elif isinstance(message, dotdict) and self.task_multimodal_inputs is not None:
             multimodal_paths = self._extract_message_values(
                 self.task_multimodal_inputs, message
             )
@@ -1712,32 +1720,32 @@ class Agent(Module, metaclass=AutoParams):
                 f"given `{type(generation_schema)}`"
             )
 
-    def _set_model(self, model: Union[ChatCompletionModel, ModelGateway, LM]):
-        if isinstance(model, LM):  # If already LM, use directly
-            self.lm = model
-        else:  # LM will validate model type
-            self.lm = LM(model)
+    def _set_model(self, model: Union[ChatCompletionModel, ModelGateway, "Generator"]):
+        if isinstance(model, Generator):
+            self.generator = model
+        else:
+            if (
+                not hasattr(model, "model_type")
+                or model.model_type != "chat_completion"
+            ):
+                raise TypeError(
+                    f"`model` must be a `chat_completion` model, given `{type(model)}`"
+                )
+            self.generator = Generator(model)
 
     @property
     def model(self):
-        """Access underlying model for convenience.
-
-        Returns:
-            The wrapped model instance
-        """
-        return self.lm.model
+        """Access underlying model for convenience."""
+        return self.generator.model
 
     @model.setter
-    def model(self, value: Union[ChatCompletionModel, ModelGateway, LM]):
-        """Update the agent's model.
-
-        Args:
-            value: New model (can be Model or LM)
-        """
+    def model(self, value: Union[ChatCompletionModel, ModelGateway, "Generator"]):
         self._set_model(value)
 
     def _set_system_message(self, system_message: Optional[str] = None):
         if isinstance(system_message, str) or system_message is None:
+            if isinstance(system_message, str):
+                system_message = cleandoc(system_message)
             if (
                 hasattr(self.generation_schema, "system_message")
                 and self.generation_schema.system_message is not None
@@ -1757,6 +1765,8 @@ class Agent(Module, metaclass=AutoParams):
 
     def _set_instructions(self, instructions: Optional[str] = None):
         if isinstance(instructions, str) or instructions is None:
+            if isinstance(instructions, str):
+                instructions = cleandoc(instructions)
             typed_parser_cls = typed_parser_registry.get(self.typed_parser, None)
             if typed_parser_cls is not None:
                 instructions = self._format_template(
@@ -1770,6 +1780,8 @@ class Agent(Module, metaclass=AutoParams):
 
     def _set_expected_output(self, expected_output: Optional[str] = None):
         if isinstance(expected_output, str) or expected_output is None:  # TODO
+            if isinstance(expected_output, str):
+                expected_output = cleandoc(expected_output)
             expected_output_temp = ""
             if expected_output:
                 expected_output_temp += expected_output
@@ -1796,6 +1808,8 @@ class Agent(Module, metaclass=AutoParams):
         examples: Optional[Union[str, List[Union[Example, Mapping[str, Any]]]]] = None,
     ):
         if isinstance(examples, (str, list)) or examples is None:
+            if isinstance(examples, str):
+                examples = cleandoc(examples)
             if isinstance(examples, list):
                 typed_parser_cls = typed_parser_registry.get(self.typed_parser, None)
                 collection = ExampleCollection(examples)
@@ -1877,6 +1891,8 @@ class Agent(Module, metaclass=AutoParams):
 
     def _set_system_extra_message(self, system_extra_message: Optional[str] = None):
         if isinstance(system_extra_message, str) or system_extra_message is None:
+            if isinstance(system_extra_message, str):
+                system_extra_message = cleandoc(system_extra_message)
             self.register_buffer("system_extra_message", system_extra_message)
         else:
             raise TypeError(
@@ -2035,12 +2051,11 @@ class Agent(Module, metaclass=AutoParams):
                     "final_answer": signature_as_type,
                 }
 
-                Output = type(
+                fused_output_struct = type(
                     "Output",
                     (generation_schema,),
                     {"__annotations__": merged_annotations},
                 )
-                fused_output_struct = Output
             self._set_generation_schema(fused_output_struct or signature_output_struct)
 
             # system message

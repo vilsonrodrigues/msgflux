@@ -30,17 +30,16 @@ from opentelemetry import trace
 from opentelemetry.trace import Status, StatusCode
 
 from msgflux._private.executor import Executor
-from msgflux.dotdict import dotdict
+from msgflux.core.dotdict import dotdict
 from msgflux.envs import envs
-from msgflux.exceptions import UnsafeModelResponseError, UnsafeUserInputError
-from msgflux.message import Message
+from msgflux.core.message import Message
 from msgflux.models.gateway import ModelGateway
 from msgflux.models.model import Model
 from msgflux.models.response import ModelResponse, ModelStreamResponse
+from msgflux.nn.hooks import Hook, RemovableHandle
 from msgflux.nn.parameter import Parameter
 from msgflux.telemetry import Spans
 from msgflux.utils.convert import convert_camel_snake_to_title
-from msgflux.utils.hooks import RemovableHandle
 from msgflux.utils.mermaid import plot_mermaid
 from msgflux.utils.msgspec import StructFactory
 from msgflux.utils.templates import format_template
@@ -63,11 +62,8 @@ MSGFLUX_DESERIALIZABLE_CLS: Dict[str, Type] = {
 
 T = TypeVar("T", bound="Module")
 
-# TODO para serializar basta verificar se o obj tem msgflux_type
-# isso resolve em vez de ficar add manualmente quais são
 
-
-class _IncompatibleKeys(  # TODO tirar. tirar nao porra. tem que ficar
+class _IncompatibleKeys(
     namedtuple("IncompatibleKeys", ["missing_keys", "unexpected_keys"]),
 ):
     def __repr__(self):
@@ -437,7 +433,7 @@ class Module:
         orientation: Optional[str] = "TD",
         *,
         remove_self: Optional[bool] = True,
-    ) -> Mermaid:
+    ) -> "Mermaid":
         """Generates and renders a Mermaid diagram of the `forward` method.
 
         This method extracts the source code of the `forward` method and converts
@@ -471,7 +467,7 @@ class Module:
 
     def _get_content_from_message(self, path: str, message: Message):
         content = None
-        if isinstance(message, Message):
+        if isinstance(message, dotdict):
             if isinstance(path, tuple):  # OR inputs
                 content = self._get_content_from_or_input(path, message)
             else:
@@ -481,10 +477,10 @@ class Module:
     def _extract_message_values(
         self, paths: Union[str, List[str], Dict[str, str]], message: Message
     ) -> Optional[Union[str, Dict[str, Any], List[Any], None]]:
-        """Process inputs based on their type (str, dict, list)
+        """Process inputs based on their type (str, tuple, dict, list)
         by extracting content from the message.
         """
-        if isinstance(paths, str):
+        if isinstance(paths, (str, tuple)):  # tuple = OR inputs
             return self._get_content_from_message(paths, message)
         elif isinstance(paths, dict):
             return dotdict(
@@ -510,13 +506,7 @@ class Module:
     def _format_template(
         self, content: Union[str, Dict[str, Any]], raw_template: str
     ) -> str:
-        """Format a template with content, using security settings from config.
-
-        Delegates to msgflux.utils.templates.format_template with sanitization
-        controlled by the 'sanitize_inputs' config option (default: True).
-        """
-        sanitize = self.config.get("sanitize_inputs", True)
-        return format_template(content, raw_template, sanitize_inputs=sanitize)
+        return format_template(content, raw_template)
 
     def set_name(self, name: str):
         if isinstance(name, str):
@@ -542,7 +532,7 @@ class Module:
             self.register_buffer("response_mode", response_mode)
         else:
             raise TypeError(
-                f"`response_mode` requires a string or None, given `{type(response_mode)}`"
+                f"`response_mode` requires a string or None, got `{type(response_mode)}`"  # noqa: E501
             )
 
     def _set_prompt(self, prompt: Optional[str] = None):
@@ -584,18 +574,15 @@ class Module:
     def _define_response_mode(self, response: Any, message: Any) -> Any:
         if self.response_mode is None:
             return response
-        elif isinstance(message, Message):
+        elif isinstance(message, dotdict):
             message.set(self.response_mode, response)
-            return message
+            return None
         else:
-            raise ValueError(
-                "For non-Message objects, `response_mode` must be None"
-            )
+            raise ValueError("For non-dotdict objects, `response_mode` must be None")
 
     def _set_task_inputs(
         self, task_inputs: Optional[Union[str, Dict[str, str], Tuple[str, ...]]] = None
     ):
-        # TODO: suporte para lista de inputs ["outputs.text1", "outputs.text2"]
         if isinstance(task_inputs, (str, dict, tuple)) or task_inputs is None:
             if isinstance(task_inputs, str) and task_inputs == "":
                 raise ValueError(
@@ -616,7 +603,6 @@ class Module:
     def _set_task_multimodal_inputs(
         self, task_multimodal_inputs: Optional[Dict[str, List[str]]] = None
     ):
-        # TODO permitir passar em vez de uma lista passar so um valor se for unico
         if isinstance(task_multimodal_inputs, dict) or task_multimodal_inputs is None:
             if not task_multimodal_inputs and task_multimodal_inputs is not None:
                 raise ValueError(
@@ -639,53 +625,39 @@ class Module:
                 f"given `{type(model_preference)}`"
             )
 
-    def _set_guardrails(self, guardrails: Optional[Dict[str, Callable]] = None):
-        """Set guardrails for input and output execution.
+    def _set_hooks(
+        self,
+        hooks: Optional[List["Hook"]] = None,
+        processors: Optional[Dict[str, Callable]] = None,
+    ):
+        """Register hooks on their declared targets.
+
+        Each hook declares its own ``target`` attribute (submodule name).
+        If ``target`` is ``None``, the hook registers on ``self``.
 
         Args:
-            guardrails: Dictionary mapping guardrail types to callables.
-                Valid keys: "input", "output"
-
-        Raises:
-            TypeError: If guardrails is not a dict or None
-            ValueError: If invalid keys are provided
+            hooks: List of Hook instances to register.
+            processors: Optional dict mapping processor keys to callables.
+                Keys are matched via ``hook.processor_key``.
         """
-        if guardrails is None:
-            self.guardrails = {}
+        if hooks is None:
             return
-
-        if not isinstance(guardrails, dict):
-            raise TypeError(
-                f"`guardrails` must be a dict or None, given `{type(guardrails)}`"
-            )
-
-        # Validate keys
-        valid_keys = {"input", "output"}
-        invalid_keys = set(guardrails.keys()) - valid_keys
-        if invalid_keys:
-            raise ValueError(
-                f"Invalid guardrail keys: {invalid_keys}. Valid keys are: {valid_keys}"
-            )
-
-        # Validate that all values are callable
-        for key, guardrail in guardrails.items():
-            if not isinstance(guardrail, Callable):
+        for i, hook in enumerate(hooks):
+            if not isinstance(hook, Hook):
                 raise TypeError(
-                    f"Guardrail for '{key}' must be callable, given `{type(guardrail)}`"
+                    f"Hook at index {i} must be a Hook instance, given `{type(hook)}`"
                 )
-
-        # Store guardrails, registering as buffers if needed
-        self.guardrails = {}
-        for key, guardrail in guardrails.items():
-            if inspect.isclass(guardrail) and hasattr(guardrail, "serialize"):
-                self.register_buffer(f"{key}_guardrail", guardrail)
-                self.guardrails[key] = getattr(self, f"{key}_guardrail")
-            elif isinstance(guardrail, self.__class__):
-                setattr(self, f"{key}_guardrail", guardrail)
-                self.guardrails[key] = guardrail
+            # Resolve target via hook.target
+            if hook.target is not None:
+                resolved_target = getattr(self, hook.target)
             else:
-                super().__setattr__(f"{key}_guardrail", guardrail)
-                self.guardrails[key] = guardrail
+                resolved_target = self
+            # Auto-assign processor via hook.processor_key
+            if processors and hook.processor_key:
+                processor = processors.get(hook.processor_key)
+                if processor is not None and getattr(hook, "processor", None) is None:
+                    hook.processor = processor
+            hook.register(resolved_target)
 
     def _set_message_fields(self, message_fields: Optional[Dict[str, Any]] = None):
         """Set message field mappings.
@@ -771,96 +743,16 @@ class Module:
         # Store templates
         self.templates = templates.copy()
 
-    def _execute_input_guardrail(self, model_execution_params: Dict[str, Any]):
-        input_guardrail = self.guardrails.get("input")
-        if not input_guardrail:
-            return
-
-        guardrail_params = self._prepare_input_guardrail_execution(
-            model_execution_params
-        )
-        guardrail_response = input_guardrail(**guardrail_params)
-
-        if isinstance(guardrail_response, ModelResponse):
-            guardrail_response = self._extract_raw_response(guardrail_response)
-
-        if not guardrail_response["safe"]:
-            raise UnsafeUserInputError()  # TODO
-
-    async def _aexecute_input_guardrail(self, model_execution_params: Dict[str, Any]):
-        input_guardrail = self.guardrails.get("input")
-        if not input_guardrail:
-            return
-
-        guardrail_params = self._prepare_input_guardrail_execution(
-            model_execution_params
-        )
-
-        # Check if guardrail has acall method or is a coroutine function
-        if hasattr(input_guardrail, "acall"):
-            guardrail_response = await input_guardrail.acall(**guardrail_params)
-        elif inspect.iscoroutinefunction(input_guardrail):
-            guardrail_response = await input_guardrail(**guardrail_params)
-        else:
-            # Fallback to sync call in executor to avoid blocking event loop
-            loop = asyncio.get_event_loop()
-            guardrail_response = await loop.run_in_executor(
-                None, lambda: input_guardrail(**guardrail_params)
-            )
-
-        if isinstance(guardrail_response, ModelResponse):
-            guardrail_response = self._extract_raw_response(guardrail_response)
-
-        if not guardrail_response["safe"]:
-            raise UnsafeUserInputError()  # TODO
-
-    def _execute_output_guardrail(self, model_response: Dict[str, Any]):
-        output_guardrail = self.guardrails.get("output")
-        if not output_guardrail:
-            return
-
-        guardrail_params = self._prepare_output_guardrail_execution(model_response)
-        guardrail_response = output_guardrail(**guardrail_params)
-
-        if isinstance(guardrail_response, ModelResponse):
-            guardrail_response = self._extract_raw_response(guardrail_response)
-
-        if not guardrail_response["safe"]:
-            raise UnsafeModelResponseError()  # TODO
-
-    async def _aexecute_output_guardrail(self, model_response: Dict[str, Any]):
-        output_guardrail = self.guardrails.get("output")
-        if not output_guardrail:
-            return
-
-        guardrail_params = self._prepare_output_guardrail_execution(model_response)
-
-        # Check if guardrail has acall method or is a coroutine function
-        if hasattr(output_guardrail, "acall"):
-            guardrail_response = await output_guardrail.acall(**guardrail_params)
-        elif inspect.iscoroutinefunction(output_guardrail):
-            guardrail_response = await output_guardrail(**guardrail_params)
-        else:
-            # Fallback to sync call in executor to avoid blocking event loop
-            loop = asyncio.get_event_loop()
-            guardrail_response = await loop.run_in_executor(
-                None, lambda: output_guardrail(**guardrail_params)
-            )
-
-        if isinstance(guardrail_response, ModelResponse):
-            guardrail_response = self._extract_raw_response(guardrail_response)
-
-        if not guardrail_response["safe"]:
-            raise UnsafeModelResponseError()  # TODO
-
     def get_model_preference_from_message(self, message: Message) -> Optional[str]:
-        if isinstance(message, Message) and isinstance(self.model_preference, str):
+        if isinstance(message, dotdict) and isinstance(self.model_preference, str):
             return message.get(self.model_preference)
         else:
             return None
 
     def set_description(self, description: Optional[str] = None):
         if isinstance(description, str) or description is None:
+            if isinstance(description, str):
+                description = inspect.cleandoc(description)
             self.register_buffer("description", description)
         else:
             raise ValueError("`description` requires a string not empty")
@@ -886,29 +778,28 @@ class Module:
     # msgflux END
 
     def register_buffer(self, name: str, data: Any) -> None:
-        # TODO: muito trabalho pra ajeitar a docstring
-        # mudei de tensor para data
         """Add a buffer to the module.
 
-        This is typically used to register a buffer that should not to be
-        considered a model parameter. For example, BatchNorm's ``running_mean``
-        is not a parameter, but is part of the module's state. Buffers, by
-        default, are persistent and will be saved alongside parameters. This
-        behavior can be changed by setting :attr:`persistent` to ``False``. The
-        only difference between a persistent buffer and a non-persistent buffer
-        is that the latter will not be a part of this module's
-        :attr:`state_dict`.
+        This is typically used to register data that should not be considered a
+        module parameter but is part of the module's state. Buffers are persistent
+        and will be saved alongside parameters in the module's state.
 
-        Buffers can be accessed as attributes using given names.
+        Buffers can be accessed as attributes using the given name.
 
         Args:
             name:
                 Name of the buffer. The buffer can be accessed
-                from this module using the given name
+                from this module using the given name.
             data:
-                buffer to be registered.
-        Example::
-            >>> self.register_buffer("name", "agent")
+                Data to be registered as a buffer.
+
+        !!! example
+            ```python
+            class MyAgent(Agent):
+                def __init__(self):
+                    super().__init__()
+                    self.register_buffer("context", {"domain": "finance"})
+            ```
         """
         if "_buffers" not in self.__dict__:
             raise AttributeError("cannot assign buffer before Module.__init__() call")
@@ -1170,8 +1061,8 @@ class Module:
                 to look for. (See ``get_submodule`` for how to specify a
                 fully-qualified string.)
 
-        Returns: TODO
-            torch.Tensor: The buffer referenced by ``target``
+        Returns:
+            Any: The buffer referenced by ``target``
 
         Raises:
             AttributeError: If the target string references an invalid
@@ -1193,8 +1084,6 @@ class Module:
             raise AttributeError("`" + buffer_name + "` is not a buffer")
 
         return buffer
-
-    # revisar
 
     def register_forward_pre_hook(
         self,
@@ -1388,21 +1277,24 @@ class Module:
                 module_name_title, module_type, *args, **kwargs
             )
 
+    @staticmethod
+    async def _adispatch_hook(hook, *args):
+        """Dispatch a hook call asynchronously."""
+        if hasattr(hook, "acall"):
+            return await hook.acall(*args)
+        elif inspect.iscoroutinefunction(hook):
+            return await hook(*args)
+        else:
+            loop = asyncio.get_event_loop()
+            return await loop.run_in_executor(None, functools.partial(hook, *args))
+
     async def _acall_impl(self, *args, **kwargs):
         if not (self._forward_hooks or self._forward_pre_hooks):
             return await self._acall(*args, **kwargs)
 
         # Execute forward pre-hooks (sync or async)
         for hook in self._forward_pre_hooks.values():
-            if inspect.iscoroutinefunction(hook):
-                # Async hook - await directly
-                hook_result = await hook(self, args, kwargs)
-            else:
-                # Sync hook - run in executor to avoid blocking event loop
-                loop = asyncio.get_event_loop()
-                hook_result = await loop.run_in_executor(
-                    None, functools.partial(hook, self, args, kwargs)
-                )
+            hook_result = await self._adispatch_hook(hook, self, args, kwargs)
 
             if hook_result is not None:
                 if isinstance(hook_result, tuple) and len(hook_result) == 2:
@@ -1416,15 +1308,7 @@ class Module:
 
         # Execute forward hooks (sync or async)
         for hook in self._forward_hooks.values():
-            if inspect.iscoroutinefunction(hook):
-                # Async hook - await directly
-                hook_result = await hook(self, args, kwargs, result)
-            else:
-                # Sync hook - run in executor to avoid blocking event loop
-                loop = asyncio.get_event_loop()
-                hook_result = await loop.run_in_executor(
-                    None, functools.partial(hook, self, args, kwargs, result)
-                )
+            hook_result = await self._adispatch_hook(hook, self, args, kwargs, result)
 
             if hook_result is not None:
                 result = hook_result
@@ -1906,12 +1790,9 @@ class Module:
             Parameter: module parameter
 
         !!! example
-            # TODO
             ```python
             for param in model.parameters():
-                print(type(param), param.size())
-            >>> <class 'torch.Tensor'> (20L,)
-            >>> <class 'torch.Tensor'> (20L, 1L, 5L, 5L)
+                print(param.data, param.spec)
             ```
         """
         for _name, param in self.named_parameters(recurse=recurse):
@@ -1920,7 +1801,6 @@ class Module:
     def named_parameters(
         self, prefix: str = "", *, recurse: bool = True, remove_duplicate: bool = True
     ) -> Iterator[Tuple[str, Parameter]]:
-        # TODO: docstring
         """Return an iterator over module parameters, yielding both the name of the
             parameter as well as the parameter itself.
 
@@ -1935,13 +1815,11 @@ class Module:
         Yields:
             (str, Parameter): Tuple containing the name and parameter
 
-        Example::
-
-            >>> # xdoctest: +SKIP("undefined vars")
-            >>> for name, param in self.named_parameters():
-            >>>     if name in ['bias']:
-            >>>         print(param.size())
-
+        !!! example
+            ```python
+            for name, param in model.named_parameters():
+                print(name, param.data)
+            ```
         """
         gen = self._named_members(
             lambda module: module._parameters.items(),
@@ -1951,7 +1829,7 @@ class Module:
         )
         yield from gen
 
-    def buffers(self, *, recurse: Optional[bool] = True) -> Iterator[Any]:  # TODO doc
+    def buffers(self, *, recurse: Optional[bool] = True) -> Iterator[Any]:
         """Return an iterator over module buffers.
 
         Args:
@@ -1959,17 +1837,14 @@ class Module:
                 and all submodules. Otherwise, yields only buffers that
                 are direct members of this module.
 
-        Returns:
-            torch.Tensor: module buffer
+        Yields:
+            Any: module buffer
 
-        Example::
-
-            >>> # xdoctest: +SKIP("undefined vars")
-            >>> for buf in model.buffers():
-            >>>     print(type(buf), buf.size())
-            <class 'torch.Tensor'> (20L,)
-            <class 'torch.Tensor'> (20L, 1L, 5L, 5L)
-
+        !!! example
+            ```python
+            for buf in model.buffers():
+                print(type(buf), buf)
+            ```
         """
         for _, buf in self.named_buffers(recurse=recurse):
             yield buf
@@ -1980,7 +1855,7 @@ class Module:
         *,
         recurse: Optional[bool] = True,
         remove_duplicate: Optional[bool] = True,
-    ) -> Iterator[Tuple[str, Any]]:  # TODO docstring
+    ) -> Iterator[Tuple[str, Any]]:
         """Return an iterator over module buffers, yielding both the name of the
             buffer as well as the buffer itself.
 
@@ -1991,20 +1866,18 @@ class Module:
                 If True, then yields buffers of this module
                 and all submodules. Otherwise, yields only buffers that
                 are direct members of this module. Defaults to True.
-            remove_duplicat:
+            remove_duplicate:
                 Whether to remove the duplicated buffers in the result.
                 Defaults to True.
 
         Yields:
             Tuple containing the name and buffer
 
-        Example::
-
-            >>> # xdoctest: +SKIP("undefined vars")
-            >>> for name, buf in self.named_buffers():
-            >>>     if name in ['running_var']:
-            >>>         print(buf.size())
-
+        !!! example
+            ```python
+            for name, buf in model.named_buffers():
+                print(name, type(buf))
+            ```
         """
         gen = self._named_members(
             lambda module: module._buffers.items(),
@@ -2044,7 +1917,7 @@ class Module:
                 memo.add(module)
                 yield name, module
 
-    def modules(self) -> Iterator["Module"]:  # TODO DOC
+    def modules(self) -> Iterator["Module"]:
         """Return an iterator over all modules in the network.
 
         Yields:
@@ -2052,21 +1925,15 @@ class Module:
 
         Note:
             Duplicate modules are returned only once. In the following
-            example, ``l`` will be returned only once.
+            example, ``lm`` will be returned only once.
 
-        Example::
-
-            >>> l = nn.Linear(2, 2)
-            >>> net = nn.Sequential(l, l)
-            >>> for idx, m in enumerate(net.modules()):
-            ...     print(idx, '->', m)
-
-            0 -> Sequential(
-              (0): Linear(in_features=2, out_features=2, bias=True)
-              (1): Linear(in_features=2, out_features=2, bias=True)
-            )
-            1 -> Linear(in_features=2, out_features=2, bias=True)
-
+        !!! example
+            ```python
+            lm = LM("gpt-4o-mini")
+            pipeline = Sequential(lm, lm)
+            for idx, m in enumerate(pipeline.modules()):
+                print(idx, '->', m)
+            ```
         """
         for _, module in self.named_modules():
             yield module
@@ -2176,20 +2043,18 @@ class Module:
 
     def zero_pgrad(
         self, *, set_to_none: Optional[bool] = True
-    ) -> None:  # TODO isso é interessante mas vai mudar
+    ) -> None:
         """Reset gradients of all model parameters.
 
-        See similar function under :class:`msgflux.optim.Optimizer` for more context.
-
         Args:
-            set_to_none (bool): instead of setting to zero, set the grads to None.
-                See :meth:`msgflux.optim.Optimizer.zero_grad` for details.
+            set_to_none (bool): if True, sets the gradients to None instead
+                of zeroing them out. Defaults to True.
         """
         for p in self.parameters():
             if p.pgrad is not None:
                 if set_to_none:
                     p.pgrad = None
-                else:  # TODO revisar abaixo
+                else:
                     if p.pgrad.grad_fn is not None:
                         p.pgrad.detach_()
                     else:

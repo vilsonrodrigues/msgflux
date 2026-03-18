@@ -1,11 +1,12 @@
 from typing import Any, Dict, Mapping, Optional, Union
 
 from msgflux.auto import AutoParams
-from msgflux.dotdict import dotdict
-from msgflux.message import Message
+from msgflux.core.dotdict import dotdict
+from msgflux.core.message import Message
 from msgflux.models.base import BaseModel
 from msgflux.models.gateway import ModelGateway
 from msgflux.models.response import ModelResponse
+from msgflux.nn.modules.generator import Generator
 from msgflux.nn.modules.module import Module
 
 
@@ -43,9 +44,10 @@ class Predictor(Module, metaclass=AutoParams):
             - model_preference: Field path for model preference (str, only valid
               with ModelGateway)
         response_mode:
-            What the response should be.
-            * `plain_response` (default): Returns the final agent response directly.
-            * other: Write on field in Message object.
+            Controls how the response is returned.
+            * ``None`` (default): Returns the response directly.
+            * ``"<path>"``: Writes to ``obj.<path>`` and returns ``None``
+              (``dotdict`` or ``Message`` is mutated in place).
         response_template:
             A Jinja template to format response.
         config:
@@ -95,14 +97,14 @@ class Predictor(Module, metaclass=AutoParams):
         self, data: Any, model_preference: Optional[str] = None
     ) -> ModelResponse:
         model_execution_params = self._prepare_model_execution(data, model_preference)
-        model_response = self.model(**model_execution_params)
+        model_response = self.generator(**model_execution_params)
         return model_response
 
     async def _aexecute_model(
         self, data: Any, model_preference: Optional[str] = None
     ) -> ModelResponse:
         model_execution_params = self._prepare_model_execution(data, model_preference)
-        model_response = await self.model.acall(**model_execution_params)
+        model_response = await self.generator.acall(**model_execution_params)
         return model_response
 
     def _prepare_model_execution(
@@ -129,7 +131,7 @@ class Predictor(Module, metaclass=AutoParams):
     def _prepare_task(self, message: Union[Any, Message], **kwargs) -> Dict[str, Any]:
         inputs = dotdict()
 
-        if isinstance(message, Message):
+        if isinstance(message, dotdict):
             data = self._extract_message_values(self.task_inputs, message)
         else:
             data = message
@@ -137,7 +139,7 @@ class Predictor(Module, metaclass=AutoParams):
         inputs.data = data
 
         model_preference = kwargs.pop("model_preference", None)
-        if model_preference is None and isinstance(message, Message):
+        if model_preference is None and isinstance(message, dotdict):
             model_preference = self.get_model_preference_from_message(message)
 
         if model_preference:
@@ -153,11 +155,16 @@ class Predictor(Module, metaclass=AutoParams):
 
     def _set_model(self, model: Union[BaseModel, ModelGateway]):
         if isinstance(model, (BaseModel, ModelGateway)):
-            self.register_buffer("model", model)
+            self.generator = Generator(model)
         else:
             raise TypeError(
                 f"`model` need be a `BaseModel` model, given `{type(model)}`"
             )
+
+    @property
+    def model(self):
+        """Access underlying model."""
+        return self.generator.model
 
     def _set_config(self, config: Optional[Dict[str, Any]] = None):
         if config is None:
@@ -188,7 +195,9 @@ class Predictor(Module, metaclass=AutoParams):
             return
 
         if not isinstance(message_fields, dict):
-            raise TypeError(f"`message_fields` must be a dict or None, given `{type(message_fields)}`")
+            raise TypeError(
+                f"`message_fields` must be a dict or None, got `{type(message_fields)}`"
+            )
 
         # Check for invalid keys
         invalid_keys = set(message_fields.keys()) - valid_keys
@@ -217,7 +226,7 @@ class Predictor(Module, metaclass=AutoParams):
             self.register_buffer("model_preference", model_preference)
         else:
             raise TypeError(
-                f"`model_preference` requires a string or None, given `{type(model_preference)}`"
+                f"`model_preference` requires a string or None, got `{type(model_preference)}`"  # noqa: E501
             )
 
     def _set_response_template(self, response_template: Optional[str] = None):
@@ -226,5 +235,5 @@ class Predictor(Module, metaclass=AutoParams):
             self.register_buffer("response_template", response_template)
         else:
             raise TypeError(
-                f"`response_template` requires a string or None, given `{type(response_template)}`"
+                f"`response_template` requires a string or None, got `{type(response_template)}`"  # noqa: E501
             )

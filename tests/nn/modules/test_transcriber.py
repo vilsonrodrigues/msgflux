@@ -10,26 +10,26 @@ from msgflux.models.response import ModelResponse
 
 class MockSTTModel(BaseModel):
     """Mock speech-to-text model for testing."""
-    
+
     model_type = "speech_to_text"
     provider = "mock"
-    
+
     def __init__(self):
         self.model_id = "test-stt"
         self._api_key = None
         self.model = None
         self.processor = None
         self.client = None
-    
+
     def _initialize(self):
         pass
-    
+
     def __call__(self, **kwargs):
         response = ModelResponse()
         response.set_response_type("transcript")
         response.add("Hello world")
         return response
-    
+
     async def acall(self, **kwargs):
         response = ModelResponse()
         response.set_response_type("transcript")
@@ -44,7 +44,7 @@ class TestTranscriber:
         """Test Transcriber basic initialization."""
         mock_model = MockSTTModel()
         transcriber = Transcriber(model=mock_model)
-        
+
         assert transcriber.model is mock_model
         assert transcriber.response_format == "text"
 
@@ -53,7 +53,7 @@ class TestTranscriber:
         mock_model = MockSTTModel()
         config = {"language": "en", "stream": False}
         transcriber = Transcriber(model=mock_model, config=config)
-        
+
         assert transcriber._buffers["config"]["language"] == "en"
         assert transcriber._buffers["config"]["stream"] is False
 
@@ -61,7 +61,7 @@ class TestTranscriber:
         """Test Transcriber raises TypeError for invalid model type."""
         mock_model = Mock()
         mock_model.model_type = "chat_completion"
-        
+
         with pytest.raises(TypeError, match="need be a `speech_to_text` model"):
             Transcriber(model=mock_model)
 
@@ -69,20 +69,20 @@ class TestTranscriber:
         """Test Transcriber with custom response_format."""
         mock_model = MockSTTModel()
         transcriber = Transcriber(model=mock_model, response_format="json")
-        
+
         assert transcriber.response_format == "json"
 
     def test_transcriber_invalid_response_format(self):
         """Test Transcriber raises ValueError for invalid response_format."""
         mock_model = MockSTTModel()
-        
+
         with pytest.raises(ValueError, match="`response_format` can be"):
             Transcriber(model=mock_model, response_format="invalid")
 
     def test_transcriber_response_format_invalid_type(self):
         """Test Transcriber raises TypeError for non-string response_format."""
         mock_model = MockSTTModel()
-        
+
         with pytest.raises(TypeError, match="`response_format` need be a str"):
             Transcriber(model=mock_model, response_format=123)
 
@@ -90,13 +90,13 @@ class TestTranscriber:
         """Test Transcriber initialization with prompt."""
         mock_model = MockSTTModel()
         transcriber = Transcriber(model=mock_model, prompt="Transcribe clearly")
-        
+
         assert transcriber.prompt == "Transcribe clearly"
 
     def test_transcriber_config_invalid_type(self):
         """Test Transcriber raises TypeError for invalid config type."""
         mock_model = MockSTTModel()
-        
+
         with pytest.raises(TypeError, match="`config` must be a dict or None"):
             Transcriber(model=mock_model, config="invalid")
 
@@ -105,7 +105,7 @@ class TestTranscriber:
         mock_model = MockSTTModel()
         transcriber = Transcriber(model=mock_model)
         result = transcriber(b"audio_data")
-        
+
         assert result == "Hello world"
 
     def test_transcriber_forward_with_string_path(self):
@@ -113,7 +113,7 @@ class TestTranscriber:
         mock_model = MockSTTModel()
         transcriber = Transcriber(model=mock_model)
         result = transcriber("audio.mp3")
-        
+
         assert result == "Hello world"
 
     def test_transcriber_forward_with_dict_input(self):
@@ -121,7 +121,7 @@ class TestTranscriber:
         mock_model = MockSTTModel()
         transcriber = Transcriber(model=mock_model)
         result = transcriber({"audio": "audio.mp3"})
-        
+
         assert result == "Hello world"
 
     def test_transcriber_invalid_response_type(self):
@@ -131,7 +131,7 @@ class TestTranscriber:
         mock_response = Mock(spec=ModelResponse)
         mock_response.response_type = "text_generation"
         mock_model.return_value = mock_response
-        
+
         transcriber = Transcriber(model=mock_model)
         with pytest.raises(ValueError, match="Unsupported model response type"):
             transcriber(b"audio")
@@ -142,7 +142,7 @@ class TestTranscriber:
         mock_model = MockSTTModel()
         transcriber = Transcriber(model=mock_model)
         result = await transcriber.aforward(b"audio_data")
-        
+
         assert result == "Hello world"
 
     def test_transcriber_supported_formats(self):
@@ -156,8 +156,5 @@ class TestTranscriber:
     def test_transcriber_with_response_template(self):
         """Test Transcriber with response_template."""
         mock_model = MockSTTModel()
-        transcriber = Transcriber(
-            model=mock_model,
-            response_template="{{content}}"
-        )
+        transcriber = Transcriber(model=mock_model, response_template="{{content}}")
         assert transcriber.response_template == "{{content}}"

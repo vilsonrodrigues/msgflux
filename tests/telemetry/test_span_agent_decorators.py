@@ -9,6 +9,7 @@ from msgflux.models.response import ModelStreamResponse
 
 class MockAgent:
     """Mock agent class for testing."""
+
     def __init__(self, name, description=None):
         self.name = name
         self.description = description
@@ -17,8 +18,8 @@ class MockAgent:
 class TestSetAgentAttributes:
     """Test suite for set_agent_attributes decorator."""
 
-    @patch('msgflux.telemetry.span.trace.get_current_span')
-    @patch('msgflux.telemetry.span.MsgTraceAttributes')
+    @patch("msgflux.telemetry.span.trace.get_current_span")
+    @patch("msgflux.telemetry.span.MsgTraceAttributes")
     def test_decorator_sets_agent_name_and_id(self, mock_attrs, mock_get_span):
         """Test that decorator sets agent name and generates ID."""
         mock_span = Mock()
@@ -42,7 +43,7 @@ class TestSetAgentAttributes:
         assert agent_id.startswith("asst_")
         assert len(agent_id) == 29  # "asst_" + 24 hex chars
 
-    @patch('msgflux.telemetry.span.trace.get_current_span')
+    @patch("msgflux.telemetry.span.trace.get_current_span")
     def test_decorator_sets_agent_description(self, mock_get_span):
         """Test that decorator sets agent description attribute."""
         mock_span = Mock()
@@ -63,8 +64,8 @@ class TestSetAgentAttributes:
             "gen_ai.agent.description", "Agent with description"
         )
 
-    @patch('msgflux.telemetry.span.trace.get_current_span')
-    @patch('msgflux.telemetry.span.MsgTraceAttributes')
+    @patch("msgflux.telemetry.span.trace.get_current_span")
+    @patch("msgflux.telemetry.span.MsgTraceAttributes")
     def test_decorator_captures_non_stream_response(self, mock_attrs, mock_get_span):
         """Test that decorator captures non-streaming responses."""
         mock_span = Mock()
@@ -82,8 +83,8 @@ class TestSetAgentAttributes:
         assert result == "Agent response text"
         mock_attrs.set_agent_response.assert_called_with("Agent response text")
 
-    @patch('msgflux.telemetry.span.trace.get_current_span')
-    @patch('msgflux.telemetry.span.MsgTraceAttributes')
+    @patch("msgflux.telemetry.span.trace.get_current_span")
+    @patch("msgflux.telemetry.span.MsgTraceAttributes")
     def test_decorator_skips_stream_response(self, mock_attrs, mock_get_span):
         """Test that decorator does not capture ModelStreamResponse."""
         mock_span = Mock()
@@ -103,7 +104,7 @@ class TestSetAgentAttributes:
         # Should NOT call set_agent_response for streaming
         mock_attrs.set_agent_response.assert_not_called()
 
-    @patch('msgflux.telemetry.span.trace.get_current_span')
+    @patch("msgflux.telemetry.span.trace.get_current_span")
     def test_decorator_when_span_not_recording(self, mock_get_span):
         """Test decorator when span is not recording."""
         mock_span = Mock()
@@ -121,8 +122,8 @@ class TestSetAgentAttributes:
         # Should still return result but not set attributes
         assert result == "result"
 
-    @patch('msgflux.telemetry.span.trace.get_current_span')
-    @patch('msgflux.telemetry.span.MsgTraceAttributes')
+    @patch("msgflux.telemetry.span.trace.get_current_span")
+    @patch("msgflux.telemetry.span.MsgTraceAttributes")
     def test_decorator_without_description(self, mock_attrs, mock_get_span):
         """Test decorator when agent has no description."""
         mock_span = Mock()
@@ -146,9 +147,11 @@ class TestAsetAgentAttributes:
     """Test suite for aset_agent_attributes async decorator."""
 
     @pytest.mark.asyncio
-    @patch('msgflux.telemetry.span.trace.get_current_span')
-    @patch('msgflux.telemetry.span.MsgTraceAttributes')
-    async def test_async_decorator_sets_agent_name_and_id(self, mock_attrs, mock_get_span):
+    @patch("msgflux.telemetry.span.trace.get_current_span")
+    @patch("msgflux.telemetry.span.MsgTraceAttributes")
+    async def test_async_decorator_sets_agent_name_and_id(
+        self, mock_attrs, mock_get_span
+    ):
         """Test that async decorator sets agent name and generates ID."""
         mock_span = Mock()
         mock_span.is_recording.return_value = True
@@ -171,7 +174,7 @@ class TestAsetAgentAttributes:
         assert agent_id.startswith("asst_")
 
     @pytest.mark.asyncio
-    @patch('msgflux.telemetry.span.trace.get_current_span')
+    @patch("msgflux.telemetry.span.trace.get_current_span")
     async def test_async_decorator_sets_agent_description(self, mock_get_span):
         """Test that async decorator sets agent description attribute."""
         mock_span = Mock()
@@ -193,9 +196,11 @@ class TestAsetAgentAttributes:
         )
 
     @pytest.mark.asyncio
-    @patch('msgflux.telemetry.span.trace.get_current_span')
-    @patch('msgflux.telemetry.span.MsgTraceAttributes')
-    async def test_async_decorator_captures_non_stream_response(self, mock_attrs, mock_get_span):
+    @patch("msgflux.telemetry.span.trace.get_current_span")
+    @patch("msgflux.telemetry.span.MsgTraceAttributes")
+    async def test_async_decorator_captures_non_stream_response(
+        self, mock_attrs, mock_get_span
+    ):
         """Test that async decorator captures non-streaming responses."""
         mock_span = Mock()
         mock_span.is_recording.return_value = True
@@ -213,9 +218,11 @@ class TestAsetAgentAttributes:
         mock_attrs.set_agent_response.assert_called_with("Async agent response")
 
     @pytest.mark.asyncio
-    @patch('msgflux.telemetry.span.trace.get_current_span')
-    @patch('msgflux.telemetry.span.MsgTraceAttributes')
-    async def test_async_decorator_skips_stream_response(self, mock_attrs, mock_get_span):
+    @patch("msgflux.telemetry.span.trace.get_current_span")
+    @patch("msgflux.telemetry.span.MsgTraceAttributes")
+    async def test_async_decorator_skips_stream_response(
+        self, mock_attrs, mock_get_span
+    ):
         """Test that async decorator does not capture ModelStreamResponse."""
         mock_span = Mock()
         mock_span.is_recording.return_value = True
@@ -235,7 +242,7 @@ class TestAsetAgentAttributes:
         mock_attrs.set_agent_response.assert_not_called()
 
     @pytest.mark.asyncio
-    @patch('msgflux.telemetry.span.trace.get_current_span')
+    @patch("msgflux.telemetry.span.trace.get_current_span")
     async def test_async_decorator_when_span_not_recording(self, mock_get_span):
         """Test async decorator when span is not recording."""
         mock_span = Mock()

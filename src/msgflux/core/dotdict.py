@@ -22,23 +22,28 @@ class dotdict(dict):  # noqa: N801
     - Hidden keys support (`hidden_keys=["key1", "key2"]`)
 
     Hidden Keys:
-        The `hidden_keys` parameter allows you to specify keys that should not be
-        returned by the `.get()` method or shown in string representations (`__repr__`
-        and `__str__`). This is useful for sensitive data like API keys or passwords.
+        The `hidden_keys` parameter marks keys as invisible to enumeration and
+        discovery. Hidden keys are excluded from `keys()`, `values()`, `items()`,
+        `__iter__`, `__contains__` (`in` operator), `to_dict()`, `to_json()`,
+        `__repr__`, and `__str__`.
 
-        Note: Hidden keys can still be accessed directly via dot notation or bracket
-        notation (e.g., `obj.api_key` or `obj['api_key']`). The hiding only affects
-        `.get()` method and string representations.
+        Hidden keys are still accessible via direct access: dot notation
+        (`obj.api_key`), bracket notation (`obj['api_key']`), and `get()` paths
+        (`obj.get('api_key')`). This makes them suitable for sensitive data like
+        API keys or passwords that should not leak into logs, serialized output,
+        or iteration, while remaining readable when explicitly requested.
 
     Example:
             >>> d = dotdict(
             ...     {"api_key": "secret", "username": "john"},
             ...     hidden_keys=["api_key"]
             ... )
-            >>> d.get("api_key")  # Returns None
-            >>> d.get("username")  # Returns "john"
-            >>> d.api_key  # Still accessible via dot notation: "secret"
-            >>> print(d)  # api_key won't appear in output
+            >>> "api_key" in d        # False
+            >>> list(d.keys())        # ["username"]
+            >>> d.to_dict()           # {"username": "john"}
+            >>> d.api_key             # "secret"
+            >>> d["api_key"]          # "secret"
+            >>> d.get("api_key")      # "secret"
     """
 
     def __init__(
@@ -69,8 +74,10 @@ class dotdict(dict):  # noqa: N801
 
             # With hidden keys
             d = dotdict({"api_key": "secret", "name": "John"}, hidden_keys=["api_key"])
-            print(d.get("api_key"))  # Returns None
-            print(d.get("name"))     # Returns "John"
+            print(d.get("api_key"))   # None
+            print("api_key" in d)     # False
+            print(d.to_dict())        # {"name": "John"}
+            print(d.api_key)          # "secret"  (direct access)
         """
         initial_data = initial_data or {}
         self._frozen = frozen
@@ -78,6 +85,30 @@ class dotdict(dict):  # noqa: N801
         super().__init__()
         for key, value in {**initial_data, **kwargs}.items():
             super().__setitem__(key, self._wrap(value))
+
+    def __iter__(self):
+        hidden = getattr(self, "_hidden_keys", set())
+        for key in super().__iter__():
+            if key not in hidden:
+                yield key
+
+    def __contains__(self, key):
+        hidden = getattr(self, "_hidden_keys", set())
+        if key in hidden:
+            return False
+        return super().__contains__(key)
+
+    def keys(self):
+        hidden = getattr(self, "_hidden_keys", set())
+        return [k for k in super().keys() if k not in hidden]
+
+    def values(self):
+        hidden = getattr(self, "_hidden_keys", set())
+        return [v for k, v in super().items() if k not in hidden]
+
+    def items(self):
+        hidden = getattr(self, "_hidden_keys", set())
+        return [(k, v) for k, v in super().items() if k not in hidden]
 
     def __getattr__(self, attr: str):
         try:
@@ -120,17 +151,10 @@ class dotdict(dict):  # noqa: N801
     def get(self, path: str, default: Any = None) -> Any:
         """Access nested values via dot path.
 
-        If the first key in the path is in hidden_keys, returns default instead.
-
         !!! example:
             get('user.profile.age').
         """
         keys = path.split(".")
-
-        # Check if the first key is hidden
-        if keys and keys[0] in getattr(self, "_hidden_keys", set()):
-            return default
-
         current = self
         try:
             for key in keys:
@@ -227,20 +251,9 @@ class dotdict(dict):  # noqa: N801
         return msgspec.json.encode(self.to_dict())
 
     def __repr__(self):
-        # Filter out hidden keys
-        visible_items = {
-            k: v
-            for k, v in self.to_dict().items()
-            if k not in getattr(self, "_hidden_keys", set())
-        }
-        attrs_str = "\n".join(f"   '{k}': {v!r}" for k, v in visible_items.items())
+        d = self.to_dict()
+        attrs_str = "\n".join(f"   '{k}': {v!r}" for k, v in d.items())
         return f"{self.__class__.__name__}({{\n{attrs_str}\n}})"
 
     def __str__(self):
-        # Filter out hidden keys
-        visible_dict = {
-            k: v
-            for k, v in self.to_dict().items()
-            if k not in getattr(self, "_hidden_keys", set())
-        }
-        return str(visible_dict)
+        return str(self.to_dict())

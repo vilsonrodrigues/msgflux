@@ -3,7 +3,12 @@
 import pytest
 from unittest.mock import Mock, MagicMock, patch
 
-from msgflux.nn.modules.module import Module, _IncompatibleKeys, _addindent, get_callable_name
+from msgflux.nn.modules.module import (
+    Module,
+    _IncompatibleKeys,
+    _addindent,
+    get_callable_name,
+)
 from msgflux.nn.parameter import Parameter
 
 
@@ -68,15 +73,19 @@ class TestHelperFunctions:
 
     def test_get_callable_name_function(self):
         """Test get_callable_name with function."""
+
         def my_func():
             pass
+
         name = get_callable_name(my_func)
         assert name == "my_func"
 
     def test_get_callable_name_class(self):
         """Test get_callable_name with class instance."""
+
         class MyClass:
             pass
+
         obj = MyClass()
         name = get_callable_name(obj)
         assert name == "MyClass"
@@ -438,7 +447,7 @@ class TestModule:
         # Load state from module1 into module2
         result = module2.load_state_dict(state)
         # Check that it returns IncompatibleKeys
-        assert hasattr(result, 'missing_keys') or result is None
+        assert hasattr(result, "missing_keys") or result is None
 
     def test_module_training_mode(self):
         """Test train() and eval() mode switching."""
@@ -1063,7 +1072,7 @@ class TestModuleMisc:
     def test_module_has_training_attribute(self):
         """Test module has training attribute initialized."""
         module = SimpleModule()
-        assert hasattr(module, 'training')
+        assert hasattr(module, "training")
         assert isinstance(module.training, bool)
 
     def test_module_name_default(self):

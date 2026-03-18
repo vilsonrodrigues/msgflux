@@ -10,8 +10,8 @@ from msgflux.protocols.mcp.types import MCPTool
 class TestToolLibraryMCPIntegration:
     """Tests for ToolLibrary MCP integration."""
 
-    @patch("msgflux.protocols.mcp.MCPClient")
-    @patch("msgflux.protocols.mcp.filter_tools")
+    @patch("msgflux.nn.modules.tool.MCPClient")
+    @patch("msgflux.nn.modules.tool.filter_tools")
     @patch("msgflux.nn.modules.tool.F")
     def test_initialize_stdio_mcp_clients(
         self, mock_F, mock_filter_tools, mock_mcp_client
@@ -58,8 +58,8 @@ class TestToolLibraryMCPIntegration:
         assert "fs" in library.mcp_clients
         assert library.mcp_clients["fs"]["client"] is mock_client_instance
 
-    @patch("msgflux.protocols.mcp.MCPClient")
-    @patch("msgflux.protocols.mcp.filter_tools")
+    @patch("msgflux.nn.modules.tool.MCPClient")
+    @patch("msgflux.nn.modules.tool.filter_tools")
     @patch("msgflux.nn.modules.tool.F")
     def test_initialize_http_mcp_clients(
         self, mock_F, mock_filter_tools, mock_mcp_client
@@ -93,8 +93,8 @@ class TestToolLibraryMCPIntegration:
         assert call_kwargs["base_url"] == "http://localhost:8080"
         assert call_kwargs["headers"] == {"Auth": "token"}
 
-    @patch("msgflux.protocols.mcp.MCPClient")
-    @patch("msgflux.protocols.mcp.filter_tools")
+    @patch("msgflux.nn.modules.tool.MCPClient")
+    @patch("msgflux.nn.modules.tool.filter_tools")
     @patch("msgflux.nn.modules.tool.F")
     def test_filter_mcp_tools(self, mock_F, mock_filter_tools, mock_mcp_client):
         """Test filtering MCP tools with include_tools."""
@@ -150,8 +150,8 @@ class TestToolLibraryMCPIntegration:
         assert len(library.mcp_clients["fs"]["tools"]) == 2
         assert library.mcp_clients["fs"]["tools"] == filtered_tools
 
-    @patch("msgflux.protocols.mcp.MCPClient")
-    @patch("msgflux.protocols.mcp.filter_tools")
+    @patch("msgflux.nn.modules.tool.MCPClient")
+    @patch("msgflux.nn.modules.tool.filter_tools")
     @patch("msgflux.nn.modules.tool.F")
     def test_tool_config_storage(self, mock_F, mock_filter_tools, mock_mcp_client):
         """Test that tool_config is stored correctly."""
@@ -183,8 +183,8 @@ class TestToolLibraryMCPIntegration:
         # Verify tool_config was stored
         assert library.mcp_clients["fs"]["tool_config"] == tool_config
 
-    @patch("msgflux.protocols.mcp.MCPClient")
-    @patch("msgflux.protocols.mcp.filter_tools")
+    @patch("msgflux.nn.modules.tool.MCPClient")
+    @patch("msgflux.nn.modules.tool.filter_tools")
     @patch("msgflux.nn.modules.tool.F")
     def test_get_mcp_tool_names(self, mock_F, mock_filter_tools, mock_mcp_client):
         """Test getting MCP tool names with namespace."""
@@ -213,10 +213,10 @@ class TestToolLibraryMCPIntegration:
         assert "fs__read_file" in mcp_tool_names
         assert "fs__write_file" in mcp_tool_names
 
-    @patch("msgflux.protocols.mcp.MCPClient")
-    @patch("msgflux.protocols.mcp.filter_tools")
+    @patch("msgflux.nn.modules.tool.MCPClient")
+    @patch("msgflux.nn.modules.tool.filter_tools")
     @patch("msgflux.nn.modules.tool.F")
-    @patch("msgflux.protocols.mcp.convert_mcp_schema_to_tool_schema")
+    @patch("msgflux.nn.modules.tool.convert_mcp_schema_to_tool_schema")
     def test_get_tool_json_schemas_includes_mcp(
         self, mock_convert_schema, mock_F, mock_filter_tools, mock_mcp_client
     ):

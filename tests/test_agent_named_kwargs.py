@@ -143,6 +143,7 @@ def test_mixed_reserved_and_named_kwargs():
     print("✓ Test 7 passed: Mixed reserved and named kwargs handled correctly")
 
 
+@pytest.mark.asyncio
 async def test_async_named_kwargs():
     """Test that named kwargs work in async mode."""
     model = create_mock_model()
