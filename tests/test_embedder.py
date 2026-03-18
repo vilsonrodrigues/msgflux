@@ -2,7 +2,7 @@
 
 import pytest
 
-from msgflux.message import Message
+from msgflux.core.message import Message
 from msgflux.models.response import ModelResponse
 from msgflux.nn.modules import Embedder
 

@@ -5,7 +5,7 @@ from unittest.mock import Mock, MagicMock
 
 from msgflux.nn.modules.retriever import Retriever
 from msgflux.nn.modules.embedder import Embedder
-from msgflux.message import Message
+from msgflux.core.message import Message
 from msgflux.models.base import BaseModel
 from msgflux.models.response import ModelResponse
 from msgflux.data.retrievers.types import LexicalRetriever, SemanticRetriever

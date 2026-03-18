@@ -2,7 +2,10 @@
 
 The `text_embedder` model transforms text into dense vector representations (embeddings) that capture semantic meaning. These vectors enable similarity search, semantic retrieval, clustering, and classification tasks.
 
-## Overview
+!!! info "Dependencies"
+    See [Dependency Management](../../dependency-management.md) for the complete provider matrix.
+
+## ✦₊⁺ Overview
 
 Text embeddings convert sentences, paragraphs, or documents into numerical vectors that encode their semantic meaning. Unlike simple word counts or TF-IDF, embeddings capture:
 
@@ -18,67 +21,9 @@ Text embeddings convert sentences, paragraphs, or documents into numerical vecto
 - **Classification**: Train classifiers on embeddings
 - **Recommendation**: Find similar items
 
-## Supported Providers
+## 1. **Quick Start**
 
-=== "OpenAI"
-
-    ```python
-    # pip install msgflux[openai]
-    import msgflux as mf
-
-    # mf.set_envs(OPENAI_API_KEY="...")
-
-    embedder = mf.Model.text_embedder("openai/text-embedding-3-small")
-    ```
-
-=== "Jina AI"
-
-    ```python
-    # pip install msgflux[httpx]
-    import msgflux as mf
-
-    # mf.set_envs(JINAAI_API_KEY="...")
-
-    embedder = mf.Model.text_embedder("jinaai/jina-embeddings-v3")
-    ```
-
-=== "Together AI"
-
-    ```python
-    # pip install msgflux[openai]
-    import msgflux as mf
-
-    # mf.set_envs(TOGETHER_API_KEY="...")
-
-    embedder = mf.Model.text_embedder("together/intfloat/multilingual-e5-large-instruct")
-    ```
-
-=== "vLLM"
-
-    ```python
-    # pip install msgflux[openai]
-    import msgflux as mf
-
-    # Self-hosted with vLLM
-    embedder = mf.Model.text_embedder(
-        "vllm/BAAI/bge-small-en-v1.5",
-        base_url="http://localhost:8000"
-    )
-    ```
-
-=== "Ollama"
-
-    ```python
-    # pip install msgflux[openai]
-    import msgflux as mf
-
-    # Self-hosted with Ollama
-    embedder = mf.Model.text_embedder("ollama/embeddinggemma")
-    ```
-
-## Quick Start
-
-### Basic Usage
+### 1.1 **Basic Usage**
 
 ???+ example
 
@@ -97,7 +42,7 @@ Text embeddings convert sentences, paragraphs, or documents into numerical vecto
     print(embedding[:5])   # [0.123, -0.456, 0.789, -0.234, 0.567]
     ```
 
-### With Custom Dimensions
+### 1.2 **With Custom Dimensions**
 
 ???+ example
 
@@ -115,7 +60,7 @@ Text embeddings convert sentences, paragraphs, or documents into numerical vecto
     print(len(embedding))  # 256
     ```
 
-## Batch Processing
+## 2. **Batch Processing**
 
 Most providers support native batch processing by accepting a `List[str]` in a single API call. This is more efficient than multiple individual requests because it reduces round-trips and allows the provider to optimize internally.
 
@@ -149,20 +94,16 @@ Providers with native batch support (OpenAI, JinaAI, Together AI, vLLM, Ollama) 
 
         ```python
         import msgflux as mf
-        import asyncio
 
         embedder = mf.Model.text_embedder("openai/text-embedding-3-small")
-
-        async def embed_batch(texts):
-            response = await embedder.acall(texts)
-            return response.consume()  # List[List[float]]
 
         support_tickets = [
             "My order hasn't arrived after 10 days, please help",
             "I was charged twice for the same purchase",
             "How do I return a damaged item?",
         ]
-        embeddings = asyncio.run(embed_batch(support_tickets))
+        response = await embedder.acall(support_tickets)
+        embeddings = response.consume()  # List[List[float]]
         ```
 
     === "Concurrent (Fallback)"
@@ -194,11 +135,11 @@ Providers with native batch support (OpenAI, JinaAI, Together AI, vLLM, Ollama) 
 !!! note
     The `Embedder` nn module (from `msgflux.nn`) handles this automatically — it uses native batch when `batch_support=True` and falls back to `F.map_gather` otherwise. When using `mf.Model.text_embedder()` directly, you control the strategy yourself.
 
-## Response Caching
+## 3. **Response Caching**
 
 Cache embeddings to avoid redundant API calls:
 
-### Enabling Cache
+### 3.1 **Enabling Cache**
 
 ???+ example
 
@@ -227,9 +168,9 @@ Cache embeddings to avoid redundant API calls:
         print(f"Cache misses: {stats['misses']}")
     ```
 
-## Working with Embeddings
+## 4. **Working with Embeddings**
 
-### Cosine Similarity
+### 4.1 **Cosine Similarity**
 
 ???+ example
 
@@ -260,7 +201,7 @@ Cache embeddings to avoid redundant API calls:
     print(f"Similarity (text1, text3): {sim_1_3:.4f}")  # ~0.30
     ```
 
-### Semantic Search
+### 4.2 **Semantic Search**
 
 ???+ example
 
@@ -309,11 +250,11 @@ Cache embeddings to avoid redundant API calls:
     # 0.4123: Python is a programming language
     ```
 
-## RAG Integration
+## 5. **RAG Integration**
 
 Embeddings are essential for Retrieval-Augmented Generation:
 
-### Building a Simple RAG System
+### 5.1 **Building a Simple RAG System**
 
 ???+ example
 
@@ -379,7 +320,7 @@ Embeddings are essential for Retrieval-Augmented Generation:
         "msgflux is a Python library for building AI systems.",
         "The Model class provides unified access to different AI providers.",
         "AutoParams allows dataclass-style module definitions.",
-        "msgflux supports OpenAI, Anthropic, and Google models."
+        "msgflux supports multiple OpenAI-compatible providers."
     ])
 
     # Ask questions
@@ -387,9 +328,14 @@ Embeddings are essential for Retrieval-Augmented Generation:
     print(answer)
     ```
 
-## Dimensions and Performance
+## 6. **Dimensions and Performance**
 
-### Choosing Dimensions
+### 6.1 **Choosing Dimensions**
+
+The `dimensions` parameter is only meaningful when the provider trains its models with **Matryoshka Representation Learning (MRL)** — a technique introduced by Kusupati et al. (2022) that trains embeddings so that the first `k` dimensions of a full vector are already a valid, high-quality embedding of size `k`. This means you can truncate the vector without retraining, trading a small accuracy loss for significantly lower storage and compute cost.
+
+!!! note
+    Not every provider supports `dimensions`. Check the model's documentation or `embedder.profile` before using it. Passing `dimensions` to a model that doesn't support MRL will either be ignored or raise an error.
 
 ???+ example
 
@@ -405,17 +351,16 @@ Embeddings are essential for Retrieval-Augmented Generation:
     # Lower dimensions = faster, less storage, slightly lower accuracy
     embedder_small = mf.Model.text_embedder(
         "openai/text-embedding-3-small",
-        dimensions=256   # Reduced from 1536
+        dimensions=256   # Reduced from 1536 via MRL
     )
 
-    # Trade-off example:
-    # - 3072 dims: 99% accuracy, 12x storage
-    # - 1536 dims: 98% accuracy, 6x storage
-    # - 512 dims:  95% accuracy, 2x storage
-    # - 256 dims:  92% accuracy, 1x storage
+    # Trade-off example (text-embedding-3-small):
+    # - 1536 dims: full accuracy, 6x storage
+    # - 512 dims:  ~95% accuracy, 2x storage
+    # - 256 dims:  ~92% accuracy, 1x storage
     ```
 
-## Response Metadata
+## 7. **Response Metadata**
 
 Access usage and cost information:
 
@@ -423,25 +368,35 @@ Access usage and cost information:
 
     ```python
     import msgflux as mf
-    from msgflux.models.profiles import get_model_profile
 
     embedder = mf.Model.text_embedder("openai/text-embedding-3-small")
 
     response = embedder("This is a test sentence")
 
-    # Check metadata
+    # Check token usage
     print(response.metadata)
     # {'usage': {'prompt_tokens': 5, 'total_tokens': 5}}
 
+    # Access the model profile directly from the embedder
+    print(embedder.profile)
+    # ModelProfile(id='text-embedding-3-small', name='text-embedding-3-small',
+    #   provider_id='openai',
+    #   capabilities=ModelCapabilities(tool_call=False, structured_output=False,
+    #     reasoning=False, attachment=False, temperature=False),
+    #   modalities=ModelModalities(input=['text'], output=['text']),
+    #   cost=ModelCost(input_per_million=0.02, output_per_million=0,
+    #     cache_read_per_million=None),
+    #   limits=ModelLimits(context=8191, output=1536),
+    #   knowledge='2024-01', release_date='2024-01-25',
+    #   last_updated='2024-01-25', open_weights=False)
+
     # Calculate cost
-    profile = get_model_profile("text-embedding-3-small", provider_id="openai")
-    if profile:
-        tokens = response.metadata.usage.total_tokens
-        cost = tokens * profile.cost.input_per_token
-        print(f"Cost: ${cost:.6f}")
+    tokens = response.metadata.usage.total_tokens
+    cost = tokens * (embedder.profile.cost.input_per_million / 1_000_000)
+    print(f"Cost: ${cost:.6f}")
     ```
 
-## Error Handling
+## 8. **Error Handling**
 
 ???+ example
 
@@ -461,9 +416,3 @@ Access usage and cost information:
         print(f"API error: {e}")
     ```
 
-## See Also
-
-- [Model](model.md) - Model factory and registry
-- [Chat Completion](chat_completion.md) - Chat models
-- [Data Retrievers](../data/retrievers.md) - Vector databases and retrievers
-- [RAG Patterns](../patterns/rag.md) - RAG implementation patterns

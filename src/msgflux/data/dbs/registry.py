@@ -1,9 +1,14 @@
-from msgflux.data.dbs.base import BaseDB
+from typing import TYPE_CHECKING
 
-db_registry = {}  # db_registry[db_type][provider] = cls
+from msgflux.utils.imports import AutoloadRegistry
+
+if TYPE_CHECKING:
+    from msgflux.data.dbs.base import BaseDB
+
+db_registry = AutoloadRegistry("msgflux.data.dbs.providers")
 
 
-def register_db(cls: type[BaseDB]):
+def register_db(cls: type["BaseDB"]):
     db_type = getattr(cls, "db_type", None)
     provider = getattr(cls, "provider", None)
 

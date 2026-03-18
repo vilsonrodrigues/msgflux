@@ -1,27 +1,30 @@
-from .auto import AutoModule, AutoParams
-from msgspec_ext.fast_dotenv import load_dotenv
+from importlib import import_module
+from typing import TYPE_CHECKING
 
-from .cache import response_cache
-from .data.dbs import DB
+if TYPE_CHECKING:
+    from msgspec_ext.fast_dotenv import load_dotenv
 
-from .data.parsers import Parser
-from .data.retrievers import Retriever
-from .data.types import Audio, File, Image, Video
-from .dotdict import dotdict
-from .dsl.signature import InputField, OutputField, Signature
-from .envs import set_envs
-from .examples import Example
-from .exceptions import TaskError
-from .message import Message
-from .models import Model
-from .models.gateway import ModelGateway
-from .nn.hooks import Guard
-from .telemetry import Spans
-from .tools.config import tool_config
-from .utils.chat import ChatBlock, ChatML
-from .utils.console import cprint
-from .utils.inspect import get_fn_name
-from .utils.msgspec import load, msgspec_dumps, save
+    from msgflux.auto import AutoModule, AutoParams
+    from msgflux.cache import response_cache
+    from msgflux.core.dotdict import dotdict
+    from msgflux.core.message import Message
+    from msgflux.data.dbs import DB
+    from msgflux.data.parsers import Parser
+    from msgflux.data.retrievers import Retriever
+    from msgflux.data.types import Audio, File, Image, Video
+    from msgflux.dsl.inline import Inline
+    from msgflux.dsl.signature import InputField, OutputField, Signature
+    from msgflux.envs import set_envs
+    from msgflux.core.examples import Example
+    from msgflux.exceptions import TaskError
+    from msgflux.models import Model
+    from msgflux.models.gateway import ModelGateway
+    from msgflux.telemetry import Spans
+    from msgflux.tools.config import tool_config
+    from msgflux.utils.chat import ChatBlock, ChatML
+    from msgflux.utils.console import cprint
+    from msgflux.utils.inspect import get_fn_name
+    from msgflux.utils.msgspec import load, msgspec_dumps, save
 
 __all__ = [
     "AutoModule",
@@ -32,8 +35,8 @@ __all__ = [
     "ChatML",
     "Example",
     "File",
-    "Guard",
     "Image",
+    "Inline",
     "InputField",
     "Message",
     "Model",
@@ -56,3 +59,51 @@ __all__ = [
     "set_envs",
     "tool_config",
 ]
+
+_LAZY_IMPORTS = {
+    "AutoModule": ("msgflux.auto", "AutoModule"),
+    "AutoParams": ("msgflux.auto", "AutoParams"),
+    "Audio": ("msgflux.data.types", "Audio"),
+    "ChatBlock": ("msgflux.utils.chat", "ChatBlock"),
+    "ChatML": ("msgflux.utils.chat", "ChatML"),
+    "DB": ("msgflux.data.dbs", "DB"),
+    "Example": ("msgflux.core.examples", "Example"),
+    "File": ("msgflux.data.types", "File"),
+    "Image": ("msgflux.data.types", "Image"),
+    "Inline": ("msgflux.dsl.inline", "Inline"),
+    "InputField": ("msgflux.dsl.signature", "InputField"),
+    "Message": ("msgflux.core.message", "Message"),
+    "Model": ("msgflux.models", "Model"),
+    "ModelGateway": ("msgflux.models.gateway", "ModelGateway"),
+    "OutputField": ("msgflux.dsl.signature", "OutputField"),
+    "Parser": ("msgflux.data.parsers", "Parser"),
+    "Retriever": ("msgflux.data.retrievers", "Retriever"),
+    "Signature": ("msgflux.dsl.signature", "Signature"),
+    "Spans": ("msgflux.telemetry", "Spans"),
+    "TaskError": ("msgflux.exceptions", "TaskError"),
+    "Video": ("msgflux.data.types", "Video"),
+    "cprint": ("msgflux.utils.console", "cprint"),
+    "dotdict": ("msgflux.core.dotdict", "dotdict"),
+    "get_fn_name": ("msgflux.utils.inspect", "get_fn_name"),
+    "load": ("msgflux.utils.msgspec", "load"),
+    "load_dotenv": ("msgspec_ext.fast_dotenv", "load_dotenv"),
+    "msgspec_dumps": ("msgflux.utils.msgspec", "msgspec_dumps"),
+    "response_cache": ("msgflux.cache", "response_cache"),
+    "save": ("msgflux.utils.msgspec", "save"),
+    "set_envs": ("msgflux.envs", "set_envs"),
+    "tool_config": ("msgflux.tools.config", "tool_config"),
+}
+
+
+def __getattr__(name: str):
+    if name not in _LAZY_IMPORTS:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+    module_name, attr_name = _LAZY_IMPORTS[name]
+    value = getattr(import_module(module_name), attr_name)
+    globals()[name] = value
+    return value
+
+
+def __dir__() -> list[str]:
+    return sorted(set(globals()) | set(__all__))

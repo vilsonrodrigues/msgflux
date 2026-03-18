@@ -1,11 +1,14 @@
-from typing import Type
+from typing import TYPE_CHECKING
 
-from msgflux.models.base import BaseModel
+from msgflux.utils.imports import AutoloadRegistry
 
-model_registry = {}  # model_registry[model_type][provider] = cls
+if TYPE_CHECKING:
+    from msgflux.models.base import BaseModel
+
+model_registry = AutoloadRegistry("msgflux.models.providers")
 
 
-def register_model(cls: Type[BaseModel]):
+def register_model(cls: type["BaseModel"]):
     model_type = getattr(cls, "model_type", None)
     provider = getattr(cls, "provider", None)
 

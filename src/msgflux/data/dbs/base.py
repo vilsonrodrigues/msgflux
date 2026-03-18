@@ -6,9 +6,9 @@ import msgspec
 if TYPE_CHECKING:
     import numpy as np
 
+import msgflux.nn.functional as F
 from msgflux._private.client import BaseClient
 from msgflux.data.dbs.response import DBResponse
-from msgflux.nn import functional as F
 from msgflux.utils.convert import convert_str_to_hash
 
 

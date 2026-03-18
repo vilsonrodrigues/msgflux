@@ -2,7 +2,7 @@ import importlib
 import pathlib
 import pkgutil
 from types import ModuleType
-from typing import Union
+from typing import Any, Union
 
 _loaded_autoloads = set()
 
@@ -70,3 +70,46 @@ def autoload_package(package: Union[str, ModuleType]):
         importlib.import_module(f"{package.__name__}.{module_info.name}")
 
     _loaded_autoloads.add(package.__name__)
+
+
+class AutoloadRegistry(dict[str, Any]):
+    """Dictionary-like registry that loads its provider package on first read."""
+
+    def __init__(self, provider_package: str):
+        super().__init__()
+        self._provider_package = provider_package
+
+    def _ensure_loaded(self) -> None:
+        autoload_package(self._provider_package)
+
+    def __contains__(self, key: object) -> bool:
+        self._ensure_loaded()
+        return super().__contains__(key)
+
+    def __getitem__(self, key: str) -> Any:
+        self._ensure_loaded()
+        return super().__getitem__(key)
+
+    def __iter__(self):
+        self._ensure_loaded()
+        return super().__iter__()
+
+    def __len__(self) -> int:
+        self._ensure_loaded()
+        return super().__len__()
+
+    def get(self, key: str, default: Any = None) -> Any:
+        self._ensure_loaded()
+        return super().get(key, default)
+
+    def items(self):
+        self._ensure_loaded()
+        return super().items()
+
+    def keys(self):
+        self._ensure_loaded()
+        return super().keys()
+
+    def values(self):
+        self._ensure_loaded()
+        return super().values()

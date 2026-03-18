@@ -4,7 +4,7 @@ site_author: Vilson Rodrigues
 site_description: >-
   An engine for build dynamic AI systems.
 copyright: |
-    &copy; 2025 <a href="https://github.com/msgflux"  target="_blank" rel="noopener">msgFlux</a>
+    &copy; 2026 <a href="https://github.com/msgflux"  target="_blank" rel="noopener">msgFlux</a>
 
 repo_url: https://github.com/msgflux/msgflux
 repo_name: msgflux/msgflux
@@ -66,12 +66,12 @@ theme:
     text: Roboto
     code: Roboto Mono
 
+hooks:
+  - docs/hooks/copy_markdown.py
+
 plugins:
   - blog
   - search
-  - copy-markdown:
-      button_text: "Copy Page"
-      button_position: "after-title"
   - mkdocstrings:
       handlers:
         python:
@@ -137,14 +137,19 @@ nav:
       - learn/models/speech_to_text.md
       - learn/models/text_to_image.md
       - learn/models/image_text_to_image.md
+      - learn/models/text_classifier.md
+      - learn/models/image_embedder.md
+      - learn/models/text_reranker.md
     #- ⛁ DataBases:
     #  - core/database.md
     #  - Vector: databases/vector.md
-    - ⟳ Retrievers:
+    - ⟳ Retriever:
       - learn/retrievers/retriever.md
-    - ⎙ Parsers:
-      - learn/parsers/index.md
+      - learn/retrievers/bm25.md
+      - learn/retrievers/wikipedia.md
+    - ⎙ Parsers: learn/parsers.md
     - ◈ dotdict: learn/dotdict.md
+    - ⊕ Inline: learn/inline.md
     - ⟢ Modules:
       - Module:
         - learn/nn/module/index.md
@@ -174,11 +179,7 @@ nav:
         - learn/nn/agent/model-gateway.md
         - learn/nn/agent/prefilling.md
       - Functional:
-        - learn/nn/functional/index.md
-        - learn/nn/functional/gather.md
-        - learn/nn/functional/utility.md
-        - learn/nn/functional/inline-dsl.md
-        - learn/nn/functional/best-practices.md
+        - learn/nn/functional.md
       - Transcriber:
         - learn/nn/transcriber.md
       - Retriever:
@@ -205,6 +206,21 @@ nav:
       - nn:
           - api-reference/nn/functional.md
           - api-reference/nn/modules/agent.md       
+  - Tutorials:
+    - tutorials/tutorials.md
+    - Product Poster Generator: tutorials/product-poster.md
+    - Intent Router: tutorials/intent-router.md
+    - Visit Report Assistant: tutorials/visit-report.md
+    - Query Router with Signatures: tutorials/signature-router.md
+    - YouTube Video Cut Detector: tutorials/youtube-cut-detector.md
+    - Call Transcript Analysis: tutorials/call-transcript-analysis.md
+    - Research Scholar Agent: tutorials/research-scholar.md
+    - Email Auto Responder: tutorials/email-auto-responder.md
+    - Meeting Assistant: tutorials/meeting-assistant.md
+    - Code Generation & Debugging Agent: tutorials/code-debug-agent.md
+    - Legal Document Review: tutorials/legal-document-review.md
+    - Lead Scoring: tutorials/lead-scoring.md
+    - README Generator: tutorials/readme-generator.md
   - Dependency Management: dependency-management.md
   - Changelog: CHANGELOG.md
   - Blog:
@@ -226,6 +242,7 @@ extra:
       name: Follow us on Twitter
 
 extra_css:
+  - https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@700&display=swap
   - https://unpkg.com/mermaid@8.5.1/dist/mermaid.css
   - stylesheets/extra.css
 

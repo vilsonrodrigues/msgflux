@@ -1,7 +1,10 @@
-from typing import Any, Mapping, Type
+from typing import TYPE_CHECKING, Any, Mapping
 
-from msgflux.data.retrievers.base import BaseRetriever
 from msgflux.data.retrievers.registry import retriever_registry
+
+if TYPE_CHECKING:
+    from msgflux.data.retrievers.base import BaseRetriever
+
 from msgflux.data.retrievers.types import (
     LexicalRetriever,
     SemanticRetriever,
@@ -21,7 +24,7 @@ class Retriever:
     @classmethod
     def _get_retriever_class(
         cls, retriever_type: str, provider: str
-    ) -> Type[BaseRetriever]:
+    ) -> type["BaseRetriever"]:
         if retriever_type not in retriever_registry:
             raise ValueError(f"Retriever type `{retriever_type}` is not supported")
         if provider not in retriever_registry[retriever_type]:
@@ -34,14 +37,14 @@ class Retriever:
     @classmethod
     def _create_retriever(
         cls, retriever_type: str, provider: str, **kwargs
-    ) -> Type[BaseRetriever]:
+    ) -> type["BaseRetriever"]:
         retriever_cls = cls._get_retriever_class(retriever_type, provider)
         return retriever_cls(**kwargs)
 
     @classmethod
     def from_serialized(
         cls, provider: str, retriever_type: str, params: Mapping[str, Any]
-    ) -> Type[BaseRetriever]:
+    ) -> type["BaseRetriever"]:
         """Creates a retriever instance from serialized parameters.
 
         Args:

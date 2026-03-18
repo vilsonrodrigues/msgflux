@@ -2,7 +2,7 @@ from functools import wraps
 from types import FunctionType, MethodType
 from typing import Any, Callable, Dict, List, Optional, Union
 
-from msgflux.dotdict import dotdict
+from msgflux.core.dotdict import dotdict
 
 
 def tool_config(

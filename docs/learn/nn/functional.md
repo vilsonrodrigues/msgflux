@@ -1,634 +1,458 @@
-# Functional
+# nn.functional
 
-The `msgflux.nn.functional` module provides a set of functions for concurrent task execution and message passing patterns. These utilities enable parallel processing, broadcasting, and asynchronous coordination.
+## ✦₊⁺ Overview
 
-
-## Overview
-
-The Functional API offers both **synchronous** and **asynchronous** interfaces for:
-
-- **Parallel mapping**: Apply a function to multiple inputs concurrently
-- **Scatter-gather**: Distribute different tasks across inputs
-- **Broadcast-gather**: Send the same input to multiple functions
-- **Message passing**: Concurrent message processing with `dotdict`
-- **Background tasks**: Fire-and-forget task execution
-- **Event coordination**: Wait for async events in sync contexts
+The `msgflux.nn.functional` module provides concurrent execution primitives inspired by MPI scatter-gather patterns and PyTorch's functional API.
 
 ### Key Features
 
-- **Concurrent execution** using thread pools and event loops
-- **Zero-overhead** when executing single tasks
-- **Error handling** with graceful degradation
-- **Timeout support** for all operations
-- **Message-first design** for workflow orchestration
+- **Concurrent Execution**: Thread pools and async event loops for parallel processing
+- **Gather Patterns**: Map, scatter, and broadcast primitives for different use cases
+- **Message Passing**: `dotdict` works directly with the generic gather helpers
+- **Zero Overhead**: No performance penalty for single-task execution
+- **Error Handling**: Typed `TaskError` results for failed tasks — no silent `None`
 
-## Pattern Comparison
+### Pattern Comparison
 
 ```
-MAP GATHER           SCATTER GATHER        BROADCAST GATHER
-───────────          ──────────────        ────────────────
-input1 ──┐           input1 ──┐            input ──┬──> f1 ──> r1
-input2 ──┼─> f ──>   input2 ──┼─> f1 ──>           ├──> f2 ──> r2
-input3 ──┘           input3 ──┘─> f2 ──>           └──> f3 ──> r3
+MAP GATHER              SCATTER GATHER          BROADCAST GATHER
+──────────────          ──────────────          ────────────────
+input1 ──┐              input1 ──> f1 ──┐               ┌──> f1 ──> r1
+input2 ──┼──> f ──>     input2 ──> f2 ──┼──>    input ──├──> f2 ──> r2
+input3 ──┘              input3 ──> f3 ──┘               └──> f3 ──> r3
 
-Same function         Different functions   Multiple functions
-Multiple inputs       Paired inputs/funcs   Same input
+Same function           Different functions     Multiple functions
+Multiple inputs         Paired inputs/funcs     Same input
 ```
 
-## Core Functions
+| Pattern | When to Use |
+|---------|-------------|
+| `map_gather` | Apply the same function to multiple inputs |
+| `scatter_gather` | Route different inputs to different functions |
+| `bcast_gather` | Fan-out one input to multiple functions |
 
-### `map_gather()`
+All core functions have async counterparts prefixed with `a`:
+
+| Sync | Async |
+|------|-------|
+| `map_gather` | `amap_gather` |
+| `scatter_gather` | `ascatter_gather` |
+| `wait_for` | — |
+| `wait_for_event` | `await_for_event` |
+| `fire_and_forget` | `afire_and_forget` |
+
+---
+
+## 1. **Quick Start**
+
+???+ example "Parallel Execution"
+
+    ```python
+    import msgflux.nn.functional as F
+
+    def process(x):
+        return x * 2
+
+    # Run process(1), process(2), process(3) in parallel
+    results = F.map_gather(process, args_list=[(1,), (2,), (3,)])
+    print(results)  # (2, 4, 6)
+    ```
+
+???+ example "Async"
+
+    ```python
+    import msgflux.nn.functional as F
+
+    async def async_square(x):
+        return x * x
+
+    results = await F.amap_gather(async_square, args_list=[(2,), (3,), (4,)])
+    print(results)  # (4, 9, 16)
+    ```
+
+---
+
+## 2. **Gather Functions**
+
+### `map_gather`
 
 Apply the same function to multiple inputs concurrently.
 
-**Pattern:**
-```
-input1 ──┐
-input2 ──┼─> function ──> (result1, result2, result3)
-input3 ──┘
-```
+???+ example
 
-**Usage:**
+    === "Basic"
 
-```python
-import msgflux.nn.functional as F
+        ```python
+        import msgflux.nn.functional as F
 
-# Example 1: Simple mapping
-def square(x):
-    return x * x
+        def square(x):
+            return x * x
 
-results = F.map_gather(square, args_list=[(2,), (3,), (4,)])
-print(results)  # (4, 9, 16)
+        results = F.map_gather(square, args_list=[(2,), (3,), (4,)])
+        print(results)  # (4, 9, 16)
+        ```
 
-# Example 2: With multiple arguments
-def add(x, y):
-    return x + y
+    === "With Multiple Arguments"
 
-results = F.map_gather(add, args_list=[(1, 2), (3, 4), (5, 6)])
-print(results)  # (3, 7, 11)
+        ```python
+        import msgflux.nn.functional as F
 
-# Example 3: With kwargs
-def multiply(x, y=2):
-    return x * y
+        def add(x, y):
+            return x + y
 
-results = F.map_gather(
-    multiply,
-    args_list=[(1,), (3,), (5,)],
-    kwargs_list=[{"y": 3}, {"y": 4}, {"y": 5}]
-)
-print(results)  # (3, 12, 25)
-```
+        results = F.map_gather(add, args_list=[(1, 2), (3, 4), (5, 6)])
+        print(results)  # (3, 7, 11)
+        ```
 
-**Async version:** `amap_gather()`
+    === "With kwargs"
 
-### `scatter_gather()`
+        ```python
+        import msgflux.nn.functional as F
+
+        def multiply(x, y=2):
+            return x * y
+
+        results = F.map_gather(
+            multiply,
+            args_list=[(1,), (3,), (5,)],
+            kwargs_list=[{"y": 3}, {"y": 4}, {"y": 5}]
+        )
+        print(results)  # (3, 12, 25)
+        ```
+
+    === "With Timeout"
+
+        ```python
+        import msgflux.nn.functional as F
+        import time
+
+        def slow_task(x):
+            time.sleep(0.5)
+            return x * x
+
+        results = F.map_gather(
+            slow_task,
+            args_list=[(2,), (3,), (4,)],
+            timeout=1.0
+        )
+        ```
+
+**Async version:** `amap_gather`
+
+---
+
+### `scatter_gather`
 
 Distribute different functions across corresponding inputs.
 
-**Pattern:**
-```
-input1 ──> function1 ──┐
-input2 ──> function2 ──┼──> (result1, result2, result3)
-input3 ──> function3 ──┘
-```
+???+ example
 
-**Usage:**
+    === "Basic"
 
-```python
-import msgflux.nn.functional as F
+        ```python
+        import msgflux.nn.functional as F
 
-def double(x):
-    return x * 2
+        def double(x): return x * 2
+        def triple(x): return x * 3
+        def square(x): return x ** 2
 
-def triple(x):
-    return x * 3
+        results = F.scatter_gather(
+            [double, triple, square],
+            args_list=[(5,), (5,), (5,)]
+        )
+        print(results)  # (10, 15, 25)
+        ```
 
-def square(x):
-    return x ** 2
+    === "Different Inputs"
 
-# Each function gets its corresponding input
-results = F.scatter_gather(
-    to_send=[double, triple, square],
-    args_list=[(5,), (5,), (5,)]
-)
-print(results)  # (10, 15, 25)
+        ```python
+        import msgflux.nn.functional as F
 
-# With different inputs
-results = F.scatter_gather(
-    to_send=[double, triple, square],
-    args_list=[(2,), (3,), (4,)]
-)
-print(results)  # (4, 9, 16)
-```
+        def double(x): return x * 2
+        def triple(x): return x * 3
+        def square(x): return x ** 2
 
-**Async version:** `ascatter_gather()`
+        results = F.scatter_gather(
+            [double, triple, square],
+            args_list=[(2,), (3,), (4,)]
+        )
+        print(results)  # (4, 9, 16)
+        ```
 
-### `bcast_gather()`
+    === "With kwargs Only"
+
+        ```python
+        import msgflux.nn.functional as F
+
+        def greet(name="World"):
+            return f"Hello, {name}"
+
+        def farewell(person):
+            return f"Goodbye, {person}"
+
+        results = F.scatter_gather(
+            [greet, greet, farewell],
+            kwargs_list=[{}, {"name": "Earth"}, {"person": "Commander"}]
+        )
+        print(results)  # ("Hello, World", "Hello, Earth", "Goodbye, Commander")
+        ```
+
+**Async version:** `ascatter_gather`
+
+---
+
+### `bcast_gather`
 
 Broadcast the same arguments to multiple functions.
 
-**Pattern:**
-```
-              ┌──> function1 ──> result1
-input ────────┼──> function2 ──> result2
-              └──> function3 ──> result3
-```
+???+ example
 
-**Usage:**
+    === "Basic"
 
-```python
-import msgflux.nn.functional as F
+        ```python
+        import msgflux.nn.functional as F
 
-def square(x):
-    return x * x
+        def square(x): return x * x
+        def cube(x): return x * x * x
+        def double(x): return x * 2
 
-def cube(x):
-    return x * x * x
+        results = F.bcast_gather([square, cube, double], 5)
+        print(results)  # (25, 125, 10)
+        ```
 
-def double(x):
-    return x * 2
+    === "Error Handling"
 
-# Same input to all functions
-results = F.bcast_gather([square, cube, double], 5)
-print(results)  # (25, 125, 10)
+        ```python
+        import msgflux.nn.functional as F
+        from msgflux import TaskError
 
-# With timeout
-results = F.bcast_gather([square, cube, double], 3, timeout=1.0)
-print(results)  # (9, 27, 6)
+        def square(x): return x * x
+        def fail(x): raise ValueError("Intentional error")
+        def cube(x): return x * x * x
 
-# Error handling - returns None for failed tasks
-def fail(x):
-    raise ValueError("Intentional error")
+        # Failed tasks return a TaskError instance — no exception is raised
+        results = F.bcast_gather([square, fail, cube], 2)
+        print(results)  # (4, TaskError(index=1, ...), 8)
 
-results = F.bcast_gather([square, fail, cube], 2)
-print(results)  # (4, None, 8)
-```
+        for i, result in enumerate(results):
+            if isinstance(result, TaskError):
+                print(f"Task {i} failed: {result.exception}")
+            else:
+                print(f"Task {i} result: {result}")
+        ```
 
-## Message-Based Functions
+    === "With kwargs"
 
-These functions work specifically with `msgflux.dotdict` for message passing patterns.
+        ```python
+        import msgflux.nn.functional as F
 
-### `msg_scatter_gather()`
+        def fetch_user(user_id):
+            return {"id": user_id, "name": f"User {user_id}"}
 
-Scatter messages to functions and gather updated messages.
+        def fetch_posts(user_id):
+            return [f"Post {i}" for i in range(3)]
 
-**Pattern:**
-```
-message1 ──> function1 ──┐
-message2 ──> function2 ──┼──> (msg1, msg2, msg3)
-message3 ──> function3 ──┘
-```
+        def fetch_comments(user_id):
+            return [f"Comment {i}" for i in range(5)]
 
-**Usage:**
+        user, posts, comments = F.bcast_gather(
+            [fetch_user, fetch_posts, fetch_comments],
+            user_id=123
+        )
+        ```
 
-```python
-import msgflux as mf
-import msgflux.nn.functional as F
+---
 
-def process_user(msg):
-    msg.type = "user"
-    msg.processed = True
-    return msg
+### Using `dotdict` Messages
 
-def process_admin(msg):
-    msg.type = "admin"
-    msg.permissions = ["read", "write", "delete"]
-    return msg
+The gather helpers work directly with `msgflux.dotdict` objects.
 
-def process_guest(msg):
-    msg.type = "guest"
-    msg.permissions = ["read"]
-    return msg
+???+ example "scatter_gather with messages"
 
-# Create messages
-msg1 = mf.dotdict({"id": 1, "name": "Alice"})
-msg2 = mf.dotdict({"id": 2, "name": "Bob"})
-msg3 = mf.dotdict({"id": 3, "name": "Charlie"})
+    ```python
+    import msgflux as mf
+    import msgflux.nn.functional as F
 
-# Scatter to different processors
-results = F.msg_scatter_gather(
-    to_send=[process_user, process_admin, process_guest],
-    messages=[msg1, msg2, msg3]
-)
+    def process_user(msg):
+        msg.type = "user"
+        msg.processed = True
 
-for msg in results:
-    print(f"{msg.name}: {msg.type} - {msg.get('permissions', [])}")
-# Alice: user - []
-# Bob: admin - ['read', 'write', 'delete']
-# Charlie: guest - ['read']
-```
+    def process_admin(msg):
+        msg.type = "admin"
+        msg.permissions = ["read", "write", "delete"]
 
-### `msg_bcast_gather()`
+    def process_guest(msg):
+        msg.type = "guest"
+        msg.permissions = ["read"]
 
-Broadcast a message to multiple modules for concurrent processing.
+    msg1 = mf.dotdict({"id": 1, "name": "Alice"})
+    msg2 = mf.dotdict({"id": 2, "name": "Bob"})
+    msg3 = mf.dotdict({"id": 3, "name": "Charlie"})
 
-**Pattern:**
-```
-              ┌──> module1(msg) ──┐
-message ──────┼──> module2(msg) ──┼──> message (modified)
-              └──> module3(msg) ──┘
-```
+    F.scatter_gather(
+        [process_user, process_admin, process_guest],
+        args_list=[(msg1,), (msg2,), (msg3,)]
+    )
 
-**Important:** Modules modify the message directly. Return values are ignored.
+    print(msg1.type)  # user
+    print(msg2.type)  # admin
+    print(msg3.type)  # guest
+    ```
 
-**Usage:**
+???+ example "bcast_gather with a shared message"
 
-```python
-import msgflux as mf
-import msgflux.nn.functional as F
-
-def add_timestamp(msg):
+    ```python
+    import msgflux as mf
+    import msgflux.nn.functional as F
     from datetime import datetime
-    msg.timestamp = datetime.now().isoformat()
-    return msg
+    from msgflux import TaskError
 
-def add_metadata(msg):
-    msg.set("metadata.version", "1.0")
-    msg.set("metadata.source", "api")
-    return msg
+    def add_timestamp(msg):
+        msg.timestamp = datetime.now().isoformat()
 
-def validate(msg):
-    msg.validated = True
-    return msg
+    def add_metadata(msg):
+        msg.set("metadata.version", "1.0")
+        msg.set("metadata.source", "api")
 
-# Broadcast message to all modules
-message = mf.dotdict({"data": "important"})
+    def validate(msg):
+        msg.validated = True
 
-F.msg_bcast_gather([add_timestamp, add_metadata, validate], message)
+    message = mf.dotdict({"data": "important"})
+    results = F.bcast_gather([add_timestamp, add_metadata, validate], message)
 
-print(message.timestamp)  # 2024-01-15T10:30:00.123456
-print(message.metadata.version)  # 1.0
-print(message.validated)  # True
-```
+    if any(isinstance(r, TaskError) for r in results):
+        raise RuntimeError("One of the parallel steps failed")
 
-**Async version:** `amsg_bcast_gather()`
+    print(message.timestamp)         # 2024-01-15T10:30:00.123456
+    print(message.metadata.version)  # 1.0
+    print(message.validated)         # True
+    ```
 
-## Utility Functions
+!!! warning "Race Conditions"
+    Parallel modules share the same `dotdict`. Write to **disjoint paths** — modifying the same key from two concurrent functions produces unpredictable results.
 
-### `wait_for()`
+---
 
-Execute a single callable and wait for the result with optional timeout.
+## 3. **Utility Functions**
 
-**Usage:**
+### `wait_for`
 
-```python
-import msgflux.nn.functional as F
-import time
+Execute a callable and wait for the result with optional timeout.
 
-def slow_computation(x):
-    time.sleep(0.1)
-    return x * x
+???+ example
 
-# Simple execution
-result = F.wait_for(slow_computation, 5)
-print(result)  # 25
+    === "Sync Function"
 
-# With timeout
-result = F.wait_for(slow_computation, 10, timeout=0.5)
-print(result)  # 100
+        ```python
+        import msgflux.nn.functional as F
 
-# Async function
-async def async_task(x):
-    return x * 2
+        def slow_computation(x):
+            import time
+            time.sleep(0.1)
+            return x * x
 
-result = F.wait_for(async_task, 3)
-print(result)  # 6
-```
+        result = F.wait_for(slow_computation, 5)
+        print(result)  # 25
+        ```
 
-### `wait_for_event()`
+    === "Async Function"
 
-Wait for an asyncio event in a synchronous context.
+        ```python
+        import msgflux.nn.functional as F
 
-**Usage:**
+        async def async_task(x):
+            return x * 2
 
-```python
-import msgflux.nn.functional as F
-import asyncio
+        # Runs async function in sync context
+        result = F.wait_for(async_task, 3)
+        print(result)  # 6
+        ```
 
-# Create an event
-event = asyncio.Event()
+    === "With Timeout"
 
-# Set the event from another thread/task
-def set_event():
-    event.set()
+        ```python
+        import msgflux.nn.functional as F
 
-# Wait for event in sync code
-import threading
-thread = threading.Thread(target=lambda: (time.sleep(0.1), set_event()))
-thread.start()
+        result = F.wait_for(slow_computation, 10, timeout=0.5)
+        ```
 
-F.wait_for_event(event)  # Blocks until event is set
-print("Event was set!")
-```
+---
 
-**Async version:** `await_for_event()`
+### `wait_for_event`
 
-### `background_task()`
+Wait for an `asyncio.Event` in synchronous code.
 
-Execute a function in the background without waiting for the result.
+???+ example
 
-**Usage:**
+    ```python
+    import msgflux.nn.functional as F
+    import asyncio
+    import threading
+    import time
 
-```python
-import msgflux.nn.functional as F
+    event = asyncio.Event()
 
-def log_event(event_type, user_id):
-    # This runs in the background
-    print(f"Logging: {event_type} for user {user_id}")
+    def set_event_later():
+        time.sleep(0.1)
+        loop = asyncio.get_event_loop()
+        loop.call_soon_threadsafe(event.set)
 
-# Fire and forget
-F.background_task(log_event, "login", 12345)
-# Execution continues immediately
+    thread = threading.Thread(target=set_event_later)
+    thread.start()
 
-# Background task runs concurrently
-print("Main thread continues...")
-
-# With kwargs
-F.background_task(log_event, event_type="logout", user_id=67890)
-```
+    F.wait_for_event(event)  # Blocks until event is set
+    print("Event was set!")
+    ```
 
-**Async version:** `abackground_task()`
-
-## Async Equivalents
-
-All major functions have async equivalents prefixed with `a`:
-
-| Sync Function | Async Equivalent |
-|---------------|------------------|
-| `map_gather` | `amap_gather` |
-| `scatter_gather` | `ascatter_gather` |
-| `msg_bcast_gather` | `amsg_bcast_gather` |
-| `wait_for_event` | `await_for_event` |
-| `background_task` | `abackground_task` |
-
-**Usage:**
+**Async version:** `await_for_event`
 
-```python
-import msgflux.nn.functional as F
-import asyncio
-
-async def main():
-    # Async map gather
-    async def async_square(x):
-        await asyncio.sleep(0.01)
-        return x * x
-
-    results = await F.amap_gather(
-        async_square,
-        args_list=[(2,), (3,), (4,)]
-    )
-    print(results)  # (4, 9, 16)
+---
 
-    # Async broadcast
-    async def async_double(x):
-        await asyncio.sleep(0.01)
-        return x * 2
+### `fire_and_forget`
 
-    async def async_triple(x):
-        await asyncio.sleep(0.01)
-        return x * 3
+Dispatch a task without waiting for a result.
 
-    results = await F.ascatter_gather(
-        [async_double, async_triple],
-        [(5,), (5,)]
-    )
-    print(results)  # (10, 15)
+???+ example
 
-# Run async code
-asyncio.run(main())
-```
-
-## Best Practices
+    === "Sync Function"
 
-### 1. Choose the Right Pattern
-
-```python
-# Use map_gather when: Same function, different inputs
-results = F.map_gather(process, args_list=[(1,), (2,), (3,)])
+        ```python
+        import msgflux.nn.functional as F
 
-# Use scatter_gather when: Different functions, different inputs
-results = F.scatter_gather([f1, f2, f3], args_list=[(a,), (b,), (c,)])
+        def log_event(event_type, user_id):
+            print(f"Logging: {event_type} for user {user_id}")
 
-# Use bcast_gather when: Multiple functions, same input
-results = F.bcast_gather([f1, f2, f3], input)
-```
+        # Returns immediately
+        F.fire_and_forget(log_event, "login", 12345)
+        print("Main thread continues...")
+        ```
 
-### 2. Handle Errors Gracefully
+    === "Async Function"
 
-```python
-# Functions return None on error
-def safe_divide(x, y):
-    return x / y
+        ```python
+        import msgflux.nn.functional as F
 
-results = F.map_gather(
-    safe_divide,
-    args_list=[(10, 2), (10, 0), (10, 5)]
-)
-print(results)  # (5.0, None, 2.0)
+        async def async_log(message):
+            import asyncio
+            await asyncio.sleep(1)
+            print(f"[Async] {message}")
 
-# Check for errors
-for i, result in enumerate(results):
-    if result is None:
-        print(f"Task {i} failed")
-```
+        F.fire_and_forget(async_log, "Hello from fire_and_forget")
+        ```
 
-### 3. Use Timeouts for Long Operations
+    === "Error Handling"
 
-```python
-# Prevent indefinite blocking
-results = F.bcast_gather(
-    [slow_task1, slow_task2],
-    input_data,
-    timeout=5.0  # 5 second timeout
-)
-```
+        ```python
+        import msgflux.nn.functional as F
 
-### 4. Message Modifications in Parallel
+        def failing_task():
+            raise ValueError("This task failed!")
 
-```python
-# Good - Modify different message paths
-def add_user_data(msg):
-    msg.set("user.name", "Alice")
-    return msg
+        # Error is logged, not raised
+        F.fire_and_forget(failing_task)
+        ```
 
-def add_timestamp(msg):
-    msg.set("meta.timestamp", "2024-01-15")
-    return msg
+!!! tip "Use Cases"
+    Fire-and-forget is ideal for logging, cache updates, notifications, and non-critical side effects.
 
-# Both can run in parallel safely
-F.msg_bcast_gather([add_user_data, add_timestamp], message)
-```
-
-### 5. Background Tasks for Side Effects
-
-```python
-# Good use cases for background tasks:
-# - Logging
-# - Metrics collection
-# - Cache updates
-# - Notifications
-
-F.background_task(log_to_file, "User logged in", user_id=123)
-F.background_task(update_cache, key="user:123", value=user_data)
-F.background_task(send_notification, user_id=123, message="Welcome!")
-```
-
-## Common Patterns
-
-### Pipeline with Parallel Stages
-
-```python
-import msgflux as mf
-import msgflux.nn.functional as F
-
-def prepare(msg):
-    msg.data = [1, 2, 3, 4, 5]
-    return msg
-
-def filter_even(msg):
-    msg.set("results.even", [x for x in msg.data if x % 2 == 0])
-    return msg
-
-def filter_odd(msg):
-    msg.set("results.odd", [x for x in msg.data if x % 2 != 0])
-    return msg
-
-# Sequential then parallel
-message = mf.dotdict()
-prepare(message)
-F.msg_bcast_gather([filter_even, filter_odd], message)
-
-print(message.results.even)  # [2, 4]
-print(message.results.odd)   # [1, 3, 5]
-```
-
-### Parallel Data Processing
-
-```python
-import msgflux.nn.functional as F
-
-def process_chunk(data):
-    return sum(data)
-
-# Split data into chunks
-data = list(range(1000))
-chunk_size = 100
-chunks = [data[i:i+chunk_size] for i in range(0, len(data), chunk_size)]
-
-# Process chunks in parallel
-results = F.map_gather(
-    process_chunk,
-    args_list=[(chunk,) for chunk in chunks]
-)
-
-total = sum(results)
-print(total)  # 499500
-```
-
-### Concurrent API Calls
-
-```python
-import msgflux.nn.functional as F
-
-def fetch_user(user_id):
-    # Simulate API call
-    return {"id": user_id, "name": f"User {user_id}"}
-
-def fetch_posts(user_id):
-    # Simulate API call
-    return [f"Post {i}" for i in range(3)]
-
-def fetch_comments(user_id):
-    # Simulate API call
-    return [f"Comment {i}" for i in range(5)]
-
-# Fetch all data for a user in parallel
-user_data, posts, comments = F.bcast_gather(
-    [fetch_user, fetch_posts, fetch_comments],
-    user_id=123
-)
-
-print(f"User: {user_data}")
-print(f"Posts: {len(posts)}")
-print(f"Comments: {len(comments)}")
-```
-
-## Performance Considerations
-
-### When to Use Parallel Execution
-
-**✅ Good candidates for parallelization:**
-- I/O-bound operations (API calls, file I/O, database queries)
-- Independent computations
-- Multiple data transformations
-- Batch processing
-
-**❌ Poor candidates:**
-- CPU-bound operations (use `multiprocessing` instead)
-- Very fast operations (overhead > benefit)
-- Operations with shared mutable state
-- Sequential dependencies
-
-### Overhead vs Benefit
-
-```python
-import msgflux.nn.functional as F
-import time
-
-# Fast operation - parallel overhead might not be worth it
-def fast_op(x):
-    return x * 2
-
-# Slow operation - benefits from parallelization
-def slow_op(x):
-    time.sleep(0.1)
-    return x * 2
-
-# For fast operations, sequential might be faster
-start = time.time()
-results = [fast_op(i) for i in range(100)]
-print(f"Sequential: {time.time() - start:.4f}s")
-
-start = time.time()
-results = F.map_gather(fast_op, args_list=[(i,) for i in range(100)])
-print(f"Parallel: {time.time() - start:.4f}s")
-
-# For slow operations, parallel is much faster
-start = time.time()
-results = [slow_op(i) for i in range(10)]
-print(f"Sequential: {time.time() - start:.4f}s")
-
-start = time.time()
-results = F.map_gather(slow_op, args_list=[(i,) for i in range(10)])
-print(f"Parallel: {time.time() - start:.4f}s")
-```
-
-## API Reference
-
-For complete API documentation with all parameters and return types, see:
-
-::: msgflux.nn.functional.map_gather
-
-::: msgflux.nn.functional.scatter_gather
-
-::: msgflux.nn.functional.msg_scatter_gather
-
-::: msgflux.nn.functional.bcast_gather
-
-::: msgflux.nn.functional.msg_bcast_gather
-
-::: msgflux.nn.functional.wait_for
-
-::: msgflux.nn.functional.wait_for_event
-
-::: msgflux.nn.functional.background_task
-
-::: msgflux.nn.functional.amap_gather
-
-::: msgflux.nn.functional.ascatter_gather
-
-::: msgflux.nn.functional.amsg_bcast_gather
-
-::: msgflux.nn.functional.await_for_event
-
-::: msgflux.nn.functional.abackground_task
+**Async version:** `afire_and_forget`

@@ -6,11 +6,11 @@ from typing import Any, Callable, Dict, Iterator, List, Mapping, Optional, Tuple
 
 import msgspec
 
+import msgflux.nn.functional as F
 from msgflux.auto import AutoParams
-from msgflux.dotdict import dotdict
+from msgflux.core.dotdict import dotdict
 from msgflux.exceptions import TaskError
 from msgflux.logger import logger
-from msgflux.nn import functional as F
 from msgflux.nn.modules.container import ModuleDict
 from msgflux.nn.modules.module import Module
 from msgflux.protocols.mcp import (
@@ -375,7 +375,10 @@ class ToolLibrary(Module, metaclass=AutoParams):
     def clear(self):
         self.library.clear()
         self.special_library.clear()
-        # TODO: clean mcp
+        self.tool_configs.clear()
+        for mcp_data in self.mcp_clients.values():
+            F.wait_for(mcp_data["client"].disconnect)
+        self.mcp_clients.clear()
 
     def _initialize_mcp_clients(self, mcp_servers: List[Dict[str, Any]]):
         """Initialize MCP clients from server configurations."""

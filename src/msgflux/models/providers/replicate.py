@@ -6,7 +6,7 @@ try:
 except ImportError:
     replicate = None
 
-from msgflux.dotdict import dotdict
+from msgflux.core.dotdict import dotdict
 from msgflux.models.base import BaseModel
 from msgflux.models.response import ModelResponse
 from msgflux.models.types import ImageTextToImageModel

@@ -21,7 +21,8 @@ except ImportError:
     OpenAI = None
     AsyncOpenAI = None
 
-from msgflux.dotdict import dotdict
+import msgflux.nn.functional as F
+from msgflux.core.dotdict import dotdict
 from msgflux.dsl.typed_parsers import typed_parser_registry
 from msgflux.exceptions import TypedParserNotFoundError
 from msgflux.models.base import BaseModel
@@ -39,7 +40,6 @@ from msgflux.models.types import (
     TextToImageModel,
     TextToSpeechModel,
 )
-from msgflux.nn import functional as F
 from msgflux.utils.chat import ChatBlock, response_format_from_msgspec_struct
 from msgflux.utils.console import cprint
 from msgflux.utils.encode import encode_data_to_bytes
@@ -321,15 +321,12 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
                 response_content = dotdict(parser.decode(choice.message.content))
                 # Type validation
                 if generation_schema and self.validate_typed_parser_output:
-                    encoded_response_content = msgspec.json.encode(response_content)
-                    msgspec.json.decode(
-                        encoded_response_content, type=generation_schema
-                    )
+                    decoder = self._get_decoder(generation_schema)
+                    decoder.decode(self._encoder.encode(response_content))
             elif generation_schema is not None:
                 response.set_response_type(f"{prefix_response_type}structured")
-                struct = msgspec.json.decode(
-                    choice.message.content, type=generation_schema
-                )
+                decoder = self._get_decoder(generation_schema)
+                struct = decoder.decode(choice.message.content)
                 response_content = dotdict(struct_to_dict(struct))
             else:
                 response.set_response_type(f"{prefix_response_type}text_generation")
@@ -976,12 +973,12 @@ class OpenAITextToImage(_BaseOpenAI, TextToImageModel):
 
     def _get_metadata(self, model_output):
         metadata = dotdict(
-            usage=model_output.usage.to_dict(),
+            usage=model_output.usage.to_dict() if model_output.usage is not None else {},
             details={
-                "size": model_output.size,
-                "quality": model_output.quality,
-                "output_format": model_output.output_format,
-                "background": model_output.background,
+                "size": getattr(model_output, "size", None),
+                "quality": getattr(model_output, "quality", None),
+                "output_format": getattr(model_output, "output_format", None),
+                "background": getattr(model_output, "background", None),
             },
         )
         return metadata
@@ -1038,8 +1035,8 @@ class OpenAITextToImage(_BaseOpenAI, TextToImageModel):
         *,
         response_format: Optional[Literal["url", "base64"]] = None,
         n: Optional[int] = 1,
-        size: Optional[str] = "auto",
-        quality: Optional[str] = "auto",
+        size: Optional[str] = None,
+        quality: Optional[str] = None,
         background: Optional[Literal["transparent", "opaque", "auto"]] = None,
     ) -> ModelResponse:
         """Args:
@@ -1056,15 +1053,14 @@ class OpenAITextToImage(_BaseOpenAI, TextToImageModel):
         background:
             Allows to set transparency for the background of the generated image(s).
         """
-        generation_params = dotdict(
-            prompt=prompt,
-            n=n,
-            size=size,
-            quality=quality,
-            background=background,
-            model=self.model_id,
-        )
+        generation_params = dotdict(prompt=prompt, n=n, model=self.model_id)
 
+        if size is not None:
+            generation_params.size = size
+        if quality is not None:
+            generation_params.quality = quality
+        if background is not None:
+            generation_params.background = background
         if response_format is not None:
             if response_format == "base64":
                 response_format = "b64_json"
@@ -1079,8 +1075,8 @@ class OpenAITextToImage(_BaseOpenAI, TextToImageModel):
         *,
         response_format: Optional[Literal["url", "base64"]] = None,
         n: Optional[int] = 1,
-        size: Optional[str] = "auto",
-        quality: Optional[str] = "auto",
+        size: Optional[str] = None,
+        quality: Optional[str] = None,
         background: Optional[Literal["transparent", "opaque", "auto"]] = None,
     ) -> ModelResponse:
         """Async version of __call__. Args:
@@ -1097,15 +1093,14 @@ class OpenAITextToImage(_BaseOpenAI, TextToImageModel):
         background:
             Allows to set transparency for the background of the generated image(s).
         """
-        generation_params = dotdict(
-            prompt=prompt,
-            n=n,
-            size=size,
-            quality=quality,
-            background=background,
-            model=self.model_id,
-        )
+        generation_params = dotdict(prompt=prompt, n=n, model=self.model_id)
 
+        if size is not None:
+            generation_params.size = size
+        if quality is not None:
+            generation_params.quality = quality
+        if background is not None:
+            generation_params.background = background
         if response_format is not None:
             if response_format == "base64":
                 response_format = "b64_json"
@@ -1116,7 +1111,7 @@ class OpenAITextToImage(_BaseOpenAI, TextToImageModel):
 
 
 @register_model
-class OpenAIImageTextToImage(OpenAITextToImage, ImageTextToImageModel):
+class OpenAIImageTextToImage(ImageTextToImageModel, OpenAITextToImage):
     """OpenAI Image Edit."""
 
     def _execute_model(self, **kwargs):
@@ -1131,7 +1126,7 @@ class OpenAIImageTextToImage(OpenAITextToImage, ImageTextToImageModel):
 
     def _prepare_inputs(self, image, mask):
         inputs = {}
-        if isinstance(image, str):
+        if isinstance(image, (str, bytes)):
             image = [image]
         inputs["image"] = [encode_data_to_bytes(item) for item in image]
         if mask:

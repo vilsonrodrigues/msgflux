@@ -2,7 +2,7 @@
 
 import pytest
 
-from msgflux.dotdict import dotdict
+from msgflux.core.dotdict import dotdict
 from msgflux.tools.config import decorate_function, decorate_instance, tool_config
 
 

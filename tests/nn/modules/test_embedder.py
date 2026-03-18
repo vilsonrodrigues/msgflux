@@ -4,7 +4,7 @@ import pytest
 from unittest.mock import Mock, patch
 
 from msgflux.nn.modules.embedder import Embedder
-from msgflux.message import Message
+from msgflux.core.message import Message
 from msgflux.models.base import BaseModel
 from msgflux.models.response import ModelResponse
 
