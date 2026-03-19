@@ -68,10 +68,12 @@ class ToolCallAggregator:
         2. Subsequent messages insert the results of the functions, one at a time.
         """
         # First message: function calls
-        tool_calls = [
-            ChatBlock.tool_call(call["id"], call["name"], call["arguments"])
-            for call in self.tool_calls.values()
-        ]
+        tool_calls = []
+        for call in self.tool_calls.values():
+            tc = ChatBlock.tool_call(call["id"], call["name"], call["arguments"])
+            if "thought_signature" in call:
+                tc["thought_signature"] = call["thought_signature"]
+            tool_calls.append(tc)
         messages = [ChatBlock.assist_tool_calls(tool_calls)]
 
         # Adding the results of function calls as separate messages

@@ -81,5 +81,4 @@ src/msgflux/protocols/mcp/*.md
 
 # New providers (to be added in dedicated branches)
 src/msgflux/models/providers/anthropic.py
-src/msgflux/models/providers/google.py
 src/msgflux/models/providers/mistral.py
