@@ -8,7 +8,7 @@ with optional checkpoint-per-step durability.
 import uuid
 from typing import TYPE_CHECKING, Callable, Mapping, Optional
 
-from msgflux.context import session_context
+from msgflux.context import get_session_context, session_context
 from msgflux.dotdict import dotdict
 from msgflux.dsl.inline.core import AsyncInlineDSL, InlineDSL
 from msgflux.dsl.inline.runtime import AsyncDurableInlineDSL, DurableInlineDSL
@@ -106,7 +106,8 @@ class Inline:
         Returns:
             The message after all steps have executed.
         """
-        resolved_session = session_id or "default"
+        parent = get_session_context()
+        resolved_session = session_id or parent.get("session_id") or "default"
 
         with session_context(
             session_id=resolved_session,
@@ -142,7 +143,8 @@ class Inline:
 
         Same parameters as :meth:`__call__`.
         """
-        resolved_session = session_id or "default"
+        parent = get_session_context()
+        resolved_session = session_id or parent.get("session_id") or "default"
 
         with session_context(
             session_id=resolved_session,
@@ -159,7 +161,9 @@ class Inline:
                     max_iterations=self._max_iterations,
                 )
                 return await dsl(
-                    self._expression, self._step_modules, message,
+                    self._expression,
+                    self._step_modules,
+                    message,
                 )
 
             dsl = AsyncInlineDSL(max_iterations=self._max_iterations)
@@ -167,7 +171,4 @@ class Inline:
 
     def __repr__(self) -> str:
         modules_str = ", ".join(self._step_modules.keys())
-        return (
-            f"Inline(expression={self._expression!r}, "
-            f"modules=[{modules_str}])"
-        )
+        return f"Inline(expression={self._expression!r}, modules=[{modules_str}])"
