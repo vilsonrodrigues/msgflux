@@ -6,6 +6,11 @@ from msgflux.dotdict import dotdict
 from msgflux.logger import logger
 from msgflux.nn import functional as F
 
+# ── Signals ─────────────────────────────────────────────────────────────────
+
+_SIGNAL_KEYS = frozenset({"$break", "$stop"})
+_SIGNAL_SEVERITY = {"$break": 1, "$stop": 2}
+
 
 class InlineDSL:
     """Parses and executes a mini domain-specific language (DSL) for
@@ -360,8 +365,12 @@ class InlineDSL:
         actions: str,
         modules: Mapping[str, Callable],
         message: dotdict,
-    ) -> dotdict:
-        """Execute a while loop with the given condition and actions."""
+    ) -> Tuple[dotdict, Dict[str, Any]]:
+        """Execute a while loop. Returns ``(message, signals)``.
+
+        ``$break`` is consumed here (breaks the loop).
+        ``$stop`` is propagated to the caller.
+        """
         iterations = 0
         current_message = message
         actions_steps = self.parse(actions)
@@ -373,12 +382,19 @@ class InlineDSL:
                     f"Possible infinite loop detected. Condition: {condition}"
                 )
 
-            current_message = self._execute_steps(
-                actions_steps, modules, current_message
+            current_message, signals = self._execute_steps(
+                actions_steps,
+                modules,
+                current_message,
             )
             iterations += 1
 
-        return current_message
+            if "$stop" in signals:
+                return current_message, signals
+            if "$break" in signals:
+                break
+
+        return current_message, {}
 
     @staticmethod
     def _apply_result(message: dotdict, result: Any) -> None:
@@ -391,61 +407,95 @@ class InlineDSL:
         if isinstance(result, dict):
             message.apply(result)
 
-    def _call_module(self, module: Callable, message: dotdict) -> Any:
-        """Call *module* and apply its delta to *message*."""
+    @staticmethod
+    def _extract_signals(result: Any) -> Tuple[Any, Dict[str, Any]]:
+        """Separate signal keys (``$break``, ``$stop``) from a result.
+
+        Returns ``(delta, signals)`` where *delta* has no signal keys.
+        """
+        if not isinstance(result, dict):
+            return result, {}
+        signals = {k: v for k, v in result.items() if k in _SIGNAL_KEYS and v}
+        if not signals:
+            return result, {}
+        delta = {k: v for k, v in result.items() if k not in _SIGNAL_KEYS}
+        return delta or None, signals
+
+    @staticmethod
+    def _merge_signals(all_signals: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Merge signals from parallel execution — highest severity wins."""
+        has_stop = any("$stop" in s and s["$stop"] for s in all_signals)
+        if has_stop:
+            return {"$stop": True}
+        has_break = any("$break" in s and s["$break"] for s in all_signals)
+        if has_break:
+            return {"$break": True}
+        return {}
+
+    def _call_module(
+        self,
+        module: Callable,
+        message: dotdict,
+    ) -> Dict[str, Any]:
+        """Call *module*, apply its delta, and return extracted signals."""
         result = module(message)
-        self._apply_result(message, result)
-        return result
+        delta, signals = self._extract_signals(result)
+        self._apply_result(message, delta)
+        return signals
 
     def _execute_parallel(
         self,
         parallel_modules: List[Callable],
         message: dotdict,
-    ) -> None:
-        """Run modules in parallel and merge deltas into *message*."""
+    ) -> Dict[str, Any]:
+        """Run modules in parallel, merge deltas, return merged signals."""
         from msgflux.exceptions import TaskError  # noqa: PLC0415
 
         results = F.bcast_gather(parallel_modules, message)
         errors = {}
         seen_keys: Dict[str, int] = {}
+        all_signals: List[Dict[str, Any]] = []
         for i, result in enumerate(results):
             if isinstance(result, TaskError):
                 errors[i] = result
-            elif isinstance(result, dict):
-                for key in result:
-                    if key in seen_keys:
-                        logger.warning(
-                            "Parallel key conflict: key '%s' written by "
-                            "workers %d and %d — last write wins.",
-                            key, seen_keys[key], i,
-                        )
-                    seen_keys[key] = i
-                self._apply_result(message, result)
             else:
-                self._apply_result(message, result)
+                delta, signals = self._extract_signals(result)
+                if signals:
+                    all_signals.append(signals)
+                if isinstance(delta, dict):
+                    for key in delta:
+                        if key in seen_keys:
+                            logger.warning(
+                                "Parallel key conflict: key '%s' written by "
+                                "workers %d and %d — last write wins.",
+                                key,
+                                seen_keys[key],
+                                i,
+                            )
+                        seen_keys[key] = i
+                self._apply_result(message, delta)
         if errors:
             failed = ", ".join(
                 f"worker {i}: {err.exception}" for i, err in errors.items()
             )
             raise RuntimeError(f"Parallel execution failed: {failed}")
+        return self._merge_signals(all_signals)
 
     @staticmethod
     def _resolve_parallel(
-        step: Dict[str, Any], modules: Mapping[str, Callable],
+        step: Dict[str, Any],
+        modules: Mapping[str, Callable],
     ) -> list:
         """Resolve module callables for a parallel step."""
         parallel_modules = []
         for mod_name in step["modules"]:
             module = modules.get(mod_name)
             if not module:
-                raise ValueError(
-                    f"Module {mod_name} not found for parallel execution."
-                )
+                raise ValueError(f"Module {mod_name} not found for parallel execution.")
             parallel_modules.append(module)
         if not parallel_modules:
             raise ValueError(
-                f"No valid modules found for parallel execution "
-                f"in {step['modules']}."
+                f"No valid modules found for parallel execution in {step['modules']}."
             )
         return parallel_modules
 
@@ -454,59 +504,75 @@ class InlineDSL:
         step: Dict[str, Any],
         modules: Mapping[str, Callable],
         message: dotdict,
-    ) -> None:
-        """Execute a conditional branch."""
+    ) -> Dict[str, Any]:
+        """Execute a conditional branch, return signals."""
         condition_result = self._evaluate_condition(
-            step["condition"], message,
+            step["condition"],
+            message,
         )
-        branch = (
-            step["true_branch"] if condition_result else step["false_branch"]
-        )
+        branch = step["true_branch"] if condition_result else step["false_branch"]
         for module_name in branch:
             module = modules.get(module_name)
             if not module:
                 raise ValueError(
                     f"Module `{module_name}` not found in conditional branch."
                 )
-            self._call_module(module, message)
+            signals = self._call_module(module, message)
+            if signals:
+                return signals
+        return {}
 
     def _execute_steps(
         self,
         steps: List[Dict[str, Any]],
         modules: Mapping[str, Callable],
         message: dotdict,
-    ) -> dotdict:
-        """Execute a list of steps."""
+    ) -> Tuple[dotdict, Dict[str, Any]]:
+        """Execute a list of steps. Returns ``(message, signals)``."""
         current_message = message
+        signals: Dict[str, Any] = {}
 
         for step in steps:
             if step["type"] == "module":
                 module = modules.get(step["module"])
                 if not module:
                     raise ValueError(f"Module `{step['module']}` not found.")
-                self._call_module(module, current_message)
+                signals = self._call_module(module, current_message)
 
             elif step["type"] == "parallel":
                 parallel_modules = self._resolve_parallel(step, modules)
-                self._execute_parallel(parallel_modules, current_message)
-
-            elif step["type"] == "conditional":
-                self._execute_conditional(step, modules, current_message)
-
-            elif step["type"] == "while":
-                current_message = self._execute_while_loop(
-                    step["condition"], step["actions"], modules,
+                signals = self._execute_parallel(
+                    parallel_modules,
                     current_message,
                 )
 
-        return current_message
+            elif step["type"] == "conditional":
+                signals = self._execute_conditional(
+                    step,
+                    modules,
+                    current_message,
+                )
+
+            elif step["type"] == "while":
+                current_message, signals = self._execute_while_loop(
+                    step["condition"],
+                    step["actions"],
+                    modules,
+                    current_message,
+                )
+
+            if signals:
+                return current_message, signals
+
+        return current_message, {}
 
     def __call__(
         self, expression: str, modules: Mapping[str, Callable], message: dotdict
     ) -> dotdict:
         """Execute the DSL pipeline."""
         steps = self.parse(expression)
-        return self._execute_steps(steps, modules, message)
+        result, _signals = self._execute_steps(steps, modules, message)
+        return result
 
 
 class AsyncInlineDSL(InlineDSL):
@@ -523,7 +589,7 @@ class AsyncInlineDSL(InlineDSL):
         actions: str,
         modules: Mapping[str, Callable],
         message: dotdict,
-    ) -> dotdict:
+    ) -> Tuple[dotdict, Dict[str, Any]]:
         """Async version of _execute_while_loop."""
         iterations = 0
         current_message = message
@@ -536,30 +602,42 @@ class AsyncInlineDSL(InlineDSL):
                     f"Possible infinite loop detected. Condition: {condition}"
                 )
 
-            current_message = await self._aexecute_steps(
-                actions_steps, modules, current_message
+            current_message, signals = await self._aexecute_steps(
+                actions_steps,
+                modules,
+                current_message,
             )
             iterations += 1
 
-        return current_message
+            if "$stop" in signals:
+                return current_message, signals
+            if "$break" in signals:
+                break
 
-    async def _acall_module(self, module: Callable, message: dotdict) -> Any:
-        """Async call *module* and apply its delta to *message*."""
+        return current_message, {}
+
+    async def _acall_module(
+        self,
+        module: Callable,
+        message: dotdict,
+    ) -> Dict[str, Any]:
+        """Async call *module*, apply its delta, return signals."""
         if hasattr(module, "acall"):
             result = await module.acall(message)
         elif asyncio.iscoroutinefunction(module):
             result = await module(message)
         else:
             result = module(message)
-        self._apply_result(message, result)
-        return result
+        delta, signals = self._extract_signals(result)
+        self._apply_result(message, delta)
+        return signals
 
     async def _aexecute_parallel(
         self,
         parallel_modules: List[Callable],
         message: dotdict,
-    ) -> None:
-        """Async parallel execution with delta merge."""
+    ) -> Dict[str, Any]:
+        """Async parallel execution with delta merge. Returns signals."""
         from msgflux.exceptions import TaskError  # noqa: PLC0415
 
         results = await F.ascatter_gather(
@@ -568,86 +646,104 @@ class AsyncInlineDSL(InlineDSL):
         )
         errors = {}
         seen_keys: Dict[str, int] = {}
+        all_signals: List[Dict[str, Any]] = []
         for i, result in enumerate(results):
             if isinstance(result, TaskError):
                 errors[i] = result
-            elif isinstance(result, dict):
-                for key in result:
-                    if key in seen_keys:
-                        logger.warning(
-                            "Parallel key conflict: key '%s' written by "
-                            "workers %d and %d — last write wins.",
-                            key, seen_keys[key], i,
-                        )
-                    seen_keys[key] = i
-                self._apply_result(message, result)
             else:
-                self._apply_result(message, result)
+                delta, signals = self._extract_signals(result)
+                if signals:
+                    all_signals.append(signals)
+                if isinstance(delta, dict):
+                    for key in delta:
+                        if key in seen_keys:
+                            logger.warning(
+                                "Parallel key conflict: key '%s' written by "
+                                "workers %d and %d — last write wins.",
+                                key,
+                                seen_keys[key],
+                                i,
+                            )
+                        seen_keys[key] = i
+                self._apply_result(message, delta)
         if errors:
             failed = ", ".join(
                 f"worker {i}: {err.exception}" for i, err in errors.items()
             )
             raise RuntimeError(f"Parallel execution failed: {failed}")
+        return self._merge_signals(all_signals)
 
     async def _aexecute_conditional(
         self,
         step: Dict[str, Any],
         modules: Mapping[str, Callable],
         message: dotdict,
-    ) -> None:
-        """Async execute a conditional branch."""
+    ) -> Dict[str, Any]:
+        """Async execute a conditional branch, return signals."""
         condition_result = self._evaluate_condition(
-            step["condition"], message,
+            step["condition"],
+            message,
         )
-        branch = (
-            step["true_branch"] if condition_result else step["false_branch"]
-        )
+        branch = step["true_branch"] if condition_result else step["false_branch"]
         for module_name in branch:
             module = modules.get(module_name)
             if not module:
                 raise ValueError(
                     f"Module `{module_name}` not found in conditional branch."
                 )
-            await self._acall_module(module, message)
+            signals = await self._acall_module(module, message)
+            if signals:
+                return signals
+        return {}
 
     async def _aexecute_steps(
         self,
         steps: List[Dict[str, Any]],
         modules: Mapping[str, Callable],
         message: dotdict,
-    ) -> dotdict:
-        """Async version of _execute_steps."""
+    ) -> Tuple[dotdict, Dict[str, Any]]:
+        """Async version of _execute_steps. Returns ``(message, signals)``."""
         current_message = message
+        signals: Dict[str, Any] = {}
 
         for step in steps:
             if step["type"] == "module":
                 module = modules.get(step["module"])
                 if not module:
                     raise ValueError(f"Module `{step['module']}` not found.")
-                await self._acall_module(module, current_message)
+                signals = await self._acall_module(module, current_message)
 
             elif step["type"] == "parallel":
                 parallel_modules = self._resolve_parallel(step, modules)
-                await self._aexecute_parallel(
-                    parallel_modules, current_message,
-                )
-
-            elif step["type"] == "conditional":
-                await self._aexecute_conditional(
-                    step, modules, current_message,
-                )
-
-            elif step["type"] == "while":
-                current_message = await self._aexecute_while_loop(
-                    step["condition"], step["actions"], modules,
+                signals = await self._aexecute_parallel(
+                    parallel_modules,
                     current_message,
                 )
 
-        return current_message
+            elif step["type"] == "conditional":
+                signals = await self._aexecute_conditional(
+                    step,
+                    modules,
+                    current_message,
+                )
+
+            elif step["type"] == "while":
+                current_message, signals = await self._aexecute_while_loop(
+                    step["condition"],
+                    step["actions"],
+                    modules,
+                    current_message,
+                )
+
+            if signals:
+                return current_message, signals
+
+        return current_message, {}
 
     async def __call__(
         self, expression: str, modules: Mapping[str, Callable], message: dotdict
     ) -> dotdict:
         """Async execute the DSL pipeline."""
         steps = self.parse(expression)
-        return await self._aexecute_steps(steps, modules, message)
+        result, _signals = await self._aexecute_steps(steps, modules, message)
+        return result

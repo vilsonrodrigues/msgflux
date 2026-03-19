@@ -683,3 +683,178 @@ def test_parallel_no_conflict_no_warning(modules):
     mock_logger.warning.assert_not_called()
     assert result["feat_a"] == "result_a"
     assert result["feat_b"] == "result_b"
+
+
+# ── Signal tests ($break, $stop) ────────────────────────────────────────────
+
+
+def test_break_exits_while_loop(modules):
+    """$break exits the while loop, pipeline continues after it."""
+
+    def breaker(msg):
+        msg["counter"] = msg.get("counter", 0) + 1
+        if msg["counter"] >= 3:
+            return {"$break": True}
+
+    mods = {**modules, "breaker": breaker}
+    result = inline(
+        "prep -> @{counter < 100}: breaker; -> final",
+        mods,
+        dotdict(),
+    )
+    assert result["counter"] == 3
+    assert result["final"] == "done"  # pipeline continued after break
+
+
+def test_stop_halts_entire_pipeline(modules):
+    """$stop halts the pipeline — steps after the signal do not run."""
+
+    def stopper(msg):
+        return {"stopped": True, "$stop": True}
+
+    mods = {**modules, "stopper": stopper}
+    result = inline("prep -> stopper -> final", mods, dotdict())
+    assert result["stopped"] is True
+    assert "final" not in result  # final never ran
+
+
+def test_stop_inside_while_propagates(modules):
+    """$stop inside a while loop stops the entire pipeline."""
+
+    def check(msg):
+        msg["counter"] = msg.get("counter", 0) + 1
+        if msg["counter"] >= 2:
+            return {"$stop": True}
+
+    mods = {**modules, "check": check}
+    result = inline(
+        "prep -> @{counter < 100}: check; -> final",
+        mods,
+        dotdict(),
+    )
+    assert result["counter"] == 2
+    assert "final" not in result  # pipeline halted
+
+
+def test_break_outside_while_stops_remaining_steps(modules):
+    """$break outside a while loop stops remaining steps in the sequence."""
+
+    def breaker(msg):
+        return {"broke": True, "$break": True}
+
+    mods = {**modules, "breaker": breaker}
+    result = inline("prep -> breaker -> final", mods, dotdict())
+    assert result["broke"] is True
+    assert "final" not in result
+
+
+def test_signal_in_conditional(modules):
+    """$stop inside a conditional branch halts the pipeline."""
+
+    def stopper(msg):
+        return {"halted": True, "$stop": True}
+
+    mods = {**modules, "stopper": stopper}
+    result = inline(
+        "prep -> {output.agent == 'xpto' ? stopper, final}",
+        mods,
+        dotdict(),
+    )
+    assert result["halted"] is True
+    assert "final" not in result
+
+
+def test_break_in_while_with_delta(modules):
+    """$break returns both the delta and breaks the loop."""
+
+    def worker(msg):
+        msg["counter"] = msg.get("counter", 0) + 1
+        if msg["counter"] >= 2:
+            return {"status": "done", "$break": True}
+        return {"status": "working"}
+
+    mods = {**modules, "worker": worker}
+    result = inline(
+        "prep -> @{counter < 100}: worker; -> final",
+        mods,
+        dotdict(),
+    )
+    assert result["counter"] == 2
+    assert result["status"] == "done"
+    assert result["final"] == "done"
+
+
+def test_signal_not_applied_to_message(modules):
+    """Signal keys ($break, $stop) are NOT stored in the message."""
+
+    def stopper(msg):
+        return {"result": "ok", "$stop": True}
+
+    mods = {**modules, "stopper": stopper}
+    result = inline("prep -> stopper -> final", mods, dotdict())
+    assert "$stop" not in result
+    assert result["result"] == "ok"
+
+
+def test_parallel_stop_wins_over_break(modules):
+    """In parallel, $stop (higher severity) wins over $break."""
+
+    def breaker(msg):
+        return {"from_breaker": True, "$break": True}
+
+    def stopper(msg):
+        return {"from_stopper": True, "$stop": True}
+
+    mods = {**modules, "breaker": breaker, "stopper": stopper}
+    result = inline(
+        "prep -> [breaker, stopper] -> final",
+        mods,
+        dotdict(),
+    )
+    assert result["from_breaker"] is True
+    assert result["from_stopper"] is True
+    assert "final" not in result  # $stop won
+
+
+def test_no_signal_pipeline_runs_normally(modules):
+    """Modules returning None or plain dicts work as before."""
+
+    def adder(msg):
+        return {"added": True}
+
+    mods = {**modules, "adder": adder}
+    result = inline("prep -> adder -> final", mods, dotdict())
+    assert result["added"] is True
+    assert result["final"] == "done"
+
+
+@pytest.mark.asyncio
+async def test_async_break_exits_while(async_modules):
+    """Async $break exits the while loop."""
+
+    async def breaker(msg):
+        msg["counter"] = msg.get("counter", 0) + 1
+        if msg["counter"] >= 3:
+            return {"$break": True}
+
+    mods = {**async_modules, "breaker": breaker}
+    result = await ainline(
+        "prep -> @{counter < 100}: breaker; -> final",
+        mods,
+        dotdict(),
+    )
+    assert result["counter"] == 3
+    assert result["final"] == "done"
+
+
+@pytest.mark.asyncio
+async def test_async_stop_halts_pipeline(async_modules):
+    """Async $stop halts the entire pipeline."""
+
+    async def stopper(msg):
+        return {"stopped": True, "$stop": True}
+
+    mods = {**async_modules, "stopper": stopper}
+    result = await ainline("prep -> stopper -> final", mods, dotdict())
+    assert result["stopped"] is True
+    assert "final" not in result

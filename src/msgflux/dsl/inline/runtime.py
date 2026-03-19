@@ -3,7 +3,7 @@
 import asyncio
 import time
 import uuid
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Mapping, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Mapping, Optional, Tuple
 
 from msgflux.context import session_context
 from msgflux.dotdict import dotdict
@@ -144,15 +144,27 @@ class DurableInlineDSL(InlineDSL):
         event: Optional[Dict[str, Any]] = None,
     ) -> None:
         state = _make_state(
-            self.run_id, expression, status, cursor, message, error,
+            self.run_id,
+            expression,
+            status,
+            cursor,
+            message,
+            error,
         )
         if event is not None:
             self.store.save_with_event(
-                self.namespace, self.session_id, self.run_id, state, event,
+                self.namespace,
+                self.session_id,
+                self.run_id,
+                state,
+                event,
             )
         else:
             self.store.save_state(
-                self.namespace, self.session_id, self.run_id, state,
+                self.namespace,
+                self.session_id,
+                self.run_id,
+                state,
             )
 
     # ── Execution (overrides) ────────────────────────────────────────────
@@ -166,9 +178,10 @@ class DurableInlineDSL(InlineDSL):
         _expression: str = "",
         _start_index: int = 0,
         _frames: Optional[List[Dict[str, Any]]] = None,
-    ) -> dotdict:
+    ) -> Tuple[dotdict, Dict[str, Any]]:
         current_message = message
         attempts = self.max_retries + 1
+        signals: Dict[str, Any] = {}
 
         for i, step in enumerate(steps):
             if i < _start_index:
@@ -179,27 +192,31 @@ class DurableInlineDSL(InlineDSL):
                     if step["type"] == "module":
                         module = modules.get(step["module"])
                         if not module:
-                            raise ValueError(
-                                f"Module `{step['module']}` not found."
-                            )
-                        self._call_module(module, current_message)
+                            raise ValueError(f"Module `{step['module']}` not found.")
+                        signals = self._call_module(module, current_message)
 
                     elif step["type"] == "parallel":
                         parallel_modules = self._resolve_parallel(
-                            step, modules,
+                            step,
+                            modules,
                         )
-                        self._execute_parallel(
-                            parallel_modules, current_message,
+                        signals = self._execute_parallel(
+                            parallel_modules,
+                            current_message,
                         )
 
                     elif step["type"] == "conditional":
-                        self._execute_conditional(
-                            step, modules, current_message,
+                        signals = self._execute_conditional(
+                            step,
+                            modules,
+                            current_message,
                         )
 
                     elif step["type"] == "while":
-                        current_message = self._execute_while_durable(
-                            step, modules, current_message,
+                        current_message, signals = self._execute_while_durable(
+                            step,
+                            modules,
+                            current_message,
                             expression=_expression,
                             outer_step_index=i,
                             frames=_frames,
@@ -225,9 +242,12 @@ class DurableInlineDSL(InlineDSL):
                         )
                         raise
                     logger.warning(
-                        "Step %d failed (attempt %d/%d): %s. "
-                        "Retrying in %.1fs…",
-                        i, attempt + 1, attempts, e, self.retry_delay,
+                        "Step %d failed (attempt %d/%d): %s. Retrying in %.1fs…",
+                        i,
+                        attempt + 1,
+                        attempts,
+                        e,
+                        self.retry_delay,
                     )
                     time.sleep(self.retry_delay)
 
@@ -243,7 +263,10 @@ class DurableInlineDSL(InlineDSL):
                 ),
             )
 
-        return current_message
+            if signals:
+                return current_message, signals
+
+        return current_message, {}
 
     def _execute_while_durable(
         self,
@@ -254,7 +277,7 @@ class DurableInlineDSL(InlineDSL):
         expression: str,
         outer_step_index: int,
         frames: Optional[List[Dict[str, Any]]] = None,
-    ) -> dotdict:
+    ) -> Tuple[dotdict, Dict[str, Any]]:
         condition = step["condition"]
         actions = step["actions"]
         current_message = message
@@ -291,7 +314,7 @@ class DurableInlineDSL(InlineDSL):
             }
             active_frames = [*current_frames, frame]
 
-            current_message = self._execute_steps(
+            current_message, signals = self._execute_steps(
                 actions_steps,
                 modules,
                 current_message,
@@ -305,15 +328,27 @@ class DurableInlineDSL(InlineDSL):
             # Checkpoint after each loop iteration
             self._save(
                 expression,
-                _make_cursor(outer_step_index, [
-                    *current_frames,
-                    {"type": "while", "condition": condition,
-                     "iteration": iteration, "inner_step": 0},
-                ]),
+                _make_cursor(
+                    outer_step_index,
+                    [
+                        *current_frames,
+                        {
+                            "type": "while",
+                            "condition": condition,
+                            "iteration": iteration,
+                            "inner_step": 0,
+                        },
+                    ],
+                ),
                 current_message,
             )
 
-        return current_message
+            if "$stop" in signals:
+                return current_message, signals
+            if "$break" in signals:
+                break
+
+        return current_message, {}
 
     def __call__(
         self, expression: str, modules: Mapping[str, Callable], message: dotdict
@@ -326,7 +361,8 @@ class DurableInlineDSL(InlineDSL):
             if resumed_msg is not None:
                 logger.info(
                     "Resuming inline run '%s' from step %d",
-                    self.run_id, start_index,
+                    self.run_id,
+                    start_index,
                 )
                 current = resumed_msg
                 event_type = _EV_RUN_RESUMED
@@ -335,12 +371,14 @@ class DurableInlineDSL(InlineDSL):
                 event_type = _EV_RUN_STARTED
 
             self.store.append_event(
-                self.namespace, self.session_id, self.run_id,
+                self.namespace,
+                self.session_id,
+                self.run_id,
                 _make_event(event_type),
             )
 
             steps = self.parse(expression)
-            result = self._execute_steps(
+            result, _signals = self._execute_steps(
                 steps,
                 modules,
                 current,
@@ -350,7 +388,10 @@ class DurableInlineDSL(InlineDSL):
             )
 
             self._save(
-                expression, _make_cursor(len(steps)), result, status="completed",
+                expression,
+                _make_cursor(len(steps)),
+                result,
+                status="completed",
                 event=_make_event(_EV_RUN_COMPLETED),
             )
             return result
@@ -391,7 +432,9 @@ class AsyncDurableInlineDSL(AsyncInlineDSL):
         store = self.store
         if self._async_store:
             state = await store.aload_state(
-                self.namespace, self.session_id, self.run_id,
+                self.namespace,
+                self.session_id,
+                self.run_id,
             )
         else:
             state = store.load_state(self.namespace, self.session_id, self.run_id)
@@ -418,26 +461,43 @@ class AsyncDurableInlineDSL(AsyncInlineDSL):
         event: Optional[Dict[str, Any]] = None,
     ) -> None:
         state = _make_state(
-            self.run_id, expression, status, cursor, message, error,
+            self.run_id,
+            expression,
+            status,
+            cursor,
+            message,
+            error,
         )
         if event is not None:
             if self._async_store:
                 await self.store.asave_with_event(
-                    self.namespace, self.session_id, self.run_id,
-                    state, event,
+                    self.namespace,
+                    self.session_id,
+                    self.run_id,
+                    state,
+                    event,
                 )
             else:
                 self.store.save_with_event(
-                    self.namespace, self.session_id, self.run_id,
-                    state, event,
+                    self.namespace,
+                    self.session_id,
+                    self.run_id,
+                    state,
+                    event,
                 )
         elif self._async_store:
             await self.store.asave_state(
-                self.namespace, self.session_id, self.run_id, state,
+                self.namespace,
+                self.session_id,
+                self.run_id,
+                state,
             )
         else:
             self.store.save_state(
-                self.namespace, self.session_id, self.run_id, state,
+                self.namespace,
+                self.session_id,
+                self.run_id,
+                state,
             )
 
     # ── Execution (overrides) ────────────────────────────────────────────
@@ -451,9 +511,10 @@ class AsyncDurableInlineDSL(AsyncInlineDSL):
         _expression: str = "",
         _start_index: int = 0,
         _frames: Optional[List[Dict[str, Any]]] = None,
-    ) -> dotdict:
+    ) -> Tuple[dotdict, Dict[str, Any]]:
         current_message = message
         attempts = self.max_retries + 1
+        signals: Dict[str, Any] = {}
 
         for i, step in enumerate(steps):
             if i < _start_index:
@@ -464,32 +525,34 @@ class AsyncDurableInlineDSL(AsyncInlineDSL):
                     if step["type"] == "module":
                         module = modules.get(step["module"])
                         if not module:
-                            raise ValueError(
-                                f"Module `{step['module']}` not found."
-                            )
-                        await self._acall_module(module, current_message)
+                            raise ValueError(f"Module `{step['module']}` not found.")
+                        signals = await self._acall_module(
+                            module,
+                            current_message,
+                        )
 
                     elif step["type"] == "parallel":
-                        parallel_modules = (
-                            self._resolve_parallel(step, modules)
-                        )
-                        await self._aexecute_parallel(
-                            parallel_modules, current_message,
+                        parallel_modules = self._resolve_parallel(step, modules)
+                        signals = await self._aexecute_parallel(
+                            parallel_modules,
+                            current_message,
                         )
 
                     elif step["type"] == "conditional":
-                        await self._aexecute_conditional(
-                            step, modules, current_message,
+                        signals = await self._aexecute_conditional(
+                            step,
+                            modules,
+                            current_message,
                         )
 
                     elif step["type"] == "while":
-                        current_message = (
-                            await self._aexecute_while_durable(
-                                step, modules, current_message,
-                                expression=_expression,
-                                outer_step_index=i,
-                                frames=_frames,
-                            )
+                        current_message, signals = await self._aexecute_while_durable(
+                            step,
+                            modules,
+                            current_message,
+                            expression=_expression,
+                            outer_step_index=i,
+                            frames=_frames,
                         )
 
                     break  # step succeeded
@@ -512,9 +575,12 @@ class AsyncDurableInlineDSL(AsyncInlineDSL):
                         )
                         raise
                     logger.warning(
-                        "Step %d failed (attempt %d/%d): %s. "
-                        "Retrying in %.1fs…",
-                        i, attempt + 1, attempts, e, self.retry_delay,
+                        "Step %d failed (attempt %d/%d): %s. Retrying in %.1fs…",
+                        i,
+                        attempt + 1,
+                        attempts,
+                        e,
+                        self.retry_delay,
                     )
                     await asyncio.sleep(self.retry_delay)
 
@@ -530,7 +596,10 @@ class AsyncDurableInlineDSL(AsyncInlineDSL):
                 ),
             )
 
-        return current_message
+            if signals:
+                return current_message, signals
+
+        return current_message, {}
 
     async def _aexecute_while_durable(
         self,
@@ -541,7 +610,7 @@ class AsyncDurableInlineDSL(AsyncInlineDSL):
         expression: str,
         outer_step_index: int,
         frames: Optional[List[Dict[str, Any]]] = None,
-    ) -> dotdict:
+    ) -> Tuple[dotdict, Dict[str, Any]]:
         condition = step["condition"]
         actions = step["actions"]
         current_message = message
@@ -576,7 +645,7 @@ class AsyncDurableInlineDSL(AsyncInlineDSL):
             }
             active_frames = [*current_frames, frame]
 
-            current_message = await self._aexecute_steps(
+            current_message, signals = await self._aexecute_steps(
                 actions_steps,
                 modules,
                 current_message,
@@ -589,25 +658,43 @@ class AsyncDurableInlineDSL(AsyncInlineDSL):
 
             await self._asave(
                 expression,
-                _make_cursor(outer_step_index, [
-                    *current_frames,
-                    {"type": "while", "condition": condition,
-                     "iteration": iteration, "inner_step": 0},
-                ]),
+                _make_cursor(
+                    outer_step_index,
+                    [
+                        *current_frames,
+                        {
+                            "type": "while",
+                            "condition": condition,
+                            "iteration": iteration,
+                            "inner_step": 0,
+                        },
+                    ],
+                ),
                 current_message,
             )
 
-        return current_message
+            if "$stop" in signals:
+                return current_message, signals
+            if "$break" in signals:
+                break
+
+        return current_message, {}
 
     async def _aemit_event(self, event: Dict[str, Any]) -> None:
         """Append an event to the store (async-aware)."""
         if self._async_store:
             await self.store.aappend_event(
-                self.namespace, self.session_id, self.run_id, event,
+                self.namespace,
+                self.session_id,
+                self.run_id,
+                event,
             )
         else:
             self.store.append_event(
-                self.namespace, self.session_id, self.run_id, event,
+                self.namespace,
+                self.session_id,
+                self.run_id,
+                event,
             )
 
     async def __call__(
@@ -621,7 +708,8 @@ class AsyncDurableInlineDSL(AsyncInlineDSL):
             if resumed_msg is not None:
                 logger.info(
                     "Resuming async inline run '%s' from step %d",
-                    self.run_id, start_index,
+                    self.run_id,
+                    start_index,
                 )
                 current = resumed_msg
                 event_type = _EV_RUN_RESUMED
@@ -632,7 +720,7 @@ class AsyncDurableInlineDSL(AsyncInlineDSL):
             await self._aemit_event(_make_event(event_type))
 
             steps = self.parse(expression)
-            result = await self._aexecute_steps(
+            result, _signals = await self._aexecute_steps(
                 steps,
                 modules,
                 current,
