@@ -7,6 +7,11 @@ import msgspec
 try:
     from google import genai
     from google.genai import types as genai_types
+    from opentelemetry.instrumentation.google_genai import GoogleGenAiSdkInstrumentor
+
+    if not getattr(genai, "_otel_instrumented", False):
+        GoogleGenAiSdkInstrumentor().instrument()
+        genai._otel_instrumented = True
 except ImportError:
     genai = None
     genai_types = None
@@ -29,7 +34,7 @@ from msgflux.utils.msgspec import struct_to_dict
 from msgflux.utils.tenacity import apply_retry, default_model_retry
 
 
-def _openai_tools_to_genai(
+def _openai_tools_to_gemini(
     tool_schemas: List[Dict[str, Any]],
 ) -> List[Dict[str, Any]]:
     """Convert OpenAI tool schemas to Google GenAI function declarations.
@@ -50,12 +55,12 @@ def _openai_tools_to_genai(
             decl["description"] = func["description"]
         params = func.get("parameters")
         if params:
-            decl["parameters"] = _convert_json_schema_to_genai(params)
+            decl["parameters"] = _convert_json_schema_to_gemini(params)
         declarations.append(decl)
     return [{"function_declarations": declarations}]
 
 
-def _convert_json_schema_to_genai(schema: Dict[str, Any]) -> Dict[str, Any]:
+def _convert_json_schema_to_gemini(schema: Dict[str, Any]) -> Dict[str, Any]:
     """Convert JSON Schema to Google GenAI Schema format.
 
     Removes unsupported keys like 'additionalProperties' and recursively
@@ -73,11 +78,11 @@ def _convert_json_schema_to_genai(schema: Dict[str, Any]) -> Dict[str, Any]:
 
     if "properties" in schema:
         result["properties"] = {
-            k: _convert_json_schema_to_genai(v) for k, v in schema["properties"].items()
+            k: _convert_json_schema_to_gemini(v) for k, v in schema["properties"].items()
         }
 
     if "items" in schema:
-        result["items"] = _convert_json_schema_to_genai(schema["items"])
+        result["items"] = _convert_json_schema_to_gemini(schema["items"])
 
     return result
 
@@ -238,7 +243,7 @@ class GoogleChatCompletion(_BaseGoogle, ChatCompletionModel):
 
         # Tools
         if tool_schemas:
-            config["tools"] = _openai_tools_to_genai(tool_schemas)
+            config["tools"] = _openai_tools_to_gemini(tool_schemas)
             tc = _genai_tool_choice(tool_choice)
             if tc:
                 config["tool_config"] = tc
@@ -255,7 +260,7 @@ class GoogleChatCompletion(_BaseGoogle, ChatCompletionModel):
         tool_schemas = kwargs.pop("tool_schemas", None)
         tool_choice = kwargs.pop("tool_choice", None)
 
-        system_from_messages, contents = messages.to_genai()
+        system_from_messages, contents = messages.to_gemini()
 
         # system_prompt goes directly as config param (not in contents).
         # If messages also contained system/developer roles, merge them.
@@ -288,7 +293,7 @@ class GoogleChatCompletion(_BaseGoogle, ChatCompletionModel):
         tool_schemas = kwargs.pop("tool_schemas", None)
         tool_choice = kwargs.pop("tool_choice", None)
 
-        system_from_messages, contents = messages.to_genai()
+        system_from_messages, contents = messages.to_gemini()
 
         if system_prompt and system_from_messages:
             system_instruction = f"{system_prompt}\n\n{system_from_messages}"
@@ -487,7 +492,7 @@ class GoogleChatCompletion(_BaseGoogle, ChatCompletionModel):
         tool_schemas = kwargs.pop("tool_schemas", None)
         tool_choice = kwargs.pop("tool_choice", None)
 
-        system_from_messages, contents = messages.to_genai()
+        system_from_messages, contents = messages.to_gemini()
         if system_prompt and system_from_messages:
             system_instruction = f"{system_prompt}\n\n{system_from_messages}"
         else:
@@ -571,7 +576,7 @@ class GoogleChatCompletion(_BaseGoogle, ChatCompletionModel):
         tool_schemas = kwargs.pop("tool_schemas", None)
         tool_choice = kwargs.pop("tool_choice", None)
 
-        system_from_messages, contents = messages.to_genai()
+        system_from_messages, contents = messages.to_gemini()
         if system_prompt and system_from_messages:
             system_instruction = f"{system_prompt}\n\n{system_from_messages}"
         else:

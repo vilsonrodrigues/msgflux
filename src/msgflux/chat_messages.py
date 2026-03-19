@@ -725,7 +725,7 @@ class ChatMessages:
 
         return result
 
-    def to_genai(self) -> Tuple[Optional[str], List[dict[str, Any]]]:  # noqa: C901
+    def to_gemini(self) -> Tuple[Optional[str], List[dict[str, Any]]]:  # noqa: C901
         """Convert to Google GenAI format.
 
         Returns a tuple of (system_instruction, contents) where:

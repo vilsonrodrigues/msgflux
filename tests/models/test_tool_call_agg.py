@@ -57,3 +57,37 @@ class TestToolCallAggregatorBasics:
         assert agg.tool_calls[0]["id"] == "call_456"
         assert agg.tool_calls[0]["name"] == "calculate"
         assert agg.tool_calls[0]["arguments"] == '{"operation": "add", "a": 5, "b": 3}'
+
+    def test_thought_signature_preserved_in_get_messages(self):
+        """Test that thought_signature is preserved through get_messages."""
+        agg = ToolCallAggregator()
+        agg.process(
+            call_index=0,
+            tool_id="call_1",
+            name="get_weather",
+            arguments='{"city": "NYC"}',
+        )
+        agg.tool_calls[0]["thought_signature"] = "sig_from_gemini"
+
+        agg.insert_results({"call_1": "sunny and warm"})
+        messages = agg.get_messages()
+
+        # First message: assistant with tool_calls
+        tc = messages[0]["tool_calls"][0]
+        assert tc["thought_signature"] == "sig_from_gemini"
+
+    def test_thought_signature_absent_when_not_set(self):
+        """Test that thought_signature is not added when not present."""
+        agg = ToolCallAggregator()
+        agg.process(
+            call_index=0,
+            tool_id="call_1",
+            name="get_weather",
+            arguments='{"city": "NYC"}',
+        )
+
+        agg.insert_results({"call_1": "sunny"})
+        messages = agg.get_messages()
+
+        tc = messages[0]["tool_calls"][0]
+        assert "thought_signature" not in tc

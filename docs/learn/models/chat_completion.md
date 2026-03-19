@@ -15,6 +15,18 @@ The `chat_completion` model is the most versatile model type for natural languag
         pip install msgflux[openai]
         ```
 
+    **Google Gemini** uses its own SDK:
+
+    === "uv"
+        ```bash
+        uv add msgflux[google]
+        ```
+
+    === "pip"
+        ```bash
+        pip install msgflux[google]
+        ```
+
     See [Dependency Management](../../dependency-management.md) for the complete provider matrix.
 
 ## Overview
@@ -25,18 +37,33 @@ Chat completion models are stateless - they don't maintain conversation history 
 
 ???+ example
 
-    ```python
-    # pip install msgflux[openai]
-    import msgflux as mf
+    === "OpenAI"
 
-    # mf.set_envs(OPENAI_API_KEY="...")
+        ```python
+        # pip install msgflux[openai]
+        import msgflux as mf
 
-    # Create model
-    model = mf.Model.chat_completion("openai/gpt-4.1-mini")
+        # mf.set_envs(OPENAI_API_KEY="...")
 
-    response = model("Hello!")
-    print(response.consume())
-    ```
+        model = mf.Model.chat_completion("openai/gpt-4.1-mini")
+
+        response = model("Hello!")
+        print(response.consume())
+        ```
+
+    === "Google Gemini"
+
+        ```python
+        # pip install msgflux[google]
+        import msgflux as mf
+
+        # mf.set_envs(GEMINI_API_KEY="...")
+
+        model = mf.Model.chat_completion("google/gemini-3-flash-preview")
+
+        response = model("Hello!")
+        print(response.consume())
+        ```
 
 !!! tip
 
@@ -848,6 +875,7 @@ Not all reasoning providers behave the same way:
 
 | Provider | Exposes trace via `return_reasoning` | Reasoning tokens in metadata |
 |---|---|---|
+| **Google** (`google/gemini-2.5-flash`) | Yes — `response.data.think` | Yes |
 | **Groq** (`groq/openai/gpt-oss-20b`) | Yes — `response.data.think` | Yes |
 | **OpenAI** (`openai/gpt-5-mini`) | No — reasoning is fully internal | Yes |
 
@@ -892,7 +920,7 @@ Not all reasoning providers behave the same way:
 
 ### Inspecting the Reasoning Trace
 
-Providers like Groq return the chain of thought as a separate field when `return_reasoning=True`. The response becomes a `dotdict` with `think` (the trace) and `answer` (the final response):
+Providers like Google Gemini and Groq return the chain of thought as a separate field when `return_reasoning=True`. The response becomes a `dotdict` with `think` (the trace) and `answer` (the final response):
 
 ???+ example
 

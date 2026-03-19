@@ -1041,3 +1041,372 @@ class TestEdgeCases:
         cm = ChatMessages()
         with pytest.raises(TypeError, match="Mapping"):
             cm.extend([{"role": "user", "content": "ok"}, "not a dict"])
+
+
+# ============================================================
+# 17. Format conversion — to_gemini
+# ============================================================
+
+
+class TestToGemini:
+    def test_simple_user_assistant(self):
+        cm = ChatMessages(
+            [
+                {"role": "user", "content": "hi"},
+                {"role": "assistant", "content": "hello"},
+            ]
+        )
+        sys_inst, contents = cm.to_gemini()
+
+        assert sys_inst is None
+        assert len(contents) == 2
+        assert contents[0]["role"] == "user"
+        assert contents[0]["parts"] == [{"text": "hi"}]
+        assert contents[1]["role"] == "model"
+        assert contents[1]["parts"] == [{"text": "hello"}]
+
+    def test_system_extracted_as_instruction(self):
+        cm = ChatMessages(
+            [
+                {"role": "system", "content": "Be helpful"},
+                {"role": "user", "content": "hi"},
+            ]
+        )
+        sys_inst, contents = cm.to_gemini()
+
+        assert sys_inst == "Be helpful"
+        assert len(contents) == 1
+        assert contents[0]["role"] == "user"
+
+    def test_multiple_system_messages_merged(self):
+        cm = ChatMessages(
+            [
+                {"role": "system", "content": "Rule 1"},
+                {"role": "developer", "content": "Rule 2"},
+                {"role": "user", "content": "hi"},
+            ]
+        )
+        sys_inst, contents = cm.to_gemini()
+
+        assert "Rule 1" in sys_inst
+        assert "Rule 2" in sys_inst
+        assert len(contents) == 1
+
+    def test_turn_markers_filtered(self):
+        cm = ChatMessages()
+        cm.begin_turn()
+        cm.add_user("hello")
+        cm.add_assistant("world")
+        cm.end_turn()
+
+        sys_inst, contents = cm.to_gemini()
+
+        assert sys_inst is None
+        roles = [c["role"] for c in contents]
+        assert "user" in roles
+        assert "model" in roles
+
+    def test_reasoning_items_filtered(self):
+        cm = ChatMessages()
+        cm.add_reasoning("thinking step by step")
+        cm.add_assistant("answer")
+
+        sys_inst, contents = cm.to_gemini()
+
+        assert len(contents) == 1
+        assert contents[0]["role"] == "model"
+        assert contents[0]["parts"] == [{"text": "answer"}]
+
+    def test_function_call_from_responses_api(self):
+        cm = ChatMessages()
+        cm.append(
+            {
+                "type": "function_call",
+                "call_id": "call_1",
+                "name": "get_weather",
+                "arguments": '{"city": "SP"}',
+            }
+        )
+
+        sys_inst, contents = cm.to_gemini()
+
+        assert len(contents) == 1
+        assert contents[0]["role"] == "model"
+        part = contents[0]["parts"][0]
+        assert "function_call" in part
+        assert part["function_call"]["name"] == "get_weather"
+        assert part["function_call"]["args"] == {"city": "SP"}
+        assert part["function_call"]["id"] == "call_1"
+        # thought_signature should have dummy value
+        assert "thought_signature" in part
+
+    def test_function_call_output_from_responses_api(self):
+        cm = ChatMessages()
+        cm.append(
+            {
+                "type": "function_call",
+                "call_id": "call_1",
+                "name": "get_weather",
+                "arguments": '{"city": "SP"}',
+            }
+        )
+        cm.append(
+            {
+                "type": "function_call_output",
+                "call_id": "call_1",
+                "output": "sunny",
+            }
+        )
+
+        sys_inst, contents = cm.to_gemini()
+
+        assert len(contents) == 2
+        # function_call -> model role
+        assert contents[0]["role"] == "model"
+        # function_response -> user role
+        assert contents[1]["role"] == "user"
+        fr = contents[1]["parts"][0]["function_response"]
+        assert fr["name"] == "get_weather"
+        assert fr["response"] == {"result": "sunny"}
+        assert fr["id"] == "call_1"
+
+    def test_chatml_tool_calls_converted(self):
+        cm = ChatMessages(
+            [
+                {
+                    "role": "assistant",
+                    "tool_calls": [
+                        {
+                            "id": "call_1",
+                            "type": "function",
+                            "function": {
+                                "name": "search",
+                                "arguments": '{"q": "test"}',
+                            },
+                        }
+                    ],
+                }
+            ]
+        )
+
+        sys_inst, contents = cm.to_gemini()
+
+        assert contents[0]["role"] == "model"
+        fc = contents[0]["parts"][0]["function_call"]
+        assert fc["name"] == "search"
+        assert fc["args"] == {"q": "test"}
+        assert fc["id"] == "call_1"
+
+    def test_chatml_tool_result_converted(self):
+        cm = ChatMessages(
+            [
+                {
+                    "role": "assistant",
+                    "tool_calls": [
+                        {
+                            "id": "call_1",
+                            "type": "function",
+                            "function": {
+                                "name": "search",
+                                "arguments": '{"q": "test"}',
+                            },
+                        }
+                    ],
+                },
+                {
+                    "role": "tool",
+                    "tool_call_id": "call_1",
+                    "content": "result data",
+                },
+            ]
+        )
+
+        sys_inst, contents = cm.to_gemini()
+
+        # tool result -> user role
+        fr_content = contents[1]
+        assert fr_content["role"] == "user"
+        fr = fr_content["parts"][0]["function_response"]
+        assert fr["name"] == "search"
+        assert fr["response"] == {"result": "result data"}
+
+    def test_thought_signature_preserved(self):
+        cm = ChatMessages(
+            [
+                {
+                    "role": "assistant",
+                    "tool_calls": [
+                        {
+                            "id": "call_1",
+                            "type": "function",
+                            "function": {
+                                "name": "search",
+                                "arguments": '{"q": "test"}',
+                            },
+                            "thought_signature": "real_sig_from_gemini",
+                        }
+                    ],
+                }
+            ]
+        )
+
+        sys_inst, contents = cm.to_gemini()
+
+        part = contents[0]["parts"][0]
+        assert part["thought_signature"] == "real_sig_from_gemini"
+
+    def test_thought_signature_dummy_when_missing(self):
+        from msgflux.chat_messages import _GENAI_DUMMY_THOUGHT_SIGNATURE
+
+        cm = ChatMessages(
+            [
+                {
+                    "role": "assistant",
+                    "tool_calls": [
+                        {
+                            "id": "call_1",
+                            "type": "function",
+                            "function": {
+                                "name": "search",
+                                "arguments": '{"q": "test"}',
+                            },
+                        }
+                    ],
+                }
+            ]
+        )
+
+        sys_inst, contents = cm.to_gemini()
+
+        part = contents[0]["parts"][0]
+        assert part["thought_signature"] == _GENAI_DUMMY_THOUGHT_SIGNATURE
+
+    def test_same_role_merges_parts(self):
+        cm = ChatMessages(
+            [
+                {"role": "user", "content": "part 1"},
+                {"role": "user", "content": "part 2"},
+            ]
+        )
+
+        sys_inst, contents = cm.to_gemini()
+
+        assert len(contents) == 1
+        assert contents[0]["role"] == "user"
+        assert len(contents[0]["parts"]) == 2
+
+    def test_response_message_type(self):
+        cm = ChatMessages()
+        cm.append(
+            {
+                "type": "message",
+                "role": "user",
+                "content": "hello",
+            }
+        )
+
+        sys_inst, contents = cm.to_gemini()
+
+        assert contents[0]["role"] == "user"
+        assert contents[0]["parts"] == [{"text": "hello"}]
+
+    def test_response_message_system_extracted(self):
+        cm = ChatMessages()
+        cm.append(
+            {
+                "type": "message",
+                "role": "system",
+                "content": "be concise",
+            }
+        )
+
+        sys_inst, contents = cm.to_gemini()
+
+        assert sys_inst == "be concise"
+        assert len(contents) == 0
+
+    def test_image_url_data_uri(self):
+        cm = ChatMessages(
+            [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "what is this?"},
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": "data:image/png;base64,iVBORw0K"
+                            },
+                        },
+                    ],
+                }
+            ]
+        )
+
+        sys_inst, contents = cm.to_gemini()
+
+        parts = contents[0]["parts"]
+        assert parts[0] == {"text": "what is this?"}
+        assert "inline_data" in parts[1]
+        assert parts[1]["inline_data"]["mime_type"] == "image/png"
+
+    def test_image_url_https(self):
+        cm = ChatMessages(
+            [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": "https://example.com/img.jpg"},
+                        }
+                    ],
+                }
+            ]
+        )
+
+        sys_inst, contents = cm.to_gemini()
+
+        parts = contents[0]["parts"]
+        assert "file_data" in parts[0]
+        assert parts[0]["file_data"]["file_uri"] == "https://example.com/img.jpg"
+
+    def test_empty_conversation(self):
+        cm = ChatMessages()
+
+        sys_inst, contents = cm.to_gemini()
+
+        assert sys_inst is None
+        assert contents == []
+
+    def test_arguments_dict_passthrough(self):
+        cm = ChatMessages()
+        cm.append(
+            {
+                "type": "function_call",
+                "call_id": "call_1",
+                "name": "fn",
+                "arguments": {"key": "val"},
+            }
+        )
+
+        sys_inst, contents = cm.to_gemini()
+
+        fc = contents[0]["parts"][0]["function_call"]
+        assert fc["args"] == {"key": "val"}
+
+    def test_arguments_invalid_json_fallback(self):
+        cm = ChatMessages()
+        cm.append(
+            {
+                "type": "function_call",
+                "call_id": "call_1",
+                "name": "fn",
+                "arguments": "not-json",
+            }
+        )
+
+        sys_inst, contents = cm.to_gemini()
+
+        fc = contents[0]["parts"][0]["function_call"]
+        assert fc["args"] == {"raw": "not-json"}

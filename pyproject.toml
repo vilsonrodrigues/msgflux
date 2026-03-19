@@ -77,6 +77,10 @@ Documentation = "https://github.com/msgflux/msgflux"
 Repository = "https://github.com/msgflux/msgflux"
 
 [project.optional-dependencies]
+google = [
+    "google-genai>=1.0.0",
+    "opentelemetry-instrumentation-google-genai>=0.5b0",
+]
 openai = [
     "openai>=1.97.1",
     "opentelemetry-instrumentation-openai>=0.43.1",

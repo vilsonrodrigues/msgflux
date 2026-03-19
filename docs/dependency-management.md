@@ -4,6 +4,7 @@
 
 | Provider    | Dependency        |
 |-------------|-------------------|
+| Google      | `msgflux[google]` |
 | Ollama      | `msgflux[openai]` |
 | OpenAI      | `msgflux[openai]` |
 | OpenRouter  | `msgflux[openai]` |
