@@ -72,6 +72,9 @@ Chat completion models are stateless - they don't maintain conversation history 
         verbose=False,                 # Print raw output before transformation
         # --- Search ---
         web_search_options={},         # Web search config (OpenAI / OpenRouter only)
+        # --- Responses API (OpenAI only) ---
+        api_mode="completion",         # "completion" (default) or "response" (/responses endpoint)
+        provider_tools=[],             # Provider-native tools: web_search, file_search, code_interpreter, mcp, etc.
         # --- Infrastructure ---
         base_url="https://api.openai.com/v1",  # Override provider API endpoint
         context_length=128000,         # Override maximum context window
@@ -80,6 +83,212 @@ Chat completion models are stateless - they don't maintain conversation history 
         retry=None,                    # Custom tenacity retry configuration
     )
     ```
+
+### 1.2 **API Mode**
+
+OpenAI offers two API paths for chat models:
+
+| Mode | Endpoint | Description |
+|---|---|---|
+| `"completion"` | `/chat/completions` | Classic chat API. Default for all providers. |
+| `"response"` | `/responses` | New OpenAI API with native tools, reasoning traces, and conversation state. OpenAI only. |
+
+Set the mode with `api_mode`:
+
+???+ example
+
+    === "Completion (default)"
+
+        ```python
+        import msgflux as mf
+
+        # Default — uses /chat/completions
+        model = mf.Model.chat_completion("openai/gpt-4.1-mini")
+
+        response = model("Hello!")
+        print(response.consume())
+        ```
+
+    === "Response"
+
+        ```python
+        import msgflux as mf
+
+        # Uses /responses
+        model = mf.Model.chat_completion(
+            "openai/gpt-5.4-nano",
+            api_mode="response",
+        )
+
+        response = model("Hello!")
+        print(response.consume())
+
+        # Response mode includes extra metadata
+        print(response.metadata.id)      # resp_abc123...
+        print(response.metadata.status)  # "completed"
+        ```
+
+    === "Streaming"
+
+        ```python
+        import msgflux as mf
+
+        model = mf.Model.chat_completion(
+            "openai/gpt-5.4-nano",
+            api_mode="response",
+        )
+
+        response = model("Count from 1 to 5.", stream=True)
+
+        async for chunk in response.consume():
+            print(chunk, end="", flush=True)
+        ```
+
+!!! note
+    All existing features (structured generation, tool calling, reasoning, caching) work in both modes. msgFlux automatically adapts parameters between the two APIs.
+
+!!! warning
+    `api_mode="response"` is only available for the `openai` provider. Other providers that inherit from OpenAI (Groq, Cerebras, etc.) use `"completion"` only.
+
+#### Response Mode Metadata
+
+Responses include richer metadata than completions:
+
+| Field | Description |
+|---|---|
+| `id` | Response ID (can be used as `previous_response_id`) |
+| `status` | `"completed"`, `"failed"`, `"incomplete"` |
+| `usage` | Token counts with `input_tokens`/`output_tokens` (instead of `prompt_tokens`/`completion_tokens`) |
+| `conversation_id` | Conversation ID when using stateful conversations |
+
+### 1.3 **Provider Tools**
+
+The Responses API supports provider-native tools that run on OpenAI's infrastructure. These are different from function-calling tools — they are executed by the provider, not by your code.
+
+| Tool | Description |
+|---|---|
+| `web_search` / `web_search_preview` | Real-time web search |
+| `file_search` | Search across uploaded files |
+| `code_interpreter` | Execute Python code |
+| `image_generation` | Generate images inline |
+| `mcp` | Connect to MCP servers |
+
+Use `provider_tools` to enable them:
+
+???+ example
+
+    === "Web Search"
+
+        ```python
+        import msgflux as mf
+
+        model = mf.Model.chat_completion(
+            "openai/gpt-4.1-mini",
+            api_mode="response",
+            provider_tools=[
+                {"type": "web_search_preview"}
+            ],
+        )
+
+        response = model("What happened in tech news today?")
+        print(response.consume())
+
+        # Citations available in metadata
+        for ann in response.metadata.get("annotations", []):
+            print(ann.get("url", ""))
+        ```
+
+    === "Web Search with Options"
+
+        ```python
+        import msgflux as mf
+
+        model = mf.Model.chat_completion(
+            "openai/gpt-4.1-mini",
+            api_mode="response",
+            provider_tools=[
+                {
+                    "type": "web_search",
+                    "search_context_size": "high",
+                    "user_location": {
+                        "type": "approximate",
+                        "country": "BR",
+                        "city": "São Paulo",
+                    },
+                }
+            ],
+        )
+
+        response = model("What are the top tech events this month?")
+        print(response.consume())
+        ```
+
+    === "Multiple Provider Tools"
+
+        ```python
+        import msgflux as mf
+
+        model = mf.Model.chat_completion(
+            "openai/gpt-4.1-mini",
+            api_mode="response",
+            provider_tools=[
+                {"type": "web_search_preview"},
+                {"type": "code_interpreter"},
+            ],
+        )
+
+        response = model("Search for the latest GDP of Brazil and plot a chart.")
+        print(response.consume())
+        ```
+
+    === "Mixed with Function Tools"
+
+        Provider tools can be used alongside regular function-calling tools:
+
+        ```python
+        import msgflux as mf
+
+        tools = [{
+            "type": "function",
+            "function": {
+                "name": "save_to_db",
+                "description": "Save data to the database.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "data": {"type": "string"},
+                    },
+                    "required": ["data"],
+                },
+            },
+        }]
+
+        model = mf.Model.chat_completion(
+            "openai/gpt-4.1-mini",
+            api_mode="response",
+            provider_tools=[{"type": "web_search_preview"}],
+        )
+
+        response = model(
+            "Search for the current Bitcoin price and save it.",
+            tool_schemas=tools,
+        )
+        print(response.consume())
+        ```
+
+!!! warning
+    `provider_tools` requires `api_mode="response"`. Using it with `api_mode="completion"` raises a `ValueError`.
+
+### 1.4 **web_search_options vs provider_tools**
+
+There are two ways to enable web search:
+
+| Approach | API Mode | How it works |
+|---|---|---|
+| `web_search_options={...}` | Both | Passed as a parameter. In `"response"` mode, automatically converted to a provider tool. |
+| `provider_tools=[{"type": "web_search"}]` | `"response"` only | Explicit provider tool with full control over options. |
+
+For `"completion"` mode, use `web_search_options`. For `"response"` mode, either approach works — `provider_tools` gives more control.
 
 ## 2. **System Prompt**
 
