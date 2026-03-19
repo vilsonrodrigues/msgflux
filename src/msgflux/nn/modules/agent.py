@@ -552,6 +552,7 @@ class Agent(Module, metaclass=AutoParams):
             raw_response = model_response
             response_type = "tool_responses"
 
+        self._store_response_id(messages, response_metadata)
         if self.config.get("capture_output", True):
             self._append_response_to_chat_messages(
                 messages, raw_response, response_type, response_metadata
@@ -597,6 +598,7 @@ class Agent(Module, metaclass=AutoParams):
             raw_response = model_response
             response_type = "tool_responses"
 
+        self._store_response_id(messages, response_metadata)
         if self.config.get("capture_output", True):
             self._append_response_to_chat_messages(
                 messages, raw_response, response_type, response_metadata
@@ -730,6 +732,7 @@ class Agent(Module, metaclass=AutoParams):
         """
         while True:
             if model_response.response_type == "tool_call":
+                self._store_response_id(messages, model_response)
                 raw_response = model_response.data
                 reasoning = raw_response.reasoning
 
@@ -777,6 +780,7 @@ class Agent(Module, metaclass=AutoParams):
         """
         while True:
             if model_response.response_type == "tool_call":
+                self._store_response_id(messages, model_response)
                 raw_response = model_response.data
                 reasoning = raw_response.reasoning
 
@@ -967,6 +971,22 @@ class Agent(Module, metaclass=AutoParams):
             response_metadata=metadata,
             status=status,
         )
+
+    def _store_response_id(
+        self,
+        messages: Union[ChatMessages, List[Mapping[str, Any]]],
+        source: Any,
+    ) -> None:
+        """Extract response id from metadata and store in ChatMessages."""
+        if not isinstance(messages, ChatMessages):
+            return
+        metadata = source
+        if isinstance(source, (ModelResponse, ModelStreamResponse)):
+            metadata = source.metadata
+        if isinstance(metadata, Mapping):
+            response_id = metadata.get("id")
+            if isinstance(response_id, str):
+                messages.set_response_id(response_id)
 
     def _append_response_to_chat_messages(
         self,
