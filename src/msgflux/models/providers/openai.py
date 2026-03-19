@@ -1,4 +1,5 @@
 import base64
+import inspect
 import tempfile
 from contextlib import asynccontextmanager, contextmanager
 from os import getenv
@@ -119,7 +120,9 @@ class _BaseOpenAI(BaseModel):
 class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
     """OpenAI Chat Completion."""
 
-    def __init__(
+    api_mode: str = "completion"
+
+    def __init__(  # noqa: C901
         self,
         model_id: str,
         *,
@@ -137,6 +140,8 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
         audio: Optional[Dict[str, str]] = None,
         verbosity: Optional[str] = None,
         web_search_options: Optional[Dict[str, Any]] = None,
+        provider_tools: Optional[List[Dict[str, Any]]] = None,
+        api_mode: Optional[str] = None,
         verbose: Optional[bool] = False,
         base_url: Optional[str] = None,
         context_length: Optional[int] = None,
@@ -195,6 +200,12 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
         web_search_options:
             This tool searches the web for relevant results to use in a response.
             OpenAI and OpenRouter only.
+        provider_tools:
+            Provider-native tools configuration (e.g. `web_search`, `file_search`,
+            `mcp`, `image_generation`) for `/responses`.
+        api_mode:
+            Select API mode. `completion` uses `/chat/completions`,
+            `response` uses `/responses`.
         verbose:
             If True, Prints the model output to the console before it is transformed
             into typed structured output.
@@ -241,6 +252,25 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
         self.return_reasoning = return_reasoning
         self.verbose = verbose
         self.retry = retry
+        resolved_api_mode = api_mode
+        if resolved_api_mode is None:
+            resolved_api_mode = getattr(self.__class__, "api_mode", "completion")
+        self.api_mode = resolved_api_mode
+
+        if self.api_mode not in {"completion", "response"}:
+            raise ValueError(
+                "`api_mode` must be `completion` or `response`, "
+                f"given `{self.api_mode}`"
+            )
+        if self.api_mode == "response" and self.provider != "openai":
+            raise ValueError(
+                f"`api_mode=response` is not supported for provider `{self.provider}`"
+            )
+        self.provider_tools = provider_tools
+        if self.provider_tools and self.api_mode != "response":
+            raise ValueError(
+                "`provider_tools` requires `api_mode='response'` for OpenAI."
+            )
         self._initialize()
         self._get_api_key()
 
@@ -251,6 +281,307 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
             if max_tokens is not None:
                 params["max_completion_tokens"] = max_tokens
         return params
+
+    def _merge_tools(self, *tool_groups: Any):
+        merged_tools = []
+        for tools in tool_groups:
+            if tools is None:
+                continue
+            if isinstance(tools, list):
+                merged_tools.extend(tools)
+            else:
+                merged_tools.append(tools)
+        if not merged_tools:
+            return None
+        return merged_tools
+
+    def _adapt_responses_tools(self, tools: Any):
+        if not isinstance(tools, list):
+            return tools
+
+        adapted_tools = []
+        for tool in tools:
+            if (
+                isinstance(tool, Mapping)
+                and tool.get("type") == "function"
+                and isinstance(tool.get("function"), Mapping)
+            ):
+                function_schema = tool.get("function")
+                adapted_tool = {"type": "function"}
+                for key in (
+                    "name",
+                    "description",
+                    "parameters",
+                    "strict",
+                ):
+                    value = function_schema.get(key)
+                    if value is not None:
+                        adapted_tool[key] = value
+                adapted_tools.append(adapted_tool)
+            else:
+                adapted_tools.append(tool)
+        return adapted_tools
+
+    def _adapt_responses_tool_choice(self, tool_choice: Any):
+        if not isinstance(tool_choice, Mapping):
+            return tool_choice
+
+        if tool_choice.get("type") != "function":
+            return tool_choice
+
+        if isinstance(tool_choice.get("function"), Mapping):
+            name = tool_choice["function"].get("name")
+            if name:
+                return {"type": "function", "name": name}
+
+        if tool_choice.get("name"):
+            return {"type": "function", "name": tool_choice["name"]}
+
+        return tool_choice
+
+    def _adapt_response_format_to_text_format(self, response_format: Any):
+        if not isinstance(response_format, Mapping):
+            return response_format
+
+        format_type = response_format.get("type")
+        if format_type == "json_schema":
+            json_schema = response_format.get("json_schema")
+            if isinstance(json_schema, Mapping):
+                adapted_format = {"type": "json_schema"}
+                for key in ("name", "schema", "strict"):
+                    value = json_schema.get(key)
+                    if value is not None:
+                        adapted_format[key] = value
+                return adapted_format
+
+        if format_type in {"json_object", "text"}:
+            return {"type": format_type}
+
+        return dict(response_format)
+
+    def _adapt_responses_stream_options(self, stream_options: Any):
+        if not isinstance(stream_options, Mapping):
+            return stream_options
+
+        adapted_stream_options = dict(stream_options)
+        # chat.completions compatibility flag; responses returns usage in
+        # `response.completed`, so `include_usage` has no effect here.
+        adapted_stream_options.pop("include_usage", None)
+        if not adapted_stream_options:
+            return None
+        return adapted_stream_options
+
+    def _adapt_responses_web_search_tool(self, web_search_options: Any):  # noqa: C901
+        web_search_tool = {"type": "web_search"}
+        if not isinstance(web_search_options, Mapping):
+            return web_search_tool
+
+        options = dict(web_search_options)
+        tool_type = options.pop("tool_type", None) or options.pop("type", None)
+        if isinstance(tool_type, str) and tool_type:
+            web_search_tool["type"] = tool_type
+
+        search_context_size = options.get("search_context_size")
+        if search_context_size is not None:
+            web_search_tool["search_context_size"] = search_context_size
+
+        user_location = options.get("user_location")
+        if isinstance(user_location, Mapping):
+            adapted_user_location = dict(user_location)
+            approximate_location = adapted_user_location.get("approximate")
+            if isinstance(approximate_location, Mapping):
+                adapted_user_location = dict(approximate_location)
+                location_type = user_location.get("type")
+                if location_type is not None:
+                    adapted_user_location["type"] = location_type
+                else:
+                    adapted_user_location["type"] = "approximate"
+            web_search_tool["user_location"] = adapted_user_location
+
+        # `web_search` supports filters while
+        # `web_search_preview` does not.
+        if "preview" not in web_search_tool["type"]:
+            filters = options.get("filters")
+            if isinstance(filters, Mapping):
+                web_search_tool["filters"] = dict(filters)
+
+            allowed_domains = options.get("allowed_domains")
+            if allowed_domains is not None:
+                current_filters = web_search_tool.get("filters")
+                if isinstance(current_filters, Mapping):
+                    adapted_filters = dict(current_filters)
+                    adapted_filters["allowed_domains"] = allowed_domains
+                    web_search_tool["filters"] = adapted_filters
+                else:
+                    web_search_tool["filters"] = {"allowed_domains": allowed_domains}
+
+        return web_search_tool
+
+    def _get_responses_supported_params(self) -> set[str]:
+        cached = getattr(self, "_responses_supported_params_cache", None)
+        if cached is not None:
+            return cached
+
+        # Fallback for mocked clients or signature introspection
+        # failures.
+        supported_params = {
+            "background",
+            "context_management",
+            "conversation",
+            "include",
+            "input",
+            "instructions",
+            "max_output_tokens",
+            "max_tool_calls",
+            "metadata",
+            "model",
+            "parallel_tool_calls",
+            "previous_response_id",
+            "prompt",
+            "prompt_cache_key",
+            "prompt_cache_retention",
+            "reasoning",
+            "safety_identifier",
+            "service_tier",
+            "store",
+            "stream",
+            "stream_options",
+            "temperature",
+            "text",
+            "tool_choice",
+            "tools",
+            "top_logprobs",
+            "top_p",
+            "truncation",
+            "user",
+            "extra_headers",
+            "extra_query",
+            "extra_body",
+            "timeout",
+        }
+        try:
+            if self.client is not None:
+                signature = inspect.signature(self.client.responses.create)
+                candidate_params = set(signature.parameters)
+                # Ignore generic mock signatures like (*args, **kwargs)
+                if not candidate_params.issubset({"args", "kwargs"}):
+                    supported_params = candidate_params
+        except Exception:  # noqa: S110
+            pass
+
+        self._responses_supported_params_cache = supported_params
+        return supported_params
+
+    def _adapt_responses_params(  # noqa: C901
+        self, params: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        supported_params = self._get_responses_supported_params()
+
+        # Parameter adaptation between /chat/completions and /responses
+        max_tokens = params.pop("max_tokens", None)
+        if max_tokens is not None:
+            params["max_output_tokens"] = max_tokens
+
+        reasoning_effort = params.pop("reasoning_effort", None)
+        if reasoning_effort is not None:
+            reasoning = params.get("reasoning")
+            if isinstance(reasoning, Mapping):
+                adapted_reasoning = dict(reasoning)
+                adapted_reasoning.setdefault("effort", reasoning_effort)
+                params["reasoning"] = adapted_reasoning
+            elif reasoning is None:
+                params["reasoning"] = {"effort": reasoning_effort}
+
+        provider_tools = params.pop("provider_tools", None)
+        merged_tools = self._merge_tools(params.get("tools"), provider_tools)
+        tools = self._adapt_responses_tools(merged_tools)
+        if tools is None:
+            params.pop("tools", None)
+        else:
+            params["tools"] = tools
+
+        tool_choice = self._adapt_responses_tool_choice(params.get("tool_choice"))
+        if tool_choice is None:
+            params.pop("tool_choice", None)
+        else:
+            params["tool_choice"] = tool_choice
+
+        response_format = params.pop("response_format", None)
+        verbosity = params.pop("verbosity", None)
+        if response_format is not None or verbosity is not None:
+            if "text" in supported_params:
+                current_text = params.get("text")
+                text_config = (
+                    dict(current_text) if isinstance(current_text, Mapping) else {}
+                )
+                if response_format is not None:
+                    text_config["format"] = self._adapt_response_format_to_text_format(
+                        response_format
+                    )
+                if verbosity is not None:
+                    text_config["verbosity"] = verbosity
+                params["text"] = text_config
+            else:
+                # Forward original names for providers/SDKs that
+                # expose them.
+                if response_format is not None:
+                    params["response_format"] = response_format
+                if verbosity is not None:
+                    params["verbosity"] = verbosity
+
+        web_search_options = params.pop("web_search_options", None)
+        if web_search_options is not None:
+            if "tools" in supported_params:
+                web_search_tool = self._adapt_responses_web_search_tool(
+                    web_search_options
+                )
+                existing_tools = params.get("tools")
+                if isinstance(existing_tools, list):
+                    params["tools"] = [
+                        *existing_tools,
+                        web_search_tool,
+                    ]
+                elif existing_tools is None:
+                    params["tools"] = [web_search_tool]
+                else:
+                    params["tools"] = [
+                        existing_tools,
+                        web_search_tool,
+                    ]
+            elif "web_search_options" in supported_params:
+                params["web_search_options"] = web_search_options
+            else:
+                # No known compatible field.
+                pass
+
+        stream_options = params.get("stream_options")
+        if stream_options is not None:
+            adapted_stream_options = self._adapt_responses_stream_options(
+                stream_options
+            )
+            if adapted_stream_options is None:
+                params.pop("stream_options", None)
+            else:
+                params["stream_options"] = adapted_stream_options
+
+        # Keep only params that are either supported or mapped to
+        # equivalents.
+        for field in ("audio", "modalities", "stop", "stream_options"):
+            if field in supported_params:
+                continue
+            params.pop(field, None)
+
+        return params
+
+    def _ensure_chat_messages(
+        self,
+        messages: Union[ChatMessages, List[Dict[str, Any]], None],
+    ) -> ChatMessages:
+        if isinstance(messages, ChatMessages):
+            return messages.copy()
+        if messages is None:
+            return ChatMessages()
+        return ChatMessages.from_chatml(messages)
 
     def _build_usage_metadata(self, model_output) -> dotdict:
         metadata = dotdict()
@@ -321,25 +652,95 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
             return
         response_content.reasoning = reasoning_content
 
-    def _ensure_chat_messages(
-        self, messages: Union[ChatMessages, List[Dict[str, Any]], None]
-    ) -> ChatMessages:
-        if isinstance(messages, ChatMessages):
-            return messages.copy()
-        if messages is None:
-            return ChatMessages()
-        return ChatMessages.from_chatml(messages)
+    def _extract_responses_stop_reason(self, model_output) -> Optional[str]:
+        incomplete_details = getattr(model_output, "incomplete_details", None)
+        if isinstance(incomplete_details, Mapping):
+            reason = incomplete_details.get("reason")
+            if isinstance(reason, str):
+                return reason
+        elif incomplete_details is not None:
+            reason = getattr(incomplete_details, "reason", None)
+            if isinstance(reason, str):
+                return reason
+
+        status = getattr(model_output, "status", None)
+        if isinstance(status, str):
+            return status
+        return None
+
+    def _extract_responses_reasoning(self, model_output) -> Optional[str]:
+        reasoning_chunks = []
+        for item in getattr(model_output, "output", []):
+            if getattr(item, "type", None) != "reasoning":
+                continue
+            for content_part in getattr(item, "content", []) or []:
+                text = getattr(content_part, "text", None)
+                if text:
+                    reasoning_chunks.append(text)
+            if not reasoning_chunks:
+                for summary_part in getattr(item, "summary", []) or []:
+                    text = getattr(summary_part, "text", None)
+                    if text:
+                        reasoning_chunks.append(text)
+
+        if not reasoning_chunks:
+            return None
+        return "".join(reasoning_chunks)
+
+    def _extract_responses_text_and_annotations(self, model_output):  # noqa: C901
+        text_parts = []
+        annotations = []
+
+        for item in getattr(model_output, "output", []):
+            if getattr(item, "type", None) != "message":
+                continue
+            for content_part in getattr(item, "content", []) or []:
+                content_type = getattr(content_part, "type", None)
+                if content_type == "output_text":
+                    text = getattr(content_part, "text", None)
+                    if text:
+                        text_parts.append(text)
+                    for ann in getattr(content_part, "annotations", []) or []:
+                        if hasattr(ann, "model_dump"):
+                            annotations.append(ann.model_dump())
+                        elif isinstance(ann, Mapping):
+                            annotations.append(dict(ann))
+                elif content_type == "refusal":
+                    refusal = getattr(content_part, "refusal", None)
+                    if refusal:
+                        text_parts.append(refusal)
+
+        response_text = getattr(model_output, "output_text", None)
+        if response_text:
+            return response_text, annotations
+
+        return "\n".join(text_parts).strip(), annotations
 
     def _execute_model(self, **kwargs):
         prefilling = kwargs.pop("prefilling")
         messages = self._ensure_chat_messages(kwargs.pop("messages", None))
         if prefilling:
             messages.add_assistant(prefilling)
+
         params = {
-            "messages": messages.to_chatml(),
+            "model": kwargs.pop("model"),
             **kwargs,
             **self.sampling_run_params,
         }
+
+        if self.provider_tools and self.api_mode != "response":
+            raise ValueError(
+                "`provider_tools` requires `api_mode='response'` for OpenAI."
+            )
+
+        if self.api_mode == "response":
+            params["provider_tools"] = self.provider_tools
+            params["input"] = messages.to_responses_input()
+            adapted_params = self._adapt_responses_params(params)
+            model_output = self.client.responses.create(**adapted_params)
+            return model_output
+
+        params["messages"] = messages.to_chatml()
         adapted_params = self._adapt_params(params)
         model_output = self.client.chat.completions.create(**adapted_params)
 
@@ -350,11 +751,26 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
         messages = self._ensure_chat_messages(kwargs.pop("messages", None))
         if prefilling:
             messages.add_assistant(prefilling)
+
         params = {
-            "messages": messages.to_chatml(),
+            "model": kwargs.pop("model"),
             **kwargs,
             **self.sampling_run_params,
         }
+
+        if self.provider_tools and self.api_mode != "response":
+            raise ValueError(
+                "`provider_tools` requires `api_mode='response'` for OpenAI."
+            )
+
+        if self.api_mode == "response":
+            params["provider_tools"] = self.provider_tools
+            params["input"] = messages.to_responses_input()
+            adapted_params = self._adapt_responses_params(params)
+            model_output = await self.aclient.responses.create(**adapted_params)
+            return model_output
+
+        params["messages"] = messages.to_chatml()
         adapted_params = self._adapt_params(params)
         model_output = await self.aclient.chat.completions.create(**adapted_params)
 
@@ -441,71 +857,203 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
         response.set_metadata(metadata)
         return response
 
+    def _process_responses_model_output(  # noqa: C901
+        self,
+        model_output,
+        typed_parser=None,
+        generation_schema=None,
+    ):
+        response = ModelResponse()
+        metadata = self._build_usage_metadata(model_output)
+
+        for field in ("id", "status", "previous_response_id"):
+            value = getattr(model_output, field, None)
+            if value is not None:
+                metadata[field] = value
+        self._set_stop_metadata(
+            metadata,
+            stop_reason=self._extract_responses_stop_reason(model_output),
+        )
+
+        conversation = getattr(model_output, "conversation", None)
+        if conversation is not None and getattr(conversation, "id", None):
+            metadata.conversation_id = conversation.id
+
+        reasoning = self._extract_responses_reasoning(model_output)
+        reasoning_tool_call = reasoning if self.reasoning_in_tool_call else None
+
+        prefix_response_type = ""
+        reasoning_content = None
+        if self.return_reasoning and reasoning is not None:
+            reasoning_content = reasoning
+            prefix_response_type = "reasoning_"
+
+        function_calls = []
+        for item in getattr(model_output, "output", []):
+            if getattr(item, "type", None) == "function_call":
+                function_calls.append(item)
+
+        (
+            response_text,
+            annotations,
+        ) = self._extract_responses_text_and_annotations(model_output)
+        if annotations:
+            metadata.annotations = annotations
+
+        if function_calls:
+            aggregator = ToolCallAggregator(reasoning_tool_call)
+            response.set_response_type("tool_call")
+            for call_index, tool_call in enumerate(function_calls):
+                tool_id = getattr(tool_call, "call_id", None) or getattr(
+                    tool_call, "id", None
+                )
+                name = getattr(tool_call, "name", None)
+                arguments = getattr(tool_call, "arguments", None) or "{}"
+                aggregator.process(call_index, tool_id, name, arguments)
+            response_content = aggregator
+        elif response_text:
+            if (typed_parser or generation_schema) and self.verbose:
+                repr_str = f"[{self.model_id}][raw_response] {response_text}"
+                cprint(repr_str, lc="r", ls="b")
+
+            if typed_parser is not None:
+                response.set_response_type(f"{prefix_response_type}structured")
+                parser = typed_parser_registry[typed_parser]
+                response_content = dotdict(parser.decode(response_text))
+                if generation_schema and self.validate_typed_parser_output:
+                    decoder = self._get_decoder(generation_schema)
+                    decoder.decode(self._encoder.encode(response_content))
+            elif generation_schema is not None:
+                response.set_response_type(f"{prefix_response_type}structured")
+                decoder = self._get_decoder(generation_schema)
+                struct = decoder.decode(response_text)
+                response_content = dotdict(struct_to_dict(struct))
+            else:
+                response.set_response_type(f"{prefix_response_type}text_generation")
+                if reasoning_content is not None:
+                    response_content = dotdict({"answer": response_text})
+                else:
+                    response_content = response_text
+        else:
+            response.set_response_type("text_generation")
+            response_content = ""
+
+        if reasoning_content is not None:
+            if isinstance(response_content, str):
+                response_content = dotdict({"answer": response_content})
+            self._set_reasoning_fields(response_content, reasoning_content)
+
+        response.add(response_content)
+        response.set_metadata(metadata)
+        return response
+
     def _process_model_output(
         self, model_output, typed_parser=None, generation_schema=None
     ):
+        if self.api_mode == "response":
+            return self._process_responses_model_output(
+                model_output, typed_parser, generation_schema
+            )
         return self._process_completion_model_output(
             model_output, typed_parser, generation_schema
         )
 
-    def _check_cache(self, **kwargs):
+    def _generate(self, **kwargs: Mapping[str, Any]) -> ModelResponse:
+        typed_parser = kwargs.get("typed_parser")
+        generation_schema = kwargs.get("generation_schema")
+
+        # Check cache if enabled
         if self.enable_cache and self._response_cache:
             cache_key = generate_cache_key(**kwargs)
             hit, cached_response = self._response_cache.get(cache_key)
             if hit:
                 return cached_response
-        return None
 
-    def _store_cache(self, response, **kwargs):
-        if self.enable_cache and self._response_cache:
-            cache_key = generate_cache_key(**kwargs)
-            self._response_cache.set(cache_key, response)
-
-    def _prepare_generate_kwargs(self, kwargs):
+        # Pop after cache check to avoid modifying kwargs during
+        # cache key generation
         typed_parser = kwargs.pop("typed_parser")
         generation_schema = kwargs.pop("generation_schema")
 
         if generation_schema is not None and typed_parser is None:
-            kwargs["response_format"] = response_format_from_msgspec_struct(
-                generation_schema
-            )
-
-        return typed_parser, generation_schema
-
-    def _generate(self, **kwargs: Mapping[str, Any]) -> ModelResponse:
-        cached = self._check_cache(**kwargs)
-        if cached:
-            return cached
-
-        typed_parser, generation_schema = self._prepare_generate_kwargs(kwargs)
+            response_format = response_format_from_msgspec_struct(generation_schema)
+            if self.api_mode == "response":
+                json_schema = response_format["json_schema"]
+                kwargs["text"] = {
+                    "format": {
+                        "type": "json_schema",
+                        "name": json_schema["name"],
+                        "schema": json_schema["schema"],
+                        "strict": json_schema.get("strict", True),
+                    }
+                }
+            else:
+                kwargs["response_format"] = response_format
 
         model_output = self._execute_model(**kwargs)
         response = self._process_model_output(
             model_output, typed_parser, generation_schema
         )
 
-        self._store_cache(
-            response, **kwargs,
-            typed_parser=typed_parser, generation_schema=generation_schema,
-        )
+        # Store in cache if enabled
+        if self.enable_cache and self._response_cache:
+            # Re-add popped values for cache key
+            cache_kwargs = {
+                **kwargs,
+                "typed_parser": typed_parser,
+                "generation_schema": generation_schema,
+            }
+            cache_key = generate_cache_key(**cache_kwargs)
+            self._response_cache.set(cache_key, response)
+
         return response
 
     async def _agenerate(self, **kwargs: Mapping[str, Any]) -> ModelResponse:
-        cached = self._check_cache(**kwargs)
-        if cached:
-            return cached
+        typed_parser = kwargs.get("typed_parser")
+        generation_schema = kwargs.get("generation_schema")
 
-        typed_parser, generation_schema = self._prepare_generate_kwargs(kwargs)
+        # Check cache if enabled
+        if self.enable_cache and self._response_cache:
+            cache_key = generate_cache_key(**kwargs)
+            hit, cached_response = self._response_cache.get(cache_key)
+            if hit:
+                return cached_response
+
+        # Pop after cache check to avoid modifying kwargs during
+        # cache key generation
+        typed_parser = kwargs.pop("typed_parser")
+        generation_schema = kwargs.pop("generation_schema")
+
+        if generation_schema is not None and typed_parser is None:
+            response_format = response_format_from_msgspec_struct(generation_schema)
+            if self.api_mode == "response":
+                json_schema = response_format["json_schema"]
+                kwargs["text"] = {
+                    "format": {
+                        "type": "json_schema",
+                        "name": json_schema["name"],
+                        "schema": json_schema["schema"],
+                        "strict": json_schema.get("strict", True),
+                    }
+                }
+            else:
+                kwargs["response_format"] = response_format
 
         model_output = await self._aexecute_model(**kwargs)
         response = self._process_model_output(
             model_output, typed_parser, generation_schema
         )
 
-        self._store_cache(
-            response, **kwargs,
-            typed_parser=typed_parser, generation_schema=generation_schema,
-        )
+        # Store in cache if enabled
+        if self.enable_cache and self._response_cache:
+            # Re-add popped values for cache key
+            cache_kwargs = {
+                **kwargs,
+                "typed_parser": typed_parser,
+                "generation_schema": generation_schema,
+            }
+            cache_key = generate_cache_key(**cache_kwargs)
+            self._response_cache.set(cache_key, response)
+
         return response
 
     def _stream_generate(  # noqa: C901
@@ -516,58 +1064,147 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
         reasoning_tool_call = ""
 
         try:
-            aggregator = ToolCallAggregator()
-            model_output = self._execute_model(**kwargs)
-            finish_reason = None
+            if self.api_mode == "response":
+                model_output = self._execute_model(**kwargs)
+                completed_response = None
 
-            for chunk in model_output:
-                if chunk.choices:
-                    choice = chunk.choices[0]
-                    delta = choice.delta
-                    fr = self._extract_finish_reason(choice)
-                    if fr is not None:
-                        finish_reason = fr
+                for event in model_output:
+                    event_type = getattr(event, "type", None)
 
-                    reasoning_chunk = self._extract_reasoning(delta)
+                    if event_type == "response.output_text.delta":
+                        delta = getattr(event, "delta", "")
+                        if delta:
+                            if stream_response.response_type is None:
+                                stream_response.set_response_type("text_generation")
+                                stream_response.first_chunk_event.set()
+                            stream_response.add(delta)
+                        continue
 
-                    if self.reasoning_in_tool_call and reasoning_chunk:
-                        reasoning_tool_call += reasoning_chunk
+                    if event_type in {
+                        "response.reasoning_text.delta",
+                        "response.reasoning_summary_text.delta",
+                    }:
+                        delta = getattr(event, "delta", "")
+                        if self.reasoning_in_tool_call and delta:
+                            reasoning_tool_call += delta
+                        if self.return_reasoning and delta:
+                            if stream_response.response_type is None:
+                                stream_response.set_response_type(
+                                    "reasoning_text_generation"
+                                )
+                                stream_response.first_chunk_event.set()
+                            stream_response.add(delta)
+                        continue
 
-                    if self.return_reasoning and reasoning_chunk:
-                        self._stream_add_chunk(
-                            stream_response, reasoning_chunk,
-                            "reasoning_text_generation",
+                    if event_type == "response.completed":
+                        completed_response = getattr(event, "response", None)
+
+                if completed_response is not None:
+                    metadata.update(self._build_usage_metadata(completed_response))
+                    for field in (
+                        "id",
+                        "status",
+                        "previous_response_id",
+                    ):
+                        value = getattr(completed_response, field, None)
+                        if value is not None:
+                            metadata[field] = value
+                    self._set_stop_metadata(
+                        metadata,
+                        stop_reason=self._extract_responses_stop_reason(
+                            completed_response
+                        ),
+                    )
+
+                    aggregator = ToolCallAggregator(
+                        reasoning_tool_call if self.reasoning_in_tool_call else None
+                    )
+                    function_calls = []
+                    for item in getattr(completed_response, "output", []):
+                        if getattr(item, "type", None) == "function_call":
+                            function_calls.append(item)
+
+                    if function_calls:
+                        if stream_response.response_type is None:
+                            stream_response.set_response_type("tool_call")
+                        for call_index, tool_call in enumerate(function_calls):
+                            tool_id = getattr(tool_call, "call_id", None) or getattr(
+                                tool_call, "id", None
+                            )
+                            name = getattr(tool_call, "name", None)
+                            arguments = getattr(tool_call, "arguments", None) or "{}"
+                            aggregator.process(
+                                call_index,
+                                tool_id,
+                                name,
+                                arguments,
+                            )
+                        stream_response.data = aggregator
+                        stream_response.first_chunk_event.set()
+                    elif stream_response.response_type is None:
+                        (
+                            response_text,
+                            _,
+                        ) = self._extract_responses_text_and_annotations(
+                            completed_response
                         )
-                        continue
+                        stream_response.set_response_type("text_generation")
+                        if response_text:
+                            stream_response.add(response_text)
+                        stream_response.first_chunk_event.set()
+            else:
+                aggregator = ToolCallAggregator()
+                model_output = self._execute_model(**kwargs)
+                finish_reason = None
 
-                    if getattr(delta, "content", None):
-                        self._stream_add_chunk(
-                            stream_response, delta.content, "text_generation",
-                        )
-                        continue
+                for chunk in model_output:
+                    if chunk.choices:
+                        choice = chunk.choices[0]
+                        delta = choice.delta
+                        fr = self._extract_finish_reason(choice)
+                        if fr is not None:
+                            finish_reason = fr
 
-                    if getattr(delta, "tool_calls", None):
-                        self._process_stream_tool_calls(
-                            delta, stream_response, aggregator,
-                        )
-                        continue
+                        reasoning_chunk = self._extract_reasoning(delta)
 
-                    annotations = self._extract_annotations(delta)
-                    if annotations:
-                        metadata.annotations = annotations
-                        continue
+                        if self.reasoning_in_tool_call and reasoning_chunk:
+                            reasoning_tool_call += reasoning_chunk
 
-                elif chunk.usage:
-                    usage = chunk.usage.to_dict()
-                    metadata.update(usage)
-                    metadata.usage = usage
+                        if self.return_reasoning and reasoning_chunk:
+                            self._stream_add_chunk(
+                                stream_response, reasoning_chunk,
+                                "reasoning_text_generation",
+                            )
+                            continue
 
-            if aggregator.tool_calls:
-                if reasoning_tool_call:
-                    aggregator.reasoning = reasoning_tool_call
-                stream_response.data = aggregator
-                stream_response.first_chunk_event.set()
-            self._set_stop_metadata(metadata, finish_reason=finish_reason)
+                        if getattr(delta, "content", None):
+                            self._stream_add_chunk(
+                                stream_response, delta.content, "text_generation",
+                            )
+                            continue
+
+                        if getattr(delta, "tool_calls", None):
+                            self._process_stream_tool_calls(
+                                delta, stream_response, aggregator,
+                            )
+                            continue
+
+                        annotations = self._extract_annotations(delta)
+                        if annotations:
+                            metadata.annotations = annotations
+                            continue
+
+                    elif chunk.usage:
+                        usage = chunk.usage.to_dict()
+                        metadata.update(usage)
+                        metadata.usage = usage
+
+                if aggregator.tool_calls:
+                    if reasoning_tool_call:
+                        aggregator.reasoning = reasoning_tool_call
+                    stream_response.data = aggregator
+                    stream_response.first_chunk_event.set()
+                self._set_stop_metadata(metadata, finish_reason=finish_reason)
         finally:
             if not stream_response.first_chunk_event.is_set():
                 stream_response.first_chunk_event.set()
@@ -582,100 +1219,154 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
         reasoning_tool_call = ""
 
         try:
-            aggregator = ToolCallAggregator()
-            model_output = await self._aexecute_model(**kwargs)
-            finish_reason = None
+            if self.api_mode == "response":
+                model_output = await self._aexecute_model(**kwargs)
+                completed_response = None
 
-            async for chunk in model_output:
-                if chunk.choices:
-                    choice = chunk.choices[0]
-                    delta = choice.delta
-                    fr = self._extract_finish_reason(choice)
-                    if fr is not None:
-                        finish_reason = fr
+                async for event in model_output:
+                    event_type = getattr(event, "type", None)
 
-                    reasoning_chunk = self._extract_reasoning(delta)
+                    if event_type == "response.output_text.delta":
+                        delta = getattr(event, "delta", "")
+                        if delta:
+                            if stream_response.response_type is None:
+                                stream_response.set_response_type("text_generation")
+                                stream_response.first_chunk_event.set()
+                            stream_response.add(delta)
+                        continue
 
-                    if self.reasoning_in_tool_call and reasoning_chunk:
-                        reasoning_tool_call += reasoning_chunk
+                    if event_type in {
+                        "response.reasoning_text.delta",
+                        "response.reasoning_summary_text.delta",
+                    }:
+                        delta = getattr(event, "delta", "")
+                        if self.reasoning_in_tool_call and delta:
+                            reasoning_tool_call += delta
+                        if self.return_reasoning and delta:
+                            if stream_response.response_type is None:
+                                stream_response.set_response_type(
+                                    "reasoning_text_generation"
+                                )
+                                stream_response.first_chunk_event.set()
+                            stream_response.add(delta)
+                        continue
 
-                    if self.return_reasoning and reasoning_chunk:
-                        self._stream_add_chunk(
-                            stream_response, reasoning_chunk,
-                            "reasoning_text_generation",
+                    if event_type == "response.completed":
+                        completed_response = getattr(event, "response", None)
+
+                if completed_response is not None:
+                    metadata.update(self._build_usage_metadata(completed_response))
+                    for field in (
+                        "id",
+                        "status",
+                        "previous_response_id",
+                    ):
+                        value = getattr(completed_response, field, None)
+                        if value is not None:
+                            metadata[field] = value
+                    self._set_stop_metadata(
+                        metadata,
+                        stop_reason=self._extract_responses_stop_reason(
+                            completed_response
+                        ),
+                    )
+
+                    aggregator = ToolCallAggregator(
+                        reasoning_tool_call if self.reasoning_in_tool_call else None
+                    )
+                    function_calls = []
+                    for item in getattr(completed_response, "output", []):
+                        if getattr(item, "type", None) == "function_call":
+                            function_calls.append(item)
+
+                    if function_calls:
+                        if stream_response.response_type is None:
+                            stream_response.set_response_type("tool_call")
+                        for call_index, tool_call in enumerate(function_calls):
+                            tool_id = getattr(tool_call, "call_id", None) or getattr(
+                                tool_call, "id", None
+                            )
+                            name = getattr(tool_call, "name", None)
+                            arguments = getattr(tool_call, "arguments", None) or "{}"
+                            aggregator.process(
+                                call_index,
+                                tool_id,
+                                name,
+                                arguments,
+                            )
+                        stream_response.data = aggregator
+                        stream_response.first_chunk_event.set()
+                    elif stream_response.response_type is None:
+                        (
+                            response_text,
+                            _,
+                        ) = self._extract_responses_text_and_annotations(
+                            completed_response
                         )
-                        continue
+                        stream_response.set_response_type("text_generation")
+                        if response_text:
+                            stream_response.add(response_text)
+                        stream_response.first_chunk_event.set()
+            else:
+                aggregator = ToolCallAggregator()
+                model_output = await self._aexecute_model(**kwargs)
+                finish_reason = None
 
-                    if getattr(delta, "content", None):
-                        self._stream_add_chunk(
-                            stream_response, delta.content, "text_generation",
-                        )
-                        continue
+                async for chunk in model_output:
+                    if chunk.choices:
+                        choice = chunk.choices[0]
+                        delta = choice.delta
+                        fr = self._extract_finish_reason(choice)
+                        if fr is not None:
+                            finish_reason = fr
 
-                    if getattr(delta, "tool_calls", None):
-                        self._process_stream_tool_calls(
-                            delta, stream_response, aggregator,
-                        )
-                        continue
+                        reasoning_chunk = self._extract_reasoning(delta)
 
-                    annotations = self._extract_annotations(delta)
-                    if annotations:
-                        metadata.annotations = annotations
-                        continue
+                        if self.reasoning_in_tool_call and reasoning_chunk:
+                            reasoning_tool_call += reasoning_chunk
 
-                elif chunk.usage:
-                    usage = chunk.usage.to_dict()
-                    metadata.update(usage)
-                    metadata.usage = usage
+                        if self.return_reasoning and reasoning_chunk:
+                            self._stream_add_chunk(
+                                stream_response, reasoning_chunk,
+                                "reasoning_text_generation",
+                            )
+                            continue
 
-            if aggregator.tool_calls:
-                if reasoning_tool_call:
-                    aggregator.reasoning = reasoning_tool_call
-                stream_response.data = aggregator
-                stream_response.first_chunk_event.set()
-            self._set_stop_metadata(metadata, finish_reason=finish_reason)
+                        if getattr(delta, "content", None):
+                            self._stream_add_chunk(
+                                stream_response, delta.content, "text_generation",
+                            )
+                            continue
+
+                        if getattr(delta, "tool_calls", None):
+                            self._process_stream_tool_calls(
+                                delta, stream_response, aggregator,
+                            )
+                            continue
+
+                        annotations = self._extract_annotations(delta)
+                        if annotations:
+                            metadata.annotations = annotations
+                            continue
+
+                    elif chunk.usage:
+                        usage = chunk.usage.to_dict()
+                        metadata.update(usage)
+                        metadata.usage = usage
+
+                if aggregator.tool_calls:
+                    if reasoning_tool_call:
+                        aggregator.reasoning = reasoning_tool_call
+                    stream_response.data = aggregator
+                    stream_response.first_chunk_event.set()
+                self._set_stop_metadata(metadata, finish_reason=finish_reason)
         finally:
             if not stream_response.first_chunk_event.is_set():
                 stream_response.first_chunk_event.set()
             stream_response.set_metadata(metadata)
             stream_response.add(None)
 
-    def _build_generation_params(
-        self,
-        messages: Union[str, ChatMessages, List[Dict[str, Any]]],
-        system_prompt: Optional[str],
-        prefilling: Optional[str],
-        tool_schemas: Optional[Dict],
-        tool_choice: Optional[Union[str, Dict[str, Any]]],
-    ) -> Dict[str, Any]:
-        if isinstance(messages, str):
-            messages = [ChatBlock.user(messages)]
-        elif isinstance(messages, ChatMessages):
-            messages = messages.to_chatml()
-        if isinstance(system_prompt, str):
-            messages.insert(0, ChatBlock.system(system_prompt))
-
-        if isinstance(tool_choice, str):
-            if tool_choice not in ["auto", "required", "none"]:
-                tool_choice = {
-                    "type": "function",
-                    "function": {"name": tool_choice},
-                }
-
-        generation_params = {
-            "messages": messages,
-            "prefilling": prefilling,
-            "model": self.model_id,
-        }
-
-        if tool_schemas:
-            generation_params["tools"] = tool_schemas
-            generation_params["tool_choice"] = tool_choice
-            generation_params["parallel_tool_calls"] = self.parallel_tool_calls
-
-        return generation_params
-
-    def __call__(
+    def __call__(  # noqa: C901
         self,
         messages: Union[str, List[Dict[str, Any]], ChatMessages],
         *,
@@ -722,21 +1413,52 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
             ValueError:
                 Raised if `typed_xml=True` and `stream=True`.
         """
-        generation_params = self._build_generation_params(
-            messages, system_prompt, prefilling, tool_schemas, tool_choice
-        )
+        if isinstance(messages, str):
+            messages = [ChatBlock.user(messages)]
+        elif isinstance(messages, ChatMessages):
+            messages = self._ensure_chat_messages(messages)
+        if isinstance(system_prompt, str):
+            messages.insert(0, ChatBlock.system(system_prompt))
+
+        if isinstance(tool_choice, str):
+            if tool_choice not in ["auto", "required", "none"]:
+                if self.api_mode == "response":
+                    tool_choice = {
+                        "type": "function",
+                        "name": tool_choice,
+                    }
+                else:
+                    tool_choice = {
+                        "type": "function",
+                        "function": {"name": tool_choice},
+                    }
+
+        generation_params = {
+            "messages": messages,
+            "prefilling": prefilling,
+            "tool_choice": tool_choice,
+            "tools": tool_schemas,
+            "model": self.model_id,
+        }
+
+        if self._merge_tools(tool_schemas, self.provider_tools):
+            generation_params["parallel_tool_calls"] = self.parallel_tool_calls
 
         if stream is True:
             if typed_parser is not None:
                 raise ValueError("`typed_parser` is not `stream=True` compatible")
 
             stream_response = ModelStreamResponse(mode="sync")
-            F.spawn(
+            stream_kwargs = {
+                "stream": stream,
+                "stream_response": stream_response,
+            }
+            if self.api_mode != "response":
+                stream_kwargs["stream_options"] = {"include_usage": True}
+            F.fire_and_forget(
                 self._stream_generate,
                 **generation_params,
-                stream=stream,
-                stream_response=stream_response,
-                stream_options={"include_usage": True},
+                **stream_kwargs,
             )
             F.wait_for_event(stream_response.first_chunk_event)
             return stream_response
@@ -754,7 +1476,7 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
             )
             return response
 
-    async def acall(
+    async def acall(  # noqa: C901
         self,
         messages: Union[str, List[Dict[str, Any]], ChatMessages],
         *,
@@ -801,21 +1523,52 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
             ValueError:
                 Raised if `typed_xml=True` and `stream=True`.
         """
-        generation_params = self._build_generation_params(
-            messages, system_prompt, prefilling, tool_schemas, tool_choice
-        )
+        if isinstance(messages, str):
+            messages = [ChatBlock.user(messages)]
+        elif isinstance(messages, ChatMessages):
+            messages = self._ensure_chat_messages(messages)
+        if isinstance(system_prompt, str):
+            messages.insert(0, ChatBlock.system(system_prompt))
+
+        if isinstance(tool_choice, str):
+            if tool_choice not in ["auto", "required", "none"]:
+                if self.api_mode == "response":
+                    tool_choice = {
+                        "type": "function",
+                        "name": tool_choice,
+                    }
+                else:
+                    tool_choice = {
+                        "type": "function",
+                        "function": {"name": tool_choice},
+                    }
+
+        generation_params = {
+            "messages": messages,
+            "prefilling": prefilling,
+            "tool_choice": tool_choice,
+            "tools": tool_schemas,
+            "model": self.model_id,
+        }
+
+        if self._merge_tools(tool_schemas, self.provider_tools):
+            generation_params["parallel_tool_calls"] = self.parallel_tool_calls
 
         if stream is True:
             if typed_parser is not None:
                 raise ValueError("`typed_parser` is not `stream=True` compatible")
 
             stream_response = ModelStreamResponse(mode="async")
-            await F.aspawn(
+            stream_kwargs = {
+                "stream": stream,
+                "stream_response": stream_response,
+            }
+            if self.api_mode != "response":
+                stream_kwargs["stream_options"] = {"include_usage": True}
+            await F.afire_and_forget(
                 self._astream_generate,
                 **generation_params,
-                stream=stream,
-                stream_response=stream_response,
-                stream_options={"include_usage": True},
+                **stream_kwargs,
             )
             await F.await_for_event(stream_response.first_chunk_event)
             return stream_response
@@ -964,7 +1717,7 @@ class OpenAITextToSpeech(_BaseOpenAI, TextToSpeechModel):
         if stream:
             stream_response = ModelStreamResponse(mode="sync")
             params.stream_response = stream_response
-            F.spawn(self._stream_generate, **params)
+            F.fire_and_forget(self._stream_generate, **params)
             F.wait_for_event(stream_response.first_chunk_event)
             return stream_response
         else:
@@ -997,7 +1750,7 @@ class OpenAITextToSpeech(_BaseOpenAI, TextToSpeechModel):
         if stream:
             stream_response = ModelStreamResponse(mode="async")
             params.stream_response = stream_response
-            await F.aspawn(self._astream_generate, **params)
+            await F.afire_and_forget(self._astream_generate, **params)
             await F.await_for_event(stream_response.first_chunk_event)
             return stream_response
         else:
@@ -1468,7 +2221,7 @@ class OpenAISpeechToText(_BaseOpenAI, SpeechToTextModel):
             stream_response = ModelStreamResponse(mode="sync")
             params["stream_response"] = stream_response
             params["stream"] = stream
-            F.spawn(self._stream_generate, **params)
+            F.fire_and_forget(self._stream_generate, **params)
             F.wait_for_event(stream_response.first_chunk_event)
             return stream_response
         else:
@@ -1522,7 +2275,7 @@ class OpenAISpeechToText(_BaseOpenAI, SpeechToTextModel):
             stream_response = ModelStreamResponse(mode="async")
             params["stream_response"] = stream_response
             params["stream"] = stream
-            await F.aspawn(self._astream_generate, **params)
+            await F.afire_and_forget(self._astream_generate, **params)
             await F.await_for_event(stream_response.first_chunk_event)
             return stream_response
         else:
