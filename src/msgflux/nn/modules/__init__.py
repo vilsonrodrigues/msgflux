@@ -1,7 +1,7 @@
 from msgflux.nn.modules.agent import Agent
 from msgflux.nn.modules.container import ModuleDict, ModuleList, Sequential
 from msgflux.nn.modules.embedder import Embedder
-from msgflux.nn.modules.lm import LM
+from msgflux.nn.modules.generator import Generator
 from msgflux.nn.modules.mediamaker import MediaMaker
 from msgflux.nn.modules.module import Module
 from msgflux.nn.modules.predictor import Predictor
@@ -13,7 +13,7 @@ from msgflux.nn.modules.transcriber import Transcriber
 __all__ = [
     "Agent",
     "Embedder",
-    "LM",
+    "Generator",
     "LocalTool",
     "MCPTool",
     "MediaMaker",

@@ -20,7 +20,7 @@ class AsyncWorker:
     def __init__(self):
         """Initializes a worker with its own event loop in a separate thread."""
         self.loop = asyncio.new_event_loop()
-        self.thread = threading.Thread(target=self.loop.run_forever)
+        self.thread = threading.Thread(target=self.loop.run_forever, daemon=True)
         self.thread.start()
 
     def submit(self, coro):

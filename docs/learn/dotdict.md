@@ -1,591 +1,527 @@
 # dotdict
 
-The `dotdict` class provides an enhanced dictionary with attribute-style access and nested path support, making it easier to work with complex nested data structures.
+`dotdict` is a dictionary with **dot notation access** and **nested path support**. It extends Python's built-in `dict`, so anything that works with a regular dict works here too.
 
+It is the foundation of [`Message`](nn/message.md) and can be used standalone wherever flexible, deeply-nested data structures are needed.
 
-## Overview
+???+ example
 
-`dotdict` extends Python's built-in `dict` with convenient features:
+    ```python
+    from msgflux import dotdict
 
-- **Dot notation access**: `obj.key` instead of `obj['key']`
-- **Nested path operations**: `obj.get("user.profile.name")`
-- **List index support**: `obj.get("items.0.title")`
-- **Immutability option**: Create frozen dictionaries
-- **Hidden keys**: Protect sensitive data from being displayed
-- **Type preservation**: Automatic wrapping of nested dicts and lists
+    d = dotdict({"user": {"name": "Maria", "age": 30}})
 
-## Quick Start
+    print(d.user.name)   # "Maria"
+    print(d.user.age)    # 30
+    ```
 
-### Basic Usage
+---
 
-```python
-import msgflux as mf
+## Creating a dotdict
 
-# Create a dotdict
-user = mf.dotdict({
-    "name": "Alice",
-    "age": 30,
-    "email": "alice@example.com"
-})
+### From a dict
 
-# Access with dot notation
-print(user.name)   # "Alice"
-print(user.age)    # 30
+???+ example
 
-# Also works with traditional bracket notation
-print(user["email"])  # "alice@example.com"
+    ```python
+    from msgflux import dotdict
 
-# Set values with dot notation
-user.location = "New York"
-print(user.location)  # "New York"
-```
+    d = dotdict({"key": "value", "nested": {"x": 1}})
+    ```
 
-### Nested Structures
+### From keyword arguments
 
-```python
-import msgflux as mf
+???+ example
 
-# Create nested structure
-data = mf.dotdict({
-    "user": {
-        "profile": {
-            "name": "Bob",
-            "age": 25
-        },
-        "settings": {
-            "theme": "dark",
-            "notifications": True
-        }
-    }
-})
+    ```python
+    from msgflux import dotdict
 
-# Access nested values
-print(data.user.profile.name)  # "Bob"
-print(data.user.settings.theme)  # "dark"
+    d = dotdict(name="Alice", score=100)
+    ```
 
-# Nested values are automatically wrapped as dotdict
-print(type(data.user))  # <class 'msgflux.dotdict.dotdict'>
-```
+### Combined
 
-## Path-Based Access
+???+ example
 
-### Reading with `get()`
+    ```python
+    from msgflux import dotdict
 
-Access deeply nested values using dot-separated paths:
+    d = dotdict({"role": "admin"}, name="Alice", score=100)
+    ```
 
-```python
-import msgflux as mf
+### Empty
 
-data = mf.dotdict({
-    "api": {
-        "endpoints": {
-            "users": "/api/v1/users",
-            "posts": "/api/v1/posts"
-        }
-    }
-})
+???+ example
 
-# Get with path
-endpoint = data.get("api.endpoints.users")
-print(endpoint)  # "/api/v1/users"
+    ```python
+    from msgflux import dotdict
 
-# With default value
-missing = data.get("api.endpoints.comments", "/api/v1/comments")
-print(missing)  # "/api/v1/comments"
-```
+    d = dotdict()
+    d.name = "Bob"
+    ```
 
-### Writing with `set()`
+---
 
-Create or modify nested values using paths:
+## Reading Values
 
-```python
-import msgflux as mf
+### Dot access
 
-config = mf.dotdict()
+???+ example
 
-# Set nested values (creates intermediate dotdicts automatically)
-config.set("database.host", "localhost")
-config.set("database.port", 5432)
-config.set("database.credentials.username", "admin")
+    ```python
+    from msgflux import dotdict
 
-print(config.database.host)  # "localhost"
-print(config.database.credentials.username)  # "admin"
+    d = dotdict({"user": {"name": "Clark"}})
 
-# View structure
-print(config)
-# {'database': {'host': 'localhost', 'port': 5432, 'credentials': {'username': 'admin'}}}
-```
+    print(d.user.name)  # "Clark"
+    ```
 
-## Understanding Access Methods: `get()` vs Dot Notation
+### Bracket access
 
-**IMPORTANT**: There are two ways to access values in a dotdict, and understanding when to use each is critical.
+???+ example
 
-### When Dot Notation Works
+    ```python
+    from msgflux import dotdict
 
-Dot notation (e.g., `config.database.host`) **only works when the nested structure already exists**. The structure must be created first via:
+    d = dotdict({"user": {"name": "Clark"}})
 
-- Initial dictionary in constructor
-- `set()` method calls
-- `update()` method calls
+    print(d["user"]["name"])  # "Clark"
+    ```
 
-```python
-import msgflux as mf
+### Nested path with `get()`
 
-# ✓ WORKS: Structure created in constructor
-data = mf.dotdict({"user": {"name": "Alice"}})
-print(data.user.name)  # "Alice" - works!
+Use `get(path, default=None)` to traverse nested keys via a dot-separated string:
 
-# ✓ WORKS: Structure created via set()
-config = mf.dotdict()
-config.set("database.host", "localhost")
-print(config.database.host)  # "localhost" - works!
+???+ example
 
-# ✓ WORKS: Structure created via update()
-settings = mf.dotdict()
-settings.update({"server.port": 8080})
-print(settings.server.port)  # 8080 - works!
-```
+    ```python
+    from msgflux import dotdict
 
-### When Dot Notation Fails
+    d = dotdict({"user": {"profile": {"city": "Gotham"}}})
 
-Dot notation **fails with AttributeError** when trying to access non-existent intermediate paths:
+    print(d.get("user.profile.city"))        # "Gotham"
+    print(d.get("user.profile.zip", "N/A"))  # "N/A" (key doesn't exist)
+    ```
 
-```python
-import msgflux as mf
+`get()` never raises — it returns `default` when any key in the path is missing.
 
-# ✗ FAILS: Trying to access non-existent path
-config = mf.dotdict()
-try:
-    port = config.database.port  # AttributeError!
-except AttributeError as e:
-    print(f"Error: {e}")  # Error: 'dotdict' object has no attribute 'database'
-```
+---
 
-### Use `get()` for Safe Access
+## Writing Values
 
-The `get()` method with path strings **always works safely**, even for non-existent paths:
+### Dot assignment
 
-```python
-import msgflux as mf
+???+ example
 
-config = mf.dotdict()
+    ```python
+    from msgflux import dotdict
 
-# ✓ WORKS: get() with default value
-port = config.get("database.port", 5432)
-print(port)  # 5432 (default value)
+    d = dotdict()
+    d.name = "Diana"
+    d.score = 99
+    ```
 
-# ✓ WORKS: get() returns None for missing paths
-host = config.get("database.host")
-print(host)  # None
+### Bracket assignment
 
-# After creating the structure, both methods work
-config.set("database.port", 3306)
-print(config.get("database.port"))  # 3306
-print(config.database.port)  # 3306 - now this works too!
-```
+???+ example
 
-### Best Practice Guidelines
+    ```python
+    from msgflux import dotdict
 
-**Use `get()` when:**
-- Accessing potentially non-existent paths
-- You want a default value if the path doesn't exist
-- Working with dynamic or uncertain data structures
-- You need safe access without try/except blocks
+    d = dotdict()
+    d["name"] = "Diana"
+    ```
 
-**Use dot notation when:**
-- The structure is guaranteed to exist (created in constructor or via set/update)
-- Accessing top-level keys that you know exist
-- Code readability is important and you're certain about the structure
+### Nested path with `set()`
 
-```python
-import msgflux as mf
+Use `set(path, value)` to write deeply nested values. Intermediate keys are created automatically:
 
-# Example: Safe API response handling
-response = mf.dotdict()
+???+ example
 
-# Use get() for potentially missing fields
-user_id = response.get("data.user.id", None)
-if user_id:
-    # Now safe to use dot notation on known structure
-    print(f"User ID: {user_id}")
+    ```python
+    from msgflux import dotdict
 
-# Or combine both approaches
-config = mf.dotdict()
-config.set("app.name", "MyApp")
-config.set("app.version", "1.0")
+    d = dotdict()
 
-# Safe: structure was created above
-print(f"Running {config.app.name} v{config.app.version}")
+    d.set("user.profile.city", "Metropolis")
+    d.set("user.profile.age", 28)
 
-# Safe: using get() for optional settings
-debug = config.get("app.debug", False)
-print(f"Debug mode: {debug}")
-```
+    print(d.user.profile.city)  # "Metropolis"
+    print(d.user.profile.age)   # 28
+    ```
 
-## Working with Lists
+---
 
-`dotdict` supports accessing list items using numeric indices in paths:
+## Nested Paths
 
-```python
-import msgflux as mf
+Both `get()` and `set()` accept dot-separated strings to traverse any depth:
 
-data = mf.dotdict({
-    "users": [
-        {"name": "Alice", "role": "admin"},
-        {"name": "Bob", "role": "user"},
-        {"name": "Charlie", "role": "moderator"}
-    ]
-})
+???+ example
 
-# Access list items by index
-first_user = data.get("users.0.name")
-print(first_user)  # "Alice"
+    ```python
+    from msgflux import dotdict
 
-second_role = data.get("users.1.role")
-print(second_role)  # "user"
+    d = dotdict()
 
-# Set values in lists
-data.set("users.0.status", "active")
-print(data.users[0].status)  # "active"
+    d.set("a.b.c.d", "deep value")
+    print(d.get("a.b.c.d"))  # "deep value"
+    ```
 
-# Note: dot notation doesn't work for numeric indices
-# data.users.0.name  # SyntaxError
-# Use get() or bracket notation instead:
-print(data.users[0].name)  # "Alice"
-```
+### List index access
 
-## Immutability with `frozen`
+Use integer segments in the path to index into lists:
 
-Create read-only dictionaries:
+???+ example
 
-```python
-import msgflux as mf
+    ```python
+    from msgflux import dotdict
 
-# Create frozen dotdict
-constants = mf.dotdict(
-    {"PI": 3.14159, "E": 2.71828},
-    frozen=True
-)
+    d = dotdict()
+    d.set("items", [{"name": "Alpha"}, {"name": "Beta"}])
 
-print(constants.PI)  # 3.14159
+    print(d.get("items.0.name"))  # "Alpha"
+    print(d.get("items.1.name"))  # "Beta"
+    ```
 
-# Attempting to modify raises an error
-try:
-    constants.PI = 3.14
-except AttributeError as e:
-    print(e)  # "Cannot modify frozen dotdict"
+`set()` also supports writing into existing list positions:
 
-try:
-    constants.set("GOLDEN_RATIO", 1.618)
-except AttributeError as e:
-    print(e)  # "Cannot modify frozen dotdict"
-```
+???+ example
+
+    ```python
+    from msgflux import dotdict
+
+    d = dotdict()
+    d.set("items", [{"name": "Alpha"}, {"name": "Beta"}])
+
+    d.set("items.0.name", "Updated")
+    print(d.get("items.0.name"))  # "Updated"
+    ```
+
+---
+
+## Auto-wrapping
+
+Any `dict` assigned to a `dotdict` — whether at creation, via `set()`, or via attribute assignment — is automatically converted to a `dotdict`, so dot access always works:
+
+???+ example
+
+    ```python
+    from msgflux import dotdict
+
+    d = dotdict()
+    d.config = {"debug": True, "timeout": 30}
+
+    print(d.config.debug)    # True
+    print(d.config.timeout)  # 30
+    ```
+
+Lists of dicts are also wrapped recursively:
+
+???+ example
+
+    ```python
+    from msgflux import dotdict
+
+    d = dotdict()
+    d.users = [{"name": "A"}, {"name": "B"}]
+
+    print(d.users[0].name)  # "A"
+    ```
+
+---
+
+## `update()`
+
+`update()` extends `dict.update` with two extras:
+
+**1. Dotted keys are written as nested paths:**
+
+???+ example
+
+    ```python
+    from msgflux import dotdict
+
+    d = dotdict()
+    d.update({"user.name": "Bruce", "user.age": 35})
+
+    print(d.user.name)  # "Bruce"
+    ```
+
+**2. Dict values are merged recursively when the key already holds a `dotdict`:**
+
+???+ example
+
+    ```python
+    from msgflux import dotdict
+
+    d = dotdict({"config": {"debug": False, "timeout": 30}})
+    d.update({"config": {"debug": True}})
+
+    print(d.config.debug)    # True   (updated)
+    print(d.config.timeout)  # 30     (preserved)
+    ```
+
+Standard positional argument and keyword argument forms are both supported:
+
+???+ example
+
+    ```python
+    from msgflux import dotdict
+
+    d = dotdict()
+    d.update({"key": "value"})
+    d.update(key="other")
+    ```
+
+---
+
+## Serialization
+
+### `to_dict()`
+
+Converts the `dotdict` (and all nested `dotdict` values) back to a plain Python `dict`:
+
+???+ example
+
+    ```python
+    from msgflux import dotdict
+
+    d = dotdict({"user": {"name": "Lois"}})
+
+    plain = d.to_dict()
+    print(type(plain))           # <class 'dict'>
+    print(type(plain["user"]))   # <class 'dict'>
+    ```
+
+### `to_json()`
+
+Returns a JSON-encoded `bytes` object, powered by `msgspec`:
+
+???+ example
+
+    ```python
+    from msgflux import dotdict
+
+    d = dotdict({"score": 42})
+
+    print(d.to_json())  # b'{"score":42}'
+    ```
+
+---
+
+## Immutability
+
+Pass `frozen=True` to create a read-only `dotdict`. Any attempt to write raises `AttributeError`:
+
+???+ example
+
+    ```python
+    from msgflux import dotdict
+
+    d = dotdict({"key": "value"}, frozen=True)
+
+    d.key = "new"        # raises AttributeError: Cannot modify frozen dotdict
+    d["key"] = "new"     # raises AttributeError
+    d.set("key", "new")  # raises AttributeError
+    del d.key            # raises AttributeError
+    ```
+
+Nested dicts inherit the `frozen` flag automatically:
+
+???+ example
+
+    ```python
+    from msgflux import dotdict
+
+    d = dotdict({"user": {"name": "Bruce"}}, frozen=True)
+
+    d.user.name = "Clark"  # raises AttributeError
+    ```
+
+---
 
 ## Hidden Keys
 
-Protect sensitive data from being displayed or accessed via `get()`:
+`hidden_keys` marks keys as invisible to enumeration and discovery. They won't appear in iteration, serialization, or string representations — but can always be accessed directly if you know they exist.
 
-```python
-import msgflux as mf
+???+ example
 
-# Create dotdict with hidden keys
-config = mf.dotdict(
-    {
-        "api_key": "sk-secret-key-12345",
-        "api_url": "https://api.example.com",
-        "username": "admin",
-        "password": "super-secret"
-    },
-    hidden_keys=["api_key", "password"]
-)
-
-# Hidden keys return None when accessed via get()
-print(config.get("api_key"))  # None
-print(config.get("password"))  # None
-
-# Non-hidden keys work normally
-print(config.get("api_url"))  # "https://api.example.com"
-print(config.get("username"))  # "admin"
+    ```python
+    from msgflux import dotdict
 
-# Hidden keys are still accessible via dot/bracket notation
-print(config.api_key)  # "sk-secret-key-12345" (direct access still works)
-print(config["password"])  # "super-secret"
+    d = dotdict(
+        {"api_key": "sk-secret", "username": "john"},
+        hidden_keys=["api_key"]
+    )
 
-# Hidden keys don't appear in string representations
-print(config)  # {'api_url': 'https://api.example.com', 'username': 'admin'}
-```
+    # Enumeration — api_key is invisible
+    print("api_key" in d)      # False
+    print(list(d.keys()))      # ["username"]
+    print(list(d.values()))    # ["john"]
+    print(list(d.items()))     # [("username", "john")]
+    for k in d:
+        print(k)               # "username"
+    print(d.to_dict())         # {"username": "john"}
+    print(d.to_json())         # b'{"username":"john"}'
+    print(d)                   # {'username': 'john'}
 
-**Use Cases for Hidden Keys:**
-- API keys and secrets
-- Passwords and tokens
-- Sensitive user data
-- Internal configuration that shouldn't be logged
-
-## Advanced Features
-
-### Update with Nested Paths
-
-Use `update()` with dot-separated keys:
+    # Direct access — api_key is reachable
+    print(d.api_key)              # "sk-secret"
+    print(d["api_key"])           # "sk-secret"
+    print(d.get("api_key"))       # "sk-secret"
+    print(d.get("api_key", "x"))  # "sk-secret"
+    ```
 
-```python
-import msgflux as mf
+---
 
-config = mf.dotdict({
-    "server": {"host": "localhost"}
-})
-
-# Update with nested keys
-config.update({
-    "server.port": 8080,
-    "server.ssl": True,
-    "database.type": "postgresql"
-})
-
-print(config.server.port)  # 8080
-print(config.database.type)  # "postgresql"
-
-# Merge existing nested structures
-config.update({
-    "server": {"workers": 4}
-})
-
-print(config.server.host)  # "localhost" (preserved)
-print(config.server.workers)  # 4 (added)
-```
-
-### Convert to Regular Dict
-
-Convert back to a standard Python dictionary:
-
-```python
-import msgflux as mf
-
-data = mf.dotdict({
-    "user": {
-        "name": "Alice",
-        "settings": {"theme": "dark"}
-    }
-})
-
-# Convert to regular dict
-regular_dict = data.to_dict()
-print(type(regular_dict))  # <class 'dict'>
-print(type(regular_dict["user"]))  # <class 'dict'> (not dotdict)
-
-# All nested dotdicts are converted to regular dicts
-print(regular_dict)
-# {'user': {'name': 'Alice', 'settings': {'theme': 'dark'}}}
-```
-
-### JSON Serialization
-
-Export as JSON:
-
-```python
-import msgflux as mf
-
-data = mf.dotdict({
-    "name": "Product",
-    "price": 29.99,
-    "tags": ["electronics", "gadget"]
-})
-
-# Serialize to JSON bytes
-json_bytes = data.to_json()
-print(json_bytes)
-# b'{"name":"Product","price":29.99,"tags":["electronics","gadget"]}'
-
-# Decode to string if needed
-json_str = json_bytes.decode('utf-8')
-print(json_str)
-# '{"name":"Product","price":29.99,"tags":["electronics","gadget"]}'
-```
-
-## Common Use Cases
-
-### Configuration Management
-
-```python
-import msgflux as mf
-
-# Application configuration
-config = mf.dotdict()
-
-# Set configuration values
-config.set("app.name", "My Application")
-config.set("app.version", "1.0.0")
-config.set("database.host", "localhost")
-config.set("database.port", 5432)
-config.set("redis.host", "localhost")
-config.set("redis.port", 6379)
-
-# Access configuration easily
-print(f"Starting {config.app.name} v{config.app.version}")
-print(f"Database: {config.database.host}:{config.database.port}")
-```
-
-### API Response Handling
-
-```python
-import msgflux as mf
-
-# Simulate API response
-api_response = mf.dotdict({
-    "status": "success",
-    "data": {
-        "user": {
-            "id": 123,
-            "username": "johndoe",
-            "profile": {
-                "full_name": "John Doe",
-                "avatar_url": "https://example.com/avatar.jpg"
-            }
-        },
-        "permissions": ["read", "write", "admin"]
-    }
-})
-
-# Easy access to nested data
-if api_response.status == "success":
-    user_id = api_response.data.user.id
-    full_name = api_response.data.user.profile.full_name
-    permissions = api_response.data.permissions
-
-    print(f"User {full_name} (ID: {user_id})")
-    print(f"Permissions: {', '.join(permissions)}")
-```
-
-### Message Passing
-
-```python
-import msgflux as mf
-
-# Create message with dotdict
-message = mf.dotdict()
-
-# Add data at different stages
-message.set("request.id", "req-12345")
-message.set("request.timestamp", "2024-01-15T10:30:00")
-
-# Processing stage
-message.set("processing.model", "gpt-5")
-message.set("processing.tokens", 150)
-
-# Response stage
-message.set("response.status", "completed")
-message.set("response.data", "Hello, world!")
-
-# Access full context
-print(f"Request {message.request.id} processed with {message.processing.model}")
-print(f"Result: {message.response.data}")
-```
-
-## Integration with Message
-
-`dotdict` works seamlessly with msgflux's `Message` class:
-
-```python
-import msgflux as mf
-
-# Message internally uses dotdict
-msg = mf.Message()
-msg.set("user.id", 123)
-msg.set("user.name", "Alice")
-
-# Access like dotdict
-print(msg.user.name)  # "Alice"
-
-# Or create dotdict from message data
-data = mf.dotdict(msg.to_dict())
-print(data.user.id)  # 123
-```
-
-## API Reference
-
-### Constructor
-
-```python
-mf.dotdict(data=None, *, frozen=False, hidden_keys=None, **kwargs)
-```
-
-**Parameters:**
-- `data` (dict, optional): Initial dictionary data
-- `frozen` (bool): If `True`, creates immutable dotdict
-- `hidden_keys` (list[str]): Keys to hide from `get()` and string representations
-- `**kwargs`: Additional key-value pairs
-
-### Methods
-
-| Method | Description |
-|--------|-------------|
-| `get(path, default=None)` | Get value using dot-separated path |
-| `set(path, value)` | Set value using dot-separated path |
-| `update(*args, **kwargs)` | Update with dict or key-value pairs (supports nested paths) |
-| `to_dict()` | Convert to regular Python dict |
-| `to_json()` | Serialize to JSON bytes |
-
-### Attributes
-
-All standard `dict` methods are available (`keys()`, `values()`, `items()`, etc.)
-
-## Best Practices
-
-### 1. Use for Complex Nested Data
-
-```python
-# Good - Complex nested structures
-config = mf.dotdict({
-    "services": {
-        "api": {"host": "api.example.com"},
-        "db": {"host": "db.example.com"}
-    }
-})
-
-# Not ideal - Simple flat data (regular dict is fine)
-simple = mf.dotdict({"name": "Alice", "age": 30})
-```
-
-### 2. Protect Sensitive Data
-
-```python
-# Good - Hide sensitive keys
-credentials = mf.dotdict(
-    {"username": "admin", "password": "secret"},
-    hidden_keys=["password"]
-)
-```
-
-### 3. Use Frozen for Constants
-
-```python
-# Good - Immutable configuration
-CONSTANTS = mf.dotdict(
-    {"MAX_RETRIES": 3, "TIMEOUT": 30},
-    frozen=True
-)
-```
-
-### 4. Use `get()` for Uncertain Paths, Dot Notation for Known Structures
-
-```python
-import msgflux as mf
-
-# Good - Use get() for potentially non-existent paths
-value = data.get("level1.level2.level3.value", "default")
-
-# Good - Use dot notation when structure is guaranteed to exist
-config = mf.dotdict({"app": {"name": "MyApp", "version": "1.0"}})
-print(config.app.name)  # Safe because structure exists
-
-# Avoid - Dot notation on uncertain paths without error handling
-try:
-    value = data.level1.level2.level3.value  # Risky!
-except AttributeError:
-    value = "default"  # Better to use get() instead
-
-# Best - Combine both approaches appropriately
-config = mf.dotdict()
-config.set("server.host", "localhost")  # Creates structure
-host = config.server.host  # Safe: structure exists
-port = config.get("server.port", 8080)  # Safe: use get() for optional value
-```
+## Persistent Backend
+
+Pass a `backend` to persist every top-level key write to disk automatically. Any object that supports `__getitem__`, `__setitem__`, `__delitem__`, and `__iter__` works — [`diskcache.Cache`](https://grantjenks.com/docs/diskcache/) is the recommended choice.
+
+On creation, existing keys in the backend are loaded first. `initial_data` and `**kwargs` are applied on top and override them.
+
+???+ example "Basic usage"
+
+    ```python
+    import diskcache
+    from msgflux import dotdict
+
+    cache = diskcache.Cache("./state")
+
+    d = dotdict(backend=cache)
+    d.x = 42   # written to disk immediately
+    d.y = 99   # written to disk immediately
+    ```
+
+### Recovery after failure
+
+Because writes hit the backend on every assignment, a new instance picks up exactly where the previous one left off:
+
+???+ example
+
+    ```python
+    import diskcache
+    from msgflux import dotdict
+
+    cache = diskcache.Cache("./state")
+
+    # --- first run ---
+    d = dotdict(backend=cache)
+    d.step = 3
+    d.results = [0.91, 0.87, 0.94]
+    # process crashes here...
+
+    # --- after restart ---
+    d = dotdict(backend=cache)
+    print(d.step)     # 3
+    print(d.results)  # [0.91, 0.87, 0.94]
+    ```
+
+### Concurrent writes from multiple instances
+
+Each top-level key is stored as an independent entry in the backend, so two instances writing **different keys** never overwrite each other:
+
+???+ example
+
+    ```python
+    import diskcache
+    from msgflux import dotdict
+
+    cache = diskcache.Cache("./state")
+
+    a = dotdict(backend=cache)
+    b = dotdict(backend=cache)
+
+    a.x = 1   # cache["x"] = 1
+    b.y = 2   # cache["y"] = 2  — does not touch "x"
+
+    c = dotdict(backend=cache)
+    print(c.x, c.y)  # 1  2
+    ```
+
+!!! warning "Same key, concurrent writes"
+    Two instances writing to the **same key** concurrently will still race. Use `diskcache.Lock` to guard shared keys:
+
+    ```python
+    with diskcache.Lock(cache, "counter"):
+        d = dotdict(backend=cache)
+        d.counter = d.get("counter", 0) + 1
+    ```
+
+### Namespacing with `backend_prefix`
+
+Use `backend_prefix` to share a single cache between multiple dotdicts without key collisions. Keys are stored as `"<prefix>.<key>"`:
+
+???+ example
+
+    ```python
+    import diskcache
+    from msgflux import dotdict
+
+    cache = diskcache.Cache("./state")
+
+    run1 = dotdict(backend=cache, backend_prefix="run_1")
+    run2 = dotdict(backend=cache, backend_prefix="run_2")
+
+    run1.score = 0.91   # cache["run_1.score"] = 0.91
+    run2.score = 0.73   # cache["run_2.score"] = 0.73
+
+    print(run1.score)  # 0.91
+    print(run2.score)  # 0.73
+    ```
+
+### Nested values
+
+Nested dicts are serialized to plain dicts when written to the backend and re-wrapped as `dotdict` on load, so dot access works after recovery:
+
+???+ example
+
+    ```python
+    import diskcache
+    from msgflux import dotdict
+
+    cache = diskcache.Cache("./state")
+
+    d = dotdict(backend=cache)
+    d.user = {"name": "Maria", "age": 30}
+
+    d2 = dotdict(backend=cache)
+    print(d2.user.name)  # "Maria"
+    print(d2.user.age)   # 30
+    ```
+
+!!! warning "Nested mutations are not auto-persisted"
+    Mutations on a nested key (`d.user.name = "x"`) update only the in-memory dotdict.
+    Reassign the top-level key to trigger persistence:
+
+    ```python
+    d.user = {**d.user, "name": "x"}   # persisted
+    ```
+
+---
+
+## Extending dotdict
+
+`dotdict` is designed to be subclassed. You can add default fields, metadata, or custom behavior by overriding `__init__`:
+
+???+ example
+
+    ```python
+    from msgflux import dotdict
+
+
+    class Config(dotdict):
+        def __init__(self, env="production", **kwargs):
+            super().__init__(**kwargs)
+            self.env = env
+            self.debug = env != "production"
+
+
+    cfg = Config(env="development", timeout=30)
+
+    print(cfg.env)      # "development"
+    print(cfg.debug)    # True
+    print(cfg.timeout)  # 30
+    ```
+
+[`Message`](nn/message.md) follows this exact pattern — it extends `dotdict` with default AI workflow fields (`content`, `images`, `context`, etc.) and metadata (`user_id`, `chat_id`, `execution_id`).

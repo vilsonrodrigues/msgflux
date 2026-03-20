@@ -30,17 +30,17 @@ from opentelemetry import trace
 from opentelemetry.trace import Status, StatusCode
 
 from msgflux._private.executor import Executor
+from msgflux.context import session_context
 from msgflux.dotdict import dotdict
 from msgflux.envs import envs
-from msgflux.exceptions import UnsafeModelResponseError, UnsafeUserInputError
 from msgflux.message import Message
 from msgflux.models.gateway import ModelGateway
 from msgflux.models.model import Model
 from msgflux.models.response import ModelResponse, ModelStreamResponse
+from msgflux.nn.hooks import Hook, RemovableHandle
 from msgflux.nn.parameter import Parameter
 from msgflux.telemetry import Spans
 from msgflux.utils.convert import convert_camel_snake_to_title
-from msgflux.utils.hooks import RemovableHandle
 from msgflux.utils.mermaid import plot_mermaid
 from msgflux.utils.msgspec import StructFactory
 from msgflux.utils.templates import format_template
@@ -474,7 +474,7 @@ class Module:
 
     def _get_content_from_message(self, path: str, message: Message):
         content = None
-        if isinstance(message, Message):
+        if isinstance(message, dotdict):
             if isinstance(path, tuple):  # OR inputs
                 content = self._get_content_from_or_input(path, message)
             else:
@@ -513,13 +513,7 @@ class Module:
     def _format_template(
         self, content: Union[str, Dict[str, Any]], raw_template: str
     ) -> str:
-        """Format a template with content, using security settings from config.
-
-        Delegates to msgflux.utils.templates.format_template with sanitization
-        controlled by the 'sanitize_inputs' config option (default: True).
-        """
-        sanitize = self.config.get("sanitize_inputs", True)
-        return format_template(content, raw_template, sanitize_inputs=sanitize)
+        return format_template(content, raw_template)
 
     def set_name(self, name: str):
         if isinstance(name, str):
@@ -536,14 +530,16 @@ class Module:
         else:
             raise TypeError(f"`annotations` need be a `dict` given {type(annotations)}")
 
-    def _set_response_mode(self, response_mode: str):
-        if isinstance(response_mode, str):
+    def _set_response_mode(self, response_mode: Optional[str]):
+        if response_mode is None:
+            self.register_buffer("response_mode", None)
+        elif isinstance(response_mode, str):
             if response_mode == "":
-                raise ValueError("`response_mode` requires a not empty string")
+                raise ValueError("`response_mode` requires a non-empty string or None")
             self.register_buffer("response_mode", response_mode)
         else:
             raise TypeError(
-                f"`response_mode` requires a string given `{type(response_mode)}`"
+                f"`response_mode` requires a string or None, got `{type(response_mode)}`"  # noqa: E501
             )
 
     def _set_prompt(self, prompt: Optional[str] = None):
@@ -583,15 +579,13 @@ class Module:
         return self._define_response_mode(response, message)
 
     def _define_response_mode(self, response: Any, message: Any) -> Any:
-        if self.response_mode == "plain_response":
+        if self.response_mode is None:
             return response
-        elif isinstance(message, Message):
+        elif isinstance(message, dotdict):
             message.set(self.response_mode, response)
-            return message
+            return None
         else:
-            raise ValueError(
-                "For non-Message objects is required `response_mode=='plain_response'`"
-            )
+            raise ValueError("For non-dotdict objects, `response_mode` must be None")
 
     def _set_task_inputs(
         self, task_inputs: Optional[Union[str, Dict[str, str], Tuple[str, ...]]] = None
@@ -640,53 +634,39 @@ class Module:
                 f"given `{type(model_preference)}`"
             )
 
-    def _set_guardrails(self, guardrails: Optional[Dict[str, Callable]] = None):
-        """Set guardrails for input and output execution.
+    def _set_hooks(
+        self,
+        hooks: Optional[List["Hook"]] = None,
+        processors: Optional[Dict[str, Callable]] = None,
+    ):
+        """Register hooks on their declared targets.
+
+        Each hook declares its own ``target`` attribute (submodule name).
+        If ``target`` is ``None``, the hook registers on ``self``.
 
         Args:
-            guardrails: Dictionary mapping guardrail types to callables.
-                Valid keys: "input", "output"
-
-        Raises:
-            TypeError: If guardrails is not a dict or None
-            ValueError: If invalid keys are provided
+            hooks: List of Hook instances to register.
+            processors: Optional dict mapping processor keys to callables.
+                Keys are matched via ``hook.processor_key``.
         """
-        if guardrails is None:
-            self.guardrails = {}
+        if hooks is None:
             return
-
-        if not isinstance(guardrails, dict):
-            raise TypeError(
-                f"`guardrails` must be a dict or None, given `{type(guardrails)}`"
-            )
-
-        # Validate keys
-        valid_keys = {"input", "output"}
-        invalid_keys = set(guardrails.keys()) - valid_keys
-        if invalid_keys:
-            raise ValueError(
-                f"Invalid guardrail keys: {invalid_keys}. Valid keys are: {valid_keys}"
-            )
-
-        # Validate that all values are callable
-        for key, guardrail in guardrails.items():
-            if not isinstance(guardrail, Callable):
+        for i, hook in enumerate(hooks):
+            if not isinstance(hook, Hook):
                 raise TypeError(
-                    f"Guardrail for '{key}' must be callable, given `{type(guardrail)}`"
+                    f"Hook at index {i} must be a Hook instance, given `{type(hook)}`"
                 )
-
-        # Store guardrails, registering as buffers if needed
-        self.guardrails = {}
-        for key, guardrail in guardrails.items():
-            if inspect.isclass(guardrail) and hasattr(guardrail, "serialize"):
-                self.register_buffer(f"{key}_guardrail", guardrail)
-                self.guardrails[key] = getattr(self, f"{key}_guardrail")
-            elif isinstance(guardrail, self.__class__):
-                setattr(self, f"{key}_guardrail", guardrail)
-                self.guardrails[key] = guardrail
+            # Resolve target via hook.target
+            if hook.target is not None:
+                resolved_target = getattr(self, hook.target)
             else:
-                super().__setattr__(f"{key}_guardrail", guardrail)
-                self.guardrails[key] = guardrail
+                resolved_target = self
+            # Auto-assign processor via hook.processor_key
+            if processors and hook.processor_key:
+                processor = processors.get(hook.processor_key)
+                if processor is not None and getattr(hook, "processor", None) is None:
+                    hook.processor = processor
+            hook.register(resolved_target)
 
     def _set_message_fields(self, message_fields: Optional[Dict[str, Any]] = None):
         """Set message field mappings.
@@ -772,99 +752,44 @@ class Module:
         # Store templates
         self.templates = templates.copy()
 
-    def _execute_input_guardrail(self, model_execution_params: Dict[str, Any]):
-        input_guardrail = self.guardrails.get("input")
-        if not input_guardrail:
-            return
-
-        guardrail_params = self._prepare_input_guardrail_execution(
-            model_execution_params
-        )
-        guardrail_response = input_guardrail(**guardrail_params)
-
-        if isinstance(guardrail_response, ModelResponse):
-            guardrail_response = self._extract_raw_response(guardrail_response)
-
-        if not guardrail_response["safe"]:
-            raise UnsafeUserInputError()  # TODO
-
-    async def _aexecute_input_guardrail(self, model_execution_params: Dict[str, Any]):
-        input_guardrail = self.guardrails.get("input")
-        if not input_guardrail:
-            return
-
-        guardrail_params = self._prepare_input_guardrail_execution(
-            model_execution_params
-        )
-
-        # Check if guardrail has acall method or is a coroutine function
-        if hasattr(input_guardrail, "acall"):
-            guardrail_response = await input_guardrail.acall(**guardrail_params)
-        elif inspect.iscoroutinefunction(input_guardrail):
-            guardrail_response = await input_guardrail(**guardrail_params)
-        else:
-            # Fallback to sync call in executor to avoid blocking event loop
-            loop = asyncio.get_event_loop()
-            guardrail_response = await loop.run_in_executor(
-                None, lambda: input_guardrail(**guardrail_params)
-            )
-
-        if isinstance(guardrail_response, ModelResponse):
-            guardrail_response = self._extract_raw_response(guardrail_response)
-
-        if not guardrail_response["safe"]:
-            raise UnsafeUserInputError()  # TODO
-
-    def _execute_output_guardrail(self, model_response: Dict[str, Any]):
-        output_guardrail = self.guardrails.get("output")
-        if not output_guardrail:
-            return
-
-        guardrail_params = self._prepare_output_guardrail_execution(model_response)
-        guardrail_response = output_guardrail(**guardrail_params)
-
-        if isinstance(guardrail_response, ModelResponse):
-            guardrail_response = self._extract_raw_response(guardrail_response)
-
-        if not guardrail_response["safe"]:
-            raise UnsafeModelResponseError()  # TODO
-
-    async def _aexecute_output_guardrail(self, model_response: Dict[str, Any]):
-        output_guardrail = self.guardrails.get("output")
-        if not output_guardrail:
-            return
-
-        guardrail_params = self._prepare_output_guardrail_execution(model_response)
-
-        # Check if guardrail has acall method or is a coroutine function
-        if hasattr(output_guardrail, "acall"):
-            guardrail_response = await output_guardrail.acall(**guardrail_params)
-        elif inspect.iscoroutinefunction(output_guardrail):
-            guardrail_response = await output_guardrail(**guardrail_params)
-        else:
-            # Fallback to sync call in executor to avoid blocking event loop
-            loop = asyncio.get_event_loop()
-            guardrail_response = await loop.run_in_executor(
-                None, lambda: output_guardrail(**guardrail_params)
-            )
-
-        if isinstance(guardrail_response, ModelResponse):
-            guardrail_response = self._extract_raw_response(guardrail_response)
-
-        if not guardrail_response["safe"]:
-            raise UnsafeModelResponseError()  # TODO
-
     def get_model_preference_from_message(self, message: Message) -> Optional[str]:
-        if isinstance(message, Message) and isinstance(self.model_preference, str):
+        if isinstance(message, dotdict) and isinstance(self.model_preference, str):
             return message.get(self.model_preference)
         else:
             return None
 
     def set_description(self, description: Optional[str] = None):
         if isinstance(description, str) or description is None:
+            if isinstance(description, str):
+                description = inspect.cleandoc(description)
             self.register_buffer("description", description)
         else:
             raise ValueError("`description` requires a string not empty")
+
+    def _get_chat_session_context(self, kwargs: Dict[str, Any]):
+        """Extract ``session_id`` from *kwargs* and return a session context.
+
+        When a caller passes ``session_id="..."`` as a keyword argument to any
+        Module, it is popped from *kwargs* (so it never reaches ``forward``)
+        and used to enter :func:`msgflux.context.session_context`.  Every
+        component created within that scope inherits the session_id via
+        :class:`contextvars.ContextVar`.
+        """
+        runtime_session_id = kwargs.pop("session_id", None)
+        kwargs.pop("session_namespace", None)
+
+        if runtime_session_id is not None and not isinstance(
+            runtime_session_id, str
+        ):
+            raise TypeError(
+                "`session_id` requires a string or None, "
+                f"given `{type(runtime_session_id)}`"
+            )
+
+        return session_context(
+            session_id=runtime_session_id,
+            namespace=self.get_module_name(),
+        )
 
     def get_module_name(self):
         module_name = getattr(self, "name", None)
@@ -1304,27 +1229,30 @@ class Module:
         return handle
 
     def _call_impl(self, *args, **kwargs):
-        if not (self._forward_hooks or self._forward_pre_hooks):
-            return self._call(*args, **kwargs)
+        kwargs = dict(kwargs)
+        with self._get_chat_session_context(kwargs):
+            if not (self._forward_hooks or self._forward_pre_hooks):
+                return self._call(*args, **kwargs)
 
-        for hook in self._forward_pre_hooks.values():
-            hook_result = hook(self, args, kwargs)
-            if hook_result is not None:
-                if isinstance(hook_result, tuple) and len(hook_result) == 2:
-                    args, kwargs = hook_result
-                else:
-                    raise RuntimeError(
-                        "forward pre-hook must return None or a tuple of (args, kwargs)"
-                    )
+            for hook in self._forward_pre_hooks.values():
+                hook_result = hook(self, args, kwargs)
+                if hook_result is not None:
+                    if isinstance(hook_result, tuple) and len(hook_result) == 2:
+                        args, kwargs = hook_result
+                    else:
+                        raise RuntimeError(
+                            "forward pre-hook must return None or "
+                        "a tuple of (args, kwargs)"
+                        )
 
-        result = self._call(*args, **kwargs)
+            result = self._call(*args, **kwargs)
 
-        for hook in self._forward_hooks.values():
-            hook_result = hook(self, args, kwargs, result)
-            if hook_result is not None:
-                result = hook_result
+            for hook in self._forward_hooks.values():
+                hook_result = hook(self, args, kwargs, result)
+                if hook_result is not None:
+                    result = hook_result
 
-        return result
+            return result
 
     def _execute_with_span(
         self, module_name_title: str, module_type: str, *args, **kwargs
@@ -1389,48 +1317,48 @@ class Module:
                 module_name_title, module_type, *args, **kwargs
             )
 
+    @staticmethod
+    async def _adispatch_hook(hook, *args):
+        """Dispatch a hook call asynchronously."""
+        if hasattr(hook, "acall"):
+            return await hook.acall(*args)
+        elif inspect.iscoroutinefunction(hook):
+            return await hook(*args)
+        else:
+            loop = asyncio.get_event_loop()
+            return await loop.run_in_executor(None, functools.partial(hook, *args))
+
     async def _acall_impl(self, *args, **kwargs):
-        if not (self._forward_hooks or self._forward_pre_hooks):
-            return await self._acall(*args, **kwargs)
+        kwargs = dict(kwargs)
+        with self._get_chat_session_context(kwargs):
+            if not (self._forward_hooks or self._forward_pre_hooks):
+                return await self._acall(*args, **kwargs)
 
-        # Execute forward pre-hooks (sync or async)
-        for hook in self._forward_pre_hooks.values():
-            if inspect.iscoroutinefunction(hook):
-                # Async hook - await directly
-                hook_result = await hook(self, args, kwargs)
-            else:
-                # Sync hook - run in executor to avoid blocking event loop
-                loop = asyncio.get_event_loop()
-                hook_result = await loop.run_in_executor(
-                    None, functools.partial(hook, self, args, kwargs)
+            # Execute forward pre-hooks (sync or async)
+            for hook in self._forward_pre_hooks.values():
+                hook_result = await self._adispatch_hook(hook, self, args, kwargs)
+
+                if hook_result is not None:
+                    if isinstance(hook_result, tuple) and len(hook_result) == 2:
+                        args, kwargs = hook_result
+                    else:
+                        raise RuntimeError(
+                            "forward pre-hook must return None or "
+                        "a tuple of (args, kwargs)"
+                        )
+
+            result = await self._acall(*args, **kwargs)
+
+            # Execute forward hooks (sync or async)
+            for hook in self._forward_hooks.values():
+                hook_result = await self._adispatch_hook(
+                    hook, self, args, kwargs, result
                 )
 
-            if hook_result is not None:
-                if isinstance(hook_result, tuple) and len(hook_result) == 2:
-                    args, kwargs = hook_result
-                else:
-                    raise RuntimeError(
-                        "forward pre-hook must return None or a tuple of (args, kwargs)"
-                    )
+                if hook_result is not None:
+                    result = hook_result
 
-        result = await self._acall(*args, **kwargs)
-
-        # Execute forward hooks (sync or async)
-        for hook in self._forward_hooks.values():
-            if inspect.iscoroutinefunction(hook):
-                # Async hook - await directly
-                hook_result = await hook(self, args, kwargs, result)
-            else:
-                # Sync hook - run in executor to avoid blocking event loop
-                loop = asyncio.get_event_loop()
-                hook_result = await loop.run_in_executor(
-                    None, functools.partial(hook, self, args, kwargs, result)
-                )
-
-            if hook_result is not None:
-                result = hook_result
-
-        return result
+            return result
 
     async def _aexecute_with_span(
         self, module_name_title: str, module_type: str, *args, **kwargs

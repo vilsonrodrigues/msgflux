@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Union
 
 import msgspec
 
@@ -19,7 +19,7 @@ class DiskCacheKVDB(BaseKV, BaseDB, KVDB):
 
     provider = "diskcache"
 
-    def __init__(self, *, ttl: Optional[int] = 3600, hash_key: Optional[bool] = True):
+    def __init__(self, *, ttl: int = 3600, hash_key: bool = True):
         """Args:
         ttl:
             The time-to-live (TTL) for each cache entry in seconds.

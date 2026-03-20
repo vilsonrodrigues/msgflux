@@ -33,7 +33,7 @@ class Retriever(Module, metaclass=AutoParams):
         *,
         model: Optional[Union[EMBEDDER_MODELS, Embedder]] = None,
         message_fields: Optional[Dict[str, Any]] = None,
-        response_mode: Optional[str] = "plain_response",
+        response_mode: Optional[str] = None,
         templates: Optional[Dict[str, str]] = None,
         config: Optional[Dict[str, Any]] = None,
         name: Optional[str] = None,
@@ -57,9 +57,10 @@ class Retriever(Module, metaclass=AutoParams):
             Field description:
             - task_inputs: Field path for query input (str or dict)
         response_mode:
-            What the response should be.
-            * `plain_response` (default): Returns the final agent response directly.
-            * other: Write on field in Message object.
+            Controls how the response is returned.
+            * ``None`` (default): Returns the response directly.
+            * ``"<path>"``: Writes to ``obj.<path>`` and returns ``None``
+              (``dotdict`` or ``Message`` is mutated in place).
         templates:
             Dictionary mapping template types to Jinja template strings.
             Valid keys: "response"
@@ -203,7 +204,7 @@ class Retriever(Module, metaclass=AutoParams):
     def _prepare_task(
         self, message: Union[str, List[str], List[Dict[str, Any]], Message], **kwargs
     ) -> List[str]:
-        if isinstance(message, Message):
+        if isinstance(message, dotdict):
             queries = self._extract_message_values(self.task_inputs, message)
         else:
             queries = message
@@ -215,7 +216,7 @@ class Retriever(Module, metaclass=AutoParams):
                 queries = self._process_list_of_dict_inputs(queries)
 
         model_preference = kwargs.pop("model_preference", None)
-        if model_preference is None and isinstance(message, Message):
+        if model_preference is None and isinstance(message, dotdict):
             model_preference = self.get_model_preference_from_message(message)
 
         return {"queries": queries, "model_preference": model_preference}

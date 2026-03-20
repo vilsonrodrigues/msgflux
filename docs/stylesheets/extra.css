@@ -269,6 +269,24 @@
 }
 
 /* ===========================
+   COPY PAGE BUTTON
+   =========================== */
+
+.copy-markdown-container {
+    display: flex !important;
+    justify-content: flex-end !important;
+}
+
+.copy-markdown-button {
+    background: var(--md-default-fg-color--light) !important;
+    color: var(--md-default-bg-color) !important;
+}
+
+.copy-markdown-button:hover {
+    background: var(--md-default-fg-color) !important;
+}
+
+/* ===========================
    RESPONSIVE ADJUSTMENTS
    =========================== */
 

@@ -139,6 +139,99 @@ class TestSequential:
         values = [module.value for module in seq]
         assert values == ["A", "B"]
 
+    def test_sequential_index_out_of_range(self):
+        """Test Sequential index out of range."""
+        seq = Sequential(SimpleModule("A"), SimpleModule("B"))
+
+        with pytest.raises(IndexError):
+            _ = seq[5]
+
+        with pytest.raises(IndexError):
+            _ = seq[-10]
+
+    def test_sequential_insert_out_of_range(self):
+        """Test Sequential insert with invalid index."""
+        seq = Sequential(SimpleModule("A"))
+
+        with pytest.raises(IndexError):
+            seq.insert(10, SimpleModule("B"))
+
+    def test_sequential_insert_negative_index(self):
+        """Test Sequential insert with negative index."""
+        seq = Sequential(SimpleModule("A"), SimpleModule("B"))
+
+        seq.insert(-1, SimpleModule("X"))
+        assert seq[-2].value == "X"
+
+    def test_sequential_add_wrong_type(self):
+        """Test Sequential addition with wrong type."""
+        seq = Sequential(SimpleModule("A"))
+
+        with pytest.raises(ValueError, match="add operator supports only"):
+            _ = seq + "not a sequential"
+
+    def test_sequential_iadd_wrong_type(self):
+        """Test Sequential in-place addition with wrong type."""
+        seq = Sequential(SimpleModule("A"))
+
+        with pytest.raises(ValueError, match="add operator supports only"):
+            seq += "not a sequential"
+
+    def test_sequential_delitem_slice(self):
+        """Test Sequential deletion with slice."""
+        seq = Sequential(
+            SimpleModule("A"), SimpleModule("B"), SimpleModule("C"), SimpleModule("D")
+        )
+
+        del seq[1:3]
+        assert len(seq) == 2
+        assert seq[0].value == "A"
+        assert seq[1].value == "D"
+
+    @pytest.mark.asyncio
+    async def test_sequential_aforward_basic(self):
+        """Test Sequential async forward."""
+
+        class AsyncModule(Module):
+            def __init__(self, value):
+                super().__init__()
+                self.value = value
+
+            async def acall(self, x):
+                return f"{x}-{self.value}"
+
+        seq = Sequential(AsyncModule("A"), AsyncModule("B"))
+        result = await seq.aforward("start")
+
+        assert result == "start-A-B"
+
+    @pytest.mark.asyncio
+    async def test_sequential_aforward_mixed_sync_async(self):
+        """Test Sequential async forward with mixed sync/async modules."""
+
+        class AsyncModule(Module):
+            def __init__(self, value):
+                super().__init__()
+                self.value = value
+
+            async def acall(self, x):
+                return f"{x}-{self.value}"
+
+        seq = Sequential(SimpleModule("A"), AsyncModule("B"), SimpleModule("C"))
+        result = await seq.aforward("start")
+
+        assert result == "start-A-B-C"
+
+    def test_sequential_get_mermaid(self):
+        """Test Sequential Mermaid diagram generation."""
+        seq = Sequential(SimpleModule("A"), SimpleModule("B"))
+
+        mermaid = seq._get_mermaid(title="Test Workflow", orientation="LR")
+
+        assert "flowchart LR" in mermaid
+        assert "Test Workflow" in mermaid
+        assert "PARAMETERS" in mermaid
+
 
 class TestModuleList:
     """Test suite for ModuleList container."""
@@ -240,6 +333,55 @@ class TestModuleList:
         sliced = mlist[1:3]
         assert isinstance(sliced, ModuleList)
         assert len(sliced) == 2
+
+    def test_modulelist_index_out_of_range(self):
+        """Test ModuleList index out of range."""
+        mlist = ModuleList([SimpleModule("A"), SimpleModule("B")])
+
+        with pytest.raises(IndexError):
+            _ = mlist[10]
+
+        with pytest.raises(IndexError):
+            _ = mlist[-10]
+
+    def test_modulelist_delitem_slice(self):
+        """Test ModuleList deletion with slice."""
+        mlist = ModuleList([SimpleModule("A"), SimpleModule("B"), SimpleModule("C")])
+
+        del mlist[1:3]
+        assert len(mlist) == 1
+        assert mlist[0].value == "A"
+
+    def test_modulelist_extend_invalid_type(self):
+        """Test ModuleList extend with non-iterable."""
+        mlist = ModuleList([SimpleModule("A")])
+
+        with pytest.raises(TypeError):
+            mlist.extend(123)  # Not iterable at all
+
+    def test_modulelist_repr_simple(self):
+        """Test ModuleList repr."""
+        mlist = ModuleList([SimpleModule("A"), SimpleModule("B")])
+
+        repr_str = repr(mlist)
+        assert "ModuleList" in repr_str
+
+    def test_modulelist_repr_repeated(self):
+        """Test ModuleList repr with repeated modules."""
+        # Use same instance multiple times to test repeated blocks
+        module_a = SimpleModule("X")
+        mlist = ModuleList([module_a, module_a, SimpleModule("Y"), module_a])
+
+        repr_str = repr(mlist)
+        assert "ModuleList" in repr_str
+
+    def test_modulelist_negative_index(self):
+        """Test ModuleList with negative indices."""
+        mlist = ModuleList([SimpleModule("A"), SimpleModule("B"), SimpleModule("C")])
+
+        mlist[-1] = SimpleModule("Z")
+        assert mlist[-1].value == "Z"
+        assert mlist[2].value == "Z"
 
 
 class TestModuleDict:
@@ -358,3 +500,53 @@ class TestModuleDict:
         keys = list(mdict)
         assert "first" in keys
         assert "second" in keys
+
+    def test_moduledict_update_with_list(self):
+        """Test ModuleDict update with list of tuples."""
+        mdict = ModuleDict({"first": SimpleModule("A")})
+        mdict.update([("second", SimpleModule("B")), ("third", SimpleModule("C"))])
+
+        assert len(mdict) == 3
+        assert "second" in mdict
+        assert "third" in mdict
+
+    def test_moduledict_update_invalid_type(self):
+        """Test ModuleDict update with non-iterable."""
+        mdict = ModuleDict()
+
+        with pytest.raises(TypeError):
+            mdict.update(123)  # Not iterable
+
+    def test_moduledict_update_invalid_element(self):
+        """Test ModuleDict update with invalid element in list."""
+        mdict = ModuleDict()
+
+        with pytest.raises(TypeError, match="should be Iterable"):
+            mdict.update([SimpleModule("A")])  # Not a tuple/list
+
+    def test_moduledict_update_wrong_element_length(self):
+        """Test ModuleDict update with wrong element length."""
+        mdict = ModuleDict()
+
+        with pytest.raises(ValueError, match="2 is required"):
+            mdict.update([("key",)])  # Only one element
+
+    def test_moduledict_update_with_ordered_dict(self):
+        """Test ModuleDict update with OrderedDict."""
+        from collections import OrderedDict
+
+        mdict = ModuleDict()
+        mdict.update(OrderedDict([("a", SimpleModule("A")), ("b", SimpleModule("B"))]))
+
+        assert len(mdict) == 2
+        assert list(mdict.keys()) == ["a", "b"]  # Order preserved
+
+    def test_moduledict_update_with_moduledict(self):
+        """Test ModuleDict update with another ModuleDict."""
+        mdict1 = ModuleDict({"first": SimpleModule("A")})
+        mdict2 = ModuleDict({"second": SimpleModule("B")})
+
+        mdict1.update(mdict2)
+
+        assert len(mdict1) == 2
+        assert "second" in mdict1

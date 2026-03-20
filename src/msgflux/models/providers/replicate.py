@@ -1,5 +1,5 @@
 from os import getenv
-from typing import List, Literal, Optional, Union
+from typing import Any, List, Literal, Optional, Union
 
 try:
     import replicate
@@ -10,7 +10,7 @@ from msgflux.dotdict import dotdict
 from msgflux.models.base import BaseModel
 from msgflux.models.response import ModelResponse
 from msgflux.models.types import ImageTextToImageModel
-from msgflux.utils.tenacity import model_retry
+from msgflux.utils.tenacity import apply_retry, default_model_retry
 
 
 class _BaseReplicate(BaseModel):
@@ -25,6 +25,13 @@ class _BaseReplicate(BaseModel):
             )
         self.client = replicate.run
         self.aclient = replicate.async_run
+
+        # Apply retry
+        retry_config = getattr(self, "retry", None)
+        self.__call__ = apply_retry(
+            self.__call__, retry_config, default=default_model_retry
+        )
+        self.acall = apply_retry(self.acall, retry_config, default=default_model_retry)
 
     def _get_api_key(self):
         """Load API keys from environment variable."""
@@ -55,6 +62,7 @@ class ReplicateImageTextToImage(_BaseReplicate, ImageTextToImageModel):
         go_fast: Optional[bool] = False,
         moderation: Optional[Literal["auto", "low"]] = None,
         base_url: Optional[str] = None,
+        retry: Optional[Any] = None,
     ):
         """Args:
         model_id:
@@ -77,6 +85,7 @@ class ReplicateImageTextToImage(_BaseReplicate, ImageTextToImageModel):
         if go_fast:
             sampling_run_params["go_fast"] = go_fast
         self.sampling_run_params = sampling_run_params
+        self.retry = retry
         self._initialize()
         self._get_api_key()
 
@@ -92,7 +101,6 @@ class ReplicateImageTextToImage(_BaseReplicate, ImageTextToImageModel):
         await self._aexecute_model(**kwargs)
         response.set_response_type("image_generation")
 
-    @model_retry
     def __call__(
         self,
         prompt: str,
@@ -151,7 +159,6 @@ class ReplicateImageTextToImage(_BaseReplicate, ImageTextToImageModel):
         response = self._generate(**generation_params, **inputs)
         return response
 
-    @model_retry
     async def acall(
         self,
         prompt: str,

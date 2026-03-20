@@ -33,12 +33,18 @@ class GroqChatCompletion(_BaseGroq, OpenAIChatCompletion):
     def _adapt_params(self, params: Dict[str, Any]) -> Dict[str, Any]:
         extra_body = params.get("extra_body", {})
         params["max_completion_tokens"] = params.pop("max_tokens")
-        if params["tool_choice"] is None:
-            if params["tools"] is not None:
+        if params.get("tool_choice") is None:
+            if params.get("tools") is not None:
                 params["tool_choice"] = "auto"
             else:
                 params["tool_choice"] = "none"
+
         if self.sampling_run_params.get("reasoning_effort", None):
-            extra_body["reasoning_format"] = "parsed"
+            # GPT-OSS models use include_reasoning, Qwen uses reasoning_format
+            if "gpt-oss" in self.model_id.lower():
+                extra_body["include_reasoning"] = True
+            else:
+                extra_body["reasoning_format"] = "parsed"
+
         params["extra_body"] = extra_body
         return params

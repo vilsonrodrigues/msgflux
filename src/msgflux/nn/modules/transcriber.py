@@ -1,3 +1,5 @@
+import asyncio
+from functools import partial
 from typing import Any, Dict, Mapping, Optional, Union
 
 from msgflux.auto import AutoParams
@@ -6,18 +8,22 @@ from msgflux.message import Message
 from msgflux.models.gateway import ModelGateway
 from msgflux.models.response import ModelResponse, ModelStreamResponse
 from msgflux.models.types import SpeechToTextModel
+from msgflux.nn.modules.generator import Generator
 from msgflux.nn.modules.module import Module
 
 
 class Transcriber(Module, metaclass=AutoParams):
     """Transcriber is a Module type that uses language models to transcribe audios."""
 
+    # Configure AutoParams to use class name as 'name' parameter
+    _autoparams_use_classname_for = "name"
+
     def __init__(
         self,
         model: Union[SpeechToTextModel, ModelGateway],
         *,
         message_fields: Optional[Dict[str, Any]] = None,
-        response_mode: Optional[str] = "plain_response",
+        response_mode: Optional[str] = None,
         response_template: Optional[str] = None,
         response_format: Optional[str] = "text",
         prompt: Optional[str] = None,
@@ -44,9 +50,10 @@ class Transcriber(Module, metaclass=AutoParams):
             - model_preference: Field path for model preference (str, only valid
               with ModelGateway)
         response_mode:
-            What the response should be.
-            * `plain_response` (default): Returns the final agent response directly.
-            * other: Write on field in Message object.
+            Controls how the response is returned.
+            * ``None`` (default): Returns the response directly.
+            * ``"<path>"``: Writes to ``obj.<path>`` and returns ``None``
+              (``dotdict`` or ``Message`` is mutated in place).
         response_format: How the model should format the output. Options:
             * text (default)
             * json
@@ -81,7 +88,8 @@ class Transcriber(Module, metaclass=AutoParams):
         self._set_message_fields(message_fields)
         self._set_response_format(response_format)
         self._set_response_mode(response_mode)
-        self._set_response_template(response_template)
+        if response_template:
+            self.register_buffer("response_template", response_template)
         self._set_config(config)
         if name:
             self.set_name(name)
@@ -115,23 +123,23 @@ class Transcriber(Module, metaclass=AutoParams):
         self, message: Union[bytes, str, Dict[str, str], Message], **kwargs
     ) -> Union[str, Dict[str, str], Message, ModelStreamResponse]:
         """Async version of forward. Execute the transcriber asynchronously."""
-        inputs = self._prepare_task(message, **kwargs)
+        inputs = await self._aprepare_task(message, **kwargs)
         model_response = await self._aexecute_model(**inputs)
-        response = self._process_model_response(model_response, message)
+        response = await self._aprocess_model_response(model_response, message)
         return response
 
     def _execute_model(
         self, data: Union[str, bytes], model_preference: Optional[str] = None
     ) -> Union[ModelResponse, ModelStreamResponse]:
         model_execution_params = self._prepare_model_execution(data, model_preference)
-        model_response = self.model(**model_execution_params)
+        model_response = self.generator(**model_execution_params)
         return model_response
 
     async def _aexecute_model(
         self, data: Union[str, bytes], model_preference: Optional[str] = None
     ) -> Union[ModelResponse, ModelStreamResponse]:
         model_execution_params = self._prepare_model_execution(data, model_preference)
-        model_response = await self.model.acall(**model_execution_params)
+        model_response = await self.generator.acall(**model_execution_params)
         return model_response
 
     def _prepare_model_execution(
@@ -163,21 +171,47 @@ class Transcriber(Module, metaclass=AutoParams):
                 f"Unsupported model response type `{model_response.response_type}`"
             )
 
+    async def _aprocess_model_response(
+        self,
+        model_response: Union[ModelResponse, ModelStreamResponse],
+        message: Union[str, Message],
+    ) -> Union[str, Dict[str, str], Message, ModelStreamResponse]:
+        """Async version of _process_model_response."""
+        if model_response.response_type == "transcript":
+            raw_response = self._extract_raw_response(model_response)
+            response = self._prepare_response(raw_response, message)
+            return response
+        else:
+            raise ValueError(
+                f"Unsupported model response type `{model_response.response_type}`"
+            )
+
     def _prepare_task(
         self, message: Union[bytes, str, Dict[str, str], Message], **kwargs
     ) -> Dict[str, Union[bytes, str]]:
         data = self._process_task_multimodal_inputs(message)
 
         model_preference = kwargs.pop("model_preference", None)
-        if model_preference is None and isinstance(message, Message):
+        if model_preference is None and isinstance(message, dotdict):
             model_preference = self.get_model_preference_from_message(message)
 
         return {"data": data, "model_preference": model_preference}
 
+    async def _aprepare_task(
+        self, message: Union[bytes, str, Dict[str, str], Message], **kwargs
+    ) -> Dict[str, Union[bytes, str]]:
+        """Async version of _prepare_task.
+
+        Executes _prepare_task in an executor to avoid blocking the event loop.
+        """
+        loop = asyncio.get_event_loop()
+        func = partial(self._prepare_task, message, **kwargs)
+        return await loop.run_in_executor(None, func)
+
     def _process_task_multimodal_inputs(
         self, message: Union[bytes, str, Dict[str, str], Message]
     ) -> bytes:
-        if isinstance(message, Message):
+        if isinstance(message, dotdict):
             audio_content = self._extract_message_values(
                 self.task_multimodal_inputs, message
             )
@@ -204,11 +238,16 @@ class Transcriber(Module, metaclass=AutoParams):
 
     def _set_model(self, model: Union[SpeechToTextModel, ModelGateway]):
         if model.model_type == "speech_to_text":
-            self.register_buffer("model", model)
+            self.generator = Generator(model)
         else:
             raise TypeError(
                 f"`model` need be a `speech_to_text` model, given `{type(model)}`"
             )
+
+    @property
+    def model(self):
+        """Access underlying model."""
+        return self.generator.model
 
     def _set_config(self, config: Optional[Dict[str, Any]] = None):
         if config is None:

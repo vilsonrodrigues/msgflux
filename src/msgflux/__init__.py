@@ -1,18 +1,25 @@
-from .auto import AutoParams
-from .cache import response_cache
-from .data.dbs import DB
+from msgspec_ext.fast_dotenv import load_dotenv
 
-# from .data.parsers import Parser
+from .auto import AutoParams
+
+from .cache import response_cache
+from .chat_messages import ChatMessages
+from .context import get_session_context, session_context
+from .data.dbs import DB
+from .data.parsers import Parser
 from .data.retrievers import Retriever
+from .data.stores import CheckpointStore, InMemoryCheckpointStore, SQLiteCheckpointStore
 from .data.types import Audio, File, Image, Video
 from .dotdict import dotdict
-from .dsl.inline import ainline, inline
+from .dsl.inline import Inline
 from .dsl.signature import InputField, OutputField, Signature
 from .envs import set_envs
 from .examples import Example
+from .exceptions import TaskError
 from .message import Message
 from .models import Model
 from .models.gateway import ModelGateway
+from .nn.hooks import Guard
 from .telemetry import Spans
 from .tools.config import tool_config
 from .utils.chat import ChatBlock, ChatML
@@ -31,27 +38,36 @@ __all__ = [
     "Audio",
     "ChatBlock",
     "ChatML",
+    "ChatMessages",
+    "CheckpointStore",
     "Example",
     "File",
+    "get_session_context",
+    "Guard",
     "Image",
+    "Inline",
     "InputField",
+    "InMemoryCheckpointStore",
     "Message",
     "Model",
     "ModelGateway",
     "OutputField",
+    "Parser",
     "Retriever",
     "Signature",
+    "SQLiteCheckpointStore",
     "Spans",
+    "TaskError",
     "Video",
-    "ainline",
     "cprint",
     "dotdict",
     "get_fn_name",
-    "inline",
     "load",
+    "load_dotenv",
     "msgspec_dumps",
     "response_cache",
     "save",
+    "session_context",
     "set_envs",
     "tool_config",
     # Optimization modules

@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Union
 
 import msgspec
 
@@ -22,9 +22,9 @@ class CacheToolsKVDB(BaseKV, BaseDB, KVDB):
     def __init__(
         self,
         *,
-        ttl: Optional[int] = 3600,
-        maxsize: Optional[int] = 10000,
-        hash_key: Optional[bool] = True,
+        ttl: int = 3600,
+        maxsize: int = 10000,
+        hash_key: bool = True,
     ):
         """Args:
         ttl:

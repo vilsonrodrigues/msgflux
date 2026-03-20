@@ -1,26 +1,27 @@
 # https://mpitutorial.com/tutorials/mpi-scatter-gather-and-allgather/
 import asyncio
 import concurrent.futures
+import time
 from concurrent.futures import Future
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
 from msgflux._private.executor import Executor
-from msgflux.dotdict import dotdict
+from msgflux._private.supervision import gather_durable_async, gather_durable_sync
+from msgflux.exceptions import TaskError
 from msgflux.logger import logger
-from msgflux.nn.modules.module import get_callable_name
 from msgflux.telemetry import Spans
 
+if TYPE_CHECKING:
+    from msgflux.data.stores.base import CheckpointStore
+
 __all__ = [
-    "abackground_task",
+    "afire_and_forget",
     "amap_gather",
-    "amsg_bcast_gather",
     "ascatter_gather",
     "await_for_event",
-    "background_task",
     "bcast_gather",
+    "fire_and_forget",
     "map_gather",
-    "msg_bcast_gather",
-    "msg_scatter_gather",
     "scatter_gather",
     "wait_for",
     "wait_for_event",
@@ -34,6 +35,12 @@ def map_gather(
     args_list: List[Tuple[Any, ...]],
     kwargs_list: Optional[List[Dict[str, Any]]] = None,
     timeout: Optional[float] = None,
+    max_retries: Optional[int] = None,
+    retry_delay: float = 1.0,
+    store: Optional["CheckpointStore"] = None,
+    run_id: Optional[str] = None,
+    namespace: str = "gather",
+    session_id: str = "default",
 ) -> Tuple[Any, ...]:
     """Applies the `to_send` function to each set of arguments in `args_list`
     and `kwargs_list` using Executor and collects the results.
@@ -54,7 +61,7 @@ def map_gather(
 
     Returns:
         A tuple containing the results of each call to the `f` function. If a call
-        fails or times out, the corresponding result will be `None`.
+        fails or times out, the corresponding result will be a `TaskError` instance.
 
     Raises:
         TypeError:
@@ -88,6 +95,25 @@ def map_gather(
                 "`kwargs_list` must be a list with the same length as `args_list`"
             )
 
+    # Durable path
+    if max_retries is not None or store is not None:
+        workers = [
+            (to_send, args_list[i], kwargs_list[i] if kwargs_list else {})
+            for i in range(len(args_list))
+        ]
+        return tuple(
+            gather_durable_sync(
+                workers,
+                timeout=timeout,
+                max_retries=max_retries,
+                retry_delay=retry_delay,
+                store=store,
+                run_id=run_id,
+                namespace=namespace,
+                session_id=session_id,
+            )
+        )
+
     executor = Executor.get_instance()
     futures = []
 
@@ -98,12 +124,12 @@ def map_gather(
 
     concurrent.futures.wait(futures, timeout=timeout)
     responses: List[Any] = []
-    for future in futures:
+    for i, future in enumerate(futures):
         try:
             responses.append(future.result())
         except Exception as e:
             logger.error(str(e))
-            responses.append(None)
+            responses.append(TaskError(exception=e, index=i))
     return tuple(responses)
 
 
@@ -114,6 +140,12 @@ def scatter_gather(
     kwargs_list: Optional[List[Dict[str, Any]]] = None,
     *,
     timeout: Optional[float] = None,
+    max_retries: Optional[int] = None,
+    retry_delay: float = 1.0,
+    store: Optional["CheckpointStore"] = None,
+    run_id: Optional[str] = None,
+    namespace: str = "gather",
+    session_id: str = "default",
 ) -> Tuple[Any, ...]:
     """Sends different sets of arguments/kwargs to a list of modules
     and collects the responses.
@@ -143,7 +175,7 @@ def scatter_gather(
     Returns:
         Tuple containing the responses for each callable. If an error or
         timeout occurs for a specific callable, its corresponding response
-        in the tuple will be `None`.
+        in the tuple will be a `TaskError` instance.
 
     Raises:
         TypeError:
@@ -180,6 +212,29 @@ def scatter_gather(
     if not isinstance(to_send, list) or not all(callable(f) for f in to_send):
         raise TypeError("`to_send` must be a non-empty list of callable objects")
 
+    # Durable path
+    if max_retries is not None or store is not None:
+        workers = [
+            (
+                to_send[i],
+                args_list[i] if args_list and i < len(args_list) else (),
+                kwargs_list[i] if kwargs_list and i < len(kwargs_list) else {},
+            )
+            for i in range(len(to_send))
+        ]
+        return tuple(
+            gather_durable_sync(
+                workers,
+                timeout=timeout,
+                max_retries=max_retries,
+                retry_delay=retry_delay,
+                store=store,
+                run_id=run_id,
+                namespace=namespace,
+                session_id=session_id,
+            )
+        )
+
     executor = Executor.get_instance()
     futures = []
     for i, f in enumerate(to_send):
@@ -189,70 +244,23 @@ def scatter_gather(
 
     concurrent.futures.wait(futures, timeout=timeout)
     responses: List[Any] = []
-    for future in futures:
+    for i, future in enumerate(futures):
         try:
             responses.append(future.result())
         except Exception as e:
             logger.error(str(e))
-            responses.append(None)
+            responses.append(TaskError(exception=e, index=i))
     return tuple(responses)
 
 
 @Spans.instrument()
-def msg_scatter_gather(
-    to_send: List[Callable],
-    messages: List[dotdict],
-    *,
-    timeout: Optional[float] = None,
-) -> Tuple[dotdict, ...]:
-    """Scatter a list of messages to a list of modules and gather the responses.
-
-    Args:
-        to_send:
-            List of callable objects (e.g. functions or `Module` instances).
-        messages:
-            List of `msgflux.dotdict` instances to be distributed.
-        timeout:
-            Maximum time (in seconds) to wait for responses.
-
-    Returns:
-        Tuple containing the messages updated with the responses.
-
-    Raises:
-        TypeError:
-            If `messages` is not a list of `dotdict`, `to_send` is not a list
-            of callables, or `prefix` is not a string.
-    """
-    if not messages or not all(isinstance(msg, dotdict) for msg in messages):
-        raise TypeError(
-            "`messages` must be a non-empty list of `msgflux.dotdict` instances"
-        )
-
-    if not to_send or not all(isinstance(f, Callable) for f in to_send):
-        raise TypeError("`to_send` must be a non-empty list of callable objects")
-
-    if len(messages) != len(to_send):
-        raise ValueError(
-            f"The size of `messages` ({len(messages)}) "
-            f"must be equal to that of `to_send`: ({len(to_send)})"
-        )
-
-    executor = Executor.get_instance()
-    futures = [executor.submit(f, msg) for f, msg in zip(to_send, messages)]
-
-    concurrent.futures.wait(futures, timeout=timeout)
-    for f, future in zip(to_send, futures):
-        f_name = get_callable_name(f)
-        try:
-            future.result()
-        except Exception as e:
-            logger.error(f"Error in scattered task for `{f_name}`: {e}")
-    return tuple(messages)
-
-
-@Spans.instrument()
 def bcast_gather(
-    to_send: List[Callable], *args, timeout: Optional[float] = None, **kwargs
+    to_send: List[Callable],
+    *args,
+    timeout: Optional[float] = None,
+    max_retries: Optional[int] = None,
+    retry_delay: float = 1.0,
+    **kwargs,
 ) -> Tuple[Any, ...]:
     """Broadcasts arguments to multiple callables and gathers the responses.
 
@@ -284,7 +292,7 @@ def bcast_gather(
 
         # Example 2: Simulate error
         results = F.bcast_gather([square, fail, cube], 2)
-        print(results)  # (4, None, 8)
+        print(results)  # (4, TaskError(...), 8)
 
         # Example 3: Timeout
         results = F.bcast_gather([square, cube], 4, timeout=0.01)
@@ -293,66 +301,44 @@ def bcast_gather(
     if not to_send or not all(isinstance(f, Callable) for f in to_send):
         raise TypeError("`to_send` must be a non-empty list of callable objects")
 
+    # Durable path
+    if max_retries is not None:
+        workers = [(f, args, kwargs) for f in to_send]
+        return tuple(
+            gather_durable_sync(
+                workers,
+                timeout=timeout,
+                max_retries=max_retries,
+                retry_delay=retry_delay,
+                store=None,
+                run_id=None,
+                namespace="gather",
+                session_id="default",
+            )
+        )
+
     executor = Executor.get_instance()
     futures = [executor.submit(f, *args, **kwargs) for f in to_send]
 
     concurrent.futures.wait(futures, timeout=timeout)
     responses: List[Any] = []
-    for future in futures:
+    for i, future in enumerate(futures):
         try:
             responses.append(future.result())
         except Exception as e:
             logger.error(str(e))
-            responses.append(None)
+            responses.append(TaskError(exception=e, index=i))
     return tuple(responses)
 
 
 @Spans.instrument()
-def msg_bcast_gather(
-    to_send: List[Callable],
-    message: dotdict,
-    *,
-    timeout: Optional[float] = None,
-) -> dotdict:
-    """Broadcasts a single message to multiple modules and gathers the responses.
-
-    Args:
-        to_send:
-            List of callable objects (e.g. functions or `Module` instances).
-        message:
-            Instance of `msgflux.dotdict` to broadcast.
-        timeout:
-            Maximum time (in seconds) to wait for responses.
-
-    Returns:
-        The original message with the module responses added.
-
-    Raises:
-        TypeError:
-            If `message` is not an instance of `dotdict`, `to_send` is not a list
-            of callables.
-    """
-    if not isinstance(message, dotdict):
-        raise TypeError("`message` must be an instance of `msgflux.dotdict`")
-    if not to_send or not all(isinstance(module, Callable) for module in to_send):
-        raise TypeError("`to_send` must be a non-empty list of callable objects")
-
-    executor = Executor.get_instance()
-    futures = [executor.submit(f, message) for f in to_send]
-
-    concurrent.futures.wait(futures, timeout=timeout)
-    for f, future in zip(to_send, futures):
-        f_name = get_callable_name(f)
-        try:
-            future.result()
-        except Exception as e:
-            logger.error(f"Error in scattered task for `{f_name}`: {e}")
-    return message
-
-
-@Spans.instrument()
 def wait_for(
-    to_send: Callable, *args, timeout: Optional[float] = None, **kwargs
+    to_send: Callable,
+    *args,
+    timeout: Optional[float] = None,
+    max_retries: Optional[int] = None,
+    retry_delay: float = 1.0,
+    **kwargs,
 ) -> Any:
     """Wait for a callable execution.
 
@@ -384,6 +370,24 @@ def wait_for(
     if not callable(to_send):
         raise TypeError("`to_send` must be a callable object")
 
+    # Retry path
+    if max_retries is not None:
+        retries = 0
+        executor = Executor.get_instance()
+        while True:
+            future = executor.submit(to_send, *args, **kwargs)
+            concurrent.futures.wait([future], timeout=timeout)
+            try:
+                return future.result()
+            except Exception as e:
+                retries += 1
+                if retries > max_retries:
+                    logger.error(str(e))
+                    return TaskError(exception=e, index=0)
+                from msgflux._private.supervision import _backoff_delay  # noqa: PLC0415
+
+                time.sleep(_backoff_delay(retries, retry_delay))
+
     executor = Executor.get_instance()
     future = executor.submit(to_send, *args, **kwargs)
     concurrent.futures.wait([future], timeout=timeout)
@@ -391,7 +395,7 @@ def wait_for(
         return future.result()
     except Exception as e:
         logger.error(str(e))
-        return None
+        return TaskError(exception=e, index=0)
 
 
 @Spans.instrument()
@@ -418,9 +422,9 @@ def wait_for_event(event: asyncio.Event) -> None:
 
 
 @Spans.instrument()
-def background_task(to_send: Callable, *args, **kwargs) -> None:
-    """Executes a task in the background asynchronously without blocking,
-    using the AsyncExecutorPool. This function is "fire-and-forget".
+def fire_and_forget(to_send: Callable, *args, **kwargs) -> None:
+    """Dispatches a task without waiting for a result.
+    Uses the AsyncExecutorPool. The task is not tracked and no return is provided.
 
     Args:
         to_send:
@@ -439,19 +443,19 @@ def background_task(to_send: Callable, *args, **kwargs) -> None:
         def print_message(message: str):
             time.sleep(1)
             print(f"[Sync] Message: {message}")
-        F.background_task(print_message, "Hello from sync function")
+        F.fire_and_forget(print_message, "Hello from sync function")
 
         # Example 2:
         import asyncio
         async def async_print_message(message: str):
             await asyncio.sleep(1)
             print(f"[Async] Message: {message}")
-        F.background_task(async_print_message, "Hello from async function")
+        F.fire_and_forget(async_print_message, "Hello from async function")
 
         # Example 3 (with error):
         def failing_task():
             raise ValueError("This task failed!")
-        F.background_task(failing_task)  # Error will be logged
+        F.fire_and_forget(failing_task)  # Error will be logged
     """
     if not callable(to_send):
         raise TypeError("`to_send` must be a callable object")
@@ -461,7 +465,7 @@ def background_task(to_send: Callable, *args, **kwargs) -> None:
         try:
             future.result()
         except Exception as e:
-            logger.error(f"Background task error: {e!s}", exc_info=True)
+            logger.error(f"Fire-and-forget task error: {e!s}", exc_info=True)
 
     executor = Executor.get_instance()
     future = executor.submit(to_send, *args, **kwargs)
@@ -469,9 +473,9 @@ def background_task(to_send: Callable, *args, **kwargs) -> None:
 
 
 @Spans.ainstrument()
-async def abackground_task(to_send: Callable, *args, **kwargs) -> None:
-    """Executes an async task in the background without blocking.
-    This is a truly async "fire-and-forget" function.
+async def afire_and_forget(to_send: Callable, *args, **kwargs) -> None:
+    """Dispatches an async task without waiting for a result.
+    The task is not tracked and no return is provided.
 
     Args:
         to_send:
@@ -490,12 +494,12 @@ async def abackground_task(to_send: Callable, *args, **kwargs) -> None:
         async def async_print_message(message: str):
             await asyncio.sleep(1)
             print(f"[Async] Message: {message}")
-        await F.abackground_task(async_print_message, "Hello from async function")
+        await F.afire_and_forget(async_print_message, "Hello from async function")
 
         # Example 2 (with error):
         async def failing_task():
             raise ValueError("This task failed!")
-        await F.abackground_task(failing_task)  # Error will be logged
+        await F.afire_and_forget(failing_task)  # Error will be logged
     """
     if not callable(to_send):
         raise TypeError("`to_send` must be a callable object")
@@ -512,7 +516,7 @@ async def abackground_task(to_send: Callable, *args, **kwargs) -> None:
                 loop = asyncio.get_event_loop()
                 await loop.run_in_executor(None, lambda: to_send(*args, **kwargs))
         except Exception as e:
-            logger.error(f"Async background task error: {e!s}", exc_info=True)
+            logger.error(f"Fire-and-forget task error: {e!s}", exc_info=True)
 
     asyncio.create_task(run_task())  # noqa: RUF006
 
@@ -554,6 +558,13 @@ async def amap_gather(
     *,
     args_list: List[Tuple[Any, ...]],
     kwargs_list: Optional[List[Dict[str, Any]]] = None,
+    max_retries: Optional[int] = None,
+    retry_delay: float = 1.0,
+    timeout: Optional[float] = None,
+    store: Optional["CheckpointStore"] = None,
+    run_id: Optional[str] = None,
+    namespace: str = "gather",
+    session_id: str = "default",
 ) -> Tuple[Any, ...]:
     """Async version of map_gather. Applies the `to_send` async function to each
     set of arguments in `args_list` and `kwargs_list` and collects the results.
@@ -592,6 +603,25 @@ async def amap_gather(
                 "`kwargs_list` must be a list with the same length as `args_list`"
             )
 
+    # Durable path
+    if max_retries is not None or store is not None:
+        workers = [
+            (to_send, args_list[i], kwargs_list[i] if kwargs_list else {})
+            for i in range(len(args_list))
+        ]
+        return tuple(
+            await gather_durable_async(
+                workers,
+                timeout=timeout,
+                max_retries=max_retries,
+                retry_delay=retry_delay,
+                store=store,
+                run_id=run_id,
+                namespace=namespace,
+                session_id=session_id,
+            )
+        )
+
     tasks = []
     for i in range(len(args_list)):
         args = args_list[i]
@@ -600,12 +630,11 @@ async def amap_gather(
 
     responses = await asyncio.gather(*tasks, return_exceptions=True)
 
-    # Convert exceptions to None and log errors
     results = []
-    for response in responses:
+    for i, response in enumerate(responses):
         if isinstance(response, Exception):
             logger.error(str(response))
-            results.append(None)
+            results.append(TaskError(exception=response, index=i))
         else:
             results.append(response)
 
@@ -617,6 +646,14 @@ async def ascatter_gather(
     to_send: List[Callable],
     args_list: Optional[List[Tuple[Any, ...]]] = None,
     kwargs_list: Optional[List[Dict[str, Any]]] = None,
+    *,
+    max_retries: Optional[int] = None,
+    retry_delay: float = 1.0,
+    timeout: Optional[float] = None,
+    store: Optional["CheckpointStore"] = None,
+    run_id: Optional[str] = None,
+    namespace: str = "gather",
+    session_id: str = "default",
 ) -> Tuple[Any, ...]:
     """Async version of scatter_gather. Sends different sets of arguments/kwargs
     to a list of async callables and collects the responses.
@@ -656,6 +693,29 @@ async def ascatter_gather(
     if not isinstance(to_send, list) or not all(callable(f) for f in to_send):
         raise TypeError("`to_send` must be a non-empty list of callable objects")
 
+    # Durable path
+    if max_retries is not None or store is not None:
+        workers = [
+            (
+                to_send[i],
+                args_list[i] if args_list and i < len(args_list) else (),
+                kwargs_list[i] if kwargs_list and i < len(kwargs_list) else {},
+            )
+            for i in range(len(to_send))
+        ]
+        return tuple(
+            await gather_durable_async(
+                workers,
+                timeout=timeout,
+                max_retries=max_retries,
+                retry_delay=retry_delay,
+                store=store,
+                run_id=run_id,
+                namespace=namespace,
+                session_id=session_id,
+            )
+        )
+
     tasks = []
     for i, f in enumerate(to_send):
         args = args_list[i] if args_list and i < len(args_list) else ()
@@ -664,79 +724,12 @@ async def ascatter_gather(
 
     responses = await asyncio.gather(*tasks, return_exceptions=True)
 
-    # Convert exceptions to None and log errors
     results = []
-    for response in responses:
+    for i, response in enumerate(responses):
         if isinstance(response, Exception):
             logger.error(str(response))
-            results.append(None)
+            results.append(TaskError(exception=response, index=i))
         else:
             results.append(response)
 
     return tuple(results)
-
-
-@Spans.ainstrument()
-async def amsg_bcast_gather(
-    to_send: List[Callable],
-    message: dotdict,
-) -> dotdict:
-    """Async version of msg_bcast_gather. Broadcasts a single message to multiple
-    async modules and gathers the responses.
-
-    Args:
-        to_send:
-            List of callable objects (e.g. async functions or `Module` instances
-            with acall).
-        message:
-            Instance of `msgflux.dotdict` to broadcast.
-
-    Returns:
-        The original message with the module responses added.
-
-    Raises:
-        TypeError:
-            If `message` is not an instance of `dotdict`, `to_send` is not a list
-            of callables.
-
-    Examples:
-        async def add_feat_a(msg: dotdict) -> dotdict:
-            msg['feat_a'] = 'result_a'
-            return msg
-
-        async def add_feat_b(msg: dotdict) -> dotdict:
-            msg['feat_b'] = 'result_b'
-            return msg
-
-        message = dotdict()
-        result = await F.amsg_bcast_gather([add_feat_a, add_feat_b], message)
-        # message now contains both feat_a and feat_b
-    """
-    if not isinstance(message, dotdict):
-        raise TypeError("`message` must be an instance of `msgflux.dotdict`")
-    if not to_send or not all(isinstance(module, Callable) for module in to_send):
-        raise TypeError("`to_send` must be a non-empty list of callable objects")
-
-    tasks = []
-    for f in to_send:
-        # Check for acall method first, then coroutine function
-        if hasattr(f, "acall"):
-            tasks.append(f.acall(message))
-        elif asyncio.iscoroutinefunction(f):
-            tasks.append(f(message))
-        else:
-            # Fallback to sync call (will be executed in current event loop)
-            # Wrap in coroutine
-            async def _run_sync(func, msg):
-                return func(msg)
-
-            tasks.append(_run_sync(f, message))
-
-    responses = await asyncio.gather(*tasks, return_exceptions=True)
-
-    for f, response in zip(to_send, responses):
-        f_name = get_callable_name(f)
-        if isinstance(response, Exception):
-            logger.error(f"Error in async bcast task for `{f_name}`: {response}")
-
-    return message

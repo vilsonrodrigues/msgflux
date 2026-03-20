@@ -1,61 +1,34 @@
-# Retriever: Information Retrieval Module
+# nn.Retriever
 
-The `Retriever` module provides a unified interface for information retrieval using web search, lexical search, semantic search, or vector databases.
+The `nn.Retriever` module provides a unified interface for information retrieval using web search, lexical search, semantic search, or vector databases.
 
-**All code examples use the recommended import pattern:**
+All code examples use the recommended import pattern:
 
 ```python
 import msgflux as mf
+import msgflux.nn as nn
 ```
 
 ## Quick Start
 
-### Traditional Initialization
-
-```python
-import msgflux as mf
-
-# Create a vector database retriever
-vector_db = mf.data.VectorDB.qdrant(
-    collection_name="documents",
-    url="http://localhost:6333"
-)
-
-# Create embedding model for semantic search
-embedder = mf.Model.text_embedder("openai/text-embedding-3-small")
-
-# Traditional retriever initialization
-retriever = mf.nn.Retriever(
-    retriever=vector_db,
-    model=embedder,
-    config={"top_k": 5, "threshold": 0.7}
-)
-
-# Use the retriever
-results = retriever("What is machine learning?")
-print(results)
-```
-
 ### AutoParams Initialization (Recommended)
 
-**This is the preferred and recommended way to define retrievers in msgflux.**
+This is the preferred and recommended way to define retrievers in msgFlux. It promotes reusability and clear intent.
 
 ```python
 import msgflux as mf
+import msgflux.nn as nn
 
-class DocumentRetriever(mf.nn.Retriever):
+class DocumentRetriever(nn.Retriever):
     """Semantic retriever for technical documentation."""
-
     # AutoParams automatically uses class name as 'name'
-    # Define configuration as class attributes
     response_mode = "plain_response"
 
-# Setup
+# Setup backend
 vector_db = mf.data.VectorDB.qdrant(
     collection_name="documents",
     url="http://localhost:6333"
 )
-
 embedder = mf.Model.text_embedder("openai/text-embedding-3-small")
 
 # Create instance with defaults
@@ -68,22 +41,21 @@ doc_retriever = DocumentRetriever(
 # Use the retriever
 results = doc_retriever("What is machine learning?")
 print(results)
+```
 
-# Override configuration at runtime
-detailed_results = DocumentRetriever(
+### Traditional Initialization
+
+For quick scripts or one-off usage:
+
+```python
+retriever = nn.Retriever(
     retriever=vector_db,
     model=embedder,
-    config={"top_k": 10, "threshold": 0.5, "return_score": True}
+    config={"top_k": 5}
 )
 ```
 
-## Why Use AutoParams?
-
-1. **Domain-Specific Retrievers**: Create specialized retrievers for different knowledge domains
-2. **Reusable Configuration**: Share configuration across retriever instances
-3. **Clear Intent**: Class name and docstring document the retriever's purpose
-4. **Easy Customization**: Override defaults per instance or create retriever hierarchies
-5. **Better Organization**: Group related retrievers by domain or use case
+---
 
 ## Retriever Types
 
@@ -91,55 +63,10 @@ detailed_results = DocumentRetriever(
 
 Most common type - uses embeddings for semantic similarity search.
 
-#### Traditional Approach
-
 ```python
-import msgflux as mf
-
-# Setup vector database
-vector_db = mf.data.VectorDB.qdrant(
-    collection_name="knowledge_base",
-    url="http://localhost:6333"
-)
-
-# Create embedding model
-embedder = mf.Model.text_embedder("openai/text-embedding-3-small")
-
-# Create retriever
-retriever = mf.nn.Retriever(
-    retriever=vector_db,
-    model=embedder,
-    config={
-        "top_k": 5,
-        "threshold": 0.75,
-        "return_score": True
-    }
-)
-
-# Search
-results = retriever("How do I use async functions in Python?")
-for result in results["results"]:
-    print(f"Score: {result['score']}")
-    print(f"Content: {result['data']}")
-```
-
-#### AutoParams Approach (Recommended)
-
-```python
-import msgflux as mf
-
-class KnowledgeBaseRetriever(mf.nn.Retriever):
+class KnowledgeBaseRetriever(nn.Retriever):
     """Semantic retriever for company knowledge base with high precision."""
-
     response_mode = "plain_response"
-
-# Setup
-vector_db = mf.data.VectorDB.qdrant(
-    collection_name="knowledge_base",
-    url="http://localhost:6333"
-)
-
-embedder = mf.Model.text_embedder("openai/text-embedding-3-small")
 
 # Create with strict thresholds for high precision
 kb_retriever = KnowledgeBaseRetriever(
@@ -153,18 +80,15 @@ results = kb_retriever("How do I use async functions in Python?")
 
 ### 2. Web Retrieval
 
-Search the web for information.
+Search the web for real-time information.
 
 ```python
-import msgflux as mf
-
-class WebResearcher(mf.nn.Retriever):
+class WebResearcher(nn.Retriever):
     """Web search retriever for real-time information."""
-
     response_mode = "plain_response"
 
-# Create web retriever
-web_search = mf.data.WebRetriever(api_key="your-api-key")
+# Create web retriever client
+web_search = mf.DataRetriever.tavily(api_key="your-api-key")
 
 researcher = WebResearcher(
     retriever=web_search,
@@ -173,7 +97,6 @@ researcher = WebResearcher(
 
 # Search current events
 results = researcher("Latest news on artificial intelligence")
-print(results)
 ```
 
 ### 3. Lexical Retrieval
@@ -181,15 +104,12 @@ print(results)
 Traditional keyword-based search (BM25, TF-IDF).
 
 ```python
-import msgflux as mf
-
-class DocumentSearcher(mf.nn.Retriever):
+class DocumentSearcher(nn.Retriever):
     """Fast lexical search for exact keyword matching."""
-
     response_mode = "plain_response"
 
 # Create lexical retriever
-lexical_search = mf.data.LexicalRetriever(
+lexical_search = mf.DataRetriever.bm25(
     documents=["doc1.txt", "doc2.txt", "doc3.txt"]
 )
 
@@ -201,26 +121,18 @@ searcher = DocumentSearcher(
 results = searcher("Python async await")
 ```
 
+---
+
 ## Advanced Configuration
 
 ### Message Field Mapping
 
-Use Message objects for structured input/output.
+Use `Message` objects for structured input/output. This decouples your retriever from the specific data structure.
 
 ```python
-import msgflux as mf
-
-class ContextualRetriever(mf.nn.Retriever):
+class ContextualRetriever(nn.Retriever):
     """Retriever that processes structured message inputs."""
-
     response_mode = "message"  # Return Message object
-
-vector_db = mf.data.VectorDB.qdrant(
-    collection_name="docs",
-    url="http://localhost:6333"
-)
-
-embedder = mf.Model.text_embedder("openai/text-embedding-3-small")
 
 retriever = ContextualRetriever(
     retriever=vector_db,
@@ -236,27 +148,18 @@ msg = mf.Message()
 msg.set("query.user", "What is dependency injection?")
 
 result_msg = retriever(msg)
+# Results are written to the default location or configured output
 print(result_msg.get("retriever.results"))
 ```
 
 ### Response Templates
 
-Format retrieval results using Jinja templates.
+Format retrieval results using Jinja templates before returning them.
 
 ```python
-import msgflux as mf
-
-class FormattedRetriever(mf.nn.Retriever):
+class FormattedRetriever(nn.Retriever):
     """Retriever with custom result formatting."""
-
     response_mode = "plain_response"
-
-vector_db = mf.data.VectorDB.qdrant(
-    collection_name="articles",
-    url="http://localhost:6333"
-)
-
-embedder = mf.Model.text_embedder("openai/text-embedding-3-small")
 
 retriever = FormattedRetriever(
     retriever=vector_db,
@@ -273,77 +176,50 @@ retriever = FormattedRetriever(
 )
 
 formatted_results = retriever("machine learning best practices")
-print(formatted_results)
 ```
 
 ### Runtime Configuration Override
 
-Override configuration at call time.
+Override configuration at call time for flexibility.
 
 ```python
-import msgflux as mf
-
-class FlexibleRetriever(mf.nn.Retriever):
-    """Retriever with runtime-configurable parameters."""
-
-    response_mode = "plain_response"
-
-vector_db = mf.data.VectorDB.qdrant(
-    collection_name="docs",
-    url="http://localhost:6333"
-)
-
-embedder = mf.Model.text_embedder("openai/text-embedding-3-small")
-
 retriever = FlexibleRetriever(
     retriever=vector_db,
     model=embedder,
     config={"top_k": 3}  # Default
 )
 
-# Normal retrieval with defaults
+# Normal retrieval
 results = retriever("python tutorial")
 
-# Override task_inputs at runtime
+# Override parameters at runtime
 results = retriever(
     "machine learning",
-    task_inputs="deep learning neural networks"  # Override query
+    task_inputs="deep learning neural networks",  # Override query
+    config={"top_k": 10}                          # Override config
 )
 ```
 
+---
+
 ## Creating Retriever Hierarchies
 
-Build specialized retrievers through inheritance.
+Build specialized retrievers through inheritance to share configuration.
 
 ```python
-import msgflux as mf
-
 # Base retriever for all documentation
-class BaseDocRetriever(mf.nn.Retriever):
+class BaseDocRetriever(nn.Retriever):
     """Base retriever for documentation with common config."""
-
     response_mode = "plain_response"
 
 # High precision retriever for critical docs
 class CriticalDocRetriever(BaseDocRetriever):
     """High precision retriever for critical documentation (compliance, security)."""
-
-    # Inherits response_mode from BaseDocRetriever
-    # Override defaults for stricter matching
+    # Inherits behavior from BaseDocRetriever
 
 # Broad retriever for general exploration
 class ExploratoryRetriever(BaseDocRetriever):
     """Broad retriever for exploratory searches."""
-
-    # Lower threshold for diverse results
-
-# Setup
-vector_db = mf.data.VectorDB.qdrant(
-    collection_name="documentation",
-    url="http://localhost:6333"
-)
-
-embedder = mf.Model.text_embedder("openai/text-embedding-3-small")
 
 # Create instances with different thresholds
 critical = CriticalDocRetriever(
@@ -357,122 +233,48 @@ exploratory = ExploratoryRetriever(
     model=embedder,
     config={"top_k": 10, "threshold": 0.5}  # Permissive
 )
-
-# Use appropriately
-compliance_docs = critical("GDPR data retention requirements")
-related_topics = exploratory("data privacy regulations")
 ```
+
+---
 
 ## Integration with Agents
 
-Retrievers are commonly used as tools for agents.
+Retrievers are commonly used as tools for agents to implement RAG patterns.
 
 ```python
-import msgflux as mf
-
 # Define retriever
-class CompanyKnowledgeRetriever(mf.nn.Retriever):
-    """Retrieves information from company knowledge base."""
-
-    response_mode = "plain_response"
-
-vector_db = mf.data.VectorDB.qdrant(
-    collection_name="company_kb",
-    url="http://localhost:6333"
-)
-
-embedder = mf.Model.text_embedder("openai/text-embedding-3-small")
-
 kb_retriever = CompanyKnowledgeRetriever(
     retriever=vector_db,
     model=embedder,
-    config={"top_k": 5, "threshold": 0.7}
+    config={"top_k": 5}
 )
 
 # Define retriever as a tool function
 def search_knowledge_base(query: str) -> str:
     """Search the company knowledge base for information."""
     results = kb_retriever(query)
-    return results
+    return str(results)
 
 # Create agent with retriever tool
-class SupportAgent(mf.nn.Agent):
+class SupportAgent(nn.Agent):
     """Customer support agent with access to knowledge base."""
+    model = mf.Model.chat_completion("openai/gpt-4")
+    tools = [search_knowledge_base]
 
-    temperature = 0.7
-    max_tokens = 2000
-    max_tool_iterations = 3
-
-model = mf.Model.chat_completion("openai/gpt-4")
-
-support_agent = SupportAgent(
-    model=model,
-    tools=[search_knowledge_base]
-)
+support_agent = SupportAgent()
 
 # Agent can now use retriever to answer questions
 response = support_agent("How do I reset my password?")
-print(response)
 ```
 
-## Configuration Options
-
-### Complete Parameter Reference
-
-```python
-import msgflux as mf
-
-class ConfiguredRetriever(mf.nn.Retriever):
-    """Fully configured retriever example."""
-
-    # Response behavior
-    response_mode = "plain_response"  # or "message"
-
-# Initialize with all options
-retriever = ConfiguredRetriever(
-    retriever=vector_db,              # Required: retriever backend
-    model=embedder,                   # Optional: for semantic retrieval
-    message_fields={                  # Optional: Message field mapping
-        "task_inputs": "query.text"
-    },
-    templates={                       # Optional: Jinja response templates
-        "response": "Results: {{ content }}"
-    },
-    config={                          # Optional: retriever-specific config
-        "top_k": 5,                   # Max results to return
-        "threshold": 0.7,             # Minimum similarity score
-        "return_score": True,         # Include scores in results
-        "dict_key": "content"         # Extract specific dict key from results
-    },
-    name="custom_retriever"           # Optional: custom name
-)
-```
+---
 
 ## Async Support
 
-Retrievers support asynchronous operation.
+Retrievers provide first-class `async` support via `aforward` or `acall`.
 
 ```python
-import msgflux as mf
 import asyncio
-
-class AsyncRetriever(mf.nn.Retriever):
-    """Async retriever for concurrent searches."""
-
-    response_mode = "plain_response"
-
-vector_db = mf.data.VectorDB.qdrant(
-    collection_name="docs",
-    url="http://localhost:6333"
-)
-
-embedder = mf.Model.text_embedder("openai/text-embedding-3-small")
-
-retriever = AsyncRetriever(
-    retriever=vector_db,
-    model=embedder,
-    config={"top_k": 5}
-)
 
 async def search_multiple():
     """Perform multiple searches concurrently."""
@@ -487,107 +289,10 @@ async def search_multiple():
 results = asyncio.run(search_multiple())
 ```
 
+---
+
 ## Best Practices
 
-### 1. Use Domain-Specific Retrievers
-
-```python
-# Good - Clear, specialized retrievers
-class TechnicalDocRetriever(mf.nn.Retriever):
-    """Retriever for technical documentation (APIs, guides)."""
-    response_mode = "plain_response"
-
-class CustomerQueryRetriever(mf.nn.Retriever):
-    """Retriever for customer support queries."""
-    response_mode = "plain_response"
-
-class ProductCatalogRetriever(mf.nn.Retriever):
-    """Retriever for product information."""
-    response_mode = "plain_response"
-```
-
-### 2. Tune Thresholds by Use Case
-
-```python
-# High precision for critical applications
-class ComplianceRetriever(mf.nn.Retriever):
-    """High precision retriever for compliance documentation."""
-    response_mode = "plain_response"
-
-compliance = ComplianceRetriever(
-    retriever=vector_db,
-    model=embedder,
-    config={"top_k": 3, "threshold": 0.9}  # Very strict
-)
-
-# High recall for exploratory search
-class ResearchRetriever(mf.nn.Retriever):
-    """Broad retriever for research and exploration."""
-    response_mode = "plain_response"
-
-research = ResearchRetriever(
-    retriever=vector_db,
-    model=embedder,
-    config={"top_k": 20, "threshold": 0.5}  # Permissive
-)
-```
-
-### 3. Return Scores for Transparency
-
-```python
-class TransparentRetriever(mf.nn.Retriever):
-    """Retriever that returns similarity scores for verification."""
-    response_mode = "plain_response"
-
-retriever = TransparentRetriever(
-    retriever=vector_db,
-    model=embedder,
-    config={
-        "top_k": 5,
-        "return_score": True  # Always include scores
-    }
-)
-
-results = retriever("query")
-for r in results["results"]:
-    if r["score"] < 0.7:
-        print(f"Warning: Low confidence result (score: {r['score']})")
-```
-
-## Migration Guide
-
-### From Traditional to AutoParams
-
-**Before (Traditional):**
-```python
-retriever = mf.nn.Retriever(
-    retriever=vector_db,
-    model=embedder,
-    config={"top_k": 5, "threshold": 0.7},
-    response_mode="plain_response"
-)
-```
-
-**After (AutoParams - Recommended):**
-```python
-class MyRetriever(mf.nn.Retriever):
-    """Semantic retriever for my use case."""
-    response_mode = "plain_response"
-
-retriever = MyRetriever(
-    retriever=vector_db,
-    model=embedder,
-    config={"top_k": 5, "threshold": 0.7}
-)
-```
-
-## Summary
-
-- **Use AutoParams** for defining retrievers - cleaner and more maintainable
-- **Traditional initialization** works for quick, one-off retrievers
-- Supports **vector DB**, **web search**, and **lexical search**
-- Configure via **message_fields**, **templates**, and **config** options
-- Commonly integrated with **Agents** as tools
-- **Async support** for concurrent retrieval operations
-
-The Retriever module provides flexible, powerful information retrieval - use AutoParams to organize retrievers by domain and use case.
+1.  **Use Domain-Specific Retrievers**: Create specialized classes (`TechnicalDocRetriever`, `CustomerQueryRetriever`) rather than generic instances.
+2.  **Tune Thresholds**: Use strict thresholds (0.8+) for precision-critical tasks and lower thresholds (0.5-0.6) for exploration.
+3.  **Return Scores**: Enable `return_score=True` to debug retrieval quality and filter low-confidence results in your logic.

@@ -9,8 +9,13 @@ from msgflux.models.response import ModelResponse, ModelStreamResponse
 
 
 class ModelGateway:
-    """Routes calls to a list of supported AI models, with fallback, retries,
+    """Routes calls to a list of model deployments, with fallback, retries,
     initial model selection, and timing constraints (configured via HH:MM strings).
+
+    Each deployment is a dict with:
+        - ``model_name`` (str): Alias for the model (e.g. "weak", "strong").
+        - ``model`` (BaseModel): The model instance.
+        - ``time_constraints`` (optional): List of ``(start, end)`` HH:MM tuples.
     """
 
     msgflux_type = "model_gateway"
@@ -18,53 +23,61 @@ class ModelGateway:
 
     def __init__(
         self,
-        models: List[BaseModel],
-        time_constraints: Optional[Dict[str, List[Tuple[str, str]]]] = None,
+        models: List[Dict[str, Any]],
     ):
-        """Args:
+        """Initialize the ModelGateway.
+
+        Args:
             models:
-                A list of BaseModel instances (at least 2).
-            time_constraints:
-                An optional dictionary mapping model_id to a list of string
-                tuples (start_time, end_time). The listed models will NOT be
-                used if the current time is within any of the specified ranges.
-                Strings must be in the format "HH:MM" (e.g. "22:00", "06:00").
+                A list of model deployment dicts. Each dict must contain:
 
-                !!! example:
+                - ``model_name`` (str): A unique alias for the model.
+                - ``model`` (BaseModel): The model instance.
+                - ``time_constraints`` (optional): A list of string tuples
+                  ``(start_time, end_time)`` in ``"HH:MM"`` format. The model
+                  will NOT be used if the current time falls within any range.
 
-                    {'model-A': [('22:00', '06:00')]}
-                    prohibits 'model-A' between 22:00 and 06:00.
+                !!! example
+
+                    [
+                        {
+                            "model_name": "weak",
+                            "model": Model.chat_completion("openai/gpt-4.1-mini"),
+                            "time_constraints": [("22:00", "06:00")],
+                        },
+                        {
+                            "model_name": "strong",
+                            "model": Model.chat_completion("openai/gpt-4.1"),
+                        },
+                    ]
 
         Raises:
             ModelRouterError:
                 Raised when all models fail or are restricted.
             ValueError:
-                Raised for misconfiguration in time formats or duplicate model IDs.
+                Raised for misconfiguration in time formats or duplicate model names.
             TypeError:
                 Raised for invalid argument types.
         """
-        self._model_id_to_index: Dict[str, int] = {}
-        self.raw_time_constraints = time_constraints
+        self._model_name_to_index: Dict[str, int] = {}
         self._set_models(models)
+
+        # Build time_constraints dict from deployments
+        raw_constraints: Dict[str, List[Tuple[str, str]]] = {}
+        for deployment in self._deployments:
+            tc = deployment.get("time_constraints")
+            if tc is not None:
+                raw_constraints[deployment["model_name"]] = tc
+
+        self.raw_time_constraints = raw_constraints if raw_constraints else None
 
         try:
             self.parsed_time_constraints = (
-                self._parse_time_constraints(time_constraints)
-                if time_constraints
-                else {}
+                self._parse_time_constraints(raw_constraints) if raw_constraints else {}
             )
         except ValueError as e:
             logger.error(f"Error to parse time_constraints: {e}")
             raise ValueError(f"Invalid format in time_constraints: {e}") from e
-
-        # Validates if the model_ids in time_constraints exist
-        # (uses the keys from the parsed dict)
-        for model_id in self.parsed_time_constraints:
-            if model_id not in self._model_id_to_index:
-                logger.warning(
-                    f"The model_id `{model_id}` in time constraints "
-                    "not found in the provided models"
-                )
 
         self.current_model_index = 0
         logger.debug(
@@ -92,10 +105,10 @@ class ModelGateway:
         parsed_constraints: Dict[str, List[Tuple[time, time]]] = {}
         time_format = "%H:%M"
 
-        for model_id, intervals in constraints.items():
+        for model_name, intervals in constraints.items():
             if not isinstance(intervals, list):
                 raise TypeError(
-                    f"Constraints for `{model_id}` must be a list of tuples "
+                    f"Constraints for `{model_name}` must be a list of tuples "
                     f"(start, end). Given: `{type(intervals)}`"
                 )
             parsed_intervals = []
@@ -104,16 +117,17 @@ class ModelGateway:
                     not isinstance(interval, (tuple, list)) or len(interval) != 2
                 ):  # Tuples or lists
                     raise TypeError(
-                        f"Interval #{i + 1} for `{model_id}` must be a tuple/list "
-                        "of two strings (start_time_str, end_time_str). Given: "
-                        f"`{interval}`"
+                        f"Interval #{i + 1} for `{model_name}` must be a "
+                        "tuple/list of two strings (start_time_str, end_time_str)"
+                        f". Given: `{interval}`"
                     )
 
                 start, end = interval
                 if not isinstance(start, str) or not isinstance(end, str):
                     raise TypeError(
-                        f"Start and end times in range #{i + 1} for `{model_id}` "
-                        f"must be strings. Given: `({type(start)}, {type(end)})`"
+                        f"Start and end times in range #{i + 1} for "
+                        f"`{model_name}` must be strings. Given: "
+                        f"`({type(start)}, {type(end)})`"
                     )
 
                 try:
@@ -128,79 +142,113 @@ class ModelGateway:
                     parsed_intervals.append((start_t, end_t))
                 except ValueError as e:
                     raise ValueError(
-                        f"Invalid time format in range #{i + 1} for `{model_id}`. "
-                        f"Use 'HH:MM'. Error parsing `{start}` or `{end}`: {e}"
+                        f"Invalid time format in range #{i + 1} for "
+                        f"`{model_name}`. Use 'HH:MM'. Error parsing "
+                        f"`{start}` or `{end}`: {e}"
                     ) from e
 
-            parsed_constraints[model_id] = parsed_intervals
+            parsed_constraints[model_name] = parsed_intervals
         return parsed_constraints
 
-    def _is_time_restricted(self, model_id: str) -> bool:
+    def _is_time_restricted(self, model_name: str) -> bool:
         """Checks if the model is constrained at the current time
         using the parsed constraints.
         """
-        # Access constraints already converted to `time`
-        if model_id not in self.parsed_time_constraints:
+        if model_name not in self.parsed_time_constraints:
             return False
 
         now = datetime.now(tz=timezone.utc).time()
 
-        for start_time, end_time in self.parsed_time_constraints[model_id]:
+        for start_time, end_time in self.parsed_time_constraints[model_name]:
             if start_time <= end_time:
                 if start_time <= now <= end_time:
                     logger.debug(
-                        f"Model `{model_id}` restricted. Current time `{now}` "
+                        f"Model `{model_name}` restricted. Current time `{now}` "
                         f"is between `{start_time}` and `{end_time}`"
                     )
                     return True
             elif now >= start_time or now <= end_time:
                 logger.debug(
-                    f"Restricted model `{model_id}`. Current time `{now}` is "
+                    f"Restricted model `{model_name}`. Current time `{now}` is "
                     f"in the range crosses midnight: `{start_time} - {end_time}`"
                 )
                 return True
         return False
 
-    def _set_models(self, models: List[BaseModel]):
-        if not models or not isinstance(models, list):
-            raise TypeError(
-                "`models` must be a non-empty list of `BaseModel` instances"
+    def _validate_deployment(
+        self, deployment: Dict[str, Any], index: int
+    ) -> Tuple[str, BaseModel]:
+        """Validates a single deployment dict and returns (model_name, model)."""
+        if "model_name" not in deployment:
+            raise ValueError(
+                f"Deployment at position {index} is missing required key `model_name`"
+            )
+        if "model" not in deployment:
+            raise ValueError(
+                f"Deployment at position {index} is missing required key `model`"
             )
 
-        if not all(isinstance(model, BaseModel) for model in models):
-            raise TypeError("`models` requires inheriting from `BaseModel`")
+        model_name = deployment["model_name"]
+        model = deployment["model"]
 
-        if len(models) < 2:
-            logger.warning(
-                f"`models` has only {len(models)} models. "
-                "Fallback will not be effective"
+        if not isinstance(model_name, str) or not model_name:
+            raise TypeError(
+                f"`model_name` at position {index} must be a non-empty string"
+            )
+
+        if not isinstance(model, BaseModel):
+            raise TypeError(f"Model `{model_name}` does not inherit from `BaseModel`")
+
+        if not hasattr(model, "model_type") or not model.model_type:
+            raise AttributeError(
+                f"Model `{model_name}` does not have a valid `model_type` attribute"
+            )
+        if not hasattr(model, "model_id") or not model.model_id:
+            raise AttributeError(
+                f"Model `{model_name}` does not have a valid `model_id` attribute"
+            )
+        if not hasattr(model, "provider"):
+            raise AttributeError(
+                f"Model `{model_name}` does not have a valid `provider` attribute"
+            )
+
+        return model_name, model
+
+    def _set_models(self, models: List[Dict[str, Any]]):
+        if not models or not isinstance(models, list):
+            raise TypeError(
+                "`models` must be a non-empty list of model deployment dicts"
+            )
+
+        if not all(isinstance(d, dict) for d in models):
+            raise TypeError(
+                "`models` requires a list of dicts with `model_name` and `model` keys"
             )
 
         model_types = set()
-        model_ids = set()
-        for i, model in enumerate(models):
-            if not hasattr(model, "model_type") or not model.model_type:
-                raise AttributeError(
-                    f"Model in {i} position does not have a valid "
-                    "`model_type` attribute"
-                )
-            if not hasattr(model, "model_id") or not model.model_id:
-                raise AttributeError(
-                    f"Model in {i} position  does not have a valid `model_id` attribute"
-                )
-            if not hasattr(model, "provider"):
-                raise AttributeError(
-                    f"Model `{model.model_id}` does not have a valid "
-                    "`provider` attribute"
-                )
+        model_names = set()
+        extracted_models = []
+        model_name_list = []
+
+        for i, deployment in enumerate(models):
+            model_name, model = self._validate_deployment(deployment, i)
 
             model_types.add(model.model_type)
-            if model.model_id in model_ids:
+
+            if model_name in model_names:
                 raise ValueError(
-                    f"Duplicate model ID found: `{model.model_id}`. IDs must be unique"
+                    f"Duplicate model name found: `{model_name}`. Names must be unique"
                 )
-            model_ids.add(model.model_id)
-            self._model_id_to_index[model.model_id] = i
+            model_names.add(model_name)
+            self._model_name_to_index[model_name] = i
+            extracted_models.append(model)
+            model_name_list.append(model_name)
+
+        if len(models) < 2:
+            logger.warning(
+                f"`models` has only {len(models)} deployments. "
+                "Fallback will not be effective"
+            )
 
         if len(model_types) > 1:
             raise TypeError(
@@ -208,14 +256,16 @@ class ModelGateway:
                 f"Given: `{model_types}`"
             )
 
-        self.models = models
+        self.models = extracted_models
+        self.model_names = model_name_list
+        self._deployments = models
         self.model_type = next(iter(model_types))
 
         # Determine if gateway supports batch processing
         # Only True if ALL models support batch
         self.batch_support = (
-            all(getattr(model, "batch_support", False) for model in models)
-            if models
+            all(getattr(model, "batch_support", False) for model in extracted_models)
+            if extracted_models
             else False
         )
 
@@ -228,44 +278,46 @@ class ModelGateway:
         if not self.models:
             raise ModelRouterError([], [], message="No model configured on gateway")
 
-        available_models = [
-            model
-            for model in self.models
-            if not self._is_time_restricted(model.model_id)
+        available = [
+            (name, model)
+            for name, model in zip(self.model_names, self.models)
+            if not self._is_time_restricted(name)
         ]
 
-        if not available_models:
+        if not available:
             raise ModelRouterError(
                 [], [], message="No model available due to time constraints"
             )
 
         if model_preference:
-            preferred_model = next(
-                (m for m in available_models if m.model_id == model_preference), None
+            preferred = next(
+                ((n, m) for n, m in available if n == model_preference), None
             )
-            if preferred_model:
-                available_models = [preferred_model] + [
-                    m for m in available_models if m != preferred_model
+            if preferred:
+                available = [preferred] + [
+                    (n, m) for n, m in available if n != model_preference
                 ]
 
         failures = []
 
-        for model in available_models:
+        for name, model in available:
             try:
                 response = model(**kwargs)
                 return response
             except Exception as e:
                 logger.debug(
-                    f"""Model `{model.model_id}` ({model.provider})
+                    f"""Model `{name}` ({model.provider})
                     failed to execute: {e}""",
                     exc_info=False,
                 )
-                failures.append((model.model_id, model.provider, e))
+                failures.append((name, model.provider, e))
 
-        error_message = f"All {len(available_models)} available models failed"
+        error_message = f"All {len(available)} available models failed"
         logger.error(error_message)
         raise ModelRouterError(
-            [failure[2] for failure in failures], failures, message=error_message
+            [failure[2] for failure in failures],
+            failures,
+            message=error_message,
         )
 
     async def _aexecute_model(
@@ -277,44 +329,46 @@ class ModelGateway:
         if not self.models:
             raise ModelRouterError([], [], message="No model configured on gateway")
 
-        available_models = [
-            model
-            for model in self.models
-            if not self._is_time_restricted(model.model_id)
+        available = [
+            (name, model)
+            for name, model in zip(self.model_names, self.models)
+            if not self._is_time_restricted(name)
         ]
 
-        if not available_models:
+        if not available:
             raise ModelRouterError(
                 [], [], message="No model available due to time constraints"
             )
 
         if model_preference:
-            preferred_model = next(
-                (m for m in available_models if m.model_id == model_preference), None
+            preferred = next(
+                ((n, m) for n, m in available if n == model_preference), None
             )
-            if preferred_model:
-                available_models = [preferred_model] + [
-                    m for m in available_models if m != preferred_model
+            if preferred:
+                available = [preferred] + [
+                    (n, m) for n, m in available if n != model_preference
                 ]
 
         failures = []
 
-        for model in available_models:
+        for name, model in available:
             try:
                 response = await model.acall(**kwargs)
                 return response
             except Exception as e:
                 logger.debug(
-                    f"""Model `{model.model_id}` ({model.provider})
+                    f"""Model `{name}` ({model.provider})
                     failed to execute: {e}""",
                     exc_info=False,
                 )
-                failures.append((model.model_id, model.provider, e))
+                failures.append((name, model.provider, e))
 
-        error_message = f"All {len(available_models)} available models failed"
+        error_message = f"All {len(available)} available models failed"
         logger.error(error_message)
         raise ModelRouterError(
-            [failure[2] for failure in failures], failures, message=error_message
+            [failure[2] for failure in failures],
+            failures,
+            message=error_message,
         )
 
     def __call__(
@@ -324,8 +378,8 @@ class ModelGateway:
 
         Args:
             model_preference:
-                The ID of the model that should be tried first.
-                If None, starts from the last model used or the first one.
+                The ``model_name`` of the deployment that should be tried first.
+                If None, starts from the first model in the list.
             kwargs:
                 Arguments to pass to the __call__ method of the selected model.
 
@@ -334,8 +388,8 @@ class ModelGateway:
 
         Raises:
             ModelRouterError:
-                If all models fail consecutively up to the `max_retries`
-                limit, or if no models are available/functional.
+                If all models fail consecutively, or if no models are
+                available/functional.
         """
         return self._execute_model(model_preference=model_preference, **kwargs)
 
@@ -346,8 +400,8 @@ class ModelGateway:
 
         Args:
             model_preference:
-                The ID of the model that should be tried first.
-                If None, starts from the last model used or the first one.
+                The ``model_name`` of the deployment that should be tried first.
+                If None, starts from the first model in the list.
             kwargs:
                 Arguments to pass to the acall method of the selected model.
 
@@ -356,18 +410,27 @@ class ModelGateway:
 
         Raises:
             ModelRouterError:
-                If all models fail consecutively up to the `max_retries`
-                limit, or if no models are available/functional.
+                If all models fail consecutively, or if no models are
+                available/functional.
         """
         return await self._aexecute_model(model_preference=model_preference, **kwargs)
 
     def serialize(self) -> Dict[str, Any]:
-        """Serializes the gateway state including time constraints as strings."""
-        serialized_models = [model.serialize() for model in self.models]
-        state = {
-            "time_constraints": self.raw_time_constraints,
-            "models": serialized_models,
-        }
+        """Serializes the gateway state including deployments."""
+        serialized_deployments = []
+        for name, model, deployment in zip(
+            self.model_names, self.models, self._deployments
+        ):
+            entry: Dict[str, Any] = {
+                "model_name": name,
+                "model": model.serialize(),
+            }
+            tc = deployment.get("time_constraints")
+            if tc is not None:
+                entry["time_constraints"] = tc
+            serialized_deployments.append(entry)
+
+        state = {"models": serialized_deployments}
         data = {"msgflux_type": self.msgflux_type, "state": state}
         return data
 
@@ -376,7 +439,7 @@ class ModelGateway:
         """Creates a ModelGateway instance from serialized data.
 
         Args:
-            data: The dictionary of serialized models.
+            data: The dictionary of serialized gateway data.
         """
         if data.get("msgflux_type") != cls.msgflux_type:
             raise ValueError(
@@ -385,11 +448,19 @@ class ModelGateway:
             )
 
         state = data.get("state", {})
-        serialized_models = state.get("models", [])
-        if not serialized_models:
-            raise ValueError("Serialized data does not contain templates")
+        serialized_deployments = state.get("models", [])
+        if not serialized_deployments:
+            raise ValueError("Serialized data does not contain models")
 
-        models = [Model.from_serialized(**m_data) for m_data in serialized_models]
-        time_constraints = state.get("time_constraints")
+        deployments = []
+        for entry in serialized_deployments:
+            model = Model.from_serialized(**entry["model"])
+            deployment: Dict[str, Any] = {
+                "model_name": entry["model_name"],
+                "model": model,
+            }
+            if "time_constraints" in entry:
+                deployment["time_constraints"] = entry["time_constraints"]
+            deployments.append(deployment)
 
-        return cls(models=models, time_constraints=time_constraints)
+        return cls(models=deployments)

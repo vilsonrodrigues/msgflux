@@ -37,7 +37,7 @@ class BaseAuth(ABC):
         """
         if self._expires_at is None:
             return False
-        return datetime.now()  # noqa: DTZ005 >= self._expires_at
+        return datetime.now() >= self._expires_at  # noqa: DTZ005
 
     def set_expiration(self, expires_in: int) -> None:
         """Set token expiration time.

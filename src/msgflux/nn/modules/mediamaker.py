@@ -1,4 +1,4 @@
-from typing import Any, Callable, Dict, Literal, Mapping, Optional, Union
+from typing import Any, Dict, Literal, Mapping, Optional, Union
 
 from msgflux.auto import AutoParams
 from msgflux.dotdict import dotdict
@@ -15,6 +15,7 @@ from msgflux.models.types import (
     VideoTextToAudioModel,
     VideoTextToVideoModel,
 )
+from msgflux.nn.modules.generator import Generator
 from msgflux.nn.modules.module import Module
 
 MEDIA_MODEL_TYPES = Union[
@@ -38,10 +39,10 @@ class MediaMaker(Module, metaclass=AutoParams):
         self,
         model: MEDIA_MODEL_TYPES,
         *,
-        guardrails: Optional[Dict[str, Callable]] = None,
+        hooks: Optional[list] = None,
         message_fields: Optional[Dict[str, Any]] = None,
         response_format: Optional[Literal["base64", "url"]] = None,
-        response_mode: Optional[str] = "plain_response",
+        response_mode: Optional[str] = None,
         negative_prompt: Optional[str] = None,
         config: Optional[Dict[str, Any]] = None,
         name: Optional[str] = None,
@@ -51,11 +52,8 @@ class MediaMaker(Module, metaclass=AutoParams):
         Args:
         model:
             MediaMaker Model client.
-        guardrails:
-            Dictionary mapping guardrail types to callables.
-            Valid keys: "input", "output"
-            !!! example
-                guardrails={"input": input_checker, "output": output_checker}
+        hooks:
+            List of Hook instances to register on the model.
         message_fields:
             Dictionary mapping Message field names to their paths in the Message object.
             Valid keys: "task_inputs", "task_multimodal_inputs"
@@ -71,9 +69,10 @@ class MediaMaker(Module, metaclass=AutoParams):
         response_format:
             Data output format.
         response_mode:
-            What the response should be.
-            * `plain_response` (default): Returns the final agent response directly.
-            * other: Write on field in Message object.
+            Controls how the response is returned.
+            * ``None`` (default): Returns the response directly.
+            * ``"<path>"``: Writes to ``obj.<path>`` and returns ``None``
+              (``dotdict`` or ``Message`` is mutated in place).
         negative_prompt:
             Instructions on what not to have.
         config:
@@ -91,8 +90,8 @@ class MediaMaker(Module, metaclass=AutoParams):
             MediaMaker name in snake case format.
         """
         super().__init__()
-        self._set_guardrails(guardrails)
         self._set_model(model)
+        self._set_hooks(hooks)
         self._set_negative_prompt(negative_prompt)
         self._set_response_mode(response_mode)
         self._set_response_format(response_format)
@@ -140,9 +139,7 @@ class MediaMaker(Module, metaclass=AutoParams):
         model_execution_params = self._prepare_model_execution(
             prompt, image, mask, model_preference
         )
-        if self.guardrails.get("input"):
-            self._execute_input_guardrail(model_execution_params)
-        model_response = self.model(**model_execution_params)
+        model_response = self.generator(**model_execution_params)
         return model_response
 
     async def _aexecute_model(
@@ -155,9 +152,7 @@ class MediaMaker(Module, metaclass=AutoParams):
         model_execution_params = self._prepare_model_execution(
             prompt, image, mask, model_preference
         )
-        if self.guardrails.get("input"):
-            await self._aexecute_input_guardrail(model_execution_params)
-        model_response = await self.model.acall(**model_execution_params)
+        model_response = await self.generator.acall(**model_execution_params)
         return model_response
 
     def _prepare_model_execution(
@@ -167,11 +162,7 @@ class MediaMaker(Module, metaclass=AutoParams):
         mask: Optional[str] = None,
         model_preference: Optional[str] = None,
     ) -> Dict[str, Any]:
-        # Start with config (contains fps, duration_seconds, aspect_ratio, n,
-        # and any other params)
         model_execution_params = dotdict(self.config) if self.config else dotdict()
-
-        # Add required parameters
         model_execution_params.prompt = prompt
         if image:
             model_execution_params.image = image
@@ -181,27 +172,7 @@ class MediaMaker(Module, metaclass=AutoParams):
             model_execution_params.model_preference = model_preference
         if self.negative_prompt:
             model_execution_params.negative_prompt = self.negative_prompt
-
         return model_execution_params
-
-    def _prepare_guardrail_execution(
-        self, model_execution_params: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        prompt = model_execution_params.prompt
-        image = model_execution_params.image
-        if image is not None:
-            messages = [
-                {"type": "text", "text": prompt},
-                {
-                    "type": "image_url",
-                    "image_url": {"url": f"data:image/jpeg;base64,{image}"},
-                },
-            ]
-            data = {"data": messages}
-        else:
-            data = {"data": prompt}
-        guardrail_params = data
-        return guardrail_params
 
     def _process_model_response(
         self, model_response: ModelResponse, message: Union[str, Message]
@@ -218,7 +189,7 @@ class MediaMaker(Module, metaclass=AutoParams):
     def _prepare_task(self, message: Union[str, Message], **kwargs) -> Dict[str, Any]:
         inputs = dotdict()
 
-        if isinstance(message, Message):
+        if isinstance(message, dotdict):
             prompt = self._extract_message_values(self.task_inputs, message)
         else:
             prompt = message
@@ -232,7 +203,7 @@ class MediaMaker(Module, metaclass=AutoParams):
             inputs.prompt = prompt
 
         model_preference = kwargs.pop("model_preference", None)
-        if model_preference is None and isinstance(message, Message):
+        if model_preference is None and isinstance(message, dotdict):
             model_preference = self.get_model_preference_from_message(message)
 
         if model_preference:
@@ -249,17 +220,18 @@ class MediaMaker(Module, metaclass=AutoParams):
     ) -> Dict[str, Any]:
         """Processes multimodal image inputs."""
         task_multimodal_inputs = kwargs.pop("task_multimodal_inputs", None)
-        if task_multimodal_inputs is None and isinstance(message, Message):
+        if task_multimodal_inputs is None and isinstance(message, dotdict):
             task_multimodal_inputs = self._extract_message_values(
                 self.task_multimodal_inputs, message
             )
 
         content = {}
 
-        for media_source in ["image", "mask"]:
-            data = task_multimodal_inputs.get(media_source, None)
-            if data:
-                content[media_source] = data
+        if task_multimodal_inputs:
+            for media_source in ["image", "mask"]:
+                data = task_multimodal_inputs.get(media_source, None)
+                if data:
+                    content[media_source] = data
 
         return content
 
@@ -270,13 +242,18 @@ class MediaMaker(Module, metaclass=AutoParams):
         return model_execution_params
 
     def _set_model(self, model: Union[BaseModel, ModelGateway]):
-        if isinstance(model, tuple(MEDIA_MODEL_TYPES)):
-            self.register_buffer("model", model)
+        if isinstance(model, (BaseModel, ModelGateway)):
+            self.generator = Generator(model)
         else:
             raise TypeError(
-                f"`model` need be a `{MEDIA_MODEL_TYPES!s}` "
+                f"`model` need be a `BaseModel` or `ModelGateway` "
                 f"model, given `{type(model)}`"
             )
+
+    @property
+    def model(self):
+        """Access underlying model."""
+        return self.generator.model
 
     def _set_response_format(self, response_format: Optional[str] = None):
         if isinstance(response_format, str) or response_format is None:

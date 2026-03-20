@@ -1,5 +1,5 @@
 from os import getenv
-from typing import List, Optional, Union
+from typing import Any, List, Optional, Union
 
 from msgflux.models.cache import ResponseCache, generate_cache_key
 from msgflux.models.httpx import HTTPXModelClient
@@ -12,7 +12,6 @@ from msgflux.models.types import (
     TextEmbedderModel,
     TextRerankerModel,
 )
-from msgflux.utils.tenacity import model_retry
 
 
 class _BaseJinaAI:
@@ -35,6 +34,10 @@ class _BaseJinaAI:
             )
         return key
 
+    @property
+    def _api_key(self):
+        return self._get_api_key()
+
 
 @register_model
 class JinaAITextReranker(_BaseJinaAI, HTTPXModelClient, TextRerankerModel):
@@ -49,6 +52,7 @@ class JinaAITextReranker(_BaseJinaAI, HTTPXModelClient, TextRerankerModel):
         *,
         enable_cache: Optional[bool] = False,
         cache_size: Optional[int] = 128,
+        retry: Optional[Any] = None,
     ):
         """Args:
         model_id:
@@ -59,6 +63,8 @@ class JinaAITextReranker(_BaseJinaAI, HTTPXModelClient, TextRerankerModel):
             If True, enables response caching to avoid redundant API calls.
         cache_size:
             Maximum number of responses to cache (default: 128).
+        retry:
+            Retry config. A tenacity decorator, False to disable, or None for default.
         """
         super().__init__()
         self.model_id = model_id
@@ -68,6 +74,8 @@ class JinaAITextReranker(_BaseJinaAI, HTTPXModelClient, TextRerankerModel):
         self._response_cache = (
             ResponseCache(maxsize=cache_size) if enable_cache else None
         )
+        self.retry = retry
+        self._initialize()
 
     def _generate(self, **kwargs):
         # Check cache if enabled
@@ -109,7 +117,6 @@ class JinaAITextReranker(_BaseJinaAI, HTTPXModelClient, TextRerankerModel):
 
         return response
 
-    @model_retry
     def __call__(self, query: str, documents: List[str]) -> ModelResponse:
         """Args:
         query:
@@ -120,7 +127,6 @@ class JinaAITextReranker(_BaseJinaAI, HTTPXModelClient, TextRerankerModel):
         response = self._generate(query=query, documents=documents)
         return response
 
-    @model_retry
     async def acall(self, query: str, documents: List[str]) -> ModelResponse:
         """Async version of __call__. Args:
         query:
@@ -147,6 +153,7 @@ class JinaAITextEmbedder(TextEmbedderModel, HTTPXModelClient, _BaseJinaAI):
         base_url: Optional[str] = None,
         enable_cache: Optional[bool] = False,
         cache_size: Optional[int] = 128,
+        retry: Optional[Any] = None,
     ):
         """Args:
         model_id:
@@ -169,6 +176,7 @@ class JinaAITextEmbedder(TextEmbedderModel, HTTPXModelClient, _BaseJinaAI):
         self._response_cache = (
             ResponseCache(maxsize=cache_size) if enable_cache else None
         )
+        self.retry = retry
         self._initialize()
         self._get_api_key()
 
@@ -216,7 +224,6 @@ class JinaAITextEmbedder(TextEmbedderModel, HTTPXModelClient, _BaseJinaAI):
 
         return response
 
-    @model_retry
     def __call__(
         self,
         data: Union[str, List[str]],
@@ -231,7 +238,6 @@ class JinaAITextEmbedder(TextEmbedderModel, HTTPXModelClient, _BaseJinaAI):
         response = self._generate(input=inputs)
         return response
 
-    @model_retry
     async def acall(
         self,
         data: Union[str, List[str]],
@@ -298,7 +304,6 @@ class JinaAIImageEmbedder(ImageEmbedderModel, JinaAITextEmbedder):
 
         return response
 
-    @model_retry
     def __call__(
         self,
         data: Union[str, List[str]],
@@ -313,7 +318,6 @@ class JinaAIImageEmbedder(ImageEmbedderModel, JinaAITextEmbedder):
         response = self._generate(input=inputs)
         return response
 
-    @model_retry
     async def acall(
         self,
         data: Union[str, List[str]],
@@ -344,6 +348,7 @@ class JinaAITextClassifier(TextClassifierModel, HTTPXModelClient, _BaseJinaAI):
         *,
         enable_cache: Optional[bool] = False,
         cache_size: Optional[int] = 128,
+        retry: Optional[Any] = None,
     ):
         super().__init__()
         self.model_id = model_id
@@ -354,6 +359,7 @@ class JinaAITextClassifier(TextClassifierModel, HTTPXModelClient, _BaseJinaAI):
         self._response_cache = (
             ResponseCache(maxsize=cache_size) if enable_cache else None
         )
+        self.retry = retry
         self._initialize()
         self._get_api_key()
 
@@ -405,7 +411,6 @@ class JinaAITextClassifier(TextClassifierModel, HTTPXModelClient, _BaseJinaAI):
 
         return response
 
-    @model_retry
     def __call__(
         self,
         data: Union[str, List[str]],
@@ -420,7 +425,6 @@ class JinaAITextClassifier(TextClassifierModel, HTTPXModelClient, _BaseJinaAI):
         response = self._generate(input=inputs)
         return response
 
-    @model_retry
     async def acall(
         self,
         data: Union[str, List[str]],
@@ -488,7 +492,6 @@ class JinaAIImageClassifier(JinaAITextClassifier, ImageClassifierModel):
 
         return response
 
-    @model_retry
     def __call__(
         self,
         data: Union[str, List[str]],
@@ -503,7 +506,6 @@ class JinaAIImageClassifier(JinaAITextClassifier, ImageClassifierModel):
         response = self._generate(input=inputs)
         return response
 
-    @model_retry
     async def acall(
         self,
         data: Union[str, List[str]],

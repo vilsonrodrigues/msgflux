@@ -1,5 +1,7 @@
 from datetime import datetime, timezone
+from inspect import cleandoc
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
     Dict,
@@ -11,11 +13,14 @@ from typing import (
     Union,
     cast,
 )
-from uuid import uuid4
 
 import msgspec
 
+if TYPE_CHECKING:
+    from msgflux.data.stores.base import CheckpointStore
+
 from msgflux.auto import AutoParams
+from msgflux.chat_messages import ChatMessages
 from msgflux.data.types import Audio, File, Image, Video
 from msgflux.dotdict import dotdict
 from msgflux.dsl.signature import (
@@ -25,6 +30,7 @@ from msgflux.dsl.signature import (
 )
 from msgflux.dsl.typed_parsers.registry import typed_parser_registry
 from msgflux.examples import Example, ExampleCollection
+from msgflux.exceptions import _GuardInterrupt
 from msgflux.generation.control_flow import ToolFlowControl
 from msgflux.generation.templates import (
     EXPECTED_OUTPUTS_TEMPLATE,
@@ -35,7 +41,8 @@ from msgflux.message import Message
 from msgflux.models.gateway import ModelGateway
 from msgflux.models.response import ModelResponse, ModelStreamResponse
 from msgflux.models.types import ChatCompletionModel
-from msgflux.nn.modules.lm import LM
+from msgflux.nn.hooks import Hook
+from msgflux.nn.modules.generator import Generator
 from msgflux.nn.modules.module import Module
 from msgflux.nn.modules.tool import ToolLibrary, ToolResponses
 from msgflux.nn.parameter import Parameter
@@ -48,11 +55,33 @@ from msgflux.utils.xml import apply_xml_tags
 # Reserved kwargs that should not be treated as task inputs
 _RESERVED_KWARGS = {
     "vars",
-    "model_state",
+    "messages",
     "task_multimodal_inputs",
     "context_inputs",
     "model_preference",
 }
+
+
+def _prepare_agent_guard_input(model_execution_params):
+    """Extract user content from ChatML messages for guard validation."""
+    messages = model_execution_params.get("messages")
+    if not messages:
+        return model_execution_params
+    last_message = messages[-1]
+    if isinstance(last_message.get("content"), list):
+        if last_message.get("content")[0]["type"] == "image_url":
+            return [last_message]
+        else:
+            return last_message.get("content")[-1]
+    else:
+        return last_message.get("content")
+
+
+def _prepare_agent_guard_output(model_response):
+    """Convert model response to string for guard validation."""
+    if isinstance(model_response, str):
+        return model_response
+    return str(model_response)
 
 
 class Agent(Module, metaclass=AutoParams):
@@ -79,17 +108,17 @@ class Agent(Module, metaclass=AutoParams):
         "tool_responses",
     ]
 
-    def __init__(
+    def __init__(  # noqa: C901
         self,
         name: str,
-        model: Union[ChatCompletionModel, ModelGateway, LM],
+        model: Union[ChatCompletionModel, ModelGateway, "Generator"],
         *,
         system_message: Optional[str] = None,
         instructions: Optional[str] = None,
         expected_output: Optional[str] = None,
         examples: Optional[Union[str, List[Union[Example, Mapping[str, Any]]]]] = None,
         system_extra_message: Optional[str] = None,
-        guardrails: Optional[Dict[str, Callable]] = None,
+        hooks: Optional[List["Hook"]] = None,
         message_fields: Optional[Dict[str, Any]] = None,
         config: Optional[Dict[str, Any]] = None,
         templates: Optional[Dict[str, str]] = None,
@@ -97,15 +126,17 @@ class Agent(Module, metaclass=AutoParams):
         prefilling: Optional[str] = None,
         generation_schema: Optional[msgspec.Struct] = None,
         typed_parser: Optional[str] = None,
-        response_mode: Optional[str] = "plain_response",
+        response_mode: Optional[str] = None,
         tools: Optional[List[Callable]] = None,
         mcp_servers: Optional[List[Mapping[str, Any]]] = None,
-        fixed_messages: Optional[List[Mapping[str, Any]]] = None,
         signature: Optional[Union[str, Signature]] = None,
         description: Optional[str] = None,
         annotations: Optional[Mapping[str, type]] = None,
+        checkpointer: Optional["CheckpointStore"] = None,
     ):
-        """Args:
+        """Initialize the Agent module.
+
+        Args:
         name:
             Agent name in snake case format.
         model:
@@ -116,25 +147,23 @@ class Agent(Module, metaclass=AutoParams):
             What the Agent should do.
         expected_output:
             What the response should be like.
-
-        Examples:
+        examples:
             Examples of inputs, reasoning and outputs.
         system_extra_message:
             An extra message in system prompt.
-        guardrails:
-            Dictionary mapping guardrail types to callables.
-            Valid keys: "input", "output"
+        hooks:
+            List of Hook instances (e.g. Guard) to register on the model.
             !!! example
-                guardrails={"input": input_checker, "output": output_checker}
+                hooks=[Guard(validator=checker, on="pre", message="Blocked.")]
         message_fields:
             Dictionary mapping Message field names to their paths in the Message object.
-            Valid keys: "task_inputs", "task_multimodal_inputs", "model_state",
+            Valid keys: "task_inputs", "task_multimodal_inputs", "messages",
             "context_inputs", "model_preference", "vars"
             !!! example
                 message_fields={
                     "task_inputs": "input.user",
                     "task_multimodal_inputs": {"audio": "audio.user"},
-                    "model_state": "messages.history",
+                    "messages": "messages.history",
                     "context_inputs": "context.data",
                     "model_preference": "model.preference",
                     "vars": "vars.data"
@@ -144,29 +173,31 @@ class Agent(Module, metaclass=AutoParams):
             - task_inputs: Field path for task input (str, dict, or tuple)
             - task_multimodal_inputs: Map datatype (image, video, audio, file)
               to field paths
-            - model_state: Field path for list of chats in ChatML format
+            - messages: Field path for list of chats in ChatML format
             - context_inputs: Field path for context (str or list of str)
             - model_preference: Field path for model preference (str, only valid
               with ModelGateway)
             - vars: Field path for inputs to templates and tools (str)
         config:
             Dictionary with configuration options.
-            Valid keys: "verbose", "return_model_state", "tool_choice",
-            "stream", "image_block_kwargs", "video_block_kwargs", "include_date"
+            Valid keys: "verbose", "return_messages", "tool_choice",
+            "stream", "image_block_kwargs", "video_block_kwargs",
+            "include_date", "capture_output"
             !!! example
                 config={
                     "verbose": True,
-                    "return_model_state": False,
+                    "return_messages": False,
                     "tool_choice": "auto",
                     "stream": False,
                     "image_block_kwargs": {"detail": "high"},
                     "video_block_kwargs": {"format": "mp4"},
-                    "include_date": False
+                    "include_date": False,
+                    "capture_output": True
                 }
 
             Configuration options:
             - verbose: Print model output and tool calls to console (bool)
-            - return_model_state: Return dict with model_state and response (bool)
+            - return_messages: Return dict with messages and response (bool)
             - tool_choice: Control tool selection ("auto", "required", or function name)
             - stream: Transmit response on-the-fly (bool)
             - image_block_kwargs: Dict of kwargs to pass to ChatBlock.image
@@ -174,7 +205,10 @@ class Agent(Module, metaclass=AutoParams):
             - video_block_kwargs: Dict of kwargs to pass to ChatBlock.video
               (e.g., {"format": "mp4"})
             - include_date: Include current date with weekday in system prompt
-              (bool). Format: "Weekday, Month DD, YYYY" (e.g., "Monday, December 09, 2025")
+              (bool). Format: "Weekday, Month DD, YYYY"
+            - capture_output: Automatically append the agent's response to
+              ChatMessages after each turn (bool, default True). When False,
+              the user must manually add the response.
         templates:
             Dictionary mapping template types to Jinja template strings.
             Valid keys: "task", "response", "context", "system_prompt"
@@ -183,16 +217,18 @@ class Agent(Module, metaclass=AutoParams):
                     "task": "Who was {{person}}?",
                     "response": "{{final_answer}}",
                     "context": "Context: {{context}}",
-                    "system_prompt": "Custom system prompt: {% if system_message %}{{ system_message }}{% endif %}"
+                    "system_prompt": "Custom system prompt: ..."
                 }
 
             Template descriptions:
             - task: Formats the task/prompt sent to the model
             - response: Formats the model's response
             - context: Formats context_inputs (does NOT apply to context_cache)
-            - system_prompt: Overrides the default system prompt template. If not provided,
-              uses SYSTEM_PROMPT_TEMPLATE. Available variables: system_message, instructions,
-              expected_output, examples, system_extra_message, current_date (if include_date=True)
+            - system_prompt: Overrides the default system prompt
+              template. If not provided, uses SYSTEM_PROMPT_TEMPLATE.
+              Available variables: system_message, instructions,
+              expected_output, examples, system_extra_message,
+              current_date (if include_date=True)
         context_cache:
             A fixed context.
         prefilling:
@@ -204,9 +240,10 @@ class Agent(Module, metaclass=AutoParams):
             Converts the model raw output into a typed-dict. Supported parser:
             `typed_xml`.
         response_mode:
-            What the response should be.
-            * `plain_response` (default): Returns the final agent response directly.
-            * other: Write on field in Message object.
+            Controls how the response is returned.
+            * ``None`` (default): Returns the response directly.
+            * ``"<path>"``: Writes to ``obj.<path>`` and returns ``None``
+              (``dotdict`` or ``Message`` is mutated in place).
         tools:
             A list of callable objects.
         mcp_servers:
@@ -226,8 +263,6 @@ class Agent(Module, metaclass=AutoParams):
                     "include_tools": ["read_file", "write_file"],
                     "tool_config": {"read_file": {"inject_vars": ["context"]}}
                 }]
-        fixed_messages:
-            A fixed list of chats in ChatML format.
         signature:
             A DSPy-based signature. A signature creates a task_template,
             a generation_schema, instructions and examples (both if passed).
@@ -237,6 +272,10 @@ class Agent(Module, metaclass=AutoParams):
             The Agent description. It's useful when using an agent-as-a-tool.
         annotations
             Define the input and output annotations to use the agent-as-a-function.
+        checkpointer:
+            A :class:`CheckpointStore` instance for durable execution.
+            When provided, the agent saves state after each tool-call
+            iteration so that progress is not lost on failure.
         """
         if annotations is None:
             annotations = {"message": str, "return": str}
@@ -262,16 +301,20 @@ class Agent(Module, metaclass=AutoParams):
             self.set_annotations({"message": str, "return": str})
 
         self._set_config(config)
+        self.checkpointer = checkpointer
 
         stream = config.get("stream", False) if config else False
+
+        if checkpointer is not None and stream is True:
+            raise ValueError("`checkpointer` is not `stream=True` compatible")
 
         if stream is True:
             if generation_schema is not None:
                 raise ValueError("`generation_schema` is not `stream=True` compatible")
 
-            if guardrails is not None and "output" in guardrails:
+            if hooks and any(getattr(h, "on", None) == "post" for h in hooks):
                 raise ValueError(
-                    "`guardrails['output']` is not `stream=True` compatible"
+                    "Hooks with `on='post'` are not `stream=True` compatible"
                 )
 
             if templates is not None and templates.get("response") is not None:
@@ -283,12 +326,18 @@ class Agent(Module, metaclass=AutoParams):
                 raise ValueError("`typed_parser` is not `stream=True` compatible")
 
         self._set_context_cache(context_cache)
-        self._set_fixed_messages(fixed_messages)
-        self._set_guardrails(guardrails)
         self._set_message_fields(message_fields)
         self._set_model(model)
+        self._set_hooks(
+            hooks,
+            processors={
+                "guard_pre": _prepare_agent_guard_input,
+                "guard_post": _prepare_agent_guard_output,
+            },
+        )
         self._set_prefilling(prefilling)
         self._set_system_extra_message(system_extra_message)
+
         self._set_response_mode(response_mode)
         self._set_templates(templates)
         self._set_tools(tools, mcp_servers)
@@ -328,7 +377,7 @@ class Agent(Module, metaclass=AutoParams):
             **kwargs: Can include:
                 - Reserved kwargs (runtime overrides for message_fields):
                     - task_multimodal_inputs: Override multimodal inputs
-                    - model_state: Override chat messages (model state)
+                    - messages: Override chat messages (chat history)
                     - context_inputs: Override context
                     - model_preference: Override model preference
                     - vars: Override template/tool variables
@@ -368,80 +417,106 @@ class Agent(Module, metaclass=AutoParams):
             ... )
             >>> agent(name="Vilson", age=27)
         """
-        inputs = self._prepare_task(message, **kwargs)
-        model_response = self._execute_model(prefilling=self.prefilling, **inputs)
-        response = self._process_model_response(message, model_response, **inputs)
-        return response
+        resumed = self._try_resume_from_checkpoint(kwargs.get("messages"))
+        if resumed is not None:
+            inputs = resumed
+        else:
+            inputs = self._prepare_task(message, **kwargs)
+
+        try:
+            model_response = self._execute_model(
+                message=message, prefilling=self.prefilling, **inputs
+            )
+            if isinstance(model_response, str):
+                return self._define_response_mode(model_response, message)
+            response = self._process_model_response(message, model_response, **inputs)
+            return response
+        except Exception:
+            try:
+                self._checkpoint_save_on_error(inputs)
+            except Exception:  # noqa: S110
+                pass  # Don't mask the original error
+            raise
 
     async def aforward(
         self, message: Optional[Union[str, Mapping[str, Any], Message]] = None, **kwargs
     ) -> Union[str, Mapping[str, None], ModelStreamResponse, Message]:
         """Async version of forward."""
-        inputs = await self._aprepare_task(message, **kwargs)
-        model_response = await self._aexecute_model(
-            prefilling=self.prefilling, **inputs
-        )
-        response = await self._aprocess_model_response(
-            message, model_response, **inputs
-        )
-        return response
+        resumed = await self._atry_resume_from_checkpoint(kwargs.get("messages"))
+        if resumed is not None:
+            inputs = resumed
+        else:
+            inputs = await self._aprepare_task(message, **kwargs)
+
+        try:
+            model_response = await self._aexecute_model(
+                message=message, prefilling=self.prefilling, **inputs
+            )
+            if isinstance(model_response, str):
+                return self._define_response_mode(model_response, message)
+            response = await self._aprocess_model_response(
+                message, model_response, **inputs
+            )
+            return response
+        except Exception:
+            try:
+                await self._acheckpoint_save_on_error(inputs)
+            except Exception:  # noqa: S110
+                pass  # Don't mask the original error
+            raise
 
     def _execute_model(
         self,
-        model_state: List[Mapping[str, Any]],
+        messages: List[Mapping[str, Any]],
         vars: Mapping[str, Any],
+        message: Optional[Union[str, Mapping[str, Any], Message]] = None,  # noqa: ARG002
         prefilling: Optional[str] = None,
         model_preference: Optional[str] = None,
-    ) -> Union[ModelResponse, ModelStreamResponse]:
+    ) -> Union[str, ModelResponse, ModelStreamResponse]:
         model_execution_params = self._prepare_model_execution(
-            model_state=model_state,
+            messages=messages,
             prefilling=prefilling,
             model_preference=model_preference,
             vars=vars,
         )
-        if self.guardrails.get("input"):
-            self._execute_input_guardrail(model_execution_params)
         if self.config.get("verbose", False):
             cprint(f"[{self.name}][call_model]", bc="br1", ls="b")
-        model_response = self.lm(**model_execution_params)
+        try:
+            model_response = self.generator(**model_execution_params)
+        except _GuardInterrupt as e:
+            return e.response
         return model_response
 
     async def _aexecute_model(
         self,
-        model_state: List[Mapping[str, Any]],
+        messages: List[Mapping[str, Any]],
         vars: Mapping[str, Any],
+        message: Optional[Union[str, Mapping[str, Any], Message]] = None,  # noqa: ARG002
         prefilling: Optional[str] = None,
         model_preference: Optional[str] = None,
-    ) -> Union[ModelResponse, ModelStreamResponse]:
+    ) -> Union[str, ModelResponse, ModelStreamResponse]:
         model_execution_params = self._prepare_model_execution(
-            model_state=model_state,
+            messages=messages,
             prefilling=prefilling,
             model_preference=model_preference,
             vars=vars,
         )
-        if self.guardrails.get("input"):
-            await self._aexecute_input_guardrail(model_execution_params)
         if self.config.get("verbose", False):
             cprint(f"[{self.name}][call_model]", bc="br1", ls="b")
-        model_response = await self.lm.acall(**model_execution_params)
+        try:
+            model_response = await self.generator.acall(**model_execution_params)
+        except _GuardInterrupt as e:
+            return e.response
         return model_response
 
     def _prepare_model_execution(
         self,
-        model_state: List[Mapping[str, Any]],
+        messages: List[Mapping[str, Any]],
         vars: Mapping[str, Any],
         prefilling: Optional[str] = None,
         model_preference: Optional[str] = None,
     ) -> Mapping[str, Any]:
-        # model_state, prefilling, model_preference, vars
-        agent_state = []
-
-        if self.fixed_messages:
-            agent_state.extend(self.fixed_messages)
-
-        agent_state.extend(model_state)
-
-        system_prompt = self._get_system_prompt(vars)
+        system_prompt = self.get_system_prompt(vars)
 
         tool_schemas = self.tool_library.get_tool_json_schemas()
         if not tool_schemas:
@@ -461,7 +536,7 @@ class Agent(Module, metaclass=AutoParams):
             tool_choice = None  # Disable tool_choice to controlflow preference
 
         model_execution_params = dotdict(
-            messages=agent_state,
+            messages=messages,
             system_prompt=system_prompt or None,
             prefilling=prefilling,
             stream=self.config.get("stream", False),
@@ -476,209 +551,197 @@ class Agent(Module, metaclass=AutoParams):
 
         return model_execution_params
 
-    def _prepare_input_guardrail_execution(
-        self, model_execution_params: Mapping[str, Any]
-    ) -> Mapping[str, Any]:
-        messages = model_execution_params.get("messages")
-        last_message = messages[-1]
-        if isinstance(last_message.get("content"), list):
-            if last_message.get("content")[0]["type"] == "image_url":
-                data = [last_message]
-            else:  # audio, file
-                data = last_message.get("content")[-1]  # text input
-        else:
-            data = last_message.get("content")
-        guardrail_params = {"data": data}
-        return guardrail_params
-
     def _process_model_response(
         self,
         message: Union[str, Mapping[str, Any], Message],
         model_response: Union[ModelResponse, ModelStreamResponse],
-        model_state: List[Mapping[str, Any]],
+        messages: List[Mapping[str, Any]],
         vars: Mapping[str, Any],
         model_preference: Optional[str] = None,
     ) -> Union[str, Mapping[str, Any], Message, ModelStreamResponse]:
         if "tool_call" in model_response.response_type:
-            model_response, model_state = self._process_tool_call_response(
-                model_response, model_state, vars, model_preference
+            model_response, messages = self._process_tool_call_response(
+                model_response, messages, vars, model_preference
             )
         elif is_subclass_of(self.generation_schema, ToolFlowControl):
-            model_response, model_state = self._process_tool_flow_control_response(
-                model_response, model_state, vars, model_preference
+            model_response, messages = self._process_tool_flow_control_response(
+                model_response, messages, vars, model_preference
             )
 
+        response_metadata = None
         if isinstance(model_response, (ModelResponse, ModelStreamResponse)):
             raw_response = self._extract_raw_response(model_response)
             response_type = model_response.response_type
+            response_metadata = model_response.metadata
         else:  # returns tool result as response or tool call as response
             raw_response = model_response
             response_type = "tool_responses"
 
-        if response_type in self._supported_outputs:
-            response = self._prepare_response(
-                raw_response, response_type, model_state, message, vars
+        if self.config.get("capture_output", True):
+            self._append_response_to_chat_messages(
+                messages, raw_response, response_type, response_metadata
             )
-            return response
-        else:
-            raise ValueError(f"Unsupported `response_type={response_type}`")
+        self._finalize_chat_turn(
+            messages, raw_response, response_type, response_metadata
+        )
+        self._checkpoint_save(messages, vars, status="completed")
+
+        if response_type in self._supported_outputs:
+            return self._prepare_response(
+                raw_response, response_type, messages, message, vars
+            )
+        raise ValueError(f"Unsupported `response_type={response_type}`")
 
     async def _aprocess_model_response(
         self,
         message: Union[str, Mapping[str, Any], Message],
         model_response: Union[ModelResponse, ModelStreamResponse],
-        model_state: List[Mapping[str, Any]],
+        messages: List[Mapping[str, Any]],
         vars: Mapping[str, Any],
         model_preference: Optional[str] = None,
     ) -> Union[str, Mapping[str, Any], Message, ModelStreamResponse]:
         if "tool_call" in model_response.response_type:
-            model_response, model_state = await self._aprocess_tool_call_response(
-                model_response, model_state, vars, model_preference
+            model_response, messages = await self._aprocess_tool_call_response(
+                model_response, messages, vars, model_preference
             )
         elif is_subclass_of(self.generation_schema, ToolFlowControl):
             (
                 model_response,
-                model_state,
+                messages,
             ) = await self._aprocess_tool_flow_control_response(
-                model_response, model_state, vars, model_preference
+                model_response, messages, vars, model_preference
             )
 
+        response_metadata = None
         if isinstance(model_response, (ModelResponse, ModelStreamResponse)):
             raw_response = self._extract_raw_response(model_response)
             response_type = model_response.response_type
+            response_metadata = model_response.metadata
         else:  # returns tool result as response or tool call as response
             raw_response = model_response
             response_type = "tool_responses"
 
-        if response_type in self._supported_outputs:
-            response = await self._aprepare_response(
-                raw_response, response_type, model_state, message, vars
+        if self.config.get("capture_output", True):
+            self._append_response_to_chat_messages(
+                messages, raw_response, response_type, response_metadata
             )
-            return response
-        else:
-            raise ValueError(f"Unsupported `response_type={response_type}`")
+        self._finalize_chat_turn(
+            messages, raw_response, response_type, response_metadata
+        )
+        await self._acheckpoint_save(messages, vars, status="completed")
+
+        if response_type in self._supported_outputs:
+            return self._prepare_response(
+                raw_response, response_type, messages, message, vars
+            )
+        raise ValueError(f"Unsupported `response_type={response_type}`")
 
     def _process_tool_flow_control_response(
         self,
         model_response: Union[ModelResponse, ModelStreamResponse],
-        model_state: Mapping[str, Any],
+        messages: Mapping[str, Any],
         vars: Mapping[str, Any],
         model_preference: Optional[str] = None,
     ) -> Tuple[Union[str, Mapping[str, Any], ModelStreamResponse], Mapping[str, Any]]:
-        """Handle the fields returned by `ReAct`. If the fields are different,
-        you must rewrite this function.
-        """
+        """Handle tool flow control responses using the ToolFlowControl interface."""
+        flow_control = self.generation_schema
         while True:
             raw_response = self._extract_raw_response(model_response)
 
-            if getattr(raw_response, "final_answer", None):
-                return model_response, model_state
+            # Use ToolFlowControl interface via generation_schema
+            flow_result = flow_control.extract_flow_result(raw_response)
 
-            if getattr(raw_response, "current_step", None):
-                step = raw_response.current_step
-                actions = step.actions
-                reasoning = step.thought
+            if flow_result.is_complete:
+                if flow_result.final_response is not None:
+                    model_response.data = flow_result.final_response
+                return model_response, messages
 
-                if self.config.get("verbose", False):
-                    repr_str = f"[{self.name}][tool_calls_reasoning] {reasoning}"
-                    cprint(repr_str, bc="br2", ls="b")
+            if self.config.get("verbose", False) and flow_result.reasoning:
+                cprint(
+                    f"[{self.name}][tool_calls_reasoning] {flow_result.reasoning}",
+                    bc="br2",
+                    ls="b",
+                )
 
-                for act in actions:
-                    act.id = str(uuid4())  # Add tool_id
-
-                tool_callings = [(act.id, act.name, act.arguments) for act in actions]
-                tool_results = self._process_tool_call(tool_callings, model_state, vars)
+            if flow_result.tool_calls:
+                tool_results = self._process_tool_call(
+                    flow_result.tool_calls, messages, vars
+                )
 
                 if tool_results.return_directly:
                     tool_calls = tool_results.to_dict().pop("return_directly")
-                    tool_calls["reasoning"] = reasoning
+                    tool_calls["reasoning"] = flow_result.reasoning
                     tool_responses = dotdict(tool_responses=tool_calls)
-                    # TODO converter tool calls em tool call msgs
-                    return tool_responses, model_state
+                    return tool_responses, messages
 
-                for act in actions:  # Add results
-                    result = tool_results.get_by_id(act.id).result
-                    error = tool_results.get_by_id(act.id).error
-                    act.result = result or error
+                # Use interface to inject results
+                raw_response = flow_control.inject_results(raw_response, tool_results)
 
-                # Compact steps history
-                if model_state and model_state[-1].get("role") == "assistant":
-                    last_react_msg = model_state[-1].get("content")
-                    react_state = msgspec.json.decode(last_react_msg)
-                    react_state.append(raw_response)
-                    model_state[-1] = ChatBlock.assist(react_state)
-                else:
-                    react_state = [raw_response]
-                    model_state.append(ChatBlock.assist(react_state))
+                # Use interface to build history
+                messages = flow_control.build_history(raw_response, messages)
+                self._checkpoint_save(messages, vars)
 
             model_response = self._execute_model(
-                model_state=model_state, model_preference=model_preference, vars=vars
+                messages=messages, model_preference=model_preference, vars=vars
             )
 
     async def _aprocess_tool_flow_control_response(
         self,
         model_response: Union[ModelResponse, ModelStreamResponse],
-        model_state: Mapping[str, Any],
+        messages: Mapping[str, Any],
         vars: Mapping[str, Any],
         model_preference: Optional[str] = None,
     ) -> Tuple[Union[str, Mapping[str, Any], ModelStreamResponse], Mapping[str, Any]]:
         """Async version of _process_tool_flow_control_response.
-        Handle the fields returned by `ReAct`. If the fields are different,
-        you must rewrite this function.
+        Handle tool flow control responses using the ToolFlowControl interface.
         """
+        flow_control = self.generation_schema
         while True:
             raw_response = self._extract_raw_response(model_response)
 
-            if getattr(raw_response, "final_answer", None):
-                return model_response, model_state
+            # Use ToolFlowControl interface via generation_schema (async)
+            flow_result = await flow_control.aextract_flow_result(raw_response)
 
-            if getattr(raw_response, "current_step", None):
-                step = raw_response.current_step
-                actions = step.actions
-                reasoning = step.thought
+            if flow_result.is_complete:
+                if flow_result.final_response is not None:
+                    model_response.data = flow_result.final_response
+                return model_response, messages
 
-                if self.config.get("verbose", False):
-                    repr_str = f"[{self.name}][tool_calls_reasoning] {reasoning}"
-                    cprint(repr_str, bc="br2", ls="b")
+            if self.config.get("verbose", False) and flow_result.reasoning:
+                cprint(
+                    f"[{self.name}][tool_calls_reasoning] {flow_result.reasoning}",
+                    bc="br2",
+                    ls="b",
+                )
 
-                for act in actions:
-                    act.id = str(uuid4())  # Add tool_id
-
-                tool_callings = [(act.id, act.name, act.arguments) for act in actions]
+            if flow_result.tool_calls:
                 tool_results = await self._aprocess_tool_call(
-                    tool_callings, model_state, vars
+                    flow_result.tool_calls, messages, vars
                 )
 
                 if tool_results.return_directly:
                     tool_calls = tool_results.to_dict().pop("return_directly")
-                    tool_calls["reasoning"] = reasoning
+                    tool_calls["reasoning"] = flow_result.reasoning
                     tool_responses = dotdict(tool_responses=tool_calls)
-                    # TODO converter tool calls em tool call msgs
-                    return tool_responses, model_state
+                    return tool_responses, messages
 
-                for act in actions:  # Add results
-                    result = tool_results.get_by_id(act.id).result
-                    error = tool_results.get_by_id(act.id).error
-                    act.result = result or error
+                # Use interface to inject results (async version)
+                raw_response = await flow_control.ainject_results(
+                    raw_response, tool_results
+                )
 
-                # Compact steps history
-                if model_state and model_state[-1].get("role") == "assistant":
-                    last_react_msg = model_state[-1].get("content")
-                    react_state = msgspec.json.decode(last_react_msg)
-                    react_state.append(raw_response)
-                    model_state[-1] = ChatBlock.assist(react_state)
-                else:
-                    react_state = [raw_response]
-                    model_state.append(ChatBlock.assist(react_state))
+                # Use interface to build history (async version)
+                messages = await flow_control.abuild_history(raw_response, messages)
+                await self._acheckpoint_save(messages, vars)
 
             model_response = await self._aexecute_model(
-                model_state=model_state, model_preference=model_preference, vars=vars
+                messages=messages, model_preference=model_preference, vars=vars
             )
 
     def _process_tool_call_response(
         self,
         model_response: Union[ModelResponse, ModelStreamResponse],
-        model_state: Mapping[str, Any],
+        messages: Mapping[str, Any],
         vars: Mapping[str, Any],
         model_preference: Optional[str] = None,
     ) -> Tuple[Union[str, Mapping[str, Any], ModelStreamResponse], Mapping[str, Any]]:
@@ -688,44 +751,43 @@ class Agent(Module, metaclass=AutoParams):
         'name': 'get_delivery_date'}}]}, {'role': 'tool', 'tool_call_id': 'call_HA',
         'content': '2024-10-15'}].
         """
-        while True:
-            if model_response.response_type == "tool_call":
-                raw_response = model_response.data
-                reasoning = raw_response.reasoning
+        while model_response.response_type == "tool_call":
+            raw_response = model_response.data
+            reasoning = raw_response.reasoning
 
-                if self.config.get("verbose", False):
-                    if reasoning:
-                        repr_str = f"[{self.name}][tool_calls_reasoning] {reasoning}"
-                        cprint(repr_str, bc="br2", ls="b")
+            if self.config.get("verbose", False) and reasoning:
+                cprint(
+                    f"[{self.name}][tool_calls_reasoning] {reasoning}",
+                    bc="br2",
+                    ls="b",
+                )
 
-                tool_callings = raw_response.get_calls()
-                tool_results = self._process_tool_call(tool_callings, model_state, vars)
+            tool_callings = raw_response.get_calls()
+            tool_results = self._process_tool_call(tool_callings, messages, vars)
 
-                if tool_results.return_directly:
-                    tool_calls = tool_results.to_dict()
-                    tool_calls.pop("return_directly")
-                    tool_calls["reasoning"] = reasoning
-                    tool_responses = dotdict(tool_responses=tool_calls)
-                    return tool_responses, model_state
+            if tool_results.return_directly:
+                tool_calls = tool_results.to_dict()
+                tool_calls.pop("return_directly")
+                tool_calls["reasoning"] = reasoning
+                return dotdict(tool_responses=tool_calls), messages
 
-                id_results = {
-                    call.id: call.result or call.error
-                    for call in tool_results.tool_calls
-                }
-                raw_response.insert_results(id_results)
-                tool_responses_message = raw_response.get_messages()
-                model_state.extend(tool_responses_message)
-            else:
-                return model_response, model_state
+            id_results = {
+                call.id: call.result or call.error for call in tool_results.tool_calls
+            }
+            raw_response.insert_results(id_results)
+            messages.extend(raw_response.get_messages())
+            self._checkpoint_save(messages, vars)
 
             model_response = self._execute_model(
-                model_state=model_state, model_preference=model_preference, vars=vars
+                messages=messages, model_preference=model_preference, vars=vars
             )
+
+        return model_response, messages
 
     async def _aprocess_tool_call_response(
         self,
         model_response: Union[ModelResponse, ModelStreamResponse],
-        model_state: Mapping[str, Any],
+        messages: Mapping[str, Any],
         vars: Mapping[str, Any],
         model_preference: Optional[str] = None,
     ) -> Tuple[Union[str, Mapping[str, Any], ModelStreamResponse], Mapping[str, Any]]:
@@ -735,55 +797,55 @@ class Agent(Module, metaclass=AutoParams):
         'name': 'get_delivery_date'}}]}, {'role': 'tool', 'tool_call_id': 'call_HA',
         'content': '2024-10-15'}].
         """
-        while True:
-            if model_response.response_type == "tool_call":
-                raw_response = model_response.data
-                reasoning = raw_response.reasoning
+        while model_response.response_type == "tool_call":
+            raw_response = model_response.data
+            reasoning = raw_response.reasoning
 
-                if self.config.get("verbose", False):
-                    if reasoning:
-                        repr_str = f"[{self.name}][tool_calls_reasoning] {reasoning}"
-                        cprint(repr_str, bc="br2", ls="b")
-
-                tool_callings = raw_response.get_calls()
-                tool_results = await self._aprocess_tool_call(
-                    tool_callings, model_state, vars
+            if self.config.get("verbose", False) and reasoning:
+                cprint(
+                    f"[{self.name}][tool_calls_reasoning] {reasoning}",
+                    bc="br2",
+                    ls="b",
                 )
 
-                if tool_results.return_directly:
-                    tool_calls = tool_results.to_dict()
-                    tool_calls.pop("return_directly")
-                    tool_calls["reasoning"] = reasoning
-                    tool_responses = dotdict(tool_responses=tool_calls)
-                    return tool_responses, model_state
+            tool_callings = raw_response.get_calls()
+            tool_results = await self._aprocess_tool_call(tool_callings, messages, vars)
 
-                id_results = {
-                    call.id: call.result or call.error
-                    for call in tool_results.tool_calls
-                }
-                raw_response.insert_results(id_results)
-                tool_responses_message = raw_response.get_messages()
-                model_state.extend(tool_responses_message)
-            else:
-                return model_response, model_state
+            if tool_results.return_directly:
+                tool_calls = tool_results.to_dict()
+                tool_calls.pop("return_directly")
+                tool_calls["reasoning"] = reasoning
+                return dotdict(tool_responses=tool_calls), messages
+
+            id_results = {
+                call.id: call.result or call.error for call in tool_results.tool_calls
+            }
+            raw_response.insert_results(id_results)
+            messages.extend(raw_response.get_messages())
+            await self._acheckpoint_save(messages, vars)
 
             model_response = await self._aexecute_model(
-                model_state=model_state, model_preference=model_preference, vars=vars
+                messages=messages, model_preference=model_preference, vars=vars
             )
+
+        return model_response, messages
 
     def _process_tool_call(
         self,
         tool_callings: Mapping[str, Any],
-        model_state: List[Mapping[str, Any]],
+        messages: List[Mapping[str, Any]],
         vars: Mapping[str, Any],
     ) -> ToolResponses:
         if self.config.get("verbose", False):
             for call in tool_callings:
                 repr_str = f"[{self.name}][tool_call] {call[1]}: {call[2]}"
                 cprint(repr_str, bc="br2", ls="b")
+        tool_messages = (
+            messages.to_chatml() if isinstance(messages, ChatMessages) else messages
+        )
         tool_results = self.tool_library(
             tool_callings=tool_callings,
-            model_state=model_state,
+            messages=tool_messages,
             vars=vars,
         )
         if self.config.get("verbose", False):
@@ -800,7 +862,7 @@ class Agent(Module, metaclass=AutoParams):
     async def _aprocess_tool_call(
         self,
         tool_callings: Mapping[str, Any],
-        model_state: List[Mapping[str, Any]],
+        messages: List[Mapping[str, Any]],
         vars: Mapping[str, Any],
     ) -> ToolResponses:
         """Async version of _process_tool_call."""
@@ -808,9 +870,12 @@ class Agent(Module, metaclass=AutoParams):
             for call in tool_callings:
                 repr_str = f"[{self.name}][tool_call] {call[1]}: {call[2]}"
                 cprint(repr_str, bc="br2", ls="b")
+        tool_messages = (
+            messages.to_chatml() if isinstance(messages, ChatMessages) else messages
+        )
         tool_results = await self.tool_library.acall(
             tool_callings=tool_callings,
-            model_state=model_state,
+            messages=tool_messages,
             vars=vars,
         )
         if self.config.get("verbose", False):
@@ -828,7 +893,7 @@ class Agent(Module, metaclass=AutoParams):
         self,
         raw_response: Union[str, Mapping[str, Any], ModelStreamResponse],
         response_type: str,
-        model_state: List[Mapping[str, Any]],
+        messages: List[Mapping[str, Any]],
         message: Union[str, Mapping[str, Any], Message],
         vars: Mapping[str, Any],
     ) -> Union[str, Mapping[str, Any], ModelStreamResponse]:
@@ -837,8 +902,6 @@ class Agent(Module, metaclass=AutoParams):
             if response_type == "text_generation" or "structured" in response_type:
                 if self.config.get("verbose", False):
                     cprint(f"[{self.name}][response] {raw_response}", bc="y", ls="b")
-                if self.guardrails.get("output"):
-                    self._execute_output_guardrail(raw_response)
                 if self.templates.get("response"):
                     if isinstance(raw_response, str):
                         pre_response = self._format_response_template(vars)
@@ -851,59 +914,247 @@ class Agent(Module, metaclass=AutoParams):
                             raw_response
                         )
 
-        response = formatted_response or raw_response
-        if self.config.get("return_model_state", False):
+        result = formatted_response or raw_response
+        if self.config.get("return_messages", False):
             if response_type == "tool_responses":
-                response.model_state = model_state
+                result.messages = messages
             else:
-                response = dotdict(agent_response=response, model_state=model_state)
-        return self._define_response_mode(response, message)
+                result = dotdict(response=result, messages=messages)
+        return self._define_response_mode(result, message)
 
-    async def _aprepare_response(
+    # --- ChatMessages lifecycle helpers ---
+
+    def _coerce_chat_messages(
+        self, messages: Optional[Union[ChatMessages, List[Mapping[str, Any]]]]
+    ) -> ChatMessages:
+        if messages is None:
+            return ChatMessages()
+        if isinstance(messages, ChatMessages):
+            return messages
+        if isinstance(messages, list):
+            return ChatMessages(messages)
+        raise TypeError(
+            "`messages` must be a `ChatMessages`, a list of mappings or None, "
+            f"given `{type(messages)}`"
+        )
+
+    def _build_checkpoint(
         self,
+        messages: Union[ChatMessages, List[Mapping[str, Any]]],
+        vars: Mapping[str, Any],
+        status: str = "running",
+    ) -> Optional[Tuple[str, str, str, Dict[str, Any]]]:
+        """Build ``(namespace, session_id, run_id, state)`` or ``None``."""
+        if self.checkpointer is None or not isinstance(messages, ChatMessages):
+            return None
+        namespace = self.get_module_name()
+        session_id = messages.session_id or "default"
+        run_id = messages.turns[-1]["turn_id"] if messages.turns else "run"
+        state = {
+            "status": status,
+            "messages": messages._to_state(),
+            "vars": dict(vars) if vars else {},
+        }
+        return namespace, session_id, run_id, state
+
+    def _checkpoint_save(
+        self,
+        messages: Union[ChatMessages, List[Mapping[str, Any]]],
+        vars: Mapping[str, Any],
+        status: str = "running",
+    ) -> None:
+        checkpoint = self._build_checkpoint(messages, vars, status)
+        if checkpoint is None:
+            return
+        namespace, session_id, run_id, state = checkpoint
+        self.checkpointer.save_state(namespace, session_id, run_id, state)
+
+    async def _acheckpoint_save(
+        self,
+        messages: Union[ChatMessages, List[Mapping[str, Any]]],
+        vars: Mapping[str, Any],
+        status: str = "running",
+    ) -> None:
+        checkpoint = self._build_checkpoint(messages, vars, status)
+        if checkpoint is None:
+            return
+        namespace, session_id, run_id, state = checkpoint
+        if hasattr(self.checkpointer, "asave_state"):
+            await self.checkpointer.asave_state(namespace, session_id, run_id, state)
+        else:
+            self.checkpointer.save_state(namespace, session_id, run_id, state)
+
+    def _checkpoint_save_on_error(self, inputs: Mapping[str, Any]) -> None:
+        if self.checkpointer is None:
+            return
+        messages = inputs.get("messages")
+        vars = inputs.get("vars", {})
+        self._checkpoint_save(messages, vars, status="failed")
+
+    async def _acheckpoint_save_on_error(self, inputs: Mapping[str, Any]) -> None:
+        if self.checkpointer is None:
+            return
+        messages = inputs.get("messages")
+        vars = inputs.get("vars", {})
+        await self._acheckpoint_save(messages, vars, status="failed")
+
+    def _try_resume_from_checkpoint(
+        self,
+        messages_kwarg: Optional[Union[ChatMessages, List[Mapping[str, Any]]]],
+    ) -> Optional[Mapping[str, Any]]:
+        """Check for incomplete runs and resume execution.
+
+        Returns a dict with ``messages``, ``vars``, ``model_preference``
+        suitable for passing directly to ``_execute_model``, or ``None``
+        if there is nothing to resume.
+        """
+        if self.checkpointer is None:
+            return None
+
+        if isinstance(messages_kwarg, ChatMessages):
+            session_id = messages_kwarg.session_id or "default"
+        else:
+            session_id = "default"
+
+        namespace = self.get_module_name()
+        incomplete = self.checkpointer.find_incomplete_runs(namespace, session_id)
+        if not incomplete:
+            return None
+
+        run = incomplete[0]
+        state = self.checkpointer.load_state(namespace, session_id, run["run_id"])
+        if state is None:
+            return None
+
+        restored = ChatMessages()
+        restored._hydrate_state(state["messages"])
+        return {
+            "messages": restored,
+            "vars": state.get("vars", {}),
+            "model_preference": None,
+        }
+
+    async def _atry_resume_from_checkpoint(
+        self,
+        messages_kwarg: Optional[Union[ChatMessages, List[Mapping[str, Any]]]],
+    ) -> Optional[Mapping[str, Any]]:
+        """Async version of _try_resume_from_checkpoint."""
+        if self.checkpointer is None:
+            return None
+
+        if isinstance(messages_kwarg, ChatMessages):
+            session_id = messages_kwarg.session_id or "default"
+        else:
+            session_id = "default"
+
+        namespace = self.get_module_name()
+
+        if hasattr(self.checkpointer, "afind_incomplete_runs"):
+            incomplete = await self.checkpointer.afind_incomplete_runs(
+                namespace, session_id
+            )
+        else:
+            incomplete = self.checkpointer.find_incomplete_runs(namespace, session_id)
+
+        if not incomplete:
+            return None
+
+        run = incomplete[0]
+
+        if hasattr(self.checkpointer, "aload_state"):
+            state = await self.checkpointer.aload_state(
+                namespace, session_id, run["run_id"]
+            )
+        else:
+            state = self.checkpointer.load_state(namespace, session_id, run["run_id"])
+
+        if state is None:
+            return None
+
+        restored = ChatMessages()
+        restored._hydrate_state(state["messages"])
+        return {
+            "messages": restored,
+            "vars": state.get("vars", {}),
+            "model_preference": None,
+        }
+
+    def _start_chat_turn_if_needed(
+        self,
+        *,
+        messages: ChatMessages,
+        content: Optional[Union[str, Mapping[str, Any]]],
+        raw_task_inputs: Any,
+        raw_context_inputs: Any,
+        vars: Mapping[str, Any],
+    ) -> None:
+        if content is None:
+            return
+        messages.configure_session()
+        turn_namespace = (
+            messages.namespace
+            if isinstance(messages.namespace, str) and messages.namespace
+            else self.get_module_name()
+        )
+        messages.begin_turn(
+            inputs=raw_task_inputs,
+            context_inputs=raw_context_inputs,
+            vars=vars,
+            namespace=turn_namespace,
+        )
+
+    def _finalize_chat_turn(
+        self,
+        messages: Union[ChatMessages, List[Mapping[str, Any]]],
         raw_response: Union[str, Mapping[str, Any], ModelStreamResponse],
         response_type: str,
-        model_state: List[Mapping[str, Any]],
-        message: Union[str, Mapping[str, Any], Message],
-        vars: Mapping[str, Any],
-    ) -> Union[str, Mapping[str, Any], ModelStreamResponse]:
-        """Async version of _prepare_response with async output guardrail support."""
-        formatted_response = None
-        if not isinstance(raw_response, ModelStreamResponse):
-            if response_type == "text_generation" or "structured" in response_type:
-                if self.config.get("verbose", False):
-                    cprint(f"[{self.name}][response] {raw_response}", bc="y", ls="b")
-                if self.guardrails.get("output"):
-                    await self._aexecute_output_guardrail(raw_response)
-                if self.templates.get("response"):
-                    if isinstance(raw_response, str):
-                        pre_response = self._format_response_template(vars)
-                        formatted_response = self._format_template(
-                            raw_response, pre_response
-                        )
-                    elif isinstance(raw_response, dict):
-                        raw_response.update(vars)
-                        formatted_response = self._format_response_template(
-                            raw_response
-                        )
+        metadata: Optional[Mapping[str, Any]],
+    ) -> None:
+        if not isinstance(messages, ChatMessages):
+            return
+        status = "completed"
+        assistant_output: Any = raw_response
+        if isinstance(raw_response, ModelStreamResponse):
+            status = "streaming"
+            assistant_output = None
+        elif response_type == "tool_responses":
+            status = "tool_responses"
+        messages.end_turn(
+            assistant_output=assistant_output,
+            response_type=response_type,
+            response_metadata=metadata,
+            status=status,
+        )
 
-        response = formatted_response or raw_response
-        if self.config.get("return_model_state", False):
-            if response_type == "tool_responses":
-                response.model_state = model_state
-            else:
-                response = dotdict(model_response=response, model_state=model_state)
-        return self._define_response_mode(response, message)
-
-    def _prepare_output_guardrail_execution(
-        self, model_response: Union[str, Mapping[str, Any]]
-    ) -> Mapping[str, Any]:
-        if isinstance(model_response, str):
-            data = model_response
-        else:
-            data = str(model_response)
-        guardrail_params = {"data": data}
-        return guardrail_params
+    def _append_response_to_chat_messages(
+        self,
+        messages: Union[ChatMessages, List[Mapping[str, Any]]],
+        raw_response: Union[str, Mapping[str, Any], ModelStreamResponse],
+        response_type: str,
+        metadata: Optional[Mapping[str, Any]],  # noqa: ARG002
+    ) -> None:
+        if not isinstance(messages, ChatMessages):
+            return
+        if isinstance(raw_response, ModelStreamResponse):
+            return
+        if response_type not in {"text_generation", "reasoning_text_generation"}:
+            return
+        answer = None
+        reasoning_content = None
+        if isinstance(raw_response, str):
+            answer = raw_response
+        elif isinstance(raw_response, Mapping):
+            answer = raw_response.get("answer")
+            if answer is None and "answer" not in raw_response:
+                answer = raw_response.get("text")
+            reasoning_content = self._extract_reasoning_content(raw_response)
+        elif raw_response is not None:
+            answer = str(raw_response)
+        if reasoning_content is not None or answer is not None:
+            messages.add_assistant_response(
+                content=answer,
+                reasoning_content=reasoning_content,
+            )
 
     def _prepare_task(
         self, message: Optional[Union[str, Message, Mapping[str, Any]]] = None, **kwargs
@@ -911,7 +1162,7 @@ class Agent(Module, metaclass=AutoParams):
         """Prepare model input in ChatML format and execution params."""
         # Extract reserved kwargs
         vars = kwargs.pop("vars", {})
-        model_state = kwargs.pop("model_state", [])
+        messages = self._coerce_chat_messages(kwargs.pop("messages", None))
         model_preference = kwargs.pop("model_preference", None)
 
         # Get remaining kwargs (potential task inputs)
@@ -942,20 +1193,23 @@ class Agent(Module, metaclass=AutoParams):
             )
 
         # Extract vars from Message if not provided
-        if not vars and isinstance(message, Message) and self.vars is not None:
+        if not vars and isinstance(message, dotdict) and self.vars is not None:
             vars = message.get(self.vars, {})
 
-        # Extract model_state from Message if not provided
+        # Extract messages from Message if not provided
         if (
-            model_state == []
-            and isinstance(message, Message)
-            and self.model_state is not None
+            len(messages) == 0
+            and isinstance(message, dotdict)
+            and self.messages is not None
         ):
-            model_state = self._get_content_from_message(self.model_state, message)
+            extracted = self._get_content_from_message(self.messages, message)
+            messages = self._coerce_chat_messages(extracted)
 
+        raw_task_inputs = self._extract_raw_task_inputs(message)
+        raw_context_inputs = self._extract_raw_context_inputs(message, kwargs)
         content = self._process_task_inputs(message, vars=vars, **kwargs)
 
-        if content is None and model_state == []:
+        if content is None and len(messages) == 0:
             raise ValueError(
                 "No task input provided. Expected one of:\n"
                 "  - agent('your text')\n"
@@ -964,18 +1218,21 @@ class Agent(Module, metaclass=AutoParams):
                 "  - agent(param1=..., param2=...) with task template configured"
             )
 
+        self._start_chat_turn_if_needed(
+            messages=messages,
+            content=content,
+            raw_task_inputs=raw_task_inputs,
+            raw_context_inputs=raw_context_inputs,
+            vars=vars,
+        )
         if content is not None:
-            chat_content = [ChatBlock.user(content)]
-            if model_state == []:
-                model_state = chat_content
-            else:
-                model_state.extend(chat_content)
+            messages.add_user(content)
 
-        if model_preference is None and isinstance(message, Message):
+        if model_preference is None and isinstance(message, dotdict):
             model_preference = self.get_model_preference_from_message(message)
 
         return {
-            "model_state": model_state,
+            "messages": messages,
             "model_preference": model_preference,
             "vars": vars,
         }
@@ -988,7 +1245,7 @@ class Agent(Module, metaclass=AutoParams):
         """
         # Extract reserved kwargs
         vars = kwargs.pop("vars", {})
-        model_state = kwargs.pop("model_state", [])
+        messages = self._coerce_chat_messages(kwargs.pop("messages", None))
         model_preference = kwargs.pop("model_preference", None)
 
         # Get remaining kwargs (potential task inputs)
@@ -1019,20 +1276,23 @@ class Agent(Module, metaclass=AutoParams):
             )
 
         # Extract vars from Message if not provided
-        if not vars and isinstance(message, Message) and self.vars is not None:
+        if not vars and isinstance(message, dotdict) and self.vars is not None:
             vars = message.get(self.vars, {})
 
-        # Extract model_state from Message if not provided
+        # Extract messages from Message if not provided
         if (
-            model_state == []
-            and isinstance(message, Message)
-            and self.model_state is not None
+            len(messages) == 0
+            and isinstance(message, dotdict)
+            and self.messages is not None
         ):
-            model_state = self._get_content_from_message(self.model_state, message)
+            extracted = self._get_content_from_message(self.messages, message)
+            messages = self._coerce_chat_messages(extracted)
 
+        raw_task_inputs = self._extract_raw_task_inputs(message)
+        raw_context_inputs = self._extract_raw_context_inputs(message, kwargs)
         content = await self._aprocess_task_inputs(message, vars=vars, **kwargs)
 
-        if content is None and model_state == []:
+        if content is None and len(messages) == 0:
             raise ValueError(
                 "No task input provided. Expected one of:\n"
                 "  - agent('your text')\n"
@@ -1041,24 +1301,54 @@ class Agent(Module, metaclass=AutoParams):
                 "  - agent(param1=..., param2=...) with task template configured"
             )
 
+        self._start_chat_turn_if_needed(
+            messages=messages,
+            content=content,
+            raw_task_inputs=raw_task_inputs,
+            raw_context_inputs=raw_context_inputs,
+            vars=vars,
+        )
         if content is not None:
-            chat_content = [ChatBlock.user(content)]
-            if model_state == []:
-                model_state = chat_content
-            else:
-                model_state.extend(chat_content)
-        # model_state is already set when content is None
+            messages.add_user(content)
 
-        if model_preference is None and isinstance(message, Message):
+        if model_preference is None and isinstance(message, dotdict):
             model_preference = self.get_model_preference_from_message(message)
 
         return {
-            "model_state": model_state,
+            "messages": messages,
             "model_preference": model_preference,
             "vars": vars,
         }
 
-    def _process_task_inputs(
+    def _extract_raw_task_inputs(
+        self, message: Optional[Union[str, Message, Mapping[str, Any]]]
+    ) -> Any:
+        if isinstance(message, Message):
+            return self._extract_message_values(self.task_inputs, message)
+        return message
+
+    def _extract_raw_context_inputs(
+        self,
+        message: Optional[Union[str, Message, Mapping[str, Any]]],
+        kwargs: Mapping[str, Any],
+    ) -> Any:
+        if "context_inputs" in kwargs:
+            return kwargs.get("context_inputs")
+        if isinstance(message, Message):
+            return self._extract_message_values(self.context_inputs, message)
+        return None
+
+    @staticmethod
+    def _extract_reasoning_content(
+        raw_response: Mapping[str, Any],
+    ) -> Optional[str]:
+        for field in ("reasoning_content", "reasoning_text", "think"):
+            value = raw_response.get(field)
+            if isinstance(value, str) and value:
+                return value
+        return None
+
+    def _process_task_inputs(  # noqa: C901
         self,
         message: Union[str, Message, Mapping[str, Any]],
         vars: Mapping[str, Any],
@@ -1070,7 +1360,7 @@ class Agent(Module, metaclass=AutoParams):
         if context_content:
             content += context_content
 
-        if isinstance(message, Message):
+        if isinstance(message, dotdict):
             task_inputs = self._extract_message_values(self.task_inputs, message)
         else:
             task_inputs = message
@@ -1108,7 +1398,7 @@ class Agent(Module, metaclass=AutoParams):
             return multimodal_content
         return content
 
-    async def _aprocess_task_inputs(
+    async def _aprocess_task_inputs(  # noqa: C901
         self,
         message: Union[str, Message, Mapping[str, Any]],
         vars: Mapping[str, Any],
@@ -1121,7 +1411,7 @@ class Agent(Module, metaclass=AutoParams):
         if context_content:
             content += context_content
 
-        if isinstance(message, Message):
+        if isinstance(message, dotdict):
             task_inputs = self._extract_message_values(self.task_inputs, message)
         else:
             task_inputs = message
@@ -1161,7 +1451,7 @@ class Agent(Module, metaclass=AutoParams):
             return multimodal_content
         return content
 
-    def _context_manager(
+    def _context_manager(  # noqa: C901
         self,
         message: Union[str, Message, Mapping[str, Any]],
         vars: Mapping[str, Any],
@@ -1177,7 +1467,7 @@ class Agent(Module, metaclass=AutoParams):
         runtime_context_inputs = kwargs.pop("context_inputs", None)
         if runtime_context_inputs is not None:
             context_inputs = runtime_context_inputs
-        elif isinstance(message, Message):
+        elif isinstance(message, dotdict):
             context_inputs = self._extract_message_values(self.context_inputs, message)
 
         if context_inputs is not None:
@@ -1220,7 +1510,7 @@ class Agent(Module, metaclass=AutoParams):
         task_multimodal_inputs = kwargs.get("task_multimodal_inputs", None)
         if task_multimodal_inputs is not None:
             multimodal_paths = task_multimodal_inputs
-        elif isinstance(message, Message) and self.task_multimodal_inputs is not None:
+        elif isinstance(message, dotdict) and self.task_multimodal_inputs is not None:
             multimodal_paths = self._extract_message_values(
                 self.task_multimodal_inputs, message
             )
@@ -1260,7 +1550,7 @@ class Agent(Module, metaclass=AutoParams):
         task_multimodal_inputs = kwargs.get("task_multimodal_inputs", None)
         if task_multimodal_inputs is not None:
             multimodal_paths = task_multimodal_inputs
-        elif isinstance(message, Message) and self.task_multimodal_inputs is not None:
+        elif isinstance(message, dotdict) and self.task_multimodal_inputs is not None:
             multimodal_paths = self._extract_message_values(
                 self.task_multimodal_inputs, message
             )
@@ -1410,20 +1700,6 @@ class Agent(Module, metaclass=AutoParams):
             self.get_module_name(), tools or [], mcp_servers=mcp_servers
         )
 
-    def _set_fixed_messages(
-        self, fixed_messages: Optional[List[Mapping[str, Any]]] = None
-    ):
-        if (
-            isinstance(fixed_messages, list)
-            and all(dict(obj) for obj in fixed_messages)
-        ) or fixed_messages is None:
-            self.register_buffer("fixed_messages", fixed_messages)
-        else:
-            raise TypeError(
-                "`fixed_messages` need be a list of dict or None"
-                f"given `{type(fixed_messages)}`"
-            )
-
     def _set_generation_schema(
         self, generation_schema: Optional[msgspec.Struct] = None
     ):
@@ -1437,32 +1713,32 @@ class Agent(Module, metaclass=AutoParams):
                 f"given `{type(generation_schema)}`"
             )
 
-    def _set_model(self, model: Union[ChatCompletionModel, ModelGateway, LM]):
-        if isinstance(model, LM):  # If already LM, use directly
-            self.lm = model
-        else:  # LM will validate model type
-            self.lm = LM(model)
+    def _set_model(self, model: Union[ChatCompletionModel, ModelGateway, "Generator"]):
+        if isinstance(model, Generator):
+            self.generator = model
+        else:
+            if (
+                not hasattr(model, "model_type")
+                or model.model_type != "chat_completion"
+            ):
+                raise TypeError(
+                    f"`model` must be a `chat_completion` model, given `{type(model)}`"
+                )
+            self.generator = Generator(model)
 
     @property
     def model(self):
-        """Access underlying model for convenience.
-
-        Returns:
-            The wrapped model instance
-        """
-        return self.lm.model
+        """Access underlying model for convenience."""
+        return self.generator.model
 
     @model.setter
-    def model(self, value: Union[ChatCompletionModel, ModelGateway, LM]):
-        """Update the agent's model.
-
-        Args:
-            value: New model (can be Model or LM)
-        """
+    def model(self, value: Union[ChatCompletionModel, ModelGateway, "Generator"]):
         self._set_model(value)
 
     def _set_system_message(self, system_message: Optional[str] = None):
         if isinstance(system_message, str) or system_message is None:
+            if isinstance(system_message, str):
+                system_message = cleandoc(system_message)
             if (
                 hasattr(self.generation_schema, "system_message")
                 and self.generation_schema.system_message is not None
@@ -1482,6 +1758,8 @@ class Agent(Module, metaclass=AutoParams):
 
     def _set_instructions(self, instructions: Optional[str] = None):
         if isinstance(instructions, str) or instructions is None:
+            if isinstance(instructions, str):
+                instructions = cleandoc(instructions)
             typed_parser_cls = typed_parser_registry.get(self.typed_parser, None)
             if typed_parser_cls is not None:
                 instructions = self._format_template(
@@ -1495,6 +1773,8 @@ class Agent(Module, metaclass=AutoParams):
 
     def _set_expected_output(self, expected_output: Optional[str] = None):
         if isinstance(expected_output, str) or expected_output is None:  # TODO
+            if isinstance(expected_output, str):
+                expected_output = cleandoc(expected_output)
             expected_output_temp = ""
             if expected_output:
                 expected_output_temp += expected_output
@@ -1521,6 +1801,8 @@ class Agent(Module, metaclass=AutoParams):
         examples: Optional[Union[str, List[Union[Example, Mapping[str, Any]]]]] = None,
     ):
         if isinstance(examples, (str, list)) or examples is None:
+            if isinstance(examples, str):
+                examples = cleandoc(examples)
             if isinstance(examples, list):
                 typed_parser_cls = typed_parser_registry.get(self.typed_parser, None)
                 collection = ExampleCollection(examples)
@@ -1535,13 +1817,12 @@ class Agent(Module, metaclass=AutoParams):
                 f"`examples` requires a List[Example] or None given `{type(examples)}`"
             )
 
-    def _set_model_state(self, model_state: Optional[str] = None):
-        if isinstance(model_state, str) or model_state is None:
-            self.register_buffer("model_state", model_state)
+    def _set_messages(self, messages: Optional[str] = None):
+        if isinstance(messages, str) or messages is None:
+            self.register_buffer("messages", messages)
         else:
             raise TypeError(
-                "`model_state` requires a string or None "
-                f"given `{type(model_state)}`"
+                f"`messages` requires a string or None given `{type(messages)}`"
             )
 
     def _set_config(self, config: Optional[Dict[str, Any]] = None):
@@ -1550,7 +1831,7 @@ class Agent(Module, metaclass=AutoParams):
         Args:
             config:
                 Dictionary with configuration options.
-                Valid keys: "verbose", "return_model_state", "tool_choice",
+                Valid keys: "verbose", "return_messages", "tool_choice",
                 "stream", "image_block_kwargs", "video_block_kwargs", "include_date"
 
         Raises:
@@ -1562,7 +1843,7 @@ class Agent(Module, metaclass=AutoParams):
         # Define valid keys for Agent
         valid_keys = {
             "verbose",
-            "return_model_state",
+            "return_messages",
             "tool_choice",
             "stream",
             "image_block_kwargs",
@@ -1602,6 +1883,8 @@ class Agent(Module, metaclass=AutoParams):
 
     def _set_system_extra_message(self, system_extra_message: Optional[str] = None):
         if isinstance(system_extra_message, str) or system_extra_message is None:
+            if isinstance(system_extra_message, str):
+                system_extra_message = cleandoc(system_extra_message)
             self.register_buffer("system_extra_message", system_extra_message)
         else:
             raise TypeError(
@@ -1620,7 +1903,7 @@ class Agent(Module, metaclass=AutoParams):
 
         Args:
             message_fields: Dictionary mapping field names to their values.
-                Valid keys: "task_inputs", "task_multimodal_inputs", "model_state",
+                Valid keys: "task_inputs", "task_multimodal_inputs", "messages",
                 "context_inputs", "model_preference", "vars"
 
         Raises:
@@ -1631,7 +1914,7 @@ class Agent(Module, metaclass=AutoParams):
         valid_keys = {
             "task_inputs",
             "task_multimodal_inputs",
-            "model_state",
+            "messages",
             "context_inputs",
             "model_preference",
             "vars",
@@ -1643,7 +1926,7 @@ class Agent(Module, metaclass=AutoParams):
             self._set_task_multimodal_inputs(None)
             self._set_model_preference(None)
             self._set_context_inputs(None)
-            self._set_model_state(None)
+            self._set_messages(None)
             self._set_vars(None)
             return
 
@@ -1666,7 +1949,7 @@ class Agent(Module, metaclass=AutoParams):
         self._set_task_multimodal_inputs(message_fields.get("task_multimodal_inputs"))
         self._set_model_preference(message_fields.get("model_preference"))
         self._set_context_inputs(message_fields.get("context_inputs"))
-        self._set_model_state(message_fields.get("model_state"))
+        self._set_messages(message_fields.get("messages"))
         self._set_vars(message_fields.get("vars"))
 
     def _set_typed_parser(self, typed_parser: Optional[str] = None):
@@ -1751,12 +2034,11 @@ class Agent(Module, metaclass=AutoParams):
                     "final_answer": signature_as_type,
                 }
 
-                Output = type(
+                fused_output_struct = type(
                     "Output",
                     (generation_schema,),
                     {"__annotations__": merged_annotations},
                 )
-                fused_output_struct = Output
             self._set_generation_schema(fused_output_struct or signature_output_struct)
 
             # system message
@@ -1777,7 +2059,7 @@ class Agent(Module, metaclass=AutoParams):
             )
             self.set_annotations(generated_annotations)
 
-    def _get_system_prompt(self, vars: Optional[Mapping[str, Any]] = None) -> str:
+    def get_system_prompt(self, vars: Optional[Mapping[str, Any]] = None) -> str:
         """Render the system prompt using the Jinja template.
         Returns an empty string if no segments are provided.
         """

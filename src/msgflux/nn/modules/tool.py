@@ -8,6 +8,7 @@ import msgspec
 
 from msgflux.auto import AutoParams
 from msgflux.dotdict import dotdict
+from msgflux.exceptions import TaskError
 from msgflux.logger import logger
 from msgflux.nn import functional as F
 from msgflux.nn.modules.container import ModuleDict
@@ -24,7 +25,7 @@ from msgflux.telemetry.span import (
 )
 from msgflux.utils.chat import generate_tool_json_schema
 from msgflux.utils.inspect import fn_has_parameters
-from msgflux.utils.tenacity import tool_retry
+from msgflux.utils.tenacity import apply_retry, default_tool_retry
 
 
 @dataclass
@@ -116,7 +117,17 @@ class MCPTool(Tool):
             self.set_description(mcp_tool_info.description)
 
         # Store config
-        self.register_buffer("tool_config", config or {})
+        tc = config or {}
+        self.register_buffer("tool_config", tc)
+
+        # Apply retry
+        retry_config = tc.get("retry")
+        self.forward = apply_retry(
+            self.forward, retry_config, default=default_tool_retry
+        )
+        self.aforward = apply_retry(
+            self.aforward, retry_config, default=default_tool_retry
+        )
 
     def get_json_schema(self) -> Dict[str, Any]:
         """Convert MCP tool schema to standard tool JSON schema."""
@@ -169,14 +180,21 @@ class LocalTool(Tool):
         self.register_buffer("tool_config", tool_config)
         self.impl = impl  # Not a buffer for now
 
-    @tool_retry
+        # Apply retry
+        retry_config = tool_config.get("retry")
+        self.forward = apply_retry(
+            self.forward, retry_config, default=default_tool_retry
+        )
+        self.aforward = apply_retry(
+            self.aforward, retry_config, default=default_tool_retry
+        )
+
     @set_tool_attributes(execution_type="local")
     def forward(self, **kwargs):
         if inspect.iscoroutinefunction(self.impl):
             return F.wait_for(self.impl, **kwargs)
         return self.impl(**kwargs)
 
-    @tool_retry
     @aset_tool_attributes(execution_type="local")
     async def aforward(self, *args, **kwargs):
         if hasattr(self.impl, "acall"):
@@ -272,8 +290,8 @@ def _convert_module_to_nn_tool(impl: Callable) -> Tool:  # noqa: C901
         name = "transfer_to_" + name
         annotations = {}  # pass only the model state
 
-    if tool_config.get("background"):
-        doc = "This tool will run in the background. \n" + doc
+    if tool_config.get("fire_and_forget"):
+        doc = "This tool will not generate a return. \n" + doc
 
     return LocalTool(
         name=name,
@@ -370,18 +388,29 @@ class ToolLibrary(Module, metaclass=AutoParams):
 
             # Create client based on transport type
             if transport_type == "stdio":
+                command = server_config.get("command")
+                if not command:
+                    raise ValueError(
+                        f"MCP server '{namespace}' stdio transport requires 'command'"
+                    )
                 client = MCPClient.from_stdio(
-                    command=server_config.get("command"),
+                    command=command,
                     args=server_config.get("args"),
                     cwd=server_config.get("cwd"),
                     env=server_config.get("env"),
                     timeout=server_config.get("timeout", 30.0),
                 )
             elif transport_type == "http":
+                base_url = server_config.get("base_url")
+                if not base_url:
+                    raise ValueError(
+                        f"MCP server '{namespace}' http transport requires 'base_url'"
+                    )
                 client = MCPClient.from_http(
-                    base_url=server_config.get("base_url"),
+                    base_url=base_url,
                     timeout=server_config.get("timeout", 30.0),
                     headers=server_config.get("headers"),
+                    auth=server_config.get("auth"),
                 )
             else:
                 raise ValueError(
@@ -469,7 +498,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
     def forward(  # noqa: C901
         self,
         tool_callings: List[Tuple[str, str, Any]],
-        model_state: Optional[List[Dict[str, Any]]] = None,
+        messages: Optional[List[Dict[str, Any]]] = None,
         vars: Optional[Mapping[str, Any]] = None,
     ) -> ToolResponses:
         """Executes tool calls with tool config logic.
@@ -480,8 +509,8 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 !!! example
                     [('123121', 'tool_name1', {'parameter1': 'value1'}),
                     ('322', 'tool_name2', '')]
-            model_state:
-                The current state of the Agent for the `handoff` functionality.
+            messages:
+                The current messages (chat history) for the `handoff` functionality.
             vars:
                 Extra kwargs to be used in tools.
 
@@ -489,10 +518,8 @@ class ToolLibrary(Module, metaclass=AutoParams):
             ToolResponses:
                 Structured object containing all tool call results.
         """
-        # TODO capturar no trace quando o modelo erra algo na tool
-        # TODO capturar no trace o tool config
-        if model_state is None:
-            model_state = {}
+        if messages is None:
+            messages = {}
 
         if vars is None:
             vars = {}
@@ -533,16 +560,16 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 elif inject_vars is True:
                     tool_params["vars"] = vars
 
-            if config.get("background", False):
+            if config.get("fire_and_forget", False):
                 return_directly = False
-                F.background_task(tool, **(tool_params or {}))
+                F.fire_and_forget(tool, **(tool_params or {}))
                 tool_calls.append(
                     ToolCall(
                         id=tool_id,
                         name=tool_name,
                         parameters=tool_params,
-                        result=f"""The `{tool_name}` tool was started in the background.
-                        This tool will not generate a return""",
+                        result=f"The `{tool_name}` tool was dispatched. "
+                        "This tool will not generate a return.",
                     )
                 )
                 continue
@@ -556,8 +583,8 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 return_directly = True
                 continue
 
-            if config.get("inject_model_state", False):  # Add model_state
-                tool_params["model_state"] = model_state
+            if config.get("inject_messages", False):  # Add messages
+                tool_params["messages"] = messages
 
             if not config.get("return_direct", False):
                 return_directly = False
@@ -590,7 +617,8 @@ class ToolLibrary(Module, metaclass=AutoParams):
                         id=meta.id,
                         name=meta.name,
                         parameters=parameters,
-                        result=result,
+                        result=None if isinstance(result, TaskError) else result,
+                        error=str(result) if isinstance(result, TaskError) else None,
                     )
                 )
 
@@ -599,7 +627,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
     async def aforward(  # noqa: C901
         self,
         tool_callings: List[Tuple[str, str, Any]],
-        model_state: Optional[List[Dict[str, Any]]] = None,
+        messages: Optional[List[Dict[str, Any]]] = None,
         vars: Optional[Mapping[str, Any]] = None,
     ) -> ToolResponses:
         """Async version of forward. Executes tool calls with logic for
@@ -611,8 +639,8 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 !!! example
                     [('123121', 'tool_name1', {'parameter1': 'value1'}),
                     ('322', 'tool_name2', '')]
-            model_state:
-                The current state of the Agent for the `handoff` functionality.
+            messages:
+                The current messages (chat history) for the `handoff` functionality.
             vars:
                 Extra kwargs to be used in tools.
 
@@ -620,8 +648,8 @@ class ToolLibrary(Module, metaclass=AutoParams):
             ToolResponses:
                 Structured object containing all tool call results.
         """
-        if model_state is None:
-            model_state = {}
+        if messages is None:
+            messages = {}
 
         if vars is None:
             vars = {}
@@ -662,16 +690,16 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 elif inject_vars is True:
                     tool_params["vars"] = vars
 
-            if config.get("background", False):
+            if config.get("fire_and_forget", False):
                 return_directly = False
-                await F.abackground_task(tool.acall, **(tool_params or {}))
+                await F.afire_and_forget(tool.acall, **(tool_params or {}))
                 tool_calls.append(
                     ToolCall(
                         id=tool_id,
                         name=tool_name,
                         parameters=tool_params,
-                        result=f"""The `{tool_name}` tool was started in the background.
-                        This tool will not generate a return""",
+                        result=f"The `{tool_name}` tool was dispatched. "
+                        "This tool will not generate a return.",
                     )
                 )
                 continue
@@ -685,8 +713,8 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 return_directly = True
                 continue
 
-            if config.get("inject_model_state", False):  # Add model_state
-                tool_params["model_state"] = model_state
+            if config.get("inject_messages", False):  # Add messages
+                tool_params["messages"] = messages
 
             if not config.get("return_direct", False):
                 return_directly = False
@@ -719,7 +747,8 @@ class ToolLibrary(Module, metaclass=AutoParams):
                         id=meta.id,
                         name=meta.name,
                         parameters=parameters,
-                        result=result,
+                        result=None if isinstance(result, TaskError) else result,
+                        error=str(result) if isinstance(result, TaskError) else None,
                     )
                 )
 

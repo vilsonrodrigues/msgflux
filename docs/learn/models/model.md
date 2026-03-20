@@ -331,12 +331,14 @@ async for chunk in response.consume():
 
 ### Retry Mechanism
 
-All API-based models have automatic retry logic for transient failures:
+All API-based models have automatic retry logic for transient failures. By default, retry uses environment variables (`MODEL_STOP_AFTER_ATTEMPT`, `MODEL_STOP_AFTER_DELAY`).
+
+You can customize retry per model by passing a [tenacity](https://tenacity.readthedocs.io/) decorator:
 
 ```python
 import msgflux as mf
 
-# Model automatically retries on API failures
+# Default retry (env-based)
 model = mf.Model.chat_completion("openai/gpt-4o")
 
 try:
@@ -344,6 +346,49 @@ try:
 except Exception as e:
     print(f"Failed after retries: {e}")
 ```
+
+#### Custom Retry
+
+```python
+import msgflux as mf
+from tenacity import retry, stop_after_attempt, wait_exponential
+
+# Custom retry: 5 attempts with exponential backoff
+custom_retry = retry(
+    reraise=True,
+    stop=stop_after_attempt(5),
+    wait=wait_exponential(min=1, max=10),
+)
+model = mf.Model.chat_completion("openai/gpt-4o", retry=custom_retry)
+```
+
+#### Disable Retry
+
+```python
+import msgflux as mf
+
+# No retry — fail immediately on error
+model = mf.Model.chat_completion("openai/gpt-4o", retry=False)
+```
+
+#### Provider-Specific Examples
+
+```python
+import msgflux as mf
+from tenacity import retry, stop_after_attempt
+
+# Embedder with aggressive retry
+embedder = mf.Model.text_embedder(
+    "openai/text-embedding-3-small",
+    retry=retry(reraise=True, stop=stop_after_attempt(10)),
+)
+
+# Speech-to-text without retry
+transcriber = mf.Model.speech_to_text("openai/whisper-1", retry=False)
+```
+
+!!! tip
+    The `retry` parameter accepts any tenacity decorator, giving you full control over stop conditions, wait strategies, and retry filters. See the [tenacity docs](https://tenacity.readthedocs.io/) for all options.
 
 ### Provider Not Available
 

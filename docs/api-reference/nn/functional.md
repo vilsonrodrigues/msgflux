@@ -10,4 +10,4 @@
 
 ::: msgflux.nn.functional.wait_for_event
 
-::: msgflux.nn.functional.background_task
+::: msgflux.nn.functional.fire_and_forget

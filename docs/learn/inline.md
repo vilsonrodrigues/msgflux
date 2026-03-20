@@ -1,579 +1,478 @@
-# inline
+# Inline DSL
 
-The `inline` function provides a simple, declarative language for orchestrating module workflows at runtime. Define complex pipelines using intuitive string syntax without writing explicit Python code for control flow.
-
-## Overview
-
-`inline` allows you to:
-
-- **Define workflows declaratively** using string syntax
-- **Change execution flow at runtime** without modifying code
-- **Combine sequential and parallel execution**
-- **Add conditional branching** with if-else logic
-- **Implement loops** for iterative processing
-- **Keep workflow logic separate** from module implementation
+`Inline` is a first-class pipeline orchestrator. It composes callables into a pipeline using a lightweight DSL expression, with optional checkpoint-per-step durability.
 
 ## Quick Start
-
-### Basic Sequential Pipeline
 
 ```python
 import msgflux as mf
 
-# Define simple modules
-def prep(msg):
-    msg.data_ready = True
-    return msg
+def preprocess(msg):
+    return {"preprocessed": True}
 
-def process(msg):
-    if msg.get("data_ready"):
-        msg.processed = "completed"
-    return msg
+def analyze(msg):
+    return {"result": "Analysis complete"}
 
-def output(msg):
-    print(f"Result: {msg.processed}")
-    return msg
+pipeline = mf.Inline(
+    "preprocess -> analyze",
+    modules={"preprocess": preprocess, "analyze": analyze},
+)
 
-# Define workflow with inline
-modules = {
-    "prep": prep,
-    "process": process,
-    "output": output
-}
-
-message = mf.dotdict()
-mf.inline("prep -> process -> output", modules, message)
-# Output: Result: completed
+result = pipeline(mf.dotdict())
+print(result["result"])  # "Analysis complete"
 ```
 
-## Syntax Reference
+## Module Return Patterns
 
-### 1. Sequential Execution (`->`)
+Modules receive a `dotdict` message and can return results in two ways:
 
-Execute modules in order:
+### Delta pattern (recommended)
 
+Return a `dict` with the fields to merge. The pipeline merges it into the message automatically via `dotdict.apply()`:
+
+```python
+def enrich(msg):
+    return {"enriched": True, "score": 0.95}
 ```
-"module1 -> module2 -> module3"
+
+This is the preferred pattern — it makes modules **pure functions** that are easy to test, compose, and reason about. Deltas also enable [signals](#signals) (`$break`, `$stop`) for flow control.
+
+### In-place mutation (legacy)
+
+Mutate the message directly and return `None`:
+
+```python
+def enrich(msg):
+    msg["enriched"] = True
+    msg["score"] = 0.95
 ```
+
+!!! warning "Deprecated"
+    In-place mutation still works for backwards compatibility, but it is **deprecated**. It does not support signals and makes modules harder to test in isolation. Prefer the delta pattern for new code.
+
+---
+
+## Syntax Overview
+
+| Pattern | Description | Example |
+|---------|-------------|---------|
+| `->` | Sequential | `"a -> b -> c"` |
+| `[...]` | Parallel | `"a -> [b, c] -> d"` |
+| `{c1 ? a, c2 ? b, default}` | Multi-branch conditional | `"{tier == 'vip' ? vip, standard}"` |
+| `@{cond}: actions;` | While loop | `"@{count < 5}: increment;"` |
+
+---
+
+## Sequential Execution
+
+Use `->` to chain modules:
 
 ```python
 import msgflux as mf
 
 def step1(msg):
-    msg.count = 1
-    return msg
+    return {"step1": "done"}
 
 def step2(msg):
-    msg.count += 1
-    return msg
+    return {"step2": "done"}
 
-def step3(msg):
-    msg.count += 1
-    return msg
+modules = {"step1": step1, "step2": step2}
 
-modules = {"step1": step1, "step2": step2, "step3": step3}
-msg = mf.dotdict()
+pipeline = mf.Inline("step1 -> step2", modules=modules)
+result = pipeline(mf.dotdict())
 
-mf.inline("step1 -> step2 -> step3", modules, msg)
-print(msg.count)  # 3
+print(result["step1"])  # "done"
+print(result["step2"])  # "done"
 ```
 
-### 2. Parallel Execution (`[...]`)
+---
 
-Execute modules concurrently:
+## Parallel Execution
 
-```
-"[module1, module2, module3]"
-```
-
-**Important:** Parallel modules receive the **same message** and should modify it directly. Return values from parallel modules are **ignored** - use side effects to update the message.
+Use `[...]` to run modules concurrently:
 
 ```python
 import msgflux as mf
 
-def setup(msg):
-    msg.set("input", 100)
-    return msg
+def fetch_a(msg):
+    return {"data_a": "result_a"}
 
-def compute_double(msg):
-    # Modifies message directly
-    msg.set("results.doubled", msg.input * 2)
-    return msg
-
-def compute_square(msg):
-    # Modifies message directly
-    msg.set("results.squared", msg.input ** 2)
-    return msg
+def fetch_b(msg):
+    return {"data_b": "result_b"}
 
 def combine(msg):
-    # Access results from parallel modifications
-    total = msg.results.doubled + msg.results.squared
-    msg.final_result = total
-    return msg
+    return {"combined": f"{msg['data_a']} + {msg['data_b']}"}
 
-modules = {
-    "setup": setup,
-    "compute_double": compute_double,
-    "compute_square": compute_square,
-    "combine": combine
-}
+modules = {"fetch_a": fetch_a, "fetch_b": fetch_b, "combine": combine}
 
-msg = mf.dotdict()
-mf.inline("setup -> [compute_double, compute_square] -> combine", modules, msg)
-print(msg.final_result)  # 10200 (200 + 10000)
+pipeline = mf.Inline("[fetch_a, fetch_b] -> combine", modules=modules)
+result = pipeline(mf.dotdict())
+
+print(result["combined"])  # "result_a + result_b"
 ```
 
-### 3. Conditional Execution (`{condition ? true, false}`)
+!!! warning "Key Conflicts"
+    When parallel modules write the **same key**, a warning is logged and the last writer wins. Use distinct keys per module.
 
-Branch based on conditions:
+---
 
-```
-"{condition ? true_module, false_module}"
-"{condition ? only_if_true}"  # false branch is optional
-```
+## Conditionals
 
-**Supported Operators:**
-
-| Operator | Description | Example |
-|----------|-------------|---------|
-| `==` | Equal | `status == "active"` |
-| `!=` | Not equal | `type != "guest"` |
-| `>` | Greater than | `age > 18` |
-| `<` | Less than | `count < 10` |
-| `>=` | Greater or equal | `score >= 80` |
-| `<=` | Less or equal | `level <= 5` |
-| `is None` | Check if None | `user.name is None` |
-| `is not None` | Check if not None | `data is not None` |
-
-**Logical Operators:**
-
-| Operator | Description | Example |
-|----------|-------------|---------|
-| `&` | AND | `age >= 18 & verified == true` |
-| `\|\|` | OR | `is_premium == true \|\| credits > 100` |
-| `!` | NOT | `!(banned == true)` |
+### If-Else (binary)
 
 ```python
 import msgflux as mf
 
-def adult_flow(msg):
-    msg.access = "granted"
-    msg.content = "adult content"
-    return msg
+def adult(msg):
+    return {"greeting": "Welcome, adult"}
 
-def child_flow(msg):
-    msg.access = "restricted"
-    msg.content = "family-friendly content"
-    return msg
+def child(msg):
+    return {"greeting": "Hi, young one"}
 
-modules = {
-    "adult_flow": adult_flow,
-    "child_flow": child_flow
-}
+modules = {"adult": adult, "child": child}
 
-# Age check
-msg = mf.dotdict()
-msg.set("user.age", 25)
+pipeline = mf.Inline("{age > 18 ? adult, child}", modules=modules)
+result = pipeline(mf.dotdict({"age": 21}))
 
-mf.inline("{user.age >= 18 ? adult_flow, child_flow}", modules, msg)
-print(msg.content)  # "adult content"
-
-# Try with younger user
-msg2 = mf.dotdict()
-msg2.set("user.age", 15)
-
-mf.inline("{user.age >= 18 ? adult_flow, child_flow}", modules, msg2)
-print(msg2.content)  # "family-friendly content"
+print(result["greeting"])  # "Welcome, adult"
 ```
 
-### 4. While Loops (`@{condition}: actions;`)
+### Multi-branch
 
-Execute actions repeatedly while condition is true:
+Route to the first matching condition. The last item without `?` is the default:
 
+```python
+"{tier == 'premium' ? premium_handler, tier == 'standard' ? standard_handler, basic_handler}"
 ```
-"@{condition}: module1 -> module2;"
+
+You can also use `_` as an explicit wildcard default:
+
+```python
+"{score >= 90 ? grade_a, score >= 70 ? grade_b, _ ? grade_c}"
 ```
 
-**Safety:** Loops have a maximum iteration limit (default: 1000) to prevent infinite loops.
+If no branch matches and there is no default, nothing executes.
+
+---
+
+## Signals
+
+Modules can emit **signals** to control pipeline flow by including special keys in their return dict:
+
+| Signal | Effect |
+|--------|--------|
+| `$stop` | Halt the entire pipeline immediately |
+| `$break` | Exit the current while loop (remaining steps after the loop continue) |
+
+```python
+import msgflux as mf
+
+def check(msg):
+    if msg.get("counter", 0) >= 3:
+        return {"$stop": True, "reason": "threshold reached"}
+    return {"counter": msg.get("counter", 0) + 1}
+
+pipeline = mf.Inline(
+    "@{counter < 100}: check;",
+    modules={"check": check},
+)
+
+result = pipeline(mf.dotdict({"counter": 0}))
+print(result["counter"])  # 3
+print(result["reason"])   # "threshold reached"
+```
+
+Signal keys are stripped from the delta before merging into the message.
+
+---
+
+## While Loops
+
+Execute repeatedly while condition is true:
 
 ```python
 import msgflux as mf
 
 def increment(msg):
-    msg.counter = msg.get("counter", 0) + 1
-    return msg
+    return {"counter": msg.get("counter", 0) + 1}
 
-modules = {"increment": increment}
+def finalize(msg):
+    return {"done": True}
 
-msg = mf.dotdict()
-msg.counter = 0
+modules = {"increment": increment, "finalize": finalize}
 
-# Loop while counter < 5
-mf.inline("@{counter < 5}: increment;", modules, msg)
-print(msg.counter)  # 5
-```
-
-## Complex Examples
-
-### Combined Sequential and Parallel
-
-```python
-import msgflux as mf
-
-def prepare(msg):
-    msg.status = "ready"
-    msg.data = [1, 2, 3, 4, 5]
-    return msg
-
-def filter_even(msg):
-    even = [x for x in msg.data if x % 2 == 0]
-    msg.set("filtered.even", even)
-    return msg
-
-def filter_odd(msg):
-    odd = [x for x in msg.data if x % 2 != 0]
-    msg.set("filtered.odd", odd)
-    return msg
-
-def sum_all(msg):
-    total_even = sum(msg.filtered.even)
-    total_odd = sum(msg.filtered.odd)
-    msg.results = {
-        "even_sum": total_even,
-        "odd_sum": total_odd,
-        "total": total_even + total_odd
-    }
-    return msg
-
-modules = {
-    "prepare": prepare,
-    "filter_even": filter_even,
-    "filter_odd": filter_odd,
-    "sum_all": sum_all
-}
-
-msg = mf.dotdict()
-mf.inline("prepare -> [filter_even, filter_odd] -> sum_all", modules, msg)
-
-print(msg.results)
-# {'even_sum': 6, 'odd_sum': 9, 'total': 15}
-```
-
-### Multi-Condition Logic
-
-```python
-import msgflux as mf
-
-def premium_access(msg):
-    msg.features = ["basic", "advanced", "premium", "priority_support"]
-    return msg
-
-def basic_access(msg):
-    msg.features = ["basic"]
-    return msg
-
-def denied_access(msg):
-    msg.features = []
-    msg.reason = "account suspended or inactive"
-    return msg
-
-modules = {
-    "premium_access": premium_access,
-    "basic_access": basic_access,
-    "denied_access": denied_access
-}
-
-# Complex condition with AND and OR
-msg = mf.dotdict()
-msg.set("user.is_premium", True)
-msg.set("user.is_active", True)
-msg.set("user.is_suspended", False)
-
-workflow = "{user.is_active == true & !user.is_suspended == true ? " \
-           "{user.is_premium == true ? premium_access, basic_access}, " \
-           "denied_access}"
-
-mf.inline(workflow, modules, msg)
-print(msg.features)  # ['basic', 'advanced', 'premium', 'priority_support']
-```
-
-### Loop with Parallel Processing
-
-```python
-import msgflux as mf
-import asyncio
-
-async def init_batch(msg):
-    msg.batch_count = 0
-    msg.processed_items = []
-    return msg
-
-async def process_a(msg):
-    msg.set("temp.result_a", f"A-{msg.batch_count}")
-    return msg
-
-async def process_b(msg):
-    msg.set("temp.result_b", f"B-{msg.batch_count}")
-    return msg
-
-async def collect_results(msg):
-    msg.processed_items.append({
-        "a": msg.temp.result_a,
-        "b": msg.temp.result_b
-    })
-    msg.batch_count += 1
-    return msg
-
-modules = {
-    "init_batch": init_batch,
-    "process_a": process_a,
-    "process_b": process_b,
-    "collect_results": collect_results
-}
-
-msg = mf.dotdict()
-
-# Loop with parallel processing
-result = await mf.ainline(
-    "init_batch -> @{batch_count < 3}: [process_a, process_b] -> collect_results;",
-    modules,
-    msg
+pipeline = mf.Inline(
+    "@{counter < 5}: increment; -> finalize",
+    modules=modules,
 )
 
-print(result.processed_items)
-# [
-#   {'a': 'A-0', 'b': 'B-0'},
-#   {'a': 'A-1', 'b': 'B-1'},
-#   {'a': 'A-2', 'b': 'B-2'}
-# ]
+result = pipeline(mf.dotdict({"counter": 0}))
+print(result["counter"])  # 5
+print(result["done"])     # True
 ```
 
-### None Checks
+!!! warning "Infinite Loops"
+    While loops have a maximum iteration limit (default: 1000). A `RuntimeError` is raised if exceeded. Customize with `max_iterations`.
+
+---
+
+## Durable Execution
+
+Pass a `CheckpointStore` to enable checkpoint-per-step durability. If the process crashes, re-running with the same `session_id` and `run_id` resumes from the last completed step.
 
 ```python
 import msgflux as mf
 
-def request_name(msg):
-    msg.prompt = "Please enter your name"
-    return msg
+store = mf.InMemoryCheckpointStore()
 
-def greet_user(msg):
-    msg.greeting = f"Hello, {msg.user.name}!"
-    return msg
+pipeline = mf.Inline(
+    "extract -> enrich -> summarize",
+    modules={"extract": extract, "enrich": enrich, "summarize": summarize},
+)
 
-def validate(msg):
-    if msg.get("user.name"):
-        msg.name_provided = True
-    return msg
-
-modules = {
-    "request_name": request_name,
-    "greet_user": greet_user,
-    "validate": validate
-}
-
-# Case 1: Name is None
-msg1 = mf.dotdict()
-msg1.set("user.name", None)
-
-mf.inline("{user.name is None ? request_name, greet_user}", modules, msg1)
-print(msg1.prompt)  # "Please enter your name"
-
-# Case 2: Name is provided
-msg2 = mf.dotdict()
-msg2.set("user.name", "Alice")
-
-mf.inline("{user.name is None ? request_name, greet_user}", modules, msg2)
-print(msg2.greeting)  # "Hello, Alice!"
-
-# Case 3: Check not None with validation
-msg3 = mf.dotdict()
-msg3.set("user.name", "Bob")
-
-mf.inline("{user.name is not None ? validate}", modules, msg3)
-print(msg3.name_provided)  # True
+# Durable run
+result = pipeline(
+    mf.dotdict({"input": "data"}),
+    store=store,
+    session_id="user_42",
+    run_id="run_1",
+)
 ```
 
-## Async Support
-
-Use `ainline` for asynchronous workflows:
+### Crash and Resume
 
 ```python
-import msgflux as mf
+store = mf.InMemoryCheckpointStore()
+
+pipeline = mf.Inline("step_a -> step_b -> step_c", modules=modules)
+
+# First run: crashes at step_b
+try:
+    pipeline(mf.dotdict(), store=store, session_id="s1", run_id="r1")
+except RuntimeError:
+    pass  # step_a is checkpointed
+
+# Fix the issue, re-run with same session/run — resumes from step_b
+result = pipeline(mf.dotdict(), store=store, session_id="s1", run_id="r1")
+```
+
+### Durable Parameters
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `store` | `None` | `CheckpointStore` instance. `None` disables durability. |
+| `session_id` | Inherited or `"default"` | Session identifier (inherits from parent context). |
+| `run_id` | Auto-generated UUID | Unique execution identifier. |
+| `namespace` | `"inline"` | Checkpoint namespace. |
+| `max_retries` | `0` | Per-step retry limit. |
+| `retry_delay` | `1.0` | Seconds between retries. |
+
+### Event Audit Trail
+
+Durable runs emit events for debugging and replay:
+
+```python
+events = store.load_events("inline", "user_42", "run_1")
+# [{"type": "run_started", ...},
+#  {"type": "step_completed", "step_name": "extract", ...},
+#  {"type": "step_completed", "step_name": "enrich", ...},
+#  {"type": "step_completed", "step_name": "summarize", ...},
+#  {"type": "run_completed", ...}]
+```
+
+### Signal Behavior with Durability
+
+- **`$stop`** saves with `status="stopped"` (terminal). Resume starts a fresh run.
+- **`$break`** saves with `status="running"` and exits the while loop. Remaining steps continue.
+- **Failed steps** save with `status="failed"` and re-raise the exception.
+
+---
+
+## Async Execution
+
+Use `acall` for async modules:
+
+```python
 import asyncio
+import msgflux as mf
 
 async def async_fetch(msg):
-    await asyncio.sleep(0.1)  # Simulate async operation
-    msg.data = "fetched"
-    return msg
-
-async def async_process(msg):
     await asyncio.sleep(0.1)
-    msg.processed = f"{msg.data}_processed"
-    return msg
+    return {"data": "fetched"}
 
-modules = {
-    "fetch": async_fetch,
-    "process": async_process
-}
+async def process(msg):
+    return {"processed": True}
 
-msg = mf.dotdict()
+modules = {"fetch": async_fetch, "process": process}
 
-# Use ainline for async workflows
-result = await mf.ainline("fetch -> process", modules, msg)
-print(result.processed)  # "fetched_processed"
+pipeline = mf.Inline("fetch -> process", modules=modules)
+result = asyncio.run(pipeline.acall(mf.dotdict()))
 ```
 
-## Best Practices
-
-### 1. Keep Modules Pure
+Durable async works the same way — pass `store` to `acall`:
 
 ```python
-# Good - Pure function, returns modified message
-def process(msg):
-    msg.result = msg.value * 2
-    return msg
-
-# Avoid - Side effects
-def process_bad(msg):
-    global_var = msg.value  # Don't use global state
-    write_to_file(msg)      # Don't perform I/O
-    return msg
+result = await pipeline.acall(
+    mf.dotdict(),
+    store=store,
+    session_id="user_42",
+)
 ```
 
-### 2. Use Descriptive Module Names
+---
+
+## Session Context
+
+`Inline` propagates session context via `msgflux.context.session_context`. Nested `Inline` pipelines inherit the parent session automatically:
 
 ```python
-# Good - Clear, descriptive names
-modules = {
-    "validate_input": validate_fn,
-    "fetch_user_data": fetch_fn,
-    "send_notification": notify_fn
-}
+import msgflux as mf
 
-# Avoid - Vague names
-modules = {
-    "a": fn1,
-    "do_stuff": fn2,
-    "handler": fn3
-}
+sub = mf.Inline("inner_step", modules={"inner_step": inner_fn})
+
+def run_sub(msg):
+    sub(msg)  # inherits parent session_id
+
+pipeline = mf.Inline("outer -> run_sub", modules={"outer": outer_fn, "run_sub": run_sub})
+pipeline(mf.dotdict(), session_id="parent_session")
 ```
 
-### 3. Handle Parallel Execution Correctly
+---
+
+## Logical Operators
+
+Combine conditions with logical operators:
+
+| Operator | Description |
+|----------|-------------|
+| `&` | AND |
+| `\|\|` | OR |
+| `!` | NOT |
 
 ```python
-# Good - Modify message directly (return values are ignored)
-def parallel_task(msg):
-    value = msg.get("input_value")
-    result = compute(value)
-    msg.set("results.task_output", result)  # Store in message
-    return msg
-
-# Bad - Returning dict doesn't work (return values are ignored!)
-def parallel_task_bad(msg):
-    value = msg.get("input_value")
-    result = compute(value)
-    return {"output": result}  # This is IGNORED in parallel execution!
+# Grant access if active AND not banned
+"{user.is_active == True & !user.is_banned == True ? grant, deny}"
 ```
 
-### 4. Design for Readability
+---
+
+## Comparison Operators
+
+| Operator | Description |
+|----------|-------------|
+| `==` | Equal |
+| `!=` | Not equal |
+| `>` | Greater than |
+| `<` | Less than |
+| `>=` | Greater or equal |
+| `<=` | Less or equal |
+| `is None` | Is None |
+| `is not None` | Is not None |
 
 ```python
-# Good - Workflow is easy to understand
-workflow = "validate -> fetch_data -> [process_a, process_b] -> combine -> output"
-
-# Acceptable but harder to read
-workflow = "{valid ? {premium ? [a,b,c], [d,e]}, fail}"
-
-# Better - Break complex logic into steps
-workflow = "validate -> {premium ? premium_flow, basic_flow} -> output"
+"{score >= 0.9 ? high_quality, review}"
+"{status != 'completed' ? process}"
+"{user.name is None ? ask_name, greet}"
 ```
 
-### 5. Set Iteration Limits for Loops
+---
+
+## Message Access
+
+The DSL accesses message fields using dot notation:
 
 ```python
-# Good - Bounded loops
-workflow = "@{counter < 10}: process;"
+message = mf.dotdict()
+message.set("user.age", 25)
+message.set("config.tier", "premium")
 
-# Risky - Could run indefinitely
-workflow = "@{status != 'done'}: process;"  # Make sure 'done' is eventually set
+"{user.age > 18 ? adult}"
+"{config.tier == 'premium' ? vip}"
 ```
 
-## Integration with Modules
+---
 
-### Using with nn.Module
+## With nn.Module
+
+Compose `Inline` inside custom modules:
 
 ```python
 import msgflux as mf
 import msgflux.nn as nn
 
-class DataProcessor(nn.Module):
+class Pipeline(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+        self.transcriber = nn.Transcriber(...)
+        self.extractor = nn.Agent(...)
+
+        self.components = nn.ModuleDict({
+            "transcriber": self.transcriber,
+            "extractor": self.extractor,
+        })
+
+        self.flux = mf.Inline(
+            "{user_audio is not None ? transcriber} -> extractor",
+            modules=self.components,
+        )
+
     def forward(self, msg):
-        msg.processed = True
-        return msg
+        return self.flux(msg)
 
-class Validator(nn.Module):
-    def forward(self, msg):
-        msg.valid = msg.get("data") is not None
-        return msg
-
-# Use modules in inline workflow
-processor = DataProcessor()
-validator = Validator()
-
-modules = {
-    "validate": validator,
-    "process": processor
-}
-
-msg = mf.dotdict({"data": [1, 2, 3]})
-mf.inline("validate -> {valid ? process}", modules, msg)
+    async def aforward(self, msg):
+        return await self.flux.acall(msg)
 ```
 
-### Dynamic Workflow Selection
+---
+
+## Complete Example
 
 ```python
 import msgflux as mf
 
-def get_workflow(user_type):
-    """Select workflow based on user type."""
-    workflows = {
-        "admin": "validate -> process_admin -> audit -> notify",
-        "user": "validate -> process_user -> notify",
-        "guest": "rate_limit -> validate -> {allowed ? process_guest}"
-    }
-    return workflows.get(user_type, "reject")
+def classify(msg):
+    score = msg.get("score", 0)
+    if score >= 90:
+        return {"tier": "premium"}
+    if score >= 50:
+        return {"tier": "standard"}
+    return {"tier": "basic"}
 
-# Use dynamically selected workflow
-user_type = "admin"
-workflow = get_workflow(user_type)
+def enrich(msg):
+    return {"enriched": True}
 
-modules = {
-    "validate": validate_fn,
-    "process_admin": admin_fn,
-    "process_user": user_fn,
-    "process_guest": guest_fn,
-    "audit": audit_fn,
-    "notify": notify_fn,
-    "rate_limit": rate_limit_fn,
-    "reject": reject_fn
-}
+def validate(msg):
+    return {"validated": True}
 
-msg = mf.dotdict({"user_type": user_type})
-mf.inline(workflow, modules, msg)
+def premium_handler(msg):
+    return {"handler": "premium", "discount": 0.2}
+
+def standard_handler(msg):
+    return {"handler": "standard", "discount": 0.1}
+
+def basic_handler(msg):
+    return {"handler": "basic", "discount": 0.0}
+
+pipeline = mf.Inline(
+    "classify -> [enrich, validate] -> "
+    "{tier == 'premium' ? premium_handler, "
+    "tier == 'standard' ? standard_handler, "
+    "basic_handler}",
+    modules={
+        "classify": classify,
+        "enrich": enrich,
+        "validate": validate,
+        "premium_handler": premium_handler,
+        "standard_handler": standard_handler,
+        "basic_handler": basic_handler,
+    },
+)
+
+result = pipeline(mf.dotdict({"score": 75}))
+
+print(result["tier"])      # "standard"
+print(result["enriched"])  # True
+print(result["handler"])   # "standard"
+print(result["discount"])  # 0.1
 ```
-
-
-## Syntax Summary
-
-| Feature | Syntax | Example |
-|---------|--------|---------|
-| Sequential | `->` | `"a -> b -> c"` |
-| Parallel | `[...]` | `"[a, b, c]"` |
-| Conditional | `{cond ? t, f}` | `"{x > 5 ? yes, no}"` |
-| While Loop | `@{cond}: actions;` | `"@{count < 10}: inc;"` |
-| AND | `&` | `"{a & b ? yes}"` |
-| OR | `\|\|` | `"{a \|\| b ? yes}"` |
-| NOT | `!` | `"{!a ? yes}"` |
-| Is None | `is None` | `"{x is None ? ask}"` |
-| Not None | `is not None` | `"{x is not None ? use}"` |
