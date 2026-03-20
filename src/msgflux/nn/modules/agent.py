@@ -432,7 +432,10 @@ class Agent(Module, metaclass=AutoParams):
             response = self._process_model_response(message, model_response, **inputs)
             return response
         except Exception:
-            self._checkpoint_save_on_error(inputs)
+            try:
+                self._checkpoint_save_on_error(inputs)
+            except Exception:  # noqa: S110
+                pass  # Don't mask the original error
             raise
 
     async def aforward(
@@ -456,7 +459,10 @@ class Agent(Module, metaclass=AutoParams):
             )
             return response
         except Exception:
-            await self._acheckpoint_save_on_error(inputs)
+            try:
+                await self._acheckpoint_save_on_error(inputs)
+            except Exception:  # noqa: S110
+                pass  # Don't mask the original error
             raise
 
     def _execute_model(

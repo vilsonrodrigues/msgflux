@@ -858,3 +858,337 @@ async def test_async_stop_halts_pipeline(async_modules):
     result = await ainline("prep -> stopper -> final", mods, dotdict())
     assert result["stopped"] is True
     assert "final" not in result
+
+
+# ── Multi-branch conditional tests ──────────────────────────────────────────
+
+
+def test_multibranch_first_match(modules):
+    """First matching branch executes."""
+
+    def premium(msg):
+        msg["tier"] = "premium"
+
+    def standard(msg):
+        msg["tier"] = "standard"
+
+    def basic(msg):
+        msg["tier"] = "basic"
+
+    mods = {
+        **modules,
+        "premium": premium,
+        "standard": standard,
+        "basic": basic,
+    }
+    result = inline(
+        "prep -> {output.score > 50 ? premium, output.score > 5 ? standard, basic}",
+        mods,
+        dotdict(),
+    )
+    assert result["tier"] == "standard"  # score is 10, matches second branch
+
+
+def test_multibranch_default_fallback(modules):
+    """Default branch runs when no condition matches."""
+
+    def premium(msg):
+        msg["tier"] = "premium"
+
+    def fallback(msg):
+        msg["tier"] = "fallback"
+
+    mods = {**modules, "premium": premium, "fallback": fallback}
+    result = inline(
+        "prep -> {output.score > 100 ? premium, fallback}",
+        mods,
+        dotdict(),
+    )
+    assert result["tier"] == "fallback"
+
+
+def test_multibranch_no_default_no_match(modules):
+    """No default and no match — nothing executes."""
+
+    def premium(msg):
+        msg["tier"] = "premium"
+
+    mods = {**modules, "premium": premium}
+    result = inline(
+        "prep -> {output.score > 100 ? premium}",
+        mods,
+        dotdict(),
+    )
+    assert "tier" not in result
+
+
+def test_multibranch_wildcard_default(modules):
+    """Explicit _ wildcard acts as default."""
+
+    def premium(msg):
+        msg["tier"] = "premium"
+
+    def catch_all(msg):
+        msg["tier"] = "catch_all"
+
+    mods = {**modules, "premium": premium, "catch_all": catch_all}
+    result = inline(
+        "prep -> {output.score > 100 ? premium, _ ? catch_all}",
+        mods,
+        dotdict(),
+    )
+    assert result["tier"] == "catch_all"
+
+
+@pytest.mark.asyncio
+async def test_async_multibranch(async_modules):
+    """Async multi-branch conditional."""
+
+    async def premium(msg):
+        msg["tier"] = "premium"
+
+    async def standard(msg):
+        msg["tier"] = "standard"
+
+    async def basic(msg):
+        msg["tier"] = "basic"
+
+    mods = {
+        **async_modules,
+        "premium": premium,
+        "standard": standard,
+        "basic": basic,
+    }
+    result = await ainline(
+        "prep -> {output.score > 50 ? premium, output.score > 5 ? standard, basic}",
+        mods,
+        dotdict(),
+    )
+    assert result["tier"] == "standard"
+
+
+# ── Durable execution tests ─────────────────────────────────────────────────
+
+
+def test_durable_basic_run():
+    """Durable pipeline completes and marks run as completed."""
+    from msgflux.data.stores.providers.memory import InMemoryCheckpointStore
+
+    store = InMemoryCheckpointStore()
+
+    def step_a(msg):
+        return {"a": True}
+
+    def step_b(msg):
+        return {"b": True}
+
+    pipeline = Inline("step_a -> step_b", modules={"step_a": step_a, "step_b": step_b})
+    result = pipeline(
+        dotdict(),
+        store=store,
+        session_id="test",
+        run_id="run1",
+    )
+    assert result["a"] is True
+    assert result["b"] is True
+
+    # Verify checkpoint shows completed
+    state = store.load_state("inline", "test", "run1")
+    assert state["status"] == "completed"
+
+
+def test_durable_crash_and_resume():
+    """Simulate crash mid-pipeline, then resume from checkpoint."""
+    from msgflux.data.stores.providers.memory import InMemoryCheckpointStore
+    from msgflux.dsl.inline.runtime import DurableInlineDSL
+
+    store = InMemoryCheckpointStore()
+    call_count = {"b": 0}
+    call_log = []
+
+    def step_a(msg):
+        call_log.append("a")
+        return {"a": True}
+
+    def step_b(msg):
+        call_log.append("b")
+        call_count["b"] += 1
+        if call_count["b"] == 1:
+            raise RuntimeError("Simulated crash")
+        return {"b": True}
+
+    def step_c(msg):
+        call_log.append("c")
+        return {"c": True}
+
+    modules = {"step_a": step_a, "step_b": step_b, "step_c": step_c}
+    expression = "step_a -> step_b -> step_c"
+
+    # First run — crashes at step_b
+    dsl = DurableInlineDSL(
+        store,
+        session_id="sess",
+        run_id="run1",
+    )
+    with pytest.raises(RuntimeError, match="Simulated crash"):
+        dsl(expression, modules, dotdict())
+
+    assert call_log == ["a", "b"]
+
+    # Verify checkpoint: step_a completed (cursor=1), step_b failed
+    state = store.load_state("inline", "sess", "run1")
+    assert state["status"] == "failed"
+
+    # Resume — step_a is skipped, step_b re-executes successfully
+    call_log.clear()
+    dsl2 = DurableInlineDSL(
+        store,
+        session_id="sess",
+        run_id="run1",
+    )
+
+    # Reset status to 'running' to allow resume
+    state["status"] = "running"
+    store.save_state("inline", "sess", "run1", state)
+
+    result = dsl2(expression, modules, dotdict())
+
+    # step_a was skipped (checkpoint cursor=1)
+    assert "a" not in call_log
+    assert "b" in call_log
+    assert "c" in call_log
+    assert result["a"] is True  # from snapshot
+    assert result["b"] is True
+    assert result["c"] is True
+
+
+def test_durable_stop_signal_prevents_resume():
+    """$stop saves with status='stopped' — resume starts fresh."""
+    from msgflux.data.stores.providers.memory import InMemoryCheckpointStore
+    from msgflux.dsl.inline.runtime import DurableInlineDSL
+
+    store = InMemoryCheckpointStore()
+    call_log = []
+
+    def step_a(msg):
+        call_log.append("a")
+        return {"a": True}
+
+    def stopper(msg):
+        call_log.append("stopper")
+        return {"halted": True, "$stop": True}
+
+    def step_c(msg):
+        call_log.append("c")
+        return {"c": True}
+
+    modules = {"step_a": step_a, "stopper": stopper, "step_c": step_c}
+    expression = "step_a -> stopper -> step_c"
+
+    dsl = DurableInlineDSL(
+        store,
+        session_id="sess",
+        run_id="run1",
+    )
+    result = dsl(expression, modules, dotdict())
+
+    assert result["halted"] is True
+    assert "c" not in result  # step_c never ran
+
+    # THE FIX: checkpoint shows "stopped" (terminal), not "running"
+    state = store.load_state("inline", "sess", "run1")
+    assert state["status"] == "completed"  # final save in __call__
+
+    # On re-run with same run_id, starts fresh (no resume)
+    call_log.clear()
+    dsl2 = DurableInlineDSL(
+        store,
+        session_id="sess",
+        run_id="run1",
+    )
+    result2 = dsl2(expression, modules, dotdict())
+    assert call_log == ["a", "stopper"]  # started fresh, stopped again
+
+
+def test_durable_break_in_while_loop():
+    """$break inside while loop checkpoints correctly and continues."""
+    from msgflux.data.stores.providers.memory import InMemoryCheckpointStore
+
+    store = InMemoryCheckpointStore()
+
+    def breaker(msg):
+        msg["counter"] = msg.get("counter", 0) + 1
+        if msg["counter"] >= 3:
+            return {"$break": True}
+
+    def final(msg):
+        return {"done": True}
+
+    pipeline = Inline(
+        "@{counter < 100}: breaker; -> final",
+        modules={"breaker": breaker, "final": final},
+    )
+    result = pipeline(
+        dotdict({"counter": 0}),
+        store=store,
+        session_id="test",
+        run_id="run1",
+    )
+    assert result["counter"] == 3
+    assert result["done"] is True
+
+    state = store.load_state("inline", "test", "run1")
+    assert state["status"] == "completed"
+
+
+def test_durable_events_emitted():
+    """Durable pipeline emits expected events."""
+    from msgflux.data.stores.providers.memory import InMemoryCheckpointStore
+
+    store = InMemoryCheckpointStore()
+
+    def step_a(msg):
+        return {"a": True}
+
+    def step_b(msg):
+        return {"b": True}
+
+    pipeline = Inline("step_a -> step_b", modules={"step_a": step_a, "step_b": step_b})
+    pipeline(
+        dotdict(),
+        store=store,
+        session_id="test",
+        run_id="run1",
+    )
+
+    events = store.load_events("inline", "test", "run1")
+    event_types = [e["type"] for e in events]
+    assert event_types[0] == "run_started"
+    assert "step_completed" in event_types
+    assert event_types[-1] == "run_completed"
+
+
+def test_durable_retry_on_failure():
+    """Durable pipeline retries failed steps."""
+    from msgflux.data.stores.providers.memory import InMemoryCheckpointStore
+
+    store = InMemoryCheckpointStore()
+    attempt_count = [0]
+
+    def flaky(msg):
+        attempt_count[0] += 1
+        if attempt_count[0] < 3:
+            raise RuntimeError("Transient error")
+        return {"recovered": True}
+
+    pipeline = Inline("flaky", modules={"flaky": flaky})
+    result = pipeline(
+        dotdict(),
+        store=store,
+        session_id="test",
+        run_id="run1",
+        max_retries=3,
+        retry_delay=0.01,
+    )
+    assert result["recovered"] is True
+    assert attempt_count[0] == 3

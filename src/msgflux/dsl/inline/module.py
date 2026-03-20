@@ -30,7 +30,7 @@ class Inline:
 
             - **Sequential**: ``"a -> b -> c"``
             - **Parallel**: ``"a -> [b, c] -> d"``
-            - **Conditional**: ``"{score > 0.5 ? good, bad}"``
+            - **Conditional**: ``"{c1 ? a, c2 ? b, default}"``
             - **While loop**: ``"@{counter < 5}: increment;"``
         modules:
             Mapping of step names to callables.  Each callable receives
@@ -95,8 +95,8 @@ class Inline:
             store: Checkpoint store for durability.  ``None`` disables
                 checkpointing.
             session_id: Session identifier — propagated via
-                :class:`~msgflux.chat_messages.ChatMessages` context
-                and used as checkpoint store key.
+                :func:`~msgflux.context.session_context` and used as
+                checkpoint store key.
             run_id: Unique execution identifier.  Auto-generated when
                 omitted.
             namespace: Checkpoint namespace.

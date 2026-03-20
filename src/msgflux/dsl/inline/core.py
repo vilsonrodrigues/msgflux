@@ -1,3 +1,14 @@
+"""Inline DSL — parser, condition evaluator, and stateless execution engine.
+
+Provides :class:`InlineDSL` (sync) and :class:`AsyncInlineDSL` (async) that
+parse a mini DSL expression and execute it against a mapping of callables.
+
+Modules follow the **delta pattern**: they receive a :class:`~msgflux.dotdict`
+message and may return a ``dict`` delta (merged automatically) or ``None``
+(legacy in-place mutation).  Deltas may include **signals** (``$break``,
+``$stop``) for pipeline control flow.
+"""
+
 import asyncio
 import re
 from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple
@@ -6,7 +17,7 @@ from msgflux.dotdict import dotdict
 from msgflux.logger import logger
 from msgflux.nn import functional as F
 
-# ── Signals ─────────────────────────────────────────────────────────────────
+# ── Signals ──────────────────────────────────────────────────────────────────
 
 _SIGNAL_KEYS = frozenset({"$break", "$stop"})
 _SIGNAL_SEVERITY = {"$break": 1, "$stop": 2}
@@ -16,85 +27,32 @@ class InlineDSL:
     """Parses and executes a mini domain-specific language (DSL) for
     defining workflow pipelines over modules.
 
-    Supported Node Types:
+    Supported constructs:
 
-    1. Module Node:
-        Syntax:
-            `"module_name"`
-        Description:
-            A single module that processes the message.
+    - **Sequential**: ``"a -> b -> c"``
+    - **Parallel**: ``"[a, b, c]"``
+    - **Conditional** (multi-branch): ``"{c1 ? a, c2 ? b, default}"``
+    - **While loop**: ``"@{condition}: actions;"``
 
-    !!! example
+    Signals:
 
-            `"a"`
+    - ``$break`` — exit the current while loop (or step sequence).
+    - ``$stop``  — halt the entire pipeline immediately.
 
-    2. Parallel Node:
-        Syntax:
-            `"[module1, module2, ...]"`
-        Description:
-            Executes multiple modules in parallel using broadcast and gather.
-            The same input message is passed to all modules, and their results
-            are merged.
-
-    !!! example
-
-            `"[feat_a, feat_b]"`
-
-    3. Conditional Node:
-        Syntax:
-            `"{condition?true_branch[,false_branch]}"`
-        Description:
-            Conditionally executes a branch of modules depending on the evaluation
-            of the condition against the `message`.
-            The condition must follow the format `key_path operator value`,
-            e.g., `output.agent == "xpto"`.
-            The `true_branch` and `false_branch` are comma-separated module names.
-            Supports logic operators:
-                * AND (&): condition1 & condition2
-                * OR (||): condition1 || condition2
-                * NOT (!): !(condition)
-            None verification
-                * is None: user.name is None
-                * is not None: user.name is not None
-        !!! example
-
-            `"{output.agent == 'xpto'?a,b}"`
-            Executes `a` if the condition is true, `b` otherwise.
-
-    4. While Loop Node:
-        Syntax:
-            `"@{condition}: actions;"`
-        Description:
-            Executes a block of actions repeatedly while the condition is true.
-            The condition follows the same format as conditional nodes.
-            Actions can be any valid DSL expression (sequential, parallel,
-            conditional, nested while loops).
-
-    !!! example
-
-            `"@{counter < 10}: increment;"`
-            `"@{active}: [monitor, logger] -> report;"`
-
-    5. Arrow Separator (`->`):
-        Description:
-            Defines the sequence of operations in the pipeline.
-
-    !!! example
-
-            `"prep -> [feat_a, feat_b] -> combine"`
+    Modules return a ``dict`` delta merged via :meth:`dotdict.apply`.
+    Signal keys are stripped from the delta before applying.
     """
 
     def __init__(self, max_iterations: int = 1000):
-        self.max_iterations = max_iterations  # Safety limit to prevent infinite loops
+        self.max_iterations = max_iterations
         self.patterns = {
             "arrow": r"\s*->\s*",
             "parallel": r"\[(.*?)\]",
-            "conditional": r"\{(.*?)\?(.*?)(?:,(.*?))?\}",
+            "conditional": r"\{([^{}]+)\}",
             "while_loop": r"@\{(.*?)\}:\s*((?:[^;]|(?:->|\[.*?\]|\{.*?\}|@\{.*?\}:\s*.*?;))+);",  # noqa: E501
             "identifier": r"[a-zA-Z_][a-zA-Z0-9_]*",
             "comparison": r"([a-zA-Z0-9_.]+)\s*(==|!=|<=|>=|<|>|is not|is)\s*(.*)",
         }
-        # Pre-compiled regexes for hot paths (while loops, conditions)
         self._re_while = re.compile(self.patterns["while_loop"])
         self._re_arrow = re.compile(self.patterns["arrow"])
         self._re_conditional = re.compile(self.patterns["conditional"])
@@ -102,31 +60,26 @@ class InlineDSL:
         self._re_identifier = re.compile(self.patterns["identifier"])
         self._re_comparison = re.compile(self.patterns["comparison"])
 
+    # ── Parser ───────────────────────────────────────────────────────────
+
     def parse(self, expression: str) -> List[Dict[str, Any]]:
-        """Parse DSL expression into a list of steps."""
-        steps = []
+        """Parse a DSL expression into a list of execution steps."""
+        steps: List[Dict[str, Any]] = []
         remaining = expression.strip()
 
         while remaining:
-            # Try to match while loop first (since it's more complex)
             while_match = self._re_while.match(remaining)
             if while_match:
                 condition = while_match.group(1).strip()
                 actions = while_match.group(2).strip()
-
                 steps.append(
                     {"type": "while", "condition": condition, "actions": actions}
                 )
-
-                # Remove the matched while loop from remaining string
                 remaining = remaining[while_match.end() :].strip()
-
-                # Check if there's an arrow after the while loop
                 if remaining.startswith("->"):
                     remaining = remaining[2:].strip()
                 continue
 
-            # Split by arrow for other patterns
             arrow_split = self._re_arrow.split(remaining, maxsplit=1)
             part = arrow_split[0].strip()
             remaining = arrow_split[1].strip() if len(arrow_split) > 1 else ""
@@ -136,17 +89,8 @@ class InlineDSL:
 
             conditional_match = self._re_conditional.match(part)
             if conditional_match:
-                condition, true_branch, false_branch = conditional_match.groups()
-                steps.append(
-                    {
-                        "type": "conditional",
-                        "condition": condition.strip(),
-                        "true_branch": self._parse_branch(true_branch),
-                        "false_branch": self._parse_branch(false_branch)
-                        if false_branch
-                        else [],
-                    }
-                )
+                content = conditional_match.group(1)
+                steps.append(self._parse_conditional_content(content))
                 continue
 
             parallel_match = self._re_parallel.match(part)
@@ -162,83 +106,85 @@ class InlineDSL:
 
         return steps
 
-    def _parse_branch(self, branch: str) -> List[str]:
-        """Parse a conditional branch into a list of modules."""
-        if not branch:
-            return []
-        # Ensures that even a single entry without a comma is treated as a list
-        return [m.strip() for m in branch.split(",") if m.strip()]
+    @staticmethod
+    def _parse_conditional_content(content: str) -> Dict[str, Any]:
+        """Parse multi-branch conditional content.
+
+        Supports:
+            ``{c1 ? a, c2 ? b, default}``  — multi-branch with fallback
+            ``{c ? a, b}``                  — binary (backwards compatible)
+            ``{c1 ? a, _ ? b}``             — explicit wildcard default
+        """
+        parts = [p.strip() for p in content.split(",")]
+        branches: List[Dict[str, str]] = []
+        default: List[str] = []
+
+        for part in parts:
+            if "?" in part:
+                q_idx = part.index("?")
+                condition = part[:q_idx].strip()
+                module = part[q_idx + 1 :].strip()
+                if condition == "_":
+                    default = [module]
+                else:
+                    branches.append({"condition": condition, "module": module})
+            else:
+                default.append(part)
+
+        return {"type": "conditional", "branches": branches, "default": default}
+
+    # ── Condition evaluator ──────────────────────────────────────────────
 
     def _tokenize_condition(self, condition: str) -> List[str]:
-        """Tokenize condition string into logical components."""
-        condition = condition.strip()  # Remove black spaces
-
-        # Pattern for tokenization that captures logical operators
-        # parentheses and expressions
+        condition = condition.strip()
         token_pattern = r"(\|\||&|!|\(|\)|[^&|!()]+)"  # noqa: S105
         tokens = re.findall(token_pattern, condition)
-
-        # Removes empty tokens and trim
         return [token.strip() for token in tokens if token.strip()]
 
     def _parse_logical_expression(
         self, tokens: List[str], index: Optional[int] = 0
     ) -> Tuple:
-        """Parse logical expression recursively."""
         result, index = self._parse_or_expression(tokens, index)
         return result, index
 
     def _parse_or_expression(self, tokens: List[str], index: int) -> Tuple:
-        """Parse OR expressions (lowest precedence)."""
         left, index = self._parse_and_expression(tokens, index)
-
         while index < len(tokens) and tokens[index] == "||":
-            index += 1  # skip "||"
+            index += 1
             right, index = self._parse_and_expression(tokens, index)
             left = ("OR", left, right)
-
         return left, index
 
     def _parse_and_expression(self, tokens: List[str], index: int) -> Tuple:
-        """Parse AND expressions (medium precedence)."""
         left, index = self._parse_not_expression(tokens, index)
-
         while index < len(tokens) and tokens[index] == "&":
-            index += 1  # skip "&"
+            index += 1
             right, index = self._parse_not_expression(tokens, index)
             left = ("AND", left, right)
-
         return left, index
 
     def _parse_not_expression(self, tokens: List[str], index: int) -> Tuple:
-        """Parse NOT expressions (highest precedence)."""
         if index < len(tokens) and tokens[index] == "!":
-            index += 1  # skip "!"
+            index += 1
             expr, index = self._parse_primary_expression(tokens, index)
             return ("NOT", expr), index
-        else:
-            return self._parse_primary_expression(tokens, index)
+        return self._parse_primary_expression(tokens, index)
 
     def _parse_primary_expression(self, tokens: List[str], index: int) -> Tuple:
-        """Parse primary expressions (comparisons or parenthesized expressions)."""
         if index < len(tokens) and tokens[index] == "(":
-            index += 1  # skip "("
+            index += 1
             expr, index = self._parse_logical_expression(tokens, index)
             if index < len(tokens) and tokens[index] == ")":
-                index += 1  # skip ")"
+                index += 1
                 return expr, index
-            else:
-                raise ValueError("Missing closing parenthesis")
-        # This should be a comparison expression
-        elif index < len(tokens):
+            raise ValueError("Missing closing parenthesis")
+        if index < len(tokens):
             comparison_expr = tokens[index]
             index += 1
             return ("COMPARISON", comparison_expr), index
-        else:
-            raise ValueError("Expected comparison expression")
+        raise ValueError("Expected comparison expression")
 
     def _evaluate_comparison(self, comparison_str: str, message: dotdict) -> bool:  # noqa: C901
-        """Evaluate a single comparison expression."""
         match = self._re_comparison.match(comparison_str.strip())
         if not match:
             raise ValueError(
@@ -247,34 +193,25 @@ class InlineDSL:
             )
 
         key_path, operator, expected_value_str = match.groups()
-
         actual_value = message.get(key_path, None)
         expected_value_str = expected_value_str.strip()
 
-        # Handle None/null checks
         if operator in ["is", "is not"]:
             if expected_value_str.lower() in ["none", "null"]:
                 if operator == "is":
                     return actual_value is None
-                else:  # is not
-                    return actual_value is not None
-            else:
-                raise ValueError(
-                    "`is` and `is not` operators only "
-                    "support `None` or `null` comparisons"
-                )
+                return actual_value is not None
+            raise ValueError(
+                "`is` and `is not` operators only support `None` or `null` comparisons"
+            )
 
-        # Remove quotes from the expected value and attempt
-        # to convert to the appropriate type
         expected_value_str = expected_value_str.strip("'\"")
 
         try:
-            # Handle boolean values
             if expected_value_str.lower() == "true":
                 expected_value = True
             elif expected_value_str.lower() == "false":
                 expected_value = False
-            # Attempts to convert to int or float for numeric comparisons
             elif "." in expected_value_str:
                 expected_value = float(expected_value_str)
             else:
@@ -283,13 +220,9 @@ class InlineDSL:
                 except ValueError:
                     expected_value = expected_value_str
 
-            # Try to convert the actual value also to the same type for comparison
             if actual_value is None:
-                # If the value does not exist in the message
-                # we cannot compare numerically
                 return False
 
-            # Handle boolean conversion for actual value
             if isinstance(expected_value, bool):
                 if isinstance(actual_value, str):
                     actual_value = actual_value.lower() == "true"
@@ -299,117 +232,55 @@ class InlineDSL:
                 actual_value = type(expected_value)(actual_value)
 
         except (ValueError, TypeError):
-            # If conversion fails, treat as string
             expected_value = expected_value_str
-            # Ensures the current value is a string for consistent
-            # comparison if not None
             actual_value = str(actual_value) if actual_value is not None else None
 
-        # Performs comparison based on the operator
         if actual_value is None and operator not in ["==", "!="]:
             return False
 
         if operator == "==":
             return actual_value == expected_value
-        elif operator == "!=":
+        if operator == "!=":
             return actual_value != expected_value
-        elif operator == "<":
+        if operator == "<":
             return actual_value < expected_value
-        elif operator == ">":
+        if operator == ">":
             return actual_value > expected_value
-        elif operator == "<=":
+        if operator == "<=":
             return actual_value <= expected_value
-        elif operator == ">=":
+        if operator == ">=":
             return actual_value >= expected_value
-        else:
-            raise ValueError(f"Unknown comparison operator: {operator}")
+        raise ValueError(f"Unknown comparison operator: {operator}")
 
     def _evaluate_logical_tree(self, tree: tuple, message: dotdict) -> bool:
-        """Evaluate a logical expression tree."""
         if tree[0] == "COMPARISON":
             return self._evaluate_comparison(tree[1], message)
-        elif tree[0] == "AND":
-            left_result = self._evaluate_logical_tree(tree[1], message)
-            right_result = self._evaluate_logical_tree(tree[2], message)
-            return left_result and right_result
-        elif tree[0] == "OR":
-            left_result = self._evaluate_logical_tree(tree[1], message)
-            right_result = self._evaluate_logical_tree(tree[2], message)
-            return left_result or right_result
-        elif tree[0] == "NOT":
-            expr_result = self._evaluate_logical_tree(tree[1], message)
-            return not expr_result
-        else:
-            raise ValueError(f"Unknown logical operator: {tree[0]}")
+        if tree[0] == "AND":
+            return self._evaluate_logical_tree(
+                tree[1], message
+            ) and self._evaluate_logical_tree(tree[2], message)
+        if tree[0] == "OR":
+            return self._evaluate_logical_tree(
+                tree[1], message
+            ) or self._evaluate_logical_tree(tree[2], message)
+        if tree[0] == "NOT":
+            return not self._evaluate_logical_tree(tree[1], message)
+        raise ValueError(f"Unknown logical operator: {tree[0]}")
 
     def _evaluate_condition(self, condition: str, message: dotdict) -> bool:
-        """Evaluates a condition with logical operators support."""
-        # Tokenize the condition
         tokens = self._tokenize_condition(condition)
-
         if not tokens:
             raise ValueError("Empty condition")
-
-        # Parse the logical expression
         tree, final_index = self._parse_logical_expression(tokens)
-
         if final_index != len(tokens):
             raise ValueError(f"Unexpected tokens after parsing: {tokens[final_index:]}")
-
-        # Evaluate the tree
         return self._evaluate_logical_tree(tree, message)
 
-    def _execute_while_loop(
-        self,
-        condition: str,
-        actions: str,
-        modules: Mapping[str, Callable],
-        message: dotdict,
-    ) -> Tuple[dotdict, Dict[str, Any]]:
-        """Execute a while loop. Returns ``(message, signals)``.
-
-        ``$break`` is consumed here (breaks the loop).
-        ``$stop`` is propagated to the caller.
-        """
-        iterations = 0
-        current_message = message
-        actions_steps = self.parse(actions)
-
-        while self._evaluate_condition(condition, current_message):
-            if iterations >= self.max_iterations:
-                raise RuntimeError(
-                    f"While loop exceeded maximum iterations ({self.max_iterations}). "
-                    f"Possible infinite loop detected. Condition: {condition}"
-                )
-
-            current_message, signals = self._execute_steps(
-                actions_steps,
-                modules,
-                current_message,
-            )
-            iterations += 1
-
-            if "$stop" in signals:
-                return current_message, signals
-            if "$break" in signals:
-                break
-
-        return current_message, {}
-
-    @staticmethod
-    def _apply_result(message: dotdict, result: Any) -> None:
-        """Apply a module result to the message.
-
-        If the module returned a ``dict`` it is treated as a delta and
-        merged via :meth:`dotdict.apply`.  ``None`` means the module
-        already mutated the message in-place (legacy pattern).
-        """
-        if isinstance(result, dict):
-            message.apply(result)
+    # ── Signal helpers ───────────────────────────────────────────────────
 
     @staticmethod
     def _extract_signals(result: Any) -> Tuple[Any, Dict[str, Any]]:
-        """Separate signal keys (``$break``, ``$stop``) from a result.
+        """Separate ``$break``/``$stop`` from a module result.
 
         Returns ``(delta, signals)`` where *delta* has no signal keys.
         """
@@ -432,16 +303,46 @@ class InlineDSL:
             return {"$break": True}
         return {}
 
+    @staticmethod
+    def _apply_result(message: dotdict, result: Any) -> None:
+        """Apply a module delta to the message.
+
+        ``dict`` → merged via :meth:`dotdict.apply`.
+        ``None`` → no-op (legacy in-place pattern).
+        """
+        if isinstance(result, dict):
+            message.apply(result)
+
+    # ── Module calling ───────────────────────────────────────────────────
+
     def _call_module(
         self,
         module: Callable,
         message: dotdict,
     ) -> Dict[str, Any]:
-        """Call *module*, apply its delta, and return extracted signals."""
+        """Call *module*, apply its delta, return extracted signals."""
         result = module(message)
         delta, signals = self._extract_signals(result)
         self._apply_result(message, delta)
         return signals
+
+    @staticmethod
+    def _resolve_parallel(
+        step: Dict[str, Any],
+        modules: Mapping[str, Callable],
+    ) -> list:
+        """Resolve module callables for a parallel step."""
+        parallel_modules = []
+        for mod_name in step["modules"]:
+            module = modules.get(mod_name)
+            if not module:
+                raise ValueError(
+                    f"Module `{mod_name}` not found for parallel execution."
+                )
+            parallel_modules.append(module)
+        return parallel_modules
+
+    # ── Execution ────────────────────────────────────────────────────────
 
     def _execute_parallel(
         self,
@@ -452,9 +353,10 @@ class InlineDSL:
         from msgflux.exceptions import TaskError  # noqa: PLC0415
 
         results = F.bcast_gather(parallel_modules, message)
-        errors = {}
+        errors: Dict[int, Any] = {}
         seen_keys: Dict[str, int] = {}
         all_signals: List[Dict[str, Any]] = []
+
         for i, result in enumerate(results):
             if isinstance(result, TaskError):
                 errors[i] = result
@@ -474,6 +376,7 @@ class InlineDSL:
                             )
                         seen_keys[key] = i
                 self._apply_result(message, delta)
+
         if errors:
             failed = ", ".join(
                 f"worker {i}: {err.exception}" for i, err in errors.items()
@@ -481,46 +384,63 @@ class InlineDSL:
             raise RuntimeError(f"Parallel execution failed: {failed}")
         return self._merge_signals(all_signals)
 
-    @staticmethod
-    def _resolve_parallel(
-        step: Dict[str, Any],
-        modules: Mapping[str, Callable],
-    ) -> list:
-        """Resolve module callables for a parallel step."""
-        parallel_modules = []
-        for mod_name in step["modules"]:
-            module = modules.get(mod_name)
-            if not module:
-                raise ValueError(f"Module {mod_name} not found for parallel execution.")
-            parallel_modules.append(module)
-        if not parallel_modules:
-            raise ValueError(
-                f"No valid modules found for parallel execution in {step['modules']}."
-            )
-        return parallel_modules
-
     def _execute_conditional(
         self,
         step: Dict[str, Any],
         modules: Mapping[str, Callable],
         message: dotdict,
     ) -> Dict[str, Any]:
-        """Execute a conditional branch, return signals."""
-        condition_result = self._evaluate_condition(
-            step["condition"],
-            message,
-        )
-        branch = step["true_branch"] if condition_result else step["false_branch"]
-        for module_name in branch:
+        """Execute a multi-branch conditional, return signals."""
+        for branch in step["branches"]:
+            if self._evaluate_condition(branch["condition"], message):
+                module = modules.get(branch["module"])
+                if not module:
+                    raise ValueError(
+                        f"Module `{branch['module']}` not found in conditional branch."
+                    )
+                return self._call_module(module, message)
+        for module_name in step["default"]:
             module = modules.get(module_name)
             if not module:
                 raise ValueError(
-                    f"Module `{module_name}` not found in conditional branch."
+                    f"Module `{module_name}` not found in conditional default."
                 )
             signals = self._call_module(module, message)
             if signals:
                 return signals
         return {}
+
+    def _execute_while_loop(
+        self,
+        condition: str,
+        actions: str,
+        modules: Mapping[str, Callable],
+        message: dotdict,
+    ) -> Tuple[dotdict, Dict[str, Any]]:
+        """Execute a while loop. Returns ``(message, signals)``.
+
+        ``$break`` is consumed here (breaks the loop).
+        ``$stop`` is propagated to the caller.
+        """
+        iterations = 0
+        actions_steps = self.parse(actions)
+
+        while self._evaluate_condition(condition, message):
+            if iterations >= self.max_iterations:
+                raise RuntimeError(
+                    f"While loop exceeded maximum iterations ({self.max_iterations}). "
+                    f"Possible infinite loop detected. Condition: {condition}"
+                )
+
+            message, signals = self._execute_steps(actions_steps, modules, message)
+            iterations += 1
+
+            if "$stop" in signals:
+                return message, signals
+            if "$break" in signals:
+                break
+
+        return message, {}
 
     def _execute_steps(
         self,
@@ -529,42 +449,31 @@ class InlineDSL:
         message: dotdict,
     ) -> Tuple[dotdict, Dict[str, Any]]:
         """Execute a list of steps. Returns ``(message, signals)``."""
-        current_message = message
-        signals: Dict[str, Any] = {}
-
         for step in steps:
             if step["type"] == "module":
                 module = modules.get(step["module"])
                 if not module:
                     raise ValueError(f"Module `{step['module']}` not found.")
-                signals = self._call_module(module, current_message)
+                signals = self._call_module(module, message)
 
             elif step["type"] == "parallel":
                 parallel_modules = self._resolve_parallel(step, modules)
-                signals = self._execute_parallel(
-                    parallel_modules,
-                    current_message,
-                )
+                signals = self._execute_parallel(parallel_modules, message)
 
             elif step["type"] == "conditional":
-                signals = self._execute_conditional(
-                    step,
-                    modules,
-                    current_message,
-                )
+                signals = self._execute_conditional(step, modules, message)
 
             elif step["type"] == "while":
-                current_message, signals = self._execute_while_loop(
-                    step["condition"],
-                    step["actions"],
-                    modules,
-                    current_message,
+                message, signals = self._execute_while_loop(
+                    step["condition"], step["actions"], modules, message
                 )
+            else:
+                continue
 
             if signals:
-                return current_message, signals
+                return message, signals
 
-        return current_message, {}
+        return message, {}
 
     def __call__(
         self, expression: str, modules: Mapping[str, Callable], message: dotdict
@@ -576,45 +485,11 @@ class InlineDSL:
 
 
 class AsyncInlineDSL(InlineDSL):
-    """Async version of InlineDSL. Parses and executes workflow pipelines
-    with async support.
+    """Async version of :class:`InlineDSL`.
 
-    Inherits parsing logic from InlineDSL but overrides execution methods
-    for async.
+    Inherits parsing and condition evaluation.  Overrides execution
+    methods for ``async``/``await``.
     """
-
-    async def _aexecute_while_loop(
-        self,
-        condition: str,
-        actions: str,
-        modules: Mapping[str, Callable],
-        message: dotdict,
-    ) -> Tuple[dotdict, Dict[str, Any]]:
-        """Async version of _execute_while_loop."""
-        iterations = 0
-        current_message = message
-        actions_steps = self.parse(actions)
-
-        while self._evaluate_condition(condition, current_message):
-            if iterations >= self.max_iterations:
-                raise RuntimeError(
-                    f"While loop exceeded maximum iterations ({self.max_iterations}). "
-                    f"Possible infinite loop detected. Condition: {condition}"
-                )
-
-            current_message, signals = await self._aexecute_steps(
-                actions_steps,
-                modules,
-                current_message,
-            )
-            iterations += 1
-
-            if "$stop" in signals:
-                return current_message, signals
-            if "$break" in signals:
-                break
-
-        return current_message, {}
 
     async def _acall_module(
         self,
@@ -637,16 +512,17 @@ class AsyncInlineDSL(InlineDSL):
         parallel_modules: List[Callable],
         message: dotdict,
     ) -> Dict[str, Any]:
-        """Async parallel execution with delta merge. Returns signals."""
+        """Async parallel execution with delta merge."""
         from msgflux.exceptions import TaskError  # noqa: PLC0415
 
         results = await F.ascatter_gather(
             parallel_modules,
             args_list=[(message,)] * len(parallel_modules),
         )
-        errors = {}
+        errors: Dict[int, Any] = {}
         seen_keys: Dict[str, int] = {}
         all_signals: List[Dict[str, Any]] = []
+
         for i, result in enumerate(results):
             if isinstance(result, TaskError):
                 errors[i] = result
@@ -666,6 +542,7 @@ class AsyncInlineDSL(InlineDSL):
                             )
                         seen_keys[key] = i
                 self._apply_result(message, delta)
+
         if errors:
             failed = ", ".join(
                 f"worker {i}: {err.exception}" for i, err in errors.items()
@@ -679,22 +556,55 @@ class AsyncInlineDSL(InlineDSL):
         modules: Mapping[str, Callable],
         message: dotdict,
     ) -> Dict[str, Any]:
-        """Async execute a conditional branch, return signals."""
-        condition_result = self._evaluate_condition(
-            step["condition"],
-            message,
-        )
-        branch = step["true_branch"] if condition_result else step["false_branch"]
-        for module_name in branch:
+        """Async execute a multi-branch conditional, return signals."""
+        for branch in step["branches"]:
+            if self._evaluate_condition(branch["condition"], message):
+                module = modules.get(branch["module"])
+                if not module:
+                    raise ValueError(
+                        f"Module `{branch['module']}` not found in conditional branch."
+                    )
+                return await self._acall_module(module, message)
+        for module_name in step["default"]:
             module = modules.get(module_name)
             if not module:
                 raise ValueError(
-                    f"Module `{module_name}` not found in conditional branch."
+                    f"Module `{module_name}` not found in conditional default."
                 )
             signals = await self._acall_module(module, message)
             if signals:
                 return signals
         return {}
+
+    async def _aexecute_while_loop(
+        self,
+        condition: str,
+        actions: str,
+        modules: Mapping[str, Callable],
+        message: dotdict,
+    ) -> Tuple[dotdict, Dict[str, Any]]:
+        """Async while loop. ``$break`` consumed, ``$stop`` propagated."""
+        iterations = 0
+        actions_steps = self.parse(actions)
+
+        while self._evaluate_condition(condition, message):
+            if iterations >= self.max_iterations:
+                raise RuntimeError(
+                    f"While loop exceeded maximum iterations ({self.max_iterations}). "
+                    f"Possible infinite loop detected. Condition: {condition}"
+                )
+
+            message, signals = await self._aexecute_steps(
+                actions_steps, modules, message
+            )
+            iterations += 1
+
+            if "$stop" in signals:
+                return message, signals
+            if "$break" in signals:
+                break
+
+        return message, {}
 
     async def _aexecute_steps(
         self,
@@ -702,43 +612,32 @@ class AsyncInlineDSL(InlineDSL):
         modules: Mapping[str, Callable],
         message: dotdict,
     ) -> Tuple[dotdict, Dict[str, Any]]:
-        """Async version of _execute_steps. Returns ``(message, signals)``."""
-        current_message = message
-        signals: Dict[str, Any] = {}
-
+        """Async version of :meth:`_execute_steps`."""
         for step in steps:
             if step["type"] == "module":
                 module = modules.get(step["module"])
                 if not module:
                     raise ValueError(f"Module `{step['module']}` not found.")
-                signals = await self._acall_module(module, current_message)
+                signals = await self._acall_module(module, message)
 
             elif step["type"] == "parallel":
                 parallel_modules = self._resolve_parallel(step, modules)
-                signals = await self._aexecute_parallel(
-                    parallel_modules,
-                    current_message,
-                )
+                signals = await self._aexecute_parallel(parallel_modules, message)
 
             elif step["type"] == "conditional":
-                signals = await self._aexecute_conditional(
-                    step,
-                    modules,
-                    current_message,
-                )
+                signals = await self._aexecute_conditional(step, modules, message)
 
             elif step["type"] == "while":
-                current_message, signals = await self._aexecute_while_loop(
-                    step["condition"],
-                    step["actions"],
-                    modules,
-                    current_message,
+                message, signals = await self._aexecute_while_loop(
+                    step["condition"], step["actions"], modules, message
                 )
+            else:
+                continue
 
             if signals:
-                return current_message, signals
+                return message, signals
 
-        return current_message, {}
+        return message, {}
 
     async def __call__(
         self, expression: str, modules: Mapping[str, Callable], message: dotdict
