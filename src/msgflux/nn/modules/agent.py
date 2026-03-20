@@ -21,6 +21,7 @@ if TYPE_CHECKING:
 
 from msgflux.auto import AutoParams
 from msgflux.chat_messages import ChatMessages
+from msgflux.context import _CURRENT_TRACE
 from msgflux.data.types import Audio, File, Image, Video
 from msgflux.dotdict import dotdict
 from msgflux.dsl.signature import (
@@ -360,6 +361,12 @@ class Agent(Module, metaclass=AutoParams):
             self._set_expected_output(expected_output)
             self._set_instructions(instructions)
             self._set_system_message(system_message)
+
+        # Optimizer-managed fields
+        self.optimized_system_prompt = Parameter(
+            None, PromptSpec.OPTIMIZED_SYSTEM_PROMPT
+        )
+        self.demos: List[Example] = []
 
     def forward(
         self, message: Optional[Union[str, Mapping[str, Any], Message]] = None, **kwargs
@@ -1119,12 +1126,17 @@ class Agent(Module, metaclass=AutoParams):
             assistant_output = None
         elif response_type == "tool_responses":
             status = "tool_responses"
-        messages.end_turn(
+        turn_record = messages.end_turn(
             assistant_output=assistant_output,
             response_type=response_type,
             response_metadata=metadata,
             status=status,
         )
+
+        # Append to optimizer trace if inside a trace_context()
+        trace = _CURRENT_TRACE.get(None)
+        if trace is not None and turn_record is not None:
+            trace.append((self, turn_record))
 
     def _append_response_to_chat_messages(
         self,
@@ -2062,23 +2074,38 @@ class Agent(Module, metaclass=AutoParams):
     def get_system_prompt(self, vars: Optional[Mapping[str, Any]] = None) -> str:
         """Render the system prompt using the Jinja template.
         Returns an empty string if no segments are provided.
+
+        If ``optimized_system_prompt`` is set (by an optimizer), it takes
+        precedence over the fragmented system_message / instructions /
+        expected_output / examples.  Demos are always appended when present.
         """
-        template_inputs = dotdict(
-            system_message=self.system_message.data,
-            instructions=self.instructions.data,
-            expected_output=self.expected_output.data,
-            examples=self.examples.data,
-            system_extra_message=self.system_extra_message,
-        )
+        # --- optimized prompt takes precedence over fragments ---
+        if self.optimized_system_prompt.data:
+            system_prompt = self.optimized_system_prompt.data
+        else:
+            template_inputs = dotdict(
+                system_message=self.system_message.data,
+                instructions=self.instructions.data,
+                expected_output=self.expected_output.data,
+                examples=self.examples.data,
+                system_extra_message=self.system_extra_message,
+            )
 
-        if self.config.get("include_date", False):
-            now = datetime.now(tz=timezone.utc)
-            # Format: "Monday, December 09, 2025"
-            template_inputs.current_date = now.strftime("%A, %B %d, %Y")
+            if self.config.get("include_date", False):
+                now = datetime.now(tz=timezone.utc)
+                # Format: "Monday, December 09, 2025"
+                template_inputs.current_date = now.strftime("%A, %B %d, %Y")
 
-        system_prompt = self._format_template(
-            template_inputs, self.system_prompt_template
-        )
+            system_prompt = self._format_template(
+                template_inputs, self.system_prompt_template
+            )
+
+        # --- append demos (few-shot examples) ---
+        if self.demos:
+            demo_collection = ExampleCollection(self.demos)
+            demos_text = demo_collection.get_formatted()
+            if demos_text:
+                system_prompt = (system_prompt or "") + "\n\n" + demos_text
 
         if vars:  # Runtime inputs to system template
             system_prompt = self._format_template(vars, system_prompt)

@@ -3,6 +3,7 @@ class PromptSpec:
     INSTRUCTIONS = "How you should do"
     EXAMPLES = "Samples of what to do"
     EXPECTED_OUTPUT = "Describes what the response should be like"
+    OPTIMIZED_SYSTEM_PROMPT = "Optimizer-generated system prompt"
     # TASK_TEMPLATE = ""
 
 

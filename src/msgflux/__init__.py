@@ -4,7 +4,7 @@ from .auto import AutoParams
 
 from .cache import response_cache
 from .chat_messages import ChatMessages
-from .context import get_session_context, session_context
+from .context import get_session_context, get_trace, session_context, trace_context
 from .data.dbs import DB
 from .data.parsers import Parser
 from .data.retrievers import Retriever
@@ -27,10 +27,8 @@ from .utils.console import cprint
 from .utils.inspect import get_fn_name
 from .utils.msgspec import load, msgspec_dumps, save
 
-# Optimization modules
-from . import evaluate
+# Optimization
 from . import optim
-from . import trainer
 
 __all__ = [
     "AutoParams",
@@ -43,6 +41,7 @@ __all__ = [
     "Example",
     "File",
     "get_session_context",
+    "get_trace",
     "Guard",
     "Image",
     "Inline",
@@ -68,10 +67,9 @@ __all__ = [
     "response_cache",
     "save",
     "session_context",
+    "trace_context",
     "set_envs",
     "tool_config",
-    # Optimization modules
-    "evaluate",
+    # Optimization
     "optim",
-    "trainer",
 ]

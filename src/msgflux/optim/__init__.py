@@ -1,130 +1,44 @@
 """Prompt optimization module for msgflux.
 
-This module provides optimizers for improving prompt performance through
-various strategies including few-shot selection, bootstrapping, instruction
-optimization, and evolutionary algorithms.
+Optimizers follow the DSPy ``compile()`` interface::
 
-Example:
-    >>> from msgflux.optim import LabeledFewShot, BootstrapFewShot
-    >>>
-    >>> # Simple few-shot selection
-    >>> optimizer = LabeledFewShot(agent.parameters(), trainset=examples, k=16)
-    >>> optimizer.step()
-    >>>
-    >>> # Bootstrap with metric
-    >>> optimizer = BootstrapFewShot(
-    ...     agent.parameters(),
-    ...     metric=exact_match,
-    ...     max_bootstrapped_demos=4,
-    ... )
-    >>> optimizer.step(trainset=examples, teacher=agent)
-    >>>
-    >>> # COPRO instruction optimization
-    >>> optimizer = COPRO(
-    ...     agent.parameters(),
-    ...     metric=exact_match,
-    ...     prompt_model=generator_agent,
-    ... )
-    >>> optimizer.step(trainset, valset)
-    >>>
-    >>> # MIPROv2 multi-prompt optimization
-    >>> optimizer = MIPROv2(
-    ...     agent.parameters(),
-    ...     metric=exact_match,
-    ...     prompt_model=generator_agent,
-    ...     num_trials=50,
-    ... )
-    >>> optimizer.step(trainset, valset)
-    >>>
-    >>> # GEPA genetic algorithm
-    >>> optimizer = GEPA(
-    ...     agent.parameters(),
-    ...     metric=exact_match,
-    ...     prompt_model=generator_agent,
-    ...     num_generations=10,
-    ... )
-    >>> optimizer.step(trainset, valset)
-    >>>
-    >>> # Early stopping
-    >>> from msgflux.optim import EarlyStopping
-    >>> early_stopping = EarlyStopping(patience=5, min_delta=0.01)
-    >>>
-    >>> # Checkpointing
-    >>> from msgflux.optim import Checkpointer
-    >>> checkpointer = Checkpointer("./checkpoints", save_every=10)
-    >>>
-    >>> # Callbacks
-    >>> from msgflux.optim.callbacks import EarlyStoppingCallback, CheckpointCallback
-    >>> callbacks = [EarlyStoppingCallback(patience=5), CheckpointCallback("./ckpts")]
-    >>>
-    >>> # Export results
-    >>> from msgflux.optim import ExperimentExporter
-    >>> exporter = ExperimentExporter(name="my-exp", optimizer="MIPROv2")
-    >>>
-    >>> # Temperature scheduling
-    >>> from msgflux.optim.schedulers import CosineScheduler
-    >>> scheduler = CosineScheduler(max_value=1.0, min_value=0.1, num_steps=100)
-    >>>
-    >>> # Visualization
-    >>> from msgflux.optim import OptimizationPlotter
-    >>> plotter = OptimizationPlotter()
+    optimizer = LabeledFewShot(k=4)
+    compiled = optimizer.compile(student, trainset=examples)
+
+Available optimizers:
+
+- :class:`LabeledFewShot` — sample labeled examples as demos
+- :class:`BootstrapFewShot` — bootstrap demos from a teacher
+- :class:`COPRO` — coordinate prompt optimization via instruction search
+- :class:`SIMBA` — stochastic mini-batch ascent with reflection
+- :class:`MIPROv2` — multi-prompt instruction proposal with Optuna
+- :class:`GEPA` — guided evolution for prompt adaptation
 """
 
-from msgflux.optim.bootstrap import BootstrapFewShot, BootstrapResult, Trace
-from msgflux.optim.checkpointer import Checkpointer, CheckpointInfo
-from msgflux.optim.copro import COPRO, CoproCandidate, CoproResult
-from msgflux.optim.early_stopping import EarlyStopping, EarlyStoppingState
-from msgflux.optim.export import ExperimentExporter, ExperimentRecord, StepRecord
-from msgflux.optim.gepa import GEPA, GEPAStats, Individual
+from msgflux.optim.bootstrap import BootstrapFewShot
+from msgflux.optim.copro import COPRO
+from msgflux.optim.evaluate import EvalResult, Evaluate
+from msgflux.optim.gepa import GEPA
 from msgflux.optim.labeled_fewshot import LabeledFewShot
-from msgflux.optim.mipro import MIPROv2, MiproTrial, PromptCandidate
-from msgflux.optim.optimizer import Optimizer
-from msgflux.optim.progress import Colors, MetricProgressBar, OptimProgress, StepInfo, TrialInfo
-from msgflux.optim.simba import SIMBA, SIMBACandidate, SIMBAResult, SIMBATrialLog
-from msgflux.optim.visualization import OptimizationPlotter, PlotData
+from msgflux.optim.mipro import MIPROv2
+from msgflux.optim.simba import SIMBA
+from msgflux.optim.teleprompter import Teleprompter
+from msgflux.optim.utils import create_minibatch, eval_candidate_program
 
 __all__ = [
     # Base class
-    "Optimizer",
-    # Demonstration-based optimizers
+    "Teleprompter",
+    # Optimizers
     "LabeledFewShot",
     "BootstrapFewShot",
-    # Instruction optimizers
     "COPRO",
-    "MIPROv2",
-    # Evolutionary optimizers
-    "GEPA",
-    # Self-reflective optimizers
     "SIMBA",
-    # Progress utilities
-    "OptimProgress",
-    "MetricProgressBar",
-    "Colors",
-    "TrialInfo",
-    "StepInfo",
-    # Early stopping
-    "EarlyStopping",
-    "EarlyStoppingState",
-    # Checkpointing
-    "Checkpointer",
-    "CheckpointInfo",
-    # Export
-    "ExperimentExporter",
-    "ExperimentRecord",
-    "StepRecord",
-    # Visualization
-    "OptimizationPlotter",
-    "PlotData",
-    # Data classes
-    "BootstrapResult",
-    "Trace",
-    "CoproCandidate",
-    "CoproResult",
-    "PromptCandidate",
-    "MiproTrial",
-    "Individual",
-    "GEPAStats",
-    "SIMBACandidate",
-    "SIMBAResult",
-    "SIMBATrialLog",
+    "MIPROv2",
+    "GEPA",
+    # Evaluation
+    "Evaluate",
+    "EvalResult",
+    # Utilities
+    "create_minibatch",
+    "eval_candidate_program",
 ]

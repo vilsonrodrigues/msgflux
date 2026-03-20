@@ -1,765 +1,562 @@
-"""MIPROv2 - Multi-prompt Instruction Proposal Optimization.
+"""MIPROv2 — Multi-prompt Instruction Proposal Optimization.
 
-MIPROv2 optimizes multiple prompt components simultaneously using
-Bayesian optimization to find the best combination of instructions
-and demonstrations.
+Combines instruction generation, bootstrapped demos, and Optuna-based
+Bayesian search to find the best prompt configuration per agent.
+
+Three phases:
+    1. Bootstrap few-shot demo candidate sets via BootstrapFewShot.
+    2. Propose instruction candidates via a prompt model.
+    3. Search (instruction_idx, demo_idx) per agent with Optuna TPESampler.
+
+Optuna is an optional dependency — imported at runtime.
+
+Reference: ``dspy/teleprompt/mipro_optimizer_v2.py`` (853 lines).
 """
 
-import asyncio
+import logging
 import random
-from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
+from typing import Any, Callable, List, Literal, Optional
 
-from msgflux.examples import Example, ExampleCollection, ExampleFormat
-from msgflux.generation.templates import PromptSpec
-from msgflux.logger import init_logger
+from msgflux.examples import Example
 from msgflux.nn.modules.module import Module
-from msgflux.nn.parameter import Parameter
-from msgflux.optim.optimizer import Optimizer
-from msgflux.optim.progress import OptimProgress, TrialInfo
+from msgflux.optim.evaluate import Evaluate
+from msgflux.optim.teleprompter import Teleprompter
+from msgflux.optim.utils import eval_candidate_program
 
-logger = init_logger(__name__)
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
+
+AUTO_RUN_SETTINGS = {
+    "light": {"n": 6, "val_size": 100},
+    "medium": {"n": 12, "val_size": 300},
+    "heavy": {"n": 18, "val_size": 1000},
+}
+
+# ---------------------------------------------------------------------------
+# Prompt templates
+# ---------------------------------------------------------------------------
+
+_PROPOSE_INSTRUCTION = """\
+You are an instruction optimizer for an AI agent.
+
+Here is the agent's current configuration:
+{agent_info}
+
+Here are some example inputs from the training data:
+{data_summary}
+
+{demo_context}
+
+Your task is to propose a single, improved system prompt for this agent \
+that will lead it to perform the task well. The prompt should be concise, \
+clear, and actionable.
+
+Respond with ONLY the improved system prompt, nothing else."""
+
+_PROPOSE_WITH_TIP = """\
+You are an instruction optimizer for an AI agent.
+
+Here is the agent's current configuration:
+{agent_info}
+
+Here are some example inputs from the training data:
+{data_summary}
+
+{demo_context}
+
+Prompting tip: {tip}
+
+Your task is to propose a single, improved system prompt for this agent \
+that will lead it to perform the task well. The prompt should be concise, \
+clear, and actionable.
+
+Respond with ONLY the improved system prompt, nothing else."""
+
+_PROMPTING_TIPS = [
+    "Break the task into clear, sequential steps.",
+    "Include a concrete example of ideal input/output behavior.",
+    "Specify the format of the expected output explicitly.",
+    "Use role-playing to set the agent's persona and expertise.",
+    "Add constraints to avoid common failure modes.",
+    "Be specific about edge cases and how to handle them.",
+]
 
 
-# Template for instruction proposal
-INSTRUCTION_PROPOSAL_TEMPLATE = """You are an expert prompt engineer. Generate a clear and effective instruction for an AI system.
-
-## Task Context
-{task_context}
-
-## Requirements
-The instruction should:
-1. Be specific and actionable
-2. Include any necessary constraints
-3. Guide the AI toward the correct output format
-
-## Example Inputs and Outputs
-{examples}
-
-Generate a single, comprehensive instruction:"""
+def _import_optuna():
+    try:
+        import optuna  # noqa: PLC0415
+    except ModuleNotFoundError as exc:
+        if exc.name == "optuna":
+            raise ImportError(
+                "MIPROv2 requires 'optuna'. "
+                "Install with `pip install optuna`."
+            ) from exc
+        raise
+    return optuna
 
 
-@dataclass
-class PromptCandidate:
-    """A candidate prompt configuration."""
-
-    instruction: str
-    demos: List[Example] = field(default_factory=list)
-    score: float = 0.0
-    evaluated: bool = False
-
-    def __hash__(self):
-        return hash((self.instruction, tuple(self.demos)))
-
-
-@dataclass
-class MiproTrial:
-    """A single trial in the optimization process."""
-
-    instruction_idx: int
-    demo_indices: List[int]
-    score: float
-    candidate: PromptCandidate
-
-
-class MIPROv2(Optimizer):
+class MIPROv2(Teleprompter):
     """Multi-prompt Instruction Proposal Optimization v2.
 
-    MIPROv2 optimizes prompt configurations by:
-    1. Generating multiple instruction candidates
-    2. Selecting demonstration examples
-    3. Using surrogate model to predict performance
-    4. Iteratively refining based on evaluations
-
-    Example:
-        >>> from msgflux.optim import MIPROv2
-        >>> from msgflux.evaluate.metrics import exact_match
-        >>>
-        >>> optimizer = MIPROv2(
-        ...     agent.parameters(),
-        ...     metric=exact_match,
-        ...     prompt_model=generator_model,
-        ...     num_candidates=10,
-        ...     num_trials=50,
-        ...     seed=42,
-        ... )
-        >>> optimizer.step(trainset, valset)
-
     Args:
-        params: Iterable of Parameters to optimize.
-        metric: Metric function for evaluation.
-        prompt_model: Module to use for generating instructions.
-        num_candidates: Number of instruction candidates to generate.
-        num_demos: Number of demonstrations per candidate.
-        num_trials: Number of optimization trials.
-        init_temperature: Initial temperature for sampling.
-        task_context: Description of the task.
+        metric: ``metric(example, prediction) -> float | bool``
+        prompt_model: Model/Agent for generating instruction candidates.
+            Must be callable: ``prompt_model(message) -> str``.
+        auto: Preset mode — ``"light"``, ``"medium"``, or ``"heavy"``.
+        num_candidates: Number of instruction/demo candidates.
+        num_trials: Number of Optuna trials (ignored when *auto* is set).
+        max_bootstrapped_demos: Max bootstrapped demos per candidate set.
+        max_labeled_demos: Max labeled demos per candidate set.
+        num_threads: Threads for evaluation.
         seed: Random seed for reproducibility.
+        init_temperature: Temperature for instruction generation.
+        minibatch_size: Size of minibatch for evaluation.
+        minibatch_full_eval_steps: Full eval every N minibatch steps.
+
+    Example::
+
+        optimizer = MIPROv2(
+            metric=exact_match,
+            prompt_model=prompt_fn,
+            auto="light",
+        )
+        compiled = optimizer.compile(student, trainset=examples)
     """
 
     def __init__(
         self,
-        params: Iterable[Parameter],
+        metric: Callable,
         *,
-        metric: Callable[[Example, Any], float],
-        prompt_model: Optional[Module] = None,
-        num_candidates: int = 10,
-        num_demos: int = 4,
-        num_trials: int = 50,
+        prompt_model: Any = None,
+        auto: Optional[Literal["light", "medium", "heavy"]] = "light",
+        num_candidates: Optional[int] = None,
+        num_trials: Optional[int] = None,
+        max_bootstrapped_demos: int = 4,
+        max_labeled_demos: int = 4,
+        num_threads: Optional[int] = None,
+        seed: int = 9,
         init_temperature: float = 1.0,
-        task_context: Optional[str] = None,
-        verbose: bool = False,
-        seed: int = 0,
+        minibatch_size: int = 35,
+        minibatch_full_eval_steps: int = 5,
     ):
-        defaults = dict(
-            num_candidates=num_candidates,
-            num_demos=num_demos,
-            num_trials=num_trials,
-            init_temperature=init_temperature,
-            seed=seed,
-        )
-        super().__init__(params, defaults)
-
+        if auto is not None and auto not in AUTO_RUN_SETTINGS:
+            raise ValueError(
+                f"Invalid auto mode: {auto}. "
+                f"Must be one of {set(AUTO_RUN_SETTINGS)}."
+            )
         self.metric = metric
         self.prompt_model = prompt_model
+        self.auto = auto
         self.num_candidates = num_candidates
-        self.num_demos = num_demos
         self.num_trials = num_trials
-        self.init_temperature = init_temperature
-        self.task_context = task_context or "Complete the given task accurately."
-        self.verbose = verbose
+        self.max_bootstrapped_demos = max_bootstrapped_demos
+        self.max_labeled_demos = max_labeled_demos
+        self.num_threads = num_threads
         self.seed = seed
-        self.rng = random.Random(seed)
+        self.init_temperature = init_temperature
+        self.minibatch_size = minibatch_size
+        self.minibatch_full_eval_steps = minibatch_full_eval_steps
 
-        # Progress tracking
-        self._progress = OptimProgress(verbose=verbose)
-
-        # Track optimization state
-        self._instruction_candidates: List[str] = []
-        self._demo_pool: List[Example] = []
-        self._trials: List[MiproTrial] = []
-        self._best_candidate: Optional[PromptCandidate] = None
-        self._best_score: float = 0.0
-
-        # Simple surrogate model: average score per instruction/demo combination
-        self._instruction_scores: Dict[int, List[float]] = {}
-        self._demo_scores: Dict[int, List[float]] = {}
-
-    def step(
+    def compile(
         self,
-        trainset: List[Example],
-        valset: Optional[List[Example]] = None,
+        student: Module,
         *,
+        trainset: List[Example],
         teacher: Optional[Module] = None,
-        closure: Optional[Callable[[], float]] = None,
-    ) -> Optional[float]:
-        """Perform one MIPROv2 optimization step.
+        valset: Optional[List[Example]] = None,
+        seed: Optional[int] = None,
+        **kwargs: Any,  # noqa: ARG002
+    ) -> Module:
+        """Optimize via bootstrap + instruction proposal + Optuna search."""
+        seed = seed or self.seed
+        rng = random.Random(seed)  # noqa: S311
 
-        Args:
-            trainset: Training examples for demonstrations.
-            valset: Validation examples for evaluation.
-            teacher: Module to evaluate.
-            closure: Closure for loss computation.
+        # Split train/val
+        trainset, valset = self._split_datasets(trainset, valset, rng)
 
-        Returns:
-            The loss value if closure is provided, None otherwise.
-        """
-        self._step_count += 1
-
-        if valset is None:
-            valset = trainset
-
-        # Start progress tracking
-        self._progress.start(
-            "MIPROv2",
-            trainset_size=len(trainset),
-            valset_size=len(valset),
-            num_candidates=self.num_candidates,
-            num_demos=self.num_demos,
-            num_trials=self.num_trials,
+        # Resolve hyperparameters from auto mode
+        num_candidates, num_trials, use_minibatch = (
+            self._resolve_hyperparams(student, valset)
         )
 
-        # Initialize demonstration pool
-        self._demo_pool = trainset.copy()
-
-        # Generate instruction candidates
-        self._progress.step("GENERATE INSTRUCTION CANDIDATES", 1, 3)
-        if not self._instruction_candidates:
-            self._instruction_candidates = self._generate_instruction_candidates(
-                trainset
-            )
-        self._progress.substep(f"Generated {len(self._instruction_candidates)} candidates")
-
-        # Run optimization trials
-        self._progress.step("RUN OPTIMIZATION TRIALS", 2, 3)
-        total_score = 0.0
-
-        for trial_idx in range(self.num_trials):
-            # Sample instruction and demos based on surrogate predictions
-            instruction_idx = self._sample_instruction()
-            demo_indices = self._sample_demos()
-
-            # Create candidate
-            candidate = PromptCandidate(
-                instruction=self._instruction_candidates[instruction_idx],
-                demos=[self._demo_pool[i] for i in demo_indices if i < len(self._demo_pool)],
-            )
-
-            # Evaluate candidate
-            if teacher is not None:
-                score = self._evaluate_candidate(candidate, valset, teacher)
-            else:
-                score = 0.0
-
-            candidate.score = score
-            candidate.evaluated = True
-            total_score += score
-
-            # Record trial
-            trial = MiproTrial(
-                instruction_idx=instruction_idx,
-                demo_indices=demo_indices,
-                score=score,
-                candidate=candidate,
-            )
-            self._trials.append(trial)
-
-            # Update surrogate model
-            self._update_surrogate(trial)
-
-            # Track best
-            is_best = score > self._best_score
-            if is_best:
-                self._best_score = score
-                self._best_candidate = candidate
-
-            # Log trial progress in DSPy style
-            self._progress.average_metric(
-                value=total_score,
-                total=trial_idx + 1,
-                name="Average Trial Score",
-            )
-
-        # Log instruction scores summary
-        if self._instruction_scores:
-            instr_avg_scores = []
-            instr_labels = []
-            for i, scores in self._instruction_scores.items():
-                if scores:
-                    instr_avg_scores.append(sum(scores) / len(scores))
-                    instr_labels.append(f"Instr-{i+1}")
-            self._progress.candidate_scores(
-                instr_avg_scores, instr_labels, max_display=5
-            )
-
-        # Apply best configuration to parameters
-        self._progress.step("APPLY BEST CONFIGURATION", 3, 3)
-        if self._best_candidate is not None:
-            self._apply_candidate(self._best_candidate)
-            self._progress.success(f"Applied best candidate with score {self._best_score:.4f}")
-
-        # Finish with summary
-        self._progress.finish(
-            best_score=self._best_score,
-            summary={
-                "total_trials": len(self._trials),
-                "instruction_candidates": len(self._instruction_candidates),
-            },
+        program = student.deepcopy()
+        evaluate = Evaluate(
+            devset=valset,
+            metric=self.metric,
+            num_threads=self.num_threads or 1,
         )
 
-        if closure is not None:
-            return closure()
-        return None
-
-    def _generate_instruction_candidates(
-        self, trainset: List[Example]
-    ) -> List[str]:
-        """Generate instruction candidates using the prompt model."""
-        candidates = []
-
-        # Format example inputs/outputs
-        sample_examples = self.rng.sample(
-            trainset, min(5, len(trainset))
-        )
-        examples_str = "\n".join(
-            f"Input: {ex.inputs}\nOutput: {ex.labels}"
-            for ex in sample_examples
+        # Phase 1: Bootstrap demo candidate sets
+        demo_candidates = self._bootstrap_demo_sets(
+            program, trainset, teacher, num_candidates, seed,
         )
 
-        for i in range(self.num_candidates):
-            if self.prompt_model is not None:
-                prompt = INSTRUCTION_PROPOSAL_TEMPLATE.format(
-                    task_context=self.task_context,
-                    examples=examples_str,
-                )
-                try:
-                    response = self.prompt_model(prompt)
-                    instruction = str(response).strip()
-                    if instruction:
-                        candidates.append(instruction)
-                except Exception:
-                    pass
+        # Phase 2: Propose instruction candidates
+        instruction_candidates = self._propose_instructions(
+            program, trainset, demo_candidates, num_candidates, rng,
+        )
 
-            # Fallback: generate simple variations
-            if len(candidates) <= i:
-                base = f"Complete the task based on the given input. Variation {i+1}."
-                candidates.append(base)
+        # Phase 3: Optuna search
+        best_program = self._optuna_search(
+            program, instruction_candidates, demo_candidates,
+            evaluate, valset, num_trials, use_minibatch, seed, rng,
+        )
 
-        return candidates
+        return best_program
 
-    def _sample_instruction(self) -> int:
-        """Sample an instruction index using Thompson sampling."""
-        if not self._instruction_scores:
-            # Random sampling initially
-            return self.rng.randint(0, len(self._instruction_candidates) - 1)
+    # ------------------------------------------------------------------
+    # Phase 1: Bootstrap demo sets
+    # ------------------------------------------------------------------
 
-        # Calculate expected value for each instruction
-        scores = []
-        for i in range(len(self._instruction_candidates)):
-            if i in self._instruction_scores and self._instruction_scores[i]:
-                # Use mean + exploration bonus
-                mean = sum(self._instruction_scores[i]) / len(self._instruction_scores[i])
-                bonus = 1.0 / (1 + len(self._instruction_scores[i]))
-                scores.append(mean + self.init_temperature * bonus)
-            else:
-                # High value for unexplored
-                scores.append(1.0)
-
-        # Softmax sampling
-        total = sum(s for s in scores)
-        probs = [s / total for s in scores] if total > 0 else [1.0 / len(scores)] * len(scores)
-
-        r = self.rng.random()
-        cumsum = 0.0
-        for i, p in enumerate(probs):
-            cumsum += p
-            if r <= cumsum:
-                return i
-
-        return len(self._instruction_candidates) - 1
-
-    def _sample_demos(self) -> List[int]:
-        """Sample demonstration indices using Thompson sampling."""
-        if not self._demo_pool:
-            return []
-
-        if not self._demo_scores:
-            # Random sampling initially
-            indices = list(range(len(self._demo_pool)))
-            return self.rng.sample(indices, min(self.num_demos, len(indices)))
-
-        # Calculate expected value for each demo
-        scores = []
-        for i in range(len(self._demo_pool)):
-            if i in self._demo_scores and self._demo_scores[i]:
-                mean = sum(self._demo_scores[i]) / len(self._demo_scores[i])
-                bonus = 1.0 / (1 + len(self._demo_scores[i]))
-                scores.append(mean + self.init_temperature * bonus)
-            else:
-                scores.append(1.0)
-
-        # Sample top-k with some randomness
-        indexed_scores = list(enumerate(scores))
-        indexed_scores.sort(key=lambda x: x[1] + self.rng.random() * 0.1, reverse=True)
-
-        return [idx for idx, _ in indexed_scores[: self.num_demos]]
-
-    def _evaluate_candidate(
+    def _bootstrap_demo_sets(
         self,
-        candidate: PromptCandidate,
-        valset: List[Example],
-        teacher: Module,
-    ) -> float:
-        """Evaluate a candidate configuration."""
-        # Apply candidate temporarily
-        instructions_param = None
-        examples_param = None
-        original_instructions = None
-        original_examples = None
+        program: Module,
+        trainset: list[Example],
+        teacher: Optional[Module],
+        num_sets: int,
+        seed: int,  # noqa: ARG002
+    ) -> dict[str, list[list[Example]]]:
+        """Create N demo candidate sets per agent via BootstrapFewShot."""
+        from msgflux.optim.bootstrap import BootstrapFewShot  # noqa: PLC0415
 
-        for group in self.param_groups:
-            for param in group["params"]:
-                if param.spec == PromptSpec.INSTRUCTIONS:
-                    instructions_param = param
-                    original_instructions = param.data
-                elif param.spec == PromptSpec.EXAMPLES:
-                    examples_param = param
-                    original_examples = param.data
+        logger.info("Phase 1: Bootstrapping %d demo candidate sets.", num_sets)
 
-        try:
-            # Apply candidate
-            if instructions_param and instructions_param.requires_grad:
-                instructions_param.data = candidate.instruction
+        agent_names = [name for name, _ in program.named_agents()]
+        demo_candidates: dict[str, list[list[Example]]] = {
+            name: [] for name in agent_names
+        }
 
-            if examples_param and examples_param.requires_grad and candidate.demos:
-                examples_param.data = self._format_demos(candidate.demos)
+        for i in range(num_sets):
+            try:
+                bs = BootstrapFewShot(
+                    metric=self.metric,
+                    max_bootstrapped_demos=self.max_bootstrapped_demos,
+                    max_labeled_demos=self.max_labeled_demos,
+                )
+                compiled = bs.compile(
+                    program, trainset=trainset, teacher=teacher,
+                )
+                for name, agent in compiled.named_agents():
+                    if name in demo_candidates:
+                        demo_candidates[name].append(list(agent.demos))
+            except Exception:
+                logger.warning(
+                    "Bootstrap set %d failed", i + 1, exc_info=True,
+                )
+                # Fallback: empty demos
+                for name in agent_names:
+                    demo_candidates[name].append([])
+
+            logger.info("Bootstrapped set %d/%d.", i + 1, num_sets)
+
+        return demo_candidates
+
+    # ------------------------------------------------------------------
+    # Phase 2: Propose instructions
+    # ------------------------------------------------------------------
+
+    def _propose_instructions(
+        self,
+        program: Module,
+        trainset: list[Example],
+        demo_candidates: dict[str, list[list[Example]]],
+        num_candidates: int,
+        rng: random.Random,
+    ) -> dict[str, list[str]]:
+        """Generate instruction candidates per agent."""
+        logger.info("Phase 2: Proposing %d instructions per agent.", num_candidates)
+
+        instruction_candidates: dict[str, list[str]] = {}
+
+        data_summary = self._summarize_data(trainset, rng)
+
+        for name, agent in program.named_agents():
+            agent_info = _get_agent_info(agent)
+
+            # Original instruction as candidate 0
+            original = agent.get_system_prompt() or agent_info
+            candidates = [original]
+
+            if self.prompt_model is None:
+                # Without prompt_model, just repeat original
+                instruction_candidates[name] = candidates
+                continue
+
+            # Generate additional candidates
+            demos = demo_candidates.get(name, [[]])
+            for i in range(num_candidates - 1):
+                demo_context = ""
+                if demos:
+                    demo_set = demos[i % len(demos)]
+                    if demo_set:
+                        demo_context = "Example demonstrations:\n"
+                        for d in demo_set[:3]:
+                            demo_context += (
+                                f"  Input: {d.inputs}\n  Output: {d.labels}\n"
+                            )
+
+                tip = rng.choice(_PROMPTING_TIPS)
+                prompt = _PROPOSE_WITH_TIP.format(
+                    agent_info=agent_info,
+                    data_summary=data_summary,
+                    demo_context=demo_context,
+                    tip=tip,
+                )
+
+                try:
+                    result = self.prompt_model(prompt)
+                    text = result if isinstance(result, str) else str(result)
+                    candidates.append(text.strip())
+                except Exception:
+                    logger.warning(
+                        "Failed to generate instruction %d for %s",
+                        i + 1, name, exc_info=True,
+                    )
+
+            instruction_candidates[name] = candidates
+            logger.info(
+                "Agent %s: %d instruction candidates.",
+                name, len(candidates),
+            )
+
+        return instruction_candidates
+
+    # ------------------------------------------------------------------
+    # Phase 3: Optuna search
+    # ------------------------------------------------------------------
+
+    def _optuna_search(
+        self,
+        program: Module,
+        instruction_candidates: dict[str, list[str]],
+        demo_candidates: dict[str, list[list[Example]]],
+        evaluate: Evaluate,
+        valset: list[Example],
+        num_trials: int,
+        use_minibatch: bool,  # noqa: FBT001
+        seed: int,
+        rng: random.Random,
+    ) -> Module:
+        """Use Optuna to search instruction/demo combinations."""
+        optuna = _import_optuna()
+
+        logger.info(
+            "Phase 3: Optuna search (%d trials).", num_trials,
+        )
+
+        optuna.logging.set_verbosity(optuna.logging.WARNING)
+        sampler = optuna.samplers.TPESampler(
+            seed=seed, multivariate=True,
+        )
+        study = optuna.create_study(
+            direction="maximize", sampler=sampler,
+        )
+
+        agent_names = [name for name, _ in program.named_agents()]
+
+        # Evaluate default program
+        default_score = eval_candidate_program(
+            len(valset), valset, program, evaluate, rng,
+        ).score
+        logger.info("Default program score: %.4f", default_score)
+
+        best_score = default_score
+        best_program = program.deepcopy()
+        score_data: list[dict] = [
+            {"score": default_score, "program": program.deepcopy()},
+        ]
+        batch_size = (
+            self.minibatch_size if use_minibatch else len(valset)
+        )
+
+        def objective(trial: Any) -> float:
+            nonlocal best_score, best_program
+
+            candidate = program.deepcopy()
+
+            # Select instruction + demos per agent
+            for name, agent in candidate.named_agents():
+                instrs = instruction_candidates.get(name, [])
+                if instrs:
+                    idx = trial.suggest_categorical(
+                        f"{name}_instruction",
+                        list(range(len(instrs))),
+                    )
+                    agent.optimized_system_prompt.data = instrs[idx]
+
+                demos = demo_candidates.get(name, [])
+                if demos:
+                    d_idx = trial.suggest_categorical(
+                        f"{name}_demos",
+                        list(range(len(demos))),
+                    )
+                    agent.demos = list(demos[d_idx])
 
             # Evaluate
-            total_score = 0.0
-            for example in valset:
-                try:
-                    prediction = teacher(example.inputs)
-                    score = self.metric(example, prediction)
-                    total_score += score
-                except Exception:
-                    pass
+            score = eval_candidate_program(
+                batch_size, valset, candidate, evaluate, rng,
+            ).score
 
-            return total_score / len(valset) if valset else 0.0
+            if not use_minibatch and score > best_score:
+                best_score = score
+                best_program = candidate.deepcopy()
 
-        finally:
-            # Restore original values
-            if instructions_param:
-                instructions_param.data = original_instructions
-            if examples_param:
-                examples_param.data = original_examples
+            score_data.append(
+                {"score": score, "program": candidate},
+            )
 
-    def _format_demos(
+            logger.info(
+                "Trial %d: score=%.4f (best=%.4f)",
+                trial.number + 1, score, best_score,
+            )
+            return score
+
+        # Add default as baseline trial
+        default_params = {}
+        distributions = {}
+        cat_dist = optuna.distributions.CategoricalDistribution
+        for name in agent_names:
+            instrs = instruction_candidates.get(name, [])
+            if instrs:
+                key = f"{name}_instruction"
+                default_params[key] = 0
+                distributions[key] = cat_dist(list(range(len(instrs))))
+            demos = demo_candidates.get(name, [])
+            if demos:
+                key = f"{name}_demos"
+                default_params[key] = 0
+                distributions[key] = cat_dist(list(range(len(demos))))
+
+        baseline_trial = optuna.trial.create_trial(
+            params=default_params,
+            distributions=distributions,
+            value=default_score,
+        )
+        study.add_trial(baseline_trial)
+
+        # Run optimization
+        study.optimize(objective, n_trials=num_trials)
+
+        # If minibatch was used, do final full eval on top candidates
+        if use_minibatch:
+            best_score, best_program = self._final_full_eval(
+                score_data, evaluate, valset, rng,
+                best_score, best_program,
+            )
+
+        best_program.compile_(
+            optimizer="MIPROv2",
+            score=best_score,
+            total_calls=num_trials,
+        )
+
+        # Attach metadata
+        sorted_data = sorted(
+            score_data, key=lambda x: x["score"], reverse=True,
+        )
+        best_program.candidate_programs = sorted_data
+
+        return best_program
+
+    def _final_full_eval(
         self,
-        demos: List[Example],
-        format: ExampleFormat = ExampleFormat.PLAINTEXT,
+        score_data: list[dict],
+        evaluate: Evaluate,
+        valset: list[Example],
+        rng: random.Random,
+        best_score: float,
+        best_program: Module,
+    ) -> tuple[float, Module]:
+        """Full evaluation of top candidates after minibatch search."""
+        top_candidates = sorted(
+            score_data, key=lambda x: x["score"], reverse=True,
+        )[:5]
+
+        for entry in top_candidates:
+            prog = entry["program"]
+            score = eval_candidate_program(
+                len(valset), valset, prog, evaluate, rng,
+            ).score
+            if score > best_score:
+                best_score = score
+                best_program = prog.deepcopy()
+
+        logger.info("Final full eval best: %.4f", best_score)
+        return best_score, best_program
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    def _split_datasets(
+        self,
+        trainset: list[Example],
+        valset: Optional[list[Example]],
+        rng: random.Random,  # noqa: ARG002
+    ) -> tuple[list[Example], list[Example]]:
+        """Split trainset into train/val if no valset provided."""
+        if not trainset:
+            raise ValueError("Trainset cannot be empty.")
+
+        if valset is not None:
+            return trainset, valset
+
+        if len(trainset) < 2:
+            raise ValueError(
+                "Trainset must have at least 2 examples."
+            )
+
+        val_size = min(1000, max(1, int(len(trainset) * 0.80)))
+        cutoff = len(trainset) - val_size
+        return trainset[:cutoff], trainset[cutoff:]
+
+    def _resolve_hyperparams(
+        self,
+        student: Module,
+        valset: list[Example],
+    ) -> tuple[int, int, bool]:
+        """Resolve num_candidates, num_trials, use_minibatch."""
+        if self.auto is not None:
+            settings = AUTO_RUN_SETTINGS[self.auto]
+            num_candidates = settings["n"]
+            num_agents = len(list(student.named_agents()))
+            num_vars = max(num_agents * 2, 1)
+            import math  # noqa: PLC0415
+            num_trials = int(
+                max(2 * num_vars * math.log2(max(num_candidates, 2)),
+                    1.5 * num_candidates)
+            )
+            use_minibatch = len(valset) > 50
+            return num_candidates, num_trials, use_minibatch
+
+        num_candidates = self.num_candidates or 6
+        num_trials = self.num_trials or 30
+        use_minibatch = len(valset) > 50
+        return num_candidates, num_trials, use_minibatch
+
+    @staticmethod
+    def _summarize_data(
+        trainset: list[Example], rng: random.Random,
     ) -> str:
-        """Format demonstrations as a string.
+        """Create a brief summary of training data."""
+        sample_size = min(5, len(trainset))
+        samples = rng.sample(trainset, sample_size)
+        lines = []
+        for i, ex in enumerate(samples, 1):
+            lines.append(f"  Example {i}: Input={ex.inputs}, Output={ex.labels}")
+        return "\n".join(lines)
 
-        Args:
-            demos: List of Example objects to format.
-            format: Output format (xml, plaintext, minimal).
 
-        Returns:
-            Formatted demonstrations string.
-        """
-        if not demos:
-            return ""
-        collection = ExampleCollection(demos)
-        return collection.get_formatted(format=format) or ""
-
-    def _update_surrogate(self, trial: MiproTrial) -> None:
-        """Update surrogate model with trial results."""
-        # Update instruction scores
-        if trial.instruction_idx not in self._instruction_scores:
-            self._instruction_scores[trial.instruction_idx] = []
-        self._instruction_scores[trial.instruction_idx].append(trial.score)
-
-        # Update demo scores
-        for demo_idx in trial.demo_indices:
-            if demo_idx not in self._demo_scores:
-                self._demo_scores[demo_idx] = []
-            self._demo_scores[demo_idx].append(trial.score)
-
-    def _apply_candidate(self, candidate: PromptCandidate) -> None:
-        """Apply the best candidate to parameters."""
-        for group in self.param_groups:
-            for param in group["params"]:
-                if param.spec == PromptSpec.INSTRUCTIONS and param.requires_grad:
-                    param.data = candidate.instruction
-                elif param.spec == PromptSpec.EXAMPLES and param.requires_grad:
-                    if candidate.demos:
-                        param.data = self._format_demos(candidate.demos)
-
-    def get_best_candidate(self) -> Optional[PromptCandidate]:
-        """Get the best candidate found."""
-        return self._best_candidate
-
-    def get_best_score(self) -> float:
-        """Get the best score achieved."""
-        return self._best_score
-
-    def get_trials(self) -> List[MiproTrial]:
-        """Get all optimization trials."""
-        return self._trials
-
-    def get_instruction_candidates(self) -> List[str]:
-        """Get all generated instruction candidates."""
-        return self._instruction_candidates
-
-    def state_dict(self) -> Dict[str, Any]:
-        """Return optimizer state dictionary."""
-        state = super().state_dict()
-        state.update(
-            {
-                "instruction_candidates": self._instruction_candidates,
-                "best_score": self._best_score,
-                "seed": self.seed,
-            }
-        )
-        if self._best_candidate:
-            state["best_instruction"] = self._best_candidate.instruction
-            state["best_demos"] = [
-                {"inputs": d.inputs, "labels": d.labels}
-                for d in self._best_candidate.demos
-            ]
-        return state
-
-    def load_state_dict(self, state: Dict[str, Any]) -> None:
-        """Load optimizer state dictionary."""
-        super().load_state_dict(state)
-        self._instruction_candidates = state.get("instruction_candidates", [])
-        self._best_score = state.get("best_score", 0.0)
-        self.seed = state.get("seed", self.seed)
-        self.rng = random.Random(self.seed)
-
-        if "best_instruction" in state:
-            demos = [
-                Example(inputs=d["inputs"], labels=d["labels"])
-                for d in state.get("best_demos", [])
-            ]
-            self._best_candidate = PromptCandidate(
-                instruction=state["best_instruction"],
-                demos=demos,
-                score=self._best_score,
-            )
-
-    # =========================================================================
-    # Async Methods
-    # =========================================================================
-
-    async def astep(
-        self,
-        trainset: List[Example],
-        valset: Optional[List[Example]] = None,
-        *,
-        teacher: Optional[Module] = None,
-        closure: Optional[Callable[[], float]] = None,
-        max_concurrency: Optional[int] = None,
-    ) -> Optional[float]:
-        """Perform one MIPROv2 optimization step asynchronously.
-
-        This method runs optimization trials concurrently, which can significantly
-        speed up optimization when using async-capable modules.
-
-        Args:
-            trainset: Training examples for demonstrations.
-            valset: Validation examples for evaluation.
-            teacher: Module to evaluate (must support acall or aforward).
-            closure: Closure for loss computation.
-            max_concurrency: Maximum concurrent evaluations. If None, runs
-                all trials concurrently.
-
-        Returns:
-            The loss value if closure is provided, None otherwise.
-
-        Example:
-            >>> result = await optimizer.astep(trainset, valset, teacher=agent)
-        """
-        self._step_count += 1
-
-        if valset is None:
-            valset = trainset
-
-        # Start progress tracking
-        self._progress.start(
-            "MIPROv2 (async)",
-            trainset_size=len(trainset),
-            valset_size=len(valset),
-            num_candidates=self.num_candidates,
-            num_trials=self.num_trials,
-            max_concurrency=max_concurrency or "unlimited",
-        )
-
-        # Initialize demonstration pool
-        self._demo_pool = trainset.copy()
-
-        # Generate instruction candidates (sync operation)
-        self._progress.step("GENERATE INSTRUCTION CANDIDATES", 1, 3)
-        if not self._instruction_candidates:
-            self._instruction_candidates = self._generate_instruction_candidates(
-                trainset
-            )
-        self._progress.substep(f"Generated {len(self._instruction_candidates)} candidates")
-
-        # Run optimization trials asynchronously
-        self._progress.step("RUN OPTIMIZATION TRIALS (async)", 2, 3)
-        if max_concurrency:
-            await self._arun_trials_with_semaphore(
-                valset, teacher, max_concurrency
-            )
-        else:
-            await self._arun_trials_concurrent(valset, teacher)
-
-        # Log instruction scores summary after all trials
-        if self._instruction_scores:
-            instr_avg_scores = []
-            instr_labels = []
-            for i, scores in self._instruction_scores.items():
-                if scores:
-                    instr_avg_scores.append(sum(scores) / len(scores))
-                    instr_labels.append(f"Instr-{i+1}")
-            self._progress.candidate_scores(
-                instr_avg_scores, instr_labels, max_display=5
-            )
-
-        # Log average trial score
-        if self._trials:
-            total_score = sum(t.score for t in self._trials)
-            self._progress.average_metric(
-                value=total_score,
-                total=len(self._trials),
-                name="Average Trial Score",
-            )
-
-        # Apply best configuration to parameters
-        self._progress.step("APPLY BEST CONFIGURATION", 3, 3)
-        if self._best_candidate is not None:
-            self._apply_candidate(self._best_candidate)
-            self._progress.success(f"Applied best candidate with score {self._best_score:.4f}")
-
-        # Finish with summary
-        self._progress.finish(
-            best_score=self._best_score,
-            summary={
-                "total_trials": len(self._trials),
-                "instruction_candidates": len(self._instruction_candidates),
-            },
-        )
-
-        if closure is not None:
-            return closure()
-        return None
-
-    async def _arun_trials_concurrent(
-        self,
-        valset: List[Example],
-        teacher: Optional[Module],
-    ) -> None:
-        """Run all trials concurrently without limit."""
-        tasks = [
-            self._arun_trial(valset, teacher)
-            for _ in range(self.num_trials)
-        ]
-        await asyncio.gather(*tasks, return_exceptions=True)
-
-    async def _arun_trials_with_semaphore(
-        self,
-        valset: List[Example],
-        teacher: Optional[Module],
-        max_concurrency: int,
-    ) -> None:
-        """Run trials with limited concurrency using semaphore."""
-        semaphore = asyncio.Semaphore(max_concurrency)
-
-        async def bounded_trial():
-            async with semaphore:
-                return await self._arun_trial(valset, teacher)
-
-        tasks = [bounded_trial() for _ in range(self.num_trials)]
-        await asyncio.gather(*tasks, return_exceptions=True)
-
-    async def _arun_trial(
-        self,
-        valset: List[Example],
-        teacher: Optional[Module],
-    ) -> MiproTrial:
-        """Run a single optimization trial asynchronously."""
-        # Sample instruction and demos based on surrogate predictions
-        instruction_idx = self._sample_instruction()
-        demo_indices = self._sample_demos()
-
-        # Create candidate
-        candidate = PromptCandidate(
-            instruction=self._instruction_candidates[instruction_idx],
-            demos=[self._demo_pool[i] for i in demo_indices if i < len(self._demo_pool)],
-        )
-
-        # Evaluate candidate asynchronously
-        if teacher is not None:
-            score = await self._aevaluate_candidate(candidate, valset, teacher)
-        else:
-            score = 0.0
-
-        candidate.score = score
-        candidate.evaluated = True
-
-        # Record trial
-        trial = MiproTrial(
-            instruction_idx=instruction_idx,
-            demo_indices=demo_indices,
-            score=score,
-            candidate=candidate,
-        )
-        self._trials.append(trial)
-
-        # Update surrogate model
-        self._update_surrogate(trial)
-
-        # Track best
-        if score > self._best_score:
-            self._best_score = score
-            self._best_candidate = candidate
-
-        return trial
-
-    async def _aevaluate_candidate(
-        self,
-        candidate: PromptCandidate,
-        valset: List[Example],
-        teacher: Module,
-    ) -> float:
-        """Evaluate a candidate configuration asynchronously."""
-        # Apply candidate temporarily
-        instructions_param = None
-        examples_param = None
-        original_instructions = None
-        original_examples = None
-
-        for group in self.param_groups:
-            for param in group["params"]:
-                if param.spec == PromptSpec.INSTRUCTIONS:
-                    instructions_param = param
-                    original_instructions = param.data
-                elif param.spec == PromptSpec.EXAMPLES:
-                    examples_param = param
-                    original_examples = param.data
-
-        try:
-            # Apply candidate
-            if instructions_param and instructions_param.requires_grad:
-                instructions_param.data = candidate.instruction
-
-            if examples_param and examples_param.requires_grad and candidate.demos:
-                examples_param.data = self._format_demos(candidate.demos)
-
-            # Evaluate all examples concurrently
-            tasks = [
-                self._aevaluate_example(teacher, example)
-                for example in valset
-            ]
-            scores = await asyncio.gather(*tasks, return_exceptions=True)
-
-            # Sum valid scores
-            total_score = 0.0
-            for score in scores:
-                if isinstance(score, (int, float)):
-                    total_score += score
-
-            return total_score / len(valset) if valset else 0.0
-
-        finally:
-            # Restore original values
-            if instructions_param:
-                instructions_param.data = original_instructions
-            if examples_param:
-                examples_param.data = original_examples
-
-    async def _aevaluate_example(
-        self,
-        teacher: Module,
-        example: Example,
-    ) -> float:
-        """Evaluate a single example asynchronously."""
-        try:
-            # Run the module asynchronously
-            if hasattr(teacher, "acall"):
-                prediction = await teacher.acall(example.inputs)
-            elif hasattr(teacher, "aforward"):
-                prediction = await teacher.aforward(example.inputs)
-            else:
-                # Fallback to sync in executor
-                loop = asyncio.get_event_loop()
-                prediction = await loop.run_in_executor(
-                    None, teacher, example.inputs
-                )
-
-            # Score with metric (sync operation)
-            return self.metric(example, prediction)
-
-        except Exception:
-            return 0.0
+def _get_agent_info(agent: Any) -> str:
+    """Extract agent configuration as text."""
+    parts = []
+    if hasattr(agent, "system_message") and agent.system_message.data:
+        parts.append(f"System message: {agent.system_message.data}")
+    if hasattr(agent, "instructions") and agent.instructions.data:
+        parts.append(f"Instructions: {agent.instructions.data}")
+    if hasattr(agent, "expected_output") and agent.expected_output.data:
+        parts.append(f"Expected output: {agent.expected_output.data}")
+    return "\n".join(parts) if parts else "No configuration provided."

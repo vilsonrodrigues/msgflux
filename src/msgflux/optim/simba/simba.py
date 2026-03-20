@@ -1,986 +1,819 @@
-"""SIMBA (Stochastic Introspective Mini-Batch Ascent) optimizer.
+"""SIMBA — Stochastic Introspective Mini-Batch Ascent.
 
-This module provides the SIMBA optimizer for prompt optimization, which uses
-the LLM to analyze its own performance and generate improvement rules through
-mini-batch stochastic gradient ascent with self-reflection.
+Uses mini-batch evaluation with self-reflection to iteratively improve
+agent demos and instructions. Strategies include appending demonstrations
+from successful traces and generating reflective rules from contrastive
+trajectories.
+
+Reference: ``dspy/teleprompt/simba.py`` (376 lines) +
+           ``dspy/teleprompt/simba_utils.py`` (249 lines).
 """
 
-import asyncio
+import inspect
+import json
+import logging
 import math
 import random
-from copy import deepcopy
-from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Any, Callable, Dict, List, Optional
 
+from msgflux.context import trace_context
 from msgflux.examples import Example
 from msgflux.nn.modules.module import Module
-from msgflux.nn.parameter import Parameter
-from msgflux.logger import init_logger
-from msgflux.optim.optimizer import Optimizer
-from msgflux.optim.progress import OptimProgress, TrialInfo
-from msgflux.optim.simba.utils import (
-    ExecutionResult,
-    append_a_demo,
-    append_a_rule,
-    prepare_models_for_resampling,
-    wrap_program,
-)
+from msgflux.optim.teleprompter import Teleprompter
 
-logger = init_logger(__name__)
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Prompt template for the OfferFeedback agent (append_a_rule strategy)
+# ---------------------------------------------------------------------------
+
+_OFFER_FEEDBACK_PROMPT = """\
+You will be given two trajectories of an LLM-driven program's execution. \
+Your goal is to help the program's modules build up experience on how to \
+maximize the reward value assigned to the program's outputs if it were to \
+receive similar inputs in the future.
+
+The module won't see its own history. It will rely on your advice balancing \
+being concrete and being generalizable.
+
+In your advice:
+- Avoid boilerplate. Offer advice that would change the module's behavior \
+for the better in the future.
+- Ensure that advice offered to a module M is specific to that M's specific \
+sub-task, not the overall program.
+- Rely on contrasting the behavior of the worse trajectory against the \
+better trajectory in making recommendations.
+- Ensure each unique module name appears exactly once as a key in the advice.
+
+---
+
+Program code:
+{program_code}
+
+Module definitions:
+{modules_defn}
+
+Program inputs:
+{program_inputs}
+
+Oracle metadata:
+{oracle_metadata}
+
+Worse trajectory (score={worse_reward_value}):
+{worse_program_trajectory}
+
+Worse outputs:
+{worse_program_outputs}
+
+Better trajectory (score={better_reward_value}):
+{better_program_trajectory}
+
+Better outputs:
+{better_program_outputs}
+
+Module names: {module_names}
+
+Respond with a JSON object mapping each module name to a string of advice. \
+Example: {{"module_name": "If the module receives X, then it should Y."}}
+Only output the JSON object, nothing else."""
 
 
-@dataclass
-class SIMBACandidate:
-    """Represents a candidate program in SIMBA optimization."""
+class SIMBA(Teleprompter):
+    """Stochastic Introspective Mini-Batch Ascent.
 
-    program: Module
-    score: float = 0.0
-    step: int = 0
-
-
-@dataclass
-class SIMBATrialLog:
-    """Log entry for a SIMBA optimization trial."""
-
-    batch_idx: int
-    batch_scores: List[float] = field(default_factory=list)
-    baseline_score: float = 0.0
-    candidate_scores: List[float] = field(default_factory=list)
-    best_candidate_score: float = 0.0
-    strategy_used: str = ""
-    train_score: Optional[float] = None
-
-
-@dataclass
-class SIMBAResult:
-    """Result of SIMBA optimization."""
-
-    program: Module
-    score: float
-    candidate_programs: List[SIMBACandidate]
-    trial_logs: Dict[int, SIMBATrialLog]
-
-
-class SIMBA(Optimizer):
-    """SIMBA (Stochastic Introspective Mini-Batch Ascent) optimizer.
-
-    SIMBA is an optimizer that uses the LLM to analyze its own performance
-    and generate improvement rules. It samples mini-batches, identifies
-    challenging examples with high output variability, then either creates
-    self-reflective rules or adds successful examples as demonstrations.
-
-    The algorithm works by:
-    1. Sampling mini-batches from the training set
-    2. Running multiple program variants to identify examples with high variance
-    3. Applying strategies (add demo or generate rule) to improve performance
-    4. Maintaining a pool of candidate programs with softmax sampling
+    Samples mini-batches, identifies challenging examples with high output
+    variability, then either creates self-reflective rules or adds
+    successful examples as demonstrations.
 
     Args:
-        params: An iterable of Parameters to optimize.
-        metric: Function that takes (example, prediction) and returns a score.
-        bsize: Mini-batch size for optimization. Defaults to 32.
-        num_candidates: Number of candidate programs per iteration. Defaults to 6.
-        max_steps: Number of optimization steps. Defaults to 8.
-        max_demos: Maximum demos per predictor before dropping some. Defaults to 4.
-        prompt_model: Model for generating reflective rules. If None, uses
-            the globally configured model.
-        teacher_settings: Optional settings for teacher model.
-        demo_input_field_maxlen: Max characters in demo input fields. Defaults to 100000.
-        temperature_for_sampling: Temperature for program sampling. Defaults to 0.2.
-        temperature_for_candidates: Temperature for candidate selection. Defaults to 0.2.
-        verbose: If True, display detailed progress during optimization.
-        seed: Random seed for reproducibility.
+        metric: ``metric(example, prediction) -> float | bool``
+        bsize: Mini-batch size.
+        num_candidates: Number of candidate programs per iteration.
+        max_steps: Number of optimization steps.
+        max_demos: Maximum demos per agent before dropping.
+        prompt_model: Model/Agent for generating feedback rules.
+            Must be callable: ``prompt_model(message) -> str``.
+        demo_input_field_maxlen: Max chars for demo input fields.
+        num_threads: Threads for parallel execution.
+        temperature_for_sampling: Temperature for program pool sampling.
+        temperature_for_candidates: Temperature for candidate source sampling.
 
-    Example:
-        >>> agent = Agent(name="qa", model=model)
-        >>> optimizer = SIMBA(
-        ...     agent.parameters(),
-        ...     metric=lambda ex, pred: float(ex.labels.lower() in pred.lower()),
-        ...     bsize=32,
-        ...     max_steps=8,
-        ... )
-        >>> result = optimizer.step(trainset=train_examples, student=agent)
-        >>> optimized_agent = result.program
+    Example::
+
+        optimizer = SIMBA(
+            metric=exact_match,
+            bsize=16,
+            max_steps=8,
+            num_candidates=4,
+        )
+        compiled = optimizer.compile(student, trainset=examples)
     """
 
     def __init__(
         self,
-        params: Iterable[Parameter],
+        metric: Callable,
         *,
-        metric: Callable[[Example, Any], float],
         bsize: int = 32,
         num_candidates: int = 6,
         max_steps: int = 8,
         max_demos: int = 4,
-        prompt_model: Optional[Module] = None,
-        teacher_settings: Optional[Dict[str, Any]] = None,
+        prompt_model: Any = None,
         demo_input_field_maxlen: int = 100_000,
+        num_threads: Optional[int] = None,
         temperature_for_sampling: float = 0.2,
         temperature_for_candidates: float = 0.2,
-        verbose: bool = False,
-        seed: int = 0,
     ):
-        defaults = dict(
-            bsize=bsize,
-            num_candidates=num_candidates,
-            max_steps=max_steps,
-            max_demos=max_demos,
-        )
-        super().__init__(params, defaults)
-
         self.metric = metric
         self.bsize = bsize
         self.num_candidates = num_candidates
         self.max_steps = max_steps
         self.max_demos = max_demos
         self.prompt_model = prompt_model
-        self.teacher_settings = teacher_settings
         self.demo_input_field_maxlen = demo_input_field_maxlen
+        self.num_threads = num_threads
         self.temperature_for_sampling = temperature_for_sampling
         self.temperature_for_candidates = temperature_for_candidates
-        self.verbose = verbose
-        self.seed = seed
 
-        # Initialize RNG
-        self.rng = random.Random(seed)
-
-        # Setup strategies
         if self.max_demos > 0:
-            self.strategies = [append_a_demo(demo_input_field_maxlen), append_a_rule]
+            self.strategies: list[Callable] = [self._append_a_demo, self._append_a_rule]
         else:
-            self.strategies = [append_a_rule]
+            self.strategies = [self._append_a_rule]
 
-        # Progress tracking
-        self._progress = OptimProgress(verbose=verbose)
-
-        # Internal state
-        self._programs: List[Module] = []
-        self._program_scores: Dict[int, List[float]] = {}
-        self._next_program_idx: int = 0
-        self._trial_logs: Dict[int, SIMBATrialLog] = {}
-        self._winning_programs: List[Module] = []
-
-    def step(
+    def compile(
         self,
-        trainset: List[Example],
-        student: Optional[Module] = None,
-        closure: Optional[Callable[[], float]] = None,
-    ) -> SIMBAResult:
-        """Execute SIMBA optimization step.
-
-        Args:
-            trainset: Training examples for optimization.
-            student: The module to optimize.
-            closure: Optional closure for computing loss.
-
-        Returns:
-            SIMBAResult with the optimized program and metadata.
-
-        Raises:
-            AssertionError: If trainset is smaller than bsize.
-        """
-        if closure is not None:
-            closure()
-
-        assert len(trainset) >= self.bsize, (
-            f"Trainset too small: {len(trainset)} < {self.bsize}"
-        )
-
-        # Reset state
-        self._reset_state()
-
-        # Start progress tracking
-        self._progress.start(
-            "SIMBA",
-            bsize=self.bsize,
-            num_candidates=self.num_candidates,
-            max_steps=self.max_steps,
-            max_demos=self.max_demos,
-            trainset_size=len(trainset),
-        )
-
-        # Initialize baseline program
-        if student is None:
-            raise ValueError("student module is required for SIMBA optimization")
-
-        student = self._deepcopy_program(student)
-        student._simba_idx = 0
-        self._programs.append(student)
-        self._program_scores[0] = []
-        self._winning_programs = [student]
-
-        # Shuffle data
-        data_indices = list(range(len(trainset)))
-        self.rng.shuffle(data_indices)
-        instance_idx = 0
-
-        best_overall_score = 0.0
-
-        # Main optimization loop
-        for batch_idx in range(self.max_steps):
-            self._trial_logs[batch_idx] = SIMBATrialLog(batch_idx=batch_idx)
-
-            self._progress.step(
-                "MINI-BATCH OPTIMIZATION",
-                batch_idx + 1,
-                self.max_steps,
-                f"Processing batch of {self.bsize} examples",
-            )
-
-            # Step 1: Get next batch
-            if instance_idx + self.bsize > len(trainset):
-                self.rng.shuffle(data_indices)
-                instance_idx = 0
-
-            batch_indices = data_indices[instance_idx:instance_idx + self.bsize]
-            batch = [trainset[i] for i in batch_indices]
-            instance_idx += self.bsize
-
-            # Step 2: Sample trajectories
-            self._progress.substep(
-                f"Sampling {self.bsize} x {self.num_candidates} trajectories..."
-            )
-            outputs = self._sample_trajectories(batch)
-
-            # Step 3: Sort buckets by variability
-            buckets = self._create_buckets(batch, outputs)
-
-            # Compute baseline score
-            all_scores = [o.score for o in outputs]
-            baseline_score = sum(all_scores) / len(all_scores)
-            self._trial_logs[batch_idx].baseline_score = baseline_score
-            self._trial_logs[batch_idx].batch_scores = all_scores
-
-            self._progress.metric("Baseline", baseline_score, 1.0)
-
-            # Step 4: Build candidate programs
-            self._progress.substep("Building candidate programs...")
-            system_candidates = self._build_candidates(
-                batch, buckets, outputs, batch_idx
-            )
-
-            # Step 5: Evaluate candidates
-            self._progress.substep(f"Evaluating {len(system_candidates)} candidates...")
-            candidate_scores = self._evaluate_candidates(system_candidates, batch)
-            self._trial_logs[batch_idx].candidate_scores = candidate_scores
-
-            if candidate_scores:
-                best_score = max(candidate_scores)
-                self._trial_logs[batch_idx].best_candidate_score = best_score
-                is_best = best_score > best_overall_score
-                if is_best:
-                    best_overall_score = best_score
-
-                # Log candidate scores in DSPy style
-                total_cand_score = sum(candidate_scores)
-                self._progress.average_metric(
-                    value=total_cand_score,
-                    total=len(candidate_scores),
-                    name="Candidate Avg",
-                )
-
-                labels = [f"Cand-{i+1}" for i in range(len(candidate_scores))]
-                self._progress.candidate_scores(candidate_scores, labels, max_display=5)
-
-            # Step 6: Select best and register candidates
-            if candidate_scores:
-                best_idx = candidate_scores.index(max(candidate_scores))
-                best_program = self._deepcopy_program(system_candidates[best_idx])
-                self._winning_programs.append(best_program)
-
-            # Register all candidates
-            for idx, cand in enumerate(system_candidates):
-                self._register_program(cand, [candidate_scores[idx]] if candidate_scores else [])
-
-        # Final validation
-        self._progress.step(
-            "FINAL VALIDATION",
-            self.max_steps + 1,
-            self.max_steps + 1,
-            f"Evaluating candidates on full trainset ({len(trainset)} examples)",
-        )
-        result = self._final_validation(trainset)
-
-        # Finish progress
-        self._progress.finish(
-            best_score=result.score,
-            summary={
-                "candidates_evaluated": len(result.candidate_programs),
-                "total_programs_generated": len(self._programs),
-                "optimization_steps": self.max_steps,
-            },
-        )
-
-        self._step_count += 1
-        return result
-
-    async def astep(
-        self,
-        trainset: List[Example],
-        student: Optional[Module] = None,
-        closure: Optional[Callable[[], float]] = None,
+        student: Module,
         *,
-        max_concurrency: Optional[int] = None,
-    ) -> SIMBAResult:
-        """Execute SIMBA optimization step asynchronously.
+        trainset: List[Example],
+        seed: int = 0,
+        **kwargs: Any,  # noqa: ARG002
+    ) -> Module:
+        """Optimize *student* using stochastic mini-batch ascent."""
+        if len(trainset) < self.bsize:
+            raise ValueError(
+                f"Trainset too small: {len(trainset)} < {self.bsize}"
+            )
 
-        Args:
-            trainset: Training examples for optimization.
-            student: The module to optimize.
-            closure: Optional closure for computing loss.
-            max_concurrency: Maximum concurrent evaluations.
+        rng = random.Random(seed)  # noqa: S311
+        state = _CompileState(rng=rng)
 
-        Returns:
-            SIMBAResult with the optimized program and metadata.
-        """
-        if closure is not None:
-            closure()
-
-        assert len(trainset) >= self.bsize, (
-            f"Trainset too small: {len(trainset)} < {self.bsize}"
-        )
-
-        # Reset state
-        self._reset_state()
-
-        if student is None:
-            raise ValueError("student module is required for SIMBA optimization")
-
-        student = self._deepcopy_program(student)
+        # Initialize baseline (idx=0)
+        student = student.deepcopy()
         student._simba_idx = 0
-        self._programs.append(student)
-        self._program_scores[0] = []
-        self._winning_programs = [student]
+        state.programs.append(student)
+        state.program_scores[0] = []
+        state.winning_programs.append(student)
 
-        # Shuffle data
         data_indices = list(range(len(trainset)))
-        self.rng.shuffle(data_indices)
+        rng.shuffle(data_indices)
         instance_idx = 0
 
-        # Main optimization loop
         for batch_idx in range(self.max_steps):
-            self._trial_logs[batch_idx] = SIMBATrialLog(batch_idx=batch_idx)
-
-            logger.info(f"Starting async batch {batch_idx + 1} of {self.max_steps}")
-
-            # Get next batch
-            if instance_idx + self.bsize > len(trainset):
-                self.rng.shuffle(data_indices)
-                instance_idx = 0
-
-            batch_indices = data_indices[instance_idx:instance_idx + self.bsize]
-            batch = [trainset[i] for i in batch_indices]
-            instance_idx += self.bsize
-
-            # Sample trajectories asynchronously
-            outputs = await self._asample_trajectories(batch, max_concurrency)
-
-            # Create buckets
-            buckets = self._create_buckets(batch, outputs)
-
-            # Compute baseline
-            all_scores = [o.score for o in outputs]
-            baseline_score = sum(all_scores) / len(all_scores)
-            self._trial_logs[batch_idx].baseline_score = baseline_score
-            self._trial_logs[batch_idx].batch_scores = all_scores
-
-            # Build candidates
-            system_candidates = self._build_candidates(
-                batch, buckets, outputs, batch_idx
+            logger.info(
+                "Starting batch %d of %d.", batch_idx + 1, self.max_steps,
             )
-
-            # Evaluate candidates asynchronously
-            candidate_scores = await self._aevaluate_candidates(
-                system_candidates, batch, max_concurrency
+            instance_idx, batch = self._get_batch(
+                trainset, data_indices, instance_idx, rng,
             )
-            self._trial_logs[batch_idx].candidate_scores = candidate_scores
+            self._run_step(batch_idx, batch, state)
 
-            if candidate_scores:
-                # Log candidate scores in DSPy style
-                total_cand_score = sum(candidate_scores)
-                self._progress.average_metric(
-                    value=total_cand_score,
-                    total=len(candidate_scores),
-                    name="Candidate Avg",
-                )
+        return self._final_validation(state, trainset)
 
-                labels = [f"Cand-{i+1}" for i in range(len(candidate_scores))]
-                self._progress.candidate_scores(candidate_scores, labels, max_display=5)
-
-                best_idx = candidate_scores.index(max(candidate_scores))
-                best_program = self._deepcopy_program(system_candidates[best_idx])
-                self._winning_programs.append(best_program)
-
-            for idx, cand in enumerate(system_candidates):
-                self._register_program(cand, [candidate_scores[idx]] if candidate_scores else [])
-
-        # Final validation
-        result = await self._afinal_validation(trainset, max_concurrency)
-
-        self._step_count += 1
-        return result
-
-    def _reset_state(self) -> None:
-        """Reset internal state for a new optimization run."""
-        self._programs = []
-        self._program_scores = {}
-        self._next_program_idx = 0
-        self._trial_logs = {}
-        self._winning_programs = []
-
-    def _deepcopy_program(self, program: Module) -> Module:
-        """Create a deep copy of a program."""
-        try:
-            return deepcopy(program)
-        except Exception:
-            # Fallback for modules that don't support deepcopy
-            return program
-
-    def _calc_average_score(self, prog_idx: int) -> float:
-        """Calculate average score for a program."""
-        scores = self._program_scores.get(prog_idx, [])
-        if not scores:
-            return 0.0
-        return sum(scores) / len(scores)
-
-    def _top_k_plus_baseline(self, k: int) -> List[int]:
-        """Get top k program indices plus baseline."""
-        scored = sorted(
-            self._programs,
-            key=lambda p: self._calc_average_score(getattr(p, "_simba_idx", 0)),
-            reverse=True,
-        )
-        top_k = [getattr(p, "_simba_idx", 0) for p in scored[:k]]
-
-        # Ensure baseline (0) is included
-        if 0 not in top_k and top_k:
-            top_k[-1] = 0
-
-        return list(dict.fromkeys(top_k))
-
-    def _softmax_sample(self, program_idxs: List[int], temperature: float) -> int:
-        """Sample a program index using softmax weighting."""
-        if not program_idxs:
-            raise ValueError("No programs available for sampling")
-
-        scores = [self._calc_average_score(idx) for idx in program_idxs]
-        exps = [math.exp(s / temperature) for s in scores]
-        sum_exps = sum(exps)
-
-        if sum_exps <= 0:
-            return self.rng.choice(program_idxs)
-
-        probs = [val / sum_exps for val in exps]
-        return self.rng.choices(program_idxs, weights=probs, k=1)[0]
-
-    def _register_program(self, prog: Module, scores: List[float]) -> None:
-        """Register a new program in the pool."""
-        self._next_program_idx += 1
-        prog._simba_idx = self._next_program_idx
-        self._programs.append(prog)
-        self._program_scores[self._next_program_idx] = scores
-
-    def _percentile(self, data: List[float], percentile: float) -> float:
-        """Calculate percentile of data (pure Python implementation)."""
-        if not data:
-            return 0.0
-        sorted_data = sorted(data)
-        n = len(sorted_data)
-        k = (n - 1) * percentile / 100.0
-        f = int(k)
-        c = f + 1 if f + 1 < n else f
-        if f == c:
-            return float(sorted_data[f])
-        return float(sorted_data[f] * (c - k) + sorted_data[c] * (k - f))
-
-    def _poisson(self, lam: float) -> int:
-        """Generate Poisson-distributed random number (Knuth's algorithm)."""
-        if lam <= 0:
-            return 0
-        L = math.exp(-lam)
-        k = 0
-        p = 1.0
-        while p > L:
-            k += 1
-            p *= self.rng.random()
-        return k - 1
-
-    def _sample_trajectories(
+    def _get_batch(
         self,
-        batch: List[Example],
-    ) -> List[ExecutionResult]:
-        """Sample trajectories for a batch of examples."""
-        outputs: List[ExecutionResult] = []
-        models = prepare_models_for_resampling(
-            self._programs[0], self.num_candidates, self.teacher_settings
-        )
-        top_programs = self._top_k_plus_baseline(self.num_candidates)
+        trainset: list[Example],
+        data_indices: list[int],
+        instance_idx: int,
+        rng: random.Random,
+    ) -> tuple[int, list[Example]]:
+        """Get next mini-batch, reshuffling if needed."""
+        if instance_idx + self.bsize > len(trainset):
+            rng.shuffle(data_indices)
+            instance_idx = 0
+        batch_indices = data_indices[instance_idx : instance_idx + self.bsize]
+        batch = [trainset[i] for i in batch_indices]
+        return instance_idx + self.bsize, batch
 
-        logger.info(
-            f"Sampling trajectories: {self.bsize} examples x {self.num_candidates} candidates"
+    def _run_step(
+        self,
+        batch_idx: int,
+        batch: list[Example],
+        state: "_CompileState",
+    ) -> None:
+        """Execute one optimization step."""
+        top_programs = state.top_k_plus_baseline(self.num_candidates)
+
+        # Sample trajectories
+        exec_results = self._sample_trajectories(
+            state.programs, batch, top_programs, state.rng,
+            state.softmax_sample,
         )
 
-        predictor2name: Dict[int, str] = {}
+        # Bucket-sort by variability
+        buckets = self._bucket_sort(exec_results, batch)
 
-        for model in models:
-            for example in batch:
-                # Select program via softmax
-                prog_idx = self._softmax_sample(top_programs, self.temperature_for_sampling)
-                candidate = self._deepcopy_program(self._programs[prog_idx])
+        all_scores = [r["score"] for r in exec_results]
+        batch_10p = _percentile(all_scores, 10)
+        batch_90p = _percentile(all_scores, 90)
 
-                # Set model if provided
-                if model is not None and hasattr(candidate, "set_model"):
-                    candidate.set_model(model)
+        # Build agent name mappings
+        agent2name = _build_agent2name(exec_results)
 
-                # Track predictor names
-                for name, mod in candidate.named_modules():
-                    predictor2name[id(mod)] = name
-
-                # Execute wrapped program
-                wrapped = wrap_program(candidate, self.metric)
-                result = wrapped(example)
-                outputs.append(result)
-
-        return outputs
-
-    async def _asample_trajectories(
-        self,
-        batch: List[Example],
-        max_concurrency: Optional[int] = None,
-    ) -> List[ExecutionResult]:
-        """Sample trajectories asynchronously."""
-        models = prepare_models_for_resampling(
-            self._programs[0], self.num_candidates, self.teacher_settings
+        # Build candidates via strategies
+        system_candidates = self._build_candidates(
+            batch_idx, buckets, state, agent2name, batch_10p, batch_90p,
         )
-        top_programs = self._top_k_plus_baseline(self.num_candidates)
 
-        tasks = []
-        for model in models:
-            for example in batch:
-                prog_idx = self._softmax_sample(top_programs, self.temperature_for_sampling)
-                candidate = self._deepcopy_program(self._programs[prog_idx])
+        # Evaluate candidates
+        candidate_scores = self._evaluate_candidates(system_candidates, batch)
 
-                if model is not None and hasattr(candidate, "set_model"):
-                    candidate.set_model(model)
-
-                tasks.append((candidate, example))
-
-        if max_concurrency:
-            semaphore = asyncio.Semaphore(max_concurrency)
-
-            async def bounded_execute(prog, ex):
-                async with semaphore:
-                    return await self._aexecute_one(prog, ex)
-
-            results = await asyncio.gather(
-                *[bounded_execute(p, e) for p, e in tasks],
-                return_exceptions=True,
-            )
-        else:
-            results = await asyncio.gather(
-                *[self._aexecute_one(p, e) for p, e in tasks],
-                return_exceptions=True,
+        if candidate_scores:
+            best_idx = candidate_scores.index(max(candidate_scores))
+            state.winning_programs.append(
+                system_candidates[best_idx].deepcopy(),
             )
 
-        outputs = []
-        for i, result in enumerate(results):
-            if isinstance(result, Exception):
-                logger.warning(f"Trajectory sampling error: {result}")
-                outputs.append(ExecutionResult(
-                    prediction=None,
-                    trace=[],
-                    score=0.0,
-                    example=tasks[i][1],
-                    output_metadata={},
-                ))
-            else:
-                outputs.append(result)
-
-        return outputs
-
-    async def _aexecute_one(
-        self,
-        program: Module,
-        example: Example,
-    ) -> ExecutionResult:
-        """Execute a single program asynchronously."""
-        wrapped = wrap_program(program, self.metric)
-
-        # Check for async execution capability
-        if hasattr(program, "acall"):
-            prediction = await program.acall(example.inputs)
-            score = self.metric(example, prediction)
-            return ExecutionResult(
-                prediction=prediction,
-                trace=[],
-                score=score,
-                example=example,
-                output_metadata={},
+        # Register all new candidates
+        for cand_i, cand in enumerate(system_candidates):
+            cand_score = (
+                [candidate_scores[cand_i]]
+                if cand_i < len(candidate_scores) else []
             )
-        else:
-            loop = asyncio.get_event_loop()
-            return await loop.run_in_executor(None, wrapped, example)
-
-    def _create_buckets(
-        self,
-        batch: List[Example],
-        outputs: List[ExecutionResult],
-    ) -> List[Tuple[List[ExecutionResult], Tuple[float, float, float]]]:
-        """Create and sort buckets by score variability."""
-        buckets = []
-
-        for idx in range(len(batch)):
-            # Gather results for this example
-            bucket = [outputs[i] for i in range(idx, len(outputs), self.bsize)]
-            bucket.sort(key=lambda x: x.score, reverse=True)
-
-            if not bucket:
-                continue
-
-            max_score = bucket[0].score
-            min_score = bucket[-1].score
-            avg_score = sum(x.score for x in bucket) / len(bucket)
-
-            max_to_min_gap = max_score - min_score
-            max_to_avg_gap = max_score - avg_score
-
-            buckets.append((bucket, (max_to_min_gap, max_score, max_to_avg_gap)))
-
-        # Sort by variability metrics
-        buckets.sort(key=lambda x: x[1], reverse=True)
-        return buckets
+            state.register_new_program(cand, cand_score)
 
     def _build_candidates(
         self,
-        batch: List[Example],
-        buckets: List[Tuple[List[ExecutionResult], Tuple[float, float, float]]],
-        outputs: List[ExecutionResult],
         batch_idx: int,
-    ) -> List[Module]:
-        """Build candidate programs by applying strategies."""
-        system_candidates: List[Module] = []
+        buckets: list,
+        state: "_CompileState",
+        agent2name: dict[int, str],
+        batch_10p: float,
+        batch_90p: float,
+    ) -> list[Module]:
+        """Apply strategies to top buckets and build candidate programs."""
+        rng = state.rng
+        system_candidates: list[Module] = []
 
-        # Compute batch percentiles
-        all_scores = [o.score for o in outputs]
-        batch_10p = self._percentile(all_scores, 10)
-        batch_90p = self._percentile(all_scores, 90)
-
-        # Build predictor name mappings
-        predictor2name: Dict[int, str] = {}
-        for prog in self._programs[:1]:  # Use first program as reference
-            for name, mod in prog.named_modules():
-                predictor2name[id(mod)] = name
-
-        for bucket_idx, (bucket, bucket_stats) in enumerate(buckets):
-            max_to_min_gap, max_score, max_to_avg_gap = bucket_stats
-
-            logger.debug(
-                f"Bucket {bucket_idx + 1}: max={max_score:.3f}, "
-                f"gap={max_to_min_gap:.3f}, avg_gap={max_to_avg_gap:.3f}"
+        for bucket_idx_i, (bucket, bucket_stats) in enumerate(buckets):
+            gap, max_score, avg_gap = bucket_stats
+            logger.info(
+                "Batch %d: bucket #%d, max=%.4f, gap=%.4f, avg_gap=%.4f.",
+                batch_idx + 1, bucket_idx_i + 1, max_score, gap, avg_gap,
             )
 
-            # Select source program
-            src_idx = self._softmax_sample(
-                self._top_k_plus_baseline(self.num_candidates),
+            src_idx = state.softmax_sample(
+                rng, state.top_k_plus_baseline(self.num_candidates),
                 self.temperature_for_candidates,
             )
-            system_candidate = self._deepcopy_program(self._programs[src_idx])
+            candidate = state.programs[src_idx].deepcopy()
 
-            # Build name2predictor for this candidate
-            name2predictor: Dict[str, Any] = {}
-            for name, mod in system_candidate.named_modules():
-                name2predictor[name] = mod
-                predictor2name[id(mod)] = name
+            name2agent, num_drop = self._drop_demos(candidate, rng)
 
-            # Drop some demos randomly
-            self._drop_demos(system_candidate)
-
-            # Choose and apply strategy
-            strategy = self.rng.choice(self.strategies)
-            strategy_name = getattr(strategy, "__name__", "unknown")
-            self._trial_logs[batch_idx].strategy_used = strategy_name
-
-            logger.info(f"Applying strategy: {strategy_name}")
-
+            strategy = rng.choice(self.strategies)
+            logger.info(
+                "Batch %d: strategy=%s, dropped %d demos.",
+                batch_idx + 1, strategy.__name__, num_drop,
+            )
             try:
                 strategy(
-                    bucket,
-                    system_candidate,
-                    predictor2name=predictor2name,
-                    name2predictor=name2predictor,
-                    batch_10p_score=batch_10p,
-                    batch_90p_score=batch_90p,
-                    prompt_model=self.prompt_model,
+                    bucket=bucket, system=candidate,
+                    agent2name=agent2name, name2agent=name2agent,
+                    batch_10p_score=batch_10p, batch_90p_score=batch_90p,
                 )
-            except Exception as e:
-                logger.error(f"Strategy failed: {e}")
+            except Exception:
+                logger.error("Strategy failed", exc_info=True)
                 continue
 
-            system_candidates.append(system_candidate)
-
+            system_candidates.append(candidate)
             if len(system_candidates) >= self.num_candidates + 1:
                 break
 
         return system_candidates
 
-    def _drop_demos(self, system: Module) -> None:
-        """Randomly drop some demos from predictors."""
+    def _drop_demos(
+        self, candidate: Module, rng: random.Random,
+    ) -> tuple[dict[str, Any], int]:
+        """Poisson-distributed demo dropping for a candidate program."""
+        name2agent: dict[str, Any] = {}
+        num_demos_list: list[int] = []
         max_demos_tmp = self.max_demos if self.max_demos > 0 else 3
-        num_demos_list = []
 
-        # Collect demo counts
-        for name, mod in system.named_modules():
-            if hasattr(mod, "demos"):
-                num_demos_list.append(len(mod.demos))
-            elif hasattr(mod, "_demos"):
-                num_demos_list.append(len(mod._demos))
+        for name, agent in candidate.named_agents():
+            name2agent[name] = agent
+            num_demos_list.append(len(agent.demos))
 
-        if not num_demos_list:
-            return
-
-        num_demos = max(num_demos_list)
-        num_to_drop = max(
-            self._poisson(num_demos / max_demos_tmp),
-            int(num_demos >= max_demos_tmp),
+        num_demos = max(num_demos_list) if num_demos_list else 0
+        lam = num_demos / max_demos_tmp if max_demos_tmp else 0
+        num_drop = max(
+            _poisson(rng, lam), int(num_demos >= max_demos_tmp),
         )
-        num_to_drop = min(num_to_drop, num_demos)
+        num_drop = min(num_drop, num_demos)
 
-        if num_to_drop == 0:
-            return
+        if num_demos > 0:
+            demos_to_drop = {
+                rng.randrange(num_demos) for _ in range(num_drop)
+            }
+        else:
+            demos_to_drop = set()
 
-        indices_to_drop = set(self.rng.sample(range(num_demos), min(num_to_drop, num_demos)))
+        for _name, agent in name2agent.items():
+            agent.demos = [
+                d for i, d in enumerate(agent.demos)
+                if i not in demos_to_drop
+            ]
 
-        # Drop demos
-        for name, mod in system.named_modules():
-            if hasattr(mod, "demos"):
-                mod.demos = [d for i, d in enumerate(mod.demos) if i not in indices_to_drop]
-            elif hasattr(mod, "_demos"):
-                mod._demos = [d for i, d in enumerate(mod._demos) if i not in indices_to_drop]
+        return name2agent, num_drop
+
+    def _final_validation(
+        self, state: "_CompileState", trainset: list[Example],
+    ) -> Module:
+        """Select best program via full trainset validation."""
+        m_count = len(state.winning_programs) - 1
+        n_count = self.num_candidates + 1
+        if m_count < 1:
+            prog_indices = [0] * n_count
+        else:
+            prog_indices = [
+                round(i * m_count / (n_count - 1)) for i in range(n_count)
+            ]
+        prog_indices = list(dict.fromkeys(prog_indices))
+
+        candidates = [
+            state.winning_programs[i].deepcopy() for i in prog_indices
+        ]
+        logger.info(
+            "VALIDATION: evaluating %d programs on full trainset (%d).",
+            len(candidates), len(trainset),
+        )
+
+        final_scores = self._evaluate_candidates(candidates, trainset)
+
+        if final_scores:
+            best_idx = final_scores.index(max(final_scores))
+            best_program = candidates[best_idx].deepcopy()
+            best_score = final_scores[best_idx]
+        else:
+            best_program = state.winning_programs[0].deepcopy()
+            best_score = 0.0
+
+        logger.info("Final scores: %s, best=%.4f", final_scores, best_score)
+        best_program.compile_(optimizer="SIMBA", score=best_score)
+        return best_program
+
+    # ------------------------------------------------------------------
+    # Trajectory sampling
+    # ------------------------------------------------------------------
+
+    def _sample_trajectories(
+        self,
+        programs: list[Module],
+        batch: list[Example],
+        top_programs: list[int],
+        rng: random.Random,
+        softmax_sample: Callable,
+    ) -> list[dict]:
+        """Execute programs on batch, collecting traces and scores."""
+        tasks: list[tuple[Module, Example]] = []
+        for _ in range(self.num_candidates):
+            for example in batch:
+                chosen_idx = softmax_sample(
+                    rng, top_programs, self.temperature_for_sampling,
+                )
+                prog = programs[chosen_idx].deepcopy()
+                tasks.append((prog, example))
+
+        results = self._run_tasks(tasks)
+        return results
+
+    def _run_tasks(self, tasks: list[tuple[Module, Example]]) -> list[dict]:
+        """Run (program, example) pairs, collecting trace and score."""
+        def execute_one(prog: Module, example: Example) -> dict:
+            return _wrap_program(prog, example, self.metric)
+
+        if self.num_threads and self.num_threads > 1:
+            results: list[dict] = []
+            with ThreadPoolExecutor(max_workers=self.num_threads) as executor:
+                futures = {
+                    executor.submit(execute_one, prog, ex): i
+                    for i, (prog, ex) in enumerate(tasks)
+                }
+                result_map: dict[int, dict] = {}
+                for future in as_completed(futures):
+                    idx = futures[future]
+                    result_map[idx] = future.result()
+                results = [result_map[i] for i in range(len(tasks))]
+            return results
+        else:
+            return [execute_one(prog, ex) for prog, ex in tasks]
+
+    # ------------------------------------------------------------------
+    # Bucket sorting
+    # ------------------------------------------------------------------
+
+    def _bucket_sort(
+        self,
+        results: list[dict],
+        batch: list[Example],
+    ) -> list[tuple[list[dict], tuple[float, float, float]]]:
+        """Sort examples into buckets by output variability."""
+        buckets = []
+        for idx in range(len(batch)):
+            bucket = [
+                results[i]
+                for i in range(idx, len(results), self.bsize)
+            ]
+            bucket.sort(key=lambda x: x["score"], reverse=True)
+
+            max_score = float(bucket[0]["score"]) if bucket else 0.0
+            min_score = float(bucket[-1]["score"]) if bucket else 0.0
+            avg_score = (
+                sum(x["score"] for x in bucket) / len(bucket) if bucket else 0.0
+            )
+            gap = max_score - min_score
+            avg_gap = max_score - avg_score
+
+            buckets.append((bucket, (gap, max_score, avg_gap)))
+
+        buckets.sort(key=lambda x: x[1], reverse=True)
+        return buckets
+
+    # ------------------------------------------------------------------
+    # Candidate evaluation
+    # ------------------------------------------------------------------
 
     def _evaluate_candidates(
         self,
-        candidates: List[Module],
-        batch: List[Example],
-    ) -> List[float]:
-        """Evaluate candidate programs on a batch."""
+        candidates: list[Module],
+        batch: list[Example],
+    ) -> list[float]:
+        """Evaluate each candidate on the batch, return avg scores."""
         if not candidates:
             return []
 
-        logger.info(f"Evaluating {len(candidates)} candidates on {len(batch)} examples")
-
-        scores: List[float] = []
-
-        for candidate in candidates:
-            wrapped = wrap_program(candidate, self.metric)
-            candidate_scores = []
-
-            for example in batch:
-                result = wrapped(example)
-                candidate_scores.append(result.score)
-
-            avg_score = sum(candidate_scores) / len(candidate_scores)
-            scores.append(avg_score)
-
-        return scores
-
-    async def _aevaluate_candidates(
-        self,
-        candidates: List[Module],
-        batch: List[Example],
-        max_concurrency: Optional[int] = None,
-    ) -> List[float]:
-        """Evaluate candidates asynchronously."""
-        if not candidates:
-            return []
-
-        tasks = [(c, e) for c in candidates for e in batch]
-
-        if max_concurrency:
-            semaphore = asyncio.Semaphore(max_concurrency)
-
-            async def bounded_eval(prog, ex):
-                async with semaphore:
-                    return await self._aexecute_one(prog, ex)
-
-            results = await asyncio.gather(
-                *[bounded_eval(p, e) for p, e in tasks],
-                return_exceptions=True,
-            )
-        else:
-            results = await asyncio.gather(
-                *[self._aexecute_one(p, e) for p, e in tasks],
-                return_exceptions=True,
-            )
-
-        # Compute average scores per candidate
-        scores = []
-        batch_size = len(batch)
-
-        for idx in range(len(candidates)):
-            start = idx * batch_size
-            end = (idx + 1) * batch_size
-            candidate_results = results[start:end]
-
-            candidate_scores = []
-            for r in candidate_results:
-                if isinstance(r, Exception):
-                    candidate_scores.append(0.0)
-                else:
-                    candidate_scores.append(r.score)
-
-            avg = sum(candidate_scores) / len(candidate_scores) if candidate_scores else 0.0
-            scores.append(avg)
-
-        return scores
-
-    def _final_validation(self, trainset: List[Example]) -> SIMBAResult:
-        """Final validation on full trainset."""
-        M = len(self._winning_programs) - 1
-        N = self.num_candidates + 1
-
-        if M < 1:
-            program_idxs = [0] * N
-        else:
-            program_idxs = [round(i * M / (N - 1)) for i in range(N)]
-
-        program_idxs = list(dict.fromkeys(program_idxs))
-        candidate_programs = [
-            self._deepcopy_program(self._winning_programs[i])
-            for i in program_idxs
+        tasks = [
+            (cand, ex) for cand in candidates for ex in batch
         ]
-
-        logger.info(
-            f"Final validation: {len(candidate_programs)} programs on {len(trainset)} examples"
-        )
+        results = self._run_tasks(tasks)
+        bsize = len(batch)
 
         scores = []
-        for prog in candidate_programs:
-            wrapped = wrap_program(prog, self.metric)
-            prog_scores = [wrapped(ex).score for ex in trainset]
-            avg = sum(prog_scores) / len(prog_scores) if prog_scores else 0.0
+        for cand_i in range(len(candidates)):
+            start = cand_i * bsize
+            end = (cand_i + 1) * bsize
+            cand_scores = [results[i]["score"] for i in range(start, end)]
+            avg = sum(cand_scores) / len(cand_scores) if cand_scores else 0.0
             scores.append(avg)
+        return scores
 
-        # Log final scores in DSPy style
-        if scores:
-            total_score = sum(scores)
-            self._progress.average_metric(
-                value=total_score,
-                total=len(scores),
-                name="Final Avg Score",
-            )
+    # ------------------------------------------------------------------
+    # Strategy: append_a_demo
+    # ------------------------------------------------------------------
 
-            labels = [f"Prog-{i+1}" for i in range(len(scores))]
-            self._progress.candidate_scores(scores, labels, max_display=len(scores))
-
-        # Update trial logs with final scores
-        for idx, score in enumerate(scores[1:], start=0):
-            if idx in self._trial_logs:
-                self._trial_logs[idx].train_score = score
-
-        # Find best program
-        best_idx = scores.index(max(scores)) if scores else 0
-        best_program = self._deepcopy_program(candidate_programs[best_idx])
-        best_score = scores[best_idx] if scores else 0.0
-
-        logger.info(f"Best program: index {best_idx}, score {best_score:.4f}")
-
-        # Build result
-        candidates = [
-            SIMBACandidate(program=p, score=s)
-            for p, s in zip(candidate_programs, scores)
-        ]
-        candidates.sort(key=lambda c: c.score, reverse=True)
-
-        return SIMBAResult(
-            program=best_program,
-            score=best_score,
-            candidate_programs=candidates,
-            trial_logs=self._trial_logs,
-        )
-
-    async def _afinal_validation(
+    def _append_a_demo(
         self,
-        trainset: List[Example],
-        max_concurrency: Optional[int] = None,
-    ) -> SIMBAResult:
-        """Final validation asynchronously."""
-        M = len(self._winning_programs) - 1
-        N = self.num_candidates + 1
+        bucket: list[dict],
+        system: Module,  # noqa: ARG002
+        agent2name: dict[int, str],
+        name2agent: dict[str, Any],
+        batch_10p_score: float,
+        **kwargs: Any,  # noqa: ARG002
+    ) -> bool:
+        """Extract a demo from the best trace and add to agents."""
+        good = bucket[0]
+        trace = good.get("trace", [])
 
-        if M < 1:
-            program_idxs = [0] * N
-        else:
-            program_idxs = [round(i * M / (N - 1)) for i in range(N)]
-
-        program_idxs = list(dict.fromkeys(program_idxs))
-        candidate_programs = [
-            self._deepcopy_program(self._winning_programs[i])
-            for i in program_idxs
-        ]
-
-        scores = await self._aevaluate_candidates(
-            candidate_programs, trainset, max_concurrency
-        )
-
-        # Log final scores in DSPy style
-        if scores:
-            total_score = sum(scores)
-            self._progress.average_metric(
-                value=total_score,
-                total=len(scores),
-                name="Final Avg Score",
+        if good["score"] <= batch_10p_score:
+            logger.info(
+                "Skipping demo: score %.4f at or below 10th percentile.",
+                good["score"],
             )
+            return False
 
-            labels = [f"Prog-{i+1}" for i in range(len(scores))]
-            self._progress.candidate_scores(scores, labels, max_display=len(scores))
+        name2demo: dict[str, Example] = {}
+        for agent, turn_record in trace:
+            name = agent2name.get(id(agent))
+            if name is None:
+                continue
 
-        for idx, score in enumerate(scores[1:], start=0):
-            if idx in self._trial_logs:
-                self._trial_logs[idx].train_score = score
+            inputs_raw = turn_record.get("inputs", "")
+            output_raw = turn_record.get("assistant_output", "")
 
-        best_idx = scores.index(max(scores)) if scores else 0
-        best_program = self._deepcopy_program(candidate_programs[best_idx])
-        best_score = scores[best_idx] if scores else 0.0
+            # Truncate long inputs
+            if (
+                self.demo_input_field_maxlen
+                and len(str(inputs_raw)) > self.demo_input_field_maxlen
+            ):
+                inputs_raw = (
+                    str(inputs_raw)[: self.demo_input_field_maxlen]
+                    + "\n\t\t... <TRUNCATED>"
+                )
 
-        candidates = [
-            SIMBACandidate(program=p, score=s)
-            for p, s in zip(candidate_programs, scores)
-        ]
-        candidates.sort(key=lambda c: c.score, reverse=True)
+            demo = Example(inputs=inputs_raw, labels=output_raw)
+            name2demo[name] = demo
 
-        return SIMBAResult(
-            program=best_program,
-            score=best_score,
-            candidate_programs=candidates,
-            trial_logs=self._trial_logs,
+        for name, demo in name2demo.items():
+            if name in name2agent:
+                name2agent[name].demos.append(demo)
+
+        logger.info("Added %d demos across agents.", len(name2demo))
+        return True
+
+    # ------------------------------------------------------------------
+    # Strategy: append_a_rule
+    # ------------------------------------------------------------------
+
+    def _append_a_rule(
+        self,
+        bucket: list[dict],
+        system: Module,
+        agent2name: dict[int, str],
+        name2agent: dict[str, Any],
+        batch_10p_score: float,
+        batch_90p_score: float,
+        **kwargs: Any,  # noqa: ARG002
+    ) -> bool:
+        """Generate reflective advice by contrasting good vs bad traces."""
+        if self.prompt_model is None:
+            logger.info("No prompt_model set, skipping append_a_rule.")
+            return False
+
+        good, bad = bucket[0], bucket[-1]
+
+        if good["score"] <= batch_10p_score or bad["score"] >= batch_90p_score:
+            logger.info(
+                "Skipping rule: good=%.4f (<=10p) or bad=%.4f (>=90p).",
+                good["score"], bad["score"],
+            )
+            return False
+
+        # Handle edge case where good <= bad
+        if good["score"] <= bad["score"]:
+            empty = {
+                "trace": [], "score": "N/A",
+                "prediction": "N/A",
+            }
+            if good["score"] > batch_90p_score:
+                bad = {**empty, "example": bad.get("example")}
+            else:
+                good = {**empty, "example": good.get("example")}
+
+        module_names = [name for name, _ in system.named_agents()]
+        example = good.get("example")
+
+        better_trajectory = self._format_trajectory(good.get("trace", []), agent2name)
+        worse_trajectory = self._format_trajectory(bad.get("trace", []), agent2name)
+
+        modules_defn = self._inspect_modules(system)
+
+        try:
+            program_code = inspect.getsource(system.__class__)
+        except (OSError, TypeError):
+            program_code = str(system.__class__.__name__)
+
+        prompt = _OFFER_FEEDBACK_PROMPT.format(
+            program_code=program_code,
+            modules_defn=modules_defn,
+            program_inputs=str(getattr(example, "inputs", "")),
+            oracle_metadata=str(getattr(example, "labels", "")),
+            worse_program_trajectory=worse_trajectory,
+            worse_program_outputs=str(bad.get("prediction", "")),
+            worse_reward_value=bad.get("score", 0),
+            better_program_trajectory=better_trajectory,
+            better_program_outputs=str(good.get("prediction", "")),
+            better_reward_value=good.get("score", 0),
+            module_names=str(module_names),
         )
 
-    def state_dict(self) -> Dict[str, Any]:
-        """Return optimizer state as a dict."""
-        state = super().state_dict()
-        state.update({
-            "seed": self.seed,
-            "next_program_idx": self._next_program_idx,
-            "trial_logs": {
-                k: {
-                    "batch_idx": v.batch_idx,
-                    "baseline_score": v.baseline_score,
-                    "best_candidate_score": v.best_candidate_score,
-                    "strategy_used": v.strategy_used,
-                    "train_score": v.train_score,
-                }
-                for k, v in self._trial_logs.items()
-            },
-        })
-        return state
+        try:
+            result = self.prompt_model(prompt)
+            advice_text = result if isinstance(result, str) else str(result)
+            advice = _parse_json_advice(advice_text, module_names)
+        except Exception:
+            logger.warning("Failed to generate rule advice", exc_info=True)
+            return False
 
-    def load_state_dict(self, state_dict: Dict[str, Any]) -> None:
-        """Load optimizer state."""
-        super().load_state_dict(state_dict)
+        applied = 0
+        for name, agent in name2agent.items():
+            if name in advice:
+                logger.info("Advice for %s: %s", name, advice[name][:100])
+                current = agent.optimized_system_prompt.data or ""
+                if not current:
+                    current = self._get_fragments(agent)
+                agent.optimized_system_prompt.data = (
+                    current + "\n\n" + advice[name]
+                )
+                applied += 1
 
-        if "seed" in state_dict:
-            self.seed = state_dict["seed"]
-            self.rng = random.Random(self.seed)
+        logger.info("Applied rules to %d agents.", applied)
+        return applied > 0
 
-        if "next_program_idx" in state_dict:
-            self._next_program_idx = state_dict["next_program_idx"]
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _format_trajectory(
+        trace: list, agent2name: dict[int, str],
+    ) -> str:
+        """Format a trace into a human-readable trajectory string."""
+        if not trace:
+            return "No trajectory available."
+        lines = []
+        for agent, turn_record in trace:
+            name = agent2name.get(id(agent), "unknown")
+            inputs = turn_record.get("inputs", "")
+            output = turn_record.get("assistant_output", "")
+            lines.append(
+                f"Module {name}:\n  Input: {inputs}\n  Output: {output}"
+            )
+        return "\n".join(lines)
+
+    @staticmethod
+    def _inspect_modules(program: Module) -> str:
+        """Build a description of each agent module in the program."""
+        sep = "-" * 60
+        parts = [sep]
+        for name, agent in program.named_agents():
+            parts.append(f"Module {name}")
+            if hasattr(agent, "system_message") and agent.system_message.data:
+                parts.append(f"  System message: {agent.system_message.data}")
+            if hasattr(agent, "instructions") and agent.instructions.data:
+                parts.append(f"  Instructions: {agent.instructions.data}")
+            if hasattr(agent, "expected_output") and agent.expected_output.data:
+                parts.append(f"  Expected output: {agent.expected_output.data}")
+            parts.append(sep)
+        return "\n".join(parts)
+
+    @staticmethod
+    def _get_fragments(agent: Any) -> str:
+        """Extract original prompt fragments as text."""
+        parts = []
+        if hasattr(agent, "system_message") and agent.system_message.data:
+            parts.append(agent.system_message.data)
+        if hasattr(agent, "instructions") and agent.instructions.data:
+            parts.append(agent.instructions.data)
+        if hasattr(agent, "expected_output") and agent.expected_output.data:
+            parts.append(agent.expected_output.data)
+        return "\n".join(parts) if parts else ""
+
+
+# ---------------------------------------------------------------------------
+# Compile state — shared mutable state for the optimization loop
+# ---------------------------------------------------------------------------
+
+
+class _CompileState:
+    """Holds mutable state shared across compile helper methods."""
+
+    def __init__(self, rng: random.Random):
+        self.rng = rng
+        self.programs: list[Module] = []
+        self.program_scores: dict[int, list[float]] = {}
+        self.next_program_idx: int = 0
+        self.winning_programs: list[Module] = []
+
+    def calc_average_score(self, prog_idx: int) -> float:
+        scores = self.program_scores.get(prog_idx, [])
+        return sum(scores) / len(scores) if scores else 0.0
+
+    def top_k_plus_baseline(self, k: int) -> list[int]:
+        scored = sorted(
+            self.programs,
+            key=lambda p: self.calc_average_score(p._simba_idx),
+            reverse=True,
+        )
+        top_k = [p._simba_idx for p in scored[:k]]
+        if 0 not in top_k and top_k:
+            top_k[-1] = 0
+        return list(dict.fromkeys(top_k))
+
+    def softmax_sample(
+        self,
+        rng_obj: random.Random,
+        idxs: list[int],
+        temperature: float,
+    ) -> int:
+        if not idxs:
+            raise ValueError("No programs for softmax sampling.")
+        scores = [self.calc_average_score(i) for i in idxs]
+        max_s = max(scores) if scores else 0.0
+        exps = [math.exp((s - max_s) / temperature) for s in scores]
+        total = sum(exps)
+        if total <= 0:
+            return rng_obj.choice(idxs)
+        probs = [e / total for e in exps]
+        return rng_obj.choices(idxs, weights=probs, k=1)[0]
+
+    def register_new_program(
+        self, prog: Module, score_list: list[float],
+    ) -> None:
+        self.next_program_idx += 1
+        prog._simba_idx = self.next_program_idx
+        self.programs.append(prog)
+        self.program_scores[self.next_program_idx] = score_list
+
+
+def _build_agent2name(exec_results: list[dict]) -> dict[int, str]:
+    """Build agent id → name mapping from execution results."""
+    agent2name: dict[int, str] = {}
+    for r in exec_results:
+        for agent, _turn in r.get("trace", []):
+            if id(agent) not in agent2name:
+                for name, a in r["program_ref"].named_agents():
+                    agent2name[id(a)] = name
+    return agent2name
+
+
+# ---------------------------------------------------------------------------
+# Module-level helpers
+# ---------------------------------------------------------------------------
+
+
+def _wrap_program(
+    program: Module, example: Example, metric: Callable,
+) -> dict:
+    """Execute program on example inside a trace context, return results."""
+    prediction = None
+    score = 0.0
+
+    with trace_context() as trace_data:
+        try:
+            inputs = example.inputs if hasattr(example, "inputs") else example
+            prediction = program(inputs)
+        except Exception:
+            logger.warning("Program execution failed", exc_info=True)
+
+    try:
+        output = metric(example, prediction)
+        if isinstance(output, (int, float)):
+            score = float(output)
+        elif isinstance(output, bool):
+            score = float(output)
+        else:
+            score = float(output)
+    except Exception:
+        logger.warning("Metric evaluation failed", exc_info=True)
+
+    return {
+        "prediction": prediction,
+        "trace": list(trace_data),
+        "score": score,
+        "example": example,
+        "program_ref": program,
+    }
+
+
+def _percentile(values: list[float], pct: float) -> float:
+    """Compute the pct-th percentile of a list of values."""
+    if not values:
+        return 0.0
+    sorted_vals = sorted(values)
+    k = (len(sorted_vals) - 1) * (pct / 100.0)
+    f = int(k)
+    c = f + 1
+    if c >= len(sorted_vals):
+        return sorted_vals[-1]
+    d = k - f
+    return sorted_vals[f] + d * (sorted_vals[c] - sorted_vals[f])
+
+
+def _poisson(rng: random.Random, lam: float) -> int:
+    """Sample from a Poisson distribution using the inverse CDF method."""
+    if lam <= 0:
+        return 0
+    l_val = math.exp(-lam)
+    k = 0
+    p = 1.0
+    while True:
+        k += 1
+        p *= rng.random()
+        if p <= l_val:
+            return k - 1
+
+
+def _parse_json_advice(text: str, module_names: list[str]) -> Dict[str, str]:
+    """Parse JSON advice from LLM response, fallback to heuristic."""
+    # Try to extract JSON from response
+    text = text.strip()
+
+    # Strip markdown code fences
+    if text.startswith("```"):
+        lines = text.split("\n")
+        lines = [
+            line for line in lines if not line.strip().startswith("```")
+        ]
+        text = "\n".join(lines)
+
+    try:
+        parsed = json.loads(text)
+        if isinstance(parsed, dict):
+            return {k: str(v) for k, v in parsed.items()}
+    except (json.JSONDecodeError, ValueError):
+        pass
+
+    # Fallback: apply entire text to all modules
+    result = {}
+    for name in module_names:
+        if name in text:
+            result[name] = text
+    return result

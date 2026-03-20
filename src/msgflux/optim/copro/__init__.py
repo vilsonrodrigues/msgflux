@@ -1,13 +1,7 @@
 """COPRO instruction optimizer."""
 
-from msgflux.optim.copro.copro import (
-    COPRO,
-    CoproCandidate,
-    CoproResult,
-)
+from msgflux.optim.copro.copro import COPRO
 
 __all__ = [
     "COPRO",
-    "CoproCandidate",
-    "CoproResult",
 ]

@@ -1,3 +1,4 @@
+import copy
 from abc import abstractmethod
 from typing import Mapping
 
@@ -15,6 +16,17 @@ class BaseModel(BaseClient):
         "_response_cache",
     ]
     batch_support: bool = False  # Whether model supports batch processing
+
+    def __deepcopy__(self, memo):
+        cls = self.__class__
+        result = cls.__new__(cls)
+        memo[id(self)] = result
+        for k, v in self.__dict__.items():
+            if k in self.to_ignore:
+                continue
+            setattr(result, k, copy.deepcopy(v, memo))
+        result._initialize()
+        return result
 
     def instance_type(self) -> Mapping[str, str]:
         return {"model_type": self.model_type}

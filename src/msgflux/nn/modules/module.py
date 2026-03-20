@@ -1,4 +1,5 @@
 import asyncio
+import copy
 import functools
 import inspect
 import weakref
@@ -2163,6 +2164,43 @@ class Module:
             score, and any additional metadata passed to compile_().
         """
         return self._compile_info.copy()
+
+    # ------------------------------------------------------------------
+    # Optimizer helper methods
+    # ------------------------------------------------------------------
+
+    def deepcopy(self: T) -> T:
+        """Return a deep copy of this module."""
+        return copy.deepcopy(self)
+
+    def reset_copy(self: T) -> T:
+        """Return a deep copy with optimizer state cleared.
+
+        Clears ``optimized_system_prompt``, ``demos``, and compilation
+        flags on every sub-module.
+        """
+        new = self.deepcopy()
+        new.decompile_()
+        for module in new.modules():
+            if hasattr(module, "optimized_system_prompt"):
+                module.optimized_system_prompt.data = None
+            if hasattr(module, "demos"):
+                module.demos = []
+        return new
+
+    def agents(self) -> List["Module"]:
+        """Return a list of all Agent sub-modules (including self)."""
+        from msgflux.nn.modules.agent import Agent  # noqa: PLC0415
+
+        return [m for m in self.modules() if isinstance(m, Agent)]
+
+    def named_agents(self) -> Iterator[Tuple[str, "Module"]]:
+        """Yield ``(name, agent)`` for every Agent sub-module."""
+        from msgflux.nn.modules.agent import Agent  # noqa: PLC0415
+
+        for name, module in self.named_modules():
+            if isinstance(module, Agent):
+                yield name, module
 
     def requires_grad_(self: T, *, requires_pgrad: Optional[bool] = True) -> T:
         """Change if autograd should record operations on parameters in this module.

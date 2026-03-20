@@ -67,3 +67,43 @@ def get_session_context() -> Mapping[str, Optional[str]]:
         "session_id": _CURRENT_SESSION_ID.get(),
         "namespace": _CURRENT_NAMESPACE.get(),
     }
+
+
+# ---------------------------------------------------------------------------
+# Trace context — ordered list of (module, turn_record) captured during
+# program execution.  Used by optimizers to collect I/O from every Agent.
+# ---------------------------------------------------------------------------
+
+_CURRENT_TRACE: contextvars.ContextVar[Optional[list]] = contextvars.ContextVar(
+    "msgflux_trace", default=None,
+)
+
+
+@contextmanager
+def trace_context():
+    """Isolate an execution with a fresh trace list.
+
+    Every Agent that completes a turn inside this scope appends
+    ``(agent_instance, turn_record)`` to the shared trace.
+
+    Usage::
+
+        from msgflux.context import trace_context
+
+        with trace_context() as trace:
+            result = pipeline(example)
+
+        for agent, turn in trace:
+            print(agent.get_module_name(), turn["assistant_output"])
+    """
+    trace: list = []
+    token = _CURRENT_TRACE.set(trace)
+    try:
+        yield trace
+    finally:
+        _CURRENT_TRACE.reset(token)
+
+
+def get_trace() -> Optional[list]:
+    """Return the current trace list, or ``None`` if outside a trace context."""
+    return _CURRENT_TRACE.get()
