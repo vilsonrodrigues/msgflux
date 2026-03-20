@@ -54,13 +54,13 @@ class TestModuleHelpers:
 
     def test_reset_copy_clears_state(self, mock_model):
         agent = Agent(name="qa", model=mock_model)
-        agent.demos = [Example(inputs="q", labels="a")]
+        agent.optimized_examples = [Example(inputs="q", labels="a")]
         agent.optimized_system_prompt.data = "optimized"
         agent.compile_(optimizer="test")
 
         reset = agent.reset_copy()
 
-        assert reset.demos == []
+        assert reset.optimized_examples == []
         assert reset.optimized_system_prompt.data is None
         assert reset._compiled is False
 
@@ -97,6 +97,25 @@ class TestOptimizedSystemPrompt:
         # fragments should NOT appear
         assert "I am a helper" not in prompt
 
+    def test_expected_output_immune_to_optimization(self, mock_model):
+        """expected_output must always render, even with optimized_system_prompt."""
+        agent = Agent(
+            name="qa",
+            model=mock_model,
+            system_message="I am a helper",
+            instructions="Be concise",
+            expected_output="Return JSON.",
+        )
+        agent.optimized_system_prompt.data = "You are a concise helper."
+
+        prompt = agent.get_system_prompt()
+        # optimized_system_prompt replaces system_message + instructions
+        assert "You are a concise helper." in prompt
+        assert "I am a helper" not in prompt
+        assert "Be concise" not in prompt
+        # expected_output is immune — always present
+        assert "Return JSON." in prompt
+
     def test_fragments_used_when_no_optimized(self, mock_model):
         agent = Agent(
             name="qa",
@@ -107,25 +126,40 @@ class TestOptimizedSystemPrompt:
         assert "I am a helper" in prompt
 
 
-class TestDemos:
+class TestOptimizedExamples:
     def test_default_empty(self, mock_model):
         agent = Agent(name="qa", model=mock_model)
-        assert agent.demos == []
+        assert agent.optimized_examples == []
 
-    def test_demos_appear_in_system_prompt(self, mock_model):
+    def test_optimized_examples_appear_in_system_prompt(self, mock_model):
         agent = Agent(name="qa", model=mock_model)
-        agent.demos = [
+        agent.optimized_examples = [
             Example(inputs="2+2", labels="4"),
         ]
         prompt = agent.get_system_prompt()
         assert "2+2" in prompt
         assert "4" in prompt
 
-    def test_demos_append_to_optimized_prompt(self, mock_model):
+    def test_optimized_examples_with_optimized_prompt(self, mock_model):
         agent = Agent(name="qa", model=mock_model)
         agent.optimized_system_prompt.data = "You are a calculator."
-        agent.demos = [Example(inputs="1+1", labels="2")]
+        agent.optimized_examples = [Example(inputs="1+1", labels="2")]
 
         prompt = agent.get_system_prompt()
         assert "You are a calculator." in prompt
         assert "1+1" in prompt
+
+    def test_optimized_examples_override_dev_examples(self, mock_model):
+        """optimized_examples should replace developer-provided examples."""
+        agent = Agent(
+            name="qa",
+            model=mock_model,
+            examples="Q: old_q\nA: old_a",
+        )
+        agent.optimized_examples = [Example(inputs="new_q", labels="new_a")]
+
+        prompt = agent.get_system_prompt()
+        # optimized_examples take precedence
+        assert "new_q" in prompt
+        # dev examples should NOT appear
+        assert "old_q" not in prompt

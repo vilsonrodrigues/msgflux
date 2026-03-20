@@ -241,7 +241,7 @@ class MIPROv2(Teleprompter):
                 )
                 for name, agent in compiled.named_agents():
                     if name in demo_candidates:
-                        demo_candidates[name].append(list(agent.demos))
+                        demo_candidates[name].append(list(agent.optimized_examples))
             except Exception:
                 logger.warning(
                     "Bootstrap set %d failed", i + 1, exc_info=True,
@@ -393,7 +393,7 @@ class MIPROv2(Teleprompter):
                         f"{name}_demos",
                         list(range(len(demos))),
                     )
-                    agent.demos = list(demos[d_idx])
+                    agent.optimized_examples = list(demos[d_idx])
 
             # Evaluate
             score = eval_candidate_program(
@@ -557,6 +557,4 @@ def _get_agent_info(agent: Any) -> str:
         parts.append(f"System message: {agent.system_message.data}")
     if hasattr(agent, "instructions") and agent.instructions.data:
         parts.append(f"Instructions: {agent.instructions.data}")
-    if hasattr(agent, "expected_output") and agent.expected_output.data:
-        parts.append(f"Expected output: {agent.expected_output.data}")
     return "\n".join(parts) if parts else "No configuration provided."

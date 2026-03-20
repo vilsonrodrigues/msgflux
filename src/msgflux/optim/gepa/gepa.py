@@ -684,6 +684,4 @@ def _get_agent_fragments(agent: Any) -> str:
         parts.append(agent.system_message.data)
     if hasattr(agent, "instructions") and agent.instructions.data:
         parts.append(agent.instructions.data)
-    if hasattr(agent, "expected_output") and agent.expected_output.data:
-        parts.append(agent.expected_output.data)
     return "\n".join(parts) if parts else "No instructions provided."

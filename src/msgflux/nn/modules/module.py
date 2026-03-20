@@ -2184,8 +2184,8 @@ class Module:
         for module in new.modules():
             if hasattr(module, "optimized_system_prompt"):
                 module.optimized_system_prompt.data = None
-            if hasattr(module, "demos"):
-                module.demos = []
+            if hasattr(module, "optimized_examples"):
+                module.optimized_examples = []
         return new
 
     def agents(self) -> List["Module"]:

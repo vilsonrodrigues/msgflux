@@ -153,9 +153,9 @@ class BootstrapFewShot(Teleprompter):
         # Anti-leak: remove current example from teacher demos
         for _name, agent_pair in self.name2agent.items():
             t_agent = agent_pair["teacher"]
-            if hasattr(t_agent, "demos"):
-                t_agent.demos = [
-                    d for d in t_agent.demos if d is not example
+            if hasattr(t_agent, "optimized_examples"):
+                t_agent.optimized_examples = [
+                    d for d in t_agent.optimized_examples if d is not example
                 ]
 
         # Execute teacher inside a trace context
@@ -206,4 +206,4 @@ class BootstrapFewShot(Teleprompter):
                 k = min(remaining, len(self.trainset))
                 labeled = rng.sample(self.trainset, k)
 
-            s_agent.demos = bootstrapped + labeled
+            s_agent.optimized_examples = bootstrapped + labeled

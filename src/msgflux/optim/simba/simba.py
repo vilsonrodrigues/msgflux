@@ -300,7 +300,7 @@ class SIMBA(Teleprompter):
 
         for name, agent in candidate.named_agents():
             name2agent[name] = agent
-            num_demos_list.append(len(agent.demos))
+            num_demos_list.append(len(agent.optimized_examples))
 
         num_demos = max(num_demos_list) if num_demos_list else 0
         lam = num_demos / max_demos_tmp if max_demos_tmp else 0
@@ -317,8 +317,8 @@ class SIMBA(Teleprompter):
             demos_to_drop = set()
 
         for _name, agent in name2agent.items():
-            agent.demos = [
-                d for i, d in enumerate(agent.demos)
+            agent.optimized_examples = [
+                d for i, d in enumerate(agent.optimized_examples)
                 if i not in demos_to_drop
             ]
 
@@ -513,7 +513,7 @@ class SIMBA(Teleprompter):
 
         for name, demo in name2demo.items():
             if name in name2agent:
-                name2agent[name].demos.append(demo)
+                name2agent[name].optimized_examples.append(demo)
 
         logger.info("Added %d demos across agents.", len(name2demo))
         return True
@@ -639,8 +639,6 @@ class SIMBA(Teleprompter):
                 parts.append(f"  System message: {agent.system_message.data}")
             if hasattr(agent, "instructions") and agent.instructions.data:
                 parts.append(f"  Instructions: {agent.instructions.data}")
-            if hasattr(agent, "expected_output") and agent.expected_output.data:
-                parts.append(f"  Expected output: {agent.expected_output.data}")
             parts.append(sep)
         return "\n".join(parts)
 
@@ -652,8 +650,6 @@ class SIMBA(Teleprompter):
             parts.append(agent.system_message.data)
         if hasattr(agent, "instructions") and agent.instructions.data:
             parts.append(agent.instructions.data)
-        if hasattr(agent, "expected_output") and agent.expected_output.data:
-            parts.append(agent.expected_output.data)
         return "\n".join(parts) if parts else ""
 
 

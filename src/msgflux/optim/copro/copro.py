@@ -240,8 +240,6 @@ class COPRO(Teleprompter):
             parts.append(f"System message: {agent.system_message.data}")
         if hasattr(agent, "instructions") and agent.instructions.data:
             parts.append(f"Instructions: {agent.instructions.data}")
-        if hasattr(agent, "expected_output") and agent.expected_output.data:
-            parts.append(f"Expected output: {agent.expected_output.data}")
         if hasattr(agent, "examples") and agent.examples.data:
             parts.append(f"Examples: {agent.examples.data}")
         return "\n".join(parts) if parts else "No instructions provided."

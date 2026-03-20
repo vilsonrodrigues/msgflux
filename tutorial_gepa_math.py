@@ -262,8 +262,8 @@ for name, agent in optimized_program.named_agents():
         print(f"Optimized system prompt:\n{opt_prompt[:800]}")
     else:
         print("(no optimized prompt)")
-    if agent.demos:
-        print(f"Demos: {len(agent.demos)} examples")
+    if agent.optimized_examples:
+        print(f"Demos: {len(agent.optimized_examples)} examples")
 
 
 # ── 10. Evaluate optimized program ─────────────────────────────────

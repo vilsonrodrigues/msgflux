@@ -8,8 +8,11 @@ class PromptSpec:
 
 
 SYSTEM_PROMPT_TEMPLATE = """
-{% if system_message or instructions or expected_output or examples or team_members or system_extra_message %}
+{% if system_message or instructions or expected_output or examples or optimized_system_prompt or optimized_examples or team_members or system_extra_message %}
 <developer_note>
+{% if optimized_system_prompt %}
+{{ optimized_system_prompt }}
+{% else %}
 {% if system_message %}<system_message>
 {{ system_message }}
 </system_message>
@@ -18,11 +21,15 @@ SYSTEM_PROMPT_TEMPLATE = """
 {{ instructions }}
 </instructions>
 {% endif %}
+{% endif %}
 {% if expected_output %}<expected_output>
 {{ expected_output }}
 </expected_output>
 {% endif %}
-{% if examples %}<examples>
+{% if optimized_examples %}<examples>
+{{ optimized_examples }}
+</examples>
+{% elif examples %}<examples>
 {{ examples }}
 </examples>
 {% endif %}

@@ -366,7 +366,7 @@ class Agent(Module, metaclass=AutoParams):
         self.optimized_system_prompt = Parameter(
             None, PromptSpec.OPTIMIZED_SYSTEM_PROMPT
         )
-        self.demos: List[Example] = []
+        self.optimized_examples: List[Example] = []
 
     def forward(
         self, message: Optional[Union[str, Mapping[str, Any], Message]] = None, **kwargs
@@ -2075,37 +2075,39 @@ class Agent(Module, metaclass=AutoParams):
         """Render the system prompt using the Jinja template.
         Returns an empty string if no segments are provided.
 
-        If ``optimized_system_prompt`` is set (by an optimizer), it takes
-        precedence over the fragmented system_message / instructions /
-        expected_output / examples.  Demos are always appended when present.
+        The template handles two optimizer-managed overrides:
+
+        * ``optimized_system_prompt`` — replaces system_message + instructions
+          (but NOT expected_output or current_date, which are immune).
+        * ``optimized_examples`` — replaces the developer-provided examples.
+
+        Both ``expected_output`` and ``current_date`` are always rendered
+        regardless of optimiser state.
         """
-        # --- optimized prompt takes precedence over fragments ---
-        if self.optimized_system_prompt.data:
-            system_prompt = self.optimized_system_prompt.data
-        else:
-            template_inputs = dotdict(
-                system_message=self.system_message.data,
-                instructions=self.instructions.data,
-                expected_output=self.expected_output.data,
-                examples=self.examples.data,
-                system_extra_message=self.system_extra_message,
-            )
+        # Format optimized_examples if available
+        optimized_examples_text = None
+        if self.optimized_examples:
+            optimized_examples_text = ExampleCollection(
+                self.optimized_examples
+            ).get_formatted()
 
-            if self.config.get("include_date", False):
-                now = datetime.now(tz=timezone.utc)
-                # Format: "Monday, December 09, 2025"
-                template_inputs.current_date = now.strftime("%A, %B %d, %Y")
+        template_inputs = dotdict(
+            system_message=self.system_message.data,
+            instructions=self.instructions.data,
+            expected_output=self.expected_output.data,
+            examples=self.examples.data,
+            optimized_system_prompt=self.optimized_system_prompt.data,
+            optimized_examples=optimized_examples_text,
+            system_extra_message=self.system_extra_message,
+        )
 
-            system_prompt = self._format_template(
-                template_inputs, self.system_prompt_template
-            )
+        if self.config.get("include_date", False):
+            now = datetime.now(tz=timezone.utc)
+            template_inputs.current_date = now.strftime("%A, %B %d, %Y")
 
-        # --- append demos (few-shot examples) ---
-        if self.demos:
-            demo_collection = ExampleCollection(self.demos)
-            demos_text = demo_collection.get_formatted()
-            if demos_text:
-                system_prompt = (system_prompt or "") + "\n\n" + demos_text
+        system_prompt = self._format_template(
+            template_inputs, self.system_prompt_template
+        )
 
         if vars:  # Runtime inputs to system template
             system_prompt = self._format_template(vars, system_prompt)

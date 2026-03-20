@@ -118,7 +118,7 @@ class TestLabeledFewShotE2E:
         agents = list(compiled.named_agents())
         assert len(agents) == 1
         _, agent = agents[0]
-        assert len(agent.demos) == 4
+        assert len(agent.optimized_examples) == 4
         assert compiled._compiled
 
         # Evaluate compiled program
@@ -126,7 +126,7 @@ class TestLabeledFewShotE2E:
         result = evaluator(compiled)
 
         assert 0.0 <= result.score <= 1.0
-        print(f"\n[LabeledFewShot] Demos: {len(agent.demos)}")
+        print(f"\n[LabeledFewShot] Demos: {len(agent.optimized_examples)}")
         print(f"[LabeledFewShot] Score: {result.score:.2f}")
 
 
@@ -153,7 +153,7 @@ class TestBootstrapFewShotE2E:
 
         agents = list(compiled.named_agents())
         _, agent = agents[0]
-        print(f"\n[Bootstrap] Demos: {len(agent.demos)}")
+        print(f"\n[Bootstrap] Demos: {len(agent.optimized_examples)}")
         print(f"[Bootstrap] Score: {result.score:.2f}")
 
 
@@ -220,7 +220,7 @@ class TestSIMBAE2E:
 
         agents = list(compiled.named_agents())
         _, agent = agents[0]
-        print(f"\n[SIMBA] Demos: {len(agent.demos)}")
+        print(f"\n[SIMBA] Demos: {len(agent.optimized_examples)}")
         if agent.optimized_system_prompt.data:
             print(f"[SIMBA] Optimized prompt: {agent.optimized_system_prompt.data[:100]}...")
         print(f"[SIMBA] Score: {result.score:.2f}")
@@ -257,7 +257,7 @@ class TestMIPROv2E2E:
         _, agent = agents[0]
         if agent.optimized_system_prompt.data:
             print(f"\n[MIPROv2] Optimized prompt: {agent.optimized_system_prompt.data[:100]}...")
-        print(f"[MIPROv2] Demos: {len(agent.demos)}")
+        print(f"[MIPROv2] Demos: {len(agent.optimized_examples)}")
 
         evaluator = Evaluate(devset=trainset[:4], metric=exact_match)
         result = evaluator(compiled)
@@ -339,8 +339,8 @@ class TestMultiAgentPipeline:
         agents = list(compiled.named_agents())
         assert len(agents) == 2
         for name, agent in agents:
-            assert len(agent.demos) == 2
-            print(f"\n[MultiAgent] {name}: {len(agent.demos)} demos")
+            assert len(agent.optimized_examples) == 2
+            print(f"\n[MultiAgent] {name}: {len(agent.optimized_examples)} demos")
 
         # Evaluate
         evaluator = Evaluate(devset=trainset[:2], metric=exact_match)

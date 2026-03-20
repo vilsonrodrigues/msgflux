@@ -43,8 +43,8 @@ class TestLabeledFewShot:
         opt = LabeledFewShot(k=4)
         compiled = opt.compile(student, trainset=trainset)
 
-        assert len(compiled.demos) == 4
-        for demo in compiled.demos:
+        assert len(compiled.optimized_examples) == 4
+        for demo in compiled.optimized_examples:
             assert isinstance(demo, Example)
 
     def test_k_clamped_to_trainset_size(self, mock_model, trainset):
@@ -52,14 +52,14 @@ class TestLabeledFewShot:
         opt = LabeledFewShot(k=100)
         compiled = opt.compile(student, trainset=trainset)
 
-        assert len(compiled.demos) == len(trainset)
+        assert len(compiled.optimized_examples) == len(trainset)
 
     def test_sample_false_takes_first_k(self, mock_model, trainset):
         student = Agent(name="qa", model=mock_model)
         opt = LabeledFewShot(k=3)
         compiled = opt.compile(student, trainset=trainset, sample=False)
 
-        assert compiled.demos == trainset[:3]
+        assert compiled.optimized_examples == trainset[:3]
 
     def test_reproducible_with_same_seed(self, mock_model, trainset):
         student = Agent(name="qa", model=mock_model)
@@ -67,7 +67,7 @@ class TestLabeledFewShot:
         compiled1 = opt.compile(student, trainset=trainset, seed=42)
         compiled2 = opt.compile(student, trainset=trainset, seed=42)
 
-        assert compiled1.demos == compiled2.demos
+        assert compiled1.optimized_examples == compiled2.optimized_examples
 
     def test_different_seed_different_demos(self, mock_model, trainset):
         student = Agent(name="qa", model=mock_model)
@@ -75,15 +75,15 @@ class TestLabeledFewShot:
         compiled1 = opt.compile(student, trainset=trainset, seed=0)
         compiled2 = opt.compile(student, trainset=trainset, seed=99)
 
-        assert compiled1.demos != compiled2.demos
+        assert compiled1.optimized_examples != compiled2.optimized_examples
 
     def test_original_student_unchanged(self, mock_model, trainset):
         student = Agent(name="qa", model=mock_model)
-        original_demos = student.demos.copy()
+        original_demos = student.optimized_examples.copy()
         opt = LabeledFewShot(k=4)
         opt.compile(student, trainset=trainset)
 
-        assert student.demos == original_demos
+        assert student.optimized_examples == original_demos
         assert student._compiled is False
 
     def test_compile_info(self, mock_model, trainset):

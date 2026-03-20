@@ -53,9 +53,9 @@ class LabeledFewShot(Teleprompter):
 
         for _name, agent in student.named_agents():
             if sample:
-                agent.demos = rng.sample(trainset, k)
+                agent.optimized_examples = rng.sample(trainset, k)
             else:
-                agent.demos = list(trainset[:k])
+                agent.optimized_examples = list(trainset[:k])
 
         student.compile_(optimizer="LabeledFewShot", score=None)
         return student
