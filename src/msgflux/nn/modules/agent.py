@@ -587,12 +587,10 @@ class Agent(Module, metaclass=AutoParams):
         self._checkpoint_save(messages, vars, status="completed")
 
         if response_type in self._supported_outputs:
-            response = self._prepare_response(
+            return self._prepare_response(
                 raw_response, response_type, messages, message, vars
             )
-            return response
-        else:
-            raise ValueError(f"Unsupported `response_type={response_type}`")
+        raise ValueError(f"Unsupported `response_type={response_type}`")
 
     async def _aprocess_model_response(
         self,
@@ -633,12 +631,10 @@ class Agent(Module, metaclass=AutoParams):
         await self._acheckpoint_save(messages, vars, status="completed")
 
         if response_type in self._supported_outputs:
-            response = await self._aprepare_response(
+            return self._prepare_response(
                 raw_response, response_type, messages, message, vars
             )
-            return response
-        else:
-            raise ValueError(f"Unsupported `response_type={response_type}`")
+        raise ValueError(f"Unsupported `response_type={response_type}`")
 
     def _process_tool_flow_control_response(
         self,
@@ -755,40 +751,38 @@ class Agent(Module, metaclass=AutoParams):
         'name': 'get_delivery_date'}}]}, {'role': 'tool', 'tool_call_id': 'call_HA',
         'content': '2024-10-15'}].
         """
-        while True:
-            if model_response.response_type == "tool_call":
-                raw_response = model_response.data
-                reasoning = raw_response.reasoning
+        while model_response.response_type == "tool_call":
+            raw_response = model_response.data
+            reasoning = raw_response.reasoning
 
-                if self.config.get("verbose", False):
-                    if reasoning:
-                        repr_str = f"[{self.name}][tool_calls_reasoning] {reasoning}"
-                        cprint(repr_str, bc="br2", ls="b")
+            if self.config.get("verbose", False) and reasoning:
+                cprint(
+                    f"[{self.name}][tool_calls_reasoning] {reasoning}",
+                    bc="br2",
+                    ls="b",
+                )
 
-                tool_callings = raw_response.get_calls()
-                tool_results = self._process_tool_call(tool_callings, messages, vars)
+            tool_callings = raw_response.get_calls()
+            tool_results = self._process_tool_call(tool_callings, messages, vars)
 
-                if tool_results.return_directly:
-                    tool_calls = tool_results.to_dict()
-                    tool_calls.pop("return_directly")
-                    tool_calls["reasoning"] = reasoning
-                    tool_responses = dotdict(tool_responses=tool_calls)
-                    return tool_responses, messages
+            if tool_results.return_directly:
+                tool_calls = tool_results.to_dict()
+                tool_calls.pop("return_directly")
+                tool_calls["reasoning"] = reasoning
+                return dotdict(tool_responses=tool_calls), messages
 
-                id_results = {
-                    call.id: call.result or call.error
-                    for call in tool_results.tool_calls
-                }
-                raw_response.insert_results(id_results)
-                tool_responses_message = raw_response.get_messages()
-                messages.extend(tool_responses_message)
-                self._checkpoint_save(messages, vars)
-            else:
-                return model_response, messages
+            id_results = {
+                call.id: call.result or call.error for call in tool_results.tool_calls
+            }
+            raw_response.insert_results(id_results)
+            messages.extend(raw_response.get_messages())
+            self._checkpoint_save(messages, vars)
 
             model_response = self._execute_model(
                 messages=messages, model_preference=model_preference, vars=vars
             )
+
+        return model_response, messages
 
     async def _aprocess_tool_call_response(
         self,
@@ -803,42 +797,38 @@ class Agent(Module, metaclass=AutoParams):
         'name': 'get_delivery_date'}}]}, {'role': 'tool', 'tool_call_id': 'call_HA',
         'content': '2024-10-15'}].
         """
-        while True:
-            if model_response.response_type == "tool_call":
-                raw_response = model_response.data
-                reasoning = raw_response.reasoning
+        while model_response.response_type == "tool_call":
+            raw_response = model_response.data
+            reasoning = raw_response.reasoning
 
-                if self.config.get("verbose", False):
-                    if reasoning:
-                        repr_str = f"[{self.name}][tool_calls_reasoning] {reasoning}"
-                        cprint(repr_str, bc="br2", ls="b")
-
-                tool_callings = raw_response.get_calls()
-                tool_results = await self._aprocess_tool_call(
-                    tool_callings, messages, vars
+            if self.config.get("verbose", False) and reasoning:
+                cprint(
+                    f"[{self.name}][tool_calls_reasoning] {reasoning}",
+                    bc="br2",
+                    ls="b",
                 )
 
-                if tool_results.return_directly:
-                    tool_calls = tool_results.to_dict()
-                    tool_calls.pop("return_directly")
-                    tool_calls["reasoning"] = reasoning
-                    tool_responses = dotdict(tool_responses=tool_calls)
-                    return tool_responses, messages
+            tool_callings = raw_response.get_calls()
+            tool_results = await self._aprocess_tool_call(tool_callings, messages, vars)
 
-                id_results = {
-                    call.id: call.result or call.error
-                    for call in tool_results.tool_calls
-                }
-                raw_response.insert_results(id_results)
-                tool_responses_message = raw_response.get_messages()
-                messages.extend(tool_responses_message)
-                await self._acheckpoint_save(messages, vars)
-            else:
-                return model_response, messages
+            if tool_results.return_directly:
+                tool_calls = tool_results.to_dict()
+                tool_calls.pop("return_directly")
+                tool_calls["reasoning"] = reasoning
+                return dotdict(tool_responses=tool_calls), messages
+
+            id_results = {
+                call.id: call.result or call.error for call in tool_results.tool_calls
+            }
+            raw_response.insert_results(id_results)
+            messages.extend(raw_response.get_messages())
+            await self._acheckpoint_save(messages, vars)
 
             model_response = await self._aexecute_model(
                 messages=messages, model_preference=model_preference, vars=vars
             )
+
+        return model_response, messages
 
     def _process_tool_call(
         self,
@@ -932,40 +922,6 @@ class Agent(Module, metaclass=AutoParams):
                 result = dotdict(response=result, messages=messages)
         return self._define_response_mode(result, message)
 
-    async def _aprepare_response(
-        self,
-        raw_response: Union[str, Mapping[str, Any], ModelStreamResponse],
-        response_type: str,
-        messages: List[Mapping[str, Any]],
-        message: Union[str, Mapping[str, Any], Message],
-        vars: Mapping[str, Any],
-    ) -> Union[str, Mapping[str, Any], ModelStreamResponse]:
-        """Async version of _prepare_response."""
-        formatted_response = None
-        if not isinstance(raw_response, ModelStreamResponse):
-            if response_type == "text_generation" or "structured" in response_type:
-                if self.config.get("verbose", False):
-                    cprint(f"[{self.name}][response] {raw_response}", bc="y", ls="b")
-                if self.templates.get("response"):
-                    if isinstance(raw_response, str):
-                        pre_response = self._format_response_template(vars)
-                        formatted_response = self._format_template(
-                            raw_response, pre_response
-                        )
-                    elif isinstance(raw_response, dict):
-                        raw_response.update(vars)
-                        formatted_response = self._format_response_template(
-                            raw_response
-                        )
-
-        result = formatted_response or raw_response
-        if self.config.get("return_messages", False):
-            if response_type == "tool_responses":
-                result.messages = messages
-            else:
-                result = dotdict(response=result, messages=messages)
-        return self._define_response_mode(result, message)
-
     # --- ChatMessages lifecycle helpers ---
 
     def _coerce_chat_messages(
@@ -982,24 +938,35 @@ class Agent(Module, metaclass=AutoParams):
             f"given `{type(messages)}`"
         )
 
-    def _checkpoint_save(
+    def _build_checkpoint(
         self,
         messages: Union[ChatMessages, List[Mapping[str, Any]]],
         vars: Mapping[str, Any],
         status: str = "running",
-    ) -> None:
-        if self.checkpointer is None:
-            return
-        if not isinstance(messages, ChatMessages):
-            return
-        session_id = messages.session_id or "default"
+    ) -> Optional[Tuple[str, str, str, Dict[str, Any]]]:
+        """Build ``(namespace, session_id, run_id, state)`` or ``None``."""
+        if self.checkpointer is None or not isinstance(messages, ChatMessages):
+            return None
         namespace = self.get_module_name()
+        session_id = messages.session_id or "default"
         run_id = messages.turns[-1]["turn_id"] if messages.turns else "run"
         state = {
             "status": status,
             "messages": messages._to_state(),
             "vars": dict(vars) if vars else {},
         }
+        return namespace, session_id, run_id, state
+
+    def _checkpoint_save(
+        self,
+        messages: Union[ChatMessages, List[Mapping[str, Any]]],
+        vars: Mapping[str, Any],
+        status: str = "running",
+    ) -> None:
+        checkpoint = self._build_checkpoint(messages, vars, status)
+        if checkpoint is None:
+            return
+        namespace, session_id, run_id, state = checkpoint
         self.checkpointer.save_state(namespace, session_id, run_id, state)
 
     async def _acheckpoint_save(
@@ -1008,18 +975,10 @@ class Agent(Module, metaclass=AutoParams):
         vars: Mapping[str, Any],
         status: str = "running",
     ) -> None:
-        if self.checkpointer is None:
+        checkpoint = self._build_checkpoint(messages, vars, status)
+        if checkpoint is None:
             return
-        if not isinstance(messages, ChatMessages):
-            return
-        session_id = messages.session_id or "default"
-        namespace = self.get_module_name()
-        run_id = messages.turns[-1]["turn_id"] if messages.turns else "run"
-        state = {
-            "status": status,
-            "messages": messages._to_state(),
-            "vars": dict(vars) if vars else {},
-        }
+        namespace, session_id, run_id, state = checkpoint
         if hasattr(self.checkpointer, "asave_state"):
             await self.checkpointer.asave_state(namespace, session_id, run_id, state)
         else:
