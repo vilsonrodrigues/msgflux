@@ -181,7 +181,10 @@ The three statuses:
 | `failed` | Exception occurred, state saved before re-raise |
 
 !!! note
-    Failed runs are **not** picked up by automatic resume -- they are terminal. To retry after a failure, delete the failed run and call the agent again.
+    Failed runs are **not** picked up by automatic resume -- they are terminal. A new call with the same `(session_id, turn_id)` **overwrites** the previous state (UPSERT semantics), so you do not need to manually delete the failed run.
+
+!!! tip "Checkpoint errors are safe"
+    If the checkpoint store itself fails during error handling (e.g. database is full), the **original exception** is always propagated to the caller. Store errors never mask the real error.
 
 ## Configuration
 
