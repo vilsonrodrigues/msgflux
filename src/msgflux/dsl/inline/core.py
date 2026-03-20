@@ -11,7 +11,7 @@ message and may return a ``dict`` delta (merged automatically) or ``None``
 
 import asyncio
 import re
-from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple
+from typing import Any, Callable, Dict, List, Mapping, Tuple
 
 from msgflux.dotdict import dotdict
 from msgflux.logger import logger
@@ -20,7 +20,6 @@ from msgflux.nn import functional as F
 # ── Signals ──────────────────────────────────────────────────────────────────
 
 _SIGNAL_KEYS = frozenset({"$break", "$stop"})
-_SIGNAL_SEVERITY = {"$break": 1, "$stop": 2}
 
 
 class InlineDSL:
@@ -141,13 +140,7 @@ class InlineDSL:
         tokens = re.findall(token_pattern, condition)
         return [token.strip() for token in tokens if token.strip()]
 
-    def _parse_logical_expression(
-        self, tokens: List[str], index: Optional[int] = 0
-    ) -> Tuple:
-        result, index = self._parse_or_expression(tokens, index)
-        return result, index
-
-    def _parse_or_expression(self, tokens: List[str], index: int) -> Tuple:
+    def _parse_or_expression(self, tokens: List[str], index: int = 0) -> Tuple:
         left, index = self._parse_and_expression(tokens, index)
         while index < len(tokens) and tokens[index] == "||":
             index += 1
@@ -173,7 +166,7 @@ class InlineDSL:
     def _parse_primary_expression(self, tokens: List[str], index: int) -> Tuple:
         if index < len(tokens) and tokens[index] == "(":
             index += 1
-            expr, index = self._parse_logical_expression(tokens, index)
+            expr, index = self._parse_or_expression(tokens, index)
             if index < len(tokens) and tokens[index] == ")":
                 index += 1
                 return expr, index
@@ -271,7 +264,7 @@ class InlineDSL:
         tokens = self._tokenize_condition(condition)
         if not tokens:
             raise ValueError("Empty condition")
-        tree, final_index = self._parse_logical_expression(tokens)
+        tree, final_index = self._parse_or_expression(tokens)
         if final_index != len(tokens):
             raise ValueError(f"Unexpected tokens after parsing: {tokens[final_index:]}")
         return self._evaluate_logical_tree(tree, message)
@@ -468,7 +461,7 @@ class InlineDSL:
                     step["condition"], step["actions"], modules, message
                 )
             else:
-                continue
+                raise ValueError(f"Unknown step type: {step['type']}")
 
             if signals:
                 return message, signals
@@ -632,7 +625,7 @@ class AsyncInlineDSL(InlineDSL):
                     step["condition"], step["actions"], modules, message
                 )
             else:
-                continue
+                raise ValueError(f"Unknown step type: {step['type']}")
 
             if signals:
                 return message, signals

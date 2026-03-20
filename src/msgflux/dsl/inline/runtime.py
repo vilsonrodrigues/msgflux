@@ -317,47 +317,25 @@ class DurableInlineDSL(InlineDSL):
             )
 
             iteration += 1
+            iter_frame = {**frame, "iteration": iteration}
 
-            # ── Signal-first checkpoint (THE FIX) ────────────────────
-            if "$stop" in signals:
+            if "$stop" in signals or "$break" in signals:
+                status = "stopped" if "$stop" in signals else "running"
                 self._save(
                     expression,
-                    _make_cursor(
-                        outer_step_index,
-                        [
-                            *current_frames,
-                            {**frame, "iteration": iteration},
-                        ],
-                    ),
+                    _make_cursor(outer_step_index, [*current_frames, iter_frame]),
                     message,
-                    status="stopped",
+                    status=status,
                 )
-                return message, signals
-
-            if "$break" in signals:
-                self._save(
-                    expression,
-                    _make_cursor(
-                        outer_step_index,
-                        [
-                            *current_frames,
-                            {**frame, "iteration": iteration},
-                        ],
-                    ),
-                    message,
-                )
+                if "$stop" in signals:
+                    return message, signals
                 break
 
             # Normal iteration checkpoint
+            iter_frame["inner_step"] = 0
             self._save(
                 expression,
-                _make_cursor(
-                    outer_step_index,
-                    [
-                        *current_frames,
-                        {**frame, "iteration": iteration, "inner_step": 0},
-                    ],
-                ),
+                _make_cursor(outer_step_index, [*current_frames, iter_frame]),
                 message,
             )
 
@@ -646,46 +624,25 @@ class AsyncDurableInlineDSL(AsyncInlineDSL):
             )
 
             iteration += 1
+            iter_frame = {**frame, "iteration": iteration}
 
-            # ── Signal-first checkpoint (THE FIX) ────────────────────
-            if "$stop" in signals:
+            if "$stop" in signals or "$break" in signals:
+                status = "stopped" if "$stop" in signals else "running"
                 await self._asave(
                     expression,
-                    _make_cursor(
-                        outer_step_index,
-                        [
-                            *current_frames,
-                            {**frame, "iteration": iteration},
-                        ],
-                    ),
+                    _make_cursor(outer_step_index, [*current_frames, iter_frame]),
                     message,
-                    status="stopped",
+                    status=status,
                 )
-                return message, signals
-
-            if "$break" in signals:
-                await self._asave(
-                    expression,
-                    _make_cursor(
-                        outer_step_index,
-                        [
-                            *current_frames,
-                            {**frame, "iteration": iteration},
-                        ],
-                    ),
-                    message,
-                )
+                if "$stop" in signals:
+                    return message, signals
                 break
 
+            # Normal iteration checkpoint
+            iter_frame["inner_step"] = 0
             await self._asave(
                 expression,
-                _make_cursor(
-                    outer_step_index,
-                    [
-                        *current_frames,
-                        {**frame, "iteration": iteration, "inner_step": 0},
-                    ],
-                ),
+                _make_cursor(outer_step_index, [*current_frames, iter_frame]),
                 message,
             )
 
