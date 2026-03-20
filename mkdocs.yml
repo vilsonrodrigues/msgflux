@@ -171,12 +171,12 @@ nav:
         - learn/nn/agent/model-gateway.md
         - learn/nn/agent/prefilling.md
         - learn/nn/agent/durable.md
+      - Inline: learn/inline.md
       - Functional:
         - learn/nn/functional/index.md
         - learn/nn/functional/gather.md
         - learn/nn/functional/durable.md
         - learn/nn/functional/utility.md
-        - learn/nn/functional/inline-dsl.md
         - learn/nn/functional/best-practices.md
       - Transcriber:
         - learn/nn/transcriber.md        

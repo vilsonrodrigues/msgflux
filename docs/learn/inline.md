@@ -22,8 +22,33 @@ result = pipeline(mf.dotdict())
 print(result["result"])  # "Analysis complete"
 ```
 
-!!! info "Delta pattern"
-    Modules receive a `dotdict` message and return a `dict` delta that is **merged automatically**. Modules can also mutate in-place and return `None` (legacy pattern).
+## Module Return Patterns
+
+Modules receive a `dotdict` message and can return results in two ways:
+
+### Delta pattern (recommended)
+
+Return a `dict` with the fields to merge. The pipeline merges it into the message automatically via `dotdict.apply()`:
+
+```python
+def enrich(msg):
+    return {"enriched": True, "score": 0.95}
+```
+
+This is the preferred pattern — it makes modules **pure functions** that are easy to test, compose, and reason about. Deltas also enable [signals](#signals) (`$break`, `$stop`) for flow control.
+
+### In-place mutation (legacy)
+
+Mutate the message directly and return `None`:
+
+```python
+def enrich(msg):
+    msg["enriched"] = True
+    msg["score"] = 0.95
+```
+
+!!! warning "Deprecated"
+    In-place mutation still works for backwards compatibility, but it is **deprecated**. It does not support signals and makes modules harder to test in isolation. Prefer the delta pattern for new code.
 
 ---
 
@@ -217,8 +242,6 @@ result = pipeline(
 ### Crash and Resume
 
 ```python
-from msgflux.dsl.inline.runtime import DurableInlineDSL
-
 store = mf.InMemoryCheckpointStore()
 
 pipeline = mf.Inline("step_a -> step_b -> step_c", modules=modules)
