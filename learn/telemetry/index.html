@@ -4272,7 +4272,7 @@ All operations in `msgflux.nn.functional` are automatically traced:
 | `scatter_gather` / `ascatter_gather` | Scatter inputs and gather outputs |
 | `bcast_gather` | Broadcast and gather |
 | `Inline` | DSL workflow execution |
-| `fire_and_forget` | Background execution |
+| `spawn` | Background execution |
 
 ---
 
@@ -4631,7 +4631,7 @@ export MSGFLUX_TELEMETRY_CAPTURE_STATE_DICT=false
 <td>DSL workflow execution</td>
 </tr>
 <tr>
-<td><code>fire_and_forget</code></td>
+<td><code>spawn</code></td>
 <td>Background execution</td>
 </tr>
 </tbody>

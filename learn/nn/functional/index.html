@@ -2058,9 +2058,9 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#fire_and_forget" class="md-nav__link">
+  <a href="#spawn" class="md-nav__link">
     <span class="md-ellipsis">
-      fire_and_forget
+      spawn
     </span>
   </a>
   
@@ -3869,9 +3869,9 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#fire_and_forget" class="md-nav__link">
+  <a href="#spawn" class="md-nav__link">
     <span class="md-ellipsis">
-      fire_and_forget
+      spawn
     </span>
   </a>
   
@@ -3962,7 +3962,7 @@ All core functions have async counterparts prefixed with `a`:
 | `scatter_gather` | `ascatter_gather` |
 | `wait_for` | — |
 | `wait_for_event` | `await_for_event` |
-| `fire_and_forget` | `afire_and_forget` |
+| `spawn` | `aspawn` |
 
 ---
 
@@ -4331,7 +4331,7 @@ Wait for an `asyncio.Event` in synchronous code.
 
 ---
 
-### `fire_and_forget`
+### `spawn`
 
 Dispatch a task without waiting for a result.
 
@@ -4346,7 +4346,7 @@ Dispatch a task without waiting for a result.
             print(f&quot;Logging: {event_type} for user {user_id}&quot;)
 
         # Returns immediately
-        F.fire_and_forget(log_event, &quot;login&quot;, 12345)
+        F.spawn(log_event, &quot;login&quot;, 12345)
         print(&quot;Main thread continues...&quot;)
         ```
 
@@ -4360,7 +4360,7 @@ Dispatch a task without waiting for a result.
             await asyncio.sleep(1)
             print(f&quot;[Async] {message}&quot;)
 
-        F.fire_and_forget(async_log, &quot;Hello from fire_and_forget&quot;)
+        F.spawn(async_log, &quot;Hello from spawn&quot;)
         ```
 
     === &quot;Error Handling&quot;
@@ -4372,13 +4372,13 @@ Dispatch a task without waiting for a result.
             raise ValueError(&quot;This task failed!&quot;)
 
         # Error is logged, not raised
-        F.fire_and_forget(failing_task)
+        F.spawn(failing_task)
         ```
 
 !!! tip &quot;Use Cases&quot;
-    Fire-and-forget is ideal for logging, cache updates, notifications, and non-critical side effects.
+    Spawn is ideal for logging, cache updates, notifications, and non-critical side effects.
 
-**Async version:** `afire_and_forget`
+**Async version:** `aspawn`
 ">
   <button class="copy-markdown-button" onclick="copyMarkdownToClipboard(this)">
     <i id="copy-icon" class="ph ph-clipboard" style="font-size:16px;"></i>
@@ -4515,8 +4515,8 @@ Dispatch a task without waiting for a result.
 <td><code>await_for_event</code></td>
 </tr>
 <tr>
-<td><code>fire_and_forget</code></td>
-<td><code>afire_and_forget</code></td>
+<td><code>spawn</code></td>
+<td><code>aspawn</code></td>
 </tr>
 </tbody>
 </table>
@@ -4851,7 +4851,7 @@ Dispatch a task without waiting for a result.
 </details>
 <p><strong>Async version:</strong> <code>await_for_event</code></p>
 <hr />
-<h3 id="fire_and_forget"><code>fire_and_forget</code></h3>
+<h3 id="spawn"><code>spawn</code></h3>
 <p>Dispatch a task without waiting for a result.</p>
 <details class="example" open="open">
 <summary>Example</summary>
@@ -4864,7 +4864,7 @@ Dispatch a task without waiting for a result.
 </span><span id="__span-19-4"><a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Logging: </span><span class="si">{</span><span class="n">event_type</span><span class="si">}</span><span class="s2"> for user </span><span class="si">{</span><span class="n">user_id</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
 </span><span id="__span-19-5"><a id="__codelineno-19-5" name="__codelineno-19-5" href="#__codelineno-19-5"></a>
 </span><span id="__span-19-6"><a id="__codelineno-19-6" name="__codelineno-19-6" href="#__codelineno-19-6"></a><span class="c1"># Returns immediately</span>
-</span><span id="__span-19-7"><a id="__codelineno-19-7" name="__codelineno-19-7" href="#__codelineno-19-7"></a><span class="n">F</span><span class="o">.</span><span class="n">fire_and_forget</span><span class="p">(</span><span class="n">log_event</span><span class="p">,</span> <span class="s2">&quot;login&quot;</span><span class="p">,</span> <span class="mi">12345</span><span class="p">)</span>
+</span><span id="__span-19-7"><a id="__codelineno-19-7" name="__codelineno-19-7" href="#__codelineno-19-7"></a><span class="n">F</span><span class="o">.</span><span class="n">spawn</span><span class="p">(</span><span class="n">log_event</span><span class="p">,</span> <span class="s2">&quot;login&quot;</span><span class="p">,</span> <span class="mi">12345</span><span class="p">)</span>
 </span><span id="__span-19-8"><a id="__codelineno-19-8" name="__codelineno-19-8" href="#__codelineno-19-8"></a><span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Main thread continues...&quot;</span><span class="p">)</span>
 </span></code></pre></div>
 </div>
@@ -4876,7 +4876,7 @@ Dispatch a task without waiting for a result.
 </span><span id="__span-20-5"><a id="__codelineno-20-5" name="__codelineno-20-5" href="#__codelineno-20-5"></a>    <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
 </span><span id="__span-20-6"><a id="__codelineno-20-6" name="__codelineno-20-6" href="#__codelineno-20-6"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;[Async] </span><span class="si">{</span><span class="n">message</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
 </span><span id="__span-20-7"><a id="__codelineno-20-7" name="__codelineno-20-7" href="#__codelineno-20-7"></a>
-</span><span id="__span-20-8"><a id="__codelineno-20-8" name="__codelineno-20-8" href="#__codelineno-20-8"></a><span class="n">F</span><span class="o">.</span><span class="n">fire_and_forget</span><span class="p">(</span><span class="n">async_log</span><span class="p">,</span> <span class="s2">&quot;Hello from fire_and_forget&quot;</span><span class="p">)</span>
+</span><span id="__span-20-8"><a id="__codelineno-20-8" name="__codelineno-20-8" href="#__codelineno-20-8"></a><span class="n">F</span><span class="o">.</span><span class="n">spawn</span><span class="p">(</span><span class="n">async_log</span><span class="p">,</span> <span class="s2">&quot;Hello from spawn&quot;</span><span class="p">)</span>
 </span></code></pre></div>
 </div>
 <div class="tabbed-block">
@@ -4886,7 +4886,7 @@ Dispatch a task without waiting for a result.
 </span><span id="__span-21-4"><a id="__codelineno-21-4" name="__codelineno-21-4" href="#__codelineno-21-4"></a>    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;This task failed!&quot;</span><span class="p">)</span>
 </span><span id="__span-21-5"><a id="__codelineno-21-5" name="__codelineno-21-5" href="#__codelineno-21-5"></a>
 </span><span id="__span-21-6"><a id="__codelineno-21-6" name="__codelineno-21-6" href="#__codelineno-21-6"></a><span class="c1"># Error is logged, not raised</span>
-</span><span id="__span-21-7"><a id="__codelineno-21-7" name="__codelineno-21-7" href="#__codelineno-21-7"></a><span class="n">F</span><span class="o">.</span><span class="n">fire_and_forget</span><span class="p">(</span><span class="n">failing_task</span><span class="p">)</span>
+</span><span id="__span-21-7"><a id="__codelineno-21-7" name="__codelineno-21-7" href="#__codelineno-21-7"></a><span class="n">F</span><span class="o">.</span><span class="n">spawn</span><span class="p">(</span><span class="n">failing_task</span><span class="p">)</span>
 </span></code></pre></div>
 </div>
 </div>
@@ -4894,9 +4894,9 @@ Dispatch a task without waiting for a result.
 </details>
 <div class="admonition tip">
 <p class="admonition-title">Use Cases</p>
-<p>Fire-and-forget is ideal for logging, cache updates, notifications, and non-critical side effects.</p>
+<p>Spawn is ideal for logging, cache updates, notifications, and non-critical side effects.</p>
 </div>
-<p><strong>Async version:</strong> <code>afire_and_forget</code></p>
+<p><strong>Async version:</strong> <code>aspawn</code></p>
 
 
 

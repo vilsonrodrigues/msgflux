@@ -1911,9 +1911,9 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#fire_and_forget" class="md-nav__link">
+  <a href="#spawn" class="md-nav__link">
     <span class="md-ellipsis">
-      fire_and_forget
+      spawn
     </span>
   </a>
   
@@ -3947,9 +3947,9 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#fire_and_forget" class="md-nav__link">
+  <a href="#spawn" class="md-nav__link">
     <span class="md-ellipsis">
-      fire_and_forget
+      spawn
     </span>
   </a>
   
@@ -5122,13 +5122,13 @@ Use cases:
     # Returns the tool call parameters without executing the function
     ```
 
-#### fire_and_forget
+#### spawn
 
 Dispatch a tool without waiting for a result. The model receives a confirmation that the task was started, but no return value. Requires async tool.
 
 Use cases:
 
-- Fire-and-forget operations (emails, notifications)
+- Spawned operations (emails, notifications)
 - Tasks that don&#x27;t need to return a result to the model
 
 ???+ example
@@ -5141,7 +5141,7 @@ Use cases:
 
     # mf.set_envs(OPENAI_API_KEY=&quot;...&quot;)
 
-    @mf.tool_config(fire_and_forget=True)
+    @mf.tool_config(spawn=True)
     async def send_notification(user_id: str, message: str):
         &quot;&quot;&quot;Send notification asynchronously. Will not generate a return.&quot;&quot;&quot;
         # Simulate async operation (e.g., API call, email sending)
@@ -6715,11 +6715,11 @@ Configure MCP servers using the `mcp_servers` attribute:
 </span><span id="__span-34-39"><a id="__codelineno-34-39" name="__codelineno-34-39" href="#__codelineno-34-39"></a><span class="c1"># Returns the tool call parameters without executing the function</span>
 </span></code></pre></div>
 </details>
-<h4 id="fire_and_forget">fire_and_forget</h4>
+<h4 id="spawn">spawn</h4>
 <p>Dispatch a tool without waiting for a result. The model receives a confirmation that the task was started, but no return value. Requires async tool.</p>
 <p>Use cases:</p>
 <ul>
-<li>Fire-and-forget operations (emails, notifications)</li>
+<li>Spawned operations (emails, notifications)</li>
 <li>Tasks that don't need to return a result to the model</li>
 </ul>
 <details class="example" open="open">
@@ -6731,7 +6731,7 @@ Configure MCP servers using the `mcp_servers` attribute:
 </span><span id="__span-35-5"><a id="__codelineno-35-5" name="__codelineno-35-5" href="#__codelineno-35-5"></a>
 </span><span id="__span-35-6"><a id="__codelineno-35-6" name="__codelineno-35-6" href="#__codelineno-35-6"></a><span class="c1"># mf.set_envs(OPENAI_API_KEY=&quot;...&quot;)</span>
 </span><span id="__span-35-7"><a id="__codelineno-35-7" name="__codelineno-35-7" href="#__codelineno-35-7"></a>
-</span><span id="__span-35-8"><a id="__codelineno-35-8" name="__codelineno-35-8" href="#__codelineno-35-8"></a><span class="nd">@mf</span><span class="o">.</span><span class="n">tool_config</span><span class="p">(</span><span class="n">fire_and_forget</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</span><span id="__span-35-8"><a id="__codelineno-35-8" name="__codelineno-35-8" href="#__codelineno-35-8"></a><span class="nd">@mf</span><span class="o">.</span><span class="n">tool_config</span><span class="p">(</span><span class="n">spawn</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 </span><span id="__span-35-9"><a id="__codelineno-35-9" name="__codelineno-35-9" href="#__codelineno-35-9"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">send_notification</span><span class="p">(</span><span class="n">user_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">message</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
 </span><span id="__span-35-10"><a id="__codelineno-35-10" name="__codelineno-35-10" href="#__codelineno-35-10"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Send notification asynchronously. Will not generate a return.&quot;&quot;&quot;</span>
 </span><span id="__span-35-11"><a id="__codelineno-35-11" name="__codelineno-35-11" href="#__codelineno-35-11"></a>    <span class="c1"># Simulate async operation (e.g., API call, email sending)</span>

@@ -2879,17 +2879,17 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#msgflux.nn.functional.fire_and_forget" class="md-nav__link">
+  <a href="#msgflux.nn.functional.spawn" class="md-nav__link">
     <span class="md-ellipsis">
-      fire_and_forget
+      spawn
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="fire_and_forget">
+    <nav class="md-nav" aria-label="spawn">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#msgflux.nn.functional.fire_and_forget--example-1" class="md-nav__link">
+  <a href="#msgflux.nn.functional.spawn--example-1" class="md-nav__link">
     <span class="md-ellipsis">
       Example 1:
     </span>
@@ -2898,7 +2898,7 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#msgflux.nn.functional.fire_and_forget--example-2" class="md-nav__link">
+  <a href="#msgflux.nn.functional.spawn--example-2" class="md-nav__link">
     <span class="md-ellipsis">
       Example 2:
     </span>
@@ -2907,7 +2907,7 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#msgflux.nn.functional.fire_and_forget--example-3-with-error" class="md-nav__link">
+  <a href="#msgflux.nn.functional.spawn--example-3-with-error" class="md-nav__link">
     <span class="md-ellipsis">
       Example 3 (with error):
     </span>
@@ -3901,17 +3901,17 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#msgflux.nn.functional.fire_and_forget" class="md-nav__link">
+  <a href="#msgflux.nn.functional.spawn" class="md-nav__link">
     <span class="md-ellipsis">
-      fire_and_forget
+      spawn
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="fire_and_forget">
+    <nav class="md-nav" aria-label="spawn">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#msgflux.nn.functional.fire_and_forget--example-1" class="md-nav__link">
+  <a href="#msgflux.nn.functional.spawn--example-1" class="md-nav__link">
     <span class="md-ellipsis">
       Example 1:
     </span>
@@ -3920,7 +3920,7 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#msgflux.nn.functional.fire_and_forget--example-2" class="md-nav__link">
+  <a href="#msgflux.nn.functional.spawn--example-2" class="md-nav__link">
     <span class="md-ellipsis">
       Example 2:
     </span>
@@ -3929,7 +3929,7 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#msgflux.nn.functional.fire_and_forget--example-3-with-error" class="md-nav__link">
+  <a href="#msgflux.nn.functional.spawn--example-3-with-error" class="md-nav__link">
     <span class="md-ellipsis">
       Example 3 (with error):
     </span>
@@ -3998,7 +3998,7 @@
 
 ::: msgflux.nn.functional.wait_for_event
 
-::: msgflux.nn.functional.fire_and_forget
+::: msgflux.nn.functional.spawn
 ">
   <button class="copy-markdown-button" onclick="copyMarkdownToClipboard(this)">
     <i id="copy-icon" class="ph ph-clipboard" style="font-size:16px;"></i>
@@ -5099,12 +5099,12 @@ print(results) # 9</p>
 <div class="doc doc-object doc-function">
 
 
-<h2 id="msgflux.nn.functional.fire_and_forget" class="doc doc-heading">
-            <span class="doc doc-object-name doc-function-name">fire_and_forget</span>
+<h2 id="msgflux.nn.functional.spawn" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">spawn</span>
 
 
 </h2>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">fire_and_forget</span><span class="p">(</span><span class="n">to_send</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">spawn</span><span class="p">(</span><span class="n">to_send</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
 </span></code></pre></div>
 
     <div class="doc doc-contents first">
@@ -5198,22 +5198,22 @@ Uses the AsyncExecutorPool. The task is not tracked and no return is provided.</
 
 
 <p><span class="doc-section-title">Examples:</span></p>
-    <h3 id="msgflux.nn.functional.fire_and_forget--example-1">Example 1:</h3>
+    <h3 id="msgflux.nn.functional.spawn--example-1">Example 1:</h3>
 <p>import time
 def print_message(message: str):
     time.sleep(1)
     print(f"[Sync] Message: {message}")
-F.fire_and_forget(print_message, "Hello from sync function")</p>
-<h3 id="msgflux.nn.functional.fire_and_forget--example-2">Example 2:</h3>
+F.spawn(print_message, "Hello from sync function")</p>
+<h3 id="msgflux.nn.functional.spawn--example-2">Example 2:</h3>
 <p>import asyncio
 async def async_print_message(message: str):
     await asyncio.sleep(1)
     print(f"[Async] Message: {message}")
-F.fire_and_forget(async_print_message, "Hello from async function")</p>
-<h3 id="msgflux.nn.functional.fire_and_forget--example-3-with-error">Example 3 (with error):</h3>
+F.spawn(async_print_message, "Hello from async function")</p>
+<h3 id="msgflux.nn.functional.spawn--example-3-with-error">Example 3 (with error):</h3>
 <p>def failing_task():
     raise ValueError("This task failed!")
-F.fire_and_forget(failing_task)  # Error will be logged</p>
+F.spawn(failing_task)  # Error will be logged</p>
 
 
             <details class="quote">
@@ -5267,7 +5267,7 @@ F.fire_and_forget(failing_task)  # Error will be logged</p>
 <span class="normal"><a href="#__codelineno-0-373">373</a></span>
 <span class="normal"><a href="#__codelineno-0-374">374</a></span>
 <span class="normal"><a href="#__codelineno-0-375">375</a></span></pre></div></td><td class="code"><div><pre><span></span><code><span id="__span-0-327"><a id="__codelineno-0-327" name="__codelineno-0-327"></a><span class="nd">@Spans</span><span class="o">.</span><span class="n">instrument</span><span class="p">()</span>
-</span><span id="__span-0-328"><a id="__codelineno-0-328" name="__codelineno-0-328"></a><span class="k">def</span><span class="w"> </span><span class="nf">fire_and_forget</span><span class="p">(</span><span class="n">to_send</span><span class="p">:</span> <span class="n">Callable</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+</span><span id="__span-0-328"><a id="__codelineno-0-328" name="__codelineno-0-328"></a><span class="k">def</span><span class="w"> </span><span class="nf">spawn</span><span class="p">(</span><span class="n">to_send</span><span class="p">:</span> <span class="n">Callable</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 </span><span id="__span-0-329"><a id="__codelineno-0-329" name="__codelineno-0-329"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Dispatches a task without waiting for a result.</span>
 </span><span id="__span-0-330"><a id="__codelineno-0-330" name="__codelineno-0-330"></a><span class="sd">    Uses the AsyncExecutorPool. The task is not tracked and no return is provided.</span>
 </span><span id="__span-0-331"><a id="__codelineno-0-331" name="__codelineno-0-331"></a>
@@ -5288,19 +5288,19 @@ F.fire_and_forget(failing_task)  # Error will be logged</p>
 </span><span id="__span-0-346"><a id="__codelineno-0-346" name="__codelineno-0-346"></a><span class="sd">        def print_message(message: str):</span>
 </span><span id="__span-0-347"><a id="__codelineno-0-347" name="__codelineno-0-347"></a><span class="sd">            time.sleep(1)</span>
 </span><span id="__span-0-348"><a id="__codelineno-0-348" name="__codelineno-0-348"></a><span class="sd">            print(f&quot;[Sync] Message: {message}&quot;)</span>
-</span><span id="__span-0-349"><a id="__codelineno-0-349" name="__codelineno-0-349"></a><span class="sd">        F.fire_and_forget(print_message, &quot;Hello from sync function&quot;)</span>
+</span><span id="__span-0-349"><a id="__codelineno-0-349" name="__codelineno-0-349"></a><span class="sd">        F.spawn(print_message, &quot;Hello from sync function&quot;)</span>
 </span><span id="__span-0-350"><a id="__codelineno-0-350" name="__codelineno-0-350"></a>
 </span><span id="__span-0-351"><a id="__codelineno-0-351" name="__codelineno-0-351"></a><span class="sd">        # Example 2:</span>
 </span><span id="__span-0-352"><a id="__codelineno-0-352" name="__codelineno-0-352"></a><span class="sd">        import asyncio</span>
 </span><span id="__span-0-353"><a id="__codelineno-0-353" name="__codelineno-0-353"></a><span class="sd">        async def async_print_message(message: str):</span>
 </span><span id="__span-0-354"><a id="__codelineno-0-354" name="__codelineno-0-354"></a><span class="sd">            await asyncio.sleep(1)</span>
 </span><span id="__span-0-355"><a id="__codelineno-0-355" name="__codelineno-0-355"></a><span class="sd">            print(f&quot;[Async] Message: {message}&quot;)</span>
-</span><span id="__span-0-356"><a id="__codelineno-0-356" name="__codelineno-0-356"></a><span class="sd">        F.fire_and_forget(async_print_message, &quot;Hello from async function&quot;)</span>
+</span><span id="__span-0-356"><a id="__codelineno-0-356" name="__codelineno-0-356"></a><span class="sd">        F.spawn(async_print_message, &quot;Hello from async function&quot;)</span>
 </span><span id="__span-0-357"><a id="__codelineno-0-357" name="__codelineno-0-357"></a>
 </span><span id="__span-0-358"><a id="__codelineno-0-358" name="__codelineno-0-358"></a><span class="sd">        # Example 3 (with error):</span>
 </span><span id="__span-0-359"><a id="__codelineno-0-359" name="__codelineno-0-359"></a><span class="sd">        def failing_task():</span>
 </span><span id="__span-0-360"><a id="__codelineno-0-360" name="__codelineno-0-360"></a><span class="sd">            raise ValueError(&quot;This task failed!&quot;)</span>
-</span><span id="__span-0-361"><a id="__codelineno-0-361" name="__codelineno-0-361"></a><span class="sd">        F.fire_and_forget(failing_task)  # Error will be logged</span>
+</span><span id="__span-0-361"><a id="__codelineno-0-361" name="__codelineno-0-361"></a><span class="sd">        F.spawn(failing_task)  # Error will be logged</span>
 </span><span id="__span-0-362"><a id="__codelineno-0-362" name="__codelineno-0-362"></a><span class="sd">    &quot;&quot;&quot;</span>
 </span><span id="__span-0-363"><a id="__codelineno-0-363" name="__codelineno-0-363"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="nb">callable</span><span class="p">(</span><span class="n">to_send</span><span class="p">):</span>
 </span><span id="__span-0-364"><a id="__codelineno-0-364" name="__codelineno-0-364"></a>        <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">&quot;`to_send` must be a callable object&quot;</span><span class="p">)</span>
@@ -5310,7 +5310,7 @@ F.fire_and_forget(failing_task)  # Error will be logged</p>
 </span><span id="__span-0-368"><a id="__codelineno-0-368" name="__codelineno-0-368"></a>        <span class="k">try</span><span class="p">:</span>
 </span><span id="__span-0-369"><a id="__codelineno-0-369" name="__codelineno-0-369"></a>            <span class="n">future</span><span class="o">.</span><span class="n">result</span><span class="p">()</span>
 </span><span id="__span-0-370"><a id="__codelineno-0-370" name="__codelineno-0-370"></a>        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
-</span><span id="__span-0-371"><a id="__codelineno-0-371" name="__codelineno-0-371"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Fire-and-forget task error: </span><span class="si">{</span><span class="n">e</span><span class="si">!s}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">exc_info</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</span><span id="__span-0-371"><a id="__codelineno-0-371" name="__codelineno-0-371"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Spawned task error: </span><span class="si">{</span><span class="n">e</span><span class="si">!s}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">exc_info</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 </span><span id="__span-0-372"><a id="__codelineno-0-372" name="__codelineno-0-372"></a>
 </span><span id="__span-0-373"><a id="__codelineno-0-373" name="__codelineno-0-373"></a>    <span class="n">executor</span> <span class="o">=</span> <span class="n">Executor</span><span class="o">.</span><span class="n">get_instance</span><span class="p">()</span>
 </span><span id="__span-0-374"><a id="__codelineno-0-374" name="__codelineno-0-374"></a>    <span class="n">future</span> <span class="o">=</span> <span class="n">executor</span><span class="o">.</span><span class="n">submit</span><span class="p">(</span><span class="n">to_send</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
