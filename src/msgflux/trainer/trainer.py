@@ -6,9 +6,9 @@ evaluation, and callbacks for prompt optimization.
 
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 
-from msgflux.evaluate.evaluator import EvaluationResult, Evaluator
+from msgflux.evaluate import EvalResult, Evaluate
 from msgflux.examples import Example
 from msgflux.nn.modules.module import Module
 from msgflux.optim.optimizer import Optimizer
@@ -88,13 +88,13 @@ class Callback:
         pass
 
     def on_epoch_end(
-        self, trainer: "Trainer", epoch: int, logs: Dict[str, Any]
+        self, _trainer: "Trainer", epoch: int, logs: Dict[str, Any]
     ) -> None:
         """Called at the end of each epoch."""
         pass
 
     def on_evaluate(
-        self, trainer: "Trainer", result: EvaluationResult
+        self, trainer: "Trainer", result: EvalResult
     ) -> None:
         """Called after evaluation."""
         pass
@@ -111,7 +111,7 @@ class EarlyStopping(Callback):
         self.should_stop = False
 
     def on_epoch_end(
-        self, trainer: "Trainer", epoch: int, logs: Dict[str, Any]
+        self, _trainer: "Trainer", epoch: int, logs: Dict[str, Any]
     ) -> None:
         score = logs.get("val_score", 0.0)
 
@@ -140,7 +140,7 @@ class ProgressCallback(Callback):
         )
 
     def on_epoch_end(
-        self, trainer: "Trainer", epoch: int, logs: Dict[str, Any]
+        self, _trainer: "Trainer", epoch: int, logs: Dict[str, Any]
     ) -> None:
         val_score = logs.get("val_score", "N/A")
         if isinstance(val_score, float):
@@ -167,7 +167,7 @@ class Trainer:
         ...     agent.parameters(),
         ...     metric=exact_match,
         ... )
-        >>> evaluator = Evaluator(metric=exact_match)
+        >>> evaluator = Evaluate(devset=[], metric=exact_match)
         >>>
         >>> trainer = Trainer(
         ...     module=agent,
@@ -184,7 +184,7 @@ class Trainer:
         self,
         module: Module,
         optimizer: Optimizer,
-        evaluator: Optional[Evaluator] = None,
+        evaluator: Optional[Evaluate] = None,
         config: Optional[TrainerConfig] = None,
         callbacks: Optional[List[Callback]] = None,
     ):
@@ -311,12 +311,12 @@ class Trainer:
 
         self.state.step += 1
 
-    def _evaluate(self, valset: List[Example]) -> EvaluationResult:
+    def _evaluate(self, valset: List[Example]) -> EvalResult:
         """Run evaluation on validation set."""
         # Set module to evaluation mode
         self.module.eval()
 
-        result = self.evaluator(self.module, valset)
+        result = self.evaluator(self.module, devset=valset)
 
         self._on_evaluate(result)
 
@@ -368,7 +368,7 @@ class Trainer:
         for callback in self.callbacks:
             callback.on_epoch_end(self, epoch, logs)
 
-    def _on_evaluate(self, result: EvaluationResult) -> None:
+    def _on_evaluate(self, result: EvalResult) -> None:
         """Call evaluate callbacks."""
         for callback in self.callbacks:
             callback.on_evaluate(self, result)

@@ -2202,6 +2202,46 @@ class Module:
             if isinstance(module, Agent):
                 yield name, module
 
+    def _get_optimized_prompts(self) -> Dict[str, str]:
+        """Return optimized prompts for all Agent sub-modules.
+
+        Keys prefer ``agent.name`` when unique. If duplicate Agent names exist
+        within the same program, the module path from ``named_agents()`` is used
+        instead to keep the mapping unambiguous.
+        """
+        named_agents = list(self.named_agents())
+        name_counts: Dict[str, int] = {}
+        agent_rows: List[Tuple[str, Module, str]] = []
+
+        for path, agent in named_agents:
+            base_key = str(
+                getattr(agent, "name", None) or path or agent.get_module_name()
+            )
+            name_counts[base_key] = name_counts.get(base_key, 0) + 1
+            agent_rows.append((path, agent, base_key))
+
+        prompts: Dict[str, str] = {}
+        for path, agent, base_key in agent_rows:
+            optimized_prompt = getattr(agent, "optimized_system_prompt", None)
+            prompt_text = getattr(optimized_prompt, "data", None)
+            if prompt_text is None:
+                continue
+
+            key = base_key if name_counts[base_key] == 1 else str(path or base_key)
+            if key in prompts:
+                suffix = 2
+                while f"{key}#{suffix}" in prompts:
+                    suffix += 1
+                key = f"{key}#{suffix}"
+
+            prompts[key] = prompt_text
+
+        return prompts
+
+    def get_optimized_prompts(self) -> Dict[str, str]:
+        """Public wrapper for retrieving optimized prompts on composed programs."""
+        return dict(self._get_optimized_prompts())
+
     def requires_grad_(self: T, *, requires_pgrad: Optional[bool] = True) -> T:
         """Change if autograd should record operations on parameters in this module.
 

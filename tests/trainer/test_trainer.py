@@ -2,7 +2,7 @@
 
 import pytest
 
-from msgflux.evaluate.evaluator import EvaluationResult, Evaluator
+from msgflux.evaluate import EvalResult, Evaluate
 from msgflux.examples import Example
 from msgflux.generation.templates import PromptSpec
 from msgflux.nn.modules.module import Module
@@ -54,7 +54,7 @@ class MockEvaluator:
     def __call__(self, module, devset, **kwargs):
         score = self.scores[min(self.call_count, len(self.scores) - 1)]
         self.call_count += 1
-        return EvaluationResult(score=score, results=[])
+        return EvalResult(score=score, results=[])
 
 
 class TestTrainerConfig:
@@ -378,3 +378,22 @@ class TestTrainer:
 
         assert isinstance(result, TrainingState)
         assert result.best_score > 0
+
+    def test_fit_with_real_evaluate(self, module, optimizer, trainset, valset):
+        """Test trainer integration with the unified Evaluate API."""
+
+        def metric(example, prediction):
+            return float(example.labels == prediction)
+
+        evaluator = Evaluate(devset=[], metric=metric)
+        trainer = Trainer(
+            module=module,
+            optimizer=optimizer,
+            evaluator=evaluator,
+            config=TrainerConfig(max_epochs=2, verbose=False),
+        )
+
+        result = trainer.fit(trainset=trainset, valset=valset)
+
+        assert isinstance(result, TrainingState)
+        assert result.best_score == 0.0

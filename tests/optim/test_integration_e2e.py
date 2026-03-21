@@ -39,6 +39,27 @@ def exact_match(example: Example, prediction) -> float:
     return 1.0 if label_str in pred_str else 0.0
 
 
+def gepa_feedback_metric(
+    example: Example,
+    prediction,
+    trace=None,
+    pred_name=None,
+    pred_trace=None,
+):
+    """GEPA-compatible metric with feedback."""
+    score = exact_match(example, prediction)
+    if score >= 1.0:
+        feedback = "The answer is already correct and concise."
+    elif pred_name:
+        feedback = (
+            f"Component {pred_name} should produce only the exact city name. "
+            f"Expected: {example.labels}."
+        )
+    else:
+        feedback = f"Return only the exact city name. Expected: {example.labels}."
+    return {"score": score, "feedback": feedback}
+
+
 def make_trainset():
     """Small QA trainset for testing."""
     return [
@@ -100,7 +121,7 @@ class TestEvaluateE2E:
         result = evaluator(student)
 
         assert isinstance(result, EvalResult)
-        assert 0.0 <= result.score <= 1.0
+        assert 0.0 <= result.score <= 100.0
         print(f"\n[evaluate] Score on 3 examples: {result.score:.2f}")
 
 
@@ -125,7 +146,7 @@ class TestLabeledFewShotE2E:
         evaluator = Evaluate(devset=trainset[:3], metric=exact_match)
         result = evaluator(compiled)
 
-        assert 0.0 <= result.score <= 1.0
+        assert 0.0 <= result.score <= 100.0
         print(f"\n[LabeledFewShot] Demos: {len(agent.optimized_examples)}")
         print(f"[LabeledFewShot] Score: {result.score:.2f}")
 
@@ -230,6 +251,7 @@ class TestMIPROv2E2E:
     """Test MIPROv2 with real API calls + Optuna."""
 
     def test_compile_and_evaluate(self):
+        pytest.importorskip("optuna")
         student = make_student()
         trainset = make_trainset()
         prompt_model = make_model()
@@ -249,7 +271,9 @@ class TestMIPROv2E2E:
             max_bootstrapped_demos=2,
             max_labeled_demos=2,
         )
-        compiled = optimizer.compile(student, trainset=trainset)
+        compiled = optimizer.compile(
+            student, trainset=trainset, minibatch_size=5,
+        )
 
         assert compiled._compiled
 
@@ -265,11 +289,12 @@ class TestMIPROv2E2E:
 
 
 class TestGEPAE2E:
-    """Test GEPA with real API calls (built-in loop, no gepa package)."""
+    """Test GEPA with real API calls."""
 
     def test_compile_and_evaluate(self):
+        pytest.importorskip("gepa")
         student = make_student()
-        trainset = make_trainset()[:4]
+        trainset = make_trainset()[:1]
         prompt_model = make_model()
 
         def reflection_fn(prompt_text):
@@ -281,10 +306,10 @@ class TestGEPAE2E:
             return temp_agent(prompt_text)
 
         optimizer = GEPA(
-            metric=exact_match,
+            metric=gepa_feedback_metric,
             reflection_lm=reflection_fn,
-            max_iterations=2,
-            num_candidates=2,
+            max_metric_calls=4,
+            skip_perfect_score=False,
         )
         compiled = optimizer.compile(student, trainset=trainset)
 

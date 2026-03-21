@@ -1,18 +1,18 @@
 """Evaluation module for msgflux.
 
 This module provides tools for evaluating model performance on datasets
-using various metrics.
+using a single ``Evaluate`` implementation plus reusable metrics.
 
 Example:
-    >>> from msgflux.evaluate import Evaluator, exact_match, f1_score
+    >>> from msgflux.evaluate import Evaluate, exact_match, f1_score
     >>>
-    >>> evaluator = Evaluator(metric=exact_match, verbose=True)
-    >>> result = evaluator(agent, test_examples)
+    >>> evaluator = Evaluate(devset=test_examples, metric=exact_match)
+    >>> result = evaluator(agent)
     >>> print(f"Score: {result.score:.2f}%")
     >>>
     >>> # Use BLEU/ROUGE for text generation
     >>> from msgflux.evaluate import bleu_score, rouge_l
-    >>> evaluator = Evaluator(metric=bleu_score)
+    >>> evaluator = Evaluate(devset=test_examples, metric=bleu_score)
     >>>
     >>> # Use LLM as judge for complex evaluations
     >>> from msgflux.evaluate import llm_as_judge
@@ -24,7 +24,6 @@ Example:
     >>> score = await async_exact(example, prediction)
 """
 
-from msgflux.evaluate.evaluator import EvaluationResult, Evaluator
 from msgflux.evaluate.metrics import (
     AsyncMetric,
     allm_as_judge,
@@ -44,11 +43,12 @@ from msgflux.evaluate.metrics import (
     rouge_l,
     semantic_similarity,
 )
+from msgflux.optim.evaluate import EvalResult, Evaluate
 
 __all__ = [
-    # Evaluator
-    "Evaluator",
-    "EvaluationResult",
+    # Evaluate
+    "Evaluate",
+    "EvalResult",
     # Basic metrics
     "exact_match",
     "contains_match",

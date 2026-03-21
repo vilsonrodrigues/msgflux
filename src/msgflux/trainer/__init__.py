@@ -6,12 +6,12 @@ optimization process, including training loops, evaluation, and callbacks.
 Example:
     >>> from msgflux.trainer import Trainer, TrainerConfig
     >>> from msgflux.optim import BootstrapFewShot
-    >>> from msgflux.evaluate import Evaluator, exact_match
+    >>> from msgflux.evaluate import Evaluate, exact_match
     >>>
     >>> trainer = Trainer(
     ...     module=agent,
     ...     optimizer=BootstrapFewShot(agent.parameters(), metric=exact_match),
-    ...     evaluator=Evaluator(metric=exact_match),
+    ...     evaluator=Evaluate(devset=[], metric=exact_match),
     ...     config=TrainerConfig(max_epochs=5, early_stopping_patience=3),
     ... )
     >>>

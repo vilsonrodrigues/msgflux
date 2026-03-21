@@ -21,6 +21,7 @@ from msgflux.optim.evaluate import EvalResult, Evaluate
 from msgflux.optim.gepa import GEPA
 from msgflux.optim.labeled_fewshot import LabeledFewShot
 from msgflux.optim.mipro import MIPROv2
+from msgflux.optim.optimizer import Optimizer
 from msgflux.optim.simba import SIMBA
 from msgflux.optim.teleprompter import Teleprompter
 from msgflux.optim.utils import create_minibatch, eval_candidate_program
@@ -28,6 +29,7 @@ from msgflux.optim.utils import create_minibatch, eval_candidate_program
 __all__ = [
     # Base class
     "Teleprompter",
+    "Optimizer",
     # Optimizers
     "LabeledFewShot",
     "BootstrapFewShot",

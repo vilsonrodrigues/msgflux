@@ -13,15 +13,22 @@ Optuna is an optional dependency — imported at runtime.
 Reference: ``dspy/teleprompt/mipro_optimizer_v2.py`` (853 lines).
 """
 
+import copy
 import logging
 import random
-from typing import Any, Callable, List, Literal, Optional
+from collections import defaultdict
+from typing import Any, Callable, List, Literal, Optional, Sequence
 
 from msgflux.examples import Example
 from msgflux.nn.modules.module import Module
 from msgflux.optim.evaluate import Evaluate
 from msgflux.optim.teleprompter import Teleprompter
-from msgflux.optim.utils import eval_candidate_program
+from msgflux.optim.utils import (
+    create_minibatch,
+    create_n_fewshot_demo_sets,
+    eval_candidate_program,
+    get_program_with_highest_avg_score,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +41,9 @@ AUTO_RUN_SETTINGS = {
     "medium": {"n": 12, "val_size": 300},
     "heavy": {"n": 18, "val_size": 1000},
 }
+BOOTSTRAPPED_FEWSHOT_EXAMPLES_IN_CONTEXT = 3
+LABELED_FEWSHOT_EXAMPLES_IN_CONTEXT = 0
+MIN_MINIBATCH_SIZE = 50
 
 # ---------------------------------------------------------------------------
 # Prompt templates
@@ -76,6 +86,7 @@ clear, and actionable.
 Respond with ONLY the improved system prompt, nothing else."""
 
 _PROMPTING_TIPS = [
+    "",
     "Break the task into clear, sequential steps.",
     "Include a concrete example of ideal input/output behavior.",
     "Specify the format of the expected output explicitly.",
@@ -83,6 +94,70 @@ _PROMPTING_TIPS = [
     "Add constraints to avoid common failure modes.",
     "Be specific about edge cases and how to handle them.",
 ]
+
+_DATASET_SUMMARY_PROMPT = """\
+You are analyzing a task dataset for prompt optimization.
+
+Representative training examples:
+{examples}
+
+Write a concise summary of the task, the input patterns, the expected outputs,
+and any important ambiguities or edge cases.
+
+Return only the summary."""
+
+_PROGRAM_DESCRIPTION_PROMPT = """\
+You are analyzing a msgflux program composed of one or more agents.
+
+Program outline:
+{program_outline}
+
+Write a concise description of the overall task this program is solving and how
+the agents appear to divide the work.
+
+Return only the description."""
+
+_MODULE_DESCRIPTION_PROMPT = """\
+You are analyzing one component inside a msgflux program.
+
+Program overview:
+{program_description}
+
+Component name:
+{component_name}
+
+Current component configuration:
+{agent_info}
+
+Describe this component's role in the broader program and what it should do well.
+
+Return only the description."""
+
+_INSTRUCTION_PROPOSAL_PROMPT = """\
+You are optimizing one agent prompt inside a msgflux program.
+
+Dataset summary:
+{dataset_summary}
+
+Program overview:
+{program_description}
+
+Component name:
+{component_name}
+
+Component role:
+{module_description}
+
+Current prompt:
+{basic_instruction}
+
+Representative task demos:
+{task_demos}
+
+{tip_block}Write one improved prompt for this component. Keep it specific,
+grounded in the task, and focused on reliable task success.
+
+Return only the improved prompt."""
 
 
 def _import_optuna():
@@ -141,6 +216,10 @@ class MIPROv2(Teleprompter):
         init_temperature: float = 1.0,
         minibatch_size: int = 35,
         minibatch_full_eval_steps: int = 5,
+        teacher_settings: Optional[dict[str, Any]] = None,
+        max_errors: Optional[int] = None,
+        metric_threshold: Optional[float] = None,
+        verbose: bool = False,
     ):
         if auto is not None and auto not in AUTO_RUN_SETTINGS:
             raise ValueError(
@@ -150,6 +229,8 @@ class MIPROv2(Teleprompter):
         self.metric = metric
         self.prompt_model = prompt_model
         self.auto = auto
+        self.num_fewshot_candidates = num_candidates
+        self.num_instruct_candidates = num_candidates
         self.num_candidates = num_candidates
         self.num_trials = num_trials
         self.max_bootstrapped_demos = max_bootstrapped_demos
@@ -159,6 +240,11 @@ class MIPROv2(Teleprompter):
         self.init_temperature = init_temperature
         self.minibatch_size = minibatch_size
         self.minibatch_full_eval_steps = minibatch_full_eval_steps
+        self.teacher_settings = teacher_settings or {}
+        self.max_errors = max_errors
+        self.metric_threshold = metric_threshold
+        self.verbose = verbose
+        self.prompt_model_total_calls = 0
 
     def compile(
         self,
@@ -167,20 +253,65 @@ class MIPROv2(Teleprompter):
         trainset: List[Example],
         teacher: Optional[Module] = None,
         valset: Optional[List[Example]] = None,
+        num_trials: Optional[int] = None,
+        max_bootstrapped_demos: Optional[int] = None,
+        max_labeled_demos: Optional[int] = None,
         seed: Optional[int] = None,
+        minibatch: bool = True,
+        minibatch_size: Optional[int] = None,
+        minibatch_full_eval_steps: Optional[int] = None,
+        program_aware_proposer: bool = True,
+        data_aware_proposer: bool = True,
+        view_data_batch_size: int = 10,
+        tip_aware_proposer: bool = True,
+        fewshot_aware_proposer: bool = True,
         **kwargs: Any,  # noqa: ARG002
     ) -> Module:
         """Optimize via bootstrap + instruction proposal + Optuna search."""
         seed = seed or self.seed
         rng = random.Random(seed)  # noqa: S311
+        resolved_num_trials = num_trials or self.num_trials or 30
+        resolved_minibatch_size = minibatch_size or self.minibatch_size
+        resolved_full_eval_steps = (
+            minibatch_full_eval_steps or self.minibatch_full_eval_steps
+        )
+        effective_max_bootstrapped_demos = (
+            self.max_bootstrapped_demos
+            if max_bootstrapped_demos is None
+            else max_bootstrapped_demos
+        )
+        effective_max_labeled_demos = (
+            self.max_labeled_demos
+            if max_labeled_demos is None
+            else max_labeled_demos
+        )
+        zeroshot_opt = (
+            effective_max_bootstrapped_demos == 0
+            and effective_max_labeled_demos == 0
+        )
 
         # Split train/val
         trainset, valset = self._split_datasets(trainset, valset, rng)
 
         # Resolve hyperparameters from auto mode
-        num_candidates, num_trials, use_minibatch = (
-            self._resolve_hyperparams(student, valset)
+        (
+            num_instruct_candidates,
+            num_fewshot_candidates,
+            resolved_num_trials,
+            use_minibatch,
+            valset,
+        ) = self._resolve_hyperparams(
+            student,
+            valset,
+            num_trials=resolved_num_trials,
+            minibatch=minibatch,
+            zeroshot_opt=zeroshot_opt,
         )
+        if resolved_minibatch_size > len(valset):
+            raise ValueError(
+                "Minibatch size cannot exceed the size of the valset. "
+                f"Valset size: {len(valset)}."
+            )
 
         program = student.deepcopy()
         evaluate = Evaluate(
@@ -191,18 +322,46 @@ class MIPROv2(Teleprompter):
 
         # Phase 1: Bootstrap demo candidate sets
         demo_candidates = self._bootstrap_demo_sets(
-            program, trainset, teacher, num_candidates, seed,
+            program,
+            trainset,
+            teacher,
+            num_fewshot_candidates,
+            seed,
+            zeroshot_opt=zeroshot_opt,
+            max_bootstrapped_demos=effective_max_bootstrapped_demos,
+            max_labeled_demos=effective_max_labeled_demos,
         )
 
         # Phase 2: Propose instruction candidates
         instruction_candidates = self._propose_instructions(
-            program, trainset, demo_candidates, num_candidates, rng,
+            program,
+            trainset,
+            demo_candidates,
+            num_instruct_candidates,
+            rng,
+            view_data_batch_size=view_data_batch_size,
+            program_aware=program_aware_proposer,
+            data_aware=data_aware_proposer,
+            tip_aware=tip_aware_proposer,
+            fewshot_aware=fewshot_aware_proposer,
         )
+
+        if zeroshot_opt:
+            demo_candidates = None
 
         # Phase 3: Optuna search
         best_program = self._optuna_search(
-            program, instruction_candidates, demo_candidates,
-            evaluate, valset, num_trials, use_minibatch, seed, rng,
+            program,
+            instruction_candidates,
+            demo_candidates,
+            evaluate,
+            valset,
+            resolved_num_trials,
+            use_minibatch,
+            seed,
+            rng,
+            minibatch_size=resolved_minibatch_size,
+            minibatch_full_eval_steps=resolved_full_eval_steps,
         )
 
         return best_program
@@ -217,42 +376,36 @@ class MIPROv2(Teleprompter):
         trainset: list[Example],
         teacher: Optional[Module],
         num_sets: int,
-        seed: int,  # noqa: ARG002
+        seed: int,
+        *,
+        zeroshot_opt: bool,
+        max_bootstrapped_demos: int,
+        max_labeled_demos: int,
     ) -> dict[str, list[list[Example]]]:
-        """Create N demo candidate sets per agent via BootstrapFewShot."""
-        from msgflux.optim.bootstrap import BootstrapFewShot  # noqa: PLC0415
-
+        """Create DSPy-style demo candidate sets per agent."""
         logger.info("Phase 1: Bootstrapping %d demo candidate sets.", num_sets)
-
-        agent_names = [name for name, _ in program.named_agents()]
-        demo_candidates: dict[str, list[list[Example]]] = {
-            name: [] for name in agent_names
-        }
-
-        for i in range(num_sets):
-            try:
-                bs = BootstrapFewShot(
-                    metric=self.metric,
-                    max_bootstrapped_demos=self.max_bootstrapped_demos,
-                    max_labeled_demos=self.max_labeled_demos,
-                )
-                compiled = bs.compile(
-                    program, trainset=trainset, teacher=teacher,
-                )
-                for name, agent in compiled.named_agents():
-                    if name in demo_candidates:
-                        demo_candidates[name].append(list(agent.optimized_examples))
-            except Exception:
-                logger.warning(
-                    "Bootstrap set %d failed", i + 1, exc_info=True,
-                )
-                # Fallback: empty demos
-                for name in agent_names:
-                    demo_candidates[name].append([])
-
-            logger.info("Bootstrapped set %d/%d.", i + 1, num_sets)
-
-        return demo_candidates
+        return create_n_fewshot_demo_sets(
+            student=program,
+            num_candidate_sets=num_sets,
+            trainset=trainset,
+            max_labeled_demos=(
+                LABELED_FEWSHOT_EXAMPLES_IN_CONTEXT
+                if zeroshot_opt
+                else max_labeled_demos
+            ),
+            max_bootstrapped_demos=(
+                BOOTSTRAPPED_FEWSHOT_EXAMPLES_IN_CONTEXT
+                if zeroshot_opt
+                else max_bootstrapped_demos
+            ),
+            metric=self.metric,
+            teacher_settings=self.teacher_settings,
+            max_errors=self.max_errors,
+            metric_threshold=self.metric_threshold,
+            teacher=teacher,
+            seed=seed,
+            rng=random.Random(seed),  # noqa: S311
+        )
 
     # ------------------------------------------------------------------
     # Phase 2: Propose instructions
@@ -265,61 +418,57 @@ class MIPROv2(Teleprompter):
         demo_candidates: dict[str, list[list[Example]]],
         num_candidates: int,
         rng: random.Random,
+        *,
+        view_data_batch_size: int,
+        program_aware: bool,
+        data_aware: bool,
+        tip_aware: bool,
+        fewshot_aware: bool,
     ) -> dict[str, list[str]]:
         """Generate instruction candidates per agent."""
         logger.info("Phase 2: Proposing %d instructions per agent.", num_candidates)
 
         instruction_candidates: dict[str, list[str]] = {}
 
-        data_summary = self._summarize_data(trainset, rng)
+        proposer = None
+        if self.prompt_model is not None:
+            proposer = _GroundedPromptProposer(
+                prompt_model=self.prompt_model,
+                program=program,
+                trainset=trainset,
+                view_data_batch_size=view_data_batch_size,
+                program_aware=program_aware,
+                use_dataset_summary=data_aware,
+                use_task_demos=fewshot_aware,
+                num_demos_in_context=BOOTSTRAPPED_FEWSHOT_EXAMPLES_IN_CONTEXT,
+                use_tip=tip_aware,
+                set_tip_randomly=tip_aware,
+                verbose=self.verbose,
+                rng=rng,
+                init_temperature=self.init_temperature,
+            )
+        proposed_instruction_sets = (
+            proposer.propose_instructions_for_program(
+                program=program,
+                demo_candidates=demo_candidates,
+                num_candidates=max(num_candidates - 1, 0),
+            )
+            if proposer is not None
+            else {}
+        )
+        if proposer is not None:
+            self.prompt_model_total_calls = proposer.prompt_model_total_calls
 
         for name, agent in program.named_agents():
-            agent_info = _get_agent_info(agent)
-
-            # Original instruction as candidate 0
-            original = agent.get_system_prompt() or agent_info
+            component_name = _agent_key(name, agent)
+            original = agent.get_system_prompt() or _get_agent_info(agent)
             candidates = [original]
-
-            if self.prompt_model is None:
-                # Without prompt_model, just repeat original
-                instruction_candidates[name] = candidates
-                continue
-
-            # Generate additional candidates
-            demos = demo_candidates.get(name, [[]])
-            for i in range(num_candidates - 1):
-                demo_context = ""
-                if demos:
-                    demo_set = demos[i % len(demos)]
-                    if demo_set:
-                        demo_context = "Example demonstrations:\n"
-                        for d in demo_set[:3]:
-                            demo_context += (
-                                f"  Input: {d.inputs}\n  Output: {d.labels}\n"
-                            )
-
-                tip = rng.choice(_PROMPTING_TIPS)
-                prompt = _PROPOSE_WITH_TIP.format(
-                    agent_info=agent_info,
-                    data_summary=data_summary,
-                    demo_context=demo_context,
-                    tip=tip,
-                )
-
-                try:
-                    result = self.prompt_model(prompt)
-                    text = result if isinstance(result, str) else str(result)
-                    candidates.append(text.strip())
-                except Exception:
-                    logger.warning(
-                        "Failed to generate instruction %d for %s",
-                        i + 1, name, exc_info=True,
-                    )
-
-            instruction_candidates[name] = candidates
+            candidates.extend(proposed_instruction_sets.get(component_name, []))
+            instruction_candidates[component_name] = candidates
             logger.info(
                 "Agent %s: %d instruction candidates.",
-                name, len(candidates),
+                component_name,
+                len(candidates),
             )
 
         return instruction_candidates
@@ -332,13 +481,16 @@ class MIPROv2(Teleprompter):
         self,
         program: Module,
         instruction_candidates: dict[str, list[str]],
-        demo_candidates: dict[str, list[list[Example]]],
+        demo_candidates: Optional[dict[str, list[list[Example]]]],
         evaluate: Evaluate,
         valset: list[Example],
         num_trials: int,
         use_minibatch: bool,  # noqa: FBT001
         seed: int,
         rng: random.Random,
+        *,
+        minibatch_size: int,
+        minibatch_full_eval_steps: int,
     ) -> Module:
         """Use Optuna to search instruction/demo combinations."""
         optuna = _import_optuna()
@@ -355,7 +507,9 @@ class MIPROv2(Teleprompter):
             direction="maximize", sampler=sampler,
         )
 
-        agent_names = [name for name, _ in program.named_agents()]
+        agent_names = [
+            _agent_key(name, agent) for name, agent in program.named_agents()
+        ]
 
         # Evaluate default program
         default_score = eval_candidate_program(
@@ -365,47 +519,70 @@ class MIPROv2(Teleprompter):
 
         best_score = default_score
         best_program = program.deepcopy()
+        total_eval_calls = len(valset)
         score_data: list[dict] = [
-            {"score": default_score, "program": program.deepcopy()},
+            {
+                "score": default_score,
+                "program": program.deepcopy(),
+                "full_eval": True,
+            },
         ]
-        batch_size = (
-            self.minibatch_size if use_minibatch else len(valset)
-        )
+        param_score_dict: dict[
+            str,
+            list[tuple[float, Module, list[tuple[str, int]]]],
+        ] = defaultdict(list)
+        fully_evaled_param_combos: set[str] = set()
+        batch_size = minibatch_size if use_minibatch else len(valset)
 
         def objective(trial: Any) -> float:
-            nonlocal best_score, best_program
+            nonlocal best_score, best_program, total_eval_calls
 
             candidate = program.deepcopy()
-
-            # Select instruction + demos per agent
-            for name, agent in candidate.named_agents():
-                instrs = instruction_candidates.get(name, [])
-                if instrs:
-                    idx = trial.suggest_categorical(
-                        f"{name}_instruction",
-                        list(range(len(instrs))),
-                    )
-                    agent.optimized_system_prompt.data = instrs[idx]
-
-                demos = demo_candidates.get(name, [])
-                if demos:
-                    d_idx = trial.suggest_categorical(
-                        f"{name}_demos",
-                        list(range(len(demos))),
-                    )
-                    agent.optimized_examples = list(demos[d_idx])
+            chosen_params, raw_chosen_params = self._apply_trial_configuration(
+                candidate,
+                instruction_candidates,
+                demo_candidates,
+                trial,
+            )
 
             # Evaluate
             score = eval_candidate_program(
                 batch_size, valset, candidate, evaluate, rng,
             ).score
+            total_eval_calls += batch_size
 
             if not use_minibatch and score > best_score:
                 best_score = score
                 best_program = candidate.deepcopy()
 
             score_data.append(
-                {"score": score, "program": candidate},
+                {
+                    "score": score,
+                    "program": candidate.deepcopy(),
+                    "full_eval": batch_size >= len(valset),
+                },
+            )
+            categorical_key = ",".join(map(str, chosen_params))
+            param_score_dict[categorical_key].append(
+                (score, candidate.deepcopy(), raw_chosen_params)
+            )
+
+            best_score, best_program, total_eval_calls = (
+                self._maybe_run_periodic_full_eval(
+                    trial_number=trial.number + 1,
+                    num_trials=num_trials,
+                    use_minibatch=use_minibatch,
+                    minibatch_full_eval_steps=minibatch_full_eval_steps,
+                    param_score_dict=param_score_dict,
+                    fully_evaled_param_combos=fully_evaled_param_combos,
+                    evaluate=evaluate,
+                    valset=valset,
+                    rng=rng,
+                    score_data=score_data,
+                    best_score=best_score,
+                    best_program=best_program,
+                    total_eval_calls=total_eval_calls,
+                )
             )
 
             logger.info(
@@ -424,7 +601,7 @@ class MIPROv2(Teleprompter):
                 key = f"{name}_instruction"
                 default_params[key] = 0
                 distributions[key] = cat_dist(list(range(len(instrs))))
-            demos = demo_candidates.get(name, [])
+            demos = [] if demo_candidates is None else demo_candidates.get(name, [])
             if demos:
                 key = f"{name}_demos"
                 default_params[key] = 0
@@ -447,10 +624,12 @@ class MIPROv2(Teleprompter):
                 best_score, best_program,
             )
 
+        best_program.prompt_model_total_calls = self.prompt_model_total_calls
         best_program.compile_(
             optimizer="MIPROv2",
             score=best_score,
-            total_calls=num_trials,
+            total_calls=total_eval_calls,
+            prompt_model_calls=self.prompt_model_total_calls,
         )
 
         # Attach metadata
@@ -458,8 +637,100 @@ class MIPROv2(Teleprompter):
             score_data, key=lambda x: x["score"], reverse=True,
         )
         best_program.candidate_programs = sorted_data
+        best_program.mb_candidate_programs = [
+            row for row in sorted_data if not row.get("full_eval", False)
+        ]
 
         return best_program
+
+    def _apply_trial_configuration(
+        self,
+        candidate: Module,
+        instruction_candidates: dict[str, list[str]],
+        demo_candidates: Optional[dict[str, list[list[Example]]]],
+        trial: Any,
+    ) -> tuple[list[int], list[tuple[str, int]]]:
+        chosen_params: list[int] = []
+        raw_chosen_params: list[tuple[str, int]] = []
+
+        for name, agent in candidate.named_agents():
+            component_name = _agent_key(name, agent)
+            instrs = instruction_candidates.get(component_name, [])
+            if instrs:
+                idx = trial.suggest_categorical(
+                    f"{component_name}_instruction",
+                    list(range(len(instrs))),
+                )
+                agent.optimized_system_prompt.data = instrs[idx]
+                chosen_params.append(idx)
+                raw_chosen_params.append((f"{component_name}_instruction", idx))
+
+            demos = [] if demo_candidates is None else demo_candidates.get(
+                component_name, []
+            )
+            if demos:
+                demo_idx = trial.suggest_categorical(
+                    f"{component_name}_demos",
+                    list(range(len(demos))),
+                )
+                agent.optimized_examples = list(demos[demo_idx])
+                chosen_params.append(demo_idx)
+                raw_chosen_params.append((f"{component_name}_demos", demo_idx))
+
+        return chosen_params, raw_chosen_params
+
+    def _maybe_run_periodic_full_eval(
+        self,
+        *,
+        trial_number: int,
+        num_trials: int,
+        use_minibatch: bool,
+        minibatch_full_eval_steps: int,
+        param_score_dict: dict[str, list[tuple[float, Module, list[tuple[str, int]]]]],
+        fully_evaled_param_combos: set[str],
+        evaluate: Evaluate,
+        valset: list[Example],
+        rng: random.Random,
+        score_data: list[dict[str, Any]],
+        best_score: float,
+        best_program: Module,
+        total_eval_calls: int,
+    ) -> tuple[float, Module, int]:
+        should_run = use_minibatch and (
+            trial_number % minibatch_full_eval_steps == 0
+            or trial_number == num_trials
+        )
+        if not should_run:
+            return best_score, best_program, total_eval_calls
+
+        full_eval_program, _mean, key, _params = get_program_with_highest_avg_score(
+            param_score_dict,
+            fully_evaled_param_combos,
+        )
+        if key in fully_evaled_param_combos:
+            return best_score, best_program, total_eval_calls
+
+        full_eval_score = eval_candidate_program(
+            len(valset),
+            valset,
+            full_eval_program,
+            evaluate,
+            rng,
+        ).score
+        total_eval_calls += len(valset)
+        fully_evaled_param_combos.add(key)
+        score_data.append(
+            {
+                "score": full_eval_score,
+                "program": full_eval_program.deepcopy(),
+                "full_eval": True,
+            }
+        )
+        if full_eval_score > best_score:
+            best_score = full_eval_score
+            best_program = full_eval_program.deepcopy()
+
+        return best_score, best_program, total_eval_calls
 
     def _final_full_eval(
         self,
@@ -471,9 +742,13 @@ class MIPROv2(Teleprompter):
         best_program: Module,
     ) -> tuple[float, Module]:
         """Full evaluation of top candidates after minibatch search."""
-        top_candidates = sorted(
-            score_data, key=lambda x: x["score"], reverse=True,
-        )[:5]
+        top_candidates = [
+            row
+            for row in sorted(
+                score_data, key=lambda x: x["score"], reverse=True,
+            )
+            if not row.get("full_eval", False)
+        ][:5]
 
         for entry in top_candidates:
             prog = entry["program"]
@@ -517,25 +792,55 @@ class MIPROv2(Teleprompter):
         self,
         student: Module,
         valset: list[Example],
-    ) -> tuple[int, int, bool]:
-        """Resolve num_candidates, num_trials, use_minibatch."""
+        *,
+        num_trials: int,
+        minibatch: bool,
+        zeroshot_opt: bool,
+    ) -> tuple[int, int, int, bool, list[Example]]:
+        """Resolve candidate counts, num_trials, and minibatching."""
         if self.auto is not None:
             settings = AUTO_RUN_SETTINGS[self.auto]
-            num_candidates = settings["n"]
             num_agents = len(list(student.named_agents()))
-            num_vars = max(num_agents * 2, 1)
+            num_vars = max(num_agents * (1 if zeroshot_opt else 2), 1)
             import math  # noqa: PLC0415
-            num_trials = int(
-                max(2 * num_vars * math.log2(max(num_candidates, 2)),
-                    1.5 * num_candidates)
+            resolved_num_trials = int(
+                max(2 * num_vars * math.log2(max(settings["n"], 2)),
+                    1.5 * settings["n"])
             )
-            use_minibatch = len(valset) > 50
-            return num_candidates, num_trials, use_minibatch
+            resolved_valset = valset
+            if len(valset) > settings["val_size"]:
+                resolved_valset = create_minibatch(
+                    valset,
+                    settings["val_size"],
+                    random.Random(self.seed),  # noqa: S311
+                )
+            use_minibatch = len(resolved_valset) > MIN_MINIBATCH_SIZE
+            num_instruct_candidates = (
+                settings["n"] if zeroshot_opt else max(int(settings["n"] * 0.5), 1)
+            )
+            num_fewshot_candidates = settings["n"]
+            return (
+                num_instruct_candidates,
+                num_fewshot_candidates,
+                resolved_num_trials,
+                use_minibatch,
+                resolved_valset,
+            )
 
-        num_candidates = self.num_candidates or 6
-        num_trials = self.num_trials or 30
-        use_minibatch = len(valset) > 50
-        return num_candidates, num_trials, use_minibatch
+        num_instruct_candidates = (
+            self.num_instruct_candidates or self.num_candidates or 6
+        )
+        num_fewshot_candidates = (
+            self.num_fewshot_candidates or self.num_candidates or 6
+        )
+        use_minibatch = minibatch and len(valset) > MIN_MINIBATCH_SIZE
+        return (
+            num_instruct_candidates,
+            num_fewshot_candidates,
+            num_trials,
+            use_minibatch,
+            valset,
+        )
 
     @staticmethod
     def _summarize_data(
@@ -550,6 +855,222 @@ class MIPROv2(Teleprompter):
         return "\n".join(lines)
 
 
+class _GroundedPromptProposer:
+    """Lightweight msgflux adaptation of DSPy's GroundedProposer."""
+
+    def __init__(
+        self,
+        *,
+        prompt_model: Any,
+        program: Module,
+        trainset: list[Example],
+        view_data_batch_size: int = 10,
+        program_aware: bool = True,
+        use_dataset_summary: bool = True,
+        use_task_demos: bool = True,
+        num_demos_in_context: int = 3,
+        use_tip: bool = True,
+        set_tip_randomly: bool = True,
+        verbose: bool = False,
+        rng: random.Random | None = None,
+        init_temperature: float = 1.0,
+    ):
+        self.prompt_model = prompt_model
+        self.program = program
+        self.use_dataset_summary = use_dataset_summary
+        self.program_aware = program_aware
+        self.use_task_demos = use_task_demos
+        self.num_demos_in_context = num_demos_in_context
+        self.use_tip = use_tip
+        self.set_tip_randomly = set_tip_randomly
+        self.verbose = verbose
+        self.rng = rng or random.Random(0)  # noqa: S311
+        self.init_temperature = init_temperature
+        self.prompt_model_total_calls = 0
+        self.program_outline = _render_program_outline(program)
+        self.dataset_summary = (
+            self._create_dataset_summary(trainset, view_data_batch_size)
+            if use_dataset_summary
+            else "Not provided."
+        )
+        self.program_description = (
+            self._create_program_description()
+            if program_aware
+            else self.program_outline
+        )
+        self.module_descriptions = {
+            _agent_key(name, agent): self._create_module_description(
+                _agent_key(name, agent),
+                agent,
+            )
+            for name, agent in program.named_agents()
+        }
+
+    def propose_instructions_for_program(
+        self,
+        *,
+        program: Module,
+        demo_candidates: dict[str, list[list[Example]]] | None,
+        num_candidates: int,
+    ) -> dict[str, list[str]]:
+        proposed: dict[str, list[str]] = {}
+
+        for name, agent in program.named_agents():
+            component_name = _agent_key(name, agent)
+            component_proposals: list[str] = []
+            component_demo_candidates = (demo_candidates or {}).get(component_name, [])
+            proposal_iterations = self._get_num_instruction_candidates(
+                component_demo_candidates,
+                num_candidates,
+            )
+            for demo_set_idx in range(proposal_iterations):
+                prompt = self._build_instruction_prompt(
+                    component_name=component_name,
+                    agent=agent,
+                    demo_candidates=component_demo_candidates,
+                    demo_set_idx=demo_set_idx,
+                )
+                component_proposals.append(self._call_prompt_model(prompt))
+            proposed[component_name] = component_proposals
+
+        return proposed
+
+    def _get_num_instruction_candidates(
+        self,
+        demo_candidates: list[list[Example]],
+        num_candidates: int,
+    ) -> int:
+        if not demo_candidates:
+            return num_candidates
+        return min(num_candidates, max(len(demo_candidates), 1))
+
+    def _create_dataset_summary(
+        self,
+        trainset: list[Example],
+        view_data_batch_size: int,
+    ) -> str:
+        sample_size = min(view_data_batch_size, len(trainset))
+        sample_examples = self.rng.sample(trainset, sample_size)
+        example_blob = _summarize_examples_for_prompt(sample_examples)
+        prompt = _DATASET_SUMMARY_PROMPT.format(examples=example_blob)
+        try:
+            return self._call_prompt_model(prompt, temperature=0.2)
+        except Exception:
+            logger.warning(
+                "Falling back to deterministic dataset summary.",
+                exc_info=True,
+            )
+            return example_blob
+
+    def _create_program_description(self) -> str:
+        prompt = _PROGRAM_DESCRIPTION_PROMPT.format(
+            program_outline=self.program_outline
+        )
+        try:
+            return self._call_prompt_model(prompt, temperature=0.2)
+        except Exception:
+            logger.warning(
+                "Falling back to deterministic program summary.",
+                exc_info=True,
+            )
+            return self.program_outline
+
+    def _create_module_description(self, component_name: str, agent: Any) -> str:
+        agent_info = _get_agent_info(agent)
+        prompt = _MODULE_DESCRIPTION_PROMPT.format(
+            program_description=self.program_description,
+            component_name=component_name,
+            agent_info=agent_info,
+        )
+        try:
+            return self._call_prompt_model(prompt, temperature=0.2)
+        except Exception:
+            logger.warning(
+                "Falling back to deterministic module summary.",
+                exc_info=True,
+            )
+            return agent_info
+
+    def _build_instruction_prompt(
+        self,
+        *,
+        component_name: str,
+        agent: Any,
+        demo_candidates: list[list[Example]],
+        demo_set_idx: int,
+    ) -> str:
+        task_demos = self._build_task_demos(demo_candidates, demo_set_idx)
+        tip = self._choose_tip()
+        tip_block = f"Prompting tip: {tip}\n\n" if tip else ""
+        return _INSTRUCTION_PROPOSAL_PROMPT.format(
+            dataset_summary=self.dataset_summary,
+            program_description=self.program_description,
+            component_name=component_name,
+            module_description=self.module_descriptions.get(
+                component_name,
+                _get_agent_info(agent),
+            ),
+            basic_instruction=agent.get_system_prompt() or _get_agent_info(agent),
+            task_demos=task_demos,
+            tip_block=tip_block,
+        )
+
+    def _build_task_demos(
+        self,
+        demo_candidates: list[list[Example]],
+        demo_set_idx: int,
+    ) -> str:
+        if not self.use_task_demos or not demo_candidates or demo_set_idx == 0:
+            return "No task demos provided."
+
+        current_set = demo_candidates[demo_set_idx:demo_set_idx + 1]
+        adjacent_sets = (
+            current_set
+            + demo_candidates[demo_set_idx + 1:]
+            + demo_candidates[:demo_set_idx]
+        )
+        gathered: list[str] = []
+        for demo_set in adjacent_sets:
+            for demo in demo_set:
+                gathered.append(f"Input: {demo.inputs}\nOutput: {demo.labels}")
+                if len(gathered) >= self.num_demos_in_context:
+                    return "\n\n".join(gathered)
+
+        return "\n\n".join(gathered) if gathered else "No task demos provided."
+
+    def _choose_tip(self) -> str | None:
+        if not self.use_tip:
+            return None
+        if self.set_tip_randomly:
+            tip = self.rng.choice(_PROMPTING_TIPS)
+            return tip or None
+        return _PROMPTING_TIPS[1]
+
+    def _call_prompt_model(
+        self,
+        prompt: str,
+        *,
+        temperature: float | None = None,
+    ) -> str:
+        callable_model = self.prompt_model
+        if hasattr(self.prompt_model, "sampling_run_params"):
+            callable_model = copy.deepcopy(self.prompt_model)
+            sampling_run_params = dict(
+                getattr(callable_model, "sampling_run_params", {})
+            )
+            sampling_run_params["temperature"] = (
+                self.init_temperature if temperature is None else temperature
+            )
+            callable_model.sampling_run_params = sampling_run_params
+
+        raw_output = callable_model(prompt)
+        self.prompt_model_total_calls += 1
+        text = _normalize_model_output(raw_output).strip()
+        if self.verbose:
+            logger.info("Grounded proposer output: %s", text[:200])
+        return text
+
+
 def _get_agent_info(agent: Any) -> str:
     """Extract agent configuration as text."""
     parts = []
@@ -558,3 +1079,69 @@ def _get_agent_info(agent: Any) -> str:
     if hasattr(agent, "instructions") and agent.instructions.data:
         parts.append(f"Instructions: {agent.instructions.data}")
     return "\n".join(parts) if parts else "No configuration provided."
+
+
+def _agent_key(name: str, agent: Any) -> str:
+    if getattr(agent, "name", None):
+        return str(agent.name)
+    return str(name)
+
+
+def _render_program_outline(program: Module) -> str:
+    blocks = []
+    for path, agent in program.named_agents():
+        component_name = _agent_key(path, agent)
+        blocks.append(
+            "\n".join(
+                [
+                    f"Component: {component_name}",
+                    _get_agent_info(agent),
+                ]
+            )
+        )
+    return "\n\n".join(blocks) if blocks else "No agents found."
+
+
+def _summarize_examples_for_prompt(examples: Sequence[Example]) -> str:
+    lines = []
+    for idx, example in enumerate(examples, 1):
+        lines.append(
+            f"Example {idx}\nInput: {example.inputs}\nOutput: {example.labels}"
+        )
+    return "\n\n".join(lines)
+
+
+def _normalize_model_output(raw_output: Any) -> str:
+    current = _unwrap_model_output(raw_output)
+    if isinstance(current, str):
+        return current
+    if isinstance(current, dict):
+        if "text" in current:
+            return str(current["text"])
+        if "answer" in current:
+            return str(current["answer"])
+        return str(current)
+    if isinstance(current, Sequence) and not isinstance(current, str | bytes):
+        return "" if not current else _normalize_model_output(current[0])
+    return str(current)
+
+
+def _unwrap_model_output(raw_output: Any) -> Any:
+    current = raw_output
+    seen: set[int] = set()
+
+    while id(current) not in seen:
+        seen.add(id(current))
+        if hasattr(current, "consume") and callable(current.consume):
+            consumed = current.consume()
+            if consumed is not current:
+                current = consumed
+                continue
+        if hasattr(current, "data"):
+            data = current.data
+            if data is not None and data is not current:
+                current = data
+                continue
+        break
+
+    return current

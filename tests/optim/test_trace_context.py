@@ -83,6 +83,46 @@ class TestOptimizedSystemPrompt:
         agent = Agent(name="qa", model=mock_model)
         assert agent.optimized_system_prompt.data is None
 
+    def test_get_optimized_prompts_for_root_agent(self, mock_model):
+        agent = Agent(name="qa", model=mock_model)
+        agent.optimized_system_prompt.data = "You are a concise helper."
+
+        assert agent.get_optimized_prompts() == {"qa": "You are a concise helper."}
+
+    def test_get_optimized_prompts_for_composed_module(self, mock_model):
+        class Pipeline(Module):
+            def __init__(self):
+                super().__init__()
+                self.classifier = Agent(name="classifier", model=mock_model)
+                self.reviewer = Agent(name="reviewer", model=mock_model)
+
+        program = Pipeline()
+        program.classifier.optimized_system_prompt.data = "Classify precisely."
+        program.reviewer.optimized_system_prompt.data = "Review carefully."
+
+        assert program.get_optimized_prompts() == {
+            "classifier": "Classify precisely.",
+            "reviewer": "Review carefully.",
+        }
+
+    def test_get_optimized_prompts_uses_paths_for_duplicate_agent_names(
+        self, mock_model
+    ):
+        class Pipeline(Module):
+            def __init__(self):
+                super().__init__()
+                self.left = Agent(name="shared", model=mock_model)
+                self.right = Agent(name="shared", model=mock_model)
+
+        program = Pipeline()
+        program.left.optimized_system_prompt.data = "Left prompt."
+        program.right.optimized_system_prompt.data = "Right prompt."
+
+        assert program.get_optimized_prompts() == {
+            "left": "Left prompt.",
+            "right": "Right prompt.",
+        }
+
     def test_optimized_prompt_takes_precedence(self, mock_model):
         agent = Agent(
             name="qa",

@@ -9,13 +9,14 @@ Reference: ``dspy/teleprompt/simba.py`` (376 lines) +
            ``dspy/teleprompt/simba_utils.py`` (249 lines).
 """
 
+import copy
 import inspect
 import json
 import logging
 import math
 import random
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Sequence
 
 from msgflux.context import trace_context
 from msgflux.examples import Example
@@ -66,11 +67,17 @@ Worse trajectory (score={worse_reward_value}):
 Worse outputs:
 {worse_program_outputs}
 
+Worse reward metadata:
+{worse_reward_info}
+
 Better trajectory (score={better_reward_value}):
 {better_program_trajectory}
 
 Better outputs:
 {better_program_outputs}
+
+Better reward metadata:
+{better_reward_info}
 
 Module names: {module_names}
 
@@ -119,6 +126,7 @@ class SIMBA(Teleprompter):
         max_steps: int = 8,
         max_demos: int = 4,
         prompt_model: Any = None,
+        teacher_settings: Optional[dict[str, Any]] = None,
         demo_input_field_maxlen: int = 100_000,
         num_threads: Optional[int] = None,
         temperature_for_sampling: float = 0.2,
@@ -130,6 +138,7 @@ class SIMBA(Teleprompter):
         self.max_steps = max_steps
         self.max_demos = max_demos
         self.prompt_model = prompt_model
+        self.teacher_settings = teacher_settings or {}
         self.demo_input_field_maxlen = demo_input_field_maxlen
         self.num_threads = num_threads
         self.temperature_for_sampling = temperature_for_sampling
@@ -163,6 +172,7 @@ class SIMBA(Teleprompter):
         state.programs.append(student)
         state.program_scores[0] = []
         state.winning_programs.append(student)
+        state.trial_logs = {}
 
         data_indices = list(range(len(trainset)))
         rng.shuffle(data_indices)
@@ -208,6 +218,7 @@ class SIMBA(Teleprompter):
             state.programs, batch, top_programs, state.rng,
             state.softmax_sample,
         )
+        state.total_calls += len(exec_results)
 
         # Bucket-sort by variability
         buckets = self._bucket_sort(exec_results, batch)
@@ -226,9 +237,15 @@ class SIMBA(Teleprompter):
 
         # Evaluate candidates
         candidate_scores = self._evaluate_candidates(system_candidates, batch)
+        state.total_calls += len(system_candidates) * len(batch)
+        state.trial_logs[batch_idx] = {
+            "candidate_scores": list(candidate_scores),
+            "num_candidates": len(system_candidates),
+        }
 
         if candidate_scores:
             best_idx = candidate_scores.index(max(candidate_scores))
+            state.trial_logs[batch_idx]["winning_candidate_index"] = best_idx
             state.winning_programs.append(
                 system_candidates[best_idx].deepcopy(),
             )
@@ -347,6 +364,7 @@ class SIMBA(Teleprompter):
         )
 
         final_scores = self._evaluate_candidates(candidates, trainset)
+        state.total_calls += len(candidates) * len(trainset)
 
         if final_scores:
             best_idx = final_scores.index(max(final_scores))
@@ -357,7 +375,22 @@ class SIMBA(Teleprompter):
             best_score = 0.0
 
         logger.info("Final scores: %s, best=%.4f", final_scores, best_score)
-        best_program.compile_(optimizer="SIMBA", score=best_score)
+        candidate_programs = [
+            {"score": score, "program": program.deepcopy()}
+            for score, program in sorted(
+                zip(final_scores, candidates, strict=False),
+                key=lambda item: item[0],
+                reverse=True,
+            )
+        ]
+        best_program.candidate_programs = candidate_programs
+        best_program.trial_logs = dict(state.trial_logs)
+        best_program.total_calls = state.total_calls
+        best_program.compile_(
+            optimizer="SIMBA",
+            score=best_score,
+            total_calls=state.total_calls,
+        )
         return best_program
 
     # ------------------------------------------------------------------
@@ -374,12 +407,18 @@ class SIMBA(Teleprompter):
     ) -> list[dict]:
         """Execute programs on batch, collecting traces and scores."""
         tasks: list[tuple[Module, Example]] = []
-        for _ in range(self.num_candidates):
+        models = self._prepare_models_for_resampling(
+            programs[0],
+            self.num_candidates,
+        )
+        for model in models:
             for example in batch:
                 chosen_idx = softmax_sample(
                     rng, top_programs, self.temperature_for_sampling,
                 )
                 prog = programs[chosen_idx].deepcopy()
+                if model is not None:
+                    self._set_program_model(prog, model)
                 tasks.append((prog, example))
 
         results = self._run_tasks(tasks)
@@ -533,7 +572,8 @@ class SIMBA(Teleprompter):
         **kwargs: Any,  # noqa: ARG002
     ) -> bool:
         """Generate reflective advice by contrasting good vs bad traces."""
-        if self.prompt_model is None:
+        prompt_model = self._resolve_prompt_model(system)
+        if prompt_model is None:
             logger.info("No prompt_model set, skipping append_a_rule.")
             return False
 
@@ -578,15 +618,16 @@ class SIMBA(Teleprompter):
             worse_program_trajectory=worse_trajectory,
             worse_program_outputs=str(bad.get("prediction", "")),
             worse_reward_value=bad.get("score", 0),
+            worse_reward_info=str(bad.get("output_metadata", {})),
             better_program_trajectory=better_trajectory,
             better_program_outputs=str(good.get("prediction", "")),
             better_reward_value=good.get("score", 0),
+            better_reward_info=str(good.get("output_metadata", {})),
             module_names=str(module_names),
         )
 
         try:
-            result = self.prompt_model(prompt)
-            advice_text = result if isinstance(result, str) else str(result)
+            advice_text = self._call_prompt_model(prompt_model, prompt)
             advice = _parse_json_advice(advice_text, module_names)
         except Exception:
             logger.warning("Failed to generate rule advice", exc_info=True)
@@ -610,6 +651,83 @@ class SIMBA(Teleprompter):
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+
+    def _resolve_prompt_model(self, program: Module) -> Any:
+        if self.prompt_model is not None:
+            return self.prompt_model
+
+        first_agent = next(program.named_agents(), None)
+        if first_agent is None:
+            return None
+        _name, agent = first_agent
+        return getattr(agent, "model", None)
+
+    def _prepare_models_for_resampling(
+        self,
+        program: Module,
+        n: int,
+    ) -> list[Any]:
+        if n <= 0:
+            return []
+
+        first_agent = next(program.named_agents(), None)
+        if first_agent is None:
+            return [None] * n
+        _name, agent = first_agent
+        base_model = getattr(agent, "model", None)
+
+        models: list[Any] = []
+        if self.teacher_settings:
+            teacher_model = (
+                self.teacher_settings.get("model")
+                or self.teacher_settings.get("lm")
+                or base_model
+            )
+            models.append(
+                self._clone_model_with_overrides(
+                    teacher_model,
+                    self.teacher_settings,
+                )
+            )
+
+        while len(models) < n:
+            models.append(
+                self._clone_model_with_overrides(
+                    base_model,
+                    {"temperature": 1.0},
+                )
+            )
+
+        return models
+
+    def _set_program_model(self, program: Module, model: Any) -> None:
+        for _name, agent in program.named_agents():
+            agent.model = copy.deepcopy(model)
+
+    def _clone_model_with_overrides(
+        self,
+        model: Any,
+        overrides: dict[str, Any],
+    ) -> Any:
+        if model is None:
+            return None
+        cloned = copy.deepcopy(model)
+        if hasattr(cloned, "sampling_run_params"):
+            params = dict(getattr(cloned, "sampling_run_params", {}))
+            params.update(
+                {
+                    key: value
+                    for key, value in overrides.items()
+                    if key not in {"model", "lm"} and value is not None
+                }
+            )
+            cloned.sampling_run_params = params
+        return cloned
+
+    @staticmethod
+    def _call_prompt_model(prompt_model: Any, prompt: str) -> str:
+        raw_output = prompt_model(prompt)
+        return _normalize_model_output(raw_output).strip()
 
     @staticmethod
     def _format_trajectory(
@@ -667,6 +785,8 @@ class _CompileState:
         self.program_scores: dict[int, list[float]] = {}
         self.next_program_idx: int = 0
         self.winning_programs: list[Module] = []
+        self.total_calls: int = 0
+        self.trial_logs: dict[int, dict[str, Any]] = {}
 
     def calc_average_score(self, prog_idx: int) -> float:
         scores = self.program_scores.get(prog_idx, [])
@@ -731,6 +851,7 @@ def _wrap_program(
     """Execute program on example inside a trace context, return results."""
     prediction = None
     score = 0.0
+    output_metadata: dict[str, Any] = {}
 
     with trace_context() as trace_data:
         try:
@@ -745,6 +866,17 @@ def _wrap_program(
             score = float(output)
         elif isinstance(output, bool):
             score = float(output)
+        elif isinstance(output, dict):
+            score = float(output.get("score", 0.0))
+            output_metadata = {
+                key: value for key, value in output.items() if key != "score"
+            }
+        elif hasattr(output, "score"):
+            score = float(output.score)
+            if hasattr(output, "items") and callable(output.items):
+                output_metadata = {
+                    key: value for key, value in output.items() if key != "score"
+                }
         else:
             score = float(output)
     except Exception:
@@ -756,6 +888,7 @@ def _wrap_program(
         "score": score,
         "example": example,
         "program_ref": program,
+        "output_metadata": output_metadata,
     }
 
 
@@ -785,6 +918,42 @@ def _poisson(rng: random.Random, lam: float) -> int:
         p *= rng.random()
         if p <= l_val:
             return k - 1
+
+
+def _normalize_model_output(raw_output: Any) -> str:
+    current = _unwrap_model_output(raw_output)
+    if isinstance(current, str):
+        return current
+    if isinstance(current, dict):
+        if "text" in current:
+            return str(current["text"])
+        if "answer" in current:
+            return str(current["answer"])
+        return str(current)
+    if isinstance(current, Sequence) and not isinstance(current, str | bytes):
+        return "" if not current else _normalize_model_output(current[0])
+    return str(current)
+
+
+def _unwrap_model_output(raw_output: Any) -> Any:
+    current = raw_output
+    seen: set[int] = set()
+
+    while id(current) not in seen:
+        seen.add(id(current))
+        if hasattr(current, "consume") and callable(current.consume):
+            consumed = current.consume()
+            if consumed is not current:
+                current = consumed
+                continue
+        if hasattr(current, "data"):
+            data = current.data
+            if data is not None and data is not current:
+                current = data
+                continue
+        break
+
+    return current
 
 
 def _parse_json_advice(text: str, module_names: list[str]) -> Dict[str, str]:
