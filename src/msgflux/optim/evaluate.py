@@ -29,12 +29,23 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class EvalResult:
-    """Container for evaluation results."""
+    """Container for evaluation results.
+
+    Attributes:
+        score: Percentage score in the range ``[0, 100]``.
+            Use ``f"{result.score:.2f}%"`` for display.
+            For a ``[0, 1]`` ratio use :attr:`score_ratio`.
+    """
 
     score: float
     results: List[Tuple[Any, Any, float]] = field(default_factory=list)
     num_errors: int = 0
     metadata: dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def score_ratio(self) -> float:
+        """Score as a ``[0, 1]`` ratio (``score / 100``)."""
+        return self.score / 100.0
 
     def __repr__(self) -> str:
         return (

@@ -575,8 +575,13 @@ class GEPA(Teleprompter):
 
         reflection_config = {}
         if self.reflection_lm is not None:
+
+            def _str_reflection_lm(prompt: Any) -> str:
+                """Wrap reflection_lm to always return str for gepa."""
+                return _normalize_reflection_output(self.reflection_lm(prompt))
+
             reflection_config["reflection"] = ReflectionConfig(
-                reflection_lm=self.reflection_lm,
+                reflection_lm=_str_reflection_lm,
             )
 
         result = optimize_anything(
