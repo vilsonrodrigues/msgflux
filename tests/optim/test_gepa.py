@@ -10,6 +10,10 @@ from msgflux.examples import Example
 from msgflux.models.response import ModelResponse
 from msgflux.nn import Agent, Module
 from msgflux.optim import GEPA
+from msgflux.optim.gepa.gepa import (
+    _apply_tool_descriptions,
+    _collect_tool_descriptions,
+)
 
 
 def _make_agent(*, name: str = "qa_agent", response_text: str = "Wrong") -> Agent:
@@ -189,3 +193,209 @@ def test_compile_requires_unique_agent_names():
             trainset=[Example(inputs="What is the capital of France?", labels="Paris")],
             valset=[Example(inputs="What is the capital of France?", labels="Paris")],
         )
+
+
+# ---------------------------------------------------------------------------
+# optimize_tools helpers
+# ---------------------------------------------------------------------------
+
+
+def _make_tool(name: str, description: str):
+    """Create a minimal callable with tool metadata for Agent tools param."""
+
+    def tool_fn(**kwargs):
+        return f"{name} called"
+
+    tool_fn.__name__ = name
+    tool_fn.__doc__ = description
+    return tool_fn
+
+
+def _make_agent_with_tools(
+    *,
+    name: str = "router_agent",
+    response_text: str = "tool_a called",
+    tool_names: list[str] | None = None,
+    tool_descs: list[str] | None = None,
+) -> Agent:
+    """Create an Agent with mock model and real tools."""
+    tool_names = tool_names or ["tool_a", "tool_b"]
+    tool_descs = tool_descs or ["Does action A", "Does action B"]
+
+    tools = [_make_tool(n, d) for n, d in zip(tool_names, tool_descs)]
+
+    mock_model = Mock()
+    mock_model.model_type = "chat_completion"
+
+    response = ModelResponse()
+    response.data = response_text
+    response.response_type = "text_generation"
+    mock_model.return_value = response
+
+    agent = Agent(
+        name=name,
+        model=mock_model,
+        system_message="You are a helpful assistant.",
+        instructions="Use the right tool for the task.",
+        tools=tools,
+    )
+    agent.generator.forward = Mock(return_value=response)
+    return agent
+
+
+class TestCollectToolDescriptions:
+    """Tests for _collect_tool_descriptions helper."""
+
+    def test_collects_from_single_agent(self):
+        agent = _make_agent_with_tools(
+            tool_names=["search", "calculate"],
+            tool_descs=["Search the web", "Do math"],
+        )
+        descs = _collect_tool_descriptions(agent)
+
+        assert "router_agent::search" in descs
+        assert "router_agent::calculate" in descs
+        assert descs["router_agent::search"] == "Search the web"
+        assert descs["router_agent::calculate"] == "Do math"
+
+    def test_returns_empty_for_agent_without_tools(self):
+        agent = _make_agent(name="no_tools_agent")
+        descs = _collect_tool_descriptions(agent)
+        assert descs == {}
+
+    def test_collects_from_multi_agent_program(self):
+        class MultiAgent(Module):
+            def __init__(self):
+                super().__init__()
+                self.first = _make_agent_with_tools(
+                    name="first", tool_names=["t1"], tool_descs=["First tool"]
+                )
+                self.second = _make_agent_with_tools(
+                    name="second", tool_names=["t2"], tool_descs=["Second tool"]
+                )
+
+            def forward(self, message=None, **kwargs):
+                return self.first(message, **kwargs)
+
+        program = MultiAgent()
+        descs = _collect_tool_descriptions(program)
+
+        assert len(descs) == 2
+        assert "first::t1" in descs
+        assert "second::t2" in descs
+
+
+class TestApplyToolDescriptions:
+    """Tests for _apply_tool_descriptions helper."""
+
+    def test_applies_new_descriptions(self):
+        agent = _make_agent_with_tools(
+            tool_names=["search", "calculate"],
+            tool_descs=["old search desc", "old calc desc"],
+        )
+
+        _apply_tool_descriptions(agent, {
+            "router_agent::search": "NEW search description",
+            "router_agent::calculate": "NEW calc description",
+        })
+
+        descs = _collect_tool_descriptions(agent)
+        assert descs["router_agent::search"] == "NEW search description"
+        assert descs["router_agent::calculate"] == "NEW calc description"
+
+    def test_ignores_unknown_keys(self):
+        agent = _make_agent_with_tools(
+            tool_names=["search"], tool_descs=["original"]
+        )
+
+        _apply_tool_descriptions(agent, {
+            "router_agent::search": "updated",
+            "router_agent::nonexistent": "should be ignored",
+        })
+
+        descs = _collect_tool_descriptions(agent)
+        assert descs["router_agent::search"] == "updated"
+        assert "router_agent::nonexistent" not in descs
+
+
+class TestOptimizeToolsIntegration:
+    """Integration test: GEPA compile with optimize_tools=True."""
+
+    def test_compile_optimize_tools_flag(self):
+        """Verify optimize_tools runs optimize_anything post-compile."""
+        agent = _make_agent_with_tools(
+            tool_names=["search", "calculate"],
+            tool_descs=["Search the web", "Do math"],
+        )
+        trainset = [
+            Example(inputs="Find info about Python", labels="search called"),
+        ]
+
+        # Track optimize_anything calls
+        oa_calls = []
+
+        def mock_optimize_anything(
+            seed_candidate,
+            evaluator,
+            dataset,
+            valset,
+            objective,
+            config,
+        ):
+            oa_calls.append({
+                "seed": seed_candidate,
+                "objective": objective,
+            })
+
+            # Return a mock result with improved descriptions
+            result = Mock()
+            result.best_candidate = {
+                k: f"OPTIMIZED: {v}" for k, v in seed_candidate.items()
+            }
+            result.best_score = 1.0
+            return result
+
+        import msgflux.optim.gepa.gepa as gepa_module
+
+        original_import = gepa_module._import_gepa
+
+        optimizer = GEPA(
+            metric=_feedback_metric,
+            instruction_proposer=lambda **_: {},
+            max_metric_calls=2,
+            optimize_tools=True,
+        )
+
+        # Monkeypatch optimize_anything
+        import unittest.mock
+
+        with unittest.mock.patch(
+            "msgflux.optim.gepa.gepa.optimize_anything",
+            mock_optimize_anything,
+            create=True,
+        ), unittest.mock.patch.dict(
+            "sys.modules",
+            {
+                "gepa.optimize_anything": Mock(
+                    optimize_anything=mock_optimize_anything,
+                    EngineConfig=Mock(),
+                    GEPAConfig=Mock(return_value=Mock()),
+                    ReflectionConfig=Mock(),
+                    log=Mock(),
+                ),
+            },
+        ):
+            compiled = optimizer.compile(
+                agent, trainset=trainset, valset=trainset,
+            )
+
+        assert compiled.compiled is True
+        assert len(oa_calls) == 1
+        assert "router_agent::search" in oa_calls[0]["seed"]
+        assert "router_agent::calculate" in oa_calls[0]["seed"]
+        assert "tool" in oa_calls[0]["objective"].lower()
+
+        # Verify optimized descriptions were applied
+        descs = _collect_tool_descriptions(compiled)
+        assert descs["router_agent::search"].startswith("OPTIMIZED:")
+        assert descs["router_agent::calculate"].startswith("OPTIMIZED:")

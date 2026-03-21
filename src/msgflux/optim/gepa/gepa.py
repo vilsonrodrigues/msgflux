@@ -208,6 +208,38 @@ def _get_agent_fragments(agent: Any) -> str:
     return "\n".join(parts) if parts else "No instructions provided."
 
 
+def _collect_tool_descriptions(program: Module) -> dict[str, str]:
+    """Extract tool descriptions from all agents in a program.
+
+    Returns a dict mapping ``"agent_name::tool_name"`` to description text.
+    """
+    descriptions: dict[str, str] = {}
+    for name, agent in _named_target_agents(program):
+        if not hasattr(agent, "tool_library"):
+            continue
+        for tool_name in agent.tool_library.library:
+            tool = agent.tool_library.library[tool_name]
+            desc = tool.get_module_description() or ""
+            key = f"{name}::{tool_name}"
+            descriptions[key] = desc
+    return descriptions
+
+
+def _apply_tool_descriptions(
+    program: Module,
+    optimized: dict[str, str],
+) -> None:
+    """Apply optimized tool descriptions back to the program's tools."""
+    for name, agent in _named_target_agents(program):
+        if not hasattr(agent, "tool_library"):
+            continue
+        for tool_name in agent.tool_library.library:
+            key = f"{name}::{tool_name}"
+            if key in optimized:
+                tool = agent.tool_library.library[tool_name]
+                tool.set_description(optimized[key])
+
+
 def _agent_key(name: str, agent: Any) -> str:
     if hasattr(agent, "name") and agent.name:
         return str(agent.name)
@@ -261,6 +293,8 @@ class GEPA(Teleprompter):
         track_best_outputs: bool = False,
         warn_on_score_mismatch: bool = True,
         use_mlflow: bool = False,
+        optimize_tools: bool = False,
+        optimize_tools_budget: int | None = None,
         seed: int | None = 0,
         gepa_kwargs: dict[str, Any] | None = None,
     ):
@@ -316,6 +350,8 @@ class GEPA(Teleprompter):
         self.track_best_outputs = track_best_outputs
         self.warn_on_score_mismatch = warn_on_score_mismatch
         self.use_mlflow = use_mlflow
+        self.optimize_tools = optimize_tools
+        self.optimize_tools_budget = optimize_tools_budget
         self.seed = seed
         self.gepa_kwargs = gepa_kwargs or {}
 
@@ -464,7 +500,107 @@ class GEPA(Teleprompter):
                 gepa_result, adapter
             )
 
+        if self.optimize_tools:
+            self._optimize_tool_descriptions(
+                best_program, trainset, resolved_valset
+            )
+
         return best_program
+
+    def _optimize_tool_descriptions(
+        self,
+        program: Module,
+        trainset: list[Example],
+        valset: list[Example],
+    ) -> None:
+        """Use ``gepa.optimize_anything`` to optimize tool descriptions.
+
+        Runs as a post-compile step on the already-optimized program.
+        Each tool description is treated as an independent text artifact
+        that GEPA can evolve using Actionable Side Information from the
+        evaluator (which tool was selected vs. expected).
+        """
+        import gepa.optimize_anything as oa  # noqa: PLC0415
+        from gepa.optimize_anything import (  # noqa: PLC0415
+            EngineConfig,
+            GEPAConfig,
+            ReflectionConfig,
+            optimize_anything,
+        )
+
+        tool_descs = _collect_tool_descriptions(program)
+        if not tool_descs:
+            logger.info("optimize_tools: no tools found, skipping.")
+            return
+
+        budget = self.optimize_tools_budget or max(
+            6 * len(tool_descs), 12
+        )
+
+        logger.info(
+            "optimize_tools: optimizing %d tool descriptions (budget=%d).",
+            len(tool_descs),
+            budget,
+        )
+
+        def _evaluator(
+            candidate: dict[str, str],
+            example: Example,
+        ) -> float:
+            """Run the program with candidate tool descriptions and score."""
+            trial_program = program.deepcopy()
+            _apply_tool_descriptions(trial_program, candidate)
+
+            try:
+                prediction = _MsgfluxGEPAAdapter._run_program(
+                    trial_program, example
+                )
+            except Exception:
+                oa.log("Program execution failed with these tool descriptions.")
+                return self.failure_score
+
+            metric_output = self.metric_fn(
+                example, prediction, None, None, None,
+            )
+            score = _extract_score(metric_output, self.failure_score)
+            feedback = _extract_feedback(metric_output, score)
+            oa.log(f"Score: {score}")
+            oa.log(f"Feedback: {feedback}")
+
+            # Log which tools exist for the reflector
+            for key, desc in candidate.items():
+                oa.log(f"Tool [{key}]: {desc[:120]}")
+
+            return score
+
+        reflection_config = {}
+        if self.reflection_lm is not None:
+            reflection_config["reflection"] = ReflectionConfig(
+                reflection_lm=self.reflection_lm,
+            )
+
+        result = optimize_anything(
+            seed_candidate=tool_descs,
+            evaluator=_evaluator,
+            dataset=trainset,
+            valset=valset,
+            objective=(
+                "Optimize the tool descriptions so the AI agent selects "
+                "the correct tool for each task. Descriptions should be "
+                "clear, specific, and help the model distinguish between "
+                "similar tools."
+            ),
+            config=GEPAConfig(
+                engine=EngineConfig(max_metric_calls=budget),
+                **reflection_config,
+            ),
+        )
+
+        _apply_tool_descriptions(program, result.best_candidate)
+        logger.info(
+            "optimize_tools: done. Best score: %s",
+            getattr(result, "best_score", "N/A"),
+        )
 
     def _feedback_fn_creator(self, pred_name: str) -> Callable[..., dict[str, Any]]:
         def feedback_fn(
