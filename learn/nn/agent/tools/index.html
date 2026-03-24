@@ -1930,9 +1930,9 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#agent-as-a-tool" class="md-nav__link">
+  <a href="#agent-as-tool" class="md-nav__link">
     <span class="md-ellipsis">
-      Agent-as-a-Tool
+      Agent-as-Tool
     </span>
   </a>
   
@@ -3966,9 +3966,9 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#agent-as-a-tool" class="md-nav__link">
+  <a href="#agent-as-tool" class="md-nav__link">
     <span class="md-ellipsis">
-      Agent-as-a-Tool
+      Agent-as-Tool
     </span>
   </a>
   
@@ -4885,7 +4885,7 @@ Use cases:
 
 ???+ example
 
-    === &quot;Agent-as-a-Tool (Primary Use)&quot;
+    === &quot;Agent-as-Tool (Primary Use)&quot;
 
         When an agent is used as a tool, `inject_messages` passes the conversation history so the specialist has full context:
 
@@ -4995,7 +4995,7 @@ When `handoff=True`, the tool is configured for seamless agent-to-agent handoff:
 - Changes tool name to `transfer_to_{original_name}`
 - Removes input parameters (conversation history is passed instead)
 
-Unlike Agent-as-a-Tool, the Specialist&#x27;s response bypasses the Coordinator entirely and goes directly to the user. The Coordinator only decides *who* handles the request.
+Unlike Agent-as-Tool, the Specialist&#x27;s response bypasses the Coordinator entirely and goes directly to the user. The Coordinator only decides *who* handles the request.
 
 ```
               Input
@@ -5211,7 +5211,7 @@ By default, all tools have automatic retry enabled using environment variables (
             return do_search(query)
         ```
 
-### Agent-as-a-Tool
+### Agent-as-Tool
 
 Agents can be used as tools for other agents, enabling hierarchical task delegation, also known as **SubAgents**. Using AutoParams makes this pattern especially clean: the class name becomes the tool name, and the docstring becomes the tool description.
 
@@ -5251,7 +5251,7 @@ The Coordinator calls the Specialist as any other tool. The result returns to th
                 Output
 ```
 
-???+ note &quot;Agent-as-a-Tool Examples&quot;
+???+ note &quot;Agent-as-Tool Examples&quot;
 
     === &quot;Health Team&quot;
 
@@ -6490,7 +6490,7 @@ Configure MCP servers using the `mcp_servers` attribute:
 </ul>
 <details class="example" open="open">
 <summary>Example</summary>
-<div class="tabbed-set tabbed-alternate" data-tabs="10:3"><input checked="checked" id="__tabbed_10_1" name="__tabbed_10" type="radio" /><input id="__tabbed_10_2" name="__tabbed_10" type="radio" /><input id="__tabbed_10_3" name="__tabbed_10" type="radio" /><div class="tabbed-labels"><label for="__tabbed_10_1">Agent-as-a-Tool (Primary Use)</label><label for="__tabbed_10_2">Safety Checker</label><label for="__tabbed_10_3">Context-Aware Processing</label></div>
+<div class="tabbed-set tabbed-alternate" data-tabs="10:3"><input checked="checked" id="__tabbed_10_1" name="__tabbed_10" type="radio" /><input id="__tabbed_10_2" name="__tabbed_10" type="radio" /><input id="__tabbed_10_3" name="__tabbed_10" type="radio" /><div class="tabbed-labels"><label for="__tabbed_10_1">Agent-as-Tool (Primary Use)</label><label for="__tabbed_10_2">Safety Checker</label><label for="__tabbed_10_3">Context-Aware Processing</label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
 <p>When an agent is used as a tool, <code>inject_messages</code> passes the conversation history so the specialist has full context:</p>
@@ -6595,7 +6595,7 @@ Configure MCP servers using the `mcp_servers` attribute:
 <li>Changes tool name to <code>transfer_to_{original_name}</code></li>
 <li>Removes input parameters (conversation history is passed instead)</li>
 </ul>
-<p>Unlike Agent-as-a-Tool, the Specialist's response bypasses the Coordinator entirely and goes directly to the user. The Coordinator only decides <em>who</em> handles the request.</p>
+<p>Unlike Agent-as-Tool, the Specialist's response bypasses the Coordinator entirely and goes directly to the user. The Coordinator only decides <em>who</em> handles the request.</p>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-32-1"><a id="__codelineno-32-1" name="__codelineno-32-1" href="#__codelineno-32-1"></a>              Input
 </span><span id="__span-32-2"><a id="__codelineno-32-2" name="__codelineno-32-2" href="#__codelineno-32-2"></a>                │
 </span><span id="__span-32-3"><a id="__codelineno-32-3" name="__codelineno-32-3" href="#__codelineno-32-3"></a>                ▼
@@ -6793,7 +6793,7 @@ Configure MCP servers using the `mcp_servers` attribute:
 </div>
 </div>
 </details>
-<h3 id="agent-as-a-tool">Agent-as-a-Tool</h3>
+<h3 id="agent-as-tool">Agent-as-Tool</h3>
 <p>Agents can be used as tools for other agents, enabling hierarchical task delegation, also known as <strong>SubAgents</strong>. Using AutoParams makes this pattern especially clean: the class name becomes the tool name, and the docstring becomes the tool description.</p>
 <p>The Coordinator calls the Specialist as any other tool. The result returns to the Coordinator's model, which synthesizes it into the final response.</p>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-40-1"><a id="__codelineno-40-1" name="__codelineno-40-1" href="#__codelineno-40-1"></a>              Input
@@ -6829,7 +6829,7 @@ Configure MCP servers using the `mcp_servers` attribute:
 </span><span id="__span-40-31"><a id="__codelineno-40-31" name="__codelineno-40-31" href="#__codelineno-40-31"></a>                Output
 </span></code></pre></div>
 <details class="note" open="open">
-<summary>Agent-as-a-Tool Examples</summary>
+<summary>Agent-as-Tool Examples</summary>
 <div class="tabbed-set tabbed-alternate" data-tabs="12:4"><input checked="checked" id="__tabbed_12_1" name="__tabbed_12" type="radio" /><input id="__tabbed_12_2" name="__tabbed_12" type="radio" /><input id="__tabbed_12_3" name="__tabbed_12" type="radio" /><input id="__tabbed_12_4" name="__tabbed_12" type="radio" /><div class="tabbed-labels"><label for="__tabbed_12_1">Health Team</label><label for="__tabbed_12_2">Research Team</label><label for="__tabbed_12_3">Agent Router</label><label for="__tabbed_12_4">Handoff Pattern</label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
