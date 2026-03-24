@@ -4155,7 +4155,7 @@ Beyond `nn.Agent`, msgFlux provides specialized modules for different modalities
 
 ### **Compose Modules into Programs**
 
-msgFlux&#x27;s module system mirrors `torch.nn`. Every component inherits from `nn.Module`, supports `forward()` / `aforward()` for sync and async, automatic submodule registration via `__setattr__`, parameter management, and built-in telemetry. Compose multiple modules to create a **program** — a self-contained AI system where each piece has a clear responsibility.
+A composition of modules is a **program** — each module handles one responsibility, and they work together naturally.
 
 
 !!! info &quot;Compose modules into programs&quot;
@@ -5152,7 +5152,7 @@ msgFlux&#x27;s module system mirrors `torch.nn`. Every component inherits from `
 </div>
 <hr />
 <h3 id="compose-modules-into-programs"><strong>Compose Modules into Programs</strong></h3>
-<p>msgFlux's module system mirrors <code>torch.nn</code>. Every component inherits from <code>nn.Module</code>, supports <code>forward()</code> / <code>aforward()</code> for sync and async, automatic submodule registration via <code>__setattr__</code>, parameter management, and built-in telemetry. Compose multiple modules to create a <strong>program</strong> — a self-contained AI system where each piece has a clear responsibility.</p>
+<p>A composition of modules is a <strong>program</strong> — each module handles one responsibility, and they work together naturally.</p>
 <div class="admonition info">
 <p class="admonition-title">Compose modules into programs</p>
 <div class="tabbed-set tabbed-alternate" data-tabs="6:3"><input checked="checked" id="__tabbed_6_1" name="__tabbed_6" type="radio" /><input id="__tabbed_6_2" name="__tabbed_6" type="radio" /><input id="__tabbed_6_3" name="__tabbed_6" type="radio" /><div class="tabbed-labels"><label for="__tabbed_6_1">Pipeline</label><label for="__tabbed_6_2">Router</label><label for="__tabbed_6_3">Multimodal</label></div>
