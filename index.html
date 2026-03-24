@@ -3587,14 +3587,20 @@
     </span>
   </a>
   
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#agents-define-ai-behavior-as-composable-modules" class="md-nav__link">
+    <nav class="md-nav" aria-label="Get Started">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#agents" class="md-nav__link">
     <span class="md-ellipsis">
-      Agents — define AI behavior as composable modules.
+      Agents
     </span>
   </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -3823,22 +3829,23 @@ By combining imperative and declarative modules with a clear separation between 
 
 ---
 
-## **Agents** — define AI behavior as composable modules.
+### **Agents**
 
 msgFlux supports multiple styles for defining what an agent does. You can write explicit prompts for full control, use **signatures** to declare typed inputs and outputs, bind to fields on a shared **message** for pipeline composition, or give agents access to **tools** and **vars** that flow through the system. You can even use one agent as a **tool** for another. These styles compose freely — pick the right one for each component.
 
 !!! info &quot;Build agents for any task&quot;
 
-    Try the examples below after configuring your model above. Each tab demonstrates a different style or capability. When subclassing `nn.Agent`, the class name becomes the agent&#x27;s `name` and the docstring becomes its `description`.
+    Try the examples below after configuring your model above. Each tab demonstrates a different style or capability.
 
     === &quot;Prompting&quot;
 
         Write your own system message and instructions for full control:
 
         ```python linenums=&quot;1&quot;
-        class Writer(nn.Agent):
-            &quot;&quot;&quot;Expert technical writer.&quot;&quot;&quot;
+        import msgflux as mf
+        import msgflux.nn as nn
 
+        class Writer(nn.Agent):
             model = mf.Model.chat_completion(&quot;openai/gpt-4.1-mini&quot;)
             system_message = &quot;You are an expert technical writer.&quot;
             instructions = &quot;Write a clear, concise summary of the given topic.&quot;
@@ -3853,9 +3860,10 @@ msgFlux supports multiple styles for defining what an agent does. You can write 
         Use `signature` to define inputs and outputs — msgFlux generates the prompt and parses structured output:
 
         ```python linenums=&quot;1&quot;
-        class Extractor(nn.Agent):
-            &quot;&quot;&quot;Extracts structured data from text.&quot;&quot;&quot;
+        import msgflux as mf
+        import msgflux.nn as nn
 
+        class Extractor(nn.Agent):
             model = mf.Model.chat_completion(&quot;openai/gpt-4.1-mini&quot;)
             signature = &quot;text -&gt; summary: str, topics: list[str], sentiment: str&quot;
 
@@ -3868,67 +3876,42 @@ msgFlux supports multiple styles for defining what an agent does. You can write 
         {&#x27;summary&#x27;: &#x27;...&#x27;, &#x27;topics&#x27;: [&#x27;iPhone&#x27;, &#x27;camera&#x27;, &#x27;battery&#x27;], &#x27;sentiment&#x27;: &#x27;mixed&#x27;}
         ```
 
-    === &quot;Class Signature&quot;
 
-        For richer definitions, use `mf.Signature` with typed fields:
+    === &quot;ReAct&quot;
 
-        ```python linenums=&quot;1&quot;
-        from typing import Literal
-
-        class ClassifySentiment(mf.Signature):
-            &quot;&quot;&quot;Classify the sentiment of a sentence.&quot;&quot;&quot;
-
-            sentence: str = mf.InputField(desc=&quot;Text to analyze&quot;)
-            sentiment: Literal[&quot;positive&quot;, &quot;negative&quot;, &quot;neutral&quot;] = mf.OutputField()
-            confidence: float = mf.OutputField(desc=&quot;Score between 0 and 1&quot;)
-
-        class Classifier(nn.Agent):
-            &quot;&quot;&quot;Sentiment classifier powered by a language model.&quot;&quot;&quot;
-
-            model = mf.Model.chat_completion(&quot;openai/gpt-4.1-mini&quot;)
-            signature = ClassifySentiment
-
-        classifier = Classifier()
-        result = classifier(&quot;I loved the movie, but the ending was disappointing.&quot;)
-        ```
-
-        **Possible Output:**
-        ```text
-        {&#x27;sentiment&#x27;: &#x27;positive&#x27;, &#x27;confidence&#x27;: 0.75}
-        ```
-
-    === &quot;Tools&quot;
-
-        Any Python callable with type hints and a docstring becomes a tool:
+        Agents that reason step-by-step and use tools to find answers. `WebFetch` is a built-in tool that fetches web pages as Markdown:
 
         ```python linenums=&quot;1&quot;
-        def get_weather(city: str) -&gt; str:
-            &quot;&quot;&quot;Get current weather for a city.&quot;&quot;&quot;
-            return httpx.get(f&quot;https://wttr.in/{city}?format=3&quot;).text
+        import msgflux as mf
+        import msgflux.nn as nn
+        from msgflux.generation.reasoning import ReAct
+        from msgflux.tools.builtin import WebFetch
 
-        class WeatherAssistant(nn.Agent):
-            &quot;&quot;&quot;Checks real-time weather using external APIs.&quot;&quot;&quot;
-
+        class ResearchAgent(nn.Agent):
             model = mf.Model.chat_completion(&quot;openai/gpt-4.1-mini&quot;)
-            tools = [get_weather]
+            generation_schema = ReAct
+            tools = [WebFetch]
 
-        assistant = WeatherAssistant()
-        assistant(&quot;What&#x27;s the weather like in Tokyo?&quot;)
+        agent = ResearchAgent()
+        agent(&quot;What is the mass of the Earth divided by the mass of the Moon?&quot;)
         ```
+
+        The agent iterates: **think** → **act** (call tools) → **observe** → repeat until `final_answer`.
 
     === &quot;Vars&quot;
 
         `vars` inject runtime context into the agent&#x27;s Jinja2 **templates** and into tools via `inject_vars`. The model never sees injected vars directly — they flow through the system behind the scenes.
 
         ```python linenums=&quot;1&quot;
+        import msgflux as mf
+        import msgflux.nn as nn
+
         @mf.tool_config(inject_vars=[&quot;customer_id&quot;])
         def get_balance(customer_id: str) -&gt; str:
             &quot;&quot;&quot;Look up the customer&#x27;s current balance.&quot;&quot;&quot;
             return db.query(customer_id)
 
         class BankAgent(nn.Agent):
-            &quot;&quot;&quot;Banking assistant that helps customers with their accounts.&quot;&quot;&quot;
-
             model = mf.Model.chat_completion(&quot;openai/gpt-4.1-mini&quot;)
             instructions = &quot;You are helping customer {{customer_name}}.&quot;
             tools = [get_balance]
@@ -3944,36 +3927,36 @@ msgFlux supports multiple styles for defining what an agent does. You can write 
         An agent can serve as a tool for another agent. Decorate with `@tool_config` and pass the **class** to `tools`:
 
         ```python linenums=&quot;1&quot;
-        @mf.tool_config(return_direct=True)
-        class SentimentClassifier(nn.Agent):
-            &quot;&quot;&quot;Classify the sentiment of a given text.&quot;&quot;&quot;
+        import msgflux as mf
+        import msgflux.nn as nn
 
-            model = model
+        @mf.tool_config(return_direct=True)  # (2)!
+        class SentimentClassifier(nn.Agent):
+            &quot;&quot;&quot;Classify the sentiment of a given text.&quot;&quot;&quot;  # (1)!
+
+            model = mf.Model.chat_completion(&quot;openai/gpt-4.1-mini&quot;)
             signature = &quot;sentence: str -&gt; sentiment: str, confidence: float&quot;
 
         class Orchestrator(nn.Agent):
-            &quot;&quot;&quot;Routes tasks to specialized sub-agents.&quot;&quot;&quot;
-
-            model = model
+            model = mf.Model.chat_completion(&quot;openai/gpt-4.1-mini&quot;)
             tools = [SentimentClassifier]
 
         orchestrator = Orchestrator()
         orchestrator(&quot;Classify: &#x27;This product is terrible&#x27;&quot;)
         ```
 
-        **Possible Output:**
-        ```text
-        {&#x27;sentiment&#x27;: &#x27;negative&#x27;, &#x27;confidence&#x27;: 0.95}
-        ```
+        1. When an agent is used as a tool, the docstring becomes its **description** — this is what the parent agent sees when deciding which tool to call.
+        2. `return_direct=True` means the Orchestrator returns the list of tool calls and their results directly, instead of passing them back to the model for a final response.
 
     === &quot;Message-driven&quot;
 
         Bind inputs and outputs to fields on a shared `Message` — the preferred approach inside pipelines:
 
         ```python linenums=&quot;1&quot;
-        class SentimentAnalyzer(nn.Agent):
-            &quot;&quot;&quot;Analyzes the sentiment of a given text.&quot;&quot;&quot;
+        import msgflux as mf
+        import msgflux.nn as nn
 
+        class SentimentAnalyzer(nn.Agent):
             model         = mf.Model.chat_completion(&quot;openai/gpt-4.1-mini&quot;)
             signature     = &quot;text -&gt; sentiment: str, confidence: float, reasoning: str&quot;
             message_fields = {&quot;task_inputs&quot;: &quot;review&quot;}
@@ -3994,11 +3977,11 @@ msgFlux supports multiple styles for defining what an agent does. You can write 
     === &quot;Chain of Thought&quot;
 
         ```python linenums=&quot;1&quot;
+        import msgflux as mf
+        import msgflux.nn as nn
         from msgflux.generation.reasoning import ChainOfThought
 
         class MathSolver(nn.Agent):
-            &quot;&quot;&quot;Solves math problems with step-by-step reasoning.&quot;&quot;&quot;
-
             model = mf.Model.chat_completion(&quot;openai/gpt-4.1-mini&quot;)
             generation_schema = ChainOfThought
 
@@ -4010,24 +3993,6 @@ msgFlux supports multiple styles for defining what an agent does. You can write 
         ```text
         {&#x27;reasoning&#x27;: &#x27;Each die has 6 faces → 36 outcomes. Only (1,1) sums to 2 → P = 1/36.&#x27;, &#x27;final_answer&#x27;: &#x27;1/36 ≈ 0.0278&#x27;}
         ```
-
-    === &quot;ReAct&quot;
-
-        ```python linenums=&quot;1&quot;
-        from msgflux.generation.reasoning import ReAct
-
-        class ResearchAgent(nn.Agent):
-            &quot;&quot;&quot;Reasons step-by-step and uses tools to find answers.&quot;&quot;&quot;
-
-            model = mf.Model.chat_completion(&quot;openai/gpt-4.1-mini&quot;)
-            generation_schema = ReAct
-            tools = [search_web, calculator]
-
-        agent = ResearchAgent()
-        agent(&quot;What is the mass of the Earth divided by the mass of the Moon?&quot;)
-        ```
-
-        The agent iterates: **think** → **act** (call tools) → **observe** → repeat until `final_answer`.
 
 
 ---
@@ -4545,12 +4510,12 @@ msgFlux&#x27;s module system mirrors `torch.nn`. Every component inherits from `
 </div>
 </div>
 <hr />
-<h2 id="agents-define-ai-behavior-as-composable-modules"><strong>Agents</strong> — define AI behavior as composable modules.</h2>
+<h3 id="agents"><strong>Agents</strong></h3>
 <p>msgFlux supports multiple styles for defining what an agent does. You can write explicit prompts for full control, use <strong>signatures</strong> to declare typed inputs and outputs, bind to fields on a shared <strong>message</strong> for pipeline composition, or give agents access to <strong>tools</strong> and <strong>vars</strong> that flow through the system. You can even use one agent as a <strong>tool</strong> for another. These styles compose freely — pick the right one for each component.</p>
 <div class="admonition info">
 <p class="admonition-title">Build agents for any task</p>
-<p>Try the examples below after configuring your model above. Each tab demonstrates a different style or capability. When subclassing <code>nn.Agent</code>, the class name becomes the agent's <code>name</code> and the docstring becomes its <code>description</code>.</p>
-<div class="tabbed-set tabbed-alternate" data-tabs="4:9"><input checked="checked" id="__tabbed_4_1" name="__tabbed_4" type="radio" /><input id="__tabbed_4_2" name="__tabbed_4" type="radio" /><input id="__tabbed_4_3" name="__tabbed_4" type="radio" /><input id="__tabbed_4_4" name="__tabbed_4" type="radio" /><input id="__tabbed_4_5" name="__tabbed_4" type="radio" /><input id="__tabbed_4_6" name="__tabbed_4" type="radio" /><input id="__tabbed_4_7" name="__tabbed_4" type="radio" /><input id="__tabbed_4_8" name="__tabbed_4" type="radio" /><input id="__tabbed_4_9" name="__tabbed_4" type="radio" /><div class="tabbed-labels"><label for="__tabbed_4_1">Prompting</label><label for="__tabbed_4_2">Signature</label><label for="__tabbed_4_3">Class Signature</label><label for="__tabbed_4_4">Tools</label><label for="__tabbed_4_5">Vars</label><label for="__tabbed_4_6">Agent-as-a-Tool</label><label for="__tabbed_4_7">Message-driven</label><label for="__tabbed_4_8">Chain of Thought</label><label for="__tabbed_4_9">ReAct</label></div>
+<p>Try the examples below after configuring your model above. Each tab demonstrates a different style or capability.</p>
+<div class="tabbed-set tabbed-alternate" data-tabs="4:7"><input checked="checked" id="__tabbed_4_1" name="__tabbed_4" type="radio" /><input id="__tabbed_4_2" name="__tabbed_4" type="radio" /><input id="__tabbed_4_3" name="__tabbed_4" type="radio" /><input id="__tabbed_4_4" name="__tabbed_4" type="radio" /><input id="__tabbed_4_5" name="__tabbed_4" type="radio" /><input id="__tabbed_4_6" name="__tabbed_4" type="radio" /><input id="__tabbed_4_7" name="__tabbed_4" type="radio" /><div class="tabbed-labels"><label for="__tabbed_4_1">Prompting</label><label for="__tabbed_4_2">Signature</label><label for="__tabbed_4_3">ReAct</label><label for="__tabbed_4_4">Vars</label><label for="__tabbed_4_5">Agent-as-a-Tool</label><label for="__tabbed_4_6">Message-driven</label><label for="__tabbed_4_7">Chain of Thought</label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
 <p>Write your own system message and instructions for full control:</p>
@@ -4563,16 +4528,18 @@ msgFlux&#x27;s module system mirrors `torch.nn`. Every component inherits from `
 <span class="normal"><a href="#__codelineno-13-7"> 7</a></span>
 <span class="normal"><a href="#__codelineno-13-8"> 8</a></span>
 <span class="normal"><a href="#__codelineno-13-9"> 9</a></span>
-<span class="normal"><a href="#__codelineno-13-10">10</a></span></pre></div></td><td class="code"><div><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">Writer</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">):</span>
-</span><span id="__span-13-2"><a id="__codelineno-13-2" name="__codelineno-13-2"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Expert technical writer.&quot;&quot;&quot;</span>
+<span class="normal"><a href="#__codelineno-13-10">10</a></span>
+<span class="normal"><a href="#__codelineno-13-11">11</a></span></pre></div></td><td class="code"><div><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
+</span><span id="__span-13-2"><a id="__codelineno-13-2" name="__codelineno-13-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">nn</span>
 </span><span id="__span-13-3"><a id="__codelineno-13-3" name="__codelineno-13-3"></a>
-</span><span id="__span-13-4"><a id="__codelineno-13-4" name="__codelineno-13-4"></a>    <span class="n">model</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">chat_completion</span><span class="p">(</span><span class="s2">&quot;openai/gpt-4.1-mini&quot;</span><span class="p">)</span>
-</span><span id="__span-13-5"><a id="__codelineno-13-5" name="__codelineno-13-5"></a>    <span class="n">system_message</span> <span class="o">=</span> <span class="s2">&quot;You are an expert technical writer.&quot;</span>
-</span><span id="__span-13-6"><a id="__codelineno-13-6" name="__codelineno-13-6"></a>    <span class="n">instructions</span> <span class="o">=</span> <span class="s2">&quot;Write a clear, concise summary of the given topic.&quot;</span>
-</span><span id="__span-13-7"><a id="__codelineno-13-7" name="__codelineno-13-7"></a>    <span class="n">expected_output</span> <span class="o">=</span> <span class="s2">&quot;A 2-3 paragraph summary in markdown format.&quot;</span>
-</span><span id="__span-13-8"><a id="__codelineno-13-8" name="__codelineno-13-8"></a>
-</span><span id="__span-13-9"><a id="__codelineno-13-9" name="__codelineno-13-9"></a><span class="n">writer</span> <span class="o">=</span> <span class="n">Writer</span><span class="p">()</span>
-</span><span id="__span-13-10"><a id="__codelineno-13-10" name="__codelineno-13-10"></a><span class="n">writer</span><span class="p">(</span><span class="s2">&quot;Explain how transformers work&quot;</span><span class="p">)</span>
+</span><span id="__span-13-4"><a id="__codelineno-13-4" name="__codelineno-13-4"></a><span class="k">class</span><span class="w"> </span><span class="nc">Writer</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">):</span>
+</span><span id="__span-13-5"><a id="__codelineno-13-5" name="__codelineno-13-5"></a>    <span class="n">model</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">chat_completion</span><span class="p">(</span><span class="s2">&quot;openai/gpt-4.1-mini&quot;</span><span class="p">)</span>
+</span><span id="__span-13-6"><a id="__codelineno-13-6" name="__codelineno-13-6"></a>    <span class="n">system_message</span> <span class="o">=</span> <span class="s2">&quot;You are an expert technical writer.&quot;</span>
+</span><span id="__span-13-7"><a id="__codelineno-13-7" name="__codelineno-13-7"></a>    <span class="n">instructions</span> <span class="o">=</span> <span class="s2">&quot;Write a clear, concise summary of the given topic.&quot;</span>
+</span><span id="__span-13-8"><a id="__codelineno-13-8" name="__codelineno-13-8"></a>    <span class="n">expected_output</span> <span class="o">=</span> <span class="s2">&quot;A 2-3 paragraph summary in markdown format.&quot;</span>
+</span><span id="__span-13-9"><a id="__codelineno-13-9" name="__codelineno-13-9"></a>
+</span><span id="__span-13-10"><a id="__codelineno-13-10" name="__codelineno-13-10"></a><span class="n">writer</span> <span class="o">=</span> <span class="n">Writer</span><span class="p">()</span>
+</span><span id="__span-13-11"><a id="__codelineno-13-11" name="__codelineno-13-11"></a><span class="n">writer</span><span class="p">(</span><span class="s2">&quot;Explain how transformers work&quot;</span><span class="p">)</span>
 </span></code></pre></div></td></tr></table></div>
 </div>
 <div class="tabbed-block">
@@ -4584,21 +4551,23 @@ msgFlux&#x27;s module system mirrors `torch.nn`. Every component inherits from `
 <span class="normal"><a href="#__codelineno-14-5">5</a></span>
 <span class="normal"><a href="#__codelineno-14-6">6</a></span>
 <span class="normal"><a href="#__codelineno-14-7">7</a></span>
-<span class="normal"><a href="#__codelineno-14-8">8</a></span></pre></div></td><td class="code"><div><pre><span></span><code><span id="__span-14-1"><a id="__codelineno-14-1" name="__codelineno-14-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">Extractor</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">):</span>
-</span><span id="__span-14-2"><a id="__codelineno-14-2" name="__codelineno-14-2"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Extracts structured data from text.&quot;&quot;&quot;</span>
+<span class="normal"><a href="#__codelineno-14-8">8</a></span>
+<span class="normal"><a href="#__codelineno-14-9">9</a></span></pre></div></td><td class="code"><div><pre><span></span><code><span id="__span-14-1"><a id="__codelineno-14-1" name="__codelineno-14-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
+</span><span id="__span-14-2"><a id="__codelineno-14-2" name="__codelineno-14-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">nn</span>
 </span><span id="__span-14-3"><a id="__codelineno-14-3" name="__codelineno-14-3"></a>
-</span><span id="__span-14-4"><a id="__codelineno-14-4" name="__codelineno-14-4"></a>    <span class="n">model</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">chat_completion</span><span class="p">(</span><span class="s2">&quot;openai/gpt-4.1-mini&quot;</span><span class="p">)</span>
-</span><span id="__span-14-5"><a id="__codelineno-14-5" name="__codelineno-14-5"></a>    <span class="n">signature</span> <span class="o">=</span> <span class="s2">&quot;text -&gt; summary: str, topics: list[str], sentiment: str&quot;</span>
-</span><span id="__span-14-6"><a id="__codelineno-14-6" name="__codelineno-14-6"></a>
-</span><span id="__span-14-7"><a id="__codelineno-14-7" name="__codelineno-14-7"></a><span class="n">extractor</span> <span class="o">=</span> <span class="n">Extractor</span><span class="p">()</span>
-</span><span id="__span-14-8"><a id="__codelineno-14-8" name="__codelineno-14-8"></a><span class="n">result</span> <span class="o">=</span> <span class="n">extractor</span><span class="p">(</span><span class="s2">&quot;The new iPhone has an amazing camera but the battery life is disappointing.&quot;</span><span class="p">)</span>
+</span><span id="__span-14-4"><a id="__codelineno-14-4" name="__codelineno-14-4"></a><span class="k">class</span><span class="w"> </span><span class="nc">Extractor</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">):</span>
+</span><span id="__span-14-5"><a id="__codelineno-14-5" name="__codelineno-14-5"></a>    <span class="n">model</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">chat_completion</span><span class="p">(</span><span class="s2">&quot;openai/gpt-4.1-mini&quot;</span><span class="p">)</span>
+</span><span id="__span-14-6"><a id="__codelineno-14-6" name="__codelineno-14-6"></a>    <span class="n">signature</span> <span class="o">=</span> <span class="s2">&quot;text -&gt; summary: str, topics: list[str], sentiment: str&quot;</span>
+</span><span id="__span-14-7"><a id="__codelineno-14-7" name="__codelineno-14-7"></a>
+</span><span id="__span-14-8"><a id="__codelineno-14-8" name="__codelineno-14-8"></a><span class="n">extractor</span> <span class="o">=</span> <span class="n">Extractor</span><span class="p">()</span>
+</span><span id="__span-14-9"><a id="__codelineno-14-9" name="__codelineno-14-9"></a><span class="n">result</span> <span class="o">=</span> <span class="n">extractor</span><span class="p">(</span><span class="s2">&quot;The new iPhone has an amazing camera but the battery life is disappointing.&quot;</span><span class="p">)</span>
 </span></code></pre></div></td></tr></table></div>
 <p><strong>Possible Output:</strong>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-15-1"><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>{&#39;summary&#39;: &#39;...&#39;, &#39;topics&#39;: [&#39;iPhone&#39;, &#39;camera&#39;, &#39;battery&#39;], &#39;sentiment&#39;: &#39;mixed&#39;}
 </span></code></pre></div></p>
 </div>
 <div class="tabbed-block">
-<p>For richer definitions, use <code>mf.Signature</code> with typed fields:</p>
+<p>Agents that reason step-by-step and use tools to find answers. <code>WebFetch</code> is a built-in tool that fetches web pages as Markdown:</p>
 <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-16-1"> 1</a></span>
 <span class="normal"><a href="#__codelineno-16-2"> 2</a></span>
 <span class="normal"><a href="#__codelineno-16-3"> 3</a></span>
@@ -4610,35 +4579,57 @@ msgFlux&#x27;s module system mirrors `torch.nn`. Every component inherits from `
 <span class="normal"><a href="#__codelineno-16-9"> 9</a></span>
 <span class="normal"><a href="#__codelineno-16-10">10</a></span>
 <span class="normal"><a href="#__codelineno-16-11">11</a></span>
-<span class="normal"><a href="#__codelineno-16-12">12</a></span>
-<span class="normal"><a href="#__codelineno-16-13">13</a></span>
-<span class="normal"><a href="#__codelineno-16-14">14</a></span>
-<span class="normal"><a href="#__codelineno-16-15">15</a></span>
-<span class="normal"><a href="#__codelineno-16-16">16</a></span>
-<span class="normal"><a href="#__codelineno-16-17">17</a></span></pre></div></td><td class="code"><div><pre><span></span><code><span id="__span-16-1"><a id="__codelineno-16-1" name="__codelineno-16-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Literal</span>
-</span><span id="__span-16-2"><a id="__codelineno-16-2" name="__codelineno-16-2"></a>
-</span><span id="__span-16-3"><a id="__codelineno-16-3" name="__codelineno-16-3"></a><span class="k">class</span><span class="w"> </span><span class="nc">ClassifySentiment</span><span class="p">(</span><span class="n">mf</span><span class="o">.</span><span class="n">Signature</span><span class="p">):</span>
-</span><span id="__span-16-4"><a id="__codelineno-16-4" name="__codelineno-16-4"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Classify the sentiment of a sentence.&quot;&quot;&quot;</span>
+<span class="normal"><a href="#__codelineno-16-12">12</a></span></pre></div></td><td class="code"><div><pre><span></span><code><span id="__span-16-1"><a id="__codelineno-16-1" name="__codelineno-16-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
+</span><span id="__span-16-2"><a id="__codelineno-16-2" name="__codelineno-16-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">nn</span>
+</span><span id="__span-16-3"><a id="__codelineno-16-3" name="__codelineno-16-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">msgflux.generation.reasoning</span><span class="w"> </span><span class="kn">import</span> <span class="n">ReAct</span>
+</span><span id="__span-16-4"><a id="__codelineno-16-4" name="__codelineno-16-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">msgflux.tools.builtin</span><span class="w"> </span><span class="kn">import</span> <span class="n">WebFetch</span>
 </span><span id="__span-16-5"><a id="__codelineno-16-5" name="__codelineno-16-5"></a>
-</span><span id="__span-16-6"><a id="__codelineno-16-6" name="__codelineno-16-6"></a>    <span class="n">sentence</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">InputField</span><span class="p">(</span><span class="n">desc</span><span class="o">=</span><span class="s2">&quot;Text to analyze&quot;</span><span class="p">)</span>
-</span><span id="__span-16-7"><a id="__codelineno-16-7" name="__codelineno-16-7"></a>    <span class="n">sentiment</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;positive&quot;</span><span class="p">,</span> <span class="s2">&quot;negative&quot;</span><span class="p">,</span> <span class="s2">&quot;neutral&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">OutputField</span><span class="p">()</span>
-</span><span id="__span-16-8"><a id="__codelineno-16-8" name="__codelineno-16-8"></a>    <span class="n">confidence</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">OutputField</span><span class="p">(</span><span class="n">desc</span><span class="o">=</span><span class="s2">&quot;Score between 0 and 1&quot;</span><span class="p">)</span>
-</span><span id="__span-16-9"><a id="__codelineno-16-9" name="__codelineno-16-9"></a>
-</span><span id="__span-16-10"><a id="__codelineno-16-10" name="__codelineno-16-10"></a><span class="k">class</span><span class="w"> </span><span class="nc">Classifier</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">):</span>
-</span><span id="__span-16-11"><a id="__codelineno-16-11" name="__codelineno-16-11"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Sentiment classifier powered by a language model.&quot;&quot;&quot;</span>
-</span><span id="__span-16-12"><a id="__codelineno-16-12" name="__codelineno-16-12"></a>
-</span><span id="__span-16-13"><a id="__codelineno-16-13" name="__codelineno-16-13"></a>    <span class="n">model</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">chat_completion</span><span class="p">(</span><span class="s2">&quot;openai/gpt-4.1-mini&quot;</span><span class="p">)</span>
-</span><span id="__span-16-14"><a id="__codelineno-16-14" name="__codelineno-16-14"></a>    <span class="n">signature</span> <span class="o">=</span> <span class="n">ClassifySentiment</span>
-</span><span id="__span-16-15"><a id="__codelineno-16-15" name="__codelineno-16-15"></a>
-</span><span id="__span-16-16"><a id="__codelineno-16-16" name="__codelineno-16-16"></a><span class="n">classifier</span> <span class="o">=</span> <span class="n">Classifier</span><span class="p">()</span>
-</span><span id="__span-16-17"><a id="__codelineno-16-17" name="__codelineno-16-17"></a><span class="n">result</span> <span class="o">=</span> <span class="n">classifier</span><span class="p">(</span><span class="s2">&quot;I loved the movie, but the ending was disappointing.&quot;</span><span class="p">)</span>
+</span><span id="__span-16-6"><a id="__codelineno-16-6" name="__codelineno-16-6"></a><span class="k">class</span><span class="w"> </span><span class="nc">ResearchAgent</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">):</span>
+</span><span id="__span-16-7"><a id="__codelineno-16-7" name="__codelineno-16-7"></a>    <span class="n">model</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">chat_completion</span><span class="p">(</span><span class="s2">&quot;openai/gpt-4.1-mini&quot;</span><span class="p">)</span>
+</span><span id="__span-16-8"><a id="__codelineno-16-8" name="__codelineno-16-8"></a>    <span class="n">generation_schema</span> <span class="o">=</span> <span class="n">ReAct</span>
+</span><span id="__span-16-9"><a id="__codelineno-16-9" name="__codelineno-16-9"></a>    <span class="n">tools</span> <span class="o">=</span> <span class="p">[</span><span class="n">WebFetch</span><span class="p">]</span>
+</span><span id="__span-16-10"><a id="__codelineno-16-10" name="__codelineno-16-10"></a>
+</span><span id="__span-16-11"><a id="__codelineno-16-11" name="__codelineno-16-11"></a><span class="n">agent</span> <span class="o">=</span> <span class="n">ResearchAgent</span><span class="p">()</span>
+</span><span id="__span-16-12"><a id="__codelineno-16-12" name="__codelineno-16-12"></a><span class="n">agent</span><span class="p">(</span><span class="s2">&quot;What is the mass of the Earth divided by the mass of the Moon?&quot;</span><span class="p">)</span>
 </span></code></pre></div></td></tr></table></div>
-<p><strong>Possible Output:</strong>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-17-1"><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>{&#39;sentiment&#39;: &#39;positive&#39;, &#39;confidence&#39;: 0.75}
-</span></code></pre></div></p>
+<p>The agent iterates: <strong>think</strong> → <strong>act</strong> (call tools) → <strong>observe</strong> → repeat until <code>final_answer</code>.</p>
 </div>
 <div class="tabbed-block">
-<p>Any Python callable with type hints and a docstring becomes a tool:</p>
+<p><code>vars</code> inject runtime context into the agent's Jinja2 <strong>templates</strong> and into tools via <code>inject_vars</code>. The model never sees injected vars directly — they flow through the system behind the scenes.</p>
+<div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-17-1"> 1</a></span>
+<span class="normal"><a href="#__codelineno-17-2"> 2</a></span>
+<span class="normal"><a href="#__codelineno-17-3"> 3</a></span>
+<span class="normal"><a href="#__codelineno-17-4"> 4</a></span>
+<span class="normal"><a href="#__codelineno-17-5"> 5</a></span>
+<span class="normal"><a href="#__codelineno-17-6"> 6</a></span>
+<span class="normal"><a href="#__codelineno-17-7"> 7</a></span>
+<span class="normal"><a href="#__codelineno-17-8"> 8</a></span>
+<span class="normal"><a href="#__codelineno-17-9"> 9</a></span>
+<span class="normal"><a href="#__codelineno-17-10">10</a></span>
+<span class="normal"><a href="#__codelineno-17-11">11</a></span>
+<span class="normal"><a href="#__codelineno-17-12">12</a></span>
+<span class="normal"><a href="#__codelineno-17-13">13</a></span>
+<span class="normal"><a href="#__codelineno-17-14">14</a></span>
+<span class="normal"><a href="#__codelineno-17-15">15</a></span></pre></div></td><td class="code"><div><pre><span></span><code><span id="__span-17-1"><a id="__codelineno-17-1" name="__codelineno-17-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
+</span><span id="__span-17-2"><a id="__codelineno-17-2" name="__codelineno-17-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">nn</span>
+</span><span id="__span-17-3"><a id="__codelineno-17-3" name="__codelineno-17-3"></a>
+</span><span id="__span-17-4"><a id="__codelineno-17-4" name="__codelineno-17-4"></a><span class="nd">@mf</span><span class="o">.</span><span class="n">tool_config</span><span class="p">(</span><span class="n">inject_vars</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;customer_id&quot;</span><span class="p">])</span>
+</span><span id="__span-17-5"><a id="__codelineno-17-5" name="__codelineno-17-5"></a><span class="k">def</span><span class="w"> </span><span class="nf">get_balance</span><span class="p">(</span><span class="n">customer_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+</span><span id="__span-17-6"><a id="__codelineno-17-6" name="__codelineno-17-6"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Look up the customer&#39;s current balance.&quot;&quot;&quot;</span>
+</span><span id="__span-17-7"><a id="__codelineno-17-7" name="__codelineno-17-7"></a>    <span class="k">return</span> <span class="n">db</span><span class="o">.</span><span class="n">query</span><span class="p">(</span><span class="n">customer_id</span><span class="p">)</span>
+</span><span id="__span-17-8"><a id="__codelineno-17-8" name="__codelineno-17-8"></a>
+</span><span id="__span-17-9"><a id="__codelineno-17-9" name="__codelineno-17-9"></a><span class="k">class</span><span class="w"> </span><span class="nc">BankAgent</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">):</span>
+</span><span id="__span-17-10"><a id="__codelineno-17-10" name="__codelineno-17-10"></a>    <span class="n">model</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">chat_completion</span><span class="p">(</span><span class="s2">&quot;openai/gpt-4.1-mini&quot;</span><span class="p">)</span>
+</span><span id="__span-17-11"><a id="__codelineno-17-11" name="__codelineno-17-11"></a>    <span class="n">instructions</span> <span class="o">=</span> <span class="s2">&quot;You are helping customer {{customer_name}}.&quot;</span>
+</span><span id="__span-17-12"><a id="__codelineno-17-12" name="__codelineno-17-12"></a>    <span class="n">tools</span> <span class="o">=</span> <span class="p">[</span><span class="n">get_balance</span><span class="p">]</span>
+</span><span id="__span-17-13"><a id="__codelineno-17-13" name="__codelineno-17-13"></a>
+</span><span id="__span-17-14"><a id="__codelineno-17-14" name="__codelineno-17-14"></a><span class="n">agent</span> <span class="o">=</span> <span class="n">BankAgent</span><span class="p">()</span>
+</span><span id="__span-17-15"><a id="__codelineno-17-15" name="__codelineno-17-15"></a><span class="n">agent</span><span class="p">(</span><span class="s2">&quot;What&#39;s my balance?&quot;</span><span class="p">,</span> <span class="nb">vars</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;customer_name&quot;</span><span class="p">:</span> <span class="s2">&quot;Alice&quot;</span><span class="p">,</span> <span class="s2">&quot;customer_id&quot;</span><span class="p">:</span> <span class="s2">&quot;C-1234&quot;</span><span class="p">})</span>
+</span></code></pre></div></td></tr></table></div>
+<p><code>customer_name</code> renders into the instructions template. <code>customer_id</code> is injected directly into <code>get_balance</code> — invisible to the model, but available to the tool.</p>
+</div>
+<div class="tabbed-block">
+<p>An agent can serve as a tool for another agent. Decorate with <code>@tool_config</code> and pass the <strong>class</strong> to <code>tools</code>:</p>
 <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-18-1"> 1</a></span>
 <span class="normal"><a href="#__codelineno-18-2"> 2</a></span>
 <span class="normal"><a href="#__codelineno-18-3"> 3</a></span>
@@ -4650,22 +4641,34 @@ msgFlux&#x27;s module system mirrors `torch.nn`. Every component inherits from `
 <span class="normal"><a href="#__codelineno-18-9"> 9</a></span>
 <span class="normal"><a href="#__codelineno-18-10">10</a></span>
 <span class="normal"><a href="#__codelineno-18-11">11</a></span>
-<span class="normal"><a href="#__codelineno-18-12">12</a></span></pre></div></td><td class="code"><div><pre><span></span><code><span id="__span-18-1"><a id="__codelineno-18-1" name="__codelineno-18-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">get_weather</span><span class="p">(</span><span class="n">city</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
-</span><span id="__span-18-2"><a id="__codelineno-18-2" name="__codelineno-18-2"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Get current weather for a city.&quot;&quot;&quot;</span>
-</span><span id="__span-18-3"><a id="__codelineno-18-3" name="__codelineno-18-3"></a>    <span class="k">return</span> <span class="n">httpx</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;https://wttr.in/</span><span class="si">{</span><span class="n">city</span><span class="si">}</span><span class="s2">?format=3&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">text</span>
-</span><span id="__span-18-4"><a id="__codelineno-18-4" name="__codelineno-18-4"></a>
-</span><span id="__span-18-5"><a id="__codelineno-18-5" name="__codelineno-18-5"></a><span class="k">class</span><span class="w"> </span><span class="nc">WeatherAssistant</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">):</span>
-</span><span id="__span-18-6"><a id="__codelineno-18-6" name="__codelineno-18-6"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Checks real-time weather using external APIs.&quot;&quot;&quot;</span>
+<span class="normal"><a href="#__codelineno-18-12">12</a></span>
+<span class="normal"><a href="#__codelineno-18-13">13</a></span>
+<span class="normal"><a href="#__codelineno-18-14">14</a></span>
+<span class="normal"><a href="#__codelineno-18-15">15</a></span>
+<span class="normal"><a href="#__codelineno-18-16">16</a></span></pre></div></td><td class="code"><div><pre><span></span><code><span id="__span-18-1"><a id="__codelineno-18-1" name="__codelineno-18-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
+</span><span id="__span-18-2"><a id="__codelineno-18-2" name="__codelineno-18-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">nn</span>
+</span><span id="__span-18-3"><a id="__codelineno-18-3" name="__codelineno-18-3"></a>
+</span><span id="__span-18-4"><a id="__codelineno-18-4" name="__codelineno-18-4"></a><span class="nd">@mf</span><span class="o">.</span><span class="n">tool_config</span><span class="p">(</span><span class="n">return_direct</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>  <span class="c1"># (2)!</span>
+</span><span id="__span-18-5"><a id="__codelineno-18-5" name="__codelineno-18-5"></a><span class="k">class</span><span class="w"> </span><span class="nc">SentimentClassifier</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">):</span>
+</span><span id="__span-18-6"><a id="__codelineno-18-6" name="__codelineno-18-6"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Classify the sentiment of a given text.&quot;&quot;&quot;</span>  <span class="c1"># (1)!</span>
 </span><span id="__span-18-7"><a id="__codelineno-18-7" name="__codelineno-18-7"></a>
 </span><span id="__span-18-8"><a id="__codelineno-18-8" name="__codelineno-18-8"></a>    <span class="n">model</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">chat_completion</span><span class="p">(</span><span class="s2">&quot;openai/gpt-4.1-mini&quot;</span><span class="p">)</span>
-</span><span id="__span-18-9"><a id="__codelineno-18-9" name="__codelineno-18-9"></a>    <span class="n">tools</span> <span class="o">=</span> <span class="p">[</span><span class="n">get_weather</span><span class="p">]</span>
+</span><span id="__span-18-9"><a id="__codelineno-18-9" name="__codelineno-18-9"></a>    <span class="n">signature</span> <span class="o">=</span> <span class="s2">&quot;sentence: str -&gt; sentiment: str, confidence: float&quot;</span>
 </span><span id="__span-18-10"><a id="__codelineno-18-10" name="__codelineno-18-10"></a>
-</span><span id="__span-18-11"><a id="__codelineno-18-11" name="__codelineno-18-11"></a><span class="n">assistant</span> <span class="o">=</span> <span class="n">WeatherAssistant</span><span class="p">()</span>
-</span><span id="__span-18-12"><a id="__codelineno-18-12" name="__codelineno-18-12"></a><span class="n">assistant</span><span class="p">(</span><span class="s2">&quot;What&#39;s the weather like in Tokyo?&quot;</span><span class="p">)</span>
+</span><span id="__span-18-11"><a id="__codelineno-18-11" name="__codelineno-18-11"></a><span class="k">class</span><span class="w"> </span><span class="nc">Orchestrator</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">):</span>
+</span><span id="__span-18-12"><a id="__codelineno-18-12" name="__codelineno-18-12"></a>    <span class="n">model</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">chat_completion</span><span class="p">(</span><span class="s2">&quot;openai/gpt-4.1-mini&quot;</span><span class="p">)</span>
+</span><span id="__span-18-13"><a id="__codelineno-18-13" name="__codelineno-18-13"></a>    <span class="n">tools</span> <span class="o">=</span> <span class="p">[</span><span class="n">SentimentClassifier</span><span class="p">]</span>
+</span><span id="__span-18-14"><a id="__codelineno-18-14" name="__codelineno-18-14"></a>
+</span><span id="__span-18-15"><a id="__codelineno-18-15" name="__codelineno-18-15"></a><span class="n">orchestrator</span> <span class="o">=</span> <span class="n">Orchestrator</span><span class="p">()</span>
+</span><span id="__span-18-16"><a id="__codelineno-18-16" name="__codelineno-18-16"></a><span class="n">orchestrator</span><span class="p">(</span><span class="s2">&quot;Classify: &#39;This product is terrible&#39;&quot;</span><span class="p">)</span>
 </span></code></pre></div></td></tr></table></div>
+<ol>
+<li>When an agent is used as a tool, the docstring becomes its <strong>description</strong> — this is what the parent agent sees when deciding which tool to call.</li>
+<li><code>return_direct=True</code> means the Orchestrator returns the list of tool calls and their results directly, instead of passing them back to the model for a final response.</li>
+</ol>
 </div>
 <div class="tabbed-block">
-<p><code>vars</code> inject runtime context into the agent's Jinja2 <strong>templates</strong> and into tools via <code>inject_vars</code>. The model never sees injected vars directly — they flow through the system behind the scenes.</p>
+<p>Bind inputs and outputs to fields on a shared <code>Message</code> — the preferred approach inside pipelines:</p>
 <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-19-1"> 1</a></span>
 <span class="normal"><a href="#__codelineno-19-2"> 2</a></span>
 <span class="normal"><a href="#__codelineno-19-3"> 3</a></span>
@@ -4679,25 +4682,30 @@ msgFlux&#x27;s module system mirrors `torch.nn`. Every component inherits from `
 <span class="normal"><a href="#__codelineno-19-11">11</a></span>
 <span class="normal"><a href="#__codelineno-19-12">12</a></span>
 <span class="normal"><a href="#__codelineno-19-13">13</a></span>
-<span class="normal"><a href="#__codelineno-19-14">14</a></span></pre></div></td><td class="code"><div><pre><span></span><code><span id="__span-19-1"><a id="__codelineno-19-1" name="__codelineno-19-1"></a><span class="nd">@mf</span><span class="o">.</span><span class="n">tool_config</span><span class="p">(</span><span class="n">inject_vars</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;customer_id&quot;</span><span class="p">])</span>
-</span><span id="__span-19-2"><a id="__codelineno-19-2" name="__codelineno-19-2"></a><span class="k">def</span><span class="w"> </span><span class="nf">get_balance</span><span class="p">(</span><span class="n">customer_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
-</span><span id="__span-19-3"><a id="__codelineno-19-3" name="__codelineno-19-3"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Look up the customer&#39;s current balance.&quot;&quot;&quot;</span>
-</span><span id="__span-19-4"><a id="__codelineno-19-4" name="__codelineno-19-4"></a>    <span class="k">return</span> <span class="n">db</span><span class="o">.</span><span class="n">query</span><span class="p">(</span><span class="n">customer_id</span><span class="p">)</span>
-</span><span id="__span-19-5"><a id="__codelineno-19-5" name="__codelineno-19-5"></a>
-</span><span id="__span-19-6"><a id="__codelineno-19-6" name="__codelineno-19-6"></a><span class="k">class</span><span class="w"> </span><span class="nc">BankAgent</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">):</span>
-</span><span id="__span-19-7"><a id="__codelineno-19-7" name="__codelineno-19-7"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Banking assistant that helps customers with their accounts.&quot;&quot;&quot;</span>
-</span><span id="__span-19-8"><a id="__codelineno-19-8" name="__codelineno-19-8"></a>
-</span><span id="__span-19-9"><a id="__codelineno-19-9" name="__codelineno-19-9"></a>    <span class="n">model</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">chat_completion</span><span class="p">(</span><span class="s2">&quot;openai/gpt-4.1-mini&quot;</span><span class="p">)</span>
-</span><span id="__span-19-10"><a id="__codelineno-19-10" name="__codelineno-19-10"></a>    <span class="n">instructions</span> <span class="o">=</span> <span class="s2">&quot;You are helping customer {{customer_name}}.&quot;</span>
-</span><span id="__span-19-11"><a id="__codelineno-19-11" name="__codelineno-19-11"></a>    <span class="n">tools</span> <span class="o">=</span> <span class="p">[</span><span class="n">get_balance</span><span class="p">]</span>
-</span><span id="__span-19-12"><a id="__codelineno-19-12" name="__codelineno-19-12"></a>
-</span><span id="__span-19-13"><a id="__codelineno-19-13" name="__codelineno-19-13"></a><span class="n">agent</span> <span class="o">=</span> <span class="n">BankAgent</span><span class="p">()</span>
-</span><span id="__span-19-14"><a id="__codelineno-19-14" name="__codelineno-19-14"></a><span class="n">agent</span><span class="p">(</span><span class="s2">&quot;What&#39;s my balance?&quot;</span><span class="p">,</span> <span class="nb">vars</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;customer_name&quot;</span><span class="p">:</span> <span class="s2">&quot;Alice&quot;</span><span class="p">,</span> <span class="s2">&quot;customer_id&quot;</span><span class="p">:</span> <span class="s2">&quot;C-1234&quot;</span><span class="p">})</span>
+<span class="normal"><a href="#__codelineno-19-14">14</a></span>
+<span class="normal"><a href="#__codelineno-19-15">15</a></span>
+<span class="normal"><a href="#__codelineno-19-16">16</a></span>
+<span class="normal"><a href="#__codelineno-19-17">17</a></span></pre></div></td><td class="code"><div><pre><span></span><code><span id="__span-19-1"><a id="__codelineno-19-1" name="__codelineno-19-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
+</span><span id="__span-19-2"><a id="__codelineno-19-2" name="__codelineno-19-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">nn</span>
+</span><span id="__span-19-3"><a id="__codelineno-19-3" name="__codelineno-19-3"></a>
+</span><span id="__span-19-4"><a id="__codelineno-19-4" name="__codelineno-19-4"></a><span class="k">class</span><span class="w"> </span><span class="nc">SentimentAnalyzer</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">):</span>
+</span><span id="__span-19-5"><a id="__codelineno-19-5" name="__codelineno-19-5"></a>    <span class="n">model</span>         <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">chat_completion</span><span class="p">(</span><span class="s2">&quot;openai/gpt-4.1-mini&quot;</span><span class="p">)</span>
+</span><span id="__span-19-6"><a id="__codelineno-19-6" name="__codelineno-19-6"></a>    <span class="n">signature</span>     <span class="o">=</span> <span class="s2">&quot;text -&gt; sentiment: str, confidence: float, reasoning: str&quot;</span>
+</span><span id="__span-19-7"><a id="__codelineno-19-7" name="__codelineno-19-7"></a>    <span class="n">message_fields</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;task_inputs&quot;</span><span class="p">:</span> <span class="s2">&quot;review&quot;</span><span class="p">}</span>
+</span><span id="__span-19-8"><a id="__codelineno-19-8" name="__codelineno-19-8"></a>    <span class="n">response_mode</span>  <span class="o">=</span> <span class="s2">&quot;sentiment&quot;</span>
+</span><span id="__span-19-9"><a id="__codelineno-19-9" name="__codelineno-19-9"></a>
+</span><span id="__span-19-10"><a id="__codelineno-19-10" name="__codelineno-19-10"></a><span class="n">analyzer</span> <span class="o">=</span> <span class="n">SentimentAnalyzer</span><span class="p">()</span>
+</span><span id="__span-19-11"><a id="__codelineno-19-11" name="__codelineno-19-11"></a>
+</span><span id="__span-19-12"><a id="__codelineno-19-12" name="__codelineno-19-12"></a><span class="n">msg</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Message</span><span class="p">()</span>
+</span><span id="__span-19-13"><a id="__codelineno-19-13" name="__codelineno-19-13"></a><span class="n">msg</span><span class="o">.</span><span class="n">review</span> <span class="o">=</span> <span class="s2">&quot;I loved the movie, but the ending was disappointing.&quot;</span>
+</span><span id="__span-19-14"><a id="__codelineno-19-14" name="__codelineno-19-14"></a><span class="n">analyzer</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+</span><span id="__span-19-15"><a id="__codelineno-19-15" name="__codelineno-19-15"></a>
+</span><span id="__span-19-16"><a id="__codelineno-19-16" name="__codelineno-19-16"></a><span class="nb">print</span><span class="p">(</span><span class="n">msg</span><span class="o">.</span><span class="n">sentiment</span><span class="p">)</span>
+</span><span id="__span-19-17"><a id="__codelineno-19-17" name="__codelineno-19-17"></a><span class="nb">print</span><span class="p">(</span><span class="n">msg</span><span class="o">.</span><span class="n">sentiment</span><span class="o">.</span><span class="n">confidence</span><span class="p">)</span>
 </span></code></pre></div></td></tr></table></div>
-<p><code>customer_name</code> renders into the instructions template. <code>customer_id</code> is injected directly into <code>get_balance</code> — invisible to the model, but available to the tool.</p>
+<p>The agent reads from <code>msg.review</code> and writes to <code>msg.sentiment</code> — the caller never sees internal field names. This makes modules easy to compose and reorder.</p>
 </div>
 <div class="tabbed-block">
-<p>An agent can serve as a tool for another agent. Decorate with <code>@tool_config</code> and pass the <strong>class</strong> to <code>tools</code>:</p>
 <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-20-1"> 1</a></span>
 <span class="normal"><a href="#__codelineno-20-2"> 2</a></span>
 <span class="normal"><a href="#__codelineno-20-3"> 3</a></span>
@@ -4707,33 +4715,32 @@ msgFlux&#x27;s module system mirrors `torch.nn`. Every component inherits from `
 <span class="normal"><a href="#__codelineno-20-7"> 7</a></span>
 <span class="normal"><a href="#__codelineno-20-8"> 8</a></span>
 <span class="normal"><a href="#__codelineno-20-9"> 9</a></span>
-<span class="normal"><a href="#__codelineno-20-10">10</a></span>
-<span class="normal"><a href="#__codelineno-20-11">11</a></span>
-<span class="normal"><a href="#__codelineno-20-12">12</a></span>
-<span class="normal"><a href="#__codelineno-20-13">13</a></span>
-<span class="normal"><a href="#__codelineno-20-14">14</a></span>
-<span class="normal"><a href="#__codelineno-20-15">15</a></span></pre></div></td><td class="code"><div><pre><span></span><code><span id="__span-20-1"><a id="__codelineno-20-1" name="__codelineno-20-1"></a><span class="nd">@mf</span><span class="o">.</span><span class="n">tool_config</span><span class="p">(</span><span class="n">return_direct</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-</span><span id="__span-20-2"><a id="__codelineno-20-2" name="__codelineno-20-2"></a><span class="k">class</span><span class="w"> </span><span class="nc">SentimentClassifier</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">):</span>
-</span><span id="__span-20-3"><a id="__codelineno-20-3" name="__codelineno-20-3"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Classify the sentiment of a given text.&quot;&quot;&quot;</span>
+<span class="normal"><a href="#__codelineno-20-10">10</a></span></pre></div></td><td class="code"><div><pre><span></span><code><span id="__span-20-1"><a id="__codelineno-20-1" name="__codelineno-20-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
+</span><span id="__span-20-2"><a id="__codelineno-20-2" name="__codelineno-20-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">nn</span>
+</span><span id="__span-20-3"><a id="__codelineno-20-3" name="__codelineno-20-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">msgflux.generation.reasoning</span><span class="w"> </span><span class="kn">import</span> <span class="n">ChainOfThought</span>
 </span><span id="__span-20-4"><a id="__codelineno-20-4" name="__codelineno-20-4"></a>
-</span><span id="__span-20-5"><a id="__codelineno-20-5" name="__codelineno-20-5"></a>    <span class="n">model</span> <span class="o">=</span> <span class="n">model</span>
-</span><span id="__span-20-6"><a id="__codelineno-20-6" name="__codelineno-20-6"></a>    <span class="n">signature</span> <span class="o">=</span> <span class="s2">&quot;sentence: str -&gt; sentiment: str, confidence: float&quot;</span>
-</span><span id="__span-20-7"><a id="__codelineno-20-7" name="__codelineno-20-7"></a>
-</span><span id="__span-20-8"><a id="__codelineno-20-8" name="__codelineno-20-8"></a><span class="k">class</span><span class="w"> </span><span class="nc">Orchestrator</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">):</span>
-</span><span id="__span-20-9"><a id="__codelineno-20-9" name="__codelineno-20-9"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Routes tasks to specialized sub-agents.&quot;&quot;&quot;</span>
-</span><span id="__span-20-10"><a id="__codelineno-20-10" name="__codelineno-20-10"></a>
-</span><span id="__span-20-11"><a id="__codelineno-20-11" name="__codelineno-20-11"></a>    <span class="n">model</span> <span class="o">=</span> <span class="n">model</span>
-</span><span id="__span-20-12"><a id="__codelineno-20-12" name="__codelineno-20-12"></a>    <span class="n">tools</span> <span class="o">=</span> <span class="p">[</span><span class="n">SentimentClassifier</span><span class="p">]</span>
-</span><span id="__span-20-13"><a id="__codelineno-20-13" name="__codelineno-20-13"></a>
-</span><span id="__span-20-14"><a id="__codelineno-20-14" name="__codelineno-20-14"></a><span class="n">orchestrator</span> <span class="o">=</span> <span class="n">Orchestrator</span><span class="p">()</span>
-</span><span id="__span-20-15"><a id="__codelineno-20-15" name="__codelineno-20-15"></a><span class="n">orchestrator</span><span class="p">(</span><span class="s2">&quot;Classify: &#39;This product is terrible&#39;&quot;</span><span class="p">)</span>
+</span><span id="__span-20-5"><a id="__codelineno-20-5" name="__codelineno-20-5"></a><span class="k">class</span><span class="w"> </span><span class="nc">MathSolver</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">):</span>
+</span><span id="__span-20-6"><a id="__codelineno-20-6" name="__codelineno-20-6"></a>    <span class="n">model</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">chat_completion</span><span class="p">(</span><span class="s2">&quot;openai/gpt-4.1-mini&quot;</span><span class="p">)</span>
+</span><span id="__span-20-7"><a id="__codelineno-20-7" name="__codelineno-20-7"></a>    <span class="n">generation_schema</span> <span class="o">=</span> <span class="n">ChainOfThought</span>
+</span><span id="__span-20-8"><a id="__codelineno-20-8" name="__codelineno-20-8"></a>
+</span><span id="__span-20-9"><a id="__codelineno-20-9" name="__codelineno-20-9"></a><span class="n">solver</span> <span class="o">=</span> <span class="n">MathSolver</span><span class="p">()</span>
+</span><span id="__span-20-10"><a id="__codelineno-20-10" name="__codelineno-20-10"></a><span class="n">result</span> <span class="o">=</span> <span class="n">solver</span><span class="p">(</span><span class="s2">&quot;Two dice are tossed. What is the probability that the sum equals two?&quot;</span><span class="p">)</span>
 </span></code></pre></div></td></tr></table></div>
 <p><strong>Possible Output:</strong>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-21-1"><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a>{&#39;sentiment&#39;: &#39;negative&#39;, &#39;confidence&#39;: 0.95}
+<div class="language-text highlight"><pre><span></span><code><span id="__span-21-1"><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a>{&#39;reasoning&#39;: &#39;Each die has 6 faces → 36 outcomes. Only (1,1) sums to 2 → P = 1/36.&#39;, &#39;final_answer&#39;: &#39;1/36 ≈ 0.0278&#39;}
 </span></code></pre></div></p>
 </div>
+</div>
+</div>
+</div>
+<hr />
+<h2 id="modules-compose-ai-systems-like-pytorch"><strong>Modules</strong> — compose AI systems like PyTorch.</h2>
+<p>msgFlux's module system mirrors <code>torch.nn</code>. Every component inherits from <code>nn.Module</code>, supports <code>forward()</code> / <code>aforward()</code> for sync and async, automatic submodule registration via <code>__setattr__</code>, parameter management, and built-in telemetry. Compose multiple modules to create a <strong>program</strong> — a self-contained AI system where each piece has a clear responsibility.</p>
+<div class="admonition info">
+<p class="admonition-title">Compose modules into programs</p>
+<div class="tabbed-set tabbed-alternate" data-tabs="5:3"><input checked="checked" id="__tabbed_5_1" name="__tabbed_5" type="radio" /><input id="__tabbed_5_2" name="__tabbed_5" type="radio" /><input id="__tabbed_5_3" name="__tabbed_5" type="radio" /><div class="tabbed-labels"><label for="__tabbed_5_1">Pipeline</label><label for="__tabbed_5_2">Router</label><label for="__tabbed_5_3">Multimodal</label></div>
+<div class="tabbed-content">
 <div class="tabbed-block">
-<p>Bind inputs and outputs to fields on a shared <code>Message</code> — the preferred approach inside pipelines:</p>
 <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-22-1"> 1</a></span>
 <span class="normal"><a href="#__codelineno-22-2"> 2</a></span>
 <span class="normal"><a href="#__codelineno-22-3"> 3</a></span>
@@ -4749,24 +4756,43 @@ msgFlux&#x27;s module system mirrors `torch.nn`. Every component inherits from `
 <span class="normal"><a href="#__codelineno-22-13">13</a></span>
 <span class="normal"><a href="#__codelineno-22-14">14</a></span>
 <span class="normal"><a href="#__codelineno-22-15">15</a></span>
-<span class="normal"><a href="#__codelineno-22-16">16</a></span></pre></div></td><td class="code"><div><pre><span></span><code><span id="__span-22-1"><a id="__codelineno-22-1" name="__codelineno-22-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">SentimentAnalyzer</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">):</span>
-</span><span id="__span-22-2"><a id="__codelineno-22-2" name="__codelineno-22-2"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Analyzes the sentiment of a given text.&quot;&quot;&quot;</span>
+<span class="normal"><a href="#__codelineno-22-16">16</a></span>
+<span class="normal"><a href="#__codelineno-22-17">17</a></span>
+<span class="normal"><a href="#__codelineno-22-18">18</a></span>
+<span class="normal"><a href="#__codelineno-22-19">19</a></span>
+<span class="normal"><a href="#__codelineno-22-20">20</a></span>
+<span class="normal"><a href="#__codelineno-22-21">21</a></span>
+<span class="normal"><a href="#__codelineno-22-22">22</a></span>
+<span class="normal"><a href="#__codelineno-22-23">23</a></span>
+<span class="normal"><a href="#__codelineno-22-24">24</a></span>
+<span class="normal"><a href="#__codelineno-22-25">25</a></span>
+<span class="normal"><a href="#__codelineno-22-26">26</a></span></pre></div></td><td class="code"><div><pre><span></span><code><span id="__span-22-1"><a id="__codelineno-22-1" name="__codelineno-22-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
+</span><span id="__span-22-2"><a id="__codelineno-22-2" name="__codelineno-22-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">nn</span>
 </span><span id="__span-22-3"><a id="__codelineno-22-3" name="__codelineno-22-3"></a>
-</span><span id="__span-22-4"><a id="__codelineno-22-4" name="__codelineno-22-4"></a>    <span class="n">model</span>         <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">chat_completion</span><span class="p">(</span><span class="s2">&quot;openai/gpt-4.1-mini&quot;</span><span class="p">)</span>
-</span><span id="__span-22-5"><a id="__codelineno-22-5" name="__codelineno-22-5"></a>    <span class="n">signature</span>     <span class="o">=</span> <span class="s2">&quot;text -&gt; sentiment: str, confidence: float, reasoning: str&quot;</span>
-</span><span id="__span-22-6"><a id="__codelineno-22-6" name="__codelineno-22-6"></a>    <span class="n">message_fields</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;task_inputs&quot;</span><span class="p">:</span> <span class="s2">&quot;review&quot;</span><span class="p">}</span>
-</span><span id="__span-22-7"><a id="__codelineno-22-7" name="__codelineno-22-7"></a>    <span class="n">response_mode</span>  <span class="o">=</span> <span class="s2">&quot;sentiment&quot;</span>
-</span><span id="__span-22-8"><a id="__codelineno-22-8" name="__codelineno-22-8"></a>
-</span><span id="__span-22-9"><a id="__codelineno-22-9" name="__codelineno-22-9"></a><span class="n">analyzer</span> <span class="o">=</span> <span class="n">SentimentAnalyzer</span><span class="p">()</span>
-</span><span id="__span-22-10"><a id="__codelineno-22-10" name="__codelineno-22-10"></a>
-</span><span id="__span-22-11"><a id="__codelineno-22-11" name="__codelineno-22-11"></a><span class="n">msg</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Message</span><span class="p">()</span>
-</span><span id="__span-22-12"><a id="__codelineno-22-12" name="__codelineno-22-12"></a><span class="n">msg</span><span class="o">.</span><span class="n">review</span> <span class="o">=</span> <span class="s2">&quot;I loved the movie, but the ending was disappointing.&quot;</span>
-</span><span id="__span-22-13"><a id="__codelineno-22-13" name="__codelineno-22-13"></a><span class="n">analyzer</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
-</span><span id="__span-22-14"><a id="__codelineno-22-14" name="__codelineno-22-14"></a>
-</span><span id="__span-22-15"><a id="__codelineno-22-15" name="__codelineno-22-15"></a><span class="nb">print</span><span class="p">(</span><span class="n">msg</span><span class="o">.</span><span class="n">sentiment</span><span class="p">)</span>
-</span><span id="__span-22-16"><a id="__codelineno-22-16" name="__codelineno-22-16"></a><span class="nb">print</span><span class="p">(</span><span class="n">msg</span><span class="o">.</span><span class="n">sentiment</span><span class="o">.</span><span class="n">confidence</span><span class="p">)</span>
+</span><span id="__span-22-4"><a id="__codelineno-22-4" name="__codelineno-22-4"></a><span class="n">model</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">chat_completion</span><span class="p">(</span><span class="s2">&quot;openai/gpt-4.1-mini&quot;</span><span class="p">)</span>
+</span><span id="__span-22-5"><a id="__codelineno-22-5" name="__codelineno-22-5"></a>
+</span><span id="__span-22-6"><a id="__codelineno-22-6" name="__codelineno-22-6"></a><span class="k">class</span><span class="w"> </span><span class="nc">ResearchPipeline</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+</span><span id="__span-22-7"><a id="__codelineno-22-7" name="__codelineno-22-7"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+</span><span id="__span-22-8"><a id="__codelineno-22-8" name="__codelineno-22-8"></a>        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+</span><span id="__span-22-9"><a id="__codelineno-22-9" name="__codelineno-22-9"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">researcher</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">(</span>
+</span><span id="__span-22-10"><a id="__codelineno-22-10" name="__codelineno-22-10"></a>            <span class="n">name</span><span class="o">=</span><span class="s2">&quot;researcher&quot;</span><span class="p">,</span>
+</span><span id="__span-22-11"><a id="__codelineno-22-11" name="__codelineno-22-11"></a>            <span class="n">model</span><span class="o">=</span><span class="n">model</span><span class="p">,</span>
+</span><span id="__span-22-12"><a id="__codelineno-22-12" name="__codelineno-22-12"></a>            <span class="n">instructions</span><span class="o">=</span><span class="s2">&quot;Research the given topic thoroughly.&quot;</span><span class="p">,</span>
+</span><span id="__span-22-13"><a id="__codelineno-22-13" name="__codelineno-22-13"></a>        <span class="p">)</span>
+</span><span id="__span-22-14"><a id="__codelineno-22-14" name="__codelineno-22-14"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">writer</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">(</span>
+</span><span id="__span-22-15"><a id="__codelineno-22-15" name="__codelineno-22-15"></a>            <span class="n">name</span><span class="o">=</span><span class="s2">&quot;writer&quot;</span><span class="p">,</span>
+</span><span id="__span-22-16"><a id="__codelineno-22-16" name="__codelineno-22-16"></a>            <span class="n">model</span><span class="o">=</span><span class="n">model</span><span class="p">,</span>
+</span><span id="__span-22-17"><a id="__codelineno-22-17" name="__codelineno-22-17"></a>            <span class="n">instructions</span><span class="o">=</span><span class="s2">&quot;Write a clear summary based on the research.&quot;</span><span class="p">,</span>
+</span><span id="__span-22-18"><a id="__codelineno-22-18" name="__codelineno-22-18"></a>        <span class="p">)</span>
+</span><span id="__span-22-19"><a id="__codelineno-22-19" name="__codelineno-22-19"></a>
+</span><span id="__span-22-20"><a id="__codelineno-22-20" name="__codelineno-22-20"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">topic</span><span class="p">):</span>
+</span><span id="__span-22-21"><a id="__codelineno-22-21" name="__codelineno-22-21"></a>        <span class="n">research</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">researcher</span><span class="p">(</span><span class="n">topic</span><span class="p">)</span>
+</span><span id="__span-22-22"><a id="__codelineno-22-22" name="__codelineno-22-22"></a>        <span class="n">summary</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">writer</span><span class="p">(</span><span class="n">research</span><span class="p">)</span>
+</span><span id="__span-22-23"><a id="__codelineno-22-23" name="__codelineno-22-23"></a>        <span class="k">return</span> <span class="n">summary</span>
+</span><span id="__span-22-24"><a id="__codelineno-22-24" name="__codelineno-22-24"></a>
+</span><span id="__span-22-25"><a id="__codelineno-22-25" name="__codelineno-22-25"></a><span class="n">pipeline</span> <span class="o">=</span> <span class="n">ResearchPipeline</span><span class="p">()</span>
+</span><span id="__span-22-26"><a id="__codelineno-22-26" name="__codelineno-22-26"></a><span class="n">pipeline</span><span class="p">(</span><span class="s2">&quot;How do transformers work?&quot;</span><span class="p">)</span>
 </span></code></pre></div></td></tr></table></div>
-<p>The agent reads from <code>msg.review</code> and writes to <code>msg.sentiment</code> — the caller never sees internal field names. This makes modules easy to compose and reorder.</p>
 </div>
 <div class="tabbed-block">
 <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-23-1"> 1</a></span>
@@ -4778,201 +4804,87 @@ msgFlux&#x27;s module system mirrors `torch.nn`. Every component inherits from `
 <span class="normal"><a href="#__codelineno-23-7"> 7</a></span>
 <span class="normal"><a href="#__codelineno-23-8"> 8</a></span>
 <span class="normal"><a href="#__codelineno-23-9"> 9</a></span>
-<span class="normal"><a href="#__codelineno-23-10">10</a></span></pre></div></td><td class="code"><div><pre><span></span><code><span id="__span-23-1"><a id="__codelineno-23-1" name="__codelineno-23-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">msgflux.generation.reasoning</span><span class="w"> </span><span class="kn">import</span> <span class="n">ChainOfThought</span>
-</span><span id="__span-23-2"><a id="__codelineno-23-2" name="__codelineno-23-2"></a>
-</span><span id="__span-23-3"><a id="__codelineno-23-3" name="__codelineno-23-3"></a><span class="k">class</span><span class="w"> </span><span class="nc">MathSolver</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">):</span>
-</span><span id="__span-23-4"><a id="__codelineno-23-4" name="__codelineno-23-4"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Solves math problems with step-by-step reasoning.&quot;&quot;&quot;</span>
-</span><span id="__span-23-5"><a id="__codelineno-23-5" name="__codelineno-23-5"></a>
-</span><span id="__span-23-6"><a id="__codelineno-23-6" name="__codelineno-23-6"></a>    <span class="n">model</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">chat_completion</span><span class="p">(</span><span class="s2">&quot;openai/gpt-4.1-mini&quot;</span><span class="p">)</span>
-</span><span id="__span-23-7"><a id="__codelineno-23-7" name="__codelineno-23-7"></a>    <span class="n">generation_schema</span> <span class="o">=</span> <span class="n">ChainOfThought</span>
-</span><span id="__span-23-8"><a id="__codelineno-23-8" name="__codelineno-23-8"></a>
-</span><span id="__span-23-9"><a id="__codelineno-23-9" name="__codelineno-23-9"></a><span class="n">solver</span> <span class="o">=</span> <span class="n">MathSolver</span><span class="p">()</span>
-</span><span id="__span-23-10"><a id="__codelineno-23-10" name="__codelineno-23-10"></a><span class="n">result</span> <span class="o">=</span> <span class="n">solver</span><span class="p">(</span><span class="s2">&quot;Two dice are tossed. What is the probability that the sum equals two?&quot;</span><span class="p">)</span>
-</span></code></pre></div></td></tr></table></div>
-<p><strong>Possible Output:</strong>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-24-1"><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a>{&#39;reasoning&#39;: &#39;Each die has 6 faces → 36 outcomes. Only (1,1) sums to 2 → P = 1/36.&#39;, &#39;final_answer&#39;: &#39;1/36 ≈ 0.0278&#39;}
-</span></code></pre></div></p>
-</div>
-<div class="tabbed-block">
-<div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-25-1"> 1</a></span>
-<span class="normal"><a href="#__codelineno-25-2"> 2</a></span>
-<span class="normal"><a href="#__codelineno-25-3"> 3</a></span>
-<span class="normal"><a href="#__codelineno-25-4"> 4</a></span>
-<span class="normal"><a href="#__codelineno-25-5"> 5</a></span>
-<span class="normal"><a href="#__codelineno-25-6"> 6</a></span>
-<span class="normal"><a href="#__codelineno-25-7"> 7</a></span>
-<span class="normal"><a href="#__codelineno-25-8"> 8</a></span>
-<span class="normal"><a href="#__codelineno-25-9"> 9</a></span>
-<span class="normal"><a href="#__codelineno-25-10">10</a></span>
-<span class="normal"><a href="#__codelineno-25-11">11</a></span></pre></div></td><td class="code"><div><pre><span></span><code><span id="__span-25-1"><a id="__codelineno-25-1" name="__codelineno-25-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">msgflux.generation.reasoning</span><span class="w"> </span><span class="kn">import</span> <span class="n">ReAct</span>
-</span><span id="__span-25-2"><a id="__codelineno-25-2" name="__codelineno-25-2"></a>
-</span><span id="__span-25-3"><a id="__codelineno-25-3" name="__codelineno-25-3"></a><span class="k">class</span><span class="w"> </span><span class="nc">ResearchAgent</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">):</span>
-</span><span id="__span-25-4"><a id="__codelineno-25-4" name="__codelineno-25-4"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Reasons step-by-step and uses tools to find answers.&quot;&quot;&quot;</span>
-</span><span id="__span-25-5"><a id="__codelineno-25-5" name="__codelineno-25-5"></a>
-</span><span id="__span-25-6"><a id="__codelineno-25-6" name="__codelineno-25-6"></a>    <span class="n">model</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">chat_completion</span><span class="p">(</span><span class="s2">&quot;openai/gpt-4.1-mini&quot;</span><span class="p">)</span>
-</span><span id="__span-25-7"><a id="__codelineno-25-7" name="__codelineno-25-7"></a>    <span class="n">generation_schema</span> <span class="o">=</span> <span class="n">ReAct</span>
-</span><span id="__span-25-8"><a id="__codelineno-25-8" name="__codelineno-25-8"></a>    <span class="n">tools</span> <span class="o">=</span> <span class="p">[</span><span class="n">search_web</span><span class="p">,</span> <span class="n">calculator</span><span class="p">]</span>
-</span><span id="__span-25-9"><a id="__codelineno-25-9" name="__codelineno-25-9"></a>
-</span><span id="__span-25-10"><a id="__codelineno-25-10" name="__codelineno-25-10"></a><span class="n">agent</span> <span class="o">=</span> <span class="n">ResearchAgent</span><span class="p">()</span>
-</span><span id="__span-25-11"><a id="__codelineno-25-11" name="__codelineno-25-11"></a><span class="n">agent</span><span class="p">(</span><span class="s2">&quot;What is the mass of the Earth divided by the mass of the Moon?&quot;</span><span class="p">)</span>
-</span></code></pre></div></td></tr></table></div>
-<p>The agent iterates: <strong>think</strong> → <strong>act</strong> (call tools) → <strong>observe</strong> → repeat until <code>final_answer</code>.</p>
-</div>
-</div>
-</div>
-</div>
-<hr />
-<h2 id="modules-compose-ai-systems-like-pytorch"><strong>Modules</strong> — compose AI systems like PyTorch.</h2>
-<p>msgFlux's module system mirrors <code>torch.nn</code>. Every component inherits from <code>nn.Module</code>, supports <code>forward()</code> / <code>aforward()</code> for sync and async, automatic submodule registration via <code>__setattr__</code>, parameter management, and built-in telemetry. Compose multiple modules to create a <strong>program</strong> — a self-contained AI system where each piece has a clear responsibility.</p>
-<div class="admonition info">
-<p class="admonition-title">Compose modules into programs</p>
-<div class="tabbed-set tabbed-alternate" data-tabs="5:3"><input checked="checked" id="__tabbed_5_1" name="__tabbed_5" type="radio" /><input id="__tabbed_5_2" name="__tabbed_5" type="radio" /><input id="__tabbed_5_3" name="__tabbed_5" type="radio" /><div class="tabbed-labels"><label for="__tabbed_5_1">Pipeline</label><label for="__tabbed_5_2">Router</label><label for="__tabbed_5_3">Multimodal</label></div>
-<div class="tabbed-content">
-<div class="tabbed-block">
-<div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-26-1"> 1</a></span>
-<span class="normal"><a href="#__codelineno-26-2"> 2</a></span>
-<span class="normal"><a href="#__codelineno-26-3"> 3</a></span>
-<span class="normal"><a href="#__codelineno-26-4"> 4</a></span>
-<span class="normal"><a href="#__codelineno-26-5"> 5</a></span>
-<span class="normal"><a href="#__codelineno-26-6"> 6</a></span>
-<span class="normal"><a href="#__codelineno-26-7"> 7</a></span>
-<span class="normal"><a href="#__codelineno-26-8"> 8</a></span>
-<span class="normal"><a href="#__codelineno-26-9"> 9</a></span>
-<span class="normal"><a href="#__codelineno-26-10">10</a></span>
-<span class="normal"><a href="#__codelineno-26-11">11</a></span>
-<span class="normal"><a href="#__codelineno-26-12">12</a></span>
-<span class="normal"><a href="#__codelineno-26-13">13</a></span>
-<span class="normal"><a href="#__codelineno-26-14">14</a></span>
-<span class="normal"><a href="#__codelineno-26-15">15</a></span>
-<span class="normal"><a href="#__codelineno-26-16">16</a></span>
-<span class="normal"><a href="#__codelineno-26-17">17</a></span>
-<span class="normal"><a href="#__codelineno-26-18">18</a></span>
-<span class="normal"><a href="#__codelineno-26-19">19</a></span>
-<span class="normal"><a href="#__codelineno-26-20">20</a></span>
-<span class="normal"><a href="#__codelineno-26-21">21</a></span>
-<span class="normal"><a href="#__codelineno-26-22">22</a></span>
-<span class="normal"><a href="#__codelineno-26-23">23</a></span>
-<span class="normal"><a href="#__codelineno-26-24">24</a></span>
-<span class="normal"><a href="#__codelineno-26-25">25</a></span>
-<span class="normal"><a href="#__codelineno-26-26">26</a></span></pre></div></td><td class="code"><div><pre><span></span><code><span id="__span-26-1"><a id="__codelineno-26-1" name="__codelineno-26-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
-</span><span id="__span-26-2"><a id="__codelineno-26-2" name="__codelineno-26-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">nn</span>
-</span><span id="__span-26-3"><a id="__codelineno-26-3" name="__codelineno-26-3"></a>
-</span><span id="__span-26-4"><a id="__codelineno-26-4" name="__codelineno-26-4"></a><span class="n">model</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">chat_completion</span><span class="p">(</span><span class="s2">&quot;openai/gpt-4.1-mini&quot;</span><span class="p">)</span>
-</span><span id="__span-26-5"><a id="__codelineno-26-5" name="__codelineno-26-5"></a>
-</span><span id="__span-26-6"><a id="__codelineno-26-6" name="__codelineno-26-6"></a><span class="k">class</span><span class="w"> </span><span class="nc">ResearchPipeline</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
-</span><span id="__span-26-7"><a id="__codelineno-26-7" name="__codelineno-26-7"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-</span><span id="__span-26-8"><a id="__codelineno-26-8" name="__codelineno-26-8"></a>        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
-</span><span id="__span-26-9"><a id="__codelineno-26-9" name="__codelineno-26-9"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">researcher</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">(</span>
-</span><span id="__span-26-10"><a id="__codelineno-26-10" name="__codelineno-26-10"></a>            <span class="n">name</span><span class="o">=</span><span class="s2">&quot;researcher&quot;</span><span class="p">,</span>
-</span><span id="__span-26-11"><a id="__codelineno-26-11" name="__codelineno-26-11"></a>            <span class="n">model</span><span class="o">=</span><span class="n">model</span><span class="p">,</span>
-</span><span id="__span-26-12"><a id="__codelineno-26-12" name="__codelineno-26-12"></a>            <span class="n">instructions</span><span class="o">=</span><span class="s2">&quot;Research the given topic thoroughly.&quot;</span><span class="p">,</span>
-</span><span id="__span-26-13"><a id="__codelineno-26-13" name="__codelineno-26-13"></a>        <span class="p">)</span>
-</span><span id="__span-26-14"><a id="__codelineno-26-14" name="__codelineno-26-14"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">writer</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">(</span>
-</span><span id="__span-26-15"><a id="__codelineno-26-15" name="__codelineno-26-15"></a>            <span class="n">name</span><span class="o">=</span><span class="s2">&quot;writer&quot;</span><span class="p">,</span>
-</span><span id="__span-26-16"><a id="__codelineno-26-16" name="__codelineno-26-16"></a>            <span class="n">model</span><span class="o">=</span><span class="n">model</span><span class="p">,</span>
-</span><span id="__span-26-17"><a id="__codelineno-26-17" name="__codelineno-26-17"></a>            <span class="n">instructions</span><span class="o">=</span><span class="s2">&quot;Write a clear summary based on the research.&quot;</span><span class="p">,</span>
-</span><span id="__span-26-18"><a id="__codelineno-26-18" name="__codelineno-26-18"></a>        <span class="p">)</span>
-</span><span id="__span-26-19"><a id="__codelineno-26-19" name="__codelineno-26-19"></a>
-</span><span id="__span-26-20"><a id="__codelineno-26-20" name="__codelineno-26-20"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">topic</span><span class="p">):</span>
-</span><span id="__span-26-21"><a id="__codelineno-26-21" name="__codelineno-26-21"></a>        <span class="n">research</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">researcher</span><span class="p">(</span><span class="n">topic</span><span class="p">)</span>
-</span><span id="__span-26-22"><a id="__codelineno-26-22" name="__codelineno-26-22"></a>        <span class="n">summary</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">writer</span><span class="p">(</span><span class="n">research</span><span class="p">)</span>
-</span><span id="__span-26-23"><a id="__codelineno-26-23" name="__codelineno-26-23"></a>        <span class="k">return</span> <span class="n">summary</span>
-</span><span id="__span-26-24"><a id="__codelineno-26-24" name="__codelineno-26-24"></a>
-</span><span id="__span-26-25"><a id="__codelineno-26-25" name="__codelineno-26-25"></a><span class="n">pipeline</span> <span class="o">=</span> <span class="n">ResearchPipeline</span><span class="p">()</span>
-</span><span id="__span-26-26"><a id="__codelineno-26-26" name="__codelineno-26-26"></a><span class="n">pipeline</span><span class="p">(</span><span class="s2">&quot;How do transformers work?&quot;</span><span class="p">)</span>
-</span></code></pre></div></td></tr></table></div>
-</div>
-<div class="tabbed-block">
-<div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-27-1"> 1</a></span>
-<span class="normal"><a href="#__codelineno-27-2"> 2</a></span>
-<span class="normal"><a href="#__codelineno-27-3"> 3</a></span>
-<span class="normal"><a href="#__codelineno-27-4"> 4</a></span>
-<span class="normal"><a href="#__codelineno-27-5"> 5</a></span>
-<span class="normal"><a href="#__codelineno-27-6"> 6</a></span>
-<span class="normal"><a href="#__codelineno-27-7"> 7</a></span>
-<span class="normal"><a href="#__codelineno-27-8"> 8</a></span>
-<span class="normal"><a href="#__codelineno-27-9"> 9</a></span>
-<span class="normal"><a href="#__codelineno-27-10">10</a></span>
-<span class="normal"><a href="#__codelineno-27-11">11</a></span>
-<span class="normal"><a href="#__codelineno-27-12">12</a></span>
-<span class="normal"><a href="#__codelineno-27-13">13</a></span>
-<span class="normal"><a href="#__codelineno-27-14">14</a></span>
-<span class="normal"><a href="#__codelineno-27-15">15</a></span>
-<span class="normal"><a href="#__codelineno-27-16">16</a></span>
-<span class="normal"><a href="#__codelineno-27-17">17</a></span>
-<span class="normal"><a href="#__codelineno-27-18">18</a></span>
-<span class="normal"><a href="#__codelineno-27-19">19</a></span>
-<span class="normal"><a href="#__codelineno-27-20">20</a></span>
-<span class="normal"><a href="#__codelineno-27-21">21</a></span>
-<span class="normal"><a href="#__codelineno-27-22">22</a></span>
-<span class="normal"><a href="#__codelineno-27-23">23</a></span></pre></div></td><td class="code"><div><pre><span></span><code><span id="__span-27-1"><a id="__codelineno-27-1" name="__codelineno-27-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
-</span><span id="__span-27-2"><a id="__codelineno-27-2" name="__codelineno-27-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">nn</span>
-</span><span id="__span-27-3"><a id="__codelineno-27-3" name="__codelineno-27-3"></a>
-</span><span id="__span-27-4"><a id="__codelineno-27-4" name="__codelineno-27-4"></a><span class="k">class</span><span class="w"> </span><span class="nc">Router</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
-</span><span id="__span-27-5"><a id="__codelineno-27-5" name="__codelineno-27-5"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model</span><span class="p">):</span>
-</span><span id="__span-27-6"><a id="__codelineno-27-6" name="__codelineno-27-6"></a>        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
-</span><span id="__span-27-7"><a id="__codelineno-27-7" name="__codelineno-27-7"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">classifier</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">(</span>
-</span><span id="__span-27-8"><a id="__codelineno-27-8" name="__codelineno-27-8"></a>            <span class="n">name</span><span class="o">=</span><span class="s2">&quot;classifier&quot;</span><span class="p">,</span>
-</span><span id="__span-27-9"><a id="__codelineno-27-9" name="__codelineno-27-9"></a>            <span class="n">model</span><span class="o">=</span><span class="n">model</span><span class="p">,</span>
-</span><span id="__span-27-10"><a id="__codelineno-27-10" name="__codelineno-27-10"></a>            <span class="n">signature</span><span class="o">=</span><span class="s2">&quot;text -&gt; intent: Literal[&#39;billing&#39;, &#39;technical&#39;, &#39;general&#39;]&quot;</span><span class="p">,</span>
-</span><span id="__span-27-11"><a id="__codelineno-27-11" name="__codelineno-27-11"></a>        <span class="p">)</span>
-</span><span id="__span-27-12"><a id="__codelineno-27-12" name="__codelineno-27-12"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">agents</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">ModuleDict</span><span class="p">({</span>
-</span><span id="__span-27-13"><a id="__codelineno-27-13" name="__codelineno-27-13"></a>            <span class="s2">&quot;billing&quot;</span><span class="p">:</span> <span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;billing&quot;</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="n">model</span><span class="p">,</span> <span class="n">instructions</span><span class="o">=</span><span class="s2">&quot;Handle billing queries.&quot;</span><span class="p">),</span>
-</span><span id="__span-27-14"><a id="__codelineno-27-14" name="__codelineno-27-14"></a>            <span class="s2">&quot;technical&quot;</span><span class="p">:</span> <span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;technical&quot;</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="n">model</span><span class="p">,</span> <span class="n">instructions</span><span class="o">=</span><span class="s2">&quot;Handle technical support.&quot;</span><span class="p">),</span>
-</span><span id="__span-27-15"><a id="__codelineno-27-15" name="__codelineno-27-15"></a>            <span class="s2">&quot;general&quot;</span><span class="p">:</span> <span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;general&quot;</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="n">model</span><span class="p">,</span> <span class="n">instructions</span><span class="o">=</span><span class="s2">&quot;Handle general queries.&quot;</span><span class="p">),</span>
-</span><span id="__span-27-16"><a id="__codelineno-27-16" name="__codelineno-27-16"></a>        <span class="p">})</span>
-</span><span id="__span-27-17"><a id="__codelineno-27-17" name="__codelineno-27-17"></a>
-</span><span id="__span-27-18"><a id="__codelineno-27-18" name="__codelineno-27-18"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">message</span><span class="p">):</span>
-</span><span id="__span-27-19"><a id="__codelineno-27-19" name="__codelineno-27-19"></a>        <span class="n">result</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">classifier</span><span class="p">(</span><span class="n">message</span><span class="p">)</span>
-</span><span id="__span-27-20"><a id="__codelineno-27-20" name="__codelineno-27-20"></a>        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">agents</span><span class="p">[</span><span class="n">result</span><span class="p">[</span><span class="s2">&quot;intent&quot;</span><span class="p">]](</span><span class="n">message</span><span class="p">)</span>
-</span><span id="__span-27-21"><a id="__codelineno-27-21" name="__codelineno-27-21"></a>
-</span><span id="__span-27-22"><a id="__codelineno-27-22" name="__codelineno-27-22"></a><span class="n">router</span> <span class="o">=</span> <span class="n">Router</span><span class="p">(</span><span class="n">model</span><span class="p">)</span>
-</span><span id="__span-27-23"><a id="__codelineno-27-23" name="__codelineno-27-23"></a><span class="n">router</span><span class="p">(</span><span class="s2">&quot;I need to update my payment method&quot;</span><span class="p">)</span>
+<span class="normal"><a href="#__codelineno-23-10">10</a></span>
+<span class="normal"><a href="#__codelineno-23-11">11</a></span>
+<span class="normal"><a href="#__codelineno-23-12">12</a></span>
+<span class="normal"><a href="#__codelineno-23-13">13</a></span>
+<span class="normal"><a href="#__codelineno-23-14">14</a></span>
+<span class="normal"><a href="#__codelineno-23-15">15</a></span>
+<span class="normal"><a href="#__codelineno-23-16">16</a></span>
+<span class="normal"><a href="#__codelineno-23-17">17</a></span>
+<span class="normal"><a href="#__codelineno-23-18">18</a></span>
+<span class="normal"><a href="#__codelineno-23-19">19</a></span>
+<span class="normal"><a href="#__codelineno-23-20">20</a></span>
+<span class="normal"><a href="#__codelineno-23-21">21</a></span>
+<span class="normal"><a href="#__codelineno-23-22">22</a></span>
+<span class="normal"><a href="#__codelineno-23-23">23</a></span></pre></div></td><td class="code"><div><pre><span></span><code><span id="__span-23-1"><a id="__codelineno-23-1" name="__codelineno-23-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
+</span><span id="__span-23-2"><a id="__codelineno-23-2" name="__codelineno-23-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">nn</span>
+</span><span id="__span-23-3"><a id="__codelineno-23-3" name="__codelineno-23-3"></a>
+</span><span id="__span-23-4"><a id="__codelineno-23-4" name="__codelineno-23-4"></a><span class="k">class</span><span class="w"> </span><span class="nc">Router</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+</span><span id="__span-23-5"><a id="__codelineno-23-5" name="__codelineno-23-5"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model</span><span class="p">):</span>
+</span><span id="__span-23-6"><a id="__codelineno-23-6" name="__codelineno-23-6"></a>        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+</span><span id="__span-23-7"><a id="__codelineno-23-7" name="__codelineno-23-7"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">classifier</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">(</span>
+</span><span id="__span-23-8"><a id="__codelineno-23-8" name="__codelineno-23-8"></a>            <span class="n">name</span><span class="o">=</span><span class="s2">&quot;classifier&quot;</span><span class="p">,</span>
+</span><span id="__span-23-9"><a id="__codelineno-23-9" name="__codelineno-23-9"></a>            <span class="n">model</span><span class="o">=</span><span class="n">model</span><span class="p">,</span>
+</span><span id="__span-23-10"><a id="__codelineno-23-10" name="__codelineno-23-10"></a>            <span class="n">signature</span><span class="o">=</span><span class="s2">&quot;text -&gt; intent: Literal[&#39;billing&#39;, &#39;technical&#39;, &#39;general&#39;]&quot;</span><span class="p">,</span>
+</span><span id="__span-23-11"><a id="__codelineno-23-11" name="__codelineno-23-11"></a>        <span class="p">)</span>
+</span><span id="__span-23-12"><a id="__codelineno-23-12" name="__codelineno-23-12"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">agents</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">ModuleDict</span><span class="p">({</span>
+</span><span id="__span-23-13"><a id="__codelineno-23-13" name="__codelineno-23-13"></a>            <span class="s2">&quot;billing&quot;</span><span class="p">:</span> <span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;billing&quot;</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="n">model</span><span class="p">,</span> <span class="n">instructions</span><span class="o">=</span><span class="s2">&quot;Handle billing queries.&quot;</span><span class="p">),</span>
+</span><span id="__span-23-14"><a id="__codelineno-23-14" name="__codelineno-23-14"></a>            <span class="s2">&quot;technical&quot;</span><span class="p">:</span> <span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;technical&quot;</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="n">model</span><span class="p">,</span> <span class="n">instructions</span><span class="o">=</span><span class="s2">&quot;Handle technical support.&quot;</span><span class="p">),</span>
+</span><span id="__span-23-15"><a id="__codelineno-23-15" name="__codelineno-23-15"></a>            <span class="s2">&quot;general&quot;</span><span class="p">:</span> <span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;general&quot;</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="n">model</span><span class="p">,</span> <span class="n">instructions</span><span class="o">=</span><span class="s2">&quot;Handle general queries.&quot;</span><span class="p">),</span>
+</span><span id="__span-23-16"><a id="__codelineno-23-16" name="__codelineno-23-16"></a>        <span class="p">})</span>
+</span><span id="__span-23-17"><a id="__codelineno-23-17" name="__codelineno-23-17"></a>
+</span><span id="__span-23-18"><a id="__codelineno-23-18" name="__codelineno-23-18"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">message</span><span class="p">):</span>
+</span><span id="__span-23-19"><a id="__codelineno-23-19" name="__codelineno-23-19"></a>        <span class="n">result</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">classifier</span><span class="p">(</span><span class="n">message</span><span class="p">)</span>
+</span><span id="__span-23-20"><a id="__codelineno-23-20" name="__codelineno-23-20"></a>        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">agents</span><span class="p">[</span><span class="n">result</span><span class="p">[</span><span class="s2">&quot;intent&quot;</span><span class="p">]](</span><span class="n">message</span><span class="p">)</span>
+</span><span id="__span-23-21"><a id="__codelineno-23-21" name="__codelineno-23-21"></a>
+</span><span id="__span-23-22"><a id="__codelineno-23-22" name="__codelineno-23-22"></a><span class="n">router</span> <span class="o">=</span> <span class="n">Router</span><span class="p">(</span><span class="n">model</span><span class="p">)</span>
+</span><span id="__span-23-23"><a id="__codelineno-23-23" name="__codelineno-23-23"></a><span class="n">router</span><span class="p">(</span><span class="s2">&quot;I need to update my payment method&quot;</span><span class="p">)</span>
 </span></code></pre></div></td></tr></table></div>
 </div>
 <div class="tabbed-block">
 <p>Combine different modalities in a single pipeline:</p>
-<div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-28-1"> 1</a></span>
-<span class="normal"><a href="#__codelineno-28-2"> 2</a></span>
-<span class="normal"><a href="#__codelineno-28-3"> 3</a></span>
-<span class="normal"><a href="#__codelineno-28-4"> 4</a></span>
-<span class="normal"><a href="#__codelineno-28-5"> 5</a></span>
-<span class="normal"><a href="#__codelineno-28-6"> 6</a></span>
-<span class="normal"><a href="#__codelineno-28-7"> 7</a></span>
-<span class="normal"><a href="#__codelineno-28-8"> 8</a></span>
-<span class="normal"><a href="#__codelineno-28-9"> 9</a></span>
-<span class="normal"><a href="#__codelineno-28-10">10</a></span>
-<span class="normal"><a href="#__codelineno-28-11">11</a></span>
-<span class="normal"><a href="#__codelineno-28-12">12</a></span>
-<span class="normal"><a href="#__codelineno-28-13">13</a></span>
-<span class="normal"><a href="#__codelineno-28-14">14</a></span>
-<span class="normal"><a href="#__codelineno-28-15">15</a></span>
-<span class="normal"><a href="#__codelineno-28-16">16</a></span>
-<span class="normal"><a href="#__codelineno-28-17">17</a></span>
-<span class="normal"><a href="#__codelineno-28-18">18</a></span>
-<span class="normal"><a href="#__codelineno-28-19">19</a></span>
-<span class="normal"><a href="#__codelineno-28-20">20</a></span>
-<span class="normal"><a href="#__codelineno-28-21">21</a></span></pre></div></td><td class="code"><div><pre><span></span><code><span id="__span-28-1"><a id="__codelineno-28-1" name="__codelineno-28-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
-</span><span id="__span-28-2"><a id="__codelineno-28-2" name="__codelineno-28-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">nn</span>
-</span><span id="__span-28-3"><a id="__codelineno-28-3" name="__codelineno-28-3"></a>
-</span><span id="__span-28-4"><a id="__codelineno-28-4" name="__codelineno-28-4"></a><span class="k">class</span><span class="w"> </span><span class="nc">MeetingAssistant</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
-</span><span id="__span-28-5"><a id="__codelineno-28-5" name="__codelineno-28-5"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Transcribes audio and generates structured meeting notes.&quot;&quot;&quot;</span>
-</span><span id="__span-28-6"><a id="__codelineno-28-6" name="__codelineno-28-6"></a>
-</span><span id="__span-28-7"><a id="__codelineno-28-7" name="__codelineno-28-7"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-</span><span id="__span-28-8"><a id="__codelineno-28-8" name="__codelineno-28-8"></a>        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
-</span><span id="__span-28-9"><a id="__codelineno-28-9" name="__codelineno-28-9"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">transcriber</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Transcriber</span><span class="p">(</span>
-</span><span id="__span-28-10"><a id="__codelineno-28-10" name="__codelineno-28-10"></a>            <span class="n">name</span><span class="o">=</span><span class="s2">&quot;transcriber&quot;</span><span class="p">,</span>
-</span><span id="__span-28-11"><a id="__codelineno-28-11" name="__codelineno-28-11"></a>            <span class="n">model</span><span class="o">=</span><span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">speech_to_text</span><span class="p">(</span><span class="s2">&quot;openai/gpt-4o-mini-transcribe&quot;</span><span class="p">),</span>
-</span><span id="__span-28-12"><a id="__codelineno-28-12" name="__codelineno-28-12"></a>        <span class="p">)</span>
-</span><span id="__span-28-13"><a id="__codelineno-28-13" name="__codelineno-28-13"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">summarizer</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">(</span>
-</span><span id="__span-28-14"><a id="__codelineno-28-14" name="__codelineno-28-14"></a>            <span class="n">name</span><span class="o">=</span><span class="s2">&quot;summarizer&quot;</span><span class="p">,</span>
-</span><span id="__span-28-15"><a id="__codelineno-28-15" name="__codelineno-28-15"></a>            <span class="n">model</span><span class="o">=</span><span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">chat_completion</span><span class="p">(</span><span class="s2">&quot;openai/gpt-4.1-mini&quot;</span><span class="p">),</span>
-</span><span id="__span-28-16"><a id="__codelineno-28-16" name="__codelineno-28-16"></a>            <span class="n">instructions</span><span class="o">=</span><span class="s2">&quot;Generate structured meeting notes from the transcript.&quot;</span><span class="p">,</span>
-</span><span id="__span-28-17"><a id="__codelineno-28-17" name="__codelineno-28-17"></a>        <span class="p">)</span>
-</span><span id="__span-28-18"><a id="__codelineno-28-18" name="__codelineno-28-18"></a>
-</span><span id="__span-28-19"><a id="__codelineno-28-19" name="__codelineno-28-19"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">audio_path</span><span class="p">):</span>
-</span><span id="__span-28-20"><a id="__codelineno-28-20" name="__codelineno-28-20"></a>        <span class="n">transcript</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">transcriber</span><span class="p">(</span><span class="n">audio_path</span><span class="p">)</span>
-</span><span id="__span-28-21"><a id="__codelineno-28-21" name="__codelineno-28-21"></a>        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">summarizer</span><span class="p">(</span><span class="n">transcript</span><span class="p">)</span>
+<div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-24-1"> 1</a></span>
+<span class="normal"><a href="#__codelineno-24-2"> 2</a></span>
+<span class="normal"><a href="#__codelineno-24-3"> 3</a></span>
+<span class="normal"><a href="#__codelineno-24-4"> 4</a></span>
+<span class="normal"><a href="#__codelineno-24-5"> 5</a></span>
+<span class="normal"><a href="#__codelineno-24-6"> 6</a></span>
+<span class="normal"><a href="#__codelineno-24-7"> 7</a></span>
+<span class="normal"><a href="#__codelineno-24-8"> 8</a></span>
+<span class="normal"><a href="#__codelineno-24-9"> 9</a></span>
+<span class="normal"><a href="#__codelineno-24-10">10</a></span>
+<span class="normal"><a href="#__codelineno-24-11">11</a></span>
+<span class="normal"><a href="#__codelineno-24-12">12</a></span>
+<span class="normal"><a href="#__codelineno-24-13">13</a></span>
+<span class="normal"><a href="#__codelineno-24-14">14</a></span>
+<span class="normal"><a href="#__codelineno-24-15">15</a></span>
+<span class="normal"><a href="#__codelineno-24-16">16</a></span>
+<span class="normal"><a href="#__codelineno-24-17">17</a></span>
+<span class="normal"><a href="#__codelineno-24-18">18</a></span>
+<span class="normal"><a href="#__codelineno-24-19">19</a></span>
+<span class="normal"><a href="#__codelineno-24-20">20</a></span>
+<span class="normal"><a href="#__codelineno-24-21">21</a></span></pre></div></td><td class="code"><div><pre><span></span><code><span id="__span-24-1"><a id="__codelineno-24-1" name="__codelineno-24-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
+</span><span id="__span-24-2"><a id="__codelineno-24-2" name="__codelineno-24-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">nn</span>
+</span><span id="__span-24-3"><a id="__codelineno-24-3" name="__codelineno-24-3"></a>
+</span><span id="__span-24-4"><a id="__codelineno-24-4" name="__codelineno-24-4"></a><span class="k">class</span><span class="w"> </span><span class="nc">MeetingAssistant</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+</span><span id="__span-24-5"><a id="__codelineno-24-5" name="__codelineno-24-5"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Transcribes audio and generates structured meeting notes.&quot;&quot;&quot;</span>
+</span><span id="__span-24-6"><a id="__codelineno-24-6" name="__codelineno-24-6"></a>
+</span><span id="__span-24-7"><a id="__codelineno-24-7" name="__codelineno-24-7"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+</span><span id="__span-24-8"><a id="__codelineno-24-8" name="__codelineno-24-8"></a>        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+</span><span id="__span-24-9"><a id="__codelineno-24-9" name="__codelineno-24-9"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">transcriber</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Transcriber</span><span class="p">(</span>
+</span><span id="__span-24-10"><a id="__codelineno-24-10" name="__codelineno-24-10"></a>            <span class="n">name</span><span class="o">=</span><span class="s2">&quot;transcriber&quot;</span><span class="p">,</span>
+</span><span id="__span-24-11"><a id="__codelineno-24-11" name="__codelineno-24-11"></a>            <span class="n">model</span><span class="o">=</span><span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">speech_to_text</span><span class="p">(</span><span class="s2">&quot;openai/gpt-4o-mini-transcribe&quot;</span><span class="p">),</span>
+</span><span id="__span-24-12"><a id="__codelineno-24-12" name="__codelineno-24-12"></a>        <span class="p">)</span>
+</span><span id="__span-24-13"><a id="__codelineno-24-13" name="__codelineno-24-13"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">summarizer</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">(</span>
+</span><span id="__span-24-14"><a id="__codelineno-24-14" name="__codelineno-24-14"></a>            <span class="n">name</span><span class="o">=</span><span class="s2">&quot;summarizer&quot;</span><span class="p">,</span>
+</span><span id="__span-24-15"><a id="__codelineno-24-15" name="__codelineno-24-15"></a>            <span class="n">model</span><span class="o">=</span><span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">chat_completion</span><span class="p">(</span><span class="s2">&quot;openai/gpt-4.1-mini&quot;</span><span class="p">),</span>
+</span><span id="__span-24-16"><a id="__codelineno-24-16" name="__codelineno-24-16"></a>            <span class="n">instructions</span><span class="o">=</span><span class="s2">&quot;Generate structured meeting notes from the transcript.&quot;</span><span class="p">,</span>
+</span><span id="__span-24-17"><a id="__codelineno-24-17" name="__codelineno-24-17"></a>        <span class="p">)</span>
+</span><span id="__span-24-18"><a id="__codelineno-24-18" name="__codelineno-24-18"></a>
+</span><span id="__span-24-19"><a id="__codelineno-24-19" name="__codelineno-24-19"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">audio_path</span><span class="p">):</span>
+</span><span id="__span-24-20"><a id="__codelineno-24-20" name="__codelineno-24-20"></a>        <span class="n">transcript</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">transcriber</span><span class="p">(</span><span class="n">audio_path</span><span class="p">)</span>
+</span><span id="__span-24-21"><a id="__codelineno-24-21" name="__codelineno-24-21"></a>        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">summarizer</span><span class="p">(</span><span class="n">transcript</span><span class="p">)</span>
 </span></code></pre></div></td></tr></table></div>
 </div>
 </div>
@@ -4988,109 +4900,109 @@ msgFlux&#x27;s module system mirrors `torch.nn`. Every component inherits from `
 <p><code>Inline</code> is a lightweight DSL for declaring entire pipelines as a single expression. Sequential steps (<code>-&gt;</code>), parallel branches (<code>[a, b]</code>), conditionals (<code>{cond ? a, b}</code>), and loops (<code>@{cond}: a;</code>) — all in one readable string. Every module reads from and writes to a shared <code>dotdict</code> message. This is the <em>flux</em> — the dynamic flow that gives the library its name.</p>
 <div class="admonition info">
 <p class="admonition-title">Orchestrate agents with a single expression</p>
-<div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-29-1"> 1</a></span>
-<span class="normal"><a href="#__codelineno-29-2"> 2</a></span>
-<span class="normal"><a href="#__codelineno-29-3"> 3</a></span>
-<span class="normal"><a href="#__codelineno-29-4"> 4</a></span>
-<span class="normal"><a href="#__codelineno-29-5"> 5</a></span>
-<span class="normal"><a href="#__codelineno-29-6"> 6</a></span>
-<span class="normal"><a href="#__codelineno-29-7"> 7</a></span>
-<span class="normal"><a href="#__codelineno-29-8"> 8</a></span>
-<span class="normal"><a href="#__codelineno-29-9"> 9</a></span>
-<span class="normal"><a href="#__codelineno-29-10">10</a></span>
-<span class="normal"><a href="#__codelineno-29-11">11</a></span>
-<span class="normal"><a href="#__codelineno-29-12">12</a></span>
-<span class="normal"><a href="#__codelineno-29-13">13</a></span>
-<span class="normal"><a href="#__codelineno-29-14">14</a></span>
-<span class="normal"><a href="#__codelineno-29-15">15</a></span>
-<span class="normal"><a href="#__codelineno-29-16">16</a></span>
-<span class="normal"><a href="#__codelineno-29-17">17</a></span>
-<span class="normal"><a href="#__codelineno-29-18">18</a></span>
-<span class="normal"><a href="#__codelineno-29-19">19</a></span>
-<span class="normal"><a href="#__codelineno-29-20">20</a></span>
-<span class="normal"><a href="#__codelineno-29-21">21</a></span>
-<span class="normal"><a href="#__codelineno-29-22">22</a></span>
-<span class="normal"><a href="#__codelineno-29-23">23</a></span>
-<span class="normal"><a href="#__codelineno-29-24">24</a></span>
-<span class="normal"><a href="#__codelineno-29-25">25</a></span>
-<span class="normal"><a href="#__codelineno-29-26">26</a></span>
-<span class="normal"><a href="#__codelineno-29-27">27</a></span>
-<span class="normal"><a href="#__codelineno-29-28">28</a></span>
-<span class="normal"><a href="#__codelineno-29-29">29</a></span>
-<span class="normal"><a href="#__codelineno-29-30">30</a></span>
-<span class="normal"><a href="#__codelineno-29-31">31</a></span>
-<span class="normal"><a href="#__codelineno-29-32">32</a></span>
-<span class="normal"><a href="#__codelineno-29-33">33</a></span>
-<span class="normal"><a href="#__codelineno-29-34">34</a></span>
-<span class="normal"><a href="#__codelineno-29-35">35</a></span>
-<span class="normal"><a href="#__codelineno-29-36">36</a></span>
-<span class="normal"><a href="#__codelineno-29-37">37</a></span>
-<span class="normal"><a href="#__codelineno-29-38">38</a></span>
-<span class="normal"><a href="#__codelineno-29-39">39</a></span>
-<span class="normal"><a href="#__codelineno-29-40">40</a></span>
-<span class="normal"><a href="#__codelineno-29-41">41</a></span>
-<span class="normal"><a href="#__codelineno-29-42">42</a></span>
-<span class="normal"><a href="#__codelineno-29-43">43</a></span>
-<span class="normal"><a href="#__codelineno-29-44">44</a></span>
-<span class="normal"><a href="#__codelineno-29-45">45</a></span>
-<span class="normal"><a href="#__codelineno-29-46">46</a></span>
-<span class="normal"><a href="#__codelineno-29-47">47</a></span>
-<span class="normal"><a href="#__codelineno-29-48">48</a></span>
-<span class="normal"><a href="#__codelineno-29-49">49</a></span>
-<span class="normal"><a href="#__codelineno-29-50">50</a></span>
-<span class="normal"><a href="#__codelineno-29-51">51</a></span>
-<span class="normal"><a href="#__codelineno-29-52">52</a></span></pre></div></td><td class="code"><div><pre><span></span><code><span id="__span-29-1"><a id="__codelineno-29-1" name="__codelineno-29-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
-</span><span id="__span-29-2"><a id="__codelineno-29-2" name="__codelineno-29-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">nn</span>
-</span><span id="__span-29-3"><a id="__codelineno-29-3" name="__codelineno-29-3"></a>
-</span><span id="__span-29-4"><a id="__codelineno-29-4" name="__codelineno-29-4"></a><span class="n">model</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">chat_completion</span><span class="p">(</span><span class="s2">&quot;openai/gpt-4.1-mini&quot;</span><span class="p">)</span>
-</span><span id="__span-29-5"><a id="__codelineno-29-5" name="__codelineno-29-5"></a>
-</span><span id="__span-29-6"><a id="__codelineno-29-6" name="__codelineno-29-6"></a>
-</span><span id="__span-29-7"><a id="__codelineno-29-7" name="__codelineno-29-7"></a><span class="k">class</span><span class="w"> </span><span class="nc">Router</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">):</span>
-</span><span id="__span-29-8"><a id="__codelineno-29-8" name="__codelineno-29-8"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Classifies user intent.&quot;&quot;&quot;</span>
-</span><span id="__span-29-9"><a id="__codelineno-29-9" name="__codelineno-29-9"></a>
-</span><span id="__span-29-10"><a id="__codelineno-29-10" name="__codelineno-29-10"></a>    <span class="n">model</span> <span class="o">=</span> <span class="n">model</span>
-</span><span id="__span-29-11"><a id="__codelineno-29-11" name="__codelineno-29-11"></a>    <span class="n">signature</span> <span class="o">=</span> <span class="s2">&quot;text -&gt; intent: Literal[&#39;technical&#39;, &#39;general&#39;]&quot;</span>
-</span><span id="__span-29-12"><a id="__codelineno-29-12" name="__codelineno-29-12"></a>
-</span><span id="__span-29-13"><a id="__codelineno-29-13" name="__codelineno-29-13"></a>
-</span><span id="__span-29-14"><a id="__codelineno-29-14" name="__codelineno-29-14"></a><span class="k">class</span><span class="w"> </span><span class="nc">TechnicalExpert</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">):</span>
-</span><span id="__span-29-15"><a id="__codelineno-29-15" name="__codelineno-29-15"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Answers technical questions with precision and depth.&quot;&quot;&quot;</span>
-</span><span id="__span-29-16"><a id="__codelineno-29-16" name="__codelineno-29-16"></a>
-</span><span id="__span-29-17"><a id="__codelineno-29-17" name="__codelineno-29-17"></a>    <span class="n">model</span> <span class="o">=</span> <span class="n">model</span>
-</span><span id="__span-29-18"><a id="__codelineno-29-18" name="__codelineno-29-18"></a>    <span class="n">system_message</span> <span class="o">=</span> <span class="s2">&quot;You are a technical expert. Be precise and detailed.&quot;</span>
-</span><span id="__span-29-19"><a id="__codelineno-29-19" name="__codelineno-29-19"></a>
-</span><span id="__span-29-20"><a id="__codelineno-29-20" name="__codelineno-29-20"></a>
-</span><span id="__span-29-21"><a id="__codelineno-29-21" name="__codelineno-29-21"></a><span class="k">class</span><span class="w"> </span><span class="nc">GeneralAssistant</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">):</span>
-</span><span id="__span-29-22"><a id="__codelineno-29-22" name="__codelineno-29-22"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Answers general questions in a friendly, concise way.&quot;&quot;&quot;</span>
-</span><span id="__span-29-23"><a id="__codelineno-29-23" name="__codelineno-29-23"></a>
-</span><span id="__span-29-24"><a id="__codelineno-29-24" name="__codelineno-29-24"></a>    <span class="n">model</span> <span class="o">=</span> <span class="n">model</span>
-</span><span id="__span-29-25"><a id="__codelineno-29-25" name="__codelineno-29-25"></a>    <span class="n">system_message</span> <span class="o">=</span> <span class="s2">&quot;You are a friendly assistant. Be concise.&quot;</span>
-</span><span id="__span-29-26"><a id="__codelineno-29-26" name="__codelineno-29-26"></a>
-</span><span id="__span-29-27"><a id="__codelineno-29-27" name="__codelineno-29-27"></a>
-</span><span id="__span-29-28"><a id="__codelineno-29-28" name="__codelineno-29-28"></a><span class="n">router</span><span class="p">,</span> <span class="n">expert</span><span class="p">,</span> <span class="n">assistant</span> <span class="o">=</span> <span class="n">Router</span><span class="p">(),</span> <span class="n">TechnicalExpert</span><span class="p">(),</span> <span class="n">GeneralAssistant</span><span class="p">()</span>
-</span><span id="__span-29-29"><a id="__codelineno-29-29" name="__codelineno-29-29"></a>
-</span><span id="__span-29-30"><a id="__codelineno-29-30" name="__codelineno-29-30"></a>
-</span><span id="__span-29-31"><a id="__codelineno-29-31" name="__codelineno-29-31"></a><span class="k">def</span><span class="w"> </span><span class="nf">classify</span><span class="p">(</span><span class="n">msg</span><span class="p">):</span>
-</span><span id="__span-29-32"><a id="__codelineno-29-32" name="__codelineno-29-32"></a>    <span class="n">msg</span><span class="o">.</span><span class="n">intent</span> <span class="o">=</span> <span class="n">router</span><span class="p">(</span><span class="n">msg</span><span class="o">.</span><span class="n">question</span><span class="p">)</span>
-</span><span id="__span-29-33"><a id="__codelineno-29-33" name="__codelineno-29-33"></a>
-</span><span id="__span-29-34"><a id="__codelineno-29-34" name="__codelineno-29-34"></a><span class="k">def</span><span class="w"> </span><span class="nf">expert_answer</span><span class="p">(</span><span class="n">msg</span><span class="p">):</span>
-</span><span id="__span-29-35"><a id="__codelineno-29-35" name="__codelineno-29-35"></a>    <span class="n">msg</span><span class="o">.</span><span class="n">answer</span> <span class="o">=</span> <span class="n">expert</span><span class="p">(</span><span class="n">msg</span><span class="o">.</span><span class="n">question</span><span class="p">)</span>
-</span><span id="__span-29-36"><a id="__codelineno-29-36" name="__codelineno-29-36"></a>
-</span><span id="__span-29-37"><a id="__codelineno-29-37" name="__codelineno-29-37"></a><span class="k">def</span><span class="w"> </span><span class="nf">general_answer</span><span class="p">(</span><span class="n">msg</span><span class="p">):</span>
-</span><span id="__span-29-38"><a id="__codelineno-29-38" name="__codelineno-29-38"></a>    <span class="n">msg</span><span class="o">.</span><span class="n">answer</span> <span class="o">=</span> <span class="n">assistant</span><span class="p">(</span><span class="n">msg</span><span class="o">.</span><span class="n">question</span><span class="p">)</span>
-</span><span id="__span-29-39"><a id="__codelineno-29-39" name="__codelineno-29-39"></a>
-</span><span id="__span-29-40"><a id="__codelineno-29-40" name="__codelineno-29-40"></a>
-</span><span id="__span-29-41"><a id="__codelineno-29-41" name="__codelineno-29-41"></a><span class="n">flux</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Inline</span><span class="p">(</span>
-</span><span id="__span-29-42"><a id="__codelineno-29-42" name="__codelineno-29-42"></a>    <span class="s2">&quot;classify -&gt; {intent == &#39;technical&#39; ? expert_answer, general_answer}&quot;</span><span class="p">,</span>
-</span><span id="__span-29-43"><a id="__codelineno-29-43" name="__codelineno-29-43"></a>    <span class="p">{</span>
-</span><span id="__span-29-44"><a id="__codelineno-29-44" name="__codelineno-29-44"></a>        <span class="s2">&quot;classify&quot;</span><span class="p">:</span> <span class="n">classify</span><span class="p">,</span>
-</span><span id="__span-29-45"><a id="__codelineno-29-45" name="__codelineno-29-45"></a>        <span class="s2">&quot;expert_answer&quot;</span><span class="p">:</span> <span class="n">expert_answer</span><span class="p">,</span>
-</span><span id="__span-29-46"><a id="__codelineno-29-46" name="__codelineno-29-46"></a>        <span class="s2">&quot;general_answer&quot;</span><span class="p">:</span> <span class="n">general_answer</span><span class="p">,</span>
-</span><span id="__span-29-47"><a id="__codelineno-29-47" name="__codelineno-29-47"></a>    <span class="p">},</span>
-</span><span id="__span-29-48"><a id="__codelineno-29-48" name="__codelineno-29-48"></a><span class="p">)</span>
-</span><span id="__span-29-49"><a id="__codelineno-29-49" name="__codelineno-29-49"></a>
-</span><span id="__span-29-50"><a id="__codelineno-29-50" name="__codelineno-29-50"></a><span class="n">msg</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">dotdict</span><span class="p">(</span><span class="n">question</span><span class="o">=</span><span class="s2">&quot;How does backpropagation work?&quot;</span><span class="p">)</span>
-</span><span id="__span-29-51"><a id="__codelineno-29-51" name="__codelineno-29-51"></a><span class="n">flux</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
-</span><span id="__span-29-52"><a id="__codelineno-29-52" name="__codelineno-29-52"></a><span class="nb">print</span><span class="p">(</span><span class="n">msg</span><span class="o">.</span><span class="n">answer</span><span class="p">)</span>
+<div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-25-1"> 1</a></span>
+<span class="normal"><a href="#__codelineno-25-2"> 2</a></span>
+<span class="normal"><a href="#__codelineno-25-3"> 3</a></span>
+<span class="normal"><a href="#__codelineno-25-4"> 4</a></span>
+<span class="normal"><a href="#__codelineno-25-5"> 5</a></span>
+<span class="normal"><a href="#__codelineno-25-6"> 6</a></span>
+<span class="normal"><a href="#__codelineno-25-7"> 7</a></span>
+<span class="normal"><a href="#__codelineno-25-8"> 8</a></span>
+<span class="normal"><a href="#__codelineno-25-9"> 9</a></span>
+<span class="normal"><a href="#__codelineno-25-10">10</a></span>
+<span class="normal"><a href="#__codelineno-25-11">11</a></span>
+<span class="normal"><a href="#__codelineno-25-12">12</a></span>
+<span class="normal"><a href="#__codelineno-25-13">13</a></span>
+<span class="normal"><a href="#__codelineno-25-14">14</a></span>
+<span class="normal"><a href="#__codelineno-25-15">15</a></span>
+<span class="normal"><a href="#__codelineno-25-16">16</a></span>
+<span class="normal"><a href="#__codelineno-25-17">17</a></span>
+<span class="normal"><a href="#__codelineno-25-18">18</a></span>
+<span class="normal"><a href="#__codelineno-25-19">19</a></span>
+<span class="normal"><a href="#__codelineno-25-20">20</a></span>
+<span class="normal"><a href="#__codelineno-25-21">21</a></span>
+<span class="normal"><a href="#__codelineno-25-22">22</a></span>
+<span class="normal"><a href="#__codelineno-25-23">23</a></span>
+<span class="normal"><a href="#__codelineno-25-24">24</a></span>
+<span class="normal"><a href="#__codelineno-25-25">25</a></span>
+<span class="normal"><a href="#__codelineno-25-26">26</a></span>
+<span class="normal"><a href="#__codelineno-25-27">27</a></span>
+<span class="normal"><a href="#__codelineno-25-28">28</a></span>
+<span class="normal"><a href="#__codelineno-25-29">29</a></span>
+<span class="normal"><a href="#__codelineno-25-30">30</a></span>
+<span class="normal"><a href="#__codelineno-25-31">31</a></span>
+<span class="normal"><a href="#__codelineno-25-32">32</a></span>
+<span class="normal"><a href="#__codelineno-25-33">33</a></span>
+<span class="normal"><a href="#__codelineno-25-34">34</a></span>
+<span class="normal"><a href="#__codelineno-25-35">35</a></span>
+<span class="normal"><a href="#__codelineno-25-36">36</a></span>
+<span class="normal"><a href="#__codelineno-25-37">37</a></span>
+<span class="normal"><a href="#__codelineno-25-38">38</a></span>
+<span class="normal"><a href="#__codelineno-25-39">39</a></span>
+<span class="normal"><a href="#__codelineno-25-40">40</a></span>
+<span class="normal"><a href="#__codelineno-25-41">41</a></span>
+<span class="normal"><a href="#__codelineno-25-42">42</a></span>
+<span class="normal"><a href="#__codelineno-25-43">43</a></span>
+<span class="normal"><a href="#__codelineno-25-44">44</a></span>
+<span class="normal"><a href="#__codelineno-25-45">45</a></span>
+<span class="normal"><a href="#__codelineno-25-46">46</a></span>
+<span class="normal"><a href="#__codelineno-25-47">47</a></span>
+<span class="normal"><a href="#__codelineno-25-48">48</a></span>
+<span class="normal"><a href="#__codelineno-25-49">49</a></span>
+<span class="normal"><a href="#__codelineno-25-50">50</a></span>
+<span class="normal"><a href="#__codelineno-25-51">51</a></span>
+<span class="normal"><a href="#__codelineno-25-52">52</a></span></pre></div></td><td class="code"><div><pre><span></span><code><span id="__span-25-1"><a id="__codelineno-25-1" name="__codelineno-25-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
+</span><span id="__span-25-2"><a id="__codelineno-25-2" name="__codelineno-25-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">nn</span>
+</span><span id="__span-25-3"><a id="__codelineno-25-3" name="__codelineno-25-3"></a>
+</span><span id="__span-25-4"><a id="__codelineno-25-4" name="__codelineno-25-4"></a><span class="n">model</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">chat_completion</span><span class="p">(</span><span class="s2">&quot;openai/gpt-4.1-mini&quot;</span><span class="p">)</span>
+</span><span id="__span-25-5"><a id="__codelineno-25-5" name="__codelineno-25-5"></a>
+</span><span id="__span-25-6"><a id="__codelineno-25-6" name="__codelineno-25-6"></a>
+</span><span id="__span-25-7"><a id="__codelineno-25-7" name="__codelineno-25-7"></a><span class="k">class</span><span class="w"> </span><span class="nc">Router</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">):</span>
+</span><span id="__span-25-8"><a id="__codelineno-25-8" name="__codelineno-25-8"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Classifies user intent.&quot;&quot;&quot;</span>
+</span><span id="__span-25-9"><a id="__codelineno-25-9" name="__codelineno-25-9"></a>
+</span><span id="__span-25-10"><a id="__codelineno-25-10" name="__codelineno-25-10"></a>    <span class="n">model</span> <span class="o">=</span> <span class="n">model</span>
+</span><span id="__span-25-11"><a id="__codelineno-25-11" name="__codelineno-25-11"></a>    <span class="n">signature</span> <span class="o">=</span> <span class="s2">&quot;text -&gt; intent: Literal[&#39;technical&#39;, &#39;general&#39;]&quot;</span>
+</span><span id="__span-25-12"><a id="__codelineno-25-12" name="__codelineno-25-12"></a>
+</span><span id="__span-25-13"><a id="__codelineno-25-13" name="__codelineno-25-13"></a>
+</span><span id="__span-25-14"><a id="__codelineno-25-14" name="__codelineno-25-14"></a><span class="k">class</span><span class="w"> </span><span class="nc">TechnicalExpert</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">):</span>
+</span><span id="__span-25-15"><a id="__codelineno-25-15" name="__codelineno-25-15"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Answers technical questions with precision and depth.&quot;&quot;&quot;</span>
+</span><span id="__span-25-16"><a id="__codelineno-25-16" name="__codelineno-25-16"></a>
+</span><span id="__span-25-17"><a id="__codelineno-25-17" name="__codelineno-25-17"></a>    <span class="n">model</span> <span class="o">=</span> <span class="n">model</span>
+</span><span id="__span-25-18"><a id="__codelineno-25-18" name="__codelineno-25-18"></a>    <span class="n">system_message</span> <span class="o">=</span> <span class="s2">&quot;You are a technical expert. Be precise and detailed.&quot;</span>
+</span><span id="__span-25-19"><a id="__codelineno-25-19" name="__codelineno-25-19"></a>
+</span><span id="__span-25-20"><a id="__codelineno-25-20" name="__codelineno-25-20"></a>
+</span><span id="__span-25-21"><a id="__codelineno-25-21" name="__codelineno-25-21"></a><span class="k">class</span><span class="w"> </span><span class="nc">GeneralAssistant</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">):</span>
+</span><span id="__span-25-22"><a id="__codelineno-25-22" name="__codelineno-25-22"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Answers general questions in a friendly, concise way.&quot;&quot;&quot;</span>
+</span><span id="__span-25-23"><a id="__codelineno-25-23" name="__codelineno-25-23"></a>
+</span><span id="__span-25-24"><a id="__codelineno-25-24" name="__codelineno-25-24"></a>    <span class="n">model</span> <span class="o">=</span> <span class="n">model</span>
+</span><span id="__span-25-25"><a id="__codelineno-25-25" name="__codelineno-25-25"></a>    <span class="n">system_message</span> <span class="o">=</span> <span class="s2">&quot;You are a friendly assistant. Be concise.&quot;</span>
+</span><span id="__span-25-26"><a id="__codelineno-25-26" name="__codelineno-25-26"></a>
+</span><span id="__span-25-27"><a id="__codelineno-25-27" name="__codelineno-25-27"></a>
+</span><span id="__span-25-28"><a id="__codelineno-25-28" name="__codelineno-25-28"></a><span class="n">router</span><span class="p">,</span> <span class="n">expert</span><span class="p">,</span> <span class="n">assistant</span> <span class="o">=</span> <span class="n">Router</span><span class="p">(),</span> <span class="n">TechnicalExpert</span><span class="p">(),</span> <span class="n">GeneralAssistant</span><span class="p">()</span>
+</span><span id="__span-25-29"><a id="__codelineno-25-29" name="__codelineno-25-29"></a>
+</span><span id="__span-25-30"><a id="__codelineno-25-30" name="__codelineno-25-30"></a>
+</span><span id="__span-25-31"><a id="__codelineno-25-31" name="__codelineno-25-31"></a><span class="k">def</span><span class="w"> </span><span class="nf">classify</span><span class="p">(</span><span class="n">msg</span><span class="p">):</span>
+</span><span id="__span-25-32"><a id="__codelineno-25-32" name="__codelineno-25-32"></a>    <span class="n">msg</span><span class="o">.</span><span class="n">intent</span> <span class="o">=</span> <span class="n">router</span><span class="p">(</span><span class="n">msg</span><span class="o">.</span><span class="n">question</span><span class="p">)</span>
+</span><span id="__span-25-33"><a id="__codelineno-25-33" name="__codelineno-25-33"></a>
+</span><span id="__span-25-34"><a id="__codelineno-25-34" name="__codelineno-25-34"></a><span class="k">def</span><span class="w"> </span><span class="nf">expert_answer</span><span class="p">(</span><span class="n">msg</span><span class="p">):</span>
+</span><span id="__span-25-35"><a id="__codelineno-25-35" name="__codelineno-25-35"></a>    <span class="n">msg</span><span class="o">.</span><span class="n">answer</span> <span class="o">=</span> <span class="n">expert</span><span class="p">(</span><span class="n">msg</span><span class="o">.</span><span class="n">question</span><span class="p">)</span>
+</span><span id="__span-25-36"><a id="__codelineno-25-36" name="__codelineno-25-36"></a>
+</span><span id="__span-25-37"><a id="__codelineno-25-37" name="__codelineno-25-37"></a><span class="k">def</span><span class="w"> </span><span class="nf">general_answer</span><span class="p">(</span><span class="n">msg</span><span class="p">):</span>
+</span><span id="__span-25-38"><a id="__codelineno-25-38" name="__codelineno-25-38"></a>    <span class="n">msg</span><span class="o">.</span><span class="n">answer</span> <span class="o">=</span> <span class="n">assistant</span><span class="p">(</span><span class="n">msg</span><span class="o">.</span><span class="n">question</span><span class="p">)</span>
+</span><span id="__span-25-39"><a id="__codelineno-25-39" name="__codelineno-25-39"></a>
+</span><span id="__span-25-40"><a id="__codelineno-25-40" name="__codelineno-25-40"></a>
+</span><span id="__span-25-41"><a id="__codelineno-25-41" name="__codelineno-25-41"></a><span class="n">flux</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Inline</span><span class="p">(</span>
+</span><span id="__span-25-42"><a id="__codelineno-25-42" name="__codelineno-25-42"></a>    <span class="s2">&quot;classify -&gt; {intent == &#39;technical&#39; ? expert_answer, general_answer}&quot;</span><span class="p">,</span>
+</span><span id="__span-25-43"><a id="__codelineno-25-43" name="__codelineno-25-43"></a>    <span class="p">{</span>
+</span><span id="__span-25-44"><a id="__codelineno-25-44" name="__codelineno-25-44"></a>        <span class="s2">&quot;classify&quot;</span><span class="p">:</span> <span class="n">classify</span><span class="p">,</span>
+</span><span id="__span-25-45"><a id="__codelineno-25-45" name="__codelineno-25-45"></a>        <span class="s2">&quot;expert_answer&quot;</span><span class="p">:</span> <span class="n">expert_answer</span><span class="p">,</span>
+</span><span id="__span-25-46"><a id="__codelineno-25-46" name="__codelineno-25-46"></a>        <span class="s2">&quot;general_answer&quot;</span><span class="p">:</span> <span class="n">general_answer</span><span class="p">,</span>
+</span><span id="__span-25-47"><a id="__codelineno-25-47" name="__codelineno-25-47"></a>    <span class="p">},</span>
+</span><span id="__span-25-48"><a id="__codelineno-25-48" name="__codelineno-25-48"></a><span class="p">)</span>
+</span><span id="__span-25-49"><a id="__codelineno-25-49" name="__codelineno-25-49"></a>
+</span><span id="__span-25-50"><a id="__codelineno-25-50" name="__codelineno-25-50"></a><span class="n">msg</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">dotdict</span><span class="p">(</span><span class="n">question</span><span class="o">=</span><span class="s2">&quot;How does backpropagation work?&quot;</span><span class="p">)</span>
+</span><span id="__span-25-51"><a id="__codelineno-25-51" name="__codelineno-25-51"></a><span class="n">flux</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+</span><span id="__span-25-52"><a id="__codelineno-25-52" name="__codelineno-25-52"></a><span class="nb">print</span><span class="p">(</span><span class="n">msg</span><span class="o">.</span><span class="n">answer</span><span class="p">)</span>
 </span></code></pre></div></td></tr></table></div>
 <p>The <code>Router</code> agent classifies the intent at runtime, and <code>Inline</code> <strong>conditionally routes</strong> to the right expert — the pipeline adapts to the input. No <code>if/else</code> in Python, just a declarative expression.</p>
 </div>
