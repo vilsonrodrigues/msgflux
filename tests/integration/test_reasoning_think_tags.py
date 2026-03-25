@@ -121,7 +121,7 @@ class TestOpenAIThinkTags:
     @pytest.fixture(scope="class")
     def model(self):
         return mf.Model.chat_completion(
-            "openai/gpt-4o-mini",
+            "openai/gpt-5.4-nano",
             max_tokens=256,
         )
 
@@ -290,7 +290,7 @@ class TestAgentOpenAI:
         import msgflux.nn as nn
 
         agent_model = mf.Model.chat_completion(
-            "openai/gpt-4o-mini",
+            "openai/gpt-5.4-nano",
             max_tokens=256,
         )
 
