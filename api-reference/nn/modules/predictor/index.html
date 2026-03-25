@@ -289,7 +289,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="../../../../tutorials/payments-assistant.md" class="md-tabs__link">
+        <a href="../../../../tutorials/payments-assistant/" class="md-tabs__link">
           
   
   
@@ -1377,7 +1377,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../../learn/nn/message.md" class="md-nav__link">
+      <a href="../../../../learn/nn/message/" class="md-nav__link">
         
   
   
@@ -2577,7 +2577,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../../tutorials/payments-assistant.md" class="md-nav__link">
+      <a href="../../../../tutorials/payments-assistant/" class="md-nav__link">
         
   
   
@@ -3789,7 +3789,7 @@ or custom models that inherit from <code>BaseModel</code>.</p>
 </span><span id="__span-0-79"><a id="__codelineno-0-79" name="__codelineno-0-79"></a>        <span class="k">if</span> <span class="n">name</span><span class="p">:</span>
 </span><span id="__span-0-80"><a id="__codelineno-0-80" name="__codelineno-0-80"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">set_name</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
 </span><span id="__span-0-81"><a id="__codelineno-0-81" name="__codelineno-0-81"></a>
-</span><span id="__span-0-82"><a id="__codelineno-0-82" name="__codelineno-0-82"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">message</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">Any</span><span class="p">,</span> <span class="n">Message</span><span class="p">],</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+</span><span id="__span-0-82"><a id="__codelineno-0-82" name="__codelineno-0-82"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">message</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">Any</span><span class="p">,</span> <span class="n">Message</span><span class="p">],</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
 </span><span id="__span-0-83"><a id="__codelineno-0-83" name="__codelineno-0-83"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Execute the predictor with the given message.</span>
 </span><span id="__span-0-84"><a id="__codelineno-0-84" name="__codelineno-0-84"></a>
 </span><span id="__span-0-85"><a id="__codelineno-0-85" name="__codelineno-0-85"></a><span class="sd">        Args:</span>
@@ -4254,6 +4254,7 @@ name:
                 <code>**kwargs</code>
             </td>
             <td>
+                  <code><span title="typing.Any">Any</span></code>
             </td>
             <td>
               <div class="doc-md-description">
@@ -4312,7 +4313,7 @@ name:
 <span class="normal"><a href="#__codelineno-0-96">96</a></span>
 <span class="normal"><a href="#__codelineno-0-97">97</a></span>
 <span class="normal"><a href="#__codelineno-0-98">98</a></span>
-<span class="normal"><a href="#__codelineno-0-99">99</a></span></pre></div></td><td class="code"><div><pre><span></span><code><span id="__span-0-82"><a id="__codelineno-0-82" name="__codelineno-0-82"></a><span class="k">def</span><span class="w"> </span><span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">message</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">Any</span><span class="p">,</span> <span class="n">Message</span><span class="p">],</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+<span class="normal"><a href="#__codelineno-0-99">99</a></span></pre></div></td><td class="code"><div><pre><span></span><code><span id="__span-0-82"><a id="__codelineno-0-82" name="__codelineno-0-82"></a><span class="k">def</span><span class="w"> </span><span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">message</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">Any</span><span class="p">,</span> <span class="n">Message</span><span class="p">],</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
 </span><span id="__span-0-83"><a id="__codelineno-0-83" name="__codelineno-0-83"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Execute the predictor with the given message.</span>
 </span><span id="__span-0-84"><a id="__codelineno-0-84" name="__codelineno-0-84"></a>
 </span><span id="__span-0-85"><a id="__codelineno-0-85" name="__codelineno-0-85"></a><span class="sd">    Args:</span>

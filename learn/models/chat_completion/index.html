@@ -297,7 +297,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="../../../tutorials/payments-assistant.md" class="md-tabs__link">
+        <a href="../../../tutorials/payments-assistant/" class="md-tabs__link">
           
   
   
@@ -1758,7 +1758,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../nn/message.md" class="md-nav__link">
+      <a href="../../nn/message/" class="md-nav__link">
         
   
   
@@ -2958,7 +2958,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../tutorials/payments-assistant.md" class="md-nav__link">
+      <a href="../../../tutorials/payments-assistant/" class="md-nav__link">
         
   
   
@@ -4887,7 +4887,7 @@ Not all reasoning providers behave the same way:
 
 | Provider | Exposes trace via `return_reasoning` | Reasoning tokens in metadata |
 |---|---|---|
-| **Groq** (`groq/openai/gpt-oss-20b`) | Yes — `response.data.think` | Yes |
+| **Groq** (`groq/openai/gpt-oss-20b`) | Yes — `response.data.reasoning` | Yes |
 | **OpenAI** (`openai/gpt-5-mini`) | No — reasoning is fully internal | Yes |
 
 ### 12.2 **Reasoning Effort**
@@ -4931,7 +4931,7 @@ Not all reasoning providers behave the same way:
 
 ### 12.3 **Inspecting the Reasoning Trace**
 
-Providers like Groq return the chain of thought as a separate field when `return_reasoning=True`. The response becomes a `dotdict` with `think` (the trace) and `answer` (the final response):
+Providers like Groq return the chain of thought as a separate field when `return_reasoning=True`. The response becomes a `dotdict` with `reasoning` (the trace) and `answer` (the final response):
 
 ???+ example
 
@@ -4946,7 +4946,7 @@ Providers like Groq return the chain of thought as a separate field when `return
     response = model(&quot;Prove that sqrt(2) is irrational.&quot;)
     result = response.consume()
 
-    print(result.think)
+    print(result.reasoning)
     # The user: &quot;Prove that sqrt(2) is irrational.&quot; This is a classic proof.
     # Provide a proof by contradiction: Suppose sqrt(2)=a/b in lowest terms...
 
@@ -4956,7 +4956,7 @@ Providers like Groq return the chain of thought as a separate field when `return
     ```
 
 !!! tip
-    Comparing `result.think` with `result.answer` is a great debugging tool: if the final answer is wrong, the trace usually reveals where the reasoning went astray.
+    Comparing `result.reasoning` with `result.answer` is a great debugging tool: if the final answer is wrong, the trace usually reveals where the reasoning went astray.
 
 Providers that keep reasoning internal (like OpenAI) still report how many tokens were spent via `response.metadata`:
 
@@ -4996,7 +4996,7 @@ Providers that keep reasoning internal (like OpenAI) still report how many token
 
     response = model(&quot;Solve: if 3x + 7 = 22, what is x?&quot;)
     result = response.consume()
-    print(result.think)   # Kept short by the token cap
+    print(result.reasoning)   # Kept short by the token cap
     print(result.answer)
     # x = 5
     ```
@@ -6310,7 +6310,7 @@ The pattern above keeps caching and retry behaviour identical to every other bui
 <tbody>
 <tr>
 <td><strong>Groq</strong> (<code>groq/openai/gpt-oss-20b</code>)</td>
-<td>Yes — <code>response.data.think</code></td>
+<td>Yes — <code>response.data.reasoning</code></td>
 <td>Yes</td>
 </tr>
 <tr>
@@ -6359,7 +6359,7 @@ The pattern above keeps caching and retry behaviour identical to every other bui
 </div>
 </details>
 <h3 id="123-inspecting-the-reasoning-trace">12.3 <strong>Inspecting the Reasoning Trace</strong></h3>
-<p>Providers like Groq return the chain of thought as a separate field when <code>return_reasoning=True</code>. The response becomes a <code>dotdict</code> with <code>think</code> (the trace) and <code>answer</code> (the final response):</p>
+<p>Providers like Groq return the chain of thought as a separate field when <code>return_reasoning=True</code>. The response becomes a <code>dotdict</code> with <code>reasoning</code> (the trace) and <code>answer</code> (the final response):</p>
 <details class="example" open="open">
 <summary>Example</summary>
 <div class="language-python highlight"><pre><span></span><code><span id="__span-35-1"><a id="__codelineno-35-1" name="__codelineno-35-1" href="#__codelineno-35-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
@@ -6372,7 +6372,7 @@ The pattern above keeps caching and retry behaviour identical to every other bui
 </span><span id="__span-35-8"><a id="__codelineno-35-8" name="__codelineno-35-8" href="#__codelineno-35-8"></a><span class="n">response</span> <span class="o">=</span> <span class="n">model</span><span class="p">(</span><span class="s2">&quot;Prove that sqrt(2) is irrational.&quot;</span><span class="p">)</span>
 </span><span id="__span-35-9"><a id="__codelineno-35-9" name="__codelineno-35-9" href="#__codelineno-35-9"></a><span class="n">result</span> <span class="o">=</span> <span class="n">response</span><span class="o">.</span><span class="n">consume</span><span class="p">()</span>
 </span><span id="__span-35-10"><a id="__codelineno-35-10" name="__codelineno-35-10" href="#__codelineno-35-10"></a>
-</span><span id="__span-35-11"><a id="__codelineno-35-11" name="__codelineno-35-11" href="#__codelineno-35-11"></a><span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">think</span><span class="p">)</span>
+</span><span id="__span-35-11"><a id="__codelineno-35-11" name="__codelineno-35-11" href="#__codelineno-35-11"></a><span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">reasoning</span><span class="p">)</span>
 </span><span id="__span-35-12"><a id="__codelineno-35-12" name="__codelineno-35-12" href="#__codelineno-35-12"></a><span class="c1"># The user: &quot;Prove that sqrt(2) is irrational.&quot; This is a classic proof.</span>
 </span><span id="__span-35-13"><a id="__codelineno-35-13" name="__codelineno-35-13" href="#__codelineno-35-13"></a><span class="c1"># Provide a proof by contradiction: Suppose sqrt(2)=a/b in lowest terms...</span>
 </span><span id="__span-35-14"><a id="__codelineno-35-14" name="__codelineno-35-14" href="#__codelineno-35-14"></a>
@@ -6383,7 +6383,7 @@ The pattern above keeps caching and retry behaviour identical to every other bui
 </details>
 <div class="admonition tip">
 <p class="admonition-title">Tip</p>
-<p>Comparing <code>result.think</code> with <code>result.answer</code> is a great debugging tool: if the final answer is wrong, the trace usually reveals where the reasoning went astray.</p>
+<p>Comparing <code>result.reasoning</code> with <code>result.answer</code> is a great debugging tool: if the final answer is wrong, the trace usually reveals where the reasoning went astray.</p>
 </div>
 <p>Providers that keep reasoning internal (like OpenAI) still report how many tokens were spent via <code>response.metadata</code>:</p>
 <details class="example" open="open">
@@ -6418,7 +6418,7 @@ The pattern above keeps caching and retry behaviour identical to every other bui
 </span><span id="__span-37-8"><a id="__codelineno-37-8" name="__codelineno-37-8" href="#__codelineno-37-8"></a>
 </span><span id="__span-37-9"><a id="__codelineno-37-9" name="__codelineno-37-9" href="#__codelineno-37-9"></a><span class="n">response</span> <span class="o">=</span> <span class="n">model</span><span class="p">(</span><span class="s2">&quot;Solve: if 3x + 7 = 22, what is x?&quot;</span><span class="p">)</span>
 </span><span id="__span-37-10"><a id="__codelineno-37-10" name="__codelineno-37-10" href="#__codelineno-37-10"></a><span class="n">result</span> <span class="o">=</span> <span class="n">response</span><span class="o">.</span><span class="n">consume</span><span class="p">()</span>
-</span><span id="__span-37-11"><a id="__codelineno-37-11" name="__codelineno-37-11" href="#__codelineno-37-11"></a><span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">think</span><span class="p">)</span>   <span class="c1"># Kept short by the token cap</span>
+</span><span id="__span-37-11"><a id="__codelineno-37-11" name="__codelineno-37-11" href="#__codelineno-37-11"></a><span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">reasoning</span><span class="p">)</span>   <span class="c1"># Kept short by the token cap</span>
 </span><span id="__span-37-12"><a id="__codelineno-37-12" name="__codelineno-37-12" href="#__codelineno-37-12"></a><span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">answer</span><span class="p">)</span>
 </span><span id="__span-37-13"><a id="__codelineno-37-13" name="__codelineno-37-13" href="#__codelineno-37-13"></a><span class="c1"># x = 5</span>
 </span></code></pre></div>

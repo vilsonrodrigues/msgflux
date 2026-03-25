@@ -297,7 +297,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="../../../tutorials/payments-assistant.md" class="md-tabs__link">
+        <a href="../../../tutorials/payments-assistant/" class="md-tabs__link">
           
   
   
@@ -1390,7 +1390,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../learn/nn/message.md" class="md-nav__link">
+      <a href="../../../learn/nn/message/" class="md-nav__link">
         
   
   
@@ -2800,7 +2800,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../tutorials/payments-assistant.md" class="md-nav__link">
+      <a href="../../../tutorials/payments-assistant/" class="md-nav__link">
         
   
   
@@ -4252,6 +4252,7 @@ print(results) # ("Hello, World", "Hello, Earth", "Goodbye, Commander")</p>
                 <code>*args</code>
             </td>
             <td>
+                  <code><span title="typing.Any">Any</span></code>
             </td>
             <td>
               <div class="doc-md-description">
@@ -4283,6 +4284,7 @@ print(results) # ("Hello, World", "Hello, Earth", "Goodbye, Commander")</p>
                 <code>**kwargs</code>
             </td>
             <td>
+                  <code><span title="typing.Any">Any</span></code>
             </td>
             <td>
               <div class="doc-md-description">
@@ -4416,7 +4418,7 @@ print(results) # (16, 64)</p>
 <span class="normal"><a href="#__codelineno-0-251">251</a></span>
 <span class="normal"><a href="#__codelineno-0-252">252</a></span></pre></div></td><td class="code"><div><pre><span></span><code><span id="__span-0-198"><a id="__codelineno-0-198" name="__codelineno-0-198"></a><span class="nd">@Spans</span><span class="o">.</span><span class="n">instrument</span><span class="p">()</span>
 </span><span id="__span-0-199"><a id="__codelineno-0-199" name="__codelineno-0-199"></a><span class="k">def</span><span class="w"> </span><span class="nf">bcast_gather</span><span class="p">(</span>
-</span><span id="__span-0-200"><a id="__codelineno-0-200" name="__codelineno-0-200"></a>    <span class="n">to_send</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Callable</span><span class="p">],</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="n">timeout</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span>
+</span><span id="__span-0-200"><a id="__codelineno-0-200" name="__codelineno-0-200"></a>    <span class="n">to_send</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Callable</span><span class="p">],</span> <span class="o">*</span><span class="n">args</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span> <span class="n">timeout</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="n">Any</span>
 </span><span id="__span-0-201"><a id="__codelineno-0-201" name="__codelineno-0-201"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">Any</span><span class="p">,</span> <span class="o">...</span><span class="p">]:</span>
 </span><span id="__span-0-202"><a id="__codelineno-0-202" name="__codelineno-0-202"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Broadcasts arguments to multiple callables and gathers the responses.</span>
 </span><span id="__span-0-203"><a id="__codelineno-0-203" name="__codelineno-0-203"></a>
@@ -4523,6 +4525,7 @@ print(results) # (16, 64)</p>
                 <code>*args</code>
             </td>
             <td>
+                  <code><span title="typing.Any">Any</span></code>
             </td>
             <td>
               <div class="doc-md-description">
@@ -4554,6 +4557,7 @@ print(results) # (16, 64)</p>
                 <code>**kwargs</code>
             </td>
             <td>
+                  <code><span title="typing.Any">Any</span></code>
             </td>
             <td>
               <div class="doc-md-description">
@@ -4667,7 +4671,7 @@ print(results) # 9</p>
 <span class="normal"><a href="#__codelineno-0-295">295</a></span>
 <span class="normal"><a href="#__codelineno-0-296">296</a></span></pre></div></td><td class="code"><div><pre><span></span><code><span id="__span-0-255"><a id="__codelineno-0-255" name="__codelineno-0-255"></a><span class="nd">@Spans</span><span class="o">.</span><span class="n">instrument</span><span class="p">()</span>
 </span><span id="__span-0-256"><a id="__codelineno-0-256" name="__codelineno-0-256"></a><span class="k">def</span><span class="w"> </span><span class="nf">wait_for</span><span class="p">(</span>
-</span><span id="__span-0-257"><a id="__codelineno-0-257" name="__codelineno-0-257"></a>    <span class="n">to_send</span><span class="p">:</span> <span class="n">Callable</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="n">timeout</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span>
+</span><span id="__span-0-257"><a id="__codelineno-0-257" name="__codelineno-0-257"></a>    <span class="n">to_send</span><span class="p">:</span> <span class="n">Callable</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span> <span class="n">timeout</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="n">Any</span>
 </span><span id="__span-0-258"><a id="__codelineno-0-258" name="__codelineno-0-258"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
 </span><span id="__span-0-259"><a id="__codelineno-0-259" name="__codelineno-0-259"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Wait for a callable execution.</span>
 </span><span id="__span-0-260"><a id="__codelineno-0-260" name="__codelineno-0-260"></a>
@@ -4892,6 +4896,7 @@ Uses the AsyncExecutorPool. The task is not tracked and no return is provided.</
                 <code>*args</code>
             </td>
             <td>
+                  <code><span title="typing.Any">Any</span></code>
             </td>
             <td>
               <div class="doc-md-description">
@@ -4907,6 +4912,7 @@ Uses the AsyncExecutorPool. The task is not tracked and no return is provided.</
                 <code>**kwargs</code>
             </td>
             <td>
+                  <code><span title="typing.Any">Any</span></code>
             </td>
             <td>
               <div class="doc-md-description">
@@ -5014,7 +5020,7 @@ F.spawn(failing_task)  # Error will be logged</p>
 <span class="normal"><a href="#__codelineno-0-373">373</a></span>
 <span class="normal"><a href="#__codelineno-0-374">374</a></span>
 <span class="normal"><a href="#__codelineno-0-375">375</a></span></pre></div></td><td class="code"><div><pre><span></span><code><span id="__span-0-327"><a id="__codelineno-0-327" name="__codelineno-0-327"></a><span class="nd">@Spans</span><span class="o">.</span><span class="n">instrument</span><span class="p">()</span>
-</span><span id="__span-0-328"><a id="__codelineno-0-328" name="__codelineno-0-328"></a><span class="k">def</span><span class="w"> </span><span class="nf">spawn</span><span class="p">(</span><span class="n">to_send</span><span class="p">:</span> <span class="n">Callable</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+</span><span id="__span-0-328"><a id="__codelineno-0-328" name="__codelineno-0-328"></a><span class="k">def</span><span class="w"> </span><span class="nf">spawn</span><span class="p">(</span><span class="n">to_send</span><span class="p">:</span> <span class="n">Callable</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 </span><span id="__span-0-329"><a id="__codelineno-0-329" name="__codelineno-0-329"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Dispatches a task without waiting for a result.</span>
 </span><span id="__span-0-330"><a id="__codelineno-0-330" name="__codelineno-0-330"></a><span class="sd">    Uses the AsyncExecutorPool. The task is not tracked and no return is provided.</span>
 </span><span id="__span-0-331"><a id="__codelineno-0-331" name="__codelineno-0-331"></a>

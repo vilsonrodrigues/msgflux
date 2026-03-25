@@ -297,7 +297,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="../../../tutorials/payments-assistant.md" class="md-tabs__link">
+        <a href="../../../tutorials/payments-assistant/" class="md-tabs__link">
           
   
   
@@ -1390,7 +1390,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../learn/nn/message.md" class="md-nav__link">
+      <a href="../../../learn/nn/message/" class="md-nav__link">
         
   
   
@@ -2737,7 +2737,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../tutorials/payments-assistant.md" class="md-nav__link">
+      <a href="../../../tutorials/payments-assistant/" class="md-nav__link">
         
   
   
@@ -4525,7 +4525,7 @@ initial model selection, and timing constraints (configured via HH:MM strings).<
 </span><span id="__span-0-372"><a id="__codelineno-0-372" name="__codelineno-0-372"></a>        <span class="p">)</span>
 </span><span id="__span-0-373"><a id="__codelineno-0-373" name="__codelineno-0-373"></a>
 </span><span id="__span-0-374"><a id="__codelineno-0-374" name="__codelineno-0-374"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__call__</span><span class="p">(</span>
-</span><span id="__span-0-375"><a id="__codelineno-0-375" name="__codelineno-0-375"></a>        <span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">model_preference</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span>
+</span><span id="__span-0-375"><a id="__codelineno-0-375" name="__codelineno-0-375"></a>        <span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">model_preference</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="n">Any</span>
 </span><span id="__span-0-376"><a id="__codelineno-0-376" name="__codelineno-0-376"></a>    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Union</span><span class="p">[</span><span class="n">ModelResponse</span><span class="p">,</span> <span class="n">ModelStreamResponse</span><span class="p">]:</span>
 </span><span id="__span-0-377"><a id="__codelineno-0-377" name="__codelineno-0-377"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Executes the call on the gateway.</span>
 </span><span id="__span-0-378"><a id="__codelineno-0-378" name="__codelineno-0-378"></a>
@@ -4547,7 +4547,7 @@ initial model selection, and timing constraints (configured via HH:MM strings).<
 </span><span id="__span-0-394"><a id="__codelineno-0-394" name="__codelineno-0-394"></a>        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_execute_model</span><span class="p">(</span><span class="n">model_preference</span><span class="o">=</span><span class="n">model_preference</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
 </span><span id="__span-0-395"><a id="__codelineno-0-395" name="__codelineno-0-395"></a>
 </span><span id="__span-0-396"><a id="__codelineno-0-396" name="__codelineno-0-396"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">acall</span><span class="p">(</span>
-</span><span id="__span-0-397"><a id="__codelineno-0-397" name="__codelineno-0-397"></a>        <span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">model_preference</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span>
+</span><span id="__span-0-397"><a id="__codelineno-0-397" name="__codelineno-0-397"></a>        <span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">model_preference</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="n">Any</span>
 </span><span id="__span-0-398"><a id="__codelineno-0-398" name="__codelineno-0-398"></a>    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Union</span><span class="p">[</span><span class="n">ModelResponse</span><span class="p">,</span> <span class="n">ModelStreamResponse</span><span class="p">]:</span>
 </span><span id="__span-0-399"><a id="__codelineno-0-399" name="__codelineno-0-399"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Async version of __call__. Executes the call on the gateway.</span>
 </span><span id="__span-0-400"><a id="__codelineno-0-400" name="__codelineno-0-400"></a>
@@ -4800,6 +4800,7 @@ If None, starts from the first model in the list.</p>
                 <code>kwargs</code>
             </td>
             <td>
+                  <code><span title="typing.Any">Any</span></code>
             </td>
             <td>
               <div class="doc-md-description">
@@ -4884,7 +4885,7 @@ available/functional.</p>
 <span class="normal"><a href="#__codelineno-0-392">392</a></span>
 <span class="normal"><a href="#__codelineno-0-393">393</a></span>
 <span class="normal"><a href="#__codelineno-0-394">394</a></span></pre></div></td><td class="code"><div><pre><span></span><code><span id="__span-0-374"><a id="__codelineno-0-374" name="__codelineno-0-374"></a><span class="k">def</span><span class="w"> </span><span class="fm">__call__</span><span class="p">(</span>
-</span><span id="__span-0-375"><a id="__codelineno-0-375" name="__codelineno-0-375"></a>    <span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">model_preference</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span>
+</span><span id="__span-0-375"><a id="__codelineno-0-375" name="__codelineno-0-375"></a>    <span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">model_preference</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="n">Any</span>
 </span><span id="__span-0-376"><a id="__codelineno-0-376" name="__codelineno-0-376"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Union</span><span class="p">[</span><span class="n">ModelResponse</span><span class="p">,</span> <span class="n">ModelStreamResponse</span><span class="p">]:</span>
 </span><span id="__span-0-377"><a id="__codelineno-0-377" name="__codelineno-0-377"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Executes the call on the gateway.</span>
 </span><span id="__span-0-378"><a id="__codelineno-0-378" name="__codelineno-0-378"></a>
@@ -5217,6 +5218,7 @@ If None, starts from the first model in the list.</p>
                 <code>kwargs</code>
             </td>
             <td>
+                  <code><span title="typing.Any">Any</span></code>
             </td>
             <td>
               <div class="doc-md-description">
@@ -5301,7 +5303,7 @@ available/functional.</p>
 <span class="normal"><a href="#__codelineno-0-414">414</a></span>
 <span class="normal"><a href="#__codelineno-0-415">415</a></span>
 <span class="normal"><a href="#__codelineno-0-416">416</a></span></pre></div></td><td class="code"><div><pre><span></span><code><span id="__span-0-396"><a id="__codelineno-0-396" name="__codelineno-0-396"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">acall</span><span class="p">(</span>
-</span><span id="__span-0-397"><a id="__codelineno-0-397" name="__codelineno-0-397"></a>    <span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">model_preference</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span>
+</span><span id="__span-0-397"><a id="__codelineno-0-397" name="__codelineno-0-397"></a>    <span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">model_preference</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="n">Any</span>
 </span><span id="__span-0-398"><a id="__codelineno-0-398" name="__codelineno-0-398"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Union</span><span class="p">[</span><span class="n">ModelResponse</span><span class="p">,</span> <span class="n">ModelStreamResponse</span><span class="p">]:</span>
 </span><span id="__span-0-399"><a id="__codelineno-0-399" name="__codelineno-0-399"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Async version of __call__. Executes the call on the gateway.</span>
 </span><span id="__span-0-400"><a id="__codelineno-0-400" name="__codelineno-0-400"></a>

@@ -18,7 +18,7 @@
         <link rel="prev" href="../../functional/">
       
       
-        <link rel="next" href="../../../../tutorials/product-poster/">
+        <link rel="next" href="../../../../tutorials/payments-assistant/">
       
       
       <link rel="icon" href="../../../../assets/favicon.png">
@@ -297,7 +297,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="../../../../tutorials/payments-assistant.md" class="md-tabs__link">
+        <a href="../../../../tutorials/payments-assistant/" class="md-tabs__link">
           
   
   
@@ -1390,7 +1390,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../../learn/nn/message.md" class="md-nav__link">
+      <a href="../../../../learn/nn/message/" class="md-nav__link">
         
   
   
@@ -2710,7 +2710,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../../tutorials/payments-assistant.md" class="md-nav__link">
+      <a href="../../../../tutorials/payments-assistant/" class="md-nav__link">
         
   
   
@@ -5625,7 +5625,7 @@ For an Agent, a tool is any callable object.</p>
 </span><span id="__span-0-360"><a id="__codelineno-0-360" name="__codelineno-0-360"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">_set_system_message</span><span class="p">(</span><span class="n">system_message</span><span class="p">)</span>
 </span><span id="__span-0-361"><a id="__codelineno-0-361" name="__codelineno-0-361"></a>
 </span><span id="__span-0-362"><a id="__codelineno-0-362" name="__codelineno-0-362"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">forward</span><span class="p">(</span>
-</span><span id="__span-0-363"><a id="__codelineno-0-363" name="__codelineno-0-363"></a>        <span class="bp">self</span><span class="p">,</span> <span class="n">message</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">],</span> <span class="n">Message</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span>
+</span><span id="__span-0-363"><a id="__codelineno-0-363" name="__codelineno-0-363"></a>        <span class="bp">self</span><span class="p">,</span> <span class="n">message</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">],</span> <span class="n">Message</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="n">Any</span>
 </span><span id="__span-0-364"><a id="__codelineno-0-364" name="__codelineno-0-364"></a>    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="kc">None</span><span class="p">],</span> <span class="n">ModelStreamResponse</span><span class="p">,</span> <span class="n">Message</span><span class="p">]:</span>
 </span><span id="__span-0-365"><a id="__codelineno-0-365" name="__codelineno-0-365"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Execute the agent with the given message.</span>
 </span><span id="__span-0-366"><a id="__codelineno-0-366" name="__codelineno-0-366"></a>
@@ -5691,7 +5691,7 @@ For an Agent, a tool is any callable object.</p>
 </span><span id="__span-0-426"><a id="__codelineno-0-426" name="__codelineno-0-426"></a>        <span class="k">return</span> <span class="n">response</span>
 </span><span id="__span-0-427"><a id="__codelineno-0-427" name="__codelineno-0-427"></a>
 </span><span id="__span-0-428"><a id="__codelineno-0-428" name="__codelineno-0-428"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">aforward</span><span class="p">(</span>
-</span><span id="__span-0-429"><a id="__codelineno-0-429" name="__codelineno-0-429"></a>        <span class="bp">self</span><span class="p">,</span> <span class="n">message</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">],</span> <span class="n">Message</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span>
+</span><span id="__span-0-429"><a id="__codelineno-0-429" name="__codelineno-0-429"></a>        <span class="bp">self</span><span class="p">,</span> <span class="n">message</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">],</span> <span class="n">Message</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="n">Any</span>
 </span><span id="__span-0-430"><a id="__codelineno-0-430" name="__codelineno-0-430"></a>    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="kc">None</span><span class="p">],</span> <span class="n">ModelStreamResponse</span><span class="p">,</span> <span class="n">Message</span><span class="p">]:</span>
 </span><span id="__span-0-431"><a id="__codelineno-0-431" name="__codelineno-0-431"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Async version of forward.&quot;&quot;&quot;</span>
 </span><span id="__span-0-432"><a id="__codelineno-0-432" name="__codelineno-0-432"></a>        <span class="n">inputs</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_aprepare_task</span><span class="p">(</span><span class="n">message</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
@@ -7832,7 +7832,7 @@ annotations
 <span class="normal"><a href="#__codelineno-0-440">440</a></span>
 <span class="normal"><a href="#__codelineno-0-441">441</a></span>
 <span class="normal"><a href="#__codelineno-0-442">442</a></span></pre></div></td><td class="code"><div><pre><span></span><code><span id="__span-0-428"><a id="__codelineno-0-428" name="__codelineno-0-428"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">aforward</span><span class="p">(</span>
-</span><span id="__span-0-429"><a id="__codelineno-0-429" name="__codelineno-0-429"></a>    <span class="bp">self</span><span class="p">,</span> <span class="n">message</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">],</span> <span class="n">Message</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span>
+</span><span id="__span-0-429"><a id="__codelineno-0-429" name="__codelineno-0-429"></a>    <span class="bp">self</span><span class="p">,</span> <span class="n">message</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">],</span> <span class="n">Message</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="n">Any</span>
 </span><span id="__span-0-430"><a id="__codelineno-0-430" name="__codelineno-0-430"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="kc">None</span><span class="p">],</span> <span class="n">ModelStreamResponse</span><span class="p">,</span> <span class="n">Message</span><span class="p">]:</span>
 </span><span id="__span-0-431"><a id="__codelineno-0-431" name="__codelineno-0-431"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Async version of forward.&quot;&quot;&quot;</span>
 </span><span id="__span-0-432"><a id="__codelineno-0-432" name="__codelineno-0-432"></a>    <span class="n">inputs</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_aprepare_task</span><span class="p">(</span><span class="n">message</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
@@ -7906,6 +7906,7 @@ annotations
                 <code>**kwargs</code>
             </td>
             <td>
+                  <code><span title="typing.Any">Any</span></code>
             </td>
             <td>
               <div class="doc-md-description">
@@ -8079,7 +8080,7 @@ or if named arguments are used without a task template.</p>
 <span class="normal"><a href="#__codelineno-0-424">424</a></span>
 <span class="normal"><a href="#__codelineno-0-425">425</a></span>
 <span class="normal"><a href="#__codelineno-0-426">426</a></span></pre></div></td><td class="code"><div><pre><span></span><code><span id="__span-0-362"><a id="__codelineno-0-362" name="__codelineno-0-362"></a><span class="k">def</span><span class="w"> </span><span class="nf">forward</span><span class="p">(</span>
-</span><span id="__span-0-363"><a id="__codelineno-0-363" name="__codelineno-0-363"></a>    <span class="bp">self</span><span class="p">,</span> <span class="n">message</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">],</span> <span class="n">Message</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span>
+</span><span id="__span-0-363"><a id="__codelineno-0-363" name="__codelineno-0-363"></a>    <span class="bp">self</span><span class="p">,</span> <span class="n">message</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">],</span> <span class="n">Message</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="n">Any</span>
 </span><span id="__span-0-364"><a id="__codelineno-0-364" name="__codelineno-0-364"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="kc">None</span><span class="p">],</span> <span class="n">ModelStreamResponse</span><span class="p">,</span> <span class="n">Message</span><span class="p">]:</span>
 </span><span id="__span-0-365"><a id="__codelineno-0-365" name="__codelineno-0-365"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Execute the agent with the given message.</span>
 </span><span id="__span-0-366"><a id="__codelineno-0-366" name="__codelineno-0-366"></a>
@@ -8333,13 +8334,13 @@ the model.</p>
         
         
           
-          <a href="../../../../tutorials/product-poster/" class="md-footer__link md-footer__link--next" aria-label="Next: Product Poster Generator">
+          <a href="../../../../tutorials/payments-assistant/" class="md-footer__link md-footer__link--next" aria-label="Next: Payments Assistant">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Product Poster Generator
+                Payments Assistant
               </div>
             </div>
             <div class="md-footer__button md-icon">
