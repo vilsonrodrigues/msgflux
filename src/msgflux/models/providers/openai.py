@@ -116,9 +116,8 @@ class _BaseOpenAI(BaseModel):
         return get_model_profile(self.model_id, provider_id=self.provider)
 
 
-@register_model
-class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
-    """OpenAI Chat Completion."""
+class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
+    """Base class for all OpenAI-compatible chat completion providers."""
 
     api_mode: str = "completion"
 
@@ -204,8 +203,8 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
             Provider-native tools configuration (e.g. `web_search`, `file_search`,
             `mcp`, `image_generation`) for `/responses`.
         api_mode:
-            Select API mode. `completion` uses `/chat/completions`,
-            `response` uses `/responses`.
+            Select API mode. `response` uses `/responses` (default for OpenAI),
+            `completion` uses `/chat/completions` (default for other providers).
         verbose:
             If True, Prints the model output to the console before it is transformed
             into typed structured output.
@@ -273,14 +272,6 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
             )
         self._initialize()
         self._get_api_key()
-
-    def _adapt_params(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        params.pop("provider_tools", None)
-        if self.provider == "openai":
-            max_tokens = params.pop("max_tokens", None)
-            if max_tokens is not None:
-                params["max_completion_tokens"] = max_tokens
-        return params
 
     def _merge_tools(self, *tool_groups: Any):
         merged_tools = []
@@ -741,8 +732,9 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
             return model_output
 
         params["messages"] = messages.to_chatml()
-        adapted_params = self._adapt_params(params)
-        model_output = self.client.chat.completions.create(**adapted_params)
+        if hasattr(self, "_adapt_params"):
+            params = self._adapt_params(params)
+        model_output = self.client.chat.completions.create(**params)
 
         return model_output
 
@@ -771,8 +763,9 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
             return model_output
 
         params["messages"] = messages.to_chatml()
-        adapted_params = self._adapt_params(params)
-        model_output = await self.aclient.chat.completions.create(**adapted_params)
+        if hasattr(self, "_adapt_params"):
+            params = self._adapt_params(params)
+        model_output = await self.aclient.chat.completions.create(**params)
 
         return model_output
 
@@ -1585,6 +1578,19 @@ class OpenAIChatCompletion(_BaseOpenAI, ChatCompletionModel):
                 generation_schema=generation_schema,
             )
             return response
+
+
+@register_model
+class OpenAIChatCompletion(OpenAICompatibleChatCompletion):
+    """OpenAI Chat Completion with Responses API as default."""
+
+    api_mode: str = "response"
+
+    def _adapt_params(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        max_tokens = params.pop("max_tokens", None)
+        if max_tokens is not None:
+            params["max_completion_tokens"] = max_tokens
+        return params
 
 
 @register_model

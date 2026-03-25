@@ -73,7 +73,7 @@ Chat completion models are stateless - they don't maintain conversation history 
         # --- Search ---
         web_search_options={},         # Web search config (OpenAI / OpenRouter only)
         # --- Responses API (OpenAI only) ---
-        api_mode="completion",         # "completion" (default) or "response" (/responses endpoint)
+        api_mode="response",           # "response" (default for OpenAI) or "completion" (default for other providers)
         provider_tools=[],             # Provider-native tools: web_search, file_search, code_interpreter, mcp, etc.
         # --- Infrastructure ---
         base_url="https://api.openai.com/v1",  # Override provider API endpoint
@@ -90,35 +90,20 @@ OpenAI offers two API paths for chat models:
 
 | Mode | Endpoint | Description |
 |---|---|---|
-| `"completion"` | `/chat/completions` | Classic chat API. Default for all providers. |
-| `"response"` | `/responses` | New OpenAI API with native tools, reasoning traces, and conversation state. OpenAI only. |
+| `"response"` | `/responses` | OpenAI Responses API with native tools, reasoning traces, and conversation state. **Default for OpenAI.** |
+| `"completion"` | `/chat/completions` | Classic chat API. **Default for all other providers** (Groq, Cerebras, Ollama, etc.). |
 
 Set the mode with `api_mode`:
 
 ???+ example
 
-    === "Completion (default)"
+    === "Response (OpenAI default)"
 
         ```python
         import msgflux as mf
 
-        # Default — uses /chat/completions
-        model = mf.Model.chat_completion("openai/gpt-4.1-mini")
-
-        response = model("Hello!")
-        print(response.consume())
-        ```
-
-    === "Response"
-
-        ```python
-        import msgflux as mf
-
-        # Uses /responses
-        model = mf.Model.chat_completion(
-            "openai/gpt-5.4-nano",
-            api_mode="response",
-        )
+        # OpenAI defaults to api_mode="response" — uses /responses
+        model = mf.Model.chat_completion("openai/gpt-5.4-nano")
 
         response = model("Hello!")
         print(response.consume())
@@ -126,6 +111,24 @@ Set the mode with `api_mode`:
         # Response mode includes extra metadata
         print(response.metadata.id)      # resp_abc123...
         print(response.metadata.status)  # "completed"
+        ```
+
+    === "Completion"
+
+        ```python
+        import msgflux as mf
+
+        # Explicitly use /chat/completions for OpenAI
+        model = mf.Model.chat_completion(
+            "openai/gpt-4.1-mini",
+            api_mode="completion",
+        )
+
+        # Other providers default to completion
+        groq_model = mf.Model.chat_completion("groq/openai/gpt-oss-20b")
+
+        response = model("Hello!")
+        print(response.consume())
         ```
 
     === "Streaming"
@@ -148,7 +151,7 @@ Set the mode with `api_mode`:
     All existing features (structured generation, tool calling, reasoning, caching) work in both modes. msgFlux automatically adapts parameters between the two APIs.
 
 !!! warning
-    `api_mode="response"` is only available for the `openai` provider. Other providers that inherit from OpenAI (Groq, Cerebras, etc.) use `"completion"` only.
+    `api_mode="response"` is only available for the `openai` provider. Other providers (Groq, Cerebras, etc.) automatically default to `"completion"`. Passing `api_mode="response"` to a non-OpenAI provider raises a `ValueError`.
 
 #### Response Mode Metadata
 
@@ -1372,7 +1375,7 @@ Every initialized model exposes a `.profile` property that returns this metadata
 
 ## 16. **Adding a Custom Provider**
 
-If the service you want to use exposes an **OpenAI-compatible API**, you can add it as a provider by subclassing `OpenAIChatCompletion`. The process has two stages depending on how compatible the endpoint is.
+If the service you want to use exposes an **OpenAI-compatible API**, you can add it as a provider by subclassing `OpenAICompatibleChatCompletion`. The process has two stages depending on how compatible the endpoint is.
 
 ### 16.1 **Stage 1 — URL and API key only**
 
@@ -1382,7 +1385,7 @@ When the target API is fully OpenAI-compatible and only requires a different bas
 
     ```python
     from os import getenv
-    from msgflux.models.providers.openai import OpenAIChatCompletion
+    from msgflux.models.providers.openai import OpenAICompatibleChatCompletion
     from msgflux.models.registry import register_model
 
 
@@ -1402,7 +1405,7 @@ When the target API is fully OpenAI-compatible and only requires a different bas
 
 
     @register_model
-    class MyProviderChatCompletion(_BaseMyProvider, OpenAIChatCompletion):
+    class MyProviderChatCompletion(_BaseMyProvider, OpenAICompatibleChatCompletion):
         """MyProvider Chat Completion."""
     ```
 
@@ -1432,7 +1435,7 @@ The built-in OpenRouter provider is a real-world example:
     from os import getenv
     from typing import Any, Dict
 
-    from msgflux.models.providers.openai import OpenAIChatCompletion
+    from msgflux.models.providers.openai import OpenAICompatibleChatCompletion
     from msgflux.models.registry import register_model
 
 
@@ -1450,7 +1453,7 @@ The built-in OpenRouter provider is a real-world example:
 
 
     @register_model
-    class MyProviderChatCompletion(_BaseMyProvider, OpenAIChatCompletion):
+    class MyProviderChatCompletion(_BaseMyProvider, OpenAICompatibleChatCompletion):
         """MyProvider Chat Completion."""
 
         def _adapt_params(self, params: Dict[str, Any]) -> Dict[str, Any]:
@@ -1508,7 +1511,7 @@ The response object returned by `.chat.completions.create()` must be OpenAI-comp
     from os import getenv
 
     from msgflux.models.cache import ResponseCache
-    from msgflux.models.providers.openai import OpenAIChatCompletion
+    from msgflux.models.providers.openai import OpenAICompatibleChatCompletion
     from msgflux.models.registry import register_model
     from msgflux.utils.tenacity import apply_retry, default_model_retry
 
@@ -1555,7 +1558,7 @@ The response object returned by `.chat.completions.create()` must be OpenAI-comp
 
 
     @register_model
-    class MyProviderChatCompletion(_BaseMyProvider, OpenAIChatCompletion):
+    class MyProviderChatCompletion(_BaseMyProvider, OpenAICompatibleChatCompletion):
         """MyProvider Chat Completion using a custom SDK."""
     ```
 

@@ -1,7 +1,7 @@
 from os import getenv
 from typing import Any, Dict
 
-from msgflux.models.providers.openai import OpenAIChatCompletion
+from msgflux.models.providers.openai import OpenAICompatibleChatCompletion
 from msgflux.models.registry import register_model
 
 
@@ -28,7 +28,7 @@ class _BaseOpenRouter:
 
 
 @register_model
-class OpenRouterChatCompletion(_BaseOpenRouter, OpenAIChatCompletion):
+class OpenRouterChatCompletion(_BaseOpenRouter, OpenAICompatibleChatCompletion):
     """OpenRouter Chat Completion."""
 
     def _adapt_params(self, params: Dict[str, Any]) -> Dict[str, Any]:

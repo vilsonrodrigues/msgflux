@@ -5,7 +5,7 @@ from msgflux.models.httpx import HTTPXModelClient
 from msgflux.models.profiles import get_model_profile
 from msgflux.models.providers.jinaai import JinaAITextReranker
 from msgflux.models.providers.openai import (
-    OpenAIChatCompletion,
+    OpenAICompatibleChatCompletion,
     OpenAISpeechToText,
     OpenAITextEmbedder,
 )
@@ -41,7 +41,7 @@ class _BaseVLLM:
 
 
 @register_model
-class VLLMChatCompletion(_BaseVLLM, OpenAIChatCompletion):
+class VLLMChatCompletion(_BaseVLLM, OpenAICompatibleChatCompletion):
     """vLLM Chat Completion."""
 
     def _adapt_params(self, params: Dict[str, Any]) -> Dict[str, Any]:

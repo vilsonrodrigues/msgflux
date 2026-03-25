@@ -2,7 +2,7 @@ from os import getenv
 from typing import Any, Dict
 
 from msgflux.models.profiles import get_model_profile
-from msgflux.models.providers.openai import OpenAIChatCompletion, OpenAITextEmbedder
+from msgflux.models.providers.openai import OpenAICompatibleChatCompletion, OpenAITextEmbedder
 from msgflux.models.registry import register_model
 
 
@@ -33,7 +33,7 @@ class _BaseOllama:
 
 
 @register_model
-class OllamaChatCompletion(_BaseOllama, OpenAIChatCompletion):
+class OllamaChatCompletion(_BaseOllama, OpenAICompatibleChatCompletion):
     """Ollama Chat Completion."""
 
     def _adapt_params(self, params: Dict[str, Any]) -> Dict[str, Any]:
