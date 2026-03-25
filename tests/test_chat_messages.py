@@ -3,7 +3,7 @@
 import pytest
 
 from msgflux.chat_messages import ChatMessages
-from msgflux.examples import Example
+from msgflux.core.examples import Example
 
 
 # ============================================================

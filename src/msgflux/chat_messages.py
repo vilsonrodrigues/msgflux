@@ -16,7 +16,7 @@ from typing import Any, Iterable, Iterator, List, Mapping, Optional
 from uuid import uuid4
 
 from msgflux.data.types import Audio, File, Image, MediaType, Video
-from msgflux.examples import Example
+from msgflux.core.examples import Example
 from msgflux.utils.msgspec import msgspec_dumps
 
 _CURRENT_CHAT_SESSION_ID: contextvars.ContextVar[Optional[str]] = (
