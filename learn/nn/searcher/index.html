@@ -12,7 +12,7 @@
         <meta name="author" content="Vilson Rodrigues">
       
       
-        <link rel="canonical" href="https://msgflux.com/learn/nn/retriever/">
+        <link rel="canonical" href="https://msgflux.com/learn/nn/searcher/">
       
       
         <link rel="prev" href="../transcriber/">
@@ -26,7 +26,7 @@
     
     
       
-        <title>nn.Retriever - msgFlux</title>
+        <title>Searcher - msgFlux</title>
       
     
     
@@ -86,7 +86,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#nnretriever" class="md-skip">
+        <a href="#nnsearcher" class="md-skip">
           Skip to content
         </a>
       
@@ -119,7 +119,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              nn.Retriever
+              Searcher
             
           </span>
         </div>
@@ -1110,6 +1110,8 @@
       
         
       
+        
+      
     
     
     
@@ -1826,58 +1828,13 @@
   
   
   
-    
-    
-      
-        
-      
-    
-    
-    
-      
-      
-    
-    
-    <li class="md-nav__item md-nav__item--nested">
-      
-        
-        
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_6_4" >
-        
-          
-          <label class="md-nav__link" for="__nav_2_6_4" id="__nav_2_6_4_label" tabindex="0">
-            
-  
-  
-  <span class="md-ellipsis">
-    Functional
-    
-  </span>
-  
-
-            <span class="md-nav__icon md-icon"></span>
-          </label>
-        
-        <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_2_6_4_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_2_6_4">
-            <span class="md-nav__icon md-icon"></span>
-            Functional
-          </label>
-          <ul class="md-nav__list" data-md-scrollfix>
-            
-              
-                
-  
-  
-  
-  
     <li class="md-nav__item">
       <a href="../functional/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
-    nn.functional
+    Functional
     
   </span>
   
@@ -1887,59 +1844,6 @@
   
 
               
-            
-          </ul>
-        </nav>
-      
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    
-    
-      
-        
-      
-    
-    
-    
-      
-      
-    
-    
-    <li class="md-nav__item md-nav__item--nested">
-      
-        
-        
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_6_5" >
-        
-          
-          <label class="md-nav__link" for="__nav_2_6_5" id="__nav_2_6_5_label" tabindex="0">
-            
-  
-  
-  <span class="md-ellipsis">
-    Transcriber
-    
-  </span>
-  
-
-            <span class="md-nav__icon md-icon"></span>
-          </label>
-        
-        <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_2_6_5_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_2_6_5">
-            <span class="md-nav__icon md-icon"></span>
-            Transcriber
-          </label>
-          <ul class="md-nav__list" data-md-scrollfix>
             
               
                 
@@ -1953,7 +1857,7 @@
   
   
   <span class="md-ellipsis">
-    nn.Transcriber
+    Transcriber
     
   </span>
   
@@ -1963,61 +1867,6 @@
   
 
               
-            
-          </ul>
-        </nav>
-      
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-    
-  
-  
-  
-    
-    
-      
-        
-      
-    
-    
-    
-      
-      
-    
-    
-    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
-      
-        
-        
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_6_6" checked>
-        
-          
-          <label class="md-nav__link" for="__nav_2_6_6" id="__nav_2_6_6_label" tabindex="0">
-            
-  
-  
-  <span class="md-ellipsis">
-    Retriever
-    
-  </span>
-  
-
-            <span class="md-nav__icon md-icon"></span>
-          </label>
-        
-        <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_2_6_6_label" aria-expanded="true">
-          <label class="md-nav__title" for="__nav_2_6_6">
-            <span class="md-nav__icon md-icon"></span>
-            Retriever
-          </label>
-          <ul class="md-nav__list" data-md-scrollfix>
             
               
                 
@@ -2040,7 +1889,7 @@
   
   
   <span class="md-ellipsis">
-    nn.Retriever
+    Searcher
     
   </span>
   
@@ -2053,7 +1902,7 @@
   
   
   <span class="md-ellipsis">
-    nn.Retriever
+    Searcher
     
   </span>
   
@@ -2109,55 +1958,49 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#retriever-types" class="md-nav__link">
+  <a href="#output-format" class="md-nav__link">
     <span class="md-ellipsis">
-      Retriever Types
+      Output Format
     </span>
   </a>
-  
-    <nav class="md-nav" aria-label="Retriever Types">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#1-vector-database-retrieval-semantic" class="md-nav__link">
-    <span class="md-ellipsis">
-      1. Vector Database Retrieval (Semantic)
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#2-web-retrieval" class="md-nav__link">
-    <span class="md-ellipsis">
-      2. Web Retrieval
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#3-lexical-retrieval" class="md-nav__link">
-    <span class="md-ellipsis">
-      3. Lexical Retrieval
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#advanced-configuration" class="md-nav__link">
+  <a href="#single-search-vs-multi-search" class="md-nav__link">
     <span class="md-ellipsis">
-      Advanced Configuration
+      Single Search vs Multi Search
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Advanced Configuration">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#response-templates" class="md-nav__link">
+    <span class="md-ellipsis">
+      Response Templates
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuration-options" class="md-nav__link">
+    <span class="md-ellipsis">
+      Configuration Options
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#message-fields-and-response-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      Message Fields and Response Mode
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Message Fields and Response Mode">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -2170,18 +2013,9 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#response-templates" class="md-nav__link">
+  <a href="#response-mode" class="md-nav__link">
     <span class="md-ellipsis">
-      Response Templates
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#runtime-configuration-override" class="md-nav__link">
-    <span class="md-ellipsis">
-      Runtime Configuration Override
+      Response Mode
     </span>
   </a>
   
@@ -2193,9 +2027,9 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#creating-retriever-hierarchies" class="md-nav__link">
+  <a href="#creating-searcher-hierarchies" class="md-nav__link">
     <span class="md-ellipsis">
-      Creating Retriever Hierarchies
+      Creating Searcher Hierarchies
     </span>
   </a>
   
@@ -2210,24 +2044,6 @@
   
 </li>
       
-        <li class="md-nav__item">
-  <a href="#async-support" class="md-nav__link">
-    <span class="md-ellipsis">
-      Async Support
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#best-practices" class="md-nav__link">
-    <span class="md-ellipsis">
-      Best Practices
-    </span>
-  </a>
-  
-</li>
-      
     </ul>
   
 </nav>
@@ -2236,59 +2052,6 @@
   
 
               
-            
-          </ul>
-        </nav>
-      
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    
-    
-      
-        
-      
-    
-    
-    
-      
-      
-    
-    
-    <li class="md-nav__item md-nav__item--nested">
-      
-        
-        
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_6_7" >
-        
-          
-          <label class="md-nav__link" for="__nav_2_6_7" id="__nav_2_6_7_label" tabindex="0">
-            
-  
-  
-  <span class="md-ellipsis">
-    Speaker
-    
-  </span>
-  
-
-            <span class="md-nav__icon md-icon"></span>
-          </label>
-        
-        <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_2_6_7_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_2_6_7">
-            <span class="md-nav__icon md-icon"></span>
-            Speaker
-          </label>
-          <ul class="md-nav__list" data-md-scrollfix>
             
               
                 
@@ -2302,7 +2065,7 @@
   
   
   <span class="md-ellipsis">
-    nn.Speaker
+    Speaker
     
   </span>
   
@@ -2312,59 +2075,6 @@
   
 
               
-            
-          </ul>
-        </nav>
-      
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    
-    
-      
-        
-      
-    
-    
-    
-      
-      
-    
-    
-    <li class="md-nav__item md-nav__item--nested">
-      
-        
-        
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_6_8" >
-        
-          
-          <label class="md-nav__link" for="__nav_2_6_8" id="__nav_2_6_8_label" tabindex="0">
-            
-  
-  
-  <span class="md-ellipsis">
-    MediaMaker
-    
-  </span>
-  
-
-            <span class="md-nav__icon md-icon"></span>
-          </label>
-        
-        <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_2_6_8_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_2_6_8">
-            <span class="md-nav__icon md-icon"></span>
-            MediaMaker
-          </label>
-          <ul class="md-nav__list" data-md-scrollfix>
             
               
                 
@@ -2378,7 +2088,7 @@
   
   
   <span class="md-ellipsis">
-    None
+    MediaMaker
     
   </span>
   
@@ -2389,9 +2099,24 @@
 
               
             
-          </ul>
-        </nav>
-      
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../predictor/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Predictor
+    
+  </span>
+  
+
+      </a>
     </li>
   
 
@@ -3786,55 +3511,49 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#retriever-types" class="md-nav__link">
+  <a href="#output-format" class="md-nav__link">
     <span class="md-ellipsis">
-      Retriever Types
+      Output Format
     </span>
   </a>
-  
-    <nav class="md-nav" aria-label="Retriever Types">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#1-vector-database-retrieval-semantic" class="md-nav__link">
-    <span class="md-ellipsis">
-      1. Vector Database Retrieval (Semantic)
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#2-web-retrieval" class="md-nav__link">
-    <span class="md-ellipsis">
-      2. Web Retrieval
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#3-lexical-retrieval" class="md-nav__link">
-    <span class="md-ellipsis">
-      3. Lexical Retrieval
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#advanced-configuration" class="md-nav__link">
+  <a href="#single-search-vs-multi-search" class="md-nav__link">
     <span class="md-ellipsis">
-      Advanced Configuration
+      Single Search vs Multi Search
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Advanced Configuration">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#response-templates" class="md-nav__link">
+    <span class="md-ellipsis">
+      Response Templates
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuration-options" class="md-nav__link">
+    <span class="md-ellipsis">
+      Configuration Options
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#message-fields-and-response-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      Message Fields and Response Mode
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Message Fields and Response Mode">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -3847,18 +3566,9 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#response-templates" class="md-nav__link">
+  <a href="#response-mode" class="md-nav__link">
     <span class="md-ellipsis">
-      Response Templates
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#runtime-configuration-override" class="md-nav__link">
-    <span class="md-ellipsis">
-      Runtime Configuration Override
+      Response Mode
     </span>
   </a>
   
@@ -3870,9 +3580,9 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#creating-retriever-hierarchies" class="md-nav__link">
+  <a href="#creating-searcher-hierarchies" class="md-nav__link">
     <span class="md-ellipsis">
-      Creating Retriever Hierarchies
+      Creating Searcher Hierarchies
     </span>
   </a>
   
@@ -3882,24 +3592,6 @@
   <a href="#integration-with-agents" class="md-nav__link">
     <span class="md-ellipsis">
       Integration with Agents
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#async-support" class="md-nav__link">
-    <span class="md-ellipsis">
-      Async Support
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#best-practices" class="md-nav__link">
-    <span class="md-ellipsis">
-      Best Practices
     </span>
   </a>
   
@@ -3924,7 +3616,7 @@
   
 
 
-<h1 id="nnretriever">nn.Retriever</h1><link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css">
+<h1 id="nnsearcher">nn.Searcher</h1><link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css">
 <style>
 .copy-markdown-button {
     background: transparent;
@@ -3944,9 +3636,9 @@
 .copy-markdown-button:active { transform: translateY(1px); }
 #copy-icon { transition: opacity 0.1s ease; }
 </style>
-<div class="copy-markdown-container" data-markdown="# nn.Retriever
+<div class="copy-markdown-container" data-markdown="# nn.Searcher
 
-The `nn.Retriever` module provides a unified interface for information retrieval using web search, lexical search, semantic search, or vector databases.
+The `nn.Searcher` module provides a unified interface for information retrieval using lexical search (BM25) or web search (Wikipedia).
 
 All code examples use the recommended import pattern:
 
@@ -3959,34 +3651,33 @@ import msgflux.nn as nn
 
 ### AutoParams Initialization (Recommended)
 
-This is the preferred and recommended way to define retrievers in msgFlux. It promotes reusability and clear intent.
+This is the preferred and recommended way to define searchers in msgFlux. It promotes reusability and clear intent.
 
 ```python
 import msgflux as mf
 import msgflux.nn as nn
 
-class DocumentRetriever(nn.Retriever):
-    &quot;&quot;&quot;Semantic retriever for technical documentation.&quot;&quot;&quot;
-    # AutoParams automatically uses class name as &#x27;name&#x27;
-    response_mode = &quot;plain_response&quot;
+# Create the BM25 backend
+bm25 = mf.Retriever.lexical(&quot;bm25&quot;)
+bm25.add([
+    &quot;Python is a programming language created by Guido van Rossum&quot;,
+    &quot;JavaScript runs in the browser and on the server with Node.js&quot;,
+    &quot;Rust is fast and memory safe, created by Mozilla&quot;,
+    &quot;Go was designed at Google by Robert Griesemer&quot;,
+])
 
-# Setup backend
-vector_db = mf.data.VectorDB.qdrant(
-    collection_name=&quot;documents&quot;,
-    url=&quot;http://localhost:6333&quot;
-)
-embedder = mf.Model.text_embedder(&quot;openai/text-embedding-3-small&quot;)
+class DocSearcher(nn.Searcher):
+    &quot;&quot;&quot;Searcher for technical documentation.&quot;&quot;&quot;
+    retriever = bm25
+    config    = {&quot;top_k&quot;: 3, &quot;return_score&quot;: True}
 
-# Create instance with defaults
-doc_retriever = DocumentRetriever(
-    retriever=vector_db,
-    model=embedder,
-    config={&quot;top_k&quot;: 5, &quot;threshold&quot;: 0.7}
-)
+# All parameters are already defined — just instantiate
+doc_searcher = DocSearcher()
 
-# Use the retriever
-results = doc_retriever(&quot;What is machine learning?&quot;)
+# Search
+results = doc_searcher(&quot;Python programming&quot;)
 print(results)
+# [{&#x27;results&#x27;: [{&#x27;data&#x27;: &#x27;Python is a...&#x27;, &#x27;score&#x27;: 2.35}, ...], &#x27;query&#x27;: &#x27;Python programming&#x27;}]
 ```
 
 ### Traditional Initialization
@@ -3994,254 +3685,246 @@ print(results)
 For quick scripts or one-off usage:
 
 ```python
-retriever = nn.Retriever(
-    retriever=vector_db,
-    model=embedder,
-    config={&quot;top_k&quot;: 5}
-)
-```
-
----
-
-## Retriever Types
-
-### 1. Vector Database Retrieval (Semantic)
-
-Most common type - uses embeddings for semantic similarity search.
-
-```python
-class KnowledgeBaseRetriever(nn.Retriever):
-    &quot;&quot;&quot;Semantic retriever for company knowledge base with high precision.&quot;&quot;&quot;
-    response_mode = &quot;plain_response&quot;
-
-# Create with strict thresholds for high precision
-kb_retriever = KnowledgeBaseRetriever(
-    retriever=vector_db,
-    model=embedder,
-    config={&quot;top_k&quot;: 5, &quot;threshold&quot;: 0.75, &quot;return_score&quot;: True}
-)
-
-results = kb_retriever(&quot;How do I use async functions in Python?&quot;)
-```
-
-### 2. Web Retrieval
-
-Search the web for real-time information.
-
-```python
-class WebResearcher(nn.Retriever):
-    &quot;&quot;&quot;Web search retriever for real-time information.&quot;&quot;&quot;
-    response_mode = &quot;plain_response&quot;
-
-# Create web retriever client
-web_search = mf.DataRetriever.tavily(api_key=&quot;your-api-key&quot;)
-
-researcher = WebResearcher(
-    retriever=web_search,
-    config={&quot;top_k&quot;: 10}
-)
-
-# Search current events
-results = researcher(&quot;Latest news on artificial intelligence&quot;)
-```
-
-### 3. Lexical Retrieval
-
-Traditional keyword-based search (BM25, TF-IDF).
-
-```python
-class DocumentSearcher(nn.Retriever):
-    &quot;&quot;&quot;Fast lexical search for exact keyword matching.&quot;&quot;&quot;
-    response_mode = &quot;plain_response&quot;
-
-# Create lexical retriever
-lexical_search = mf.DataRetriever.bm25(
-    documents=[&quot;doc1.txt&quot;, &quot;doc2.txt&quot;, &quot;doc3.txt&quot;]
-)
-
-searcher = DocumentSearcher(
-    retriever=lexical_search,
+searcher = nn.Searcher(
+    retriever=bm25,
     config={&quot;top_k&quot;: 3}
 )
-
-results = searcher(&quot;Python async await&quot;)
 ```
 
 ---
 
-## Advanced Configuration
+## Output Format
+
+Searcher always returns a list with one entry per query. Each entry is a dict with `results` and `query`:
+
+```python
+[
+    {
+        &quot;query&quot;: &quot;Python programming&quot;,
+        &quot;results&quot;: [
+            {&quot;data&quot;: &quot;Python is a programming language...&quot;, &quot;score&quot;: 2.35},
+            {&quot;data&quot;: &quot;JavaScript runs in the browser...&quot;, &quot;score&quot;: 0.0},
+        ]
+    }
+]
+```
+
+- `data`: The retrieved document content.
+- `score`: Relevance score (present when `return_score=True`, otherwise `None`).
+- `query`: The original query string.
+
+---
+
+## Single Search vs Multi Search
+
+=== &quot;Single&quot;
+
+    Pass a string to search for a single query:
+
+    ```python
+    searcher = nn.Searcher(retriever=bm25, config={&quot;top_k&quot;: 2, &quot;return_score&quot;: True})
+
+    result = searcher(&quot;Python programming&quot;)
+    # [{&#x27;results&#x27;: [...], &#x27;query&#x27;: &#x27;Python programming&#x27;}]
+    ```
+
+=== &quot;Multi&quot;
+
+    Pass a list of strings to search multiple queries at once:
+
+    ```python
+    results = searcher([&quot;Python programming&quot;, &quot;Rust memory safe&quot;])
+    # [
+    #     {&#x27;results&#x27;: [...], &#x27;query&#x27;: &#x27;Python programming&#x27;},
+    #     {&#x27;results&#x27;: [...], &#x27;query&#x27;: &#x27;Rust memory safe&#x27;}
+    # ]
+    ```
+
+---
+
+## Response Templates
+
+Use Jinja2 templates to format search results into readable strings. When a `response` template is set, the return type changes from `list` to `str`.
+
+=== &quot;Scored&quot;
+
+    ```python
+    class ScoredSearcher(nn.Searcher):
+        &quot;&quot;&quot;Searcher with formatted output including scores.&quot;&quot;&quot;
+        retriever = bm25
+        config    = {&quot;top_k&quot;: 2, &quot;return_score&quot;: True}
+        templates = {
+            &quot;response&quot;: &quot;&quot;&quot;Query: {{ query }}
+    {% for r in results %}  {{ loop.index }}. {{ r.data }} (score: {{ r.score }})
+    {% endfor %}&quot;&quot;&quot;
+        }
+
+    searcher = ScoredSearcher()
+    result = searcher(&quot;Python programming&quot;)
+    # &quot;Query: Python programming
+    #   1. Python is a programming language... (score: 2.35)
+    #   2. JavaScript runs in the browser... (score: 0.0)&quot;
+    ```
+
+=== &quot;Context-Only&quot;
+
+    Extract just the document content for RAG pipelines:
+
+    ```python
+    class ContextSearcher(nn.Searcher):
+        &quot;&quot;&quot;Extracts raw document content for RAG pipelines.&quot;&quot;&quot;
+        retriever = bm25
+        config    = {&quot;top_k&quot;: 3}
+        templates = {
+            &quot;response&quot;: &quot;{% for r in results %}{{ r.data }}\n{% endfor %}&quot;
+        }
+
+    searcher = ContextSearcher()
+    context = searcher(&quot;Python&quot;)
+    # &quot;Python is a programming language created by Guido van Rossum\n...&quot;
+    ```
+
+=== &quot;Multi-Query&quot;
+
+    Each result is formatted individually and joined with double newlines:
+
+    ```python
+    result = searcher([&quot;Python&quot;, &quot;Rust&quot;])
+    # &quot;Query: Python
+    #   1. Python is a programming language... (score: 1.17)
+    #   2. JavaScript runs in the browser... (score: 0.0)
+    #
+    # Query: Rust
+    #   1. Rust is fast and memory safe... (score: 1.23)
+    #   2. Python is a programming language... (score: 0.0)&quot;
+    ```
+
+---
+
+## Configuration Options
+
+The `config` dict controls retrieval behavior:
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `top_k` | int | 4 | Maximum results per query |
+| `threshold` | float | 0.0 | Minimum score to include a result |
+| `return_score` | bool | False | Include relevance scores in output |
+| `dict_key` | str | - | Key to extract from `List[Dict]` inputs |
+
+```python
+class PrecisionSearcher(nn.Searcher):
+    &quot;&quot;&quot;Searcher with strict filtering.&quot;&quot;&quot;
+    retriever = bm25
+    config    = {
+        &quot;top_k&quot;: 5,
+        &quot;threshold&quot;: 0.5,
+        &quot;return_score&quot;: True,
+    }
+
+searcher = PrecisionSearcher()
+```
+
+---
+
+## Message Fields and Response Mode
 
 ### Message Field Mapping
 
-Use `Message` objects for structured input/output. This decouples your retriever from the specific data structure.
+Use `Message` objects for structured input/output. This decouples your searcher from the specific data structure.
 
 ```python
-class ContextualRetriever(nn.Retriever):
-    &quot;&quot;&quot;Retriever that processes structured message inputs.&quot;&quot;&quot;
-    response_mode = &quot;message&quot;  # Return Message object
+class StructuredSearcher(nn.Searcher):
+    &quot;&quot;&quot;Searcher that reads queries from a Message field.&quot;&quot;&quot;
+    retriever      = bm25
+    message_fields = {&quot;task_inputs&quot;: &quot;query.user&quot;}
+    config         = {&quot;top_k&quot;: 3}
 
-retriever = ContextualRetriever(
-    retriever=vector_db,
-    model=embedder,
-    message_fields={
-        &quot;task_inputs&quot;: &quot;query.user&quot;  # Extract query from message.query.user
-    },
-    config={&quot;top_k&quot;: 5}
-)
+searcher = StructuredSearcher()
 
-# Use with Message
 msg = mf.Message()
 msg.set(&quot;query.user&quot;, &quot;What is dependency injection?&quot;)
 
-result_msg = retriever(msg)
-# Results are written to the default location or configured output
-print(result_msg.get(&quot;retriever.results&quot;))
+result = searcher(msg)
 ```
 
-### Response Templates
+### Response Mode
 
-Format retrieval results using Jinja templates before returning them.
-
-```python
-class FormattedRetriever(nn.Retriever):
-    &quot;&quot;&quot;Retriever with custom result formatting.&quot;&quot;&quot;
-    response_mode = &quot;plain_response&quot;
-
-retriever = FormattedRetriever(
-    retriever=vector_db,
-    model=embedder,
-    templates={
-        &quot;response&quot;: &quot;&quot;&quot;
-        Found {{ results|length }} relevant articles:
-        {% for result in results %}
-        {{ loop.index }}. {{ result.data }} (Score: {{ result.score }})
-        {% endfor %}
-        &quot;&quot;&quot;
-    },
-    config={&quot;top_k&quot;: 5, &quot;return_score&quot;: True}
-)
-
-formatted_results = retriever(&quot;machine learning best practices&quot;)
-```
-
-### Runtime Configuration Override
-
-Override configuration at call time for flexibility.
+Controls where results are written:
 
 ```python
-retriever = FlexibleRetriever(
-    retriever=vector_db,
-    model=embedder,
-    config={&quot;top_k&quot;: 3}  # Default
-)
+# Default (None): returns results directly
+searcher = nn.Searcher(retriever=bm25)
+result = searcher(&quot;query&quot;)  # Returns list
 
-# Normal retrieval
-results = retriever(&quot;python tutorial&quot;)
+# Path mode: writes to message field, returns None
+class PipelineSearcher(nn.Searcher):
+    &quot;&quot;&quot;Writes results into message.context for downstream modules.&quot;&quot;&quot;
+    retriever      = bm25
+    message_fields = {&quot;task_inputs&quot;: &quot;question&quot;}
+    response_mode  = &quot;context&quot;
+    config         = {&quot;top_k&quot;: 3}
 
-# Override parameters at runtime
-results = retriever(
-    &quot;machine learning&quot;,
-    task_inputs=&quot;deep learning neural networks&quot;,  # Override query
-    config={&quot;top_k&quot;: 10}                          # Override config
-)
+searcher = PipelineSearcher()
+
+msg = mf.Message()
+msg.question = &quot;Python programming&quot;
+searcher(msg)  # Returns None
+print(msg.context)  # Results are here
 ```
 
 ---
 
-## Creating Retriever Hierarchies
+## Creating Searcher Hierarchies
 
-Build specialized retrievers through inheritance to share configuration.
+Build specialized searchers through inheritance to share configuration.
 
 ```python
-# Base retriever for all documentation
-class BaseDocRetriever(nn.Retriever):
-    &quot;&quot;&quot;Base retriever for documentation with common config.&quot;&quot;&quot;
-    response_mode = &quot;plain_response&quot;
+# Base searcher for all documentation
+class BaseDocSearcher(nn.Searcher):
+    &quot;&quot;&quot;Base searcher for documentation with common config.&quot;&quot;&quot;
+    retriever = bm25
 
-# High precision retriever for critical docs
-class CriticalDocRetriever(BaseDocRetriever):
-    &quot;&quot;&quot;High precision retriever for critical documentation (compliance, security).&quot;&quot;&quot;
-    # Inherits behavior from BaseDocRetriever
+# High precision searcher for critical docs
+class CriticalDocSearcher(BaseDocSearcher):
+    &quot;&quot;&quot;High precision searcher for critical documentation.&quot;&quot;&quot;
+    config = {&quot;top_k&quot;: 3, &quot;threshold&quot;: 2.0}  # Strict
 
-# Broad retriever for general exploration
-class ExploratoryRetriever(BaseDocRetriever):
-    &quot;&quot;&quot;Broad retriever for exploratory searches.&quot;&quot;&quot;
+# Broad searcher for general exploration
+class ExploratorySearcher(BaseDocSearcher):
+    &quot;&quot;&quot;Broad searcher for exploratory searches.&quot;&quot;&quot;
+    config = {&quot;top_k&quot;: 10, &quot;threshold&quot;: 0.0}  # Permissive
 
-# Create instances with different thresholds
-critical = CriticalDocRetriever(
-    retriever=vector_db,
-    model=embedder,
-    config={&quot;top_k&quot;: 3, &quot;threshold&quot;: 0.85}  # Strict
-)
-
-exploratory = ExploratoryRetriever(
-    retriever=vector_db,
-    model=embedder,
-    config={&quot;top_k&quot;: 10, &quot;threshold&quot;: 0.5}  # Permissive
-)
+critical    = CriticalDocSearcher()
+exploratory = ExploratorySearcher()
 ```
 
 ---
 
 ## Integration with Agents
 
-Retrievers are commonly used as tools for agents to implement RAG patterns.
+A Searcher with a docstring (used as `description`) and default `annotations` can be plugged directly as a tool into an Agent — no wrapper function needed.
 
 ```python
-# Define retriever
-kb_retriever = CompanyKnowledgeRetriever(
-    retriever=vector_db,
-    model=embedder,
-    config={&quot;top_k&quot;: 5}
-)
+bm25 = mf.Retriever.lexical(&quot;bm25&quot;)
+bm25.add(documents)
 
-# Define retriever as a tool function
-def search_knowledge_base(query: str) -&gt; str:
-    &quot;&quot;&quot;Search the company knowledge base for information.&quot;&quot;&quot;
-    results = kb_retriever(query)
-    return str(results)
+class KBSearcher(nn.Searcher):
+    &quot;&quot;&quot;Search the company knowledge base for relevant documents.&quot;&quot;&quot;
+    retriever = bm25
+    config    = {&quot;top_k&quot;: 5}
+    templates = {&quot;response&quot;: &quot;{% for r in results %}{{ r.data }}\n{% endfor %}&quot;}
 
-# Create agent with retriever tool
 class SupportAgent(nn.Agent):
     &quot;&quot;&quot;Customer support agent with access to knowledge base.&quot;&quot;&quot;
-    model = mf.Model.chat_completion(&quot;openai/gpt-4&quot;)
-    tools = [search_knowledge_base]
+    model = mf.Model.chat_completion(&quot;openai/gpt-4.1-mini&quot;)
+    tools = [KBSearcher]
 
 support_agent = SupportAgent()
-
-# Agent can now use retriever to answer questions
 response = support_agent(&quot;How do I reset my password?&quot;)
 ```
 
----
-
-## Async Support
-
-Retrievers provide first-class `async` support via `aforward` or `acall`.
-
-```python
-import asyncio
-
-async def search_multiple():
-    &quot;&quot;&quot;Perform multiple searches concurrently.&quot;&quot;&quot;
-    results = await asyncio.gather(
-        retriever.aforward(&quot;machine learning&quot;),
-        retriever.aforward(&quot;deep learning&quot;),
-        retriever.aforward(&quot;neural networks&quot;)
-    )
-    return results
-
-# Run async searches
-results = asyncio.run(search_multiple())
-```
-
----
-
-## Best Practices
-
-1.  **Use Domain-Specific Retrievers**: Create specialized classes (`TechnicalDocRetriever`, `CustomerQueryRetriever`) rather than generic instances.
-2.  **Tune Thresholds**: Use strict thresholds (0.8+) for precision-critical tasks and lower thresholds (0.5-0.6) for exploration.
-3.  **Return Scores**: Enable `return_score=True` to debug retrieval quality and filter low-confidence results in your logic.
+The docstring becomes the tool description, the class name becomes the tool name, and the default annotations (`query: str -&gt; str`) define the tool schema — all via AutoParams.
 ">
   <button class="copy-markdown-button" onclick="copyMarkdownToClipboard(this)">
     <i id="copy-icon" class="ph ph-clipboard" style="font-size:16px;"></i>
@@ -4310,246 +3993,269 @@ results = asyncio.run(search_multiple())
     window.copyMarkdownToClipboard = copyMarkdownToClipboard;
 }());
 </script>
-<p>The <code>nn.Retriever</code> module provides a unified interface for information retrieval using web search, lexical search, semantic search, or vector databases.</p>
+<p>The <code>nn.Searcher</code> module provides a unified interface for information retrieval using lexical search (BM25) or web search (Wikipedia).</p>
 <p>All code examples use the recommended import pattern:</p>
 <div class="language-python highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
 </span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">nn</span>
 </span></code></pre></div>
 <h2 id="quick-start">Quick Start</h2>
 <h3 id="autoparams-initialization-recommended">AutoParams Initialization (Recommended)</h3>
-<p>This is the preferred and recommended way to define retrievers in msgFlux. It promotes reusability and clear intent.</p>
+<p>This is the preferred and recommended way to define searchers in msgFlux. It promotes reusability and clear intent.</p>
 <div class="language-python highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
 </span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">nn</span>
 </span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>
-</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="k">class</span><span class="w"> </span><span class="nc">DocumentRetriever</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Retriever</span><span class="p">):</span>
-</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Semantic retriever for technical documentation.&quot;&quot;&quot;</span>
-</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>    <span class="c1"># AutoParams automatically uses class name as &#39;name&#39;</span>
-</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>    <span class="n">response_mode</span> <span class="o">=</span> <span class="s2">&quot;plain_response&quot;</span>
-</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>
-</span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="c1"># Setup backend</span>
-</span><span id="__span-1-10"><a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="n">vector_db</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">VectorDB</span><span class="o">.</span><span class="n">qdrant</span><span class="p">(</span>
-</span><span id="__span-1-11"><a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>    <span class="n">collection_name</span><span class="o">=</span><span class="s2">&quot;documents&quot;</span><span class="p">,</span>
-</span><span id="__span-1-12"><a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>    <span class="n">url</span><span class="o">=</span><span class="s2">&quot;http://localhost:6333&quot;</span>
-</span><span id="__span-1-13"><a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a><span class="p">)</span>
-</span><span id="__span-1-14"><a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a><span class="n">embedder</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">text_embedder</span><span class="p">(</span><span class="s2">&quot;openai/text-embedding-3-small&quot;</span><span class="p">)</span>
-</span><span id="__span-1-15"><a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a>
-</span><span id="__span-1-16"><a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a><span class="c1"># Create instance with defaults</span>
-</span><span id="__span-1-17"><a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a><span class="n">doc_retriever</span> <span class="o">=</span> <span class="n">DocumentRetriever</span><span class="p">(</span>
-</span><span id="__span-1-18"><a id="__codelineno-1-18" name="__codelineno-1-18" href="#__codelineno-1-18"></a>    <span class="n">retriever</span><span class="o">=</span><span class="n">vector_db</span><span class="p">,</span>
-</span><span id="__span-1-19"><a id="__codelineno-1-19" name="__codelineno-1-19" href="#__codelineno-1-19"></a>    <span class="n">model</span><span class="o">=</span><span class="n">embedder</span><span class="p">,</span>
-</span><span id="__span-1-20"><a id="__codelineno-1-20" name="__codelineno-1-20" href="#__codelineno-1-20"></a>    <span class="n">config</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;top_k&quot;</span><span class="p">:</span> <span class="mi">5</span><span class="p">,</span> <span class="s2">&quot;threshold&quot;</span><span class="p">:</span> <span class="mf">0.7</span><span class="p">}</span>
-</span><span id="__span-1-21"><a id="__codelineno-1-21" name="__codelineno-1-21" href="#__codelineno-1-21"></a><span class="p">)</span>
-</span><span id="__span-1-22"><a id="__codelineno-1-22" name="__codelineno-1-22" href="#__codelineno-1-22"></a>
-</span><span id="__span-1-23"><a id="__codelineno-1-23" name="__codelineno-1-23" href="#__codelineno-1-23"></a><span class="c1"># Use the retriever</span>
-</span><span id="__span-1-24"><a id="__codelineno-1-24" name="__codelineno-1-24" href="#__codelineno-1-24"></a><span class="n">results</span> <span class="o">=</span> <span class="n">doc_retriever</span><span class="p">(</span><span class="s2">&quot;What is machine learning?&quot;</span><span class="p">)</span>
-</span><span id="__span-1-25"><a id="__codelineno-1-25" name="__codelineno-1-25" href="#__codelineno-1-25"></a><span class="nb">print</span><span class="p">(</span><span class="n">results</span><span class="p">)</span>
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="c1"># Create the BM25 backend</span>
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="n">bm25</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Retriever</span><span class="o">.</span><span class="n">lexical</span><span class="p">(</span><span class="s2">&quot;bm25&quot;</span><span class="p">)</span>
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="n">bm25</span><span class="o">.</span><span class="n">add</span><span class="p">([</span>
+</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>    <span class="s2">&quot;Python is a programming language created by Guido van Rossum&quot;</span><span class="p">,</span>
+</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>    <span class="s2">&quot;JavaScript runs in the browser and on the server with Node.js&quot;</span><span class="p">,</span>
+</span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>    <span class="s2">&quot;Rust is fast and memory safe, created by Mozilla&quot;</span><span class="p">,</span>
+</span><span id="__span-1-10"><a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>    <span class="s2">&quot;Go was designed at Google by Robert Griesemer&quot;</span><span class="p">,</span>
+</span><span id="__span-1-11"><a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="p">])</span>
+</span><span id="__span-1-12"><a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>
+</span><span id="__span-1-13"><a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a><span class="k">class</span><span class="w"> </span><span class="nc">DocSearcher</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Searcher</span><span class="p">):</span>
+</span><span id="__span-1-14"><a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Searcher for technical documentation.&quot;&quot;&quot;</span>
+</span><span id="__span-1-15"><a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a>    <span class="n">retriever</span> <span class="o">=</span> <span class="n">bm25</span>
+</span><span id="__span-1-16"><a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a>    <span class="n">config</span>    <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;top_k&quot;</span><span class="p">:</span> <span class="mi">3</span><span class="p">,</span> <span class="s2">&quot;return_score&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">}</span>
+</span><span id="__span-1-17"><a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a>
+</span><span id="__span-1-18"><a id="__codelineno-1-18" name="__codelineno-1-18" href="#__codelineno-1-18"></a><span class="c1"># All parameters are already defined — just instantiate</span>
+</span><span id="__span-1-19"><a id="__codelineno-1-19" name="__codelineno-1-19" href="#__codelineno-1-19"></a><span class="n">doc_searcher</span> <span class="o">=</span> <span class="n">DocSearcher</span><span class="p">()</span>
+</span><span id="__span-1-20"><a id="__codelineno-1-20" name="__codelineno-1-20" href="#__codelineno-1-20"></a>
+</span><span id="__span-1-21"><a id="__codelineno-1-21" name="__codelineno-1-21" href="#__codelineno-1-21"></a><span class="c1"># Search</span>
+</span><span id="__span-1-22"><a id="__codelineno-1-22" name="__codelineno-1-22" href="#__codelineno-1-22"></a><span class="n">results</span> <span class="o">=</span> <span class="n">doc_searcher</span><span class="p">(</span><span class="s2">&quot;Python programming&quot;</span><span class="p">)</span>
+</span><span id="__span-1-23"><a id="__codelineno-1-23" name="__codelineno-1-23" href="#__codelineno-1-23"></a><span class="nb">print</span><span class="p">(</span><span class="n">results</span><span class="p">)</span>
+</span><span id="__span-1-24"><a id="__codelineno-1-24" name="__codelineno-1-24" href="#__codelineno-1-24"></a><span class="c1"># [{&#39;results&#39;: [{&#39;data&#39;: &#39;Python is a...&#39;, &#39;score&#39;: 2.35}, ...], &#39;query&#39;: &#39;Python programming&#39;}]</span>
 </span></code></pre></div>
 <h3 id="traditional-initialization">Traditional Initialization</h3>
 <p>For quick scripts or one-off usage:</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">retriever</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Retriever</span><span class="p">(</span>
-</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>    <span class="n">retriever</span><span class="o">=</span><span class="n">vector_db</span><span class="p">,</span>
-</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>    <span class="n">model</span><span class="o">=</span><span class="n">embedder</span><span class="p">,</span>
-</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>    <span class="n">config</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;top_k&quot;</span><span class="p">:</span> <span class="mi">5</span><span class="p">}</span>
-</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="p">)</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">searcher</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Searcher</span><span class="p">(</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>    <span class="n">retriever</span><span class="o">=</span><span class="n">bm25</span><span class="p">,</span>
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>    <span class="n">config</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;top_k&quot;</span><span class="p">:</span> <span class="mi">3</span><span class="p">}</span>
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="p">)</span>
 </span></code></pre></div>
 <hr />
-<h2 id="retriever-types">Retriever Types</h2>
-<h3 id="1-vector-database-retrieval-semantic">1. Vector Database Retrieval (Semantic)</h3>
-<p>Most common type - uses embeddings for semantic similarity search.</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">KnowledgeBaseRetriever</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Retriever</span><span class="p">):</span>
-</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Semantic retriever for company knowledge base with high precision.&quot;&quot;&quot;</span>
-</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>    <span class="n">response_mode</span> <span class="o">=</span> <span class="s2">&quot;plain_response&quot;</span>
-</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>
-</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="c1"># Create with strict thresholds for high precision</span>
-</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="n">kb_retriever</span> <span class="o">=</span> <span class="n">KnowledgeBaseRetriever</span><span class="p">(</span>
-</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>    <span class="n">retriever</span><span class="o">=</span><span class="n">vector_db</span><span class="p">,</span>
-</span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>    <span class="n">model</span><span class="o">=</span><span class="n">embedder</span><span class="p">,</span>
-</span><span id="__span-3-9"><a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>    <span class="n">config</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;top_k&quot;</span><span class="p">:</span> <span class="mi">5</span><span class="p">,</span> <span class="s2">&quot;threshold&quot;</span><span class="p">:</span> <span class="mf">0.75</span><span class="p">,</span> <span class="s2">&quot;return_score&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">}</span>
-</span><span id="__span-3-10"><a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a><span class="p">)</span>
-</span><span id="__span-3-11"><a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a>
-</span><span id="__span-3-12"><a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a><span class="n">results</span> <span class="o">=</span> <span class="n">kb_retriever</span><span class="p">(</span><span class="s2">&quot;How do I use async functions in Python?&quot;</span><span class="p">)</span>
+<h2 id="output-format">Output Format</h2>
+<p>Searcher always returns a list with one entry per query. Each entry is a dict with <code>results</code> and <code>query</code>:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="p">[</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>    <span class="p">{</span>
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>        <span class="s2">&quot;query&quot;</span><span class="p">:</span> <span class="s2">&quot;Python programming&quot;</span><span class="p">,</span>
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>        <span class="s2">&quot;results&quot;</span><span class="p">:</span> <span class="p">[</span>
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>            <span class="p">{</span><span class="s2">&quot;data&quot;</span><span class="p">:</span> <span class="s2">&quot;Python is a programming language...&quot;</span><span class="p">,</span> <span class="s2">&quot;score&quot;</span><span class="p">:</span> <span class="mf">2.35</span><span class="p">},</span>
+</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>            <span class="p">{</span><span class="s2">&quot;data&quot;</span><span class="p">:</span> <span class="s2">&quot;JavaScript runs in the browser...&quot;</span><span class="p">,</span> <span class="s2">&quot;score&quot;</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">},</span>
+</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>        <span class="p">]</span>
+</span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>    <span class="p">}</span>
+</span><span id="__span-3-9"><a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="p">]</span>
 </span></code></pre></div>
-<h3 id="2-web-retrieval">2. Web Retrieval</h3>
-<p>Search the web for real-time information.</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">WebResearcher</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Retriever</span><span class="p">):</span>
-</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Web search retriever for real-time information.&quot;&quot;&quot;</span>
-</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>    <span class="n">response_mode</span> <span class="o">=</span> <span class="s2">&quot;plain_response&quot;</span>
-</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>
-</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="c1"># Create web retriever client</span>
-</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="n">web_search</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">DataRetriever</span><span class="o">.</span><span class="n">tavily</span><span class="p">(</span><span class="n">api_key</span><span class="o">=</span><span class="s2">&quot;your-api-key&quot;</span><span class="p">)</span>
-</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>
-</span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="n">researcher</span> <span class="o">=</span> <span class="n">WebResearcher</span><span class="p">(</span>
-</span><span id="__span-4-9"><a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>    <span class="n">retriever</span><span class="o">=</span><span class="n">web_search</span><span class="p">,</span>
-</span><span id="__span-4-10"><a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a>    <span class="n">config</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;top_k&quot;</span><span class="p">:</span> <span class="mi">10</span><span class="p">}</span>
-</span><span id="__span-4-11"><a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a><span class="p">)</span>
-</span><span id="__span-4-12"><a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a>
-</span><span id="__span-4-13"><a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a><span class="c1"># Search current events</span>
-</span><span id="__span-4-14"><a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a><span class="n">results</span> <span class="o">=</span> <span class="n">researcher</span><span class="p">(</span><span class="s2">&quot;Latest news on artificial intelligence&quot;</span><span class="p">)</span>
+<ul>
+<li><code>data</code>: The retrieved document content.</li>
+<li><code>score</code>: Relevance score (present when <code>return_score=True</code>, otherwise <code>None</code>).</li>
+<li><code>query</code>: The original query string.</li>
+</ul>
+<hr />
+<h2 id="single-search-vs-multi-search">Single Search vs Multi Search</h2>
+<div class="tabbed-set tabbed-alternate" data-tabs="1:2"><input checked="checked" id="__tabbed_1_1" name="__tabbed_1" type="radio" /><input id="__tabbed_1_2" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="__tabbed_1_1">Single</label><label for="__tabbed_1_2">Multi</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<p>Pass a string to search for a single query:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">searcher</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Searcher</span><span class="p">(</span><span class="n">retriever</span><span class="o">=</span><span class="n">bm25</span><span class="p">,</span> <span class="n">config</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;top_k&quot;</span><span class="p">:</span> <span class="mi">2</span><span class="p">,</span> <span class="s2">&quot;return_score&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">})</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="n">result</span> <span class="o">=</span> <span class="n">searcher</span><span class="p">(</span><span class="s2">&quot;Python programming&quot;</span><span class="p">)</span>
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="c1"># [{&#39;results&#39;: [...], &#39;query&#39;: &#39;Python programming&#39;}]</span>
 </span></code></pre></div>
-<h3 id="3-lexical-retrieval">3. Lexical Retrieval</h3>
-<p>Traditional keyword-based search (BM25, TF-IDF).</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">DocumentSearcher</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Retriever</span><span class="p">):</span>
-</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Fast lexical search for exact keyword matching.&quot;&quot;&quot;</span>
-</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>    <span class="n">response_mode</span> <span class="o">=</span> <span class="s2">&quot;plain_response&quot;</span>
-</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>
-</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="c1"># Create lexical retriever</span>
-</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="n">lexical_search</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">DataRetriever</span><span class="o">.</span><span class="n">bm25</span><span class="p">(</span>
-</span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>    <span class="n">documents</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;doc1.txt&quot;</span><span class="p">,</span> <span class="s2">&quot;doc2.txt&quot;</span><span class="p">,</span> <span class="s2">&quot;doc3.txt&quot;</span><span class="p">]</span>
-</span><span id="__span-5-8"><a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a><span class="p">)</span>
-</span><span id="__span-5-9"><a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a>
-</span><span id="__span-5-10"><a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a><span class="n">searcher</span> <span class="o">=</span> <span class="n">DocumentSearcher</span><span class="p">(</span>
-</span><span id="__span-5-11"><a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a>    <span class="n">retriever</span><span class="o">=</span><span class="n">lexical_search</span><span class="p">,</span>
-</span><span id="__span-5-12"><a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a>    <span class="n">config</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;top_k&quot;</span><span class="p">:</span> <span class="mi">3</span><span class="p">}</span>
-</span><span id="__span-5-13"><a id="__codelineno-5-13" name="__codelineno-5-13" href="#__codelineno-5-13"></a><span class="p">)</span>
-</span><span id="__span-5-14"><a id="__codelineno-5-14" name="__codelineno-5-14" href="#__codelineno-5-14"></a>
-</span><span id="__span-5-15"><a id="__codelineno-5-15" name="__codelineno-5-15" href="#__codelineno-5-15"></a><span class="n">results</span> <span class="o">=</span> <span class="n">searcher</span><span class="p">(</span><span class="s2">&quot;Python async await&quot;</span><span class="p">)</span>
+</div>
+<div class="tabbed-block">
+<p>Pass a list of strings to search multiple queries at once:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">results</span> <span class="o">=</span> <span class="n">searcher</span><span class="p">([</span><span class="s2">&quot;Python programming&quot;</span><span class="p">,</span> <span class="s2">&quot;Rust memory safe&quot;</span><span class="p">])</span>
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="c1"># [</span>
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="c1">#     {&#39;results&#39;: [...], &#39;query&#39;: &#39;Python programming&#39;},</span>
+</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="c1">#     {&#39;results&#39;: [...], &#39;query&#39;: &#39;Rust memory safe&#39;}</span>
+</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="c1"># ]</span>
+</span></code></pre></div>
+</div>
+</div>
+</div>
+<hr />
+<h2 id="response-templates">Response Templates</h2>
+<p>Use Jinja2 templates to format search results into readable strings. When a <code>response</code> template is set, the return type changes from <code>list</code> to <code>str</code>.</p>
+<div class="tabbed-set tabbed-alternate" data-tabs="2:3"><input checked="checked" id="__tabbed_2_1" name="__tabbed_2" type="radio" /><input id="__tabbed_2_2" name="__tabbed_2" type="radio" /><input id="__tabbed_2_3" name="__tabbed_2" type="radio" /><div class="tabbed-labels"><label for="__tabbed_2_1">Scored</label><label for="__tabbed_2_2">Context-Only</label><label for="__tabbed_2_3">Multi-Query</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<div class="language-python highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">ScoredSearcher</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Searcher</span><span class="p">):</span>
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Searcher with formatted output including scores.&quot;&quot;&quot;</span>
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>    <span class="n">retriever</span> <span class="o">=</span> <span class="n">bm25</span>
+</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>    <span class="n">config</span>    <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;top_k&quot;</span><span class="p">:</span> <span class="mi">2</span><span class="p">,</span> <span class="s2">&quot;return_score&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">}</span>
+</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>    <span class="n">templates</span> <span class="o">=</span> <span class="p">{</span>
+</span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>        <span class="s2">&quot;response&quot;</span><span class="p">:</span> <span class="s2">&quot;&quot;&quot;Query: {{ query }}</span>
+</span><span id="__span-6-7"><a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="s2">{</span><span class="si">% f</span><span class="s2">or r in results %}  {{ loop.index }}. {{ r.data }} (score: {{ r.score }})</span>
+</span><span id="__span-6-8"><a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="s2">{</span><span class="si">% e</span><span class="s2">ndfor %}&quot;&quot;&quot;</span>
+</span><span id="__span-6-9"><a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a>    <span class="p">}</span>
+</span><span id="__span-6-10"><a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a>
+</span><span id="__span-6-11"><a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a><span class="n">searcher</span> <span class="o">=</span> <span class="n">ScoredSearcher</span><span class="p">()</span>
+</span><span id="__span-6-12"><a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a><span class="n">result</span> <span class="o">=</span> <span class="n">searcher</span><span class="p">(</span><span class="s2">&quot;Python programming&quot;</span><span class="p">)</span>
+</span><span id="__span-6-13"><a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a><span class="c1"># &quot;Query: Python programming</span>
+</span><span id="__span-6-14"><a id="__codelineno-6-14" name="__codelineno-6-14" href="#__codelineno-6-14"></a><span class="c1">#   1. Python is a programming language... (score: 2.35)</span>
+</span><span id="__span-6-15"><a id="__codelineno-6-15" name="__codelineno-6-15" href="#__codelineno-6-15"></a><span class="c1">#   2. JavaScript runs in the browser... (score: 0.0)&quot;</span>
+</span></code></pre></div>
+</div>
+<div class="tabbed-block">
+<p>Extract just the document content for RAG pipelines:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">ContextSearcher</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Searcher</span><span class="p">):</span>
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Extracts raw document content for RAG pipelines.&quot;&quot;&quot;</span>
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>    <span class="n">retriever</span> <span class="o">=</span> <span class="n">bm25</span>
+</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>    <span class="n">config</span>    <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;top_k&quot;</span><span class="p">:</span> <span class="mi">3</span><span class="p">}</span>
+</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>    <span class="n">templates</span> <span class="o">=</span> <span class="p">{</span>
+</span><span id="__span-7-6"><a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>        <span class="s2">&quot;response&quot;</span><span class="p">:</span> <span class="s2">&quot;{</span><span class="si">% f</span><span class="s2">or r in results %}{{ r.data }}</span><span class="se">\n</span><span class="s2">{</span><span class="si">% e</span><span class="s2">ndfor %}&quot;</span>
+</span><span id="__span-7-7"><a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>    <span class="p">}</span>
+</span><span id="__span-7-8"><a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>
+</span><span id="__span-7-9"><a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a><span class="n">searcher</span> <span class="o">=</span> <span class="n">ContextSearcher</span><span class="p">()</span>
+</span><span id="__span-7-10"><a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a><span class="n">context</span> <span class="o">=</span> <span class="n">searcher</span><span class="p">(</span><span class="s2">&quot;Python&quot;</span><span class="p">)</span>
+</span><span id="__span-7-11"><a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a><span class="c1"># &quot;Python is a programming language created by Guido van Rossum\n...&quot;</span>
+</span></code></pre></div>
+</div>
+<div class="tabbed-block">
+<p>Each result is formatted individually and joined with double newlines:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="n">result</span> <span class="o">=</span> <span class="n">searcher</span><span class="p">([</span><span class="s2">&quot;Python&quot;</span><span class="p">,</span> <span class="s2">&quot;Rust&quot;</span><span class="p">])</span>
+</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="c1"># &quot;Query: Python</span>
+</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="c1">#   1. Python is a programming language... (score: 1.17)</span>
+</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="c1">#   2. JavaScript runs in the browser... (score: 0.0)</span>
+</span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="c1">#</span>
+</span><span id="__span-8-6"><a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="c1"># Query: Rust</span>
+</span><span id="__span-8-7"><a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="c1">#   1. Rust is fast and memory safe... (score: 1.23)</span>
+</span><span id="__span-8-8"><a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a><span class="c1">#   2. Python is a programming language... (score: 0.0)&quot;</span>
+</span></code></pre></div>
+</div>
+</div>
+</div>
+<hr />
+<h2 id="configuration-options">Configuration Options</h2>
+<p>The <code>config</code> dict controls retrieval behavior:</p>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>top_k</code></td>
+<td>int</td>
+<td>4</td>
+<td>Maximum results per query</td>
+</tr>
+<tr>
+<td><code>threshold</code></td>
+<td>float</td>
+<td>0.0</td>
+<td>Minimum score to include a result</td>
+</tr>
+<tr>
+<td><code>return_score</code></td>
+<td>bool</td>
+<td>False</td>
+<td>Include relevance scores in output</td>
+</tr>
+<tr>
+<td><code>dict_key</code></td>
+<td>str</td>
+<td>-</td>
+<td>Key to extract from <code>List[Dict]</code> inputs</td>
+</tr>
+</tbody>
+</table>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">PrecisionSearcher</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Searcher</span><span class="p">):</span>
+</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Searcher with strict filtering.&quot;&quot;&quot;</span>
+</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>    <span class="n">retriever</span> <span class="o">=</span> <span class="n">bm25</span>
+</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>    <span class="n">config</span>    <span class="o">=</span> <span class="p">{</span>
+</span><span id="__span-9-5"><a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>        <span class="s2">&quot;top_k&quot;</span><span class="p">:</span> <span class="mi">5</span><span class="p">,</span>
+</span><span id="__span-9-6"><a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>        <span class="s2">&quot;threshold&quot;</span><span class="p">:</span> <span class="mf">0.5</span><span class="p">,</span>
+</span><span id="__span-9-7"><a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a>        <span class="s2">&quot;return_score&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+</span><span id="__span-9-8"><a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a>    <span class="p">}</span>
+</span><span id="__span-9-9"><a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a>
+</span><span id="__span-9-10"><a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a><span class="n">searcher</span> <span class="o">=</span> <span class="n">PrecisionSearcher</span><span class="p">()</span>
 </span></code></pre></div>
 <hr />
-<h2 id="advanced-configuration">Advanced Configuration</h2>
+<h2 id="message-fields-and-response-mode">Message Fields and Response Mode</h2>
 <h3 id="message-field-mapping">Message Field Mapping</h3>
-<p>Use <code>Message</code> objects for structured input/output. This decouples your retriever from the specific data structure.</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">ContextualRetriever</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Retriever</span><span class="p">):</span>
-</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Retriever that processes structured message inputs.&quot;&quot;&quot;</span>
-</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>    <span class="n">response_mode</span> <span class="o">=</span> <span class="s2">&quot;message&quot;</span>  <span class="c1"># Return Message object</span>
-</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>
-</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="n">retriever</span> <span class="o">=</span> <span class="n">ContextualRetriever</span><span class="p">(</span>
-</span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>    <span class="n">retriever</span><span class="o">=</span><span class="n">vector_db</span><span class="p">,</span>
-</span><span id="__span-6-7"><a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>    <span class="n">model</span><span class="o">=</span><span class="n">embedder</span><span class="p">,</span>
-</span><span id="__span-6-8"><a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a>    <span class="n">message_fields</span><span class="o">=</span><span class="p">{</span>
-</span><span id="__span-6-9"><a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a>        <span class="s2">&quot;task_inputs&quot;</span><span class="p">:</span> <span class="s2">&quot;query.user&quot;</span>  <span class="c1"># Extract query from message.query.user</span>
-</span><span id="__span-6-10"><a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a>    <span class="p">},</span>
-</span><span id="__span-6-11"><a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a>    <span class="n">config</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;top_k&quot;</span><span class="p">:</span> <span class="mi">5</span><span class="p">}</span>
-</span><span id="__span-6-12"><a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a><span class="p">)</span>
-</span><span id="__span-6-13"><a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a>
-</span><span id="__span-6-14"><a id="__codelineno-6-14" name="__codelineno-6-14" href="#__codelineno-6-14"></a><span class="c1"># Use with Message</span>
-</span><span id="__span-6-15"><a id="__codelineno-6-15" name="__codelineno-6-15" href="#__codelineno-6-15"></a><span class="n">msg</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Message</span><span class="p">()</span>
-</span><span id="__span-6-16"><a id="__codelineno-6-16" name="__codelineno-6-16" href="#__codelineno-6-16"></a><span class="n">msg</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">&quot;query.user&quot;</span><span class="p">,</span> <span class="s2">&quot;What is dependency injection?&quot;</span><span class="p">)</span>
-</span><span id="__span-6-17"><a id="__codelineno-6-17" name="__codelineno-6-17" href="#__codelineno-6-17"></a>
-</span><span id="__span-6-18"><a id="__codelineno-6-18" name="__codelineno-6-18" href="#__codelineno-6-18"></a><span class="n">result_msg</span> <span class="o">=</span> <span class="n">retriever</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
-</span><span id="__span-6-19"><a id="__codelineno-6-19" name="__codelineno-6-19" href="#__codelineno-6-19"></a><span class="c1"># Results are written to the default location or configured output</span>
-</span><span id="__span-6-20"><a id="__codelineno-6-20" name="__codelineno-6-20" href="#__codelineno-6-20"></a><span class="nb">print</span><span class="p">(</span><span class="n">result_msg</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;retriever.results&quot;</span><span class="p">))</span>
+<p>Use <code>Message</code> objects for structured input/output. This decouples your searcher from the specific data structure.</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">StructuredSearcher</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Searcher</span><span class="p">):</span>
+</span><span id="__span-10-2"><a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Searcher that reads queries from a Message field.&quot;&quot;&quot;</span>
+</span><span id="__span-10-3"><a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>    <span class="n">retriever</span>      <span class="o">=</span> <span class="n">bm25</span>
+</span><span id="__span-10-4"><a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>    <span class="n">message_fields</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;task_inputs&quot;</span><span class="p">:</span> <span class="s2">&quot;query.user&quot;</span><span class="p">}</span>
+</span><span id="__span-10-5"><a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>    <span class="n">config</span>         <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;top_k&quot;</span><span class="p">:</span> <span class="mi">3</span><span class="p">}</span>
+</span><span id="__span-10-6"><a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>
+</span><span id="__span-10-7"><a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a><span class="n">searcher</span> <span class="o">=</span> <span class="n">StructuredSearcher</span><span class="p">()</span>
+</span><span id="__span-10-8"><a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a>
+</span><span id="__span-10-9"><a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a><span class="n">msg</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Message</span><span class="p">()</span>
+</span><span id="__span-10-10"><a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a><span class="n">msg</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">&quot;query.user&quot;</span><span class="p">,</span> <span class="s2">&quot;What is dependency injection?&quot;</span><span class="p">)</span>
+</span><span id="__span-10-11"><a id="__codelineno-10-11" name="__codelineno-10-11" href="#__codelineno-10-11"></a>
+</span><span id="__span-10-12"><a id="__codelineno-10-12" name="__codelineno-10-12" href="#__codelineno-10-12"></a><span class="n">result</span> <span class="o">=</span> <span class="n">searcher</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
 </span></code></pre></div>
-<h3 id="response-templates">Response Templates</h3>
-<p>Format retrieval results using Jinja templates before returning them.</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">FormattedRetriever</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Retriever</span><span class="p">):</span>
-</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Retriever with custom result formatting.&quot;&quot;&quot;</span>
-</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>    <span class="n">response_mode</span> <span class="o">=</span> <span class="s2">&quot;plain_response&quot;</span>
-</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>
-</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="n">retriever</span> <span class="o">=</span> <span class="n">FormattedRetriever</span><span class="p">(</span>
-</span><span id="__span-7-6"><a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>    <span class="n">retriever</span><span class="o">=</span><span class="n">vector_db</span><span class="p">,</span>
-</span><span id="__span-7-7"><a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>    <span class="n">model</span><span class="o">=</span><span class="n">embedder</span><span class="p">,</span>
-</span><span id="__span-7-8"><a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>    <span class="n">templates</span><span class="o">=</span><span class="p">{</span>
-</span><span id="__span-7-9"><a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a>        <span class="s2">&quot;response&quot;</span><span class="p">:</span> <span class="s2">&quot;&quot;&quot;</span>
-</span><span id="__span-7-10"><a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a><span class="s2">        Found {{ results|length }} relevant articles:</span>
-</span><span id="__span-7-11"><a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a><span class="s2">        {</span><span class="si">% f</span><span class="s2">or result in results %}</span>
-</span><span id="__span-7-12"><a id="__codelineno-7-12" name="__codelineno-7-12" href="#__codelineno-7-12"></a><span class="s2">        {{ loop.index }}. {{ result.data }} (Score: {{ result.score }})</span>
-</span><span id="__span-7-13"><a id="__codelineno-7-13" name="__codelineno-7-13" href="#__codelineno-7-13"></a><span class="s2">        {</span><span class="si">% e</span><span class="s2">ndfor %}</span>
-</span><span id="__span-7-14"><a id="__codelineno-7-14" name="__codelineno-7-14" href="#__codelineno-7-14"></a><span class="s2">        &quot;&quot;&quot;</span>
-</span><span id="__span-7-15"><a id="__codelineno-7-15" name="__codelineno-7-15" href="#__codelineno-7-15"></a>    <span class="p">},</span>
-</span><span id="__span-7-16"><a id="__codelineno-7-16" name="__codelineno-7-16" href="#__codelineno-7-16"></a>    <span class="n">config</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;top_k&quot;</span><span class="p">:</span> <span class="mi">5</span><span class="p">,</span> <span class="s2">&quot;return_score&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">}</span>
-</span><span id="__span-7-17"><a id="__codelineno-7-17" name="__codelineno-7-17" href="#__codelineno-7-17"></a><span class="p">)</span>
-</span><span id="__span-7-18"><a id="__codelineno-7-18" name="__codelineno-7-18" href="#__codelineno-7-18"></a>
-</span><span id="__span-7-19"><a id="__codelineno-7-19" name="__codelineno-7-19" href="#__codelineno-7-19"></a><span class="n">formatted_results</span> <span class="o">=</span> <span class="n">retriever</span><span class="p">(</span><span class="s2">&quot;machine learning best practices&quot;</span><span class="p">)</span>
-</span></code></pre></div>
-<h3 id="runtime-configuration-override">Runtime Configuration Override</h3>
-<p>Override configuration at call time for flexibility.</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="n">retriever</span> <span class="o">=</span> <span class="n">FlexibleRetriever</span><span class="p">(</span>
-</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>    <span class="n">retriever</span><span class="o">=</span><span class="n">vector_db</span><span class="p">,</span>
-</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>    <span class="n">model</span><span class="o">=</span><span class="n">embedder</span><span class="p">,</span>
-</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>    <span class="n">config</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;top_k&quot;</span><span class="p">:</span> <span class="mi">3</span><span class="p">}</span>  <span class="c1"># Default</span>
-</span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="p">)</span>
-</span><span id="__span-8-6"><a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>
-</span><span id="__span-8-7"><a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="c1"># Normal retrieval</span>
-</span><span id="__span-8-8"><a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a><span class="n">results</span> <span class="o">=</span> <span class="n">retriever</span><span class="p">(</span><span class="s2">&quot;python tutorial&quot;</span><span class="p">)</span>
-</span><span id="__span-8-9"><a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a>
-</span><span id="__span-8-10"><a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a><span class="c1"># Override parameters at runtime</span>
-</span><span id="__span-8-11"><a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a><span class="n">results</span> <span class="o">=</span> <span class="n">retriever</span><span class="p">(</span>
-</span><span id="__span-8-12"><a id="__codelineno-8-12" name="__codelineno-8-12" href="#__codelineno-8-12"></a>    <span class="s2">&quot;machine learning&quot;</span><span class="p">,</span>
-</span><span id="__span-8-13"><a id="__codelineno-8-13" name="__codelineno-8-13" href="#__codelineno-8-13"></a>    <span class="n">task_inputs</span><span class="o">=</span><span class="s2">&quot;deep learning neural networks&quot;</span><span class="p">,</span>  <span class="c1"># Override query</span>
-</span><span id="__span-8-14"><a id="__codelineno-8-14" name="__codelineno-8-14" href="#__codelineno-8-14"></a>    <span class="n">config</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;top_k&quot;</span><span class="p">:</span> <span class="mi">10</span><span class="p">}</span>                          <span class="c1"># Override config</span>
-</span><span id="__span-8-15"><a id="__codelineno-8-15" name="__codelineno-8-15" href="#__codelineno-8-15"></a><span class="p">)</span>
+<h3 id="response-mode">Response Mode</h3>
+<p>Controls where results are written:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="c1"># Default (None): returns results directly</span>
+</span><span id="__span-11-2"><a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="n">searcher</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Searcher</span><span class="p">(</span><span class="n">retriever</span><span class="o">=</span><span class="n">bm25</span><span class="p">)</span>
+</span><span id="__span-11-3"><a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="n">result</span> <span class="o">=</span> <span class="n">searcher</span><span class="p">(</span><span class="s2">&quot;query&quot;</span><span class="p">)</span>  <span class="c1"># Returns list</span>
+</span><span id="__span-11-4"><a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>
+</span><span id="__span-11-5"><a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a><span class="c1"># Path mode: writes to message field, returns None</span>
+</span><span id="__span-11-6"><a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a><span class="k">class</span><span class="w"> </span><span class="nc">PipelineSearcher</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Searcher</span><span class="p">):</span>
+</span><span id="__span-11-7"><a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Writes results into message.context for downstream modules.&quot;&quot;&quot;</span>
+</span><span id="__span-11-8"><a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a>    <span class="n">retriever</span>      <span class="o">=</span> <span class="n">bm25</span>
+</span><span id="__span-11-9"><a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a>    <span class="n">message_fields</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;task_inputs&quot;</span><span class="p">:</span> <span class="s2">&quot;question&quot;</span><span class="p">}</span>
+</span><span id="__span-11-10"><a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a>    <span class="n">response_mode</span>  <span class="o">=</span> <span class="s2">&quot;context&quot;</span>
+</span><span id="__span-11-11"><a id="__codelineno-11-11" name="__codelineno-11-11" href="#__codelineno-11-11"></a>    <span class="n">config</span>         <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;top_k&quot;</span><span class="p">:</span> <span class="mi">3</span><span class="p">}</span>
+</span><span id="__span-11-12"><a id="__codelineno-11-12" name="__codelineno-11-12" href="#__codelineno-11-12"></a>
+</span><span id="__span-11-13"><a id="__codelineno-11-13" name="__codelineno-11-13" href="#__codelineno-11-13"></a><span class="n">searcher</span> <span class="o">=</span> <span class="n">PipelineSearcher</span><span class="p">()</span>
+</span><span id="__span-11-14"><a id="__codelineno-11-14" name="__codelineno-11-14" href="#__codelineno-11-14"></a>
+</span><span id="__span-11-15"><a id="__codelineno-11-15" name="__codelineno-11-15" href="#__codelineno-11-15"></a><span class="n">msg</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Message</span><span class="p">()</span>
+</span><span id="__span-11-16"><a id="__codelineno-11-16" name="__codelineno-11-16" href="#__codelineno-11-16"></a><span class="n">msg</span><span class="o">.</span><span class="n">question</span> <span class="o">=</span> <span class="s2">&quot;Python programming&quot;</span>
+</span><span id="__span-11-17"><a id="__codelineno-11-17" name="__codelineno-11-17" href="#__codelineno-11-17"></a><span class="n">searcher</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>  <span class="c1"># Returns None</span>
+</span><span id="__span-11-18"><a id="__codelineno-11-18" name="__codelineno-11-18" href="#__codelineno-11-18"></a><span class="nb">print</span><span class="p">(</span><span class="n">msg</span><span class="o">.</span><span class="n">context</span><span class="p">)</span>  <span class="c1"># Results are here</span>
 </span></code></pre></div>
 <hr />
-<h2 id="creating-retriever-hierarchies">Creating Retriever Hierarchies</h2>
-<p>Build specialized retrievers through inheritance to share configuration.</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="c1"># Base retriever for all documentation</span>
-</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="k">class</span><span class="w"> </span><span class="nc">BaseDocRetriever</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Retriever</span><span class="p">):</span>
-</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Base retriever for documentation with common config.&quot;&quot;&quot;</span>
-</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>    <span class="n">response_mode</span> <span class="o">=</span> <span class="s2">&quot;plain_response&quot;</span>
-</span><span id="__span-9-5"><a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>
-</span><span id="__span-9-6"><a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="c1"># High precision retriever for critical docs</span>
-</span><span id="__span-9-7"><a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="k">class</span><span class="w"> </span><span class="nc">CriticalDocRetriever</span><span class="p">(</span><span class="n">BaseDocRetriever</span><span class="p">):</span>
-</span><span id="__span-9-8"><a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;High precision retriever for critical documentation (compliance, security).&quot;&quot;&quot;</span>
-</span><span id="__span-9-9"><a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a>    <span class="c1"># Inherits behavior from BaseDocRetriever</span>
-</span><span id="__span-9-10"><a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a>
-</span><span id="__span-9-11"><a id="__codelineno-9-11" name="__codelineno-9-11" href="#__codelineno-9-11"></a><span class="c1"># Broad retriever for general exploration</span>
-</span><span id="__span-9-12"><a id="__codelineno-9-12" name="__codelineno-9-12" href="#__codelineno-9-12"></a><span class="k">class</span><span class="w"> </span><span class="nc">ExploratoryRetriever</span><span class="p">(</span><span class="n">BaseDocRetriever</span><span class="p">):</span>
-</span><span id="__span-9-13"><a id="__codelineno-9-13" name="__codelineno-9-13" href="#__codelineno-9-13"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Broad retriever for exploratory searches.&quot;&quot;&quot;</span>
-</span><span id="__span-9-14"><a id="__codelineno-9-14" name="__codelineno-9-14" href="#__codelineno-9-14"></a>
-</span><span id="__span-9-15"><a id="__codelineno-9-15" name="__codelineno-9-15" href="#__codelineno-9-15"></a><span class="c1"># Create instances with different thresholds</span>
-</span><span id="__span-9-16"><a id="__codelineno-9-16" name="__codelineno-9-16" href="#__codelineno-9-16"></a><span class="n">critical</span> <span class="o">=</span> <span class="n">CriticalDocRetriever</span><span class="p">(</span>
-</span><span id="__span-9-17"><a id="__codelineno-9-17" name="__codelineno-9-17" href="#__codelineno-9-17"></a>    <span class="n">retriever</span><span class="o">=</span><span class="n">vector_db</span><span class="p">,</span>
-</span><span id="__span-9-18"><a id="__codelineno-9-18" name="__codelineno-9-18" href="#__codelineno-9-18"></a>    <span class="n">model</span><span class="o">=</span><span class="n">embedder</span><span class="p">,</span>
-</span><span id="__span-9-19"><a id="__codelineno-9-19" name="__codelineno-9-19" href="#__codelineno-9-19"></a>    <span class="n">config</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;top_k&quot;</span><span class="p">:</span> <span class="mi">3</span><span class="p">,</span> <span class="s2">&quot;threshold&quot;</span><span class="p">:</span> <span class="mf">0.85</span><span class="p">}</span>  <span class="c1"># Strict</span>
-</span><span id="__span-9-20"><a id="__codelineno-9-20" name="__codelineno-9-20" href="#__codelineno-9-20"></a><span class="p">)</span>
-</span><span id="__span-9-21"><a id="__codelineno-9-21" name="__codelineno-9-21" href="#__codelineno-9-21"></a>
-</span><span id="__span-9-22"><a id="__codelineno-9-22" name="__codelineno-9-22" href="#__codelineno-9-22"></a><span class="n">exploratory</span> <span class="o">=</span> <span class="n">ExploratoryRetriever</span><span class="p">(</span>
-</span><span id="__span-9-23"><a id="__codelineno-9-23" name="__codelineno-9-23" href="#__codelineno-9-23"></a>    <span class="n">retriever</span><span class="o">=</span><span class="n">vector_db</span><span class="p">,</span>
-</span><span id="__span-9-24"><a id="__codelineno-9-24" name="__codelineno-9-24" href="#__codelineno-9-24"></a>    <span class="n">model</span><span class="o">=</span><span class="n">embedder</span><span class="p">,</span>
-</span><span id="__span-9-25"><a id="__codelineno-9-25" name="__codelineno-9-25" href="#__codelineno-9-25"></a>    <span class="n">config</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;top_k&quot;</span><span class="p">:</span> <span class="mi">10</span><span class="p">,</span> <span class="s2">&quot;threshold&quot;</span><span class="p">:</span> <span class="mf">0.5</span><span class="p">}</span>  <span class="c1"># Permissive</span>
-</span><span id="__span-9-26"><a id="__codelineno-9-26" name="__codelineno-9-26" href="#__codelineno-9-26"></a><span class="p">)</span>
+<h2 id="creating-searcher-hierarchies">Creating Searcher Hierarchies</h2>
+<p>Build specialized searchers through inheritance to share configuration.</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="c1"># Base searcher for all documentation</span>
+</span><span id="__span-12-2"><a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="k">class</span><span class="w"> </span><span class="nc">BaseDocSearcher</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Searcher</span><span class="p">):</span>
+</span><span id="__span-12-3"><a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Base searcher for documentation with common config.&quot;&quot;&quot;</span>
+</span><span id="__span-12-4"><a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a>    <span class="n">retriever</span> <span class="o">=</span> <span class="n">bm25</span>
+</span><span id="__span-12-5"><a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a>
+</span><span id="__span-12-6"><a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a><span class="c1"># High precision searcher for critical docs</span>
+</span><span id="__span-12-7"><a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a><span class="k">class</span><span class="w"> </span><span class="nc">CriticalDocSearcher</span><span class="p">(</span><span class="n">BaseDocSearcher</span><span class="p">):</span>
+</span><span id="__span-12-8"><a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;High precision searcher for critical documentation.&quot;&quot;&quot;</span>
+</span><span id="__span-12-9"><a id="__codelineno-12-9" name="__codelineno-12-9" href="#__codelineno-12-9"></a>    <span class="n">config</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;top_k&quot;</span><span class="p">:</span> <span class="mi">3</span><span class="p">,</span> <span class="s2">&quot;threshold&quot;</span><span class="p">:</span> <span class="mf">2.0</span><span class="p">}</span>  <span class="c1"># Strict</span>
+</span><span id="__span-12-10"><a id="__codelineno-12-10" name="__codelineno-12-10" href="#__codelineno-12-10"></a>
+</span><span id="__span-12-11"><a id="__codelineno-12-11" name="__codelineno-12-11" href="#__codelineno-12-11"></a><span class="c1"># Broad searcher for general exploration</span>
+</span><span id="__span-12-12"><a id="__codelineno-12-12" name="__codelineno-12-12" href="#__codelineno-12-12"></a><span class="k">class</span><span class="w"> </span><span class="nc">ExploratorySearcher</span><span class="p">(</span><span class="n">BaseDocSearcher</span><span class="p">):</span>
+</span><span id="__span-12-13"><a id="__codelineno-12-13" name="__codelineno-12-13" href="#__codelineno-12-13"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Broad searcher for exploratory searches.&quot;&quot;&quot;</span>
+</span><span id="__span-12-14"><a id="__codelineno-12-14" name="__codelineno-12-14" href="#__codelineno-12-14"></a>    <span class="n">config</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;top_k&quot;</span><span class="p">:</span> <span class="mi">10</span><span class="p">,</span> <span class="s2">&quot;threshold&quot;</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">}</span>  <span class="c1"># Permissive</span>
+</span><span id="__span-12-15"><a id="__codelineno-12-15" name="__codelineno-12-15" href="#__codelineno-12-15"></a>
+</span><span id="__span-12-16"><a id="__codelineno-12-16" name="__codelineno-12-16" href="#__codelineno-12-16"></a><span class="n">critical</span>    <span class="o">=</span> <span class="n">CriticalDocSearcher</span><span class="p">()</span>
+</span><span id="__span-12-17"><a id="__codelineno-12-17" name="__codelineno-12-17" href="#__codelineno-12-17"></a><span class="n">exploratory</span> <span class="o">=</span> <span class="n">ExploratorySearcher</span><span class="p">()</span>
 </span></code></pre></div>
 <hr />
 <h2 id="integration-with-agents">Integration with Agents</h2>
-<p>Retrievers are commonly used as tools for agents to implement RAG patterns.</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="c1"># Define retriever</span>
-</span><span id="__span-10-2"><a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="n">kb_retriever</span> <span class="o">=</span> <span class="n">CompanyKnowledgeRetriever</span><span class="p">(</span>
-</span><span id="__span-10-3"><a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>    <span class="n">retriever</span><span class="o">=</span><span class="n">vector_db</span><span class="p">,</span>
-</span><span id="__span-10-4"><a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>    <span class="n">model</span><span class="o">=</span><span class="n">embedder</span><span class="p">,</span>
-</span><span id="__span-10-5"><a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>    <span class="n">config</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;top_k&quot;</span><span class="p">:</span> <span class="mi">5</span><span class="p">}</span>
-</span><span id="__span-10-6"><a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a><span class="p">)</span>
-</span><span id="__span-10-7"><a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a>
-</span><span id="__span-10-8"><a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a><span class="c1"># Define retriever as a tool function</span>
-</span><span id="__span-10-9"><a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a><span class="k">def</span><span class="w"> </span><span class="nf">search_knowledge_base</span><span class="p">(</span><span class="n">query</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
-</span><span id="__span-10-10"><a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Search the company knowledge base for information.&quot;&quot;&quot;</span>
-</span><span id="__span-10-11"><a id="__codelineno-10-11" name="__codelineno-10-11" href="#__codelineno-10-11"></a>    <span class="n">results</span> <span class="o">=</span> <span class="n">kb_retriever</span><span class="p">(</span><span class="n">query</span><span class="p">)</span>
-</span><span id="__span-10-12"><a id="__codelineno-10-12" name="__codelineno-10-12" href="#__codelineno-10-12"></a>    <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">results</span><span class="p">)</span>
-</span><span id="__span-10-13"><a id="__codelineno-10-13" name="__codelineno-10-13" href="#__codelineno-10-13"></a>
-</span><span id="__span-10-14"><a id="__codelineno-10-14" name="__codelineno-10-14" href="#__codelineno-10-14"></a><span class="c1"># Create agent with retriever tool</span>
-</span><span id="__span-10-15"><a id="__codelineno-10-15" name="__codelineno-10-15" href="#__codelineno-10-15"></a><span class="k">class</span><span class="w"> </span><span class="nc">SupportAgent</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">):</span>
-</span><span id="__span-10-16"><a id="__codelineno-10-16" name="__codelineno-10-16" href="#__codelineno-10-16"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Customer support agent with access to knowledge base.&quot;&quot;&quot;</span>
-</span><span id="__span-10-17"><a id="__codelineno-10-17" name="__codelineno-10-17" href="#__codelineno-10-17"></a>    <span class="n">model</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">chat_completion</span><span class="p">(</span><span class="s2">&quot;openai/gpt-4&quot;</span><span class="p">)</span>
-</span><span id="__span-10-18"><a id="__codelineno-10-18" name="__codelineno-10-18" href="#__codelineno-10-18"></a>    <span class="n">tools</span> <span class="o">=</span> <span class="p">[</span><span class="n">search_knowledge_base</span><span class="p">]</span>
-</span><span id="__span-10-19"><a id="__codelineno-10-19" name="__codelineno-10-19" href="#__codelineno-10-19"></a>
-</span><span id="__span-10-20"><a id="__codelineno-10-20" name="__codelineno-10-20" href="#__codelineno-10-20"></a><span class="n">support_agent</span> <span class="o">=</span> <span class="n">SupportAgent</span><span class="p">()</span>
-</span><span id="__span-10-21"><a id="__codelineno-10-21" name="__codelineno-10-21" href="#__codelineno-10-21"></a>
-</span><span id="__span-10-22"><a id="__codelineno-10-22" name="__codelineno-10-22" href="#__codelineno-10-22"></a><span class="c1"># Agent can now use retriever to answer questions</span>
-</span><span id="__span-10-23"><a id="__codelineno-10-23" name="__codelineno-10-23" href="#__codelineno-10-23"></a><span class="n">response</span> <span class="o">=</span> <span class="n">support_agent</span><span class="p">(</span><span class="s2">&quot;How do I reset my password?&quot;</span><span class="p">)</span>
+<p>A Searcher with a docstring (used as <code>description</code>) and default <code>annotations</code> can be plugged directly as a tool into an Agent — no wrapper function needed.</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="n">bm25</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Retriever</span><span class="o">.</span><span class="n">lexical</span><span class="p">(</span><span class="s2">&quot;bm25&quot;</span><span class="p">)</span>
+</span><span id="__span-13-2"><a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="n">bm25</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">documents</span><span class="p">)</span>
+</span><span id="__span-13-3"><a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>
+</span><span id="__span-13-4"><a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a><span class="k">class</span><span class="w"> </span><span class="nc">KBSearcher</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Searcher</span><span class="p">):</span>
+</span><span id="__span-13-5"><a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Search the company knowledge base for relevant documents.&quot;&quot;&quot;</span>
+</span><span id="__span-13-6"><a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a>    <span class="n">retriever</span> <span class="o">=</span> <span class="n">bm25</span>
+</span><span id="__span-13-7"><a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a>    <span class="n">config</span>    <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;top_k&quot;</span><span class="p">:</span> <span class="mi">5</span><span class="p">}</span>
+</span><span id="__span-13-8"><a id="__codelineno-13-8" name="__codelineno-13-8" href="#__codelineno-13-8"></a>    <span class="n">templates</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;response&quot;</span><span class="p">:</span> <span class="s2">&quot;{</span><span class="si">% f</span><span class="s2">or r in results %}{{ r.data }}</span><span class="se">\n</span><span class="s2">{</span><span class="si">% e</span><span class="s2">ndfor %}&quot;</span><span class="p">}</span>
+</span><span id="__span-13-9"><a id="__codelineno-13-9" name="__codelineno-13-9" href="#__codelineno-13-9"></a>
+</span><span id="__span-13-10"><a id="__codelineno-13-10" name="__codelineno-13-10" href="#__codelineno-13-10"></a><span class="k">class</span><span class="w"> </span><span class="nc">SupportAgent</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">):</span>
+</span><span id="__span-13-11"><a id="__codelineno-13-11" name="__codelineno-13-11" href="#__codelineno-13-11"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Customer support agent with access to knowledge base.&quot;&quot;&quot;</span>
+</span><span id="__span-13-12"><a id="__codelineno-13-12" name="__codelineno-13-12" href="#__codelineno-13-12"></a>    <span class="n">model</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">chat_completion</span><span class="p">(</span><span class="s2">&quot;openai/gpt-4.1-mini&quot;</span><span class="p">)</span>
+</span><span id="__span-13-13"><a id="__codelineno-13-13" name="__codelineno-13-13" href="#__codelineno-13-13"></a>    <span class="n">tools</span> <span class="o">=</span> <span class="p">[</span><span class="n">KBSearcher</span><span class="p">]</span>
+</span><span id="__span-13-14"><a id="__codelineno-13-14" name="__codelineno-13-14" href="#__codelineno-13-14"></a>
+</span><span id="__span-13-15"><a id="__codelineno-13-15" name="__codelineno-13-15" href="#__codelineno-13-15"></a><span class="n">support_agent</span> <span class="o">=</span> <span class="n">SupportAgent</span><span class="p">()</span>
+</span><span id="__span-13-16"><a id="__codelineno-13-16" name="__codelineno-13-16" href="#__codelineno-13-16"></a><span class="n">response</span> <span class="o">=</span> <span class="n">support_agent</span><span class="p">(</span><span class="s2">&quot;How do I reset my password?&quot;</span><span class="p">)</span>
 </span></code></pre></div>
-<hr />
-<h2 id="async-support">Async Support</h2>
-<p>Retrievers provide first-class <code>async</code> support via <code>aforward</code> or <code>acall</code>.</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
-</span><span id="__span-11-2"><a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>
-</span><span id="__span-11-3"><a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">search_multiple</span><span class="p">():</span>
-</span><span id="__span-11-4"><a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Perform multiple searches concurrently.&quot;&quot;&quot;</span>
-</span><span id="__span-11-5"><a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a>    <span class="n">results</span> <span class="o">=</span> <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">gather</span><span class="p">(</span>
-</span><span id="__span-11-6"><a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a>        <span class="n">retriever</span><span class="o">.</span><span class="n">aforward</span><span class="p">(</span><span class="s2">&quot;machine learning&quot;</span><span class="p">),</span>
-</span><span id="__span-11-7"><a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a>        <span class="n">retriever</span><span class="o">.</span><span class="n">aforward</span><span class="p">(</span><span class="s2">&quot;deep learning&quot;</span><span class="p">),</span>
-</span><span id="__span-11-8"><a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a>        <span class="n">retriever</span><span class="o">.</span><span class="n">aforward</span><span class="p">(</span><span class="s2">&quot;neural networks&quot;</span><span class="p">)</span>
-</span><span id="__span-11-9"><a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a>    <span class="p">)</span>
-</span><span id="__span-11-10"><a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a>    <span class="k">return</span> <span class="n">results</span>
-</span><span id="__span-11-11"><a id="__codelineno-11-11" name="__codelineno-11-11" href="#__codelineno-11-11"></a>
-</span><span id="__span-11-12"><a id="__codelineno-11-12" name="__codelineno-11-12" href="#__codelineno-11-12"></a><span class="c1"># Run async searches</span>
-</span><span id="__span-11-13"><a id="__codelineno-11-13" name="__codelineno-11-13" href="#__codelineno-11-13"></a><span class="n">results</span> <span class="o">=</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">search_multiple</span><span class="p">())</span>
-</span></code></pre></div>
-<hr />
-<h2 id="best-practices">Best Practices</h2>
-<ol>
-<li><strong>Use Domain-Specific Retrievers</strong>: Create specialized classes (<code>TechnicalDocRetriever</code>, <code>CustomerQueryRetriever</code>) rather than generic instances.</li>
-<li><strong>Tune Thresholds</strong>: Use strict thresholds (0.8+) for precision-critical tasks and lower thresholds (0.5-0.6) for exploration.</li>
-<li><strong>Return Scores</strong>: Enable <code>return_score=True</code> to debug retrieval quality and filter low-confidence results in your logic.</li>
-</ol>
+<p>The docstring becomes the tool description, the class name becomes the tool name, and the default annotations (<code>query: str -&gt; str</code>) define the tool schema — all via AutoParams.</p>
 
 
 
@@ -4587,7 +4293,7 @@ results = asyncio.run(search_multiple())
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../transcriber/" class="md-footer__link md-footer__link--prev" aria-label="Previous: nn.Transcriber">
+          <a href="../transcriber/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Transcriber">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
@@ -4597,20 +4303,20 @@ results = asyncio.run(search_multiple())
                 Previous
               </span>
               <div class="md-ellipsis">
-                nn.Transcriber
+                Transcriber
               </div>
             </div>
           </a>
         
         
           
-          <a href="../speaker/" class="md-footer__link md-footer__link--next" aria-label="Next: nn.Speaker">
+          <a href="../speaker/" class="md-footer__link md-footer__link--next" aria-label="Next: Speaker">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                nn.Speaker
+                Speaker
               </div>
             </div>
             <div class="md-footer__button md-icon">
