@@ -21,7 +21,7 @@
         <link rel="next" href="quickstart/">
       
       
-      <link rel="icon" href="../../../assets/favicon.png">
+      <link rel="icon" href="../../../assets/logo.png">
       <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.21">
     
     
@@ -102,7 +102,7 @@
   <nav class="md-header__inner md-grid" aria-label="Header">
     <a href="../../.." title="msgFlux" class="md-header__button md-logo" aria-label="msgFlux" data-md-component="logo">
       
-  <img src="../../../assets/logo-msgFlux-S.png" alt="logo">
+  <img src="../../../assets/logo.png" alt="logo">
 
     </a>
     <label class="md-header__button md-icon" for="__drawer">
@@ -395,7 +395,7 @@
   <label class="md-nav__title" for="__drawer">
     <a href="../../.." title="msgFlux" class="md-nav__button md-logo" aria-label="msgFlux" data-md-component="logo">
       
-  <img src="../../../assets/logo-msgFlux-S.png" alt="logo">
+  <img src="../../../assets/logo.png" alt="logo">
 
     </a>
     msgFlux
@@ -545,8 +545,6 @@
   
     
     
-      
-        
       
         
       
@@ -824,29 +822,6 @@
   
   <span class="md-ellipsis">
     Text Classifier
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../models/image_embedder/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    Image Embedder
     
   </span>
   
@@ -1524,29 +1499,6 @@
   
   
     <li class="md-nav__item">
-      <a href="autoparams/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    AutoParams
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
       <a href="async/" class="md-nav__link">
         
   
@@ -1576,6 +1528,29 @@
   
   <span class="md-ellipsis">
     Streaming
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="reasoning/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Reasoning
     
   </span>
   
@@ -3320,11 +3295,11 @@
         <li class="md-nav__item">
   <a href="#overview" class="md-nav__link">
     <span class="md-ellipsis">
-      Overview
+      ✦₊⁺ Overview
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Overview">
+    <nav class="md-nav" aria-label="✦₊⁺ Overview">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -3342,18 +3317,18 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#contents" class="md-nav__link">
+  <a href="#1-contents" class="md-nav__link">
     <span class="md-ellipsis">
-      Contents
+      1. Contents
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#see-also" class="md-nav__link">
+  <a href="#2-see-also" class="md-nav__link">
     <span class="md-ellipsis">
-      See Also
+      2. See Also
     </span>
   </a>
   
@@ -3403,7 +3378,7 @@
 
 The `Agent` is a `Module` that uses language models to solve tasks. It can handle multimodal data, interact with environments through tool calls, and manage complex workflows with structured outputs.
 
-## Overview
+## ✦₊⁺ Overview
 
 An `Agent` combines a language model with instructions and tools to accomplish tasks. The Agent module adopts a task decomposition strategy, allowing each part of a task to be treated in isolation.
 
@@ -3418,14 +3393,14 @@ An `Agent` combines a language model with instructions and tools to accomplish t
 - **Modular System Prompt**: Compose system prompts from independent components
 - **Task Decomposition**: Break down complex tasks into manageable parts
 
-## Contents
+## 1. **Contents**
 
 | Topic | Description |
 |-------|-------------|
-| [Quick Start](quickstart.md) | Get started with a minimal agent |
-| [AutoParams](autoparams.md) | Define agents using class attributes |
+| [Quick Start](quickstart.md) | Get started with a minimal agent, class-based definition (AutoParams) |
 | [Async](async.md) | Asynchronous agent execution |
 | [Streaming](streaming.md) | Real-time response streaming |
+| [Reasoning](reasoning.md) | Model-level reasoning, `reasoning_in_response`, dual-queue streaming |
 | [How to Debug an Agent](debug.md) | Inspection and debugging tools |
 | [System Prompt Components](system-prompt.md) | Compose system prompts from components |
 | [Generation Schemas](generation-schemas.md) | Structured outputs and reasoning strategies |
@@ -3437,7 +3412,7 @@ An `Agent` combines a language model with instructions and tools to accomplish t
 | [Model Gateway](model-gateway.md) | Multi-model routing |
 | [Prefilling](prefilling.md) | Guide response format with prefilling |
 
-## See Also
+## 2. **See Also**
 
 - [Module](../module/index.md) - Base class for all nn components
 - [Message](../message.md) - Structured message passing
@@ -3511,7 +3486,7 @@ An `Agent` combines a language model with instructions and tools to accomplish t
 }());
 </script>
 <p>The <code>Agent</code> is a <code>Module</code> that uses language models to solve tasks. It can handle multimodal data, interact with environments through tool calls, and manage complex workflows with structured outputs.</p>
-<h2 id="overview">Overview</h2>
+<h2 id="overview">✦₊⁺ Overview</h2>
 <p>An <code>Agent</code> combines a language model with instructions and tools to accomplish tasks. The Agent module adopts a task decomposition strategy, allowing each part of a task to be treated in isolation.</p>
 <h3 id="key-features">Key Features</h3>
 <ul>
@@ -3523,7 +3498,7 @@ An `Agent` combines a language model with instructions and tools to accomplish t
 <li><strong>Modular System Prompt</strong>: Compose system prompts from independent components</li>
 <li><strong>Task Decomposition</strong>: Break down complex tasks into manageable parts</li>
 </ul>
-<h2 id="contents">Contents</h2>
+<h2 id="1-contents">1. <strong>Contents</strong></h2>
 <table>
 <thead>
 <tr>
@@ -3534,11 +3509,7 @@ An `Agent` combines a language model with instructions and tools to accomplish t
 <tbody>
 <tr>
 <td><a href="quickstart/">Quick Start</a></td>
-<td>Get started with a minimal agent</td>
-</tr>
-<tr>
-<td><a href="autoparams/">AutoParams</a></td>
-<td>Define agents using class attributes</td>
+<td>Get started with a minimal agent, class-based definition (AutoParams)</td>
 </tr>
 <tr>
 <td><a href="async/">Async</a></td>
@@ -3547,6 +3518,10 @@ An `Agent` combines a language model with instructions and tools to accomplish t
 <tr>
 <td><a href="streaming/">Streaming</a></td>
 <td>Real-time response streaming</td>
+</tr>
+<tr>
+<td><a href="reasoning/">Reasoning</a></td>
+<td>Model-level reasoning, <code>reasoning_in_response</code>, dual-queue streaming</td>
 </tr>
 <tr>
 <td><a href="debug/">How to Debug an Agent</a></td>
@@ -3590,7 +3565,7 @@ An `Agent` combines a language model with instructions and tools to accomplish t
 </tr>
 </tbody>
 </table>
-<h2 id="see-also">See Also</h2>
+<h2 id="2-see-also">2. <strong>See Also</strong></h2>
 <ul>
 <li><a href="../module/">Module</a> - Base class for all nn components</li>
 <li><a href="../message/">Message</a> - Structured message passing</li>

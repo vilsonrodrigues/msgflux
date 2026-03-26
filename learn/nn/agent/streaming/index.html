@@ -18,10 +18,10 @@
         <link rel="prev" href="../async/">
       
       
-        <link rel="next" href="../debug/">
+        <link rel="next" href="../reasoning/">
       
       
-      <link rel="icon" href="../../../../assets/favicon.png">
+      <link rel="icon" href="../../../../assets/logo.png">
       <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.21">
     
     
@@ -102,7 +102,7 @@
   <nav class="md-header__inner md-grid" aria-label="Header">
     <a href="../../../.." title="msgFlux" class="md-header__button md-logo" aria-label="msgFlux" data-md-component="logo">
       
-  <img src="../../../../assets/logo-msgFlux-S.png" alt="logo">
+  <img src="../../../../assets/logo.png" alt="logo">
 
     </a>
     <label class="md-header__button md-icon" for="__drawer">
@@ -395,7 +395,7 @@
   <label class="md-nav__title" for="__drawer">
     <a href="../../../.." title="msgFlux" class="md-nav__button md-logo" aria-label="msgFlux" data-md-component="logo">
       
-  <img src="../../../../assets/logo-msgFlux-S.png" alt="logo">
+  <img src="../../../../assets/logo.png" alt="logo">
 
     </a>
     msgFlux
@@ -545,8 +545,6 @@
   
     
     
-      
-        
       
         
       
@@ -824,29 +822,6 @@
   
   <span class="md-ellipsis">
     Text Classifier
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../../models/image_embedder/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    Image Embedder
     
   </span>
   
@@ -1524,29 +1499,6 @@
   
   
     <li class="md-nav__item">
-      <a href="../autoparams/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    AutoParams
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
       <a href="../async/" class="md-nav__link">
         
   
@@ -1579,6 +1531,19 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    Streaming
+    
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="./" class="md-nav__link md-nav__link--active">
         
   
@@ -1591,6 +1556,84 @@
 
       </a>
       
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#basic-usage" class="md-nav__link">
+    <span class="md-ellipsis">
+      Basic Usage
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#response-object" class="md-nav__link">
+    <span class="md-ellipsis">
+      Response Object
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#streaming-with-reasoning" class="md-nav__link">
+    <span class="md-ellipsis">
+      Streaming with Reasoning
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      See Also
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reasoning/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Reasoning
+    
+  </span>
+  
+
+      </a>
     </li>
   
 
@@ -3321,6 +3364,50 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#basic-usage" class="md-nav__link">
+    <span class="md-ellipsis">
+      Basic Usage
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#response-object" class="md-nav__link">
+    <span class="md-ellipsis">
+      Response Object
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#streaming-with-reasoning" class="md-nav__link">
+    <span class="md-ellipsis">
+      Streaming with Reasoning
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      See Also
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -3360,30 +3447,13 @@
 </style>
 <div class="copy-markdown-container" data-markdown="# Streaming
 
-When `stream=True` is set, the agent returns an awaitable response object. Use the `consume()` generator to iterate over response chunks as they arrive, enabling real-time output display.
+Streaming lets the agent emit tokens as they are generated instead of waiting for the full response. This enables real-time display in terminals, chat UIs, and HTTP endpoints.
+
+Enable streaming with `config={&quot;stream&quot;: True}`. The agent returns a `ModelStreamResponse` object whose `consume()` method is an async generator that yields chunks.
+
+## Basic Usage
 
 ???+ example
-
-    === &quot;Sync&quot;
-
-        ```python
-        # pip install msgflux[openai]
-        import msgflux as mf
-        import msgflux.nn as nn
-
-        # mf.set_envs(OPENAI_API_KEY=&quot;...&quot;)
-
-        class Assistant(nn.Agent):
-            model = mf.Model.chat_completion(&quot;openai/gpt-4.1-mini&quot;)
-            config = {&quot;stream&quot;: True}
-
-        agent = Assistant()
-
-        response = agent(&quot;Tell me a story&quot;)
-
-        for chunk in response.consume():
-            print(chunk, end=&quot;&quot;, flush=True)
-        ```
 
     === &quot;Async&quot;
 
@@ -3405,6 +3475,107 @@ When `stream=True` is set, the agent returns an awaitable response object. Use t
         async for chunk in response.consume():
             print(chunk, end=&quot;&quot;, flush=True)
         ```
+
+    === &quot;Sync&quot;
+
+        In sync mode, the stream runs in a background thread. `consume()` is still an async generator — use it inside an event loop or poll the response after the stream completes:
+
+        ```python
+        import time
+        import msgflux as mf
+        import msgflux.nn as nn
+
+        class Assistant(nn.Agent):
+            model = mf.Model.chat_completion(&quot;openai/gpt-4.1-mini&quot;)
+            config = {&quot;stream&quot;: True}
+
+        agent = Assistant()
+
+        response = agent(&quot;Tell me a story&quot;)
+
+        # Wait for the stream to finish
+        for _ in range(100):
+            if response.metadata is not None:
+                break
+            time.sleep(0.1)
+
+        # After completion, the full content is in response.data
+        print(response.data)
+        ```
+
+    === &quot;FastAPI&quot;
+
+        `consume()` is an async generator, so it plugs directly into `StreamingResponse`:
+
+        ```python
+        from fastapi import FastAPI
+        from fastapi.responses import StreamingResponse
+        import msgflux as mf
+        import msgflux.nn as nn
+
+        app = FastAPI()
+
+        class Assistant(nn.Agent):
+            model = mf.Model.chat_completion(&quot;openai/gpt-4.1-mini&quot;)
+            config = {&quot;stream&quot;: True}
+
+        agent = Assistant()
+
+        @app.get(&quot;/chat&quot;)
+        async def chat(query: str):
+            response = await agent.acall(query)
+            return StreamingResponse(
+                response.consume(),
+                media_type=&quot;text/plain&quot;,
+            )
+        ```
+
+## Response Object
+
+When `stream=True`, the agent returns a `ModelStreamResponse` instead of a plain string. Key attributes:
+
+| Attribute / Method | Description |
+|---|---|
+| `response.consume()` | Async generator that yields `str` chunks until the stream ends. |
+| `response.data` | Full accumulated content after the stream completes (or `None` while streaming). |
+| `response.response_type` | `&quot;text_generation&quot;` or `&quot;tool_call&quot;` — set when the first content token arrives. |
+| `response.metadata` | Usage stats — set when the stream finishes. `None` while streaming, useful as a completion signal. |
+| `response.first_chunk_event` | Event that fires on the very first token (reasoning or content). |
+
+## Streaming with Reasoning
+
+When the model supports reasoning (`return_reasoning=True`), content and reasoning flow through **independent queues**. Use `consume_reasoning()` to read the chain of thought separately:
+
+```python
+model = mf.Model.chat_completion(
+    &quot;groq/openai/gpt-oss-120b&quot;,
+    reasoning_effort=&quot;low&quot;,
+    return_reasoning=True,
+)
+
+class Solver(nn.Agent):
+    model = model
+    instructions = &quot;Solve the problem.&quot;
+    config = {&quot;stream&quot;: True}
+
+agent = Solver()
+response = await agent.acall(&quot;What is 15 * 7 + 3?&quot;)
+
+print(&quot;Thinking:&quot;)
+async for chunk in response.consume_reasoning():
+    print(chunk, end=&quot;&quot;, flush=True)
+
+print(&quot;\n\nAnswer:&quot;)
+async for chunk in response.consume():
+    print(chunk, end=&quot;&quot;, flush=True)
+```
+
+For the full dual-queue architecture, event system, and internal details, see [Reasoning — Streaming](reasoning.md#3-streaming).
+
+## See Also
+
+- [Reasoning](reasoning.md) — Dual-queue streaming, `consume_reasoning()`, two-event system
+- [Chat Completion — Streaming](../../models/chat_completion.md#6-streaming) — Model-level streaming reference
 ">
   <button class="copy-markdown-button" onclick="copyMarkdownToClipboard(this)">
     <i id="copy-icon" class="ph ph-clipboard" style="font-size:16px;"></i>
@@ -3473,10 +3644,12 @@ When `stream=True` is set, the agent returns an awaitable response object. Use t
     window.copyMarkdownToClipboard = copyMarkdownToClipboard;
 }());
 </script>
-<p>When <code>stream=True</code> is set, the agent returns an awaitable response object. Use the <code>consume()</code> generator to iterate over response chunks as they arrive, enabling real-time output display.</p>
+<p>Streaming lets the agent emit tokens as they are generated instead of waiting for the full response. This enables real-time display in terminals, chat UIs, and HTTP endpoints.</p>
+<p>Enable streaming with <code>config={"stream": True}</code>. The agent returns a <code>ModelStreamResponse</code> object whose <code>consume()</code> method is an async generator that yields chunks.</p>
+<h2 id="basic-usage">Basic Usage</h2>
 <details class="example" open="open">
 <summary>Example</summary>
-<div class="tabbed-set tabbed-alternate" data-tabs="1:2"><input checked="checked" id="__tabbed_1_1" name="__tabbed_1" type="radio" /><input id="__tabbed_1_2" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="__tabbed_1_1">Sync</label><label for="__tabbed_1_2">Async</label></div>
+<div class="tabbed-set tabbed-alternate" data-tabs="1:3"><input checked="checked" id="__tabbed_1_1" name="__tabbed_1" type="radio" /><input id="__tabbed_1_2" name="__tabbed_1" type="radio" /><input id="__tabbed_1_3" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="__tabbed_1_1">Async</label><label for="__tabbed_1_2">Sync</label><label for="__tabbed_1_3">FastAPI</label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
 <div class="language-python highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="c1"># pip install msgflux[openai]</span>
@@ -3491,34 +3664,125 @@ When `stream=True` is set, the agent returns an awaitable response object. Use t
 </span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>
 </span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="n">agent</span> <span class="o">=</span> <span class="n">Assistant</span><span class="p">()</span>
 </span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>
-</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="n">response</span> <span class="o">=</span> <span class="n">agent</span><span class="p">(</span><span class="s2">&quot;Tell me a story&quot;</span><span class="p">)</span>
+</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="n">response</span> <span class="o">=</span> <span class="k">await</span> <span class="n">agent</span><span class="o">.</span><span class="n">acall</span><span class="p">(</span><span class="s2">&quot;Tell me a story&quot;</span><span class="p">)</span>
 </span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>
-</span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="k">for</span> <span class="n">chunk</span> <span class="ow">in</span> <span class="n">response</span><span class="o">.</span><span class="n">consume</span><span class="p">():</span>
+</span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="k">async</span> <span class="k">for</span> <span class="n">chunk</span> <span class="ow">in</span> <span class="n">response</span><span class="o">.</span><span class="n">consume</span><span class="p">():</span>
 </span><span id="__span-0-16"><a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>    <span class="nb">print</span><span class="p">(</span><span class="n">chunk</span><span class="p">,</span> <span class="n">end</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">,</span> <span class="n">flush</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 </span></code></pre></div>
 </div>
 <div class="tabbed-block">
-<div class="language-python highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="c1"># pip install msgflux[openai]</span>
+<p>In sync mode, the stream runs in a background thread. <code>consume()</code> is still an async generator — use it inside an event loop or poll the response after the stream completes:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
 </span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
 </span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">nn</span>
 </span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>
-</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="c1"># mf.set_envs(OPENAI_API_KEY=&quot;...&quot;)</span>
-</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>
-</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="k">class</span><span class="w"> </span><span class="nc">Assistant</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">):</span>
-</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>    <span class="n">model</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">chat_completion</span><span class="p">(</span><span class="s2">&quot;openai/gpt-4.1-mini&quot;</span><span class="p">)</span>
-</span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>    <span class="n">config</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;stream&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">}</span>
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="k">class</span><span class="w"> </span><span class="nc">Assistant</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">):</span>
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>    <span class="n">model</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">chat_completion</span><span class="p">(</span><span class="s2">&quot;openai/gpt-4.1-mini&quot;</span><span class="p">)</span>
+</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>    <span class="n">config</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;stream&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">}</span>
+</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>
+</span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="n">agent</span> <span class="o">=</span> <span class="n">Assistant</span><span class="p">()</span>
 </span><span id="__span-1-10"><a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>
-</span><span id="__span-1-11"><a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="n">agent</span> <span class="o">=</span> <span class="n">Assistant</span><span class="p">()</span>
+</span><span id="__span-1-11"><a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="n">response</span> <span class="o">=</span> <span class="n">agent</span><span class="p">(</span><span class="s2">&quot;Tell me a story&quot;</span><span class="p">)</span>
 </span><span id="__span-1-12"><a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>
-</span><span id="__span-1-13"><a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a><span class="n">response</span> <span class="o">=</span> <span class="k">await</span> <span class="n">agent</span><span class="o">.</span><span class="n">acall</span><span class="p">(</span><span class="s2">&quot;Tell me a story&quot;</span><span class="p">)</span>
-</span><span id="__span-1-14"><a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a>
-</span><span id="__span-1-15"><a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a><span class="k">async</span> <span class="k">for</span> <span class="n">chunk</span> <span class="ow">in</span> <span class="n">response</span><span class="o">.</span><span class="n">consume</span><span class="p">():</span>
-</span><span id="__span-1-16"><a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a>    <span class="nb">print</span><span class="p">(</span><span class="n">chunk</span><span class="p">,</span> <span class="n">end</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">,</span> <span class="n">flush</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</span><span id="__span-1-13"><a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a><span class="c1"># Wait for the stream to finish</span>
+</span><span id="__span-1-14"><a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a><span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">100</span><span class="p">):</span>
+</span><span id="__span-1-15"><a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a>    <span class="k">if</span> <span class="n">response</span><span class="o">.</span><span class="n">metadata</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+</span><span id="__span-1-16"><a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a>        <span class="k">break</span>
+</span><span id="__span-1-17"><a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a>    <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.1</span><span class="p">)</span>
+</span><span id="__span-1-18"><a id="__codelineno-1-18" name="__codelineno-1-18" href="#__codelineno-1-18"></a>
+</span><span id="__span-1-19"><a id="__codelineno-1-19" name="__codelineno-1-19" href="#__codelineno-1-19"></a><span class="c1"># After completion, the full content is in response.data</span>
+</span><span id="__span-1-20"><a id="__codelineno-1-20" name="__codelineno-1-20" href="#__codelineno-1-20"></a><span class="nb">print</span><span class="p">(</span><span class="n">response</span><span class="o">.</span><span class="n">data</span><span class="p">)</span>
+</span></code></pre></div>
+</div>
+<div class="tabbed-block">
+<p><code>consume()</code> is an async generator, so it plugs directly into <code>StreamingResponse</code>:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">fastapi</span><span class="w"> </span><span class="kn">import</span> <span class="n">FastAPI</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">fastapi.responses</span><span class="w"> </span><span class="kn">import</span> <span class="n">StreamingResponse</span>
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">nn</span>
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>
+</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="n">app</span> <span class="o">=</span> <span class="n">FastAPI</span><span class="p">()</span>
+</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>
+</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="k">class</span><span class="w"> </span><span class="nc">Assistant</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">):</span>
+</span><span id="__span-2-9"><a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>    <span class="n">model</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">chat_completion</span><span class="p">(</span><span class="s2">&quot;openai/gpt-4.1-mini&quot;</span><span class="p">)</span>
+</span><span id="__span-2-10"><a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>    <span class="n">config</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;stream&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">}</span>
+</span><span id="__span-2-11"><a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a>
+</span><span id="__span-2-12"><a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a><span class="n">agent</span> <span class="o">=</span> <span class="n">Assistant</span><span class="p">()</span>
+</span><span id="__span-2-13"><a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a>
+</span><span id="__span-2-14"><a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a><span class="nd">@app</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;/chat&quot;</span><span class="p">)</span>
+</span><span id="__span-2-15"><a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">chat</span><span class="p">(</span><span class="n">query</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
+</span><span id="__span-2-16"><a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a>    <span class="n">response</span> <span class="o">=</span> <span class="k">await</span> <span class="n">agent</span><span class="o">.</span><span class="n">acall</span><span class="p">(</span><span class="n">query</span><span class="p">)</span>
+</span><span id="__span-2-17"><a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a>    <span class="k">return</span> <span class="n">StreamingResponse</span><span class="p">(</span>
+</span><span id="__span-2-18"><a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a>        <span class="n">response</span><span class="o">.</span><span class="n">consume</span><span class="p">(),</span>
+</span><span id="__span-2-19"><a id="__codelineno-2-19" name="__codelineno-2-19" href="#__codelineno-2-19"></a>        <span class="n">media_type</span><span class="o">=</span><span class="s2">&quot;text/plain&quot;</span><span class="p">,</span>
+</span><span id="__span-2-20"><a id="__codelineno-2-20" name="__codelineno-2-20" href="#__codelineno-2-20"></a>    <span class="p">)</span>
 </span></code></pre></div>
 </div>
 </div>
 </div>
 </details>
+<h2 id="response-object">Response Object</h2>
+<p>When <code>stream=True</code>, the agent returns a <code>ModelStreamResponse</code> instead of a plain string. Key attributes:</p>
+<table>
+<thead>
+<tr>
+<th>Attribute / Method</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>response.consume()</code></td>
+<td>Async generator that yields <code>str</code> chunks until the stream ends.</td>
+</tr>
+<tr>
+<td><code>response.data</code></td>
+<td>Full accumulated content after the stream completes (or <code>None</code> while streaming).</td>
+</tr>
+<tr>
+<td><code>response.response_type</code></td>
+<td><code>"text_generation"</code> or <code>"tool_call"</code> — set when the first content token arrives.</td>
+</tr>
+<tr>
+<td><code>response.metadata</code></td>
+<td>Usage stats — set when the stream finishes. <code>None</code> while streaming, useful as a completion signal.</td>
+</tr>
+<tr>
+<td><code>response.first_chunk_event</code></td>
+<td>Event that fires on the very first token (reasoning or content).</td>
+</tr>
+</tbody>
+</table>
+<h2 id="streaming-with-reasoning">Streaming with Reasoning</h2>
+<p>When the model supports reasoning (<code>return_reasoning=True</code>), content and reasoning flow through <strong>independent queues</strong>. Use <code>consume_reasoning()</code> to read the chain of thought separately:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">model</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">chat_completion</span><span class="p">(</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>    <span class="s2">&quot;groq/openai/gpt-oss-120b&quot;</span><span class="p">,</span>
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>    <span class="n">reasoning_effort</span><span class="o">=</span><span class="s2">&quot;low&quot;</span><span class="p">,</span>
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>    <span class="n">return_reasoning</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="p">)</span>
+</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>
+</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="k">class</span><span class="w"> </span><span class="nc">Solver</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">):</span>
+</span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>    <span class="n">model</span> <span class="o">=</span> <span class="n">model</span>
+</span><span id="__span-3-9"><a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>    <span class="n">instructions</span> <span class="o">=</span> <span class="s2">&quot;Solve the problem.&quot;</span>
+</span><span id="__span-3-10"><a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a>    <span class="n">config</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;stream&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">}</span>
+</span><span id="__span-3-11"><a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a>
+</span><span id="__span-3-12"><a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a><span class="n">agent</span> <span class="o">=</span> <span class="n">Solver</span><span class="p">()</span>
+</span><span id="__span-3-13"><a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a><span class="n">response</span> <span class="o">=</span> <span class="k">await</span> <span class="n">agent</span><span class="o">.</span><span class="n">acall</span><span class="p">(</span><span class="s2">&quot;What is 15 * 7 + 3?&quot;</span><span class="p">)</span>
+</span><span id="__span-3-14"><a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a>
+</span><span id="__span-3-15"><a id="__codelineno-3-15" name="__codelineno-3-15" href="#__codelineno-3-15"></a><span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Thinking:&quot;</span><span class="p">)</span>
+</span><span id="__span-3-16"><a id="__codelineno-3-16" name="__codelineno-3-16" href="#__codelineno-3-16"></a><span class="k">async</span> <span class="k">for</span> <span class="n">chunk</span> <span class="ow">in</span> <span class="n">response</span><span class="o">.</span><span class="n">consume_reasoning</span><span class="p">():</span>
+</span><span id="__span-3-17"><a id="__codelineno-3-17" name="__codelineno-3-17" href="#__codelineno-3-17"></a>    <span class="nb">print</span><span class="p">(</span><span class="n">chunk</span><span class="p">,</span> <span class="n">end</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">,</span> <span class="n">flush</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</span><span id="__span-3-18"><a id="__codelineno-3-18" name="__codelineno-3-18" href="#__codelineno-3-18"></a>
+</span><span id="__span-3-19"><a id="__codelineno-3-19" name="__codelineno-3-19" href="#__codelineno-3-19"></a><span class="nb">print</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n\n</span><span class="s2">Answer:&quot;</span><span class="p">)</span>
+</span><span id="__span-3-20"><a id="__codelineno-3-20" name="__codelineno-3-20" href="#__codelineno-3-20"></a><span class="k">async</span> <span class="k">for</span> <span class="n">chunk</span> <span class="ow">in</span> <span class="n">response</span><span class="o">.</span><span class="n">consume</span><span class="p">():</span>
+</span><span id="__span-3-21"><a id="__codelineno-3-21" name="__codelineno-3-21" href="#__codelineno-3-21"></a>    <span class="nb">print</span><span class="p">(</span><span class="n">chunk</span><span class="p">,</span> <span class="n">end</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">,</span> <span class="n">flush</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</span></code></pre></div>
+<p>For the full dual-queue architecture, event system, and internal details, see <a href="../reasoning/#3-streaming">Reasoning — Streaming</a>.</p>
+<h2 id="see-also">See Also</h2>
+<ul>
+<li><a href="../reasoning/">Reasoning</a> — Dual-queue streaming, <code>consume_reasoning()</code>, two-event system</li>
+<li><a href="../../../models/chat_completion/#6-streaming">Chat Completion — Streaming</a> — Model-level streaming reference</li>
+</ul>
 
 
 
@@ -3573,13 +3837,13 @@ When `stream=True` is set, the agent returns an awaitable response object. Use t
         
         
           
-          <a href="../debug/" class="md-footer__link md-footer__link--next" aria-label="Next: How to Debug an Agent">
+          <a href="../reasoning/" class="md-footer__link md-footer__link--next" aria-label="Next: Reasoning">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                How to Debug an Agent
+                Reasoning
               </div>
             </div>
             <div class="md-footer__button md-icon">

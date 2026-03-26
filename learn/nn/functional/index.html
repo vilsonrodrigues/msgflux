@@ -21,7 +21,7 @@
         <link rel="next" href="../transcriber/">
       
       
-      <link rel="icon" href="../../../assets/favicon.png">
+      <link rel="icon" href="../../../assets/logo.png">
       <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.21">
     
     
@@ -86,7 +86,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#nnfunctional" class="md-skip">
+        <a href="#functional" class="md-skip">
           Skip to content
         </a>
       
@@ -102,7 +102,7 @@
   <nav class="md-header__inner md-grid" aria-label="Header">
     <a href="../../.." title="msgFlux" class="md-header__button md-logo" aria-label="msgFlux" data-md-component="logo">
       
-  <img src="../../../assets/logo-msgFlux-S.png" alt="logo">
+  <img src="../../../assets/logo.png" alt="logo">
 
     </a>
     <label class="md-header__button md-icon" for="__drawer">
@@ -395,7 +395,7 @@
   <label class="md-nav__title" for="__drawer">
     <a href="../../.." title="msgFlux" class="md-nav__button md-logo" aria-label="msgFlux" data-md-component="logo">
       
-  <img src="../../../assets/logo-msgFlux-S.png" alt="logo">
+  <img src="../../../assets/logo.png" alt="logo">
 
     </a>
     msgFlux
@@ -545,8 +545,6 @@
   
     
     
-      
-        
       
         
       
@@ -824,29 +822,6 @@
   
   <span class="md-ellipsis">
     Text Classifier
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../models/image_embedder/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    Image Embedder
     
   </span>
   
@@ -1522,29 +1497,6 @@
   
   
     <li class="md-nav__item">
-      <a href="../agent/autoparams/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    AutoParams
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
       <a href="../agent/async/" class="md-nav__link">
         
   
@@ -1574,6 +1526,29 @@
   
   <span class="md-ellipsis">
     Streaming
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../agent/reasoning/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Reasoning
     
   </span>
   
@@ -3646,7 +3621,7 @@
   
 
 
-<h1 id="nnfunctional">nn.functional</h1><link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css">
+<h1 id="functional">Functional</h1><link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css">
 <style>
 .copy-markdown-button {
     background: transparent;
@@ -3666,52 +3641,51 @@
 .copy-markdown-button:active { transform: translateY(1px); }
 #copy-icon { transition: opacity 0.1s ease; }
 </style>
-<div class="copy-markdown-container" data-markdown="# nn.functional
+<div class="copy-markdown-container" data-markdown="# Functional
 
 ## ✦₊⁺ Overview
 
-The `msgflux.nn.functional` module provides concurrent execution primitives inspired by MPI scatter-gather patterns and PyTorch&#x27;s functional API.
+The `msgflux.nn.functional` module provides concurrent execution primitives inspired by MPI scatter-gather patterns and PyTorch&#x27;s functional API. While `nn.Module` encapsulates stateful components, `nn.functional` offers stateless operations that coordinate how those components run in parallel.
+
+In practice, this means you can take any callable — a plain function, an `nn.Agent`, or any `nn.Module` — and run multiple instances concurrently with a single function call. The module handles thread management, error collection, and telemetry automatically, so you focus on **what** to run rather than **how** to parallelize it.
 
 ### Key Features
 
 - **Concurrent Execution**: Thread pools and async event loops for parallel processing
 - **Gather Patterns**: Map, scatter, and broadcast primitives for different use cases
-- **Message Passing**: `dotdict` works directly with the generic gather helpers
-- **Zero Overhead**: No performance penalty for single-task execution
-- **Error Handling**: Typed `TaskError` results for failed tasks — no silent `None`
+- **Error Handling**: Typed `TaskError` results for failed tasks
 
 ### Pattern Comparison
 
+The three gather patterns cover the most common parallel execution shapes:
+
 ```
-MAP GATHER              SCATTER GATHER          BROADCAST GATHER
-──────────────          ──────────────          ────────────────
-input1 ──┐              input1 ──&gt; f1 ──┐               ┌──&gt; f1 ──&gt; r1
-input2 ──┼──&gt; f ──&gt;     input2 ──&gt; f2 ──┼──&gt;    input ──├──&gt; f2 ──&gt; r2
-input3 ──┘              input3 ──&gt; f3 ──┘               └──&gt; f3 ──&gt; r3
+MAP GATHER                SCATTER GATHER            BROADCAST GATHER
+────────────────          ────────────────          ────────────────
+input1 ──┐    ┌──&gt; r1    input1 ──&gt; f1 ──┐──&gt; r1           ┌──&gt; f1 ──&gt; r1
+input2 ──┼──&gt; f ──&gt; r2   input2 ──&gt; f2 ──┼──&gt; r2   input ──├──&gt; f2 ──&gt; r2
+input3 ──┘    └──&gt; r3    input3 ──&gt; f3 ──┘──&gt; r3           └──&gt; f3 ──&gt; r3
 
-Same function           Different functions     Multiple functions
-Multiple inputs         Paired inputs/funcs     Same input
+Same function             Different functions       Multiple functions
+Multiple inputs           Paired inputs/funcs       Same input
 ```
 
-| Pattern | When to Use |
-|---------|-------------|
-| `map_gather` | Apply the same function to multiple inputs |
-| `scatter_gather` | Route different inputs to different functions |
-| `bcast_gather` | Fan-out one input to multiple functions |
+All core functions have async counterparts prefixed with `a`. Use the sync versions for scripts and CLI tools; use the async versions inside `async def` contexts like web frameworks and pipelines:
 
-All core functions have async counterparts prefixed with `a`:
-
-| Sync | Async |
-|------|-------|
-| `map_gather` | `amap_gather` |
-| `scatter_gather` | `ascatter_gather` |
-| `wait_for` | — |
-| `wait_for_event` | `await_for_event` |
-| `spawn` | `aspawn` |
+| Sync | Async | When to Use |
+|------|-------|-------------|
+| `map_gather` | `amap_gather` | Same function, multiple inputs |
+| `scatter_gather` | `ascatter_gather` | Different functions, paired inputs |
+| `bcast_gather` | `abcast_gather` | Multiple functions, same input |
+| `wait_for` | — | Execute a callable with optional timeout |
+| `wait_for_event` | `await_for_event` | Block until an `asyncio.Event` is set |
+| `spawn` | `aspawn` | Fire-and-forget task dispatch |
 
 ---
 
 ## 1. **Quick Start**
+
+The fastest way to use the functional API is through `map_gather`. Pass a function and a list of argument tuples — each tuple becomes a concurrent call. The results come back in order, as a tuple, regardless of which call finishes first:
 
 ???+ example &quot;Parallel Execution&quot;
 
@@ -3725,6 +3699,8 @@ All core functions have async counterparts prefixed with `a`:
     results = F.map_gather(process, args_list=[(1,), (2,), (3,)])
     print(results)  # (2, 4, 6)
     ```
+
+For async code, every gather function has an `a`-prefixed counterpart that returns an awaitable. The API is identical — just `await` the result:
 
 ???+ example &quot;Async&quot;
 
@@ -3744,7 +3720,9 @@ All core functions have async counterparts prefixed with `a`:
 
 ### `map_gather`
 
-Apply the same function to multiple inputs concurrently.
+`map_gather` applies **the same function** to **multiple inputs** concurrently. This is the most common pattern — any time you need to process a batch of items through the same logic, `map_gather` turns sequential iteration into parallel execution.
+
+Under the hood, sync calls are dispatched to a thread pool, while async calls use `asyncio.gather`. Results are always returned in the same order as the input, so you can zip them back together.
 
 ???+ example
 
@@ -3762,6 +3740,8 @@ Apply the same function to multiple inputs concurrently.
 
     === &quot;With Multiple Arguments&quot;
 
+        Each tuple in `args_list` is unpacked as positional arguments to the function:
+
         ```python
         import msgflux.nn.functional as F
 
@@ -3773,6 +3753,8 @@ Apply the same function to multiple inputs concurrently.
         ```
 
     === &quot;With kwargs&quot;
+
+        Use `kwargs_list` when you need to pass keyword arguments. Each dict in the list is paired with the corresponding tuple in `args_list`:
 
         ```python
         import msgflux.nn.functional as F
@@ -3789,6 +3771,8 @@ Apply the same function to multiple inputs concurrently.
         ```
 
     === &quot;With Timeout&quot;
+
+        Set a global `timeout` (in seconds) to prevent any single task from blocking indefinitely. If a task exceeds the timeout, it returns a `TaskError` instead of raising:
 
         ```python
         import msgflux.nn.functional as F
@@ -3807,11 +3791,53 @@ Apply the same function to multiple inputs concurrently.
 
 **Async version:** `amap_gather`
 
+Since Agents are callable (`agent(input)` calls `forward`), you can pass them directly to `map_gather`. This is especially powerful for batch inference — classifying, translating, or summarizing multiple inputs concurrently through the same agent:
+
+???+ example &quot;With Agents&quot;
+
+    === &quot;Sync — classify multiple inputs&quot;
+
+        ```python
+        import msgflux as mf
+        import msgflux.nn as nn
+        import msgflux.nn.functional as F
+
+        class Classifier(nn.Agent):
+            model = mf.Model.chat_completion(&quot;openai/gpt-4.1-mini&quot;)
+            instructions = &quot;Classify the sentiment as positive, negative, or neutral. Reply with one word.&quot;
+
+        agent = Classifier()
+
+        reviews = [
+            &quot;This product is amazing!&quot;,
+            &quot;Terrible experience, never again.&quot;,
+            &quot;It&#x27;s okay, nothing special.&quot;,
+        ]
+
+        results = F.map_gather(agent, args_list=[(r,) for r in reviews])
+        for review, result in zip(reviews, results):
+            print(f&quot;{review[:30]}... → {result}&quot;)
+        # This product is amazing!...   → positive
+        # Terrible experience, never ... → negative
+        # It&#x27;s okay, nothing special.... → neutral
+        ```
+
+    === &quot;Async&quot;
+
+        ```python
+        results = await F.amap_gather(
+            agent.acall,
+            args_list=[(r,) for r in reviews],
+        )
+        ```
+
 ---
 
 ### `scatter_gather`
 
-Distribute different functions across corresponding inputs.
+`scatter_gather` pairs **different functions** with **corresponding inputs** and runs them all concurrently. The i-th function receives the i-th input. This is the right pattern when each task requires a different handler — for example, routing a summarization job to one agent and a translation job to another, all in one parallel call.
+
+The function list and `args_list` must have the same length. Each function-input pair runs independently, and results come back in order.
 
 ???+ example
 
@@ -3833,6 +3859,8 @@ Distribute different functions across corresponding inputs.
 
     === &quot;Different Inputs&quot;
 
+        Each function gets its own distinct input:
+
         ```python
         import msgflux.nn.functional as F
 
@@ -3848,6 +3876,8 @@ Distribute different functions across corresponding inputs.
         ```
 
     === &quot;With kwargs Only&quot;
+
+        You can omit `args_list` and pass only `kwargs_list`. Each dict maps to the corresponding function:
 
         ```python
         import msgflux.nn.functional as F
@@ -3867,11 +3897,60 @@ Distribute different functions across corresponding inputs.
 
 **Async version:** `ascatter_gather`
 
+With Agents, `scatter_gather` lets you run completely different AI tasks in parallel — each agent specializes in something different, and each receives its own input:
+
+???+ example &quot;With Agents&quot;
+
+    === &quot;Sync — different agents, different inputs&quot;
+
+        ```python
+        import msgflux as mf
+        import msgflux.nn as nn
+        import msgflux.nn.functional as F
+
+        model = mf.Model.chat_completion(&quot;openai/gpt-4.1-mini&quot;)
+
+        class Summarizer(nn.Agent):
+            model = model
+            instructions = &quot;Summarize the text in one sentence.&quot;
+
+        class Translator(nn.Agent):
+            model = model
+            instructions = &quot;Translate the text to Portuguese.&quot;
+
+        summarizer = Summarizer()
+        translator = Translator()
+
+        results = F.scatter_gather(
+            [summarizer, translator],
+            args_list=[
+                (&quot;Explain how neural networks learn from data...&quot;,),
+                (&quot;The weather is beautiful today.&quot;,),
+            ],
+        )
+
+        summary, translation = results
+        ```
+
+    === &quot;Async&quot;
+
+        ```python
+        results = await F.ascatter_gather(
+            [summarizer.acall, translator.acall],
+            args_list=[
+                (&quot;Explain how neural networks learn from data...&quot;,),
+                (&quot;The weather is beautiful today.&quot;,),
+            ],
+        )
+        ```
+
 ---
 
 ### `bcast_gather`
 
-Broadcast the same arguments to multiple functions.
+`bcast_gather` sends **the same arguments** to **multiple functions** and gathers the results. This is the fan-out pattern — useful when you have a single piece of data that needs to be processed by several independent handlers simultaneously.
+
+A common use case with Agents is analyzing one document from multiple perspectives at once: summarize it, translate it, and extract keywords — all in parallel, all from the same input. The total time is roughly the slowest handler, not the sum.
 
 ???+ example
 
@@ -3880,9 +3959,14 @@ Broadcast the same arguments to multiple functions.
         ```python
         import msgflux.nn.functional as F
 
-        def square(x): return x * x
-        def cube(x): return x * x * x
-        def double(x): return x * 2
+        def square(x):
+            return x * x
+
+        def cube(x):
+            return x * x * x
+
+        def double(x):
+            return x * 2
 
         results = F.bcast_gather([square, cube, double], 5)
         print(results)  # (25, 125, 10)
@@ -3890,13 +3974,20 @@ Broadcast the same arguments to multiple functions.
 
     === &quot;Error Handling&quot;
 
+        When a task fails, the gather functions **do not raise** — instead, the failed position contains a `TaskError` object with the original exception. This lets the other tasks complete successfully and gives you fine-grained control over error handling:
+
         ```python
         import msgflux.nn.functional as F
         from msgflux import TaskError
 
-        def square(x): return x * x
-        def fail(x): raise ValueError(&quot;Intentional error&quot;)
-        def cube(x): return x * x * x
+        def square(x):
+            return x * x
+
+        def fail(x):
+            raise ValueError(&quot;Intentional error&quot;)
+
+        def cube(x):
+            return x * x * x
 
         # Failed tasks return a TaskError instance — no exception is raised
         results = F.bcast_gather([square, fail, cube], 2)
@@ -3910,6 +4001,8 @@ Broadcast the same arguments to multiple functions.
         ```
 
     === &quot;With kwargs&quot;
+
+        Keyword arguments are broadcast to all functions, just like positional arguments:
 
         ```python
         import msgflux.nn.functional as F
@@ -3929,11 +4022,55 @@ Broadcast the same arguments to multiple functions.
         )
         ```
 
+**Async version:** `abcast_gather`
+
+???+ example &quot;With Agents&quot;
+
+    === &quot;Sync — same input, multiple agents&quot;
+
+        Three agents process the same text in parallel. Each agent has a different specialization but receives the same input:
+
+        ```python
+        import msgflux as mf
+        import msgflux.nn as nn
+        import msgflux.nn.functional as F
+
+        model = mf.Model.chat_completion(&quot;openai/gpt-4.1-mini&quot;)
+
+        class Summarizer(nn.Agent):
+            model = model
+            instructions = &quot;Summarize the text in one sentence.&quot;
+
+        class Translator(nn.Agent):
+            model = model
+            instructions = &quot;Translate the text to Portuguese.&quot;
+
+        class KeywordExtractor(nn.Agent):
+            model = model
+            instructions = &quot;Extract 3 keywords from the text, comma-separated.&quot;
+
+        text = &quot;Quantum computing uses qubits that can exist in superposition...&quot;
+
+        summary, translation, keywords = F.bcast_gather(
+            [Summarizer(), Translator(), KeywordExtractor()], text
+        )
+        ```
+
+    === &quot;Async&quot;
+
+        ```python
+        summary, translation, keywords = await F.abcast_gather(
+            [summarizer.acall, translator.acall, extractor.acall], text
+        )
+        ```
+
 ---
 
 ### Using `dotdict` Messages
 
-The gather helpers work directly with `msgflux.dotdict` objects.
+The gather functions work directly with `msgflux.dotdict` objects, which enables a message-passing style where concurrent functions mutate a shared or individual message. This is useful for building enrichment pipelines — each function adds a different field to the message.
+
+With `scatter_gather`, each function gets its own `dotdict`, so there&#x27;s no risk of conflicts:
 
 ???+ example &quot;scatter_gather with messages&quot;
 
@@ -3966,6 +4103,8 @@ The gather helpers work directly with `msgflux.dotdict` objects.
     print(msg2.type)  # admin
     print(msg3.type)  # guest
     ```
+
+With `bcast_gather`, all functions share the **same** `dotdict` object. This is powerful for enrichment — multiple functions add different fields to the same message in parallel. The key rule is that each function must write to **disjoint paths** to avoid race conditions:
 
 ???+ example &quot;bcast_gather with a shared message&quot;
 
@@ -4003,9 +4142,11 @@ The gather helpers work directly with `msgflux.dotdict` objects.
 
 ## 3. **Utility Functions**
 
+Beyond the gather patterns, the functional module provides lower-level utilities for bridging sync/async boundaries and dispatching fire-and-forget tasks.
+
 ### `wait_for`
 
-Execute a callable and wait for the result with optional timeout.
+`wait_for` executes a callable and blocks until the result is ready, with an optional timeout. It handles both sync and async functions transparently — if you pass an `async def`, it spins up an event loop automatically. This is useful when you need to call an async function from sync code without managing the event loop yourself:
 
 ???+ example
 
@@ -4048,7 +4189,7 @@ Execute a callable and wait for the result with optional timeout.
 
 ### `wait_for_event`
 
-Wait for an `asyncio.Event` in synchronous code.
+`wait_for_event` bridges `asyncio.Event` into synchronous code. It blocks the calling thread until the event is set, without busy-waiting. This is useful in mixed sync/async systems where a background async task needs to signal completion to a synchronous caller:
 
 ???+ example
 
@@ -4078,7 +4219,7 @@ Wait for an `asyncio.Event` in synchronous code.
 
 ### `spawn`
 
-Dispatch a task without waiting for a result.
+`spawn` dispatches a task without waiting for a result — fire-and-forget. The function runs in a background thread (sync) or as a detached coroutine (async). Errors are logged but never raised to the caller, making `spawn` safe for non-critical side effects like logging, cache warming, and notifications:
 
 ???+ example
 
@@ -4193,80 +4334,70 @@ Dispatch a task without waiting for a result.
 }());
 </script>
 <h2 id="overview">✦₊⁺ Overview</h2>
-<p>The <code>msgflux.nn.functional</code> module provides concurrent execution primitives inspired by MPI scatter-gather patterns and PyTorch's functional API.</p>
+<p>The <code>msgflux.nn.functional</code> module provides concurrent execution primitives inspired by MPI scatter-gather patterns and PyTorch's functional API. While <code>nn.Module</code> encapsulates stateful components, <code>nn.functional</code> offers stateless operations that coordinate how those components run in parallel.</p>
+<p>In practice, this means you can take any callable — a plain function, an <code>nn.Agent</code>, or any <code>nn.Module</code> — and run multiple instances concurrently with a single function call. The module handles thread management, error collection, and telemetry automatically, so you focus on <strong>what</strong> to run rather than <strong>how</strong> to parallelize it.</p>
 <h3 id="key-features">Key Features</h3>
 <ul>
 <li><strong>Concurrent Execution</strong>: Thread pools and async event loops for parallel processing</li>
 <li><strong>Gather Patterns</strong>: Map, scatter, and broadcast primitives for different use cases</li>
-<li><strong>Message Passing</strong>: <code>dotdict</code> works directly with the generic gather helpers</li>
-<li><strong>Zero Overhead</strong>: No performance penalty for single-task execution</li>
-<li><strong>Error Handling</strong>: Typed <code>TaskError</code> results for failed tasks — no silent <code>None</code></li>
+<li><strong>Error Handling</strong>: Typed <code>TaskError</code> results for failed tasks</li>
 </ul>
 <h3 id="pattern-comparison">Pattern Comparison</h3>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>MAP GATHER              SCATTER GATHER          BROADCAST GATHER
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>──────────────          ──────────────          ────────────────
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>input1 ──┐              input1 ──&gt; f1 ──┐               ┌──&gt; f1 ──&gt; r1
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>input2 ──┼──&gt; f ──&gt;     input2 ──&gt; f2 ──┼──&gt;    input ──├──&gt; f2 ──&gt; r2
-</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>input3 ──┘              input3 ──&gt; f3 ──┘               └──&gt; f3 ──&gt; r3
+<p>The three gather patterns cover the most common parallel execution shapes:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>MAP GATHER                SCATTER GATHER            BROADCAST GATHER
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>────────────────          ────────────────          ────────────────
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>input1 ──┐    ┌──&gt; r1    input1 ──&gt; f1 ──┐──&gt; r1           ┌──&gt; f1 ──&gt; r1
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>input2 ──┼──&gt; f ──&gt; r2   input2 ──&gt; f2 ──┼──&gt; r2   input ──├──&gt; f2 ──&gt; r2
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>input3 ──┘    └──&gt; r3    input3 ──&gt; f3 ──┘──&gt; r3           └──&gt; f3 ──&gt; r3
 </span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>
-</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>Same function           Different functions     Multiple functions
-</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>Multiple inputs         Paired inputs/funcs     Same input
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>Same function             Different functions       Multiple functions
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>Multiple inputs           Paired inputs/funcs       Same input
 </span></code></pre></div>
+<p>All core functions have async counterparts prefixed with <code>a</code>. Use the sync versions for scripts and CLI tools; use the async versions inside <code>async def</code> contexts like web frameworks and pipelines:</p>
 <table>
 <thead>
 <tr>
-<th>Pattern</th>
+<th>Sync</th>
+<th>Async</th>
 <th>When to Use</th>
 </tr>
 </thead>
 <tbody>
 <tr>
 <td><code>map_gather</code></td>
-<td>Apply the same function to multiple inputs</td>
-</tr>
-<tr>
-<td><code>scatter_gather</code></td>
-<td>Route different inputs to different functions</td>
-</tr>
-<tr>
-<td><code>bcast_gather</code></td>
-<td>Fan-out one input to multiple functions</td>
-</tr>
-</tbody>
-</table>
-<p>All core functions have async counterparts prefixed with <code>a</code>:</p>
-<table>
-<thead>
-<tr>
-<th>Sync</th>
-<th>Async</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>map_gather</code></td>
 <td><code>amap_gather</code></td>
+<td>Same function, multiple inputs</td>
 </tr>
 <tr>
 <td><code>scatter_gather</code></td>
 <td><code>ascatter_gather</code></td>
+<td>Different functions, paired inputs</td>
+</tr>
+<tr>
+<td><code>bcast_gather</code></td>
+<td><code>abcast_gather</code></td>
+<td>Multiple functions, same input</td>
 </tr>
 <tr>
 <td><code>wait_for</code></td>
 <td>—</td>
+<td>Execute a callable with optional timeout</td>
 </tr>
 <tr>
 <td><code>wait_for_event</code></td>
 <td><code>await_for_event</code></td>
+<td>Block until an <code>asyncio.Event</code> is set</td>
 </tr>
 <tr>
 <td><code>spawn</code></td>
 <td><code>aspawn</code></td>
+<td>Fire-and-forget task dispatch</td>
 </tr>
 </tbody>
 </table>
 <hr />
 <h2 id="1-quick-start">1. <strong>Quick Start</strong></h2>
+<p>The fastest way to use the functional API is through <code>map_gather</code>. Pass a function and a list of argument tuples — each tuple becomes a concurrent call. The results come back in order, as a tuple, regardless of which call finishes first:</p>
 <details class="example" open="open">
 <summary>Parallel Execution</summary>
 <div class="language-python highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn.functional</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">F</span>
@@ -4279,6 +4410,7 @@ Dispatch a task without waiting for a result.
 </span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="nb">print</span><span class="p">(</span><span class="n">results</span><span class="p">)</span>  <span class="c1"># (2, 4, 6)</span>
 </span></code></pre></div>
 </details>
+<p>For async code, every gather function has an <code>a</code>-prefixed counterpart that returns an awaitable. The API is identical — just <code>await</code> the result:</p>
 <details class="example" open="open">
 <summary>Async</summary>
 <div class="language-python highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn.functional</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">F</span>
@@ -4293,7 +4425,8 @@ Dispatch a task without waiting for a result.
 <hr />
 <h2 id="2-gather-functions">2. <strong>Gather Functions</strong></h2>
 <h3 id="map_gather"><code>map_gather</code></h3>
-<p>Apply the same function to multiple inputs concurrently.</p>
+<p><code>map_gather</code> applies <strong>the same function</strong> to <strong>multiple inputs</strong> concurrently. This is the most common pattern — any time you need to process a batch of items through the same logic, <code>map_gather</code> turns sequential iteration into parallel execution.</p>
+<p>Under the hood, sync calls are dispatched to a thread pool, while async calls use <code>asyncio.gather</code>. Results are always returned in the same order as the input, so you can zip them back together.</p>
 <details class="example" open="open">
 <summary>Example</summary>
 <div class="tabbed-set tabbed-alternate" data-tabs="1:4"><input checked="checked" id="__tabbed_1_1" name="__tabbed_1" type="radio" /><input id="__tabbed_1_2" name="__tabbed_1" type="radio" /><input id="__tabbed_1_3" name="__tabbed_1" type="radio" /><input id="__tabbed_1_4" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="__tabbed_1_1">Basic</label><label for="__tabbed_1_2">With Multiple Arguments</label><label for="__tabbed_1_3">With kwargs</label><label for="__tabbed_1_4">With Timeout</label></div>
@@ -4309,6 +4442,7 @@ Dispatch a task without waiting for a result.
 </span></code></pre></div>
 </div>
 <div class="tabbed-block">
+<p>Each tuple in <code>args_list</code> is unpacked as positional arguments to the function:</p>
 <div class="language-python highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn.functional</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">F</span>
 </span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>
 </span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="k">def</span><span class="w"> </span><span class="nf">add</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">):</span>
@@ -4319,6 +4453,7 @@ Dispatch a task without waiting for a result.
 </span></code></pre></div>
 </div>
 <div class="tabbed-block">
+<p>Use <code>kwargs_list</code> when you need to pass keyword arguments. Each dict in the list is paired with the corresponding tuple in <code>args_list</code>:</p>
 <div class="language-python highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn.functional</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">F</span>
 </span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>
 </span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="k">def</span><span class="w"> </span><span class="nf">multiply</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="o">=</span><span class="mi">2</span><span class="p">):</span>
@@ -4333,6 +4468,7 @@ Dispatch a task without waiting for a result.
 </span></code></pre></div>
 </div>
 <div class="tabbed-block">
+<p>Set a global <code>timeout</code> (in seconds) to prevent any single task from blocking indefinitely. If a task exceeds the timeout, it returns a <code>TaskError</code> instead of raising:</p>
 <div class="language-python highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn.functional</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">F</span>
 </span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
 </span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>
@@ -4351,114 +4487,258 @@ Dispatch a task without waiting for a result.
 </div>
 </details>
 <p><strong>Async version:</strong> <code>amap_gather</code></p>
-<hr />
-<h3 id="scatter_gather"><code>scatter_gather</code></h3>
-<p>Distribute different functions across corresponding inputs.</p>
+<p>Since Agents are callable (<code>agent(input)</code> calls <code>forward</code>), you can pass them directly to <code>map_gather</code>. This is especially powerful for batch inference — classifying, translating, or summarizing multiple inputs concurrently through the same agent:</p>
 <details class="example" open="open">
-<summary>Example</summary>
-<div class="tabbed-set tabbed-alternate" data-tabs="2:3"><input checked="checked" id="__tabbed_2_1" name="__tabbed_2" type="radio" /><input id="__tabbed_2_2" name="__tabbed_2" type="radio" /><input id="__tabbed_2_3" name="__tabbed_2" type="radio" /><div class="tabbed-labels"><label for="__tabbed_2_1">Basic</label><label for="__tabbed_2_2">Different Inputs</label><label for="__tabbed_2_3">With kwargs Only</label></div>
+<summary>With Agents</summary>
+<div class="tabbed-set tabbed-alternate" data-tabs="2:2"><input checked="checked" id="__tabbed_2_1" name="__tabbed_2" type="radio" /><input id="__tabbed_2_2" name="__tabbed_2" type="radio" /><div class="tabbed-labels"><label for="__tabbed_2_1">Sync — classify multiple inputs</label><label for="__tabbed_2_2">Async</label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
-<div class="language-python highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn.functional</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">F</span>
-</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>
-</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="k">def</span><span class="w"> </span><span class="nf">double</span><span class="p">(</span><span class="n">x</span><span class="p">):</span> <span class="k">return</span> <span class="n">x</span> <span class="o">*</span> <span class="mi">2</span>
-</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="k">def</span><span class="w"> </span><span class="nf">triple</span><span class="p">(</span><span class="n">x</span><span class="p">):</span> <span class="k">return</span> <span class="n">x</span> <span class="o">*</span> <span class="mi">3</span>
-</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="k">def</span><span class="w"> </span><span class="nf">square</span><span class="p">(</span><span class="n">x</span><span class="p">):</span> <span class="k">return</span> <span class="n">x</span> <span class="o">**</span> <span class="mi">2</span>
-</span><span id="__span-7-6"><a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>
-</span><span id="__span-7-7"><a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="n">results</span> <span class="o">=</span> <span class="n">F</span><span class="o">.</span><span class="n">scatter_gather</span><span class="p">(</span>
-</span><span id="__span-7-8"><a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>    <span class="p">[</span><span class="n">double</span><span class="p">,</span> <span class="n">triple</span><span class="p">,</span> <span class="n">square</span><span class="p">],</span>
-</span><span id="__span-7-9"><a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a>    <span class="n">args_list</span><span class="o">=</span><span class="p">[(</span><span class="mi">5</span><span class="p">,),</span> <span class="p">(</span><span class="mi">5</span><span class="p">,),</span> <span class="p">(</span><span class="mi">5</span><span class="p">,)]</span>
-</span><span id="__span-7-10"><a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a><span class="p">)</span>
-</span><span id="__span-7-11"><a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a><span class="nb">print</span><span class="p">(</span><span class="n">results</span><span class="p">)</span>  <span class="c1"># (10, 15, 25)</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">nn</span>
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn.functional</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">F</span>
+</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>
+</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="k">class</span><span class="w"> </span><span class="nc">Classifier</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">):</span>
+</span><span id="__span-7-6"><a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>    <span class="n">model</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">chat_completion</span><span class="p">(</span><span class="s2">&quot;openai/gpt-4.1-mini&quot;</span><span class="p">)</span>
+</span><span id="__span-7-7"><a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>    <span class="n">instructions</span> <span class="o">=</span> <span class="s2">&quot;Classify the sentiment as positive, negative, or neutral. Reply with one word.&quot;</span>
+</span><span id="__span-7-8"><a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>
+</span><span id="__span-7-9"><a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a><span class="n">agent</span> <span class="o">=</span> <span class="n">Classifier</span><span class="p">()</span>
+</span><span id="__span-7-10"><a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a>
+</span><span id="__span-7-11"><a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a><span class="n">reviews</span> <span class="o">=</span> <span class="p">[</span>
+</span><span id="__span-7-12"><a id="__codelineno-7-12" name="__codelineno-7-12" href="#__codelineno-7-12"></a>    <span class="s2">&quot;This product is amazing!&quot;</span><span class="p">,</span>
+</span><span id="__span-7-13"><a id="__codelineno-7-13" name="__codelineno-7-13" href="#__codelineno-7-13"></a>    <span class="s2">&quot;Terrible experience, never again.&quot;</span><span class="p">,</span>
+</span><span id="__span-7-14"><a id="__codelineno-7-14" name="__codelineno-7-14" href="#__codelineno-7-14"></a>    <span class="s2">&quot;It&#39;s okay, nothing special.&quot;</span><span class="p">,</span>
+</span><span id="__span-7-15"><a id="__codelineno-7-15" name="__codelineno-7-15" href="#__codelineno-7-15"></a><span class="p">]</span>
+</span><span id="__span-7-16"><a id="__codelineno-7-16" name="__codelineno-7-16" href="#__codelineno-7-16"></a>
+</span><span id="__span-7-17"><a id="__codelineno-7-17" name="__codelineno-7-17" href="#__codelineno-7-17"></a><span class="n">results</span> <span class="o">=</span> <span class="n">F</span><span class="o">.</span><span class="n">map_gather</span><span class="p">(</span><span class="n">agent</span><span class="p">,</span> <span class="n">args_list</span><span class="o">=</span><span class="p">[(</span><span class="n">r</span><span class="p">,)</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">reviews</span><span class="p">])</span>
+</span><span id="__span-7-18"><a id="__codelineno-7-18" name="__codelineno-7-18" href="#__codelineno-7-18"></a><span class="k">for</span> <span class="n">review</span><span class="p">,</span> <span class="n">result</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">reviews</span><span class="p">,</span> <span class="n">results</span><span class="p">):</span>
+</span><span id="__span-7-19"><a id="__codelineno-7-19" name="__codelineno-7-19" href="#__codelineno-7-19"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">review</span><span class="p">[:</span><span class="mi">30</span><span class="p">]</span><span class="si">}</span><span class="s2">... → </span><span class="si">{</span><span class="n">result</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</span><span id="__span-7-20"><a id="__codelineno-7-20" name="__codelineno-7-20" href="#__codelineno-7-20"></a><span class="c1"># This product is amazing!...   → positive</span>
+</span><span id="__span-7-21"><a id="__codelineno-7-21" name="__codelineno-7-21" href="#__codelineno-7-21"></a><span class="c1"># Terrible experience, never ... → negative</span>
+</span><span id="__span-7-22"><a id="__codelineno-7-22" name="__codelineno-7-22" href="#__codelineno-7-22"></a><span class="c1"># It&#39;s okay, nothing special.... → neutral</span>
 </span></code></pre></div>
 </div>
 <div class="tabbed-block">
-<div class="language-python highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn.functional</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">F</span>
-</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>
-</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="k">def</span><span class="w"> </span><span class="nf">double</span><span class="p">(</span><span class="n">x</span><span class="p">):</span> <span class="k">return</span> <span class="n">x</span> <span class="o">*</span> <span class="mi">2</span>
-</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="k">def</span><span class="w"> </span><span class="nf">triple</span><span class="p">(</span><span class="n">x</span><span class="p">):</span> <span class="k">return</span> <span class="n">x</span> <span class="o">*</span> <span class="mi">3</span>
-</span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="k">def</span><span class="w"> </span><span class="nf">square</span><span class="p">(</span><span class="n">x</span><span class="p">):</span> <span class="k">return</span> <span class="n">x</span> <span class="o">**</span> <span class="mi">2</span>
-</span><span id="__span-8-6"><a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>
-</span><span id="__span-8-7"><a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="n">results</span> <span class="o">=</span> <span class="n">F</span><span class="o">.</span><span class="n">scatter_gather</span><span class="p">(</span>
-</span><span id="__span-8-8"><a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a>    <span class="p">[</span><span class="n">double</span><span class="p">,</span> <span class="n">triple</span><span class="p">,</span> <span class="n">square</span><span class="p">],</span>
-</span><span id="__span-8-9"><a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a>    <span class="n">args_list</span><span class="o">=</span><span class="p">[(</span><span class="mi">2</span><span class="p">,),</span> <span class="p">(</span><span class="mi">3</span><span class="p">,),</span> <span class="p">(</span><span class="mi">4</span><span class="p">,)]</span>
-</span><span id="__span-8-10"><a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a><span class="p">)</span>
-</span><span id="__span-8-11"><a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a><span class="nb">print</span><span class="p">(</span><span class="n">results</span><span class="p">)</span>  <span class="c1"># (4, 9, 16)</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="n">results</span> <span class="o">=</span> <span class="k">await</span> <span class="n">F</span><span class="o">.</span><span class="n">amap_gather</span><span class="p">(</span>
+</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>    <span class="n">agent</span><span class="o">.</span><span class="n">acall</span><span class="p">,</span>
+</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>    <span class="n">args_list</span><span class="o">=</span><span class="p">[(</span><span class="n">r</span><span class="p">,)</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">reviews</span><span class="p">],</span>
+</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="p">)</span>
 </span></code></pre></div>
 </div>
+</div>
+</div>
+</details>
+<hr />
+<h3 id="scatter_gather"><code>scatter_gather</code></h3>
+<p><code>scatter_gather</code> pairs <strong>different functions</strong> with <strong>corresponding inputs</strong> and runs them all concurrently. The i-th function receives the i-th input. This is the right pattern when each task requires a different handler — for example, routing a summarization job to one agent and a translation job to another, all in one parallel call.</p>
+<p>The function list and <code>args_list</code> must have the same length. Each function-input pair runs independently, and results come back in order.</p>
+<details class="example" open="open">
+<summary>Example</summary>
+<div class="tabbed-set tabbed-alternate" data-tabs="3:3"><input checked="checked" id="__tabbed_3_1" name="__tabbed_3" type="radio" /><input id="__tabbed_3_2" name="__tabbed_3" type="radio" /><input id="__tabbed_3_3" name="__tabbed_3" type="radio" /><div class="tabbed-labels"><label for="__tabbed_3_1">Basic</label><label for="__tabbed_3_2">Different Inputs</label><label for="__tabbed_3_3">With kwargs Only</label></div>
+<div class="tabbed-content">
 <div class="tabbed-block">
 <div class="language-python highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn.functional</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">F</span>
 </span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>
-</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="k">def</span><span class="w"> </span><span class="nf">greet</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;World&quot;</span><span class="p">):</span>
-</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>    <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;Hello, </span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">&quot;</span>
-</span><span id="__span-9-5"><a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>
-</span><span id="__span-9-6"><a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="k">def</span><span class="w"> </span><span class="nf">farewell</span><span class="p">(</span><span class="n">person</span><span class="p">):</span>
-</span><span id="__span-9-7"><a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a>    <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;Goodbye, </span><span class="si">{</span><span class="n">person</span><span class="si">}</span><span class="s2">&quot;</span>
-</span><span id="__span-9-8"><a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a>
-</span><span id="__span-9-9"><a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a><span class="n">results</span> <span class="o">=</span> <span class="n">F</span><span class="o">.</span><span class="n">scatter_gather</span><span class="p">(</span>
-</span><span id="__span-9-10"><a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a>    <span class="p">[</span><span class="n">greet</span><span class="p">,</span> <span class="n">greet</span><span class="p">,</span> <span class="n">farewell</span><span class="p">],</span>
-</span><span id="__span-9-11"><a id="__codelineno-9-11" name="__codelineno-9-11" href="#__codelineno-9-11"></a>    <span class="n">kwargs_list</span><span class="o">=</span><span class="p">[{},</span> <span class="p">{</span><span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;Earth&quot;</span><span class="p">},</span> <span class="p">{</span><span class="s2">&quot;person&quot;</span><span class="p">:</span> <span class="s2">&quot;Commander&quot;</span><span class="p">}]</span>
-</span><span id="__span-9-12"><a id="__codelineno-9-12" name="__codelineno-9-12" href="#__codelineno-9-12"></a><span class="p">)</span>
-</span><span id="__span-9-13"><a id="__codelineno-9-13" name="__codelineno-9-13" href="#__codelineno-9-13"></a><span class="nb">print</span><span class="p">(</span><span class="n">results</span><span class="p">)</span>  <span class="c1"># (&quot;Hello, World&quot;, &quot;Hello, Earth&quot;, &quot;Goodbye, Commander&quot;)</span>
+</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="k">def</span><span class="w"> </span><span class="nf">double</span><span class="p">(</span><span class="n">x</span><span class="p">):</span> <span class="k">return</span> <span class="n">x</span> <span class="o">*</span> <span class="mi">2</span>
+</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="k">def</span><span class="w"> </span><span class="nf">triple</span><span class="p">(</span><span class="n">x</span><span class="p">):</span> <span class="k">return</span> <span class="n">x</span> <span class="o">*</span> <span class="mi">3</span>
+</span><span id="__span-9-5"><a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="k">def</span><span class="w"> </span><span class="nf">square</span><span class="p">(</span><span class="n">x</span><span class="p">):</span> <span class="k">return</span> <span class="n">x</span> <span class="o">**</span> <span class="mi">2</span>
+</span><span id="__span-9-6"><a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>
+</span><span id="__span-9-7"><a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="n">results</span> <span class="o">=</span> <span class="n">F</span><span class="o">.</span><span class="n">scatter_gather</span><span class="p">(</span>
+</span><span id="__span-9-8"><a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a>    <span class="p">[</span><span class="n">double</span><span class="p">,</span> <span class="n">triple</span><span class="p">,</span> <span class="n">square</span><span class="p">],</span>
+</span><span id="__span-9-9"><a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a>    <span class="n">args_list</span><span class="o">=</span><span class="p">[(</span><span class="mi">5</span><span class="p">,),</span> <span class="p">(</span><span class="mi">5</span><span class="p">,),</span> <span class="p">(</span><span class="mi">5</span><span class="p">,)]</span>
+</span><span id="__span-9-10"><a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a><span class="p">)</span>
+</span><span id="__span-9-11"><a id="__codelineno-9-11" name="__codelineno-9-11" href="#__codelineno-9-11"></a><span class="nb">print</span><span class="p">(</span><span class="n">results</span><span class="p">)</span>  <span class="c1"># (10, 15, 25)</span>
+</span></code></pre></div>
+</div>
+<div class="tabbed-block">
+<p>Each function gets its own distinct input:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn.functional</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">F</span>
+</span><span id="__span-10-2"><a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>
+</span><span id="__span-10-3"><a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="k">def</span><span class="w"> </span><span class="nf">double</span><span class="p">(</span><span class="n">x</span><span class="p">):</span> <span class="k">return</span> <span class="n">x</span> <span class="o">*</span> <span class="mi">2</span>
+</span><span id="__span-10-4"><a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="k">def</span><span class="w"> </span><span class="nf">triple</span><span class="p">(</span><span class="n">x</span><span class="p">):</span> <span class="k">return</span> <span class="n">x</span> <span class="o">*</span> <span class="mi">3</span>
+</span><span id="__span-10-5"><a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="k">def</span><span class="w"> </span><span class="nf">square</span><span class="p">(</span><span class="n">x</span><span class="p">):</span> <span class="k">return</span> <span class="n">x</span> <span class="o">**</span> <span class="mi">2</span>
+</span><span id="__span-10-6"><a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>
+</span><span id="__span-10-7"><a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a><span class="n">results</span> <span class="o">=</span> <span class="n">F</span><span class="o">.</span><span class="n">scatter_gather</span><span class="p">(</span>
+</span><span id="__span-10-8"><a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a>    <span class="p">[</span><span class="n">double</span><span class="p">,</span> <span class="n">triple</span><span class="p">,</span> <span class="n">square</span><span class="p">],</span>
+</span><span id="__span-10-9"><a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a>    <span class="n">args_list</span><span class="o">=</span><span class="p">[(</span><span class="mi">2</span><span class="p">,),</span> <span class="p">(</span><span class="mi">3</span><span class="p">,),</span> <span class="p">(</span><span class="mi">4</span><span class="p">,)]</span>
+</span><span id="__span-10-10"><a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a><span class="p">)</span>
+</span><span id="__span-10-11"><a id="__codelineno-10-11" name="__codelineno-10-11" href="#__codelineno-10-11"></a><span class="nb">print</span><span class="p">(</span><span class="n">results</span><span class="p">)</span>  <span class="c1"># (4, 9, 16)</span>
+</span></code></pre></div>
+</div>
+<div class="tabbed-block">
+<p>You can omit <code>args_list</code> and pass only <code>kwargs_list</code>. Each dict maps to the corresponding function:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn.functional</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">F</span>
+</span><span id="__span-11-2"><a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>
+</span><span id="__span-11-3"><a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="k">def</span><span class="w"> </span><span class="nf">greet</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;World&quot;</span><span class="p">):</span>
+</span><span id="__span-11-4"><a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>    <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;Hello, </span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">&quot;</span>
+</span><span id="__span-11-5"><a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a>
+</span><span id="__span-11-6"><a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a><span class="k">def</span><span class="w"> </span><span class="nf">farewell</span><span class="p">(</span><span class="n">person</span><span class="p">):</span>
+</span><span id="__span-11-7"><a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a>    <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;Goodbye, </span><span class="si">{</span><span class="n">person</span><span class="si">}</span><span class="s2">&quot;</span>
+</span><span id="__span-11-8"><a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a>
+</span><span id="__span-11-9"><a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a><span class="n">results</span> <span class="o">=</span> <span class="n">F</span><span class="o">.</span><span class="n">scatter_gather</span><span class="p">(</span>
+</span><span id="__span-11-10"><a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a>    <span class="p">[</span><span class="n">greet</span><span class="p">,</span> <span class="n">greet</span><span class="p">,</span> <span class="n">farewell</span><span class="p">],</span>
+</span><span id="__span-11-11"><a id="__codelineno-11-11" name="__codelineno-11-11" href="#__codelineno-11-11"></a>    <span class="n">kwargs_list</span><span class="o">=</span><span class="p">[{},</span> <span class="p">{</span><span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;Earth&quot;</span><span class="p">},</span> <span class="p">{</span><span class="s2">&quot;person&quot;</span><span class="p">:</span> <span class="s2">&quot;Commander&quot;</span><span class="p">}]</span>
+</span><span id="__span-11-12"><a id="__codelineno-11-12" name="__codelineno-11-12" href="#__codelineno-11-12"></a><span class="p">)</span>
+</span><span id="__span-11-13"><a id="__codelineno-11-13" name="__codelineno-11-13" href="#__codelineno-11-13"></a><span class="nb">print</span><span class="p">(</span><span class="n">results</span><span class="p">)</span>  <span class="c1"># (&quot;Hello, World&quot;, &quot;Hello, Earth&quot;, &quot;Goodbye, Commander&quot;)</span>
 </span></code></pre></div>
 </div>
 </div>
 </div>
 </details>
 <p><strong>Async version:</strong> <code>ascatter_gather</code></p>
-<hr />
-<h3 id="bcast_gather"><code>bcast_gather</code></h3>
-<p>Broadcast the same arguments to multiple functions.</p>
+<p>With Agents, <code>scatter_gather</code> lets you run completely different AI tasks in parallel — each agent specializes in something different, and each receives its own input:</p>
 <details class="example" open="open">
-<summary>Example</summary>
-<div class="tabbed-set tabbed-alternate" data-tabs="3:3"><input checked="checked" id="__tabbed_3_1" name="__tabbed_3" type="radio" /><input id="__tabbed_3_2" name="__tabbed_3" type="radio" /><input id="__tabbed_3_3" name="__tabbed_3" type="radio" /><div class="tabbed-labels"><label for="__tabbed_3_1">Basic</label><label for="__tabbed_3_2">Error Handling</label><label for="__tabbed_3_3">With kwargs</label></div>
+<summary>With Agents</summary>
+<div class="tabbed-set tabbed-alternate" data-tabs="4:2"><input checked="checked" id="__tabbed_4_1" name="__tabbed_4" type="radio" /><input id="__tabbed_4_2" name="__tabbed_4" type="radio" /><div class="tabbed-labels"><label for="__tabbed_4_1">Sync — different agents, different inputs</label><label for="__tabbed_4_2">Async</label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
-<div class="language-python highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn.functional</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">F</span>
-</span><span id="__span-10-2"><a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>
-</span><span id="__span-10-3"><a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="k">def</span><span class="w"> </span><span class="nf">square</span><span class="p">(</span><span class="n">x</span><span class="p">):</span> <span class="k">return</span> <span class="n">x</span> <span class="o">*</span> <span class="n">x</span>
-</span><span id="__span-10-4"><a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="k">def</span><span class="w"> </span><span class="nf">cube</span><span class="p">(</span><span class="n">x</span><span class="p">):</span> <span class="k">return</span> <span class="n">x</span> <span class="o">*</span> <span class="n">x</span> <span class="o">*</span> <span class="n">x</span>
-</span><span id="__span-10-5"><a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="k">def</span><span class="w"> </span><span class="nf">double</span><span class="p">(</span><span class="n">x</span><span class="p">):</span> <span class="k">return</span> <span class="n">x</span> <span class="o">*</span> <span class="mi">2</span>
-</span><span id="__span-10-6"><a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>
-</span><span id="__span-10-7"><a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a><span class="n">results</span> <span class="o">=</span> <span class="n">F</span><span class="o">.</span><span class="n">bcast_gather</span><span class="p">([</span><span class="n">square</span><span class="p">,</span> <span class="n">cube</span><span class="p">,</span> <span class="n">double</span><span class="p">],</span> <span class="mi">5</span><span class="p">)</span>
-</span><span id="__span-10-8"><a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a><span class="nb">print</span><span class="p">(</span><span class="n">results</span><span class="p">)</span>  <span class="c1"># (25, 125, 10)</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
+</span><span id="__span-12-2"><a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">nn</span>
+</span><span id="__span-12-3"><a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn.functional</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">F</span>
+</span><span id="__span-12-4"><a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a>
+</span><span id="__span-12-5"><a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a><span class="n">model</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">chat_completion</span><span class="p">(</span><span class="s2">&quot;openai/gpt-4.1-mini&quot;</span><span class="p">)</span>
+</span><span id="__span-12-6"><a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a>
+</span><span id="__span-12-7"><a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a><span class="k">class</span><span class="w"> </span><span class="nc">Summarizer</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">):</span>
+</span><span id="__span-12-8"><a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a>    <span class="n">model</span> <span class="o">=</span> <span class="n">model</span>
+</span><span id="__span-12-9"><a id="__codelineno-12-9" name="__codelineno-12-9" href="#__codelineno-12-9"></a>    <span class="n">instructions</span> <span class="o">=</span> <span class="s2">&quot;Summarize the text in one sentence.&quot;</span>
+</span><span id="__span-12-10"><a id="__codelineno-12-10" name="__codelineno-12-10" href="#__codelineno-12-10"></a>
+</span><span id="__span-12-11"><a id="__codelineno-12-11" name="__codelineno-12-11" href="#__codelineno-12-11"></a><span class="k">class</span><span class="w"> </span><span class="nc">Translator</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">):</span>
+</span><span id="__span-12-12"><a id="__codelineno-12-12" name="__codelineno-12-12" href="#__codelineno-12-12"></a>    <span class="n">model</span> <span class="o">=</span> <span class="n">model</span>
+</span><span id="__span-12-13"><a id="__codelineno-12-13" name="__codelineno-12-13" href="#__codelineno-12-13"></a>    <span class="n">instructions</span> <span class="o">=</span> <span class="s2">&quot;Translate the text to Portuguese.&quot;</span>
+</span><span id="__span-12-14"><a id="__codelineno-12-14" name="__codelineno-12-14" href="#__codelineno-12-14"></a>
+</span><span id="__span-12-15"><a id="__codelineno-12-15" name="__codelineno-12-15" href="#__codelineno-12-15"></a><span class="n">summarizer</span> <span class="o">=</span> <span class="n">Summarizer</span><span class="p">()</span>
+</span><span id="__span-12-16"><a id="__codelineno-12-16" name="__codelineno-12-16" href="#__codelineno-12-16"></a><span class="n">translator</span> <span class="o">=</span> <span class="n">Translator</span><span class="p">()</span>
+</span><span id="__span-12-17"><a id="__codelineno-12-17" name="__codelineno-12-17" href="#__codelineno-12-17"></a>
+</span><span id="__span-12-18"><a id="__codelineno-12-18" name="__codelineno-12-18" href="#__codelineno-12-18"></a><span class="n">results</span> <span class="o">=</span> <span class="n">F</span><span class="o">.</span><span class="n">scatter_gather</span><span class="p">(</span>
+</span><span id="__span-12-19"><a id="__codelineno-12-19" name="__codelineno-12-19" href="#__codelineno-12-19"></a>    <span class="p">[</span><span class="n">summarizer</span><span class="p">,</span> <span class="n">translator</span><span class="p">],</span>
+</span><span id="__span-12-20"><a id="__codelineno-12-20" name="__codelineno-12-20" href="#__codelineno-12-20"></a>    <span class="n">args_list</span><span class="o">=</span><span class="p">[</span>
+</span><span id="__span-12-21"><a id="__codelineno-12-21" name="__codelineno-12-21" href="#__codelineno-12-21"></a>        <span class="p">(</span><span class="s2">&quot;Explain how neural networks learn from data...&quot;</span><span class="p">,),</span>
+</span><span id="__span-12-22"><a id="__codelineno-12-22" name="__codelineno-12-22" href="#__codelineno-12-22"></a>        <span class="p">(</span><span class="s2">&quot;The weather is beautiful today.&quot;</span><span class="p">,),</span>
+</span><span id="__span-12-23"><a id="__codelineno-12-23" name="__codelineno-12-23" href="#__codelineno-12-23"></a>    <span class="p">],</span>
+</span><span id="__span-12-24"><a id="__codelineno-12-24" name="__codelineno-12-24" href="#__codelineno-12-24"></a><span class="p">)</span>
+</span><span id="__span-12-25"><a id="__codelineno-12-25" name="__codelineno-12-25" href="#__codelineno-12-25"></a>
+</span><span id="__span-12-26"><a id="__codelineno-12-26" name="__codelineno-12-26" href="#__codelineno-12-26"></a><span class="n">summary</span><span class="p">,</span> <span class="n">translation</span> <span class="o">=</span> <span class="n">results</span>
 </span></code></pre></div>
 </div>
 <div class="tabbed-block">
-<div class="language-python highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn.functional</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">F</span>
-</span><span id="__span-11-2"><a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="kn">import</span> <span class="n">TaskError</span>
-</span><span id="__span-11-3"><a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>
-</span><span id="__span-11-4"><a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="k">def</span><span class="w"> </span><span class="nf">square</span><span class="p">(</span><span class="n">x</span><span class="p">):</span> <span class="k">return</span> <span class="n">x</span> <span class="o">*</span> <span class="n">x</span>
-</span><span id="__span-11-5"><a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a><span class="k">def</span><span class="w"> </span><span class="nf">fail</span><span class="p">(</span><span class="n">x</span><span class="p">):</span> <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Intentional error&quot;</span><span class="p">)</span>
-</span><span id="__span-11-6"><a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a><span class="k">def</span><span class="w"> </span><span class="nf">cube</span><span class="p">(</span><span class="n">x</span><span class="p">):</span> <span class="k">return</span> <span class="n">x</span> <span class="o">*</span> <span class="n">x</span> <span class="o">*</span> <span class="n">x</span>
-</span><span id="__span-11-7"><a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a>
-</span><span id="__span-11-8"><a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a><span class="c1"># Failed tasks return a TaskError instance — no exception is raised</span>
-</span><span id="__span-11-9"><a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a><span class="n">results</span> <span class="o">=</span> <span class="n">F</span><span class="o">.</span><span class="n">bcast_gather</span><span class="p">([</span><span class="n">square</span><span class="p">,</span> <span class="n">fail</span><span class="p">,</span> <span class="n">cube</span><span class="p">],</span> <span class="mi">2</span><span class="p">)</span>
-</span><span id="__span-11-10"><a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a><span class="nb">print</span><span class="p">(</span><span class="n">results</span><span class="p">)</span>  <span class="c1"># (4, TaskError(index=1, ...), 8)</span>
-</span><span id="__span-11-11"><a id="__codelineno-11-11" name="__codelineno-11-11" href="#__codelineno-11-11"></a>
-</span><span id="__span-11-12"><a id="__codelineno-11-12" name="__codelineno-11-12" href="#__codelineno-11-12"></a><span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">result</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">results</span><span class="p">):</span>
-</span><span id="__span-11-13"><a id="__codelineno-11-13" name="__codelineno-11-13" href="#__codelineno-11-13"></a>    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">result</span><span class="p">,</span> <span class="n">TaskError</span><span class="p">):</span>
-</span><span id="__span-11-14"><a id="__codelineno-11-14" name="__codelineno-11-14" href="#__codelineno-11-14"></a>        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Task </span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s2"> failed: </span><span class="si">{</span><span class="n">result</span><span class="o">.</span><span class="n">exception</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-</span><span id="__span-11-15"><a id="__codelineno-11-15" name="__codelineno-11-15" href="#__codelineno-11-15"></a>    <span class="k">else</span><span class="p">:</span>
-</span><span id="__span-11-16"><a id="__codelineno-11-16" name="__codelineno-11-16" href="#__codelineno-11-16"></a>        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Task </span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s2"> result: </span><span class="si">{</span><span class="n">result</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="n">results</span> <span class="o">=</span> <span class="k">await</span> <span class="n">F</span><span class="o">.</span><span class="n">ascatter_gather</span><span class="p">(</span>
+</span><span id="__span-13-2"><a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>    <span class="p">[</span><span class="n">summarizer</span><span class="o">.</span><span class="n">acall</span><span class="p">,</span> <span class="n">translator</span><span class="o">.</span><span class="n">acall</span><span class="p">],</span>
+</span><span id="__span-13-3"><a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>    <span class="n">args_list</span><span class="o">=</span><span class="p">[</span>
+</span><span id="__span-13-4"><a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a>        <span class="p">(</span><span class="s2">&quot;Explain how neural networks learn from data...&quot;</span><span class="p">,),</span>
+</span><span id="__span-13-5"><a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a>        <span class="p">(</span><span class="s2">&quot;The weather is beautiful today.&quot;</span><span class="p">,),</span>
+</span><span id="__span-13-6"><a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a>    <span class="p">],</span>
+</span><span id="__span-13-7"><a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a><span class="p">)</span>
+</span></code></pre></div>
+</div>
+</div>
+</div>
+</details>
+<hr />
+<h3 id="bcast_gather"><code>bcast_gather</code></h3>
+<p><code>bcast_gather</code> sends <strong>the same arguments</strong> to <strong>multiple functions</strong> and gathers the results. This is the fan-out pattern — useful when you have a single piece of data that needs to be processed by several independent handlers simultaneously.</p>
+<p>A common use case with Agents is analyzing one document from multiple perspectives at once: summarize it, translate it, and extract keywords — all in parallel, all from the same input. The total time is roughly the slowest handler, not the sum.</p>
+<details class="example" open="open">
+<summary>Example</summary>
+<div class="tabbed-set tabbed-alternate" data-tabs="5:3"><input checked="checked" id="__tabbed_5_1" name="__tabbed_5" type="radio" /><input id="__tabbed_5_2" name="__tabbed_5" type="radio" /><input id="__tabbed_5_3" name="__tabbed_5" type="radio" /><div class="tabbed-labels"><label for="__tabbed_5_1">Basic</label><label for="__tabbed_5_2">Error Handling</label><label for="__tabbed_5_3">With kwargs</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<div class="language-python highlight"><pre><span></span><code><span id="__span-14-1"><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn.functional</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">F</span>
+</span><span id="__span-14-2"><a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>
+</span><span id="__span-14-3"><a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="k">def</span><span class="w"> </span><span class="nf">square</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+</span><span id="__span-14-4"><a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a>    <span class="k">return</span> <span class="n">x</span> <span class="o">*</span> <span class="n">x</span>
+</span><span id="__span-14-5"><a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a>
+</span><span id="__span-14-6"><a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a><span class="k">def</span><span class="w"> </span><span class="nf">cube</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+</span><span id="__span-14-7"><a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a>    <span class="k">return</span> <span class="n">x</span> <span class="o">*</span> <span class="n">x</span> <span class="o">*</span> <span class="n">x</span>
+</span><span id="__span-14-8"><a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a>
+</span><span id="__span-14-9"><a id="__codelineno-14-9" name="__codelineno-14-9" href="#__codelineno-14-9"></a><span class="k">def</span><span class="w"> </span><span class="nf">double</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+</span><span id="__span-14-10"><a id="__codelineno-14-10" name="__codelineno-14-10" href="#__codelineno-14-10"></a>    <span class="k">return</span> <span class="n">x</span> <span class="o">*</span> <span class="mi">2</span>
+</span><span id="__span-14-11"><a id="__codelineno-14-11" name="__codelineno-14-11" href="#__codelineno-14-11"></a>
+</span><span id="__span-14-12"><a id="__codelineno-14-12" name="__codelineno-14-12" href="#__codelineno-14-12"></a><span class="n">results</span> <span class="o">=</span> <span class="n">F</span><span class="o">.</span><span class="n">bcast_gather</span><span class="p">([</span><span class="n">square</span><span class="p">,</span> <span class="n">cube</span><span class="p">,</span> <span class="n">double</span><span class="p">],</span> <span class="mi">5</span><span class="p">)</span>
+</span><span id="__span-14-13"><a id="__codelineno-14-13" name="__codelineno-14-13" href="#__codelineno-14-13"></a><span class="nb">print</span><span class="p">(</span><span class="n">results</span><span class="p">)</span>  <span class="c1"># (25, 125, 10)</span>
 </span></code></pre></div>
 </div>
 <div class="tabbed-block">
-<div class="language-python highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn.functional</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">F</span>
-</span><span id="__span-12-2"><a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>
-</span><span id="__span-12-3"><a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="k">def</span><span class="w"> </span><span class="nf">fetch_user</span><span class="p">(</span><span class="n">user_id</span><span class="p">):</span>
-</span><span id="__span-12-4"><a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a>    <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;id&quot;</span><span class="p">:</span> <span class="n">user_id</span><span class="p">,</span> <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="sa">f</span><span class="s2">&quot;User </span><span class="si">{</span><span class="n">user_id</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">}</span>
-</span><span id="__span-12-5"><a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a>
-</span><span id="__span-12-6"><a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a><span class="k">def</span><span class="w"> </span><span class="nf">fetch_posts</span><span class="p">(</span><span class="n">user_id</span><span class="p">):</span>
-</span><span id="__span-12-7"><a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a>    <span class="k">return</span> <span class="p">[</span><span class="sa">f</span><span class="s2">&quot;Post </span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s2">&quot;</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">3</span><span class="p">)]</span>
-</span><span id="__span-12-8"><a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a>
-</span><span id="__span-12-9"><a id="__codelineno-12-9" name="__codelineno-12-9" href="#__codelineno-12-9"></a><span class="k">def</span><span class="w"> </span><span class="nf">fetch_comments</span><span class="p">(</span><span class="n">user_id</span><span class="p">):</span>
-</span><span id="__span-12-10"><a id="__codelineno-12-10" name="__codelineno-12-10" href="#__codelineno-12-10"></a>    <span class="k">return</span> <span class="p">[</span><span class="sa">f</span><span class="s2">&quot;Comment </span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s2">&quot;</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">5</span><span class="p">)]</span>
-</span><span id="__span-12-11"><a id="__codelineno-12-11" name="__codelineno-12-11" href="#__codelineno-12-11"></a>
-</span><span id="__span-12-12"><a id="__codelineno-12-12" name="__codelineno-12-12" href="#__codelineno-12-12"></a><span class="n">user</span><span class="p">,</span> <span class="n">posts</span><span class="p">,</span> <span class="n">comments</span> <span class="o">=</span> <span class="n">F</span><span class="o">.</span><span class="n">bcast_gather</span><span class="p">(</span>
-</span><span id="__span-12-13"><a id="__codelineno-12-13" name="__codelineno-12-13" href="#__codelineno-12-13"></a>    <span class="p">[</span><span class="n">fetch_user</span><span class="p">,</span> <span class="n">fetch_posts</span><span class="p">,</span> <span class="n">fetch_comments</span><span class="p">],</span>
-</span><span id="__span-12-14"><a id="__codelineno-12-14" name="__codelineno-12-14" href="#__codelineno-12-14"></a>    <span class="n">user_id</span><span class="o">=</span><span class="mi">123</span>
-</span><span id="__span-12-15"><a id="__codelineno-12-15" name="__codelineno-12-15" href="#__codelineno-12-15"></a><span class="p">)</span>
+<p>When a task fails, the gather functions <strong>do not raise</strong> — instead, the failed position contains a <code>TaskError</code> object with the original exception. This lets the other tasks complete successfully and gives you fine-grained control over error handling:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-15-1"><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn.functional</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">F</span>
+</span><span id="__span-15-2"><a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="kn">import</span> <span class="n">TaskError</span>
+</span><span id="__span-15-3"><a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a>
+</span><span id="__span-15-4"><a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a><span class="k">def</span><span class="w"> </span><span class="nf">square</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+</span><span id="__span-15-5"><a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a>    <span class="k">return</span> <span class="n">x</span> <span class="o">*</span> <span class="n">x</span>
+</span><span id="__span-15-6"><a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a>
+</span><span id="__span-15-7"><a id="__codelineno-15-7" name="__codelineno-15-7" href="#__codelineno-15-7"></a><span class="k">def</span><span class="w"> </span><span class="nf">fail</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+</span><span id="__span-15-8"><a id="__codelineno-15-8" name="__codelineno-15-8" href="#__codelineno-15-8"></a>    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Intentional error&quot;</span><span class="p">)</span>
+</span><span id="__span-15-9"><a id="__codelineno-15-9" name="__codelineno-15-9" href="#__codelineno-15-9"></a>
+</span><span id="__span-15-10"><a id="__codelineno-15-10" name="__codelineno-15-10" href="#__codelineno-15-10"></a><span class="k">def</span><span class="w"> </span><span class="nf">cube</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+</span><span id="__span-15-11"><a id="__codelineno-15-11" name="__codelineno-15-11" href="#__codelineno-15-11"></a>    <span class="k">return</span> <span class="n">x</span> <span class="o">*</span> <span class="n">x</span> <span class="o">*</span> <span class="n">x</span>
+</span><span id="__span-15-12"><a id="__codelineno-15-12" name="__codelineno-15-12" href="#__codelineno-15-12"></a>
+</span><span id="__span-15-13"><a id="__codelineno-15-13" name="__codelineno-15-13" href="#__codelineno-15-13"></a><span class="c1"># Failed tasks return a TaskError instance — no exception is raised</span>
+</span><span id="__span-15-14"><a id="__codelineno-15-14" name="__codelineno-15-14" href="#__codelineno-15-14"></a><span class="n">results</span> <span class="o">=</span> <span class="n">F</span><span class="o">.</span><span class="n">bcast_gather</span><span class="p">([</span><span class="n">square</span><span class="p">,</span> <span class="n">fail</span><span class="p">,</span> <span class="n">cube</span><span class="p">],</span> <span class="mi">2</span><span class="p">)</span>
+</span><span id="__span-15-15"><a id="__codelineno-15-15" name="__codelineno-15-15" href="#__codelineno-15-15"></a><span class="nb">print</span><span class="p">(</span><span class="n">results</span><span class="p">)</span>  <span class="c1"># (4, TaskError(index=1, ...), 8)</span>
+</span><span id="__span-15-16"><a id="__codelineno-15-16" name="__codelineno-15-16" href="#__codelineno-15-16"></a>
+</span><span id="__span-15-17"><a id="__codelineno-15-17" name="__codelineno-15-17" href="#__codelineno-15-17"></a><span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">result</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">results</span><span class="p">):</span>
+</span><span id="__span-15-18"><a id="__codelineno-15-18" name="__codelineno-15-18" href="#__codelineno-15-18"></a>    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">result</span><span class="p">,</span> <span class="n">TaskError</span><span class="p">):</span>
+</span><span id="__span-15-19"><a id="__codelineno-15-19" name="__codelineno-15-19" href="#__codelineno-15-19"></a>        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Task </span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s2"> failed: </span><span class="si">{</span><span class="n">result</span><span class="o">.</span><span class="n">exception</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</span><span id="__span-15-20"><a id="__codelineno-15-20" name="__codelineno-15-20" href="#__codelineno-15-20"></a>    <span class="k">else</span><span class="p">:</span>
+</span><span id="__span-15-21"><a id="__codelineno-15-21" name="__codelineno-15-21" href="#__codelineno-15-21"></a>        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Task </span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s2"> result: </span><span class="si">{</span><span class="n">result</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</span></code></pre></div>
+</div>
+<div class="tabbed-block">
+<p>Keyword arguments are broadcast to all functions, just like positional arguments:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-16-1"><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn.functional</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">F</span>
+</span><span id="__span-16-2"><a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>
+</span><span id="__span-16-3"><a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a><span class="k">def</span><span class="w"> </span><span class="nf">fetch_user</span><span class="p">(</span><span class="n">user_id</span><span class="p">):</span>
+</span><span id="__span-16-4"><a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a>    <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;id&quot;</span><span class="p">:</span> <span class="n">user_id</span><span class="p">,</span> <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="sa">f</span><span class="s2">&quot;User </span><span class="si">{</span><span class="n">user_id</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">}</span>
+</span><span id="__span-16-5"><a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a>
+</span><span id="__span-16-6"><a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a><span class="k">def</span><span class="w"> </span><span class="nf">fetch_posts</span><span class="p">(</span><span class="n">user_id</span><span class="p">):</span>
+</span><span id="__span-16-7"><a id="__codelineno-16-7" name="__codelineno-16-7" href="#__codelineno-16-7"></a>    <span class="k">return</span> <span class="p">[</span><span class="sa">f</span><span class="s2">&quot;Post </span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s2">&quot;</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">3</span><span class="p">)]</span>
+</span><span id="__span-16-8"><a id="__codelineno-16-8" name="__codelineno-16-8" href="#__codelineno-16-8"></a>
+</span><span id="__span-16-9"><a id="__codelineno-16-9" name="__codelineno-16-9" href="#__codelineno-16-9"></a><span class="k">def</span><span class="w"> </span><span class="nf">fetch_comments</span><span class="p">(</span><span class="n">user_id</span><span class="p">):</span>
+</span><span id="__span-16-10"><a id="__codelineno-16-10" name="__codelineno-16-10" href="#__codelineno-16-10"></a>    <span class="k">return</span> <span class="p">[</span><span class="sa">f</span><span class="s2">&quot;Comment </span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s2">&quot;</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">5</span><span class="p">)]</span>
+</span><span id="__span-16-11"><a id="__codelineno-16-11" name="__codelineno-16-11" href="#__codelineno-16-11"></a>
+</span><span id="__span-16-12"><a id="__codelineno-16-12" name="__codelineno-16-12" href="#__codelineno-16-12"></a><span class="n">user</span><span class="p">,</span> <span class="n">posts</span><span class="p">,</span> <span class="n">comments</span> <span class="o">=</span> <span class="n">F</span><span class="o">.</span><span class="n">bcast_gather</span><span class="p">(</span>
+</span><span id="__span-16-13"><a id="__codelineno-16-13" name="__codelineno-16-13" href="#__codelineno-16-13"></a>    <span class="p">[</span><span class="n">fetch_user</span><span class="p">,</span> <span class="n">fetch_posts</span><span class="p">,</span> <span class="n">fetch_comments</span><span class="p">],</span>
+</span><span id="__span-16-14"><a id="__codelineno-16-14" name="__codelineno-16-14" href="#__codelineno-16-14"></a>    <span class="n">user_id</span><span class="o">=</span><span class="mi">123</span>
+</span><span id="__span-16-15"><a id="__codelineno-16-15" name="__codelineno-16-15" href="#__codelineno-16-15"></a><span class="p">)</span>
+</span></code></pre></div>
+</div>
+</div>
+</div>
+</details>
+<p><strong>Async version:</strong> <code>abcast_gather</code></p>
+<details class="example" open="open">
+<summary>With Agents</summary>
+<div class="tabbed-set tabbed-alternate" data-tabs="6:2"><input checked="checked" id="__tabbed_6_1" name="__tabbed_6" type="radio" /><input id="__tabbed_6_2" name="__tabbed_6" type="radio" /><div class="tabbed-labels"><label for="__tabbed_6_1">Sync — same input, multiple agents</label><label for="__tabbed_6_2">Async</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<p>Three agents process the same text in parallel. Each agent has a different specialization but receives the same input:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-17-1"><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
+</span><span id="__span-17-2"><a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">nn</span>
+</span><span id="__span-17-3"><a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn.functional</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">F</span>
+</span><span id="__span-17-4"><a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a>
+</span><span id="__span-17-5"><a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a><span class="n">model</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">chat_completion</span><span class="p">(</span><span class="s2">&quot;openai/gpt-4.1-mini&quot;</span><span class="p">)</span>
+</span><span id="__span-17-6"><a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a>
+</span><span id="__span-17-7"><a id="__codelineno-17-7" name="__codelineno-17-7" href="#__codelineno-17-7"></a><span class="k">class</span><span class="w"> </span><span class="nc">Summarizer</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">):</span>
+</span><span id="__span-17-8"><a id="__codelineno-17-8" name="__codelineno-17-8" href="#__codelineno-17-8"></a>    <span class="n">model</span> <span class="o">=</span> <span class="n">model</span>
+</span><span id="__span-17-9"><a id="__codelineno-17-9" name="__codelineno-17-9" href="#__codelineno-17-9"></a>    <span class="n">instructions</span> <span class="o">=</span> <span class="s2">&quot;Summarize the text in one sentence.&quot;</span>
+</span><span id="__span-17-10"><a id="__codelineno-17-10" name="__codelineno-17-10" href="#__codelineno-17-10"></a>
+</span><span id="__span-17-11"><a id="__codelineno-17-11" name="__codelineno-17-11" href="#__codelineno-17-11"></a><span class="k">class</span><span class="w"> </span><span class="nc">Translator</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">):</span>
+</span><span id="__span-17-12"><a id="__codelineno-17-12" name="__codelineno-17-12" href="#__codelineno-17-12"></a>    <span class="n">model</span> <span class="o">=</span> <span class="n">model</span>
+</span><span id="__span-17-13"><a id="__codelineno-17-13" name="__codelineno-17-13" href="#__codelineno-17-13"></a>    <span class="n">instructions</span> <span class="o">=</span> <span class="s2">&quot;Translate the text to Portuguese.&quot;</span>
+</span><span id="__span-17-14"><a id="__codelineno-17-14" name="__codelineno-17-14" href="#__codelineno-17-14"></a>
+</span><span id="__span-17-15"><a id="__codelineno-17-15" name="__codelineno-17-15" href="#__codelineno-17-15"></a><span class="k">class</span><span class="w"> </span><span class="nc">KeywordExtractor</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">):</span>
+</span><span id="__span-17-16"><a id="__codelineno-17-16" name="__codelineno-17-16" href="#__codelineno-17-16"></a>    <span class="n">model</span> <span class="o">=</span> <span class="n">model</span>
+</span><span id="__span-17-17"><a id="__codelineno-17-17" name="__codelineno-17-17" href="#__codelineno-17-17"></a>    <span class="n">instructions</span> <span class="o">=</span> <span class="s2">&quot;Extract 3 keywords from the text, comma-separated.&quot;</span>
+</span><span id="__span-17-18"><a id="__codelineno-17-18" name="__codelineno-17-18" href="#__codelineno-17-18"></a>
+</span><span id="__span-17-19"><a id="__codelineno-17-19" name="__codelineno-17-19" href="#__codelineno-17-19"></a><span class="n">text</span> <span class="o">=</span> <span class="s2">&quot;Quantum computing uses qubits that can exist in superposition...&quot;</span>
+</span><span id="__span-17-20"><a id="__codelineno-17-20" name="__codelineno-17-20" href="#__codelineno-17-20"></a>
+</span><span id="__span-17-21"><a id="__codelineno-17-21" name="__codelineno-17-21" href="#__codelineno-17-21"></a><span class="n">summary</span><span class="p">,</span> <span class="n">translation</span><span class="p">,</span> <span class="n">keywords</span> <span class="o">=</span> <span class="n">F</span><span class="o">.</span><span class="n">bcast_gather</span><span class="p">(</span>
+</span><span id="__span-17-22"><a id="__codelineno-17-22" name="__codelineno-17-22" href="#__codelineno-17-22"></a>    <span class="p">[</span><span class="n">Summarizer</span><span class="p">(),</span> <span class="n">Translator</span><span class="p">(),</span> <span class="n">KeywordExtractor</span><span class="p">()],</span> <span class="n">text</span>
+</span><span id="__span-17-23"><a id="__codelineno-17-23" name="__codelineno-17-23" href="#__codelineno-17-23"></a><span class="p">)</span>
+</span></code></pre></div>
+</div>
+<div class="tabbed-block">
+<div class="language-python highlight"><pre><span></span><code><span id="__span-18-1"><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="n">summary</span><span class="p">,</span> <span class="n">translation</span><span class="p">,</span> <span class="n">keywords</span> <span class="o">=</span> <span class="k">await</span> <span class="n">F</span><span class="o">.</span><span class="n">abcast_gather</span><span class="p">(</span>
+</span><span id="__span-18-2"><a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a>    <span class="p">[</span><span class="n">summarizer</span><span class="o">.</span><span class="n">acall</span><span class="p">,</span> <span class="n">translator</span><span class="o">.</span><span class="n">acall</span><span class="p">,</span> <span class="n">extractor</span><span class="o">.</span><span class="n">acall</span><span class="p">],</span> <span class="n">text</span>
+</span><span id="__span-18-3"><a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a><span class="p">)</span>
 </span></code></pre></div>
 </div>
 </div>
@@ -4466,64 +4746,66 @@ Dispatch a task without waiting for a result.
 </details>
 <hr />
 <h3 id="using-dotdict-messages">Using <code>dotdict</code> Messages</h3>
-<p>The gather helpers work directly with <code>msgflux.dotdict</code> objects.</p>
+<p>The gather functions work directly with <code>msgflux.dotdict</code> objects, which enables a message-passing style where concurrent functions mutate a shared or individual message. This is useful for building enrichment pipelines — each function adds a different field to the message.</p>
+<p>With <code>scatter_gather</code>, each function gets its own <code>dotdict</code>, so there's no risk of conflicts:</p>
 <details class="example" open="open">
 <summary>scatter_gather with messages</summary>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
-</span><span id="__span-13-2"><a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn.functional</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">F</span>
-</span><span id="__span-13-3"><a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>
-</span><span id="__span-13-4"><a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a><span class="k">def</span><span class="w"> </span><span class="nf">process_user</span><span class="p">(</span><span class="n">msg</span><span class="p">):</span>
-</span><span id="__span-13-5"><a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a>    <span class="n">msg</span><span class="o">.</span><span class="n">type</span> <span class="o">=</span> <span class="s2">&quot;user&quot;</span>
-</span><span id="__span-13-6"><a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a>    <span class="n">msg</span><span class="o">.</span><span class="n">processed</span> <span class="o">=</span> <span class="kc">True</span>
-</span><span id="__span-13-7"><a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a>
-</span><span id="__span-13-8"><a id="__codelineno-13-8" name="__codelineno-13-8" href="#__codelineno-13-8"></a><span class="k">def</span><span class="w"> </span><span class="nf">process_admin</span><span class="p">(</span><span class="n">msg</span><span class="p">):</span>
-</span><span id="__span-13-9"><a id="__codelineno-13-9" name="__codelineno-13-9" href="#__codelineno-13-9"></a>    <span class="n">msg</span><span class="o">.</span><span class="n">type</span> <span class="o">=</span> <span class="s2">&quot;admin&quot;</span>
-</span><span id="__span-13-10"><a id="__codelineno-13-10" name="__codelineno-13-10" href="#__codelineno-13-10"></a>    <span class="n">msg</span><span class="o">.</span><span class="n">permissions</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;read&quot;</span><span class="p">,</span> <span class="s2">&quot;write&quot;</span><span class="p">,</span> <span class="s2">&quot;delete&quot;</span><span class="p">]</span>
-</span><span id="__span-13-11"><a id="__codelineno-13-11" name="__codelineno-13-11" href="#__codelineno-13-11"></a>
-</span><span id="__span-13-12"><a id="__codelineno-13-12" name="__codelineno-13-12" href="#__codelineno-13-12"></a><span class="k">def</span><span class="w"> </span><span class="nf">process_guest</span><span class="p">(</span><span class="n">msg</span><span class="p">):</span>
-</span><span id="__span-13-13"><a id="__codelineno-13-13" name="__codelineno-13-13" href="#__codelineno-13-13"></a>    <span class="n">msg</span><span class="o">.</span><span class="n">type</span> <span class="o">=</span> <span class="s2">&quot;guest&quot;</span>
-</span><span id="__span-13-14"><a id="__codelineno-13-14" name="__codelineno-13-14" href="#__codelineno-13-14"></a>    <span class="n">msg</span><span class="o">.</span><span class="n">permissions</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;read&quot;</span><span class="p">]</span>
-</span><span id="__span-13-15"><a id="__codelineno-13-15" name="__codelineno-13-15" href="#__codelineno-13-15"></a>
-</span><span id="__span-13-16"><a id="__codelineno-13-16" name="__codelineno-13-16" href="#__codelineno-13-16"></a><span class="n">msg1</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">dotdict</span><span class="p">({</span><span class="s2">&quot;id&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;Alice&quot;</span><span class="p">})</span>
-</span><span id="__span-13-17"><a id="__codelineno-13-17" name="__codelineno-13-17" href="#__codelineno-13-17"></a><span class="n">msg2</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">dotdict</span><span class="p">({</span><span class="s2">&quot;id&quot;</span><span class="p">:</span> <span class="mi">2</span><span class="p">,</span> <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;Bob&quot;</span><span class="p">})</span>
-</span><span id="__span-13-18"><a id="__codelineno-13-18" name="__codelineno-13-18" href="#__codelineno-13-18"></a><span class="n">msg3</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">dotdict</span><span class="p">({</span><span class="s2">&quot;id&quot;</span><span class="p">:</span> <span class="mi">3</span><span class="p">,</span> <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;Charlie&quot;</span><span class="p">})</span>
-</span><span id="__span-13-19"><a id="__codelineno-13-19" name="__codelineno-13-19" href="#__codelineno-13-19"></a>
-</span><span id="__span-13-20"><a id="__codelineno-13-20" name="__codelineno-13-20" href="#__codelineno-13-20"></a><span class="n">F</span><span class="o">.</span><span class="n">scatter_gather</span><span class="p">(</span>
-</span><span id="__span-13-21"><a id="__codelineno-13-21" name="__codelineno-13-21" href="#__codelineno-13-21"></a>    <span class="p">[</span><span class="n">process_user</span><span class="p">,</span> <span class="n">process_admin</span><span class="p">,</span> <span class="n">process_guest</span><span class="p">],</span>
-</span><span id="__span-13-22"><a id="__codelineno-13-22" name="__codelineno-13-22" href="#__codelineno-13-22"></a>    <span class="n">args_list</span><span class="o">=</span><span class="p">[(</span><span class="n">msg1</span><span class="p">,),</span> <span class="p">(</span><span class="n">msg2</span><span class="p">,),</span> <span class="p">(</span><span class="n">msg3</span><span class="p">,)]</span>
-</span><span id="__span-13-23"><a id="__codelineno-13-23" name="__codelineno-13-23" href="#__codelineno-13-23"></a><span class="p">)</span>
-</span><span id="__span-13-24"><a id="__codelineno-13-24" name="__codelineno-13-24" href="#__codelineno-13-24"></a>
-</span><span id="__span-13-25"><a id="__codelineno-13-25" name="__codelineno-13-25" href="#__codelineno-13-25"></a><span class="nb">print</span><span class="p">(</span><span class="n">msg1</span><span class="o">.</span><span class="n">type</span><span class="p">)</span>  <span class="c1"># user</span>
-</span><span id="__span-13-26"><a id="__codelineno-13-26" name="__codelineno-13-26" href="#__codelineno-13-26"></a><span class="nb">print</span><span class="p">(</span><span class="n">msg2</span><span class="o">.</span><span class="n">type</span><span class="p">)</span>  <span class="c1"># admin</span>
-</span><span id="__span-13-27"><a id="__codelineno-13-27" name="__codelineno-13-27" href="#__codelineno-13-27"></a><span class="nb">print</span><span class="p">(</span><span class="n">msg3</span><span class="o">.</span><span class="n">type</span><span class="p">)</span>  <span class="c1"># guest</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-19-1"><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
+</span><span id="__span-19-2"><a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn.functional</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">F</span>
+</span><span id="__span-19-3"><a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a>
+</span><span id="__span-19-4"><a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a><span class="k">def</span><span class="w"> </span><span class="nf">process_user</span><span class="p">(</span><span class="n">msg</span><span class="p">):</span>
+</span><span id="__span-19-5"><a id="__codelineno-19-5" name="__codelineno-19-5" href="#__codelineno-19-5"></a>    <span class="n">msg</span><span class="o">.</span><span class="n">type</span> <span class="o">=</span> <span class="s2">&quot;user&quot;</span>
+</span><span id="__span-19-6"><a id="__codelineno-19-6" name="__codelineno-19-6" href="#__codelineno-19-6"></a>    <span class="n">msg</span><span class="o">.</span><span class="n">processed</span> <span class="o">=</span> <span class="kc">True</span>
+</span><span id="__span-19-7"><a id="__codelineno-19-7" name="__codelineno-19-7" href="#__codelineno-19-7"></a>
+</span><span id="__span-19-8"><a id="__codelineno-19-8" name="__codelineno-19-8" href="#__codelineno-19-8"></a><span class="k">def</span><span class="w"> </span><span class="nf">process_admin</span><span class="p">(</span><span class="n">msg</span><span class="p">):</span>
+</span><span id="__span-19-9"><a id="__codelineno-19-9" name="__codelineno-19-9" href="#__codelineno-19-9"></a>    <span class="n">msg</span><span class="o">.</span><span class="n">type</span> <span class="o">=</span> <span class="s2">&quot;admin&quot;</span>
+</span><span id="__span-19-10"><a id="__codelineno-19-10" name="__codelineno-19-10" href="#__codelineno-19-10"></a>    <span class="n">msg</span><span class="o">.</span><span class="n">permissions</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;read&quot;</span><span class="p">,</span> <span class="s2">&quot;write&quot;</span><span class="p">,</span> <span class="s2">&quot;delete&quot;</span><span class="p">]</span>
+</span><span id="__span-19-11"><a id="__codelineno-19-11" name="__codelineno-19-11" href="#__codelineno-19-11"></a>
+</span><span id="__span-19-12"><a id="__codelineno-19-12" name="__codelineno-19-12" href="#__codelineno-19-12"></a><span class="k">def</span><span class="w"> </span><span class="nf">process_guest</span><span class="p">(</span><span class="n">msg</span><span class="p">):</span>
+</span><span id="__span-19-13"><a id="__codelineno-19-13" name="__codelineno-19-13" href="#__codelineno-19-13"></a>    <span class="n">msg</span><span class="o">.</span><span class="n">type</span> <span class="o">=</span> <span class="s2">&quot;guest&quot;</span>
+</span><span id="__span-19-14"><a id="__codelineno-19-14" name="__codelineno-19-14" href="#__codelineno-19-14"></a>    <span class="n">msg</span><span class="o">.</span><span class="n">permissions</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;read&quot;</span><span class="p">]</span>
+</span><span id="__span-19-15"><a id="__codelineno-19-15" name="__codelineno-19-15" href="#__codelineno-19-15"></a>
+</span><span id="__span-19-16"><a id="__codelineno-19-16" name="__codelineno-19-16" href="#__codelineno-19-16"></a><span class="n">msg1</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">dotdict</span><span class="p">({</span><span class="s2">&quot;id&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;Alice&quot;</span><span class="p">})</span>
+</span><span id="__span-19-17"><a id="__codelineno-19-17" name="__codelineno-19-17" href="#__codelineno-19-17"></a><span class="n">msg2</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">dotdict</span><span class="p">({</span><span class="s2">&quot;id&quot;</span><span class="p">:</span> <span class="mi">2</span><span class="p">,</span> <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;Bob&quot;</span><span class="p">})</span>
+</span><span id="__span-19-18"><a id="__codelineno-19-18" name="__codelineno-19-18" href="#__codelineno-19-18"></a><span class="n">msg3</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">dotdict</span><span class="p">({</span><span class="s2">&quot;id&quot;</span><span class="p">:</span> <span class="mi">3</span><span class="p">,</span> <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;Charlie&quot;</span><span class="p">})</span>
+</span><span id="__span-19-19"><a id="__codelineno-19-19" name="__codelineno-19-19" href="#__codelineno-19-19"></a>
+</span><span id="__span-19-20"><a id="__codelineno-19-20" name="__codelineno-19-20" href="#__codelineno-19-20"></a><span class="n">F</span><span class="o">.</span><span class="n">scatter_gather</span><span class="p">(</span>
+</span><span id="__span-19-21"><a id="__codelineno-19-21" name="__codelineno-19-21" href="#__codelineno-19-21"></a>    <span class="p">[</span><span class="n">process_user</span><span class="p">,</span> <span class="n">process_admin</span><span class="p">,</span> <span class="n">process_guest</span><span class="p">],</span>
+</span><span id="__span-19-22"><a id="__codelineno-19-22" name="__codelineno-19-22" href="#__codelineno-19-22"></a>    <span class="n">args_list</span><span class="o">=</span><span class="p">[(</span><span class="n">msg1</span><span class="p">,),</span> <span class="p">(</span><span class="n">msg2</span><span class="p">,),</span> <span class="p">(</span><span class="n">msg3</span><span class="p">,)]</span>
+</span><span id="__span-19-23"><a id="__codelineno-19-23" name="__codelineno-19-23" href="#__codelineno-19-23"></a><span class="p">)</span>
+</span><span id="__span-19-24"><a id="__codelineno-19-24" name="__codelineno-19-24" href="#__codelineno-19-24"></a>
+</span><span id="__span-19-25"><a id="__codelineno-19-25" name="__codelineno-19-25" href="#__codelineno-19-25"></a><span class="nb">print</span><span class="p">(</span><span class="n">msg1</span><span class="o">.</span><span class="n">type</span><span class="p">)</span>  <span class="c1"># user</span>
+</span><span id="__span-19-26"><a id="__codelineno-19-26" name="__codelineno-19-26" href="#__codelineno-19-26"></a><span class="nb">print</span><span class="p">(</span><span class="n">msg2</span><span class="o">.</span><span class="n">type</span><span class="p">)</span>  <span class="c1"># admin</span>
+</span><span id="__span-19-27"><a id="__codelineno-19-27" name="__codelineno-19-27" href="#__codelineno-19-27"></a><span class="nb">print</span><span class="p">(</span><span class="n">msg3</span><span class="o">.</span><span class="n">type</span><span class="p">)</span>  <span class="c1"># guest</span>
 </span></code></pre></div>
 </details>
+<p>With <code>bcast_gather</code>, all functions share the <strong>same</strong> <code>dotdict</code> object. This is powerful for enrichment — multiple functions add different fields to the same message in parallel. The key rule is that each function must write to <strong>disjoint paths</strong> to avoid race conditions:</p>
 <details class="example" open="open">
 <summary>bcast_gather with a shared message</summary>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-14-1"><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
-</span><span id="__span-14-2"><a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn.functional</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">F</span>
-</span><span id="__span-14-3"><a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">datetime</span><span class="w"> </span><span class="kn">import</span> <span class="n">datetime</span>
-</span><span id="__span-14-4"><a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="kn">import</span> <span class="n">TaskError</span>
-</span><span id="__span-14-5"><a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a>
-</span><span id="__span-14-6"><a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a><span class="k">def</span><span class="w"> </span><span class="nf">add_timestamp</span><span class="p">(</span><span class="n">msg</span><span class="p">):</span>
-</span><span id="__span-14-7"><a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a>    <span class="n">msg</span><span class="o">.</span><span class="n">timestamp</span> <span class="o">=</span> <span class="n">datetime</span><span class="o">.</span><span class="n">now</span><span class="p">()</span><span class="o">.</span><span class="n">isoformat</span><span class="p">()</span>
-</span><span id="__span-14-8"><a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a>
-</span><span id="__span-14-9"><a id="__codelineno-14-9" name="__codelineno-14-9" href="#__codelineno-14-9"></a><span class="k">def</span><span class="w"> </span><span class="nf">add_metadata</span><span class="p">(</span><span class="n">msg</span><span class="p">):</span>
-</span><span id="__span-14-10"><a id="__codelineno-14-10" name="__codelineno-14-10" href="#__codelineno-14-10"></a>    <span class="n">msg</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">&quot;metadata.version&quot;</span><span class="p">,</span> <span class="s2">&quot;1.0&quot;</span><span class="p">)</span>
-</span><span id="__span-14-11"><a id="__codelineno-14-11" name="__codelineno-14-11" href="#__codelineno-14-11"></a>    <span class="n">msg</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">&quot;metadata.source&quot;</span><span class="p">,</span> <span class="s2">&quot;api&quot;</span><span class="p">)</span>
-</span><span id="__span-14-12"><a id="__codelineno-14-12" name="__codelineno-14-12" href="#__codelineno-14-12"></a>
-</span><span id="__span-14-13"><a id="__codelineno-14-13" name="__codelineno-14-13" href="#__codelineno-14-13"></a><span class="k">def</span><span class="w"> </span><span class="nf">validate</span><span class="p">(</span><span class="n">msg</span><span class="p">):</span>
-</span><span id="__span-14-14"><a id="__codelineno-14-14" name="__codelineno-14-14" href="#__codelineno-14-14"></a>    <span class="n">msg</span><span class="o">.</span><span class="n">validated</span> <span class="o">=</span> <span class="kc">True</span>
-</span><span id="__span-14-15"><a id="__codelineno-14-15" name="__codelineno-14-15" href="#__codelineno-14-15"></a>
-</span><span id="__span-14-16"><a id="__codelineno-14-16" name="__codelineno-14-16" href="#__codelineno-14-16"></a><span class="n">message</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">dotdict</span><span class="p">({</span><span class="s2">&quot;data&quot;</span><span class="p">:</span> <span class="s2">&quot;important&quot;</span><span class="p">})</span>
-</span><span id="__span-14-17"><a id="__codelineno-14-17" name="__codelineno-14-17" href="#__codelineno-14-17"></a><span class="n">results</span> <span class="o">=</span> <span class="n">F</span><span class="o">.</span><span class="n">bcast_gather</span><span class="p">([</span><span class="n">add_timestamp</span><span class="p">,</span> <span class="n">add_metadata</span><span class="p">,</span> <span class="n">validate</span><span class="p">],</span> <span class="n">message</span><span class="p">)</span>
-</span><span id="__span-14-18"><a id="__codelineno-14-18" name="__codelineno-14-18" href="#__codelineno-14-18"></a>
-</span><span id="__span-14-19"><a id="__codelineno-14-19" name="__codelineno-14-19" href="#__codelineno-14-19"></a><span class="k">if</span> <span class="nb">any</span><span class="p">(</span><span class="nb">isinstance</span><span class="p">(</span><span class="n">r</span><span class="p">,</span> <span class="n">TaskError</span><span class="p">)</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">results</span><span class="p">):</span>
-</span><span id="__span-14-20"><a id="__codelineno-14-20" name="__codelineno-14-20" href="#__codelineno-14-20"></a>    <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s2">&quot;One of the parallel steps failed&quot;</span><span class="p">)</span>
-</span><span id="__span-14-21"><a id="__codelineno-14-21" name="__codelineno-14-21" href="#__codelineno-14-21"></a>
-</span><span id="__span-14-22"><a id="__codelineno-14-22" name="__codelineno-14-22" href="#__codelineno-14-22"></a><span class="nb">print</span><span class="p">(</span><span class="n">message</span><span class="o">.</span><span class="n">timestamp</span><span class="p">)</span>         <span class="c1"># 2024-01-15T10:30:00.123456</span>
-</span><span id="__span-14-23"><a id="__codelineno-14-23" name="__codelineno-14-23" href="#__codelineno-14-23"></a><span class="nb">print</span><span class="p">(</span><span class="n">message</span><span class="o">.</span><span class="n">metadata</span><span class="o">.</span><span class="n">version</span><span class="p">)</span>  <span class="c1"># 1.0</span>
-</span><span id="__span-14-24"><a id="__codelineno-14-24" name="__codelineno-14-24" href="#__codelineno-14-24"></a><span class="nb">print</span><span class="p">(</span><span class="n">message</span><span class="o">.</span><span class="n">validated</span><span class="p">)</span>         <span class="c1"># True</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-20-1"><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
+</span><span id="__span-20-2"><a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn.functional</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">F</span>
+</span><span id="__span-20-3"><a id="__codelineno-20-3" name="__codelineno-20-3" href="#__codelineno-20-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">datetime</span><span class="w"> </span><span class="kn">import</span> <span class="n">datetime</span>
+</span><span id="__span-20-4"><a id="__codelineno-20-4" name="__codelineno-20-4" href="#__codelineno-20-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="kn">import</span> <span class="n">TaskError</span>
+</span><span id="__span-20-5"><a id="__codelineno-20-5" name="__codelineno-20-5" href="#__codelineno-20-5"></a>
+</span><span id="__span-20-6"><a id="__codelineno-20-6" name="__codelineno-20-6" href="#__codelineno-20-6"></a><span class="k">def</span><span class="w"> </span><span class="nf">add_timestamp</span><span class="p">(</span><span class="n">msg</span><span class="p">):</span>
+</span><span id="__span-20-7"><a id="__codelineno-20-7" name="__codelineno-20-7" href="#__codelineno-20-7"></a>    <span class="n">msg</span><span class="o">.</span><span class="n">timestamp</span> <span class="o">=</span> <span class="n">datetime</span><span class="o">.</span><span class="n">now</span><span class="p">()</span><span class="o">.</span><span class="n">isoformat</span><span class="p">()</span>
+</span><span id="__span-20-8"><a id="__codelineno-20-8" name="__codelineno-20-8" href="#__codelineno-20-8"></a>
+</span><span id="__span-20-9"><a id="__codelineno-20-9" name="__codelineno-20-9" href="#__codelineno-20-9"></a><span class="k">def</span><span class="w"> </span><span class="nf">add_metadata</span><span class="p">(</span><span class="n">msg</span><span class="p">):</span>
+</span><span id="__span-20-10"><a id="__codelineno-20-10" name="__codelineno-20-10" href="#__codelineno-20-10"></a>    <span class="n">msg</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">&quot;metadata.version&quot;</span><span class="p">,</span> <span class="s2">&quot;1.0&quot;</span><span class="p">)</span>
+</span><span id="__span-20-11"><a id="__codelineno-20-11" name="__codelineno-20-11" href="#__codelineno-20-11"></a>    <span class="n">msg</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">&quot;metadata.source&quot;</span><span class="p">,</span> <span class="s2">&quot;api&quot;</span><span class="p">)</span>
+</span><span id="__span-20-12"><a id="__codelineno-20-12" name="__codelineno-20-12" href="#__codelineno-20-12"></a>
+</span><span id="__span-20-13"><a id="__codelineno-20-13" name="__codelineno-20-13" href="#__codelineno-20-13"></a><span class="k">def</span><span class="w"> </span><span class="nf">validate</span><span class="p">(</span><span class="n">msg</span><span class="p">):</span>
+</span><span id="__span-20-14"><a id="__codelineno-20-14" name="__codelineno-20-14" href="#__codelineno-20-14"></a>    <span class="n">msg</span><span class="o">.</span><span class="n">validated</span> <span class="o">=</span> <span class="kc">True</span>
+</span><span id="__span-20-15"><a id="__codelineno-20-15" name="__codelineno-20-15" href="#__codelineno-20-15"></a>
+</span><span id="__span-20-16"><a id="__codelineno-20-16" name="__codelineno-20-16" href="#__codelineno-20-16"></a><span class="n">message</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">dotdict</span><span class="p">({</span><span class="s2">&quot;data&quot;</span><span class="p">:</span> <span class="s2">&quot;important&quot;</span><span class="p">})</span>
+</span><span id="__span-20-17"><a id="__codelineno-20-17" name="__codelineno-20-17" href="#__codelineno-20-17"></a><span class="n">results</span> <span class="o">=</span> <span class="n">F</span><span class="o">.</span><span class="n">bcast_gather</span><span class="p">([</span><span class="n">add_timestamp</span><span class="p">,</span> <span class="n">add_metadata</span><span class="p">,</span> <span class="n">validate</span><span class="p">],</span> <span class="n">message</span><span class="p">)</span>
+</span><span id="__span-20-18"><a id="__codelineno-20-18" name="__codelineno-20-18" href="#__codelineno-20-18"></a>
+</span><span id="__span-20-19"><a id="__codelineno-20-19" name="__codelineno-20-19" href="#__codelineno-20-19"></a><span class="k">if</span> <span class="nb">any</span><span class="p">(</span><span class="nb">isinstance</span><span class="p">(</span><span class="n">r</span><span class="p">,</span> <span class="n">TaskError</span><span class="p">)</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">results</span><span class="p">):</span>
+</span><span id="__span-20-20"><a id="__codelineno-20-20" name="__codelineno-20-20" href="#__codelineno-20-20"></a>    <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s2">&quot;One of the parallel steps failed&quot;</span><span class="p">)</span>
+</span><span id="__span-20-21"><a id="__codelineno-20-21" name="__codelineno-20-21" href="#__codelineno-20-21"></a>
+</span><span id="__span-20-22"><a id="__codelineno-20-22" name="__codelineno-20-22" href="#__codelineno-20-22"></a><span class="nb">print</span><span class="p">(</span><span class="n">message</span><span class="o">.</span><span class="n">timestamp</span><span class="p">)</span>         <span class="c1"># 2024-01-15T10:30:00.123456</span>
+</span><span id="__span-20-23"><a id="__codelineno-20-23" name="__codelineno-20-23" href="#__codelineno-20-23"></a><span class="nb">print</span><span class="p">(</span><span class="n">message</span><span class="o">.</span><span class="n">metadata</span><span class="o">.</span><span class="n">version</span><span class="p">)</span>  <span class="c1"># 1.0</span>
+</span><span id="__span-20-24"><a id="__codelineno-20-24" name="__codelineno-20-24" href="#__codelineno-20-24"></a><span class="nb">print</span><span class="p">(</span><span class="n">message</span><span class="o">.</span><span class="n">validated</span><span class="p">)</span>         <span class="c1"># True</span>
 </span></code></pre></div>
 </details>
 <div class="admonition warning">
@@ -4532,39 +4814,40 @@ Dispatch a task without waiting for a result.
 </div>
 <hr />
 <h2 id="3-utility-functions">3. <strong>Utility Functions</strong></h2>
+<p>Beyond the gather patterns, the functional module provides lower-level utilities for bridging sync/async boundaries and dispatching fire-and-forget tasks.</p>
 <h3 id="wait_for"><code>wait_for</code></h3>
-<p>Execute a callable and wait for the result with optional timeout.</p>
+<p><code>wait_for</code> executes a callable and blocks until the result is ready, with an optional timeout. It handles both sync and async functions transparently — if you pass an <code>async def</code>, it spins up an event loop automatically. This is useful when you need to call an async function from sync code without managing the event loop yourself:</p>
 <details class="example" open="open">
 <summary>Example</summary>
-<div class="tabbed-set tabbed-alternate" data-tabs="4:3"><input checked="checked" id="__tabbed_4_1" name="__tabbed_4" type="radio" /><input id="__tabbed_4_2" name="__tabbed_4" type="radio" /><input id="__tabbed_4_3" name="__tabbed_4" type="radio" /><div class="tabbed-labels"><label for="__tabbed_4_1">Sync Function</label><label for="__tabbed_4_2">Async Function</label><label for="__tabbed_4_3">With Timeout</label></div>
+<div class="tabbed-set tabbed-alternate" data-tabs="7:3"><input checked="checked" id="__tabbed_7_1" name="__tabbed_7" type="radio" /><input id="__tabbed_7_2" name="__tabbed_7" type="radio" /><input id="__tabbed_7_3" name="__tabbed_7" type="radio" /><div class="tabbed-labels"><label for="__tabbed_7_1">Sync Function</label><label for="__tabbed_7_2">Async Function</label><label for="__tabbed_7_3">With Timeout</label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
-<div class="language-python highlight"><pre><span></span><code><span id="__span-15-1"><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn.functional</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">F</span>
-</span><span id="__span-15-2"><a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>
-</span><span id="__span-15-3"><a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a><span class="k">def</span><span class="w"> </span><span class="nf">slow_computation</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
-</span><span id="__span-15-4"><a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a>    <span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
-</span><span id="__span-15-5"><a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a>    <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.1</span><span class="p">)</span>
-</span><span id="__span-15-6"><a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a>    <span class="k">return</span> <span class="n">x</span> <span class="o">*</span> <span class="n">x</span>
-</span><span id="__span-15-7"><a id="__codelineno-15-7" name="__codelineno-15-7" href="#__codelineno-15-7"></a>
-</span><span id="__span-15-8"><a id="__codelineno-15-8" name="__codelineno-15-8" href="#__codelineno-15-8"></a><span class="n">result</span> <span class="o">=</span> <span class="n">F</span><span class="o">.</span><span class="n">wait_for</span><span class="p">(</span><span class="n">slow_computation</span><span class="p">,</span> <span class="mi">5</span><span class="p">)</span>
-</span><span id="__span-15-9"><a id="__codelineno-15-9" name="__codelineno-15-9" href="#__codelineno-15-9"></a><span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="p">)</span>  <span class="c1"># 25</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-21-1"><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn.functional</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">F</span>
+</span><span id="__span-21-2"><a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a>
+</span><span id="__span-21-3"><a id="__codelineno-21-3" name="__codelineno-21-3" href="#__codelineno-21-3"></a><span class="k">def</span><span class="w"> </span><span class="nf">slow_computation</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+</span><span id="__span-21-4"><a id="__codelineno-21-4" name="__codelineno-21-4" href="#__codelineno-21-4"></a>    <span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
+</span><span id="__span-21-5"><a id="__codelineno-21-5" name="__codelineno-21-5" href="#__codelineno-21-5"></a>    <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.1</span><span class="p">)</span>
+</span><span id="__span-21-6"><a id="__codelineno-21-6" name="__codelineno-21-6" href="#__codelineno-21-6"></a>    <span class="k">return</span> <span class="n">x</span> <span class="o">*</span> <span class="n">x</span>
+</span><span id="__span-21-7"><a id="__codelineno-21-7" name="__codelineno-21-7" href="#__codelineno-21-7"></a>
+</span><span id="__span-21-8"><a id="__codelineno-21-8" name="__codelineno-21-8" href="#__codelineno-21-8"></a><span class="n">result</span> <span class="o">=</span> <span class="n">F</span><span class="o">.</span><span class="n">wait_for</span><span class="p">(</span><span class="n">slow_computation</span><span class="p">,</span> <span class="mi">5</span><span class="p">)</span>
+</span><span id="__span-21-9"><a id="__codelineno-21-9" name="__codelineno-21-9" href="#__codelineno-21-9"></a><span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="p">)</span>  <span class="c1"># 25</span>
 </span></code></pre></div>
 </div>
 <div class="tabbed-block">
-<div class="language-python highlight"><pre><span></span><code><span id="__span-16-1"><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn.functional</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">F</span>
-</span><span id="__span-16-2"><a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>
-</span><span id="__span-16-3"><a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">async_task</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
-</span><span id="__span-16-4"><a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a>    <span class="k">return</span> <span class="n">x</span> <span class="o">*</span> <span class="mi">2</span>
-</span><span id="__span-16-5"><a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a>
-</span><span id="__span-16-6"><a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a><span class="c1"># Runs async function in sync context</span>
-</span><span id="__span-16-7"><a id="__codelineno-16-7" name="__codelineno-16-7" href="#__codelineno-16-7"></a><span class="n">result</span> <span class="o">=</span> <span class="n">F</span><span class="o">.</span><span class="n">wait_for</span><span class="p">(</span><span class="n">async_task</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span>
-</span><span id="__span-16-8"><a id="__codelineno-16-8" name="__codelineno-16-8" href="#__codelineno-16-8"></a><span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="p">)</span>  <span class="c1"># 6</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-22-1"><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn.functional</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">F</span>
+</span><span id="__span-22-2"><a id="__codelineno-22-2" name="__codelineno-22-2" href="#__codelineno-22-2"></a>
+</span><span id="__span-22-3"><a id="__codelineno-22-3" name="__codelineno-22-3" href="#__codelineno-22-3"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">async_task</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+</span><span id="__span-22-4"><a id="__codelineno-22-4" name="__codelineno-22-4" href="#__codelineno-22-4"></a>    <span class="k">return</span> <span class="n">x</span> <span class="o">*</span> <span class="mi">2</span>
+</span><span id="__span-22-5"><a id="__codelineno-22-5" name="__codelineno-22-5" href="#__codelineno-22-5"></a>
+</span><span id="__span-22-6"><a id="__codelineno-22-6" name="__codelineno-22-6" href="#__codelineno-22-6"></a><span class="c1"># Runs async function in sync context</span>
+</span><span id="__span-22-7"><a id="__codelineno-22-7" name="__codelineno-22-7" href="#__codelineno-22-7"></a><span class="n">result</span> <span class="o">=</span> <span class="n">F</span><span class="o">.</span><span class="n">wait_for</span><span class="p">(</span><span class="n">async_task</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span>
+</span><span id="__span-22-8"><a id="__codelineno-22-8" name="__codelineno-22-8" href="#__codelineno-22-8"></a><span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="p">)</span>  <span class="c1"># 6</span>
 </span></code></pre></div>
 </div>
 <div class="tabbed-block">
-<div class="language-python highlight"><pre><span></span><code><span id="__span-17-1"><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn.functional</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">F</span>
-</span><span id="__span-17-2"><a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>
-</span><span id="__span-17-3"><a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a><span class="n">result</span> <span class="o">=</span> <span class="n">F</span><span class="o">.</span><span class="n">wait_for</span><span class="p">(</span><span class="n">slow_computation</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="mf">0.5</span><span class="p">)</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-23-1"><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn.functional</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">F</span>
+</span><span id="__span-23-2"><a id="__codelineno-23-2" name="__codelineno-23-2" href="#__codelineno-23-2"></a>
+</span><span id="__span-23-3"><a id="__codelineno-23-3" name="__codelineno-23-3" href="#__codelineno-23-3"></a><span class="n">result</span> <span class="o">=</span> <span class="n">F</span><span class="o">.</span><span class="n">wait_for</span><span class="p">(</span><span class="n">slow_computation</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="mf">0.5</span><span class="p">)</span>
 </span></code></pre></div>
 </div>
 </div>
@@ -4572,66 +4855,66 @@ Dispatch a task without waiting for a result.
 </details>
 <hr />
 <h3 id="wait_for_event"><code>wait_for_event</code></h3>
-<p>Wait for an <code>asyncio.Event</code> in synchronous code.</p>
+<p><code>wait_for_event</code> bridges <code>asyncio.Event</code> into synchronous code. It blocks the calling thread until the event is set, without busy-waiting. This is useful in mixed sync/async systems where a background async task needs to signal completion to a synchronous caller:</p>
 <details class="example" open="open">
 <summary>Example</summary>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-18-1"><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn.functional</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">F</span>
-</span><span id="__span-18-2"><a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
-</span><span id="__span-18-3"><a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a><span class="kn">import</span><span class="w"> </span><span class="nn">threading</span>
-</span><span id="__span-18-4"><a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a><span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
-</span><span id="__span-18-5"><a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a>
-</span><span id="__span-18-6"><a id="__codelineno-18-6" name="__codelineno-18-6" href="#__codelineno-18-6"></a><span class="n">event</span> <span class="o">=</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">Event</span><span class="p">()</span>
-</span><span id="__span-18-7"><a id="__codelineno-18-7" name="__codelineno-18-7" href="#__codelineno-18-7"></a>
-</span><span id="__span-18-8"><a id="__codelineno-18-8" name="__codelineno-18-8" href="#__codelineno-18-8"></a><span class="k">def</span><span class="w"> </span><span class="nf">set_event_later</span><span class="p">():</span>
-</span><span id="__span-18-9"><a id="__codelineno-18-9" name="__codelineno-18-9" href="#__codelineno-18-9"></a>    <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.1</span><span class="p">)</span>
-</span><span id="__span-18-10"><a id="__codelineno-18-10" name="__codelineno-18-10" href="#__codelineno-18-10"></a>    <span class="n">loop</span> <span class="o">=</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">get_event_loop</span><span class="p">()</span>
-</span><span id="__span-18-11"><a id="__codelineno-18-11" name="__codelineno-18-11" href="#__codelineno-18-11"></a>    <span class="n">loop</span><span class="o">.</span><span class="n">call_soon_threadsafe</span><span class="p">(</span><span class="n">event</span><span class="o">.</span><span class="n">set</span><span class="p">)</span>
-</span><span id="__span-18-12"><a id="__codelineno-18-12" name="__codelineno-18-12" href="#__codelineno-18-12"></a>
-</span><span id="__span-18-13"><a id="__codelineno-18-13" name="__codelineno-18-13" href="#__codelineno-18-13"></a><span class="n">thread</span> <span class="o">=</span> <span class="n">threading</span><span class="o">.</span><span class="n">Thread</span><span class="p">(</span><span class="n">target</span><span class="o">=</span><span class="n">set_event_later</span><span class="p">)</span>
-</span><span id="__span-18-14"><a id="__codelineno-18-14" name="__codelineno-18-14" href="#__codelineno-18-14"></a><span class="n">thread</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>
-</span><span id="__span-18-15"><a id="__codelineno-18-15" name="__codelineno-18-15" href="#__codelineno-18-15"></a>
-</span><span id="__span-18-16"><a id="__codelineno-18-16" name="__codelineno-18-16" href="#__codelineno-18-16"></a><span class="n">F</span><span class="o">.</span><span class="n">wait_for_event</span><span class="p">(</span><span class="n">event</span><span class="p">)</span>  <span class="c1"># Blocks until event is set</span>
-</span><span id="__span-18-17"><a id="__codelineno-18-17" name="__codelineno-18-17" href="#__codelineno-18-17"></a><span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Event was set!&quot;</span><span class="p">)</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-24-1"><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn.functional</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">F</span>
+</span><span id="__span-24-2"><a id="__codelineno-24-2" name="__codelineno-24-2" href="#__codelineno-24-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+</span><span id="__span-24-3"><a id="__codelineno-24-3" name="__codelineno-24-3" href="#__codelineno-24-3"></a><span class="kn">import</span><span class="w"> </span><span class="nn">threading</span>
+</span><span id="__span-24-4"><a id="__codelineno-24-4" name="__codelineno-24-4" href="#__codelineno-24-4"></a><span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
+</span><span id="__span-24-5"><a id="__codelineno-24-5" name="__codelineno-24-5" href="#__codelineno-24-5"></a>
+</span><span id="__span-24-6"><a id="__codelineno-24-6" name="__codelineno-24-6" href="#__codelineno-24-6"></a><span class="n">event</span> <span class="o">=</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">Event</span><span class="p">()</span>
+</span><span id="__span-24-7"><a id="__codelineno-24-7" name="__codelineno-24-7" href="#__codelineno-24-7"></a>
+</span><span id="__span-24-8"><a id="__codelineno-24-8" name="__codelineno-24-8" href="#__codelineno-24-8"></a><span class="k">def</span><span class="w"> </span><span class="nf">set_event_later</span><span class="p">():</span>
+</span><span id="__span-24-9"><a id="__codelineno-24-9" name="__codelineno-24-9" href="#__codelineno-24-9"></a>    <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.1</span><span class="p">)</span>
+</span><span id="__span-24-10"><a id="__codelineno-24-10" name="__codelineno-24-10" href="#__codelineno-24-10"></a>    <span class="n">loop</span> <span class="o">=</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">get_event_loop</span><span class="p">()</span>
+</span><span id="__span-24-11"><a id="__codelineno-24-11" name="__codelineno-24-11" href="#__codelineno-24-11"></a>    <span class="n">loop</span><span class="o">.</span><span class="n">call_soon_threadsafe</span><span class="p">(</span><span class="n">event</span><span class="o">.</span><span class="n">set</span><span class="p">)</span>
+</span><span id="__span-24-12"><a id="__codelineno-24-12" name="__codelineno-24-12" href="#__codelineno-24-12"></a>
+</span><span id="__span-24-13"><a id="__codelineno-24-13" name="__codelineno-24-13" href="#__codelineno-24-13"></a><span class="n">thread</span> <span class="o">=</span> <span class="n">threading</span><span class="o">.</span><span class="n">Thread</span><span class="p">(</span><span class="n">target</span><span class="o">=</span><span class="n">set_event_later</span><span class="p">)</span>
+</span><span id="__span-24-14"><a id="__codelineno-24-14" name="__codelineno-24-14" href="#__codelineno-24-14"></a><span class="n">thread</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>
+</span><span id="__span-24-15"><a id="__codelineno-24-15" name="__codelineno-24-15" href="#__codelineno-24-15"></a>
+</span><span id="__span-24-16"><a id="__codelineno-24-16" name="__codelineno-24-16" href="#__codelineno-24-16"></a><span class="n">F</span><span class="o">.</span><span class="n">wait_for_event</span><span class="p">(</span><span class="n">event</span><span class="p">)</span>  <span class="c1"># Blocks until event is set</span>
+</span><span id="__span-24-17"><a id="__codelineno-24-17" name="__codelineno-24-17" href="#__codelineno-24-17"></a><span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Event was set!&quot;</span><span class="p">)</span>
 </span></code></pre></div>
 </details>
 <p><strong>Async version:</strong> <code>await_for_event</code></p>
 <hr />
 <h3 id="spawn"><code>spawn</code></h3>
-<p>Dispatch a task without waiting for a result.</p>
+<p><code>spawn</code> dispatches a task without waiting for a result — fire-and-forget. The function runs in a background thread (sync) or as a detached coroutine (async). Errors are logged but never raised to the caller, making <code>spawn</code> safe for non-critical side effects like logging, cache warming, and notifications:</p>
 <details class="example" open="open">
 <summary>Example</summary>
-<div class="tabbed-set tabbed-alternate" data-tabs="5:3"><input checked="checked" id="__tabbed_5_1" name="__tabbed_5" type="radio" /><input id="__tabbed_5_2" name="__tabbed_5" type="radio" /><input id="__tabbed_5_3" name="__tabbed_5" type="radio" /><div class="tabbed-labels"><label for="__tabbed_5_1">Sync Function</label><label for="__tabbed_5_2">Async Function</label><label for="__tabbed_5_3">Error Handling</label></div>
+<div class="tabbed-set tabbed-alternate" data-tabs="8:3"><input checked="checked" id="__tabbed_8_1" name="__tabbed_8" type="radio" /><input id="__tabbed_8_2" name="__tabbed_8" type="radio" /><input id="__tabbed_8_3" name="__tabbed_8" type="radio" /><div class="tabbed-labels"><label for="__tabbed_8_1">Sync Function</label><label for="__tabbed_8_2">Async Function</label><label for="__tabbed_8_3">Error Handling</label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
-<div class="language-python highlight"><pre><span></span><code><span id="__span-19-1"><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn.functional</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">F</span>
-</span><span id="__span-19-2"><a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a>
-</span><span id="__span-19-3"><a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a><span class="k">def</span><span class="w"> </span><span class="nf">log_event</span><span class="p">(</span><span class="n">event_type</span><span class="p">,</span> <span class="n">user_id</span><span class="p">):</span>
-</span><span id="__span-19-4"><a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Logging: </span><span class="si">{</span><span class="n">event_type</span><span class="si">}</span><span class="s2"> for user </span><span class="si">{</span><span class="n">user_id</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-</span><span id="__span-19-5"><a id="__codelineno-19-5" name="__codelineno-19-5" href="#__codelineno-19-5"></a>
-</span><span id="__span-19-6"><a id="__codelineno-19-6" name="__codelineno-19-6" href="#__codelineno-19-6"></a><span class="c1"># Returns immediately</span>
-</span><span id="__span-19-7"><a id="__codelineno-19-7" name="__codelineno-19-7" href="#__codelineno-19-7"></a><span class="n">F</span><span class="o">.</span><span class="n">spawn</span><span class="p">(</span><span class="n">log_event</span><span class="p">,</span> <span class="s2">&quot;login&quot;</span><span class="p">,</span> <span class="mi">12345</span><span class="p">)</span>
-</span><span id="__span-19-8"><a id="__codelineno-19-8" name="__codelineno-19-8" href="#__codelineno-19-8"></a><span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Main thread continues...&quot;</span><span class="p">)</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-25-1"><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn.functional</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">F</span>
+</span><span id="__span-25-2"><a id="__codelineno-25-2" name="__codelineno-25-2" href="#__codelineno-25-2"></a>
+</span><span id="__span-25-3"><a id="__codelineno-25-3" name="__codelineno-25-3" href="#__codelineno-25-3"></a><span class="k">def</span><span class="w"> </span><span class="nf">log_event</span><span class="p">(</span><span class="n">event_type</span><span class="p">,</span> <span class="n">user_id</span><span class="p">):</span>
+</span><span id="__span-25-4"><a id="__codelineno-25-4" name="__codelineno-25-4" href="#__codelineno-25-4"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Logging: </span><span class="si">{</span><span class="n">event_type</span><span class="si">}</span><span class="s2"> for user </span><span class="si">{</span><span class="n">user_id</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</span><span id="__span-25-5"><a id="__codelineno-25-5" name="__codelineno-25-5" href="#__codelineno-25-5"></a>
+</span><span id="__span-25-6"><a id="__codelineno-25-6" name="__codelineno-25-6" href="#__codelineno-25-6"></a><span class="c1"># Returns immediately</span>
+</span><span id="__span-25-7"><a id="__codelineno-25-7" name="__codelineno-25-7" href="#__codelineno-25-7"></a><span class="n">F</span><span class="o">.</span><span class="n">spawn</span><span class="p">(</span><span class="n">log_event</span><span class="p">,</span> <span class="s2">&quot;login&quot;</span><span class="p">,</span> <span class="mi">12345</span><span class="p">)</span>
+</span><span id="__span-25-8"><a id="__codelineno-25-8" name="__codelineno-25-8" href="#__codelineno-25-8"></a><span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Main thread continues...&quot;</span><span class="p">)</span>
 </span></code></pre></div>
 </div>
 <div class="tabbed-block">
-<div class="language-python highlight"><pre><span></span><code><span id="__span-20-1"><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn.functional</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">F</span>
-</span><span id="__span-20-2"><a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a>
-</span><span id="__span-20-3"><a id="__codelineno-20-3" name="__codelineno-20-3" href="#__codelineno-20-3"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">async_log</span><span class="p">(</span><span class="n">message</span><span class="p">):</span>
-</span><span id="__span-20-4"><a id="__codelineno-20-4" name="__codelineno-20-4" href="#__codelineno-20-4"></a>    <span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
-</span><span id="__span-20-5"><a id="__codelineno-20-5" name="__codelineno-20-5" href="#__codelineno-20-5"></a>    <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
-</span><span id="__span-20-6"><a id="__codelineno-20-6" name="__codelineno-20-6" href="#__codelineno-20-6"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;[Async] </span><span class="si">{</span><span class="n">message</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-</span><span id="__span-20-7"><a id="__codelineno-20-7" name="__codelineno-20-7" href="#__codelineno-20-7"></a>
-</span><span id="__span-20-8"><a id="__codelineno-20-8" name="__codelineno-20-8" href="#__codelineno-20-8"></a><span class="n">F</span><span class="o">.</span><span class="n">spawn</span><span class="p">(</span><span class="n">async_log</span><span class="p">,</span> <span class="s2">&quot;Hello from spawn&quot;</span><span class="p">)</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-26-1"><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn.functional</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">F</span>
+</span><span id="__span-26-2"><a id="__codelineno-26-2" name="__codelineno-26-2" href="#__codelineno-26-2"></a>
+</span><span id="__span-26-3"><a id="__codelineno-26-3" name="__codelineno-26-3" href="#__codelineno-26-3"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">async_log</span><span class="p">(</span><span class="n">message</span><span class="p">):</span>
+</span><span id="__span-26-4"><a id="__codelineno-26-4" name="__codelineno-26-4" href="#__codelineno-26-4"></a>    <span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+</span><span id="__span-26-5"><a id="__codelineno-26-5" name="__codelineno-26-5" href="#__codelineno-26-5"></a>    <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+</span><span id="__span-26-6"><a id="__codelineno-26-6" name="__codelineno-26-6" href="#__codelineno-26-6"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;[Async] </span><span class="si">{</span><span class="n">message</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</span><span id="__span-26-7"><a id="__codelineno-26-7" name="__codelineno-26-7" href="#__codelineno-26-7"></a>
+</span><span id="__span-26-8"><a id="__codelineno-26-8" name="__codelineno-26-8" href="#__codelineno-26-8"></a><span class="n">F</span><span class="o">.</span><span class="n">spawn</span><span class="p">(</span><span class="n">async_log</span><span class="p">,</span> <span class="s2">&quot;Hello from spawn&quot;</span><span class="p">)</span>
 </span></code></pre></div>
 </div>
 <div class="tabbed-block">
-<div class="language-python highlight"><pre><span></span><code><span id="__span-21-1"><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn.functional</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">F</span>
-</span><span id="__span-21-2"><a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a>
-</span><span id="__span-21-3"><a id="__codelineno-21-3" name="__codelineno-21-3" href="#__codelineno-21-3"></a><span class="k">def</span><span class="w"> </span><span class="nf">failing_task</span><span class="p">():</span>
-</span><span id="__span-21-4"><a id="__codelineno-21-4" name="__codelineno-21-4" href="#__codelineno-21-4"></a>    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;This task failed!&quot;</span><span class="p">)</span>
-</span><span id="__span-21-5"><a id="__codelineno-21-5" name="__codelineno-21-5" href="#__codelineno-21-5"></a>
-</span><span id="__span-21-6"><a id="__codelineno-21-6" name="__codelineno-21-6" href="#__codelineno-21-6"></a><span class="c1"># Error is logged, not raised</span>
-</span><span id="__span-21-7"><a id="__codelineno-21-7" name="__codelineno-21-7" href="#__codelineno-21-7"></a><span class="n">F</span><span class="o">.</span><span class="n">spawn</span><span class="p">(</span><span class="n">failing_task</span><span class="p">)</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-27-1"><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn.functional</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">F</span>
+</span><span id="__span-27-2"><a id="__codelineno-27-2" name="__codelineno-27-2" href="#__codelineno-27-2"></a>
+</span><span id="__span-27-3"><a id="__codelineno-27-3" name="__codelineno-27-3" href="#__codelineno-27-3"></a><span class="k">def</span><span class="w"> </span><span class="nf">failing_task</span><span class="p">():</span>
+</span><span id="__span-27-4"><a id="__codelineno-27-4" name="__codelineno-27-4" href="#__codelineno-27-4"></a>    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;This task failed!&quot;</span><span class="p">)</span>
+</span><span id="__span-27-5"><a id="__codelineno-27-5" name="__codelineno-27-5" href="#__codelineno-27-5"></a>
+</span><span id="__span-27-6"><a id="__codelineno-27-6" name="__codelineno-27-6" href="#__codelineno-27-6"></a><span class="c1"># Error is logged, not raised</span>
+</span><span id="__span-27-7"><a id="__codelineno-27-7" name="__codelineno-27-7" href="#__codelineno-27-7"></a><span class="n">F</span><span class="o">.</span><span class="n">spawn</span><span class="p">(</span><span class="n">failing_task</span><span class="p">)</span>
 </span></code></pre></div>
 </div>
 </div>
