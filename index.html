@@ -1892,7 +1892,7 @@
   
   
     <li class="md-nav__item">
-      <a href="learn/nn/mediamaker.md" class="md-nav__link">
+      <a href="learn/nn/mediamaker/" class="md-nav__link">
         
   
   
@@ -3391,6 +3391,15 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#acknowledgements" class="md-nav__link">
+    <span class="md-ellipsis">
+      Acknowledgements
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -3471,7 +3480,7 @@ One of the core ideas in msgFlux is that **interaction style is a module-level d
 
 - **Imperative**: the module receives inputs and vars explicitly and returns outputs directly.
 
-- **Declarative**: the module declares where it reads data — including *vars* — from a shared message object.
+- **Declarative**: the module declares where it reads data from a shared message object.
 
 === &quot;Imperative&quot;
 
@@ -3541,7 +3550,7 @@ One of the core ideas in msgFlux is that **interaction style is a module-level d
 
 In the imperative model, a module behaves like a regular Python callable. Inputs and vars are passed directly, execution is explicit, and outputs are immediately returned. This is ideal for simple pipelines, scripts, or cases where control flow is clear and localized.
 
-In the declarative model, a module is configured with knowledge about the structure of the message it operates on. Instead of receiving arguments, it knows *which fields to read* — including vars — and *which fields to populate*. This enables complex workflows where data flows through multiple modules without manual wiring, making composition and orchestration significantly easier.
+In the declarative model, a module is configured with knowledge about the structure of the message it operates on. Instead of receiving arguments, it knows *which fields to read* and *which fields to populate*. This enables complex workflows where data flows through multiple modules without manual wiring, making composition and orchestration significantly easier.
 
 ## **Prompting and Programming**
 
@@ -3607,7 +3616,9 @@ On top of this interaction model, msgFlux deliberately distinguishes between **p
 
 In this model, prompts are not loose strings passed around arbitrarily. They are written artifacts that live inside well-defined modules, constrained by signatures and executed within a programmed architecture.
 
-By combining imperative and declarative modules with a clear separation between programming (signatures and structure) and prompting (written intent), msgFlux bridges classic software engineering and modern LLM-based development. The result is a system that scales from simple experiments to complex, production-ready AI applications while remaining explicit, composable, and maintainable.
+The portability of declarative signatures allows your system to survive a model update without needing to rewrite its behavior, shifting from defining *how* to defining *what*.
+
+By combining imperative and declarative modules with a clear separation between programming (signatures and structure) and prompting (written intent), msgFlux bridges classic software engineering and modern LM-based development. The result is a system that scales from simple experiments to complex, production-ready AI applications while remaining explicit, composable, and maintainable.
 
 ## Modules
 
@@ -3618,11 +3629,9 @@ By combining imperative and declarative modules with a clear separation between 
 
 ### Agent
 
-msgFlux supports multiple styles for defining what an agent does. You can write explicit prompts for full control, use **signatures** to declare typed inputs and outputs, bind to fields on a shared **message** for pipeline composition, or give agents access to **tools** and **vars** that flow through the system. You can even use one agent as a **tool** for another. These styles compose freely — pick the right one for each component.
+Agents in msgFlux are flexible — prompt them directly, use **signatures** for typed I/O, bind to a shared **message**, inject **tools** and **vars**, or nest one agent inside another as a tool. Mix and match as needed.
 
 !!! info &quot;Build Agents&quot;
-
-    Try the examples below after configuring your model above. Each tab demonstrates a different style or capability.
 
     === &quot;Context&quot;
 
@@ -3659,7 +3668,7 @@ msgFlux supports multiple styles for defining what an agent does. You can write 
 
         class Extractor(nn.Agent):
             model = mf.Model.chat_completion(&quot;openai/gpt-4.1-mini&quot;)
-            signature = &quot;text -&gt; summary: str, topics: list[str], sentiment: str&quot;
+            signature = &quot;text -&gt; summary, topics: list[str], sentiment&quot;
             config = {&quot;verbose&quot;: True}
 
         extractor = Extractor()
@@ -3689,14 +3698,14 @@ msgFlux supports multiple styles for defining what an agent does. You can write 
             config = {&quot;verbose&quot;: True}
 
         agent = ResearchAgent()
-        agent(&quot;What is the mass of the Earth divided by the mass of the Moon?&quot;)
+        agent(&quot;Fetch https://en.wikipedia.org/wiki/Earth and summarize the key facts about Earth&#x27;s mass and composition.&quot;)
         ```
 
         The agent iterates: **think** → **act** (call tools) → **observe** → repeat until `final_answer`.
 
     === &quot;Vars&quot;
 
-        `vars` inject runtime context into the agent&#x27;s Jinja2 **templates** and into tools via `inject_vars`. The model never sees injected vars directly — they flow through the system behind the scenes.
+        `vars` inject runtime context into the agent&#x27;s Jinja2 **templates** and into tools via `inject_vars`. The model never sees injected vars directly, they flow through the system behind the scenes.
 
         ```python linenums=&quot;1&quot;
         import msgflux as mf
@@ -3750,7 +3759,7 @@ msgFlux supports multiple styles for defining what an agent does. You can write 
         1. When an agent is used as a tool, the docstring becomes its **description** — this is what the parent agent sees when deciding which tool to call.
         2. `return_direct=True` means the Orchestrator returns the list of tool calls and their results directly, instead of passing them back to the model for a final response.
 
-    === &quot;Message-driven&quot;
+    === &quot;Structed Output&quot;
 
         Bind inputs and outputs to fields on a shared `Message` — the preferred approach inside pipelines:
 
@@ -3814,7 +3823,7 @@ msgFlux supports multiple styles for defining what an agent does. You can write 
 
 ### **Other Modules**
 
-Beyond `nn.Agent`, msgFlux provides specialized modules for different modalities — all sharing the same `nn.Module` API:
+Beyond `nn.Agent`, msgFlux provides specialized modules for different modalities:
 
 !!! info &quot;Built-in modules&quot;
 
@@ -3930,21 +3939,21 @@ A composition of modules is a **program** — each module handles one responsibi
 
         model = mf.Model.chat_completion(&quot;openai/gpt-4.1-mini&quot;)
 
+        class Researcher(nn.Agent):
+            model = model
+            instructions = &quot;Research the given topic thoroughly.&quot;
+            config = {&quot;verbose&quot;: True}
+
+        class Writer(nn.Agent):
+            model = model
+            instructions = &quot;Write a clear summary based on the research.&quot;
+            config = {&quot;verbose&quot;: True}
+
         class ResearchPipeline(nn.Module):
             def __init__(self):
                 super().__init__()
-                self.researcher = nn.Agent(
-                    name=&quot;researcher&quot;,
-                    model=model,
-                    instructions=&quot;Research the given topic thoroughly.&quot;,
-                    config={&quot;verbose&quot;: True},
-                )
-                self.writer = nn.Agent(
-                    name=&quot;writer&quot;,
-                    model=model,
-                    instructions=&quot;Write a clear summary based on the research.&quot;,
-                    config={&quot;verbose&quot;: True},
-                )
+                self.researcher = Researcher()
+                self.writer = Writer()
 
             def forward(self, topic):
                 research = self.researcher(topic)
@@ -3963,18 +3972,30 @@ A composition of modules is a **program** — each module handles one responsibi
 
         model = mf.Model.chat_completion(&quot;openai/gpt-4.1-mini&quot;)
 
+        class Classifier(nn.Agent):
+            model = model
+            signature = &quot;text -&gt; intent: Literal[&#x27;billing&#x27;, &#x27;technical&#x27;, &#x27;general&#x27;]&quot;
+
+        class BillingAgent(nn.Agent):
+            model = model
+            instructions = &quot;Handle billing queries.&quot;
+
+        class TechnicalAgent(nn.Agent):
+            model = model
+            instructions = &quot;Handle technical support.&quot;
+
+        class GeneralAgent(nn.Agent):
+            model = model
+            instructions = &quot;Handle general queries.&quot;
+
         class Router(nn.Module):
             def __init__(self):
                 super().__init__()
-                self.classifier = nn.Agent(
-                    name=&quot;classifier&quot;,
-                    model=model,
-                    signature=&quot;text -&gt; intent: Literal[&#x27;billing&#x27;, &#x27;technical&#x27;, &#x27;general&#x27;]&quot;,
-                )
+                self.classifier = Classifier()
                 self.agents = nn.ModuleDict({
-                    &quot;billing&quot;: nn.Agent(name=&quot;billing&quot;, model=model, instructions=&quot;Handle billing queries.&quot;),
-                    &quot;technical&quot;: nn.Agent(name=&quot;technical&quot;, model=model, instructions=&quot;Handle technical support.&quot;),
-                    &quot;general&quot;: nn.Agent(name=&quot;general&quot;, model=model, instructions=&quot;Handle general queries.&quot;),
+                    &quot;billing&quot;: BillingAgent(),
+                    &quot;technical&quot;: TechnicalAgent(),
+                    &quot;general&quot;: GeneralAgent(),
                 })
 
             def forward(self, message):
@@ -3993,27 +4014,27 @@ A composition of modules is a **program** — each module handles one responsibi
         import msgflux as mf
         import msgflux.nn as nn
 
+        class Transcriber(nn.Transcriber):
+            model = mf.Model.speech_to_text(&quot;openai/gpt-4o-mini-transcribe&quot;)
+            config = {&quot;language&quot;: &quot;en&quot;}
+
+        class Summarizer(nn.Agent):
+            model = mf.Model.chat_completion(&quot;openai/gpt-4.1-mini&quot;)
+            instructions = &quot;Generate a concise meeting summary with action items.&quot;
+            config = {&quot;verbose&quot;: True}
+
+        class Narrator(nn.Speaker):
+            model = mf.Model.text_to_speech(&quot;openai/gpt-4o-mini-tts&quot;)
+            response_format = &quot;pcm&quot;
+
         class MeetingAssistant(nn.Module):
             &quot;&quot;&quot;Transcribes audio, generates meeting notes, and narrates the summary.&quot;&quot;&quot;
 
             def __init__(self):
                 super().__init__()
-                self.transcriber = nn.Transcriber(
-                    name=&quot;transcriber&quot;,
-                    model=mf.Model.speech_to_text(&quot;openai/gpt-4o-mini-transcribe&quot;),
-                    config={&quot;language&quot;: &quot;en&quot;},
-                )
-                self.summarizer = nn.Agent(
-                    name=&quot;summarizer&quot;,
-                    model=mf.Model.chat_completion(&quot;openai/gpt-4.1-mini&quot;),
-                    instructions=&quot;Generate a concise meeting summary with action items.&quot;,
-                    config={&quot;verbose&quot;: True},
-                )
-                self.narrator = nn.Speaker(
-                    name=&quot;narrator&quot;,
-                    model=mf.Model.text_to_speech(&quot;openai/tts-1&quot;),
-                    response_format=&quot;mp3&quot;,
-                )
+                self.transcriber = Transcriber()
+                self.summarizer = Summarizer()
+                self.narrator = Narrator()
 
             def forward(self, audio_path):
                 transcript = self.transcriber(audio_path)
@@ -4022,7 +4043,7 @@ A composition of modules is a **program** — each module handles one responsibi
                 return audio
 
         assistant = MeetingAssistant()
-        audio_summary = assistant(&quot;meeting.mp3&quot;)
+        audio_summary = assistant(&quot;./meeting.mp3&quot;)
         ```
 
 ??? info &quot;Why a PyTorch-like API?&quot;
@@ -4097,6 +4118,19 @@ A composition of modules is a **program** — each module handles one responsibi
     ```
 
     The `Router` agent classifies the intent at runtime, and `Inline` **conditionally routes** to the right expert — the pipeline adapts to the input. No `if/else` in Python, just a declarative expression.
+
+---
+
+## Acknowledgements
+
+msgFlux is built around a select set of exceptional libraries that make the whole thing possible:
+
+- **[msgspec](https://jcristharif.com/msgspec/)** — ultra-fast serialization and validation that underpins all data contracts in msgFlux
+- **[Jinja2](https://jinja.palletsprojects.com/)** — the templating engine powering prompt composition, vars injection, and pipeline expressions
+- **[Tenacity](https://tenacity.readthedocs.io/)** — reliable retry logic with exponential backoff for resilient model calls
+- **[OpenTelemetry](https://opentelemetry.io/)** — the observability standard behind msgFlux&#x27;s built-in tracing and telemetry
+
+We are grateful to the authors and maintainers of these projects.
 ">
   <button class="copy-markdown-button" onclick="copyMarkdownToClipboard(this)">
     <i id="copy-icon" class="ph ph-clipboard" style="font-size:16px;"></i>
@@ -4200,7 +4234,7 @@ A composition of modules is a **program** — each module handles one responsibi
 <p><strong>Imperative</strong>: the module receives inputs and vars explicitly and returns outputs directly.</p>
 </li>
 <li>
-<p><strong>Declarative</strong>: the module declares where it reads data — including <em>vars</em> — from a shared message object.</p>
+<p><strong>Declarative</strong>: the module declares where it reads data from a shared message object.</p>
 </li>
 </ul>
 <div class="tabbed-set tabbed-alternate" data-tabs="1:2"><input checked="checked" id="__tabbed_1_1" name="__tabbed_1" type="radio" /><input id="__tabbed_1_2" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="__tabbed_1_1">Imperative</label><label for="__tabbed_1_2">Declarative</label></div>
@@ -4312,7 +4346,7 @@ A composition of modules is a **program** — each module handles one responsibi
 </div>
 </div>
 <p>In the imperative model, a module behaves like a regular Python callable. Inputs and vars are passed directly, execution is explicit, and outputs are immediately returned. This is ideal for simple pipelines, scripts, or cases where control flow is clear and localized.</p>
-<p>In the declarative model, a module is configured with knowledge about the structure of the message it operates on. Instead of receiving arguments, it knows <em>which fields to read</em> — including vars — and <em>which fields to populate</em>. This enables complex workflows where data flows through multiple modules without manual wiring, making composition and orchestration significantly easier.</p>
+<p>In the declarative model, a module is configured with knowledge about the structure of the message it operates on. Instead of receiving arguments, it knows <em>which fields to read</em> and <em>which fields to populate</em>. This enables complex workflows where data flows through multiple modules without manual wiring, making composition and orchestration significantly easier.</p>
 <h2 id="prompting-and-programming"><strong>Prompting and Programming</strong></h2>
 <p>On top of this interaction model, msgFlux deliberately distinguishes between <strong>programming</strong> and <strong>prompting</strong>, treating them as complementary but separate responsibilities.</p>
 <ul>
@@ -4413,7 +4447,8 @@ A composition of modules is a **program** — each module handles one responsibi
 </div>
 </div>
 <p>In this model, prompts are not loose strings passed around arbitrarily. They are written artifacts that live inside well-defined modules, constrained by signatures and executed within a programmed architecture.</p>
-<p>By combining imperative and declarative modules with a clear separation between programming (signatures and structure) and prompting (written intent), msgFlux bridges classic software engineering and modern LLM-based development. The result is a system that scales from simple experiments to complex, production-ready AI applications while remaining explicit, composable, and maintainable.</p>
+<p>The portability of declarative signatures allows your system to survive a model update without needing to rewrite its behavior, shifting from defining <em>how</em> to defining <em>what</em>.</p>
+<p>By combining imperative and declarative modules with a clear separation between programming (signatures and structure) and prompting (written intent), msgFlux bridges classic software engineering and modern LM-based development. The result is a system that scales from simple experiments to complex, production-ready AI applications while remaining explicit, composable, and maintainable.</p>
 <h2 id="modules">Modules</h2>
 <div class="admonition info">
 <p class="admonition-title">Setup your chat completion model (<a href="/dependency-management/#chat-completion">check dependencies</a>)</p>
@@ -4488,11 +4523,10 @@ A composition of modules is a **program** — each module handles one responsibi
 </div>
 <hr />
 <h3 id="agent">Agent</h3>
-<p>msgFlux supports multiple styles for defining what an agent does. You can write explicit prompts for full control, use <strong>signatures</strong> to declare typed inputs and outputs, bind to fields on a shared <strong>message</strong> for pipeline composition, or give agents access to <strong>tools</strong> and <strong>vars</strong> that flow through the system. You can even use one agent as a <strong>tool</strong> for another. These styles compose freely — pick the right one for each component.</p>
+<p>Agents in msgFlux are flexible — prompt them directly, use <strong>signatures</strong> for typed I/O, bind to a shared <strong>message</strong>, inject <strong>tools</strong> and <strong>vars</strong>, or nest one agent inside another as a tool. Mix and match as needed.</p>
 <div class="admonition info">
 <p class="admonition-title">Build Agents</p>
-<p>Try the examples below after configuring your model above. Each tab demonstrates a different style or capability.</p>
-<div class="tabbed-set tabbed-alternate" data-tabs="4:7"><input checked="checked" id="__tabbed_4_1" name="__tabbed_4" type="radio" /><input id="__tabbed_4_2" name="__tabbed_4" type="radio" /><input id="__tabbed_4_3" name="__tabbed_4" type="radio" /><input id="__tabbed_4_4" name="__tabbed_4" type="radio" /><input id="__tabbed_4_5" name="__tabbed_4" type="radio" /><input id="__tabbed_4_6" name="__tabbed_4" type="radio" /><input id="__tabbed_4_7" name="__tabbed_4" type="radio" /><div class="tabbed-labels"><label for="__tabbed_4_1">Context</label><label for="__tabbed_4_2">Signature</label><label for="__tabbed_4_3">ReAct</label><label for="__tabbed_4_4">Vars</label><label for="__tabbed_4_5">Agent-as-Tool</label><label for="__tabbed_4_6">Message-driven</label><label for="__tabbed_4_7">Vision + CoT</label></div>
+<div class="tabbed-set tabbed-alternate" data-tabs="4:7"><input checked="checked" id="__tabbed_4_1" name="__tabbed_4" type="radio" /><input id="__tabbed_4_2" name="__tabbed_4" type="radio" /><input id="__tabbed_4_3" name="__tabbed_4" type="radio" /><input id="__tabbed_4_4" name="__tabbed_4" type="radio" /><input id="__tabbed_4_5" name="__tabbed_4" type="radio" /><input id="__tabbed_4_6" name="__tabbed_4" type="radio" /><input id="__tabbed_4_7" name="__tabbed_4" type="radio" /><div class="tabbed-labels"><label for="__tabbed_4_1">Context</label><label for="__tabbed_4_2">Signature</label><label for="__tabbed_4_3">ReAct</label><label for="__tabbed_4_4">Vars</label><label for="__tabbed_4_5">Agent-as-Tool</label><label for="__tabbed_4_6">Structed Output</label><label for="__tabbed_4_7">Vision + CoT</label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
 <p>Pass additional context alongside the task — the agent grounds its answer on the provided information:</p>
@@ -4549,7 +4583,7 @@ A composition of modules is a **program** — each module handles one responsibi
 </span><span id="__span-14-3"><a id="__codelineno-14-3" name="__codelineno-14-3"></a>
 </span><span id="__span-14-4"><a id="__codelineno-14-4" name="__codelineno-14-4"></a><span class="k">class</span><span class="w"> </span><span class="nc">Extractor</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">):</span>
 </span><span id="__span-14-5"><a id="__codelineno-14-5" name="__codelineno-14-5"></a>    <span class="n">model</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">chat_completion</span><span class="p">(</span><span class="s2">&quot;openai/gpt-4.1-mini&quot;</span><span class="p">)</span>
-</span><span id="__span-14-6"><a id="__codelineno-14-6" name="__codelineno-14-6"></a>    <span class="n">signature</span> <span class="o">=</span> <span class="s2">&quot;text -&gt; summary: str, topics: list[str], sentiment: str&quot;</span>
+</span><span id="__span-14-6"><a id="__codelineno-14-6" name="__codelineno-14-6"></a>    <span class="n">signature</span> <span class="o">=</span> <span class="s2">&quot;text -&gt; summary, topics: list[str], sentiment&quot;</span>
 </span><span id="__span-14-7"><a id="__codelineno-14-7" name="__codelineno-14-7"></a>    <span class="n">config</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;verbose&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">}</span>
 </span><span id="__span-14-8"><a id="__codelineno-14-8" name="__codelineno-14-8"></a>
 </span><span id="__span-14-9"><a id="__codelineno-14-9" name="__codelineno-14-9"></a><span class="n">extractor</span> <span class="o">=</span> <span class="n">Extractor</span><span class="p">()</span>
@@ -4585,12 +4619,12 @@ A composition of modules is a **program** — each module handles one responsibi
 </span><span id="__span-16-10"><a id="__codelineno-16-10" name="__codelineno-16-10"></a>    <span class="n">config</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;verbose&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">}</span>
 </span><span id="__span-16-11"><a id="__codelineno-16-11" name="__codelineno-16-11"></a>
 </span><span id="__span-16-12"><a id="__codelineno-16-12" name="__codelineno-16-12"></a><span class="n">agent</span> <span class="o">=</span> <span class="n">ResearchAgent</span><span class="p">()</span>
-</span><span id="__span-16-13"><a id="__codelineno-16-13" name="__codelineno-16-13"></a><span class="n">agent</span><span class="p">(</span><span class="s2">&quot;What is the mass of the Earth divided by the mass of the Moon?&quot;</span><span class="p">)</span>
+</span><span id="__span-16-13"><a id="__codelineno-16-13" name="__codelineno-16-13"></a><span class="n">agent</span><span class="p">(</span><span class="s2">&quot;Fetch https://en.wikipedia.org/wiki/Earth and summarize the key facts about Earth&#39;s mass and composition.&quot;</span><span class="p">)</span>
 </span></code></pre></div></td></tr></table></div>
 <p>The agent iterates: <strong>think</strong> → <strong>act</strong> (call tools) → <strong>observe</strong> → repeat until <code>final_answer</code>.</p>
 </div>
 <div class="tabbed-block">
-<p><code>vars</code> inject runtime context into the agent's Jinja2 <strong>templates</strong> and into tools via <code>inject_vars</code>. The model never sees injected vars directly — they flow through the system behind the scenes.</p>
+<p><code>vars</code> inject runtime context into the agent's Jinja2 <strong>templates</strong> and into tools via <code>inject_vars</code>. The model never sees injected vars directly, they flow through the system behind the scenes.</p>
 <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-17-1"> 1</a></span>
 <span class="normal"><a href="#__codelineno-17-2"> 2</a></span>
 <span class="normal"><a href="#__codelineno-17-3"> 3</a></span>
@@ -4765,7 +4799,7 @@ A composition of modules is a **program** — each module handles one responsibi
 </div>
 <hr />
 <h3 id="other-modules"><strong>Other Modules</strong></h3>
-<p>Beyond <code>nn.Agent</code>, msgFlux provides specialized modules for different modalities — all sharing the same <code>nn.Module</code> API:</p>
+<p>Beyond <code>nn.Agent</code>, msgFlux provides specialized modules for different modalities:</p>
 <div class="admonition info">
 <p class="admonition-title">Built-in modules</p>
 <p>All modules support <code>message_fields</code> and <code>response_mode</code> — configure once, then just pass the message through:</p>
@@ -4956,21 +4990,21 @@ A composition of modules is a **program** — each module handles one responsibi
 </span><span id="__span-26-3"><a id="__codelineno-26-3" name="__codelineno-26-3"></a>
 </span><span id="__span-26-4"><a id="__codelineno-26-4" name="__codelineno-26-4"></a><span class="n">model</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">chat_completion</span><span class="p">(</span><span class="s2">&quot;openai/gpt-4.1-mini&quot;</span><span class="p">)</span>
 </span><span id="__span-26-5"><a id="__codelineno-26-5" name="__codelineno-26-5"></a>
-</span><span id="__span-26-6"><a id="__codelineno-26-6" name="__codelineno-26-6"></a><span class="k">class</span><span class="w"> </span><span class="nc">ResearchPipeline</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
-</span><span id="__span-26-7"><a id="__codelineno-26-7" name="__codelineno-26-7"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-</span><span id="__span-26-8"><a id="__codelineno-26-8" name="__codelineno-26-8"></a>        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
-</span><span id="__span-26-9"><a id="__codelineno-26-9" name="__codelineno-26-9"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">researcher</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">(</span>
-</span><span id="__span-26-10"><a id="__codelineno-26-10" name="__codelineno-26-10"></a>            <span class="n">name</span><span class="o">=</span><span class="s2">&quot;researcher&quot;</span><span class="p">,</span>
-</span><span id="__span-26-11"><a id="__codelineno-26-11" name="__codelineno-26-11"></a>            <span class="n">model</span><span class="o">=</span><span class="n">model</span><span class="p">,</span>
-</span><span id="__span-26-12"><a id="__codelineno-26-12" name="__codelineno-26-12"></a>            <span class="n">instructions</span><span class="o">=</span><span class="s2">&quot;Research the given topic thoroughly.&quot;</span><span class="p">,</span>
-</span><span id="__span-26-13"><a id="__codelineno-26-13" name="__codelineno-26-13"></a>            <span class="n">config</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;verbose&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">},</span>
-</span><span id="__span-26-14"><a id="__codelineno-26-14" name="__codelineno-26-14"></a>        <span class="p">)</span>
-</span><span id="__span-26-15"><a id="__codelineno-26-15" name="__codelineno-26-15"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">writer</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">(</span>
-</span><span id="__span-26-16"><a id="__codelineno-26-16" name="__codelineno-26-16"></a>            <span class="n">name</span><span class="o">=</span><span class="s2">&quot;writer&quot;</span><span class="p">,</span>
-</span><span id="__span-26-17"><a id="__codelineno-26-17" name="__codelineno-26-17"></a>            <span class="n">model</span><span class="o">=</span><span class="n">model</span><span class="p">,</span>
-</span><span id="__span-26-18"><a id="__codelineno-26-18" name="__codelineno-26-18"></a>            <span class="n">instructions</span><span class="o">=</span><span class="s2">&quot;Write a clear summary based on the research.&quot;</span><span class="p">,</span>
-</span><span id="__span-26-19"><a id="__codelineno-26-19" name="__codelineno-26-19"></a>            <span class="n">config</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;verbose&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">},</span>
-</span><span id="__span-26-20"><a id="__codelineno-26-20" name="__codelineno-26-20"></a>        <span class="p">)</span>
+</span><span id="__span-26-6"><a id="__codelineno-26-6" name="__codelineno-26-6"></a><span class="k">class</span><span class="w"> </span><span class="nc">Researcher</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">):</span>
+</span><span id="__span-26-7"><a id="__codelineno-26-7" name="__codelineno-26-7"></a>    <span class="n">model</span> <span class="o">=</span> <span class="n">model</span>
+</span><span id="__span-26-8"><a id="__codelineno-26-8" name="__codelineno-26-8"></a>    <span class="n">instructions</span> <span class="o">=</span> <span class="s2">&quot;Research the given topic thoroughly.&quot;</span>
+</span><span id="__span-26-9"><a id="__codelineno-26-9" name="__codelineno-26-9"></a>    <span class="n">config</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;verbose&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">}</span>
+</span><span id="__span-26-10"><a id="__codelineno-26-10" name="__codelineno-26-10"></a>
+</span><span id="__span-26-11"><a id="__codelineno-26-11" name="__codelineno-26-11"></a><span class="k">class</span><span class="w"> </span><span class="nc">Writer</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">):</span>
+</span><span id="__span-26-12"><a id="__codelineno-26-12" name="__codelineno-26-12"></a>    <span class="n">model</span> <span class="o">=</span> <span class="n">model</span>
+</span><span id="__span-26-13"><a id="__codelineno-26-13" name="__codelineno-26-13"></a>    <span class="n">instructions</span> <span class="o">=</span> <span class="s2">&quot;Write a clear summary based on the research.&quot;</span>
+</span><span id="__span-26-14"><a id="__codelineno-26-14" name="__codelineno-26-14"></a>    <span class="n">config</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;verbose&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">}</span>
+</span><span id="__span-26-15"><a id="__codelineno-26-15" name="__codelineno-26-15"></a>
+</span><span id="__span-26-16"><a id="__codelineno-26-16" name="__codelineno-26-16"></a><span class="k">class</span><span class="w"> </span><span class="nc">ResearchPipeline</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+</span><span id="__span-26-17"><a id="__codelineno-26-17" name="__codelineno-26-17"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+</span><span id="__span-26-18"><a id="__codelineno-26-18" name="__codelineno-26-18"></a>        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+</span><span id="__span-26-19"><a id="__codelineno-26-19" name="__codelineno-26-19"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">researcher</span> <span class="o">=</span> <span class="n">Researcher</span><span class="p">()</span>
+</span><span id="__span-26-20"><a id="__codelineno-26-20" name="__codelineno-26-20"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">writer</span> <span class="o">=</span> <span class="n">Writer</span><span class="p">()</span>
 </span><span id="__span-26-21"><a id="__codelineno-26-21" name="__codelineno-26-21"></a>
 </span><span id="__span-26-22"><a id="__codelineno-26-22" name="__codelineno-26-22"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">topic</span><span class="p">):</span>
 </span><span id="__span-26-23"><a id="__codelineno-26-23" name="__codelineno-26-23"></a>        <span class="n">research</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">researcher</span><span class="p">(</span><span class="n">topic</span><span class="p">)</span>
@@ -5006,31 +5040,55 @@ A composition of modules is a **program** — each module handles one responsibi
 <span class="normal"><a href="#__codelineno-27-22">22</a></span>
 <span class="normal"><a href="#__codelineno-27-23">23</a></span>
 <span class="normal"><a href="#__codelineno-27-24">24</a></span>
-<span class="normal"><a href="#__codelineno-27-25">25</a></span></pre></div></td><td class="code"><div><pre><span></span><code><span id="__span-27-1"><a id="__codelineno-27-1" name="__codelineno-27-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
+<span class="normal"><a href="#__codelineno-27-25">25</a></span>
+<span class="normal"><a href="#__codelineno-27-26">26</a></span>
+<span class="normal"><a href="#__codelineno-27-27">27</a></span>
+<span class="normal"><a href="#__codelineno-27-28">28</a></span>
+<span class="normal"><a href="#__codelineno-27-29">29</a></span>
+<span class="normal"><a href="#__codelineno-27-30">30</a></span>
+<span class="normal"><a href="#__codelineno-27-31">31</a></span>
+<span class="normal"><a href="#__codelineno-27-32">32</a></span>
+<span class="normal"><a href="#__codelineno-27-33">33</a></span>
+<span class="normal"><a href="#__codelineno-27-34">34</a></span>
+<span class="normal"><a href="#__codelineno-27-35">35</a></span>
+<span class="normal"><a href="#__codelineno-27-36">36</a></span>
+<span class="normal"><a href="#__codelineno-27-37">37</a></span></pre></div></td><td class="code"><div><pre><span></span><code><span id="__span-27-1"><a id="__codelineno-27-1" name="__codelineno-27-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
 </span><span id="__span-27-2"><a id="__codelineno-27-2" name="__codelineno-27-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">nn</span>
 </span><span id="__span-27-3"><a id="__codelineno-27-3" name="__codelineno-27-3"></a>
 </span><span id="__span-27-4"><a id="__codelineno-27-4" name="__codelineno-27-4"></a><span class="n">model</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">chat_completion</span><span class="p">(</span><span class="s2">&quot;openai/gpt-4.1-mini&quot;</span><span class="p">)</span>
 </span><span id="__span-27-5"><a id="__codelineno-27-5" name="__codelineno-27-5"></a>
-</span><span id="__span-27-6"><a id="__codelineno-27-6" name="__codelineno-27-6"></a><span class="k">class</span><span class="w"> </span><span class="nc">Router</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
-</span><span id="__span-27-7"><a id="__codelineno-27-7" name="__codelineno-27-7"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-</span><span id="__span-27-8"><a id="__codelineno-27-8" name="__codelineno-27-8"></a>        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
-</span><span id="__span-27-9"><a id="__codelineno-27-9" name="__codelineno-27-9"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">classifier</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">(</span>
-</span><span id="__span-27-10"><a id="__codelineno-27-10" name="__codelineno-27-10"></a>            <span class="n">name</span><span class="o">=</span><span class="s2">&quot;classifier&quot;</span><span class="p">,</span>
-</span><span id="__span-27-11"><a id="__codelineno-27-11" name="__codelineno-27-11"></a>            <span class="n">model</span><span class="o">=</span><span class="n">model</span><span class="p">,</span>
-</span><span id="__span-27-12"><a id="__codelineno-27-12" name="__codelineno-27-12"></a>            <span class="n">signature</span><span class="o">=</span><span class="s2">&quot;text -&gt; intent: Literal[&#39;billing&#39;, &#39;technical&#39;, &#39;general&#39;]&quot;</span><span class="p">,</span>
-</span><span id="__span-27-13"><a id="__codelineno-27-13" name="__codelineno-27-13"></a>        <span class="p">)</span>
-</span><span id="__span-27-14"><a id="__codelineno-27-14" name="__codelineno-27-14"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">agents</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">ModuleDict</span><span class="p">({</span>
-</span><span id="__span-27-15"><a id="__codelineno-27-15" name="__codelineno-27-15"></a>            <span class="s2">&quot;billing&quot;</span><span class="p">:</span> <span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;billing&quot;</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="n">model</span><span class="p">,</span> <span class="n">instructions</span><span class="o">=</span><span class="s2">&quot;Handle billing queries.&quot;</span><span class="p">),</span>
-</span><span id="__span-27-16"><a id="__codelineno-27-16" name="__codelineno-27-16"></a>            <span class="s2">&quot;technical&quot;</span><span class="p">:</span> <span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;technical&quot;</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="n">model</span><span class="p">,</span> <span class="n">instructions</span><span class="o">=</span><span class="s2">&quot;Handle technical support.&quot;</span><span class="p">),</span>
-</span><span id="__span-27-17"><a id="__codelineno-27-17" name="__codelineno-27-17"></a>            <span class="s2">&quot;general&quot;</span><span class="p">:</span> <span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;general&quot;</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="n">model</span><span class="p">,</span> <span class="n">instructions</span><span class="o">=</span><span class="s2">&quot;Handle general queries.&quot;</span><span class="p">),</span>
-</span><span id="__span-27-18"><a id="__codelineno-27-18" name="__codelineno-27-18"></a>        <span class="p">})</span>
-</span><span id="__span-27-19"><a id="__codelineno-27-19" name="__codelineno-27-19"></a>
-</span><span id="__span-27-20"><a id="__codelineno-27-20" name="__codelineno-27-20"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">message</span><span class="p">):</span>
-</span><span id="__span-27-21"><a id="__codelineno-27-21" name="__codelineno-27-21"></a>        <span class="n">result</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">classifier</span><span class="p">(</span><span class="n">message</span><span class="p">)</span>
-</span><span id="__span-27-22"><a id="__codelineno-27-22" name="__codelineno-27-22"></a>        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">agents</span><span class="p">[</span><span class="n">result</span><span class="p">[</span><span class="s2">&quot;intent&quot;</span><span class="p">]](</span><span class="n">message</span><span class="p">)</span>
-</span><span id="__span-27-23"><a id="__codelineno-27-23" name="__codelineno-27-23"></a>
-</span><span id="__span-27-24"><a id="__codelineno-27-24" name="__codelineno-27-24"></a><span class="n">router</span> <span class="o">=</span> <span class="n">Router</span><span class="p">()</span>
-</span><span id="__span-27-25"><a id="__codelineno-27-25" name="__codelineno-27-25"></a><span class="n">router</span><span class="p">(</span><span class="s2">&quot;I need to update my payment method&quot;</span><span class="p">)</span>
+</span><span id="__span-27-6"><a id="__codelineno-27-6" name="__codelineno-27-6"></a><span class="k">class</span><span class="w"> </span><span class="nc">Classifier</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">):</span>
+</span><span id="__span-27-7"><a id="__codelineno-27-7" name="__codelineno-27-7"></a>    <span class="n">model</span> <span class="o">=</span> <span class="n">model</span>
+</span><span id="__span-27-8"><a id="__codelineno-27-8" name="__codelineno-27-8"></a>    <span class="n">signature</span> <span class="o">=</span> <span class="s2">&quot;text -&gt; intent: Literal[&#39;billing&#39;, &#39;technical&#39;, &#39;general&#39;]&quot;</span>
+</span><span id="__span-27-9"><a id="__codelineno-27-9" name="__codelineno-27-9"></a>
+</span><span id="__span-27-10"><a id="__codelineno-27-10" name="__codelineno-27-10"></a><span class="k">class</span><span class="w"> </span><span class="nc">BillingAgent</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">):</span>
+</span><span id="__span-27-11"><a id="__codelineno-27-11" name="__codelineno-27-11"></a>    <span class="n">model</span> <span class="o">=</span> <span class="n">model</span>
+</span><span id="__span-27-12"><a id="__codelineno-27-12" name="__codelineno-27-12"></a>    <span class="n">instructions</span> <span class="o">=</span> <span class="s2">&quot;Handle billing queries.&quot;</span>
+</span><span id="__span-27-13"><a id="__codelineno-27-13" name="__codelineno-27-13"></a>
+</span><span id="__span-27-14"><a id="__codelineno-27-14" name="__codelineno-27-14"></a><span class="k">class</span><span class="w"> </span><span class="nc">TechnicalAgent</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">):</span>
+</span><span id="__span-27-15"><a id="__codelineno-27-15" name="__codelineno-27-15"></a>    <span class="n">model</span> <span class="o">=</span> <span class="n">model</span>
+</span><span id="__span-27-16"><a id="__codelineno-27-16" name="__codelineno-27-16"></a>    <span class="n">instructions</span> <span class="o">=</span> <span class="s2">&quot;Handle technical support.&quot;</span>
+</span><span id="__span-27-17"><a id="__codelineno-27-17" name="__codelineno-27-17"></a>
+</span><span id="__span-27-18"><a id="__codelineno-27-18" name="__codelineno-27-18"></a><span class="k">class</span><span class="w"> </span><span class="nc">GeneralAgent</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">):</span>
+</span><span id="__span-27-19"><a id="__codelineno-27-19" name="__codelineno-27-19"></a>    <span class="n">model</span> <span class="o">=</span> <span class="n">model</span>
+</span><span id="__span-27-20"><a id="__codelineno-27-20" name="__codelineno-27-20"></a>    <span class="n">instructions</span> <span class="o">=</span> <span class="s2">&quot;Handle general queries.&quot;</span>
+</span><span id="__span-27-21"><a id="__codelineno-27-21" name="__codelineno-27-21"></a>
+</span><span id="__span-27-22"><a id="__codelineno-27-22" name="__codelineno-27-22"></a><span class="k">class</span><span class="w"> </span><span class="nc">Router</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+</span><span id="__span-27-23"><a id="__codelineno-27-23" name="__codelineno-27-23"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+</span><span id="__span-27-24"><a id="__codelineno-27-24" name="__codelineno-27-24"></a>        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+</span><span id="__span-27-25"><a id="__codelineno-27-25" name="__codelineno-27-25"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">classifier</span> <span class="o">=</span> <span class="n">Classifier</span><span class="p">()</span>
+</span><span id="__span-27-26"><a id="__codelineno-27-26" name="__codelineno-27-26"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">agents</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">ModuleDict</span><span class="p">({</span>
+</span><span id="__span-27-27"><a id="__codelineno-27-27" name="__codelineno-27-27"></a>            <span class="s2">&quot;billing&quot;</span><span class="p">:</span> <span class="n">BillingAgent</span><span class="p">(),</span>
+</span><span id="__span-27-28"><a id="__codelineno-27-28" name="__codelineno-27-28"></a>            <span class="s2">&quot;technical&quot;</span><span class="p">:</span> <span class="n">TechnicalAgent</span><span class="p">(),</span>
+</span><span id="__span-27-29"><a id="__codelineno-27-29" name="__codelineno-27-29"></a>            <span class="s2">&quot;general&quot;</span><span class="p">:</span> <span class="n">GeneralAgent</span><span class="p">(),</span>
+</span><span id="__span-27-30"><a id="__codelineno-27-30" name="__codelineno-27-30"></a>        <span class="p">})</span>
+</span><span id="__span-27-31"><a id="__codelineno-27-31" name="__codelineno-27-31"></a>
+</span><span id="__span-27-32"><a id="__codelineno-27-32" name="__codelineno-27-32"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">message</span><span class="p">):</span>
+</span><span id="__span-27-33"><a id="__codelineno-27-33" name="__codelineno-27-33"></a>        <span class="n">result</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">classifier</span><span class="p">(</span><span class="n">message</span><span class="p">)</span>
+</span><span id="__span-27-34"><a id="__codelineno-27-34" name="__codelineno-27-34"></a>        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">agents</span><span class="p">[</span><span class="n">result</span><span class="p">[</span><span class="s2">&quot;intent&quot;</span><span class="p">]](</span><span class="n">message</span><span class="p">)</span>
+</span><span id="__span-27-35"><a id="__codelineno-27-35" name="__codelineno-27-35"></a>
+</span><span id="__span-27-36"><a id="__codelineno-27-36" name="__codelineno-27-36"></a><span class="n">router</span> <span class="o">=</span> <span class="n">Router</span><span class="p">()</span>
+</span><span id="__span-27-37"><a id="__codelineno-27-37" name="__codelineno-27-37"></a><span class="n">router</span><span class="p">(</span><span class="s2">&quot;I need to update my payment method&quot;</span><span class="p">)</span>
 </span></code></pre></div></td></tr></table></div>
 </div>
 <div class="tabbed-block">
@@ -5070,27 +5128,27 @@ A composition of modules is a **program** — each module handles one responsibi
 <span class="normal"><a href="#__codelineno-28-33">33</a></span></pre></div></td><td class="code"><div><pre><span></span><code><span id="__span-28-1"><a id="__codelineno-28-1" name="__codelineno-28-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
 </span><span id="__span-28-2"><a id="__codelineno-28-2" name="__codelineno-28-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">nn</span>
 </span><span id="__span-28-3"><a id="__codelineno-28-3" name="__codelineno-28-3"></a>
-</span><span id="__span-28-4"><a id="__codelineno-28-4" name="__codelineno-28-4"></a><span class="k">class</span><span class="w"> </span><span class="nc">MeetingAssistant</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
-</span><span id="__span-28-5"><a id="__codelineno-28-5" name="__codelineno-28-5"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Transcribes audio, generates meeting notes, and narrates the summary.&quot;&quot;&quot;</span>
-</span><span id="__span-28-6"><a id="__codelineno-28-6" name="__codelineno-28-6"></a>
-</span><span id="__span-28-7"><a id="__codelineno-28-7" name="__codelineno-28-7"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-</span><span id="__span-28-8"><a id="__codelineno-28-8" name="__codelineno-28-8"></a>        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
-</span><span id="__span-28-9"><a id="__codelineno-28-9" name="__codelineno-28-9"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">transcriber</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Transcriber</span><span class="p">(</span>
-</span><span id="__span-28-10"><a id="__codelineno-28-10" name="__codelineno-28-10"></a>            <span class="n">name</span><span class="o">=</span><span class="s2">&quot;transcriber&quot;</span><span class="p">,</span>
-</span><span id="__span-28-11"><a id="__codelineno-28-11" name="__codelineno-28-11"></a>            <span class="n">model</span><span class="o">=</span><span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">speech_to_text</span><span class="p">(</span><span class="s2">&quot;openai/gpt-4o-mini-transcribe&quot;</span><span class="p">),</span>
-</span><span id="__span-28-12"><a id="__codelineno-28-12" name="__codelineno-28-12"></a>            <span class="n">config</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;language&quot;</span><span class="p">:</span> <span class="s2">&quot;en&quot;</span><span class="p">},</span>
-</span><span id="__span-28-13"><a id="__codelineno-28-13" name="__codelineno-28-13"></a>        <span class="p">)</span>
-</span><span id="__span-28-14"><a id="__codelineno-28-14" name="__codelineno-28-14"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">summarizer</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">(</span>
-</span><span id="__span-28-15"><a id="__codelineno-28-15" name="__codelineno-28-15"></a>            <span class="n">name</span><span class="o">=</span><span class="s2">&quot;summarizer&quot;</span><span class="p">,</span>
-</span><span id="__span-28-16"><a id="__codelineno-28-16" name="__codelineno-28-16"></a>            <span class="n">model</span><span class="o">=</span><span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">chat_completion</span><span class="p">(</span><span class="s2">&quot;openai/gpt-4.1-mini&quot;</span><span class="p">),</span>
-</span><span id="__span-28-17"><a id="__codelineno-28-17" name="__codelineno-28-17"></a>            <span class="n">instructions</span><span class="o">=</span><span class="s2">&quot;Generate a concise meeting summary with action items.&quot;</span><span class="p">,</span>
-</span><span id="__span-28-18"><a id="__codelineno-28-18" name="__codelineno-28-18"></a>            <span class="n">config</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;verbose&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">},</span>
-</span><span id="__span-28-19"><a id="__codelineno-28-19" name="__codelineno-28-19"></a>        <span class="p">)</span>
-</span><span id="__span-28-20"><a id="__codelineno-28-20" name="__codelineno-28-20"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">narrator</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Speaker</span><span class="p">(</span>
-</span><span id="__span-28-21"><a id="__codelineno-28-21" name="__codelineno-28-21"></a>            <span class="n">name</span><span class="o">=</span><span class="s2">&quot;narrator&quot;</span><span class="p">,</span>
-</span><span id="__span-28-22"><a id="__codelineno-28-22" name="__codelineno-28-22"></a>            <span class="n">model</span><span class="o">=</span><span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">text_to_speech</span><span class="p">(</span><span class="s2">&quot;openai/tts-1&quot;</span><span class="p">),</span>
-</span><span id="__span-28-23"><a id="__codelineno-28-23" name="__codelineno-28-23"></a>            <span class="n">response_format</span><span class="o">=</span><span class="s2">&quot;mp3&quot;</span><span class="p">,</span>
-</span><span id="__span-28-24"><a id="__codelineno-28-24" name="__codelineno-28-24"></a>        <span class="p">)</span>
+</span><span id="__span-28-4"><a id="__codelineno-28-4" name="__codelineno-28-4"></a><span class="k">class</span><span class="w"> </span><span class="nc">Transcriber</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Transcriber</span><span class="p">):</span>
+</span><span id="__span-28-5"><a id="__codelineno-28-5" name="__codelineno-28-5"></a>    <span class="n">model</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">speech_to_text</span><span class="p">(</span><span class="s2">&quot;openai/gpt-4o-mini-transcribe&quot;</span><span class="p">)</span>
+</span><span id="__span-28-6"><a id="__codelineno-28-6" name="__codelineno-28-6"></a>    <span class="n">config</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;language&quot;</span><span class="p">:</span> <span class="s2">&quot;en&quot;</span><span class="p">}</span>
+</span><span id="__span-28-7"><a id="__codelineno-28-7" name="__codelineno-28-7"></a>
+</span><span id="__span-28-8"><a id="__codelineno-28-8" name="__codelineno-28-8"></a><span class="k">class</span><span class="w"> </span><span class="nc">Summarizer</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">):</span>
+</span><span id="__span-28-9"><a id="__codelineno-28-9" name="__codelineno-28-9"></a>    <span class="n">model</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">chat_completion</span><span class="p">(</span><span class="s2">&quot;openai/gpt-4.1-mini&quot;</span><span class="p">)</span>
+</span><span id="__span-28-10"><a id="__codelineno-28-10" name="__codelineno-28-10"></a>    <span class="n">instructions</span> <span class="o">=</span> <span class="s2">&quot;Generate a concise meeting summary with action items.&quot;</span>
+</span><span id="__span-28-11"><a id="__codelineno-28-11" name="__codelineno-28-11"></a>    <span class="n">config</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;verbose&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">}</span>
+</span><span id="__span-28-12"><a id="__codelineno-28-12" name="__codelineno-28-12"></a>
+</span><span id="__span-28-13"><a id="__codelineno-28-13" name="__codelineno-28-13"></a><span class="k">class</span><span class="w"> </span><span class="nc">Narrator</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Speaker</span><span class="p">):</span>
+</span><span id="__span-28-14"><a id="__codelineno-28-14" name="__codelineno-28-14"></a>    <span class="n">model</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">text_to_speech</span><span class="p">(</span><span class="s2">&quot;openai/gpt-4o-mini-tts&quot;</span><span class="p">)</span>
+</span><span id="__span-28-15"><a id="__codelineno-28-15" name="__codelineno-28-15"></a>    <span class="n">response_format</span> <span class="o">=</span> <span class="s2">&quot;pcm&quot;</span>
+</span><span id="__span-28-16"><a id="__codelineno-28-16" name="__codelineno-28-16"></a>
+</span><span id="__span-28-17"><a id="__codelineno-28-17" name="__codelineno-28-17"></a><span class="k">class</span><span class="w"> </span><span class="nc">MeetingAssistant</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+</span><span id="__span-28-18"><a id="__codelineno-28-18" name="__codelineno-28-18"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Transcribes audio, generates meeting notes, and narrates the summary.&quot;&quot;&quot;</span>
+</span><span id="__span-28-19"><a id="__codelineno-28-19" name="__codelineno-28-19"></a>
+</span><span id="__span-28-20"><a id="__codelineno-28-20" name="__codelineno-28-20"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+</span><span id="__span-28-21"><a id="__codelineno-28-21" name="__codelineno-28-21"></a>        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+</span><span id="__span-28-22"><a id="__codelineno-28-22" name="__codelineno-28-22"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">transcriber</span> <span class="o">=</span> <span class="n">Transcriber</span><span class="p">()</span>
+</span><span id="__span-28-23"><a id="__codelineno-28-23" name="__codelineno-28-23"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">summarizer</span> <span class="o">=</span> <span class="n">Summarizer</span><span class="p">()</span>
+</span><span id="__span-28-24"><a id="__codelineno-28-24" name="__codelineno-28-24"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">narrator</span> <span class="o">=</span> <span class="n">Narrator</span><span class="p">()</span>
 </span><span id="__span-28-25"><a id="__codelineno-28-25" name="__codelineno-28-25"></a>
 </span><span id="__span-28-26"><a id="__codelineno-28-26" name="__codelineno-28-26"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">audio_path</span><span class="p">):</span>
 </span><span id="__span-28-27"><a id="__codelineno-28-27" name="__codelineno-28-27"></a>        <span class="n">transcript</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">transcriber</span><span class="p">(</span><span class="n">audio_path</span><span class="p">)</span>
@@ -5099,7 +5157,7 @@ A composition of modules is a **program** — each module handles one responsibi
 </span><span id="__span-28-30"><a id="__codelineno-28-30" name="__codelineno-28-30"></a>        <span class="k">return</span> <span class="n">audio</span>
 </span><span id="__span-28-31"><a id="__codelineno-28-31" name="__codelineno-28-31"></a>
 </span><span id="__span-28-32"><a id="__codelineno-28-32" name="__codelineno-28-32"></a><span class="n">assistant</span> <span class="o">=</span> <span class="n">MeetingAssistant</span><span class="p">()</span>
-</span><span id="__span-28-33"><a id="__codelineno-28-33" name="__codelineno-28-33"></a><span class="n">audio_summary</span> <span class="o">=</span> <span class="n">assistant</span><span class="p">(</span><span class="s2">&quot;meeting.mp3&quot;</span><span class="p">)</span>
+</span><span id="__span-28-33"><a id="__codelineno-28-33" name="__codelineno-28-33"></a><span class="n">audio_summary</span> <span class="o">=</span> <span class="n">assistant</span><span class="p">(</span><span class="s2">&quot;./meeting.mp3&quot;</span><span class="p">)</span>
 </span></code></pre></div></td></tr></table></div>
 </div>
 </div>
@@ -5221,6 +5279,16 @@ A composition of modules is a **program** — each module handles one responsibi
 </span></code></pre></div></td></tr></table></div>
 <p>The <code>Router</code> agent classifies the intent at runtime, and <code>Inline</code> <strong>conditionally routes</strong> to the right expert — the pipeline adapts to the input. No <code>if/else</code> in Python, just a declarative expression.</p>
 </div>
+<hr />
+<h2 id="acknowledgements">Acknowledgements</h2>
+<p>msgFlux is built around a select set of exceptional libraries that make the whole thing possible:</p>
+<ul>
+<li><strong><a href="https://jcristharif.com/msgspec/">msgspec</a></strong> — ultra-fast serialization and validation that underpins all data contracts in msgFlux</li>
+<li><strong><a href="https://jinja.palletsprojects.com/">Jinja2</a></strong> — the templating engine powering prompt composition, vars injection, and pipeline expressions</li>
+<li><strong><a href="https://tenacity.readthedocs.io/">Tenacity</a></strong> — reliable retry logic with exponential backoff for resilient model calls</li>
+<li><strong><a href="https://opentelemetry.io/">OpenTelemetry</a></strong> — the observability standard behind msgFlux's built-in tracing and telemetry</li>
+</ul>
+<p>We are grateful to the authors and maintainers of these projects.</p>
 
 
 

@@ -1417,31 +1417,40 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#quick-start" class="md-nav__link">
+  <a href="#overview" class="md-nav__link">
     <span class="md-ellipsis">
-      Quick Start
+      ✦₊⁺ Overview
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#default-fields" class="md-nav__link">
+  <a href="#1-quick-start" class="md-nav__link">
     <span class="md-ellipsis">
-      Default Fields
+      1. Quick Start
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#with-nnagent" class="md-nav__link">
+  <a href="#2-default-fields" class="md-nav__link">
     <span class="md-ellipsis">
-      With nn.Agent
+      2. Default Fields
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="With nn.Agent">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-with-nnagent" class="md-nav__link">
+    <span class="md-ellipsis">
+      3. With nn.Agent
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. With nn.Agent">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -1468,13 +1477,13 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#in-workflows" class="md-nav__link">
+  <a href="#4-in-workflows" class="md-nav__link">
     <span class="md-ellipsis">
-      In Workflows
+      4. In Workflows
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="In Workflows">
+    <nav class="md-nav" aria-label="4. In Workflows">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -1492,18 +1501,18 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#multimodal-data" class="md-nav__link">
+  <a href="#5-multimodal-data" class="md-nav__link">
     <span class="md-ellipsis">
-      Multimodal Data
+      5. Multimodal Data
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#complete-example" class="md-nav__link">
+  <a href="#6-complete-example" class="md-nav__link">
     <span class="md-ellipsis">
-      Complete Example
+      6. Complete Example
     </span>
   </a>
   
@@ -2031,7 +2040,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../mediamaker.md" class="md-nav__link">
+      <a href="../mediamaker/" class="md-nav__link">
         
   
   
@@ -3451,31 +3460,40 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#quick-start" class="md-nav__link">
+  <a href="#overview" class="md-nav__link">
     <span class="md-ellipsis">
-      Quick Start
+      ✦₊⁺ Overview
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#default-fields" class="md-nav__link">
+  <a href="#1-quick-start" class="md-nav__link">
     <span class="md-ellipsis">
-      Default Fields
+      1. Quick Start
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#with-nnagent" class="md-nav__link">
+  <a href="#2-default-fields" class="md-nav__link">
     <span class="md-ellipsis">
-      With nn.Agent
+      2. Default Fields
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="With nn.Agent">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-with-nnagent" class="md-nav__link">
+    <span class="md-ellipsis">
+      3. With nn.Agent
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. With nn.Agent">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -3502,13 +3520,13 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#in-workflows" class="md-nav__link">
+  <a href="#4-in-workflows" class="md-nav__link">
     <span class="md-ellipsis">
-      In Workflows
+      4. In Workflows
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="In Workflows">
+    <nav class="md-nav" aria-label="4. In Workflows">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -3526,18 +3544,18 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#multimodal-data" class="md-nav__link">
+  <a href="#5-multimodal-data" class="md-nav__link">
     <span class="md-ellipsis">
-      Multimodal Data
+      5. Multimodal Data
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#complete-example" class="md-nav__link">
+  <a href="#6-complete-example" class="md-nav__link">
     <span class="md-ellipsis">
-      Complete Example
+      6. Complete Example
     </span>
   </a>
   
@@ -3584,11 +3602,13 @@
 </style>
 <div class="copy-markdown-container" data-markdown="# Message
 
+## ✦₊⁺ Overview
+
 `Message` is a structured container for **data flow between modules**. It extends [`dotdict`](../dotdict.md) with default fields tailored for AI workflows.
 
 For general `dotdict` features — dot access, nested paths, `get()`/`set()`, serialization, immutability, and hidden keys — see the [`dotdict` docs](../dotdict.md).
 
-## Quick Start
+## 1. **Quick Start**
 
 ```python
 from msgflux import Message
@@ -3604,7 +3624,7 @@ print(msg.context.data)  # {&quot;key&quot;: &quot;value&quot;}
 
 ---
 
-## Default Fields
+## 2. **Default Fields**
 
 `Message` pre-defines a set of fields that modules and agents expect:
 
@@ -3622,7 +3642,7 @@ print(msg.context.data)  # {&quot;key&quot;: &quot;value&quot;}
 
 ---
 
-## With nn.Agent
+## 3. **With nn.Agent**
 
 ### message_fields
 
@@ -3673,32 +3693,9 @@ msg = agent(Message(content=&quot;Hi&quot;))
 print(msg.outputs.result)
 ```
 
-**Returning a dotdict** — add a trailing colon (`:`). The module creates a new
-`dotdict` whose structure mirrors the path, without needing a `Message` at all:
-
-```python
-# Returns dotdict({&quot;outputs&quot;: {&quot;result&quot;: &lt;response&gt;}})
-agent = nn.Agent(model, response_mode=&quot;outputs.result:&quot;)
-result = agent(&quot;What is Python?&quot;)
-print(result.get(&quot;outputs.result&quot;))
-
-# Simple key
-agent = nn.Agent(model, response_mode=&quot;answer:&quot;)
-result = agent(&quot;What is Python?&quot;)
-print(result.answer)
-```
-
-**Writing to extraction** (for signatures):
-
-```python
-agent = nn.Agent(model, signature=&quot;...&quot;, response_mode=&quot;extraction&quot;)
-agent(msg)
-print(msg.extraction)  # {&quot;field1&quot;: value1, &quot;field2&quot;: value2}
-```
-
 ---
 
-## In Workflows
+## 4. **In Workflows**
 
 ### With inline DSL
 
@@ -3724,7 +3721,7 @@ print(msg.outputs.analysis)  # &quot;Analyzed: HELLO WORLD&quot;
 
 ---
 
-## Multimodal Data
+## 5. **Multimodal Data**
 
 Store multimodal inputs directly on the message:
 
@@ -3744,7 +3741,7 @@ msg.set(&quot;user_file&quot;, &quot;/path/to/document.pdf&quot;)
 
 ---
 
-## Complete Example
+## 6. **Complete Example**
 
 ```python
 import msgflux as mf
@@ -3863,9 +3860,10 @@ print(msg.outputs.analysis) # Analysis result
     window.copyMarkdownToClipboard = copyMarkdownToClipboard;
 }());
 </script>
+<h2 id="overview">✦₊⁺ Overview</h2>
 <p><code>Message</code> is a structured container for <strong>data flow between modules</strong>. It extends <a href="../../dotdict/"><code>dotdict</code></a> with default fields tailored for AI workflows.</p>
 <p>For general <code>dotdict</code> features — dot access, nested paths, <code>get()</code>/<code>set()</code>, serialization, immutability, and hidden keys — see the <a href="../../dotdict/"><code>dotdict</code> docs</a>.</p>
-<h2 id="quick-start">Quick Start</h2>
+<h2 id="1-quick-start">1. <strong>Quick Start</strong></h2>
 <div class="language-python highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="kn">import</span> <span class="n">Message</span>
 </span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>
 </span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="n">msg</span> <span class="o">=</span> <span class="n">Message</span><span class="p">(</span>
@@ -3877,7 +3875,7 @@ print(msg.outputs.analysis) # Analysis result
 </span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="nb">print</span><span class="p">(</span><span class="n">msg</span><span class="o">.</span><span class="n">context</span><span class="o">.</span><span class="n">data</span><span class="p">)</span>  <span class="c1"># {&quot;key&quot;: &quot;value&quot;}</span>
 </span></code></pre></div>
 <hr />
-<h2 id="default-fields">Default Fields</h2>
+<h2 id="2-default-fields">2. <strong>Default Fields</strong></h2>
 <p><code>Message</code> pre-defines a set of fields that modules and agents expect:</p>
 <table>
 <thead>
@@ -3926,7 +3924,7 @@ print(msg.outputs.analysis) # Analysis result
 </tbody>
 </table>
 <hr />
-<h2 id="with-nnagent">With nn.Agent</h2>
+<h2 id="3-with-nnagent">3. <strong>With nn.Agent</strong></h2>
 <h3 id="message_fields">message_fields</h3>
 <p><code>message_fields</code> controls which parts of the <code>Message</code> an agent reads as inputs:</p>
 <div class="language-python highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">nn</span>
@@ -3980,108 +3978,91 @@ module writes to that field of the <code>Message</code> object and returns it:</
 </span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="n">msg</span> <span class="o">=</span> <span class="n">agent</span><span class="p">(</span><span class="n">Message</span><span class="p">(</span><span class="n">content</span><span class="o">=</span><span class="s2">&quot;Hi&quot;</span><span class="p">))</span>
 </span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="nb">print</span><span class="p">(</span><span class="n">msg</span><span class="o">.</span><span class="n">outputs</span><span class="o">.</span><span class="n">result</span><span class="p">)</span>
 </span></code></pre></div>
-<p><strong>Returning a dotdict</strong> — add a trailing colon (<code>:</code>). The module creates a new
-<code>dotdict</code> whose structure mirrors the path, without needing a <code>Message</code> at all:</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="c1"># Returns dotdict({&quot;outputs&quot;: {&quot;result&quot;: &lt;response&gt;}})</span>
-</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="n">agent</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">response_mode</span><span class="o">=</span><span class="s2">&quot;outputs.result:&quot;</span><span class="p">)</span>
-</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="n">result</span> <span class="o">=</span> <span class="n">agent</span><span class="p">(</span><span class="s2">&quot;What is Python?&quot;</span><span class="p">)</span>
-</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;outputs.result&quot;</span><span class="p">))</span>
-</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>
-</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="c1"># Simple key</span>
-</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="n">agent</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">response_mode</span><span class="o">=</span><span class="s2">&quot;answer:&quot;</span><span class="p">)</span>
-</span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="n">result</span> <span class="o">=</span> <span class="n">agent</span><span class="p">(</span><span class="s2">&quot;What is Python?&quot;</span><span class="p">)</span>
-</span><span id="__span-3-9"><a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">answer</span><span class="p">)</span>
-</span></code></pre></div>
-<p><strong>Writing to extraction</strong> (for signatures):</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">agent</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">signature</span><span class="o">=</span><span class="s2">&quot;...&quot;</span><span class="p">,</span> <span class="n">response_mode</span><span class="o">=</span><span class="s2">&quot;extraction&quot;</span><span class="p">)</span>
-</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="n">agent</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
-</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="nb">print</span><span class="p">(</span><span class="n">msg</span><span class="o">.</span><span class="n">extraction</span><span class="p">)</span>  <span class="c1"># {&quot;field1&quot;: value1, &quot;field2&quot;: value2}</span>
-</span></code></pre></div>
 <hr />
-<h2 id="in-workflows">In Workflows</h2>
+<h2 id="4-in-workflows">4. <strong>In Workflows</strong></h2>
 <h3 id="with-inline-dsl">With inline DSL</h3>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn.functional</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">F</span>
-</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>
-</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>
-</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="k">def</span><span class="w"> </span><span class="nf">preprocess</span><span class="p">(</span><span class="n">msg</span><span class="p">):</span>
-</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>    <span class="n">msg</span><span class="o">.</span><span class="n">preprocessed_content</span> <span class="o">=</span> <span class="n">msg</span><span class="o">.</span><span class="n">content</span><span class="o">.</span><span class="n">upper</span><span class="p">()</span>
-</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>    <span class="k">return</span> <span class="n">msg</span>
-</span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>
-</span><span id="__span-5-8"><a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a><span class="k">def</span><span class="w"> </span><span class="nf">analyze</span><span class="p">(</span><span class="n">msg</span><span class="p">):</span>
-</span><span id="__span-5-9"><a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a>    <span class="n">msg</span><span class="o">.</span><span class="n">outputs</span><span class="o">.</span><span class="n">analysis</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;Analyzed: </span><span class="si">{</span><span class="n">msg</span><span class="o">.</span><span class="n">preprocessed_content</span><span class="si">}</span><span class="s2">&quot;</span>
-</span><span id="__span-5-10"><a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a>    <span class="k">return</span> <span class="n">msg</span>
-</span><span id="__span-5-11"><a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a>
-</span><span id="__span-5-12"><a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a><span class="n">modules</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;preprocess&quot;</span><span class="p">:</span> <span class="n">preprocess</span><span class="p">,</span> <span class="s2">&quot;analyze&quot;</span><span class="p">:</span> <span class="n">analyze</span><span class="p">}</span>
-</span><span id="__span-5-13"><a id="__codelineno-5-13" name="__codelineno-5-13" href="#__codelineno-5-13"></a>
-</span><span id="__span-5-14"><a id="__codelineno-5-14" name="__codelineno-5-14" href="#__codelineno-5-14"></a><span class="n">msg</span> <span class="o">=</span> <span class="n">Message</span><span class="p">(</span><span class="n">content</span><span class="o">=</span><span class="s2">&quot;hello world&quot;</span><span class="p">)</span>
-</span><span id="__span-5-15"><a id="__codelineno-5-15" name="__codelineno-5-15" href="#__codelineno-5-15"></a><span class="n">F</span><span class="o">.</span><span class="n">inline</span><span class="p">(</span><span class="s2">&quot;preprocess -&gt; analyze&quot;</span><span class="p">,</span> <span class="n">modules</span><span class="p">,</span> <span class="n">msg</span><span class="p">)</span>
-</span><span id="__span-5-16"><a id="__codelineno-5-16" name="__codelineno-5-16" href="#__codelineno-5-16"></a>
-</span><span id="__span-5-17"><a id="__codelineno-5-17" name="__codelineno-5-17" href="#__codelineno-5-17"></a><span class="nb">print</span><span class="p">(</span><span class="n">msg</span><span class="o">.</span><span class="n">outputs</span><span class="o">.</span><span class="n">analysis</span><span class="p">)</span>  <span class="c1"># &quot;Analyzed: HELLO WORLD&quot;</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn.functional</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">F</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="k">def</span><span class="w"> </span><span class="nf">preprocess</span><span class="p">(</span><span class="n">msg</span><span class="p">):</span>
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>    <span class="n">msg</span><span class="o">.</span><span class="n">preprocessed_content</span> <span class="o">=</span> <span class="n">msg</span><span class="o">.</span><span class="n">content</span><span class="o">.</span><span class="n">upper</span><span class="p">()</span>
+</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>    <span class="k">return</span> <span class="n">msg</span>
+</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>
+</span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="k">def</span><span class="w"> </span><span class="nf">analyze</span><span class="p">(</span><span class="n">msg</span><span class="p">):</span>
+</span><span id="__span-3-9"><a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>    <span class="n">msg</span><span class="o">.</span><span class="n">outputs</span><span class="o">.</span><span class="n">analysis</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;Analyzed: </span><span class="si">{</span><span class="n">msg</span><span class="o">.</span><span class="n">preprocessed_content</span><span class="si">}</span><span class="s2">&quot;</span>
+</span><span id="__span-3-10"><a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a>    <span class="k">return</span> <span class="n">msg</span>
+</span><span id="__span-3-11"><a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a>
+</span><span id="__span-3-12"><a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a><span class="n">modules</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;preprocess&quot;</span><span class="p">:</span> <span class="n">preprocess</span><span class="p">,</span> <span class="s2">&quot;analyze&quot;</span><span class="p">:</span> <span class="n">analyze</span><span class="p">}</span>
+</span><span id="__span-3-13"><a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a>
+</span><span id="__span-3-14"><a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a><span class="n">msg</span> <span class="o">=</span> <span class="n">Message</span><span class="p">(</span><span class="n">content</span><span class="o">=</span><span class="s2">&quot;hello world&quot;</span><span class="p">)</span>
+</span><span id="__span-3-15"><a id="__codelineno-3-15" name="__codelineno-3-15" href="#__codelineno-3-15"></a><span class="n">F</span><span class="o">.</span><span class="n">inline</span><span class="p">(</span><span class="s2">&quot;preprocess -&gt; analyze&quot;</span><span class="p">,</span> <span class="n">modules</span><span class="p">,</span> <span class="n">msg</span><span class="p">)</span>
+</span><span id="__span-3-16"><a id="__codelineno-3-16" name="__codelineno-3-16" href="#__codelineno-3-16"></a>
+</span><span id="__span-3-17"><a id="__codelineno-3-17" name="__codelineno-3-17" href="#__codelineno-3-17"></a><span class="nb">print</span><span class="p">(</span><span class="n">msg</span><span class="o">.</span><span class="n">outputs</span><span class="o">.</span><span class="n">analysis</span><span class="p">)</span>  <span class="c1"># &quot;Analyzed: HELLO WORLD&quot;</span>
 </span></code></pre></div>
 <hr />
-<h2 id="multimodal-data">Multimodal Data</h2>
+<h2 id="5-multimodal-data">5. <strong>Multimodal Data</strong></h2>
 <p>Store multimodal inputs directly on the message:</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="n">msg</span> <span class="o">=</span> <span class="n">Message</span><span class="p">()</span>
-</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>
-</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="c1"># Audio</span>
-</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="n">msg</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">&quot;user_audio&quot;</span><span class="p">,</span> <span class="s2">&quot;/path/to/audio.mp3&quot;</span><span class="p">)</span>
-</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>
-</span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="c1"># Images</span>
-</span><span id="__span-6-7"><a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="n">msg</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">&quot;user_image&quot;</span><span class="p">,</span> <span class="s2">&quot;https://example.com/image.jpg&quot;</span><span class="p">)</span>
-</span><span id="__span-6-8"><a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="n">msg</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">&quot;images.product&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;img1.jpg&quot;</span><span class="p">,</span> <span class="s2">&quot;img2.jpg&quot;</span><span class="p">])</span>
-</span><span id="__span-6-9"><a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a>
-</span><span id="__span-6-10"><a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a><span class="c1"># Files</span>
-</span><span id="__span-6-11"><a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a><span class="n">msg</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">&quot;user_file&quot;</span><span class="p">,</span> <span class="s2">&quot;/path/to/document.pdf&quot;</span><span class="p">)</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">msg</span> <span class="o">=</span> <span class="n">Message</span><span class="p">()</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="c1"># Audio</span>
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="n">msg</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">&quot;user_audio&quot;</span><span class="p">,</span> <span class="s2">&quot;/path/to/audio.mp3&quot;</span><span class="p">)</span>
+</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>
+</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="c1"># Images</span>
+</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="n">msg</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">&quot;user_image&quot;</span><span class="p">,</span> <span class="s2">&quot;https://example.com/image.jpg&quot;</span><span class="p">)</span>
+</span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="n">msg</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">&quot;images.product&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;img1.jpg&quot;</span><span class="p">,</span> <span class="s2">&quot;img2.jpg&quot;</span><span class="p">])</span>
+</span><span id="__span-4-9"><a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>
+</span><span id="__span-4-10"><a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a><span class="c1"># Files</span>
+</span><span id="__span-4-11"><a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a><span class="n">msg</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">&quot;user_file&quot;</span><span class="p">,</span> <span class="s2">&quot;/path/to/document.pdf&quot;</span><span class="p">)</span>
 </span></code></pre></div>
 <hr />
-<h2 id="complete-example">Complete Example</h2>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
-</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">nn</span>
-</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn.functional</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">F</span>
-</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="kn">import</span> <span class="n">Message</span>
-</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>
-</span><span id="__span-7-6"><a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>
-</span><span id="__span-7-7"><a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="k">class</span><span class="w"> </span><span class="nc">Speech2Text</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Transcriber</span><span class="p">):</span>
-</span><span id="__span-7-8"><a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>    <span class="n">model</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">speech_to_text</span><span class="p">(</span><span class="s2">&quot;openai/whisper-1&quot;</span><span class="p">)</span>
-</span><span id="__span-7-9"><a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a>    <span class="n">message_fields</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;task_multimodal_inputs&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;audio&quot;</span><span class="p">:</span> <span class="s2">&quot;user_audio&quot;</span><span class="p">}}</span>
-</span><span id="__span-7-10"><a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a>    <span class="n">response_mode</span> <span class="o">=</span> <span class="s2">&quot;content&quot;</span>
-</span><span id="__span-7-11"><a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a>
-</span><span id="__span-7-12"><a id="__codelineno-7-12" name="__codelineno-7-12" href="#__codelineno-7-12"></a>
-</span><span id="__span-7-13"><a id="__codelineno-7-13" name="__codelineno-7-13" href="#__codelineno-7-13"></a><span class="k">class</span><span class="w"> </span><span class="nc">Analyzer</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">):</span>
-</span><span id="__span-7-14"><a id="__codelineno-7-14" name="__codelineno-7-14" href="#__codelineno-7-14"></a>    <span class="n">model</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">chat_completion</span><span class="p">(</span><span class="s2">&quot;openai/gpt-4.1-mini&quot;</span><span class="p">)</span>
-</span><span id="__span-7-15"><a id="__codelineno-7-15" name="__codelineno-7-15" href="#__codelineno-7-15"></a>    <span class="n">message_fields</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;task_inputs&quot;</span><span class="p">:</span> <span class="s2">&quot;content&quot;</span><span class="p">}</span>
-</span><span id="__span-7-16"><a id="__codelineno-7-16" name="__codelineno-7-16" href="#__codelineno-7-16"></a>    <span class="n">response_mode</span> <span class="o">=</span> <span class="s2">&quot;outputs.analysis&quot;</span>
-</span><span id="__span-7-17"><a id="__codelineno-7-17" name="__codelineno-7-17" href="#__codelineno-7-17"></a>
-</span><span id="__span-7-18"><a id="__codelineno-7-18" name="__codelineno-7-18" href="#__codelineno-7-18"></a>
-</span><span id="__span-7-19"><a id="__codelineno-7-19" name="__codelineno-7-19" href="#__codelineno-7-19"></a><span class="k">class</span><span class="w"> </span><span class="nc">Pipeline</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
-</span><span id="__span-7-20"><a id="__codelineno-7-20" name="__codelineno-7-20" href="#__codelineno-7-20"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-</span><span id="__span-7-21"><a id="__codelineno-7-21" name="__codelineno-7-21" href="#__codelineno-7-21"></a>        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
-</span><span id="__span-7-22"><a id="__codelineno-7-22" name="__codelineno-7-22" href="#__codelineno-7-22"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">transcriber</span> <span class="o">=</span> <span class="n">Speech2Text</span><span class="p">()</span>
-</span><span id="__span-7-23"><a id="__codelineno-7-23" name="__codelineno-7-23" href="#__codelineno-7-23"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">analyzer</span> <span class="o">=</span> <span class="n">Analyzer</span><span class="p">()</span>
-</span><span id="__span-7-24"><a id="__codelineno-7-24" name="__codelineno-7-24" href="#__codelineno-7-24"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">components</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">ModuleDict</span><span class="p">({</span>
-</span><span id="__span-7-25"><a id="__codelineno-7-25" name="__codelineno-7-25" href="#__codelineno-7-25"></a>            <span class="s2">&quot;transcriber&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">transcriber</span><span class="p">,</span>
-</span><span id="__span-7-26"><a id="__codelineno-7-26" name="__codelineno-7-26" href="#__codelineno-7-26"></a>            <span class="s2">&quot;analyzer&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">analyzer</span>
-</span><span id="__span-7-27"><a id="__codelineno-7-27" name="__codelineno-7-27" href="#__codelineno-7-27"></a>        <span class="p">})</span>
-</span><span id="__span-7-28"><a id="__codelineno-7-28" name="__codelineno-7-28" href="#__codelineno-7-28"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">register_buffer</span><span class="p">(</span><span class="s2">&quot;flux&quot;</span><span class="p">,</span> <span class="s2">&quot;{user_audio is not None? transcriber} -&gt; analyzer&quot;</span><span class="p">)</span>
-</span><span id="__span-7-29"><a id="__codelineno-7-29" name="__codelineno-7-29" href="#__codelineno-7-29"></a>
-</span><span id="__span-7-30"><a id="__codelineno-7-30" name="__codelineno-7-30" href="#__codelineno-7-30"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">msg</span><span class="p">):</span>
-</span><span id="__span-7-31"><a id="__codelineno-7-31" name="__codelineno-7-31" href="#__codelineno-7-31"></a>        <span class="k">return</span> <span class="n">F</span><span class="o">.</span><span class="n">inline</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">flux</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">components</span><span class="p">,</span> <span class="n">msg</span><span class="p">)</span>
-</span><span id="__span-7-32"><a id="__codelineno-7-32" name="__codelineno-7-32" href="#__codelineno-7-32"></a>
-</span><span id="__span-7-33"><a id="__codelineno-7-33" name="__codelineno-7-33" href="#__codelineno-7-33"></a>
-</span><span id="__span-7-34"><a id="__codelineno-7-34" name="__codelineno-7-34" href="#__codelineno-7-34"></a><span class="c1"># Usage</span>
-</span><span id="__span-7-35"><a id="__codelineno-7-35" name="__codelineno-7-35" href="#__codelineno-7-35"></a><span class="n">pipeline</span> <span class="o">=</span> <span class="n">Pipeline</span><span class="p">()</span>
-</span><span id="__span-7-36"><a id="__codelineno-7-36" name="__codelineno-7-36" href="#__codelineno-7-36"></a>
-</span><span id="__span-7-37"><a id="__codelineno-7-37" name="__codelineno-7-37" href="#__codelineno-7-37"></a><span class="c1"># Text input</span>
-</span><span id="__span-7-38"><a id="__codelineno-7-38" name="__codelineno-7-38" href="#__codelineno-7-38"></a><span class="n">msg</span> <span class="o">=</span> <span class="n">Message</span><span class="p">(</span><span class="n">content</span><span class="o">=</span><span class="s2">&quot;Analyze this text for sentiment.&quot;</span><span class="p">)</span>
-</span><span id="__span-7-39"><a id="__codelineno-7-39" name="__codelineno-7-39" href="#__codelineno-7-39"></a><span class="n">pipeline</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
-</span><span id="__span-7-40"><a id="__codelineno-7-40" name="__codelineno-7-40" href="#__codelineno-7-40"></a><span class="nb">print</span><span class="p">(</span><span class="n">msg</span><span class="o">.</span><span class="n">outputs</span><span class="o">.</span><span class="n">analysis</span><span class="p">)</span>
-</span><span id="__span-7-41"><a id="__codelineno-7-41" name="__codelineno-7-41" href="#__codelineno-7-41"></a>
-</span><span id="__span-7-42"><a id="__codelineno-7-42" name="__codelineno-7-42" href="#__codelineno-7-42"></a><span class="c1"># Audio input</span>
-</span><span id="__span-7-43"><a id="__codelineno-7-43" name="__codelineno-7-43" href="#__codelineno-7-43"></a><span class="n">msg</span> <span class="o">=</span> <span class="n">Message</span><span class="p">()</span>
-</span><span id="__span-7-44"><a id="__codelineno-7-44" name="__codelineno-7-44" href="#__codelineno-7-44"></a><span class="n">msg</span><span class="o">.</span><span class="n">user_audio</span> <span class="o">=</span> <span class="s2">&quot;/path/to/audio.mp3&quot;</span>
-</span><span id="__span-7-45"><a id="__codelineno-7-45" name="__codelineno-7-45" href="#__codelineno-7-45"></a><span class="n">pipeline</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
-</span><span id="__span-7-46"><a id="__codelineno-7-46" name="__codelineno-7-46" href="#__codelineno-7-46"></a><span class="nb">print</span><span class="p">(</span><span class="n">msg</span><span class="o">.</span><span class="n">content</span><span class="p">)</span>          <span class="c1"># Transcription</span>
-</span><span id="__span-7-47"><a id="__codelineno-7-47" name="__codelineno-7-47" href="#__codelineno-7-47"></a><span class="nb">print</span><span class="p">(</span><span class="n">msg</span><span class="o">.</span><span class="n">outputs</span><span class="o">.</span><span class="n">analysis</span><span class="p">)</span> <span class="c1"># Analysis result</span>
+<h2 id="6-complete-example">6. <strong>Complete Example</strong></h2>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">nn</span>
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn.functional</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">F</span>
+</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="kn">import</span> <span class="n">Message</span>
+</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>
+</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>
+</span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="k">class</span><span class="w"> </span><span class="nc">Speech2Text</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Transcriber</span><span class="p">):</span>
+</span><span id="__span-5-8"><a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>    <span class="n">model</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">speech_to_text</span><span class="p">(</span><span class="s2">&quot;openai/whisper-1&quot;</span><span class="p">)</span>
+</span><span id="__span-5-9"><a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a>    <span class="n">message_fields</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;task_multimodal_inputs&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;audio&quot;</span><span class="p">:</span> <span class="s2">&quot;user_audio&quot;</span><span class="p">}}</span>
+</span><span id="__span-5-10"><a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a>    <span class="n">response_mode</span> <span class="o">=</span> <span class="s2">&quot;content&quot;</span>
+</span><span id="__span-5-11"><a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a>
+</span><span id="__span-5-12"><a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a>
+</span><span id="__span-5-13"><a id="__codelineno-5-13" name="__codelineno-5-13" href="#__codelineno-5-13"></a><span class="k">class</span><span class="w"> </span><span class="nc">Analyzer</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">):</span>
+</span><span id="__span-5-14"><a id="__codelineno-5-14" name="__codelineno-5-14" href="#__codelineno-5-14"></a>    <span class="n">model</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">chat_completion</span><span class="p">(</span><span class="s2">&quot;openai/gpt-4.1-mini&quot;</span><span class="p">)</span>
+</span><span id="__span-5-15"><a id="__codelineno-5-15" name="__codelineno-5-15" href="#__codelineno-5-15"></a>    <span class="n">message_fields</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;task_inputs&quot;</span><span class="p">:</span> <span class="s2">&quot;content&quot;</span><span class="p">}</span>
+</span><span id="__span-5-16"><a id="__codelineno-5-16" name="__codelineno-5-16" href="#__codelineno-5-16"></a>    <span class="n">response_mode</span> <span class="o">=</span> <span class="s2">&quot;outputs.analysis&quot;</span>
+</span><span id="__span-5-17"><a id="__codelineno-5-17" name="__codelineno-5-17" href="#__codelineno-5-17"></a>
+</span><span id="__span-5-18"><a id="__codelineno-5-18" name="__codelineno-5-18" href="#__codelineno-5-18"></a>
+</span><span id="__span-5-19"><a id="__codelineno-5-19" name="__codelineno-5-19" href="#__codelineno-5-19"></a><span class="k">class</span><span class="w"> </span><span class="nc">Pipeline</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+</span><span id="__span-5-20"><a id="__codelineno-5-20" name="__codelineno-5-20" href="#__codelineno-5-20"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+</span><span id="__span-5-21"><a id="__codelineno-5-21" name="__codelineno-5-21" href="#__codelineno-5-21"></a>        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+</span><span id="__span-5-22"><a id="__codelineno-5-22" name="__codelineno-5-22" href="#__codelineno-5-22"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">transcriber</span> <span class="o">=</span> <span class="n">Speech2Text</span><span class="p">()</span>
+</span><span id="__span-5-23"><a id="__codelineno-5-23" name="__codelineno-5-23" href="#__codelineno-5-23"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">analyzer</span> <span class="o">=</span> <span class="n">Analyzer</span><span class="p">()</span>
+</span><span id="__span-5-24"><a id="__codelineno-5-24" name="__codelineno-5-24" href="#__codelineno-5-24"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">components</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">ModuleDict</span><span class="p">({</span>
+</span><span id="__span-5-25"><a id="__codelineno-5-25" name="__codelineno-5-25" href="#__codelineno-5-25"></a>            <span class="s2">&quot;transcriber&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">transcriber</span><span class="p">,</span>
+</span><span id="__span-5-26"><a id="__codelineno-5-26" name="__codelineno-5-26" href="#__codelineno-5-26"></a>            <span class="s2">&quot;analyzer&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">analyzer</span>
+</span><span id="__span-5-27"><a id="__codelineno-5-27" name="__codelineno-5-27" href="#__codelineno-5-27"></a>        <span class="p">})</span>
+</span><span id="__span-5-28"><a id="__codelineno-5-28" name="__codelineno-5-28" href="#__codelineno-5-28"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">register_buffer</span><span class="p">(</span><span class="s2">&quot;flux&quot;</span><span class="p">,</span> <span class="s2">&quot;{user_audio is not None? transcriber} -&gt; analyzer&quot;</span><span class="p">)</span>
+</span><span id="__span-5-29"><a id="__codelineno-5-29" name="__codelineno-5-29" href="#__codelineno-5-29"></a>
+</span><span id="__span-5-30"><a id="__codelineno-5-30" name="__codelineno-5-30" href="#__codelineno-5-30"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">msg</span><span class="p">):</span>
+</span><span id="__span-5-31"><a id="__codelineno-5-31" name="__codelineno-5-31" href="#__codelineno-5-31"></a>        <span class="k">return</span> <span class="n">F</span><span class="o">.</span><span class="n">inline</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">flux</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">components</span><span class="p">,</span> <span class="n">msg</span><span class="p">)</span>
+</span><span id="__span-5-32"><a id="__codelineno-5-32" name="__codelineno-5-32" href="#__codelineno-5-32"></a>
+</span><span id="__span-5-33"><a id="__codelineno-5-33" name="__codelineno-5-33" href="#__codelineno-5-33"></a>
+</span><span id="__span-5-34"><a id="__codelineno-5-34" name="__codelineno-5-34" href="#__codelineno-5-34"></a><span class="c1"># Usage</span>
+</span><span id="__span-5-35"><a id="__codelineno-5-35" name="__codelineno-5-35" href="#__codelineno-5-35"></a><span class="n">pipeline</span> <span class="o">=</span> <span class="n">Pipeline</span><span class="p">()</span>
+</span><span id="__span-5-36"><a id="__codelineno-5-36" name="__codelineno-5-36" href="#__codelineno-5-36"></a>
+</span><span id="__span-5-37"><a id="__codelineno-5-37" name="__codelineno-5-37" href="#__codelineno-5-37"></a><span class="c1"># Text input</span>
+</span><span id="__span-5-38"><a id="__codelineno-5-38" name="__codelineno-5-38" href="#__codelineno-5-38"></a><span class="n">msg</span> <span class="o">=</span> <span class="n">Message</span><span class="p">(</span><span class="n">content</span><span class="o">=</span><span class="s2">&quot;Analyze this text for sentiment.&quot;</span><span class="p">)</span>
+</span><span id="__span-5-39"><a id="__codelineno-5-39" name="__codelineno-5-39" href="#__codelineno-5-39"></a><span class="n">pipeline</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+</span><span id="__span-5-40"><a id="__codelineno-5-40" name="__codelineno-5-40" href="#__codelineno-5-40"></a><span class="nb">print</span><span class="p">(</span><span class="n">msg</span><span class="o">.</span><span class="n">outputs</span><span class="o">.</span><span class="n">analysis</span><span class="p">)</span>
+</span><span id="__span-5-41"><a id="__codelineno-5-41" name="__codelineno-5-41" href="#__codelineno-5-41"></a>
+</span><span id="__span-5-42"><a id="__codelineno-5-42" name="__codelineno-5-42" href="#__codelineno-5-42"></a><span class="c1"># Audio input</span>
+</span><span id="__span-5-43"><a id="__codelineno-5-43" name="__codelineno-5-43" href="#__codelineno-5-43"></a><span class="n">msg</span> <span class="o">=</span> <span class="n">Message</span><span class="p">()</span>
+</span><span id="__span-5-44"><a id="__codelineno-5-44" name="__codelineno-5-44" href="#__codelineno-5-44"></a><span class="n">msg</span><span class="o">.</span><span class="n">user_audio</span> <span class="o">=</span> <span class="s2">&quot;/path/to/audio.mp3&quot;</span>
+</span><span id="__span-5-45"><a id="__codelineno-5-45" name="__codelineno-5-45" href="#__codelineno-5-45"></a><span class="n">pipeline</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+</span><span id="__span-5-46"><a id="__codelineno-5-46" name="__codelineno-5-46" href="#__codelineno-5-46"></a><span class="nb">print</span><span class="p">(</span><span class="n">msg</span><span class="o">.</span><span class="n">content</span><span class="p">)</span>          <span class="c1"># Transcription</span>
+</span><span id="__span-5-47"><a id="__codelineno-5-47" name="__codelineno-5-47" href="#__codelineno-5-47"></a><span class="nb">print</span><span class="p">(</span><span class="n">msg</span><span class="o">.</span><span class="n">outputs</span><span class="o">.</span><span class="n">analysis</span><span class="p">)</span> <span class="c1"># Analysis result</span>
 </span></code></pre></div>
 
 

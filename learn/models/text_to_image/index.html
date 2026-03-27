@@ -949,18 +949,18 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#url-response-default" class="md-nav__link">
+  <a href="#base64-default-for-gpt-image-1" class="md-nav__link">
     <span class="md-ellipsis">
-      URL Response (Default)
+      Base64 (default for gpt-image-1)
     </span>
   </a>
   
 </li>
         
           <li class="md-nav__item">
-  <a href="#base64-response" class="md-nav__link">
+  <a href="#url-response-legacy-models-only" class="md-nav__link">
     <span class="md-ellipsis">
-      Base64 Response
+      URL Response (legacy models only)
     </span>
   </a>
   
@@ -2184,7 +2184,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../nn/mediamaker.md" class="md-nav__link">
+      <a href="../../nn/mediamaker/" class="md-nav__link">
         
   
   
@@ -3731,18 +3731,18 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#url-response-default" class="md-nav__link">
+  <a href="#base64-default-for-gpt-image-1" class="md-nav__link">
     <span class="md-ellipsis">
-      URL Response (Default)
+      Base64 (default for gpt-image-1)
     </span>
   </a>
   
 </li>
         
           <li class="md-nav__item">
-  <a href="#base64-response" class="md-nav__link">
+  <a href="#url-response-legacy-models-only" class="md-nav__link">
     <span class="md-ellipsis">
-      Base64 Response
+      URL Response (legacy models only)
     </span>
   </a>
   
@@ -3924,9 +3924,9 @@ Text-to-image models transform textual descriptions into visual content. They en
     # Generate image
     response = model(prompt=&quot;A serene lake at sunset with mountains&quot;)
 
-    # Get image URL
-    image_url = response.consume()
-    print(image_url)  # https://...
+    # Get image as base64 string
+    image_b64 = response.consume()
+    print(image_b64[:30])  # iVBORw0KGgoAAAANSUhEUg...
     ```
 
 ### With Custom Parameters
@@ -3945,7 +3945,7 @@ Text-to-image models transform textual descriptions into visual content. They en
         n=1                # Number of images
     )
 
-    image_url = response.consume()
+    image_b64 = response.consume()
     ```
 
 ## 2. **Supported Providers**
@@ -4032,32 +4032,10 @@ Text-to-image models transform textual descriptions into visual content. They en
 
 ## 5. **Response Formats**
 
-### URL Response (Default)
+!!! info &quot;gpt-image-1 always returns base64&quot;
+    `gpt-image-1` does not support the `response_format` parameter — it always returns a **base64 string**. The `response_format` parameter (`&quot;url&quot;` / `&quot;base64&quot;`) is only supported by legacy models (`dall-e-2`, `dall-e-3`).
 
-???+ example
-
-    ```python
-    import msgflux as mf
-
-    model = mf.Model.text_to_image(&quot;openai/gpt-image-1&quot;)
-
-    response = model(
-        prompt=&quot;A sunset over the ocean&quot;,
-        response_format=&quot;url&quot;  # Default
-    )
-
-    # Get URL
-    image_url = response.consume()
-    print(image_url)  # https://...
-
-    # Download image
-    import requests
-    img_data = requests.get(image_url).content
-    with open(&quot;image.png&quot;, &quot;wb&quot;) as f:
-        f.write(img_data)
-    ```
-
-### Base64 Response
+### Base64 (default for gpt-image-1)
 
 ???+ example
 
@@ -4067,15 +4045,31 @@ Text-to-image models transform textual descriptions into visual content. They en
 
     model = mf.Model.text_to_image(&quot;openai/gpt-image-1&quot;)
 
-    response = model(
-        prompt=&quot;A colorful abstract painting&quot;,
-        response_format=&quot;base64&quot;
-    )
+    response = model(prompt=&quot;A colorful abstract painting&quot;)
 
     # Decode and save
     img_data = base64.b64decode(response.consume())
     with open(&quot;image.png&quot;, &quot;wb&quot;) as f:
         f.write(img_data)
+    ```
+
+### URL Response (legacy models only)
+
+???+ example
+
+    ```python
+    import msgflux as mf
+
+    # response_format=&quot;url&quot; only works with dall-e-2 / dall-e-3
+    model = mf.Model.text_to_image(&quot;openai/dall-e-3&quot;)
+
+    response = model(
+        prompt=&quot;A sunset over the ocean&quot;,
+        response_format=&quot;url&quot;
+    )
+
+    image_url = response.consume()
+    print(image_url)  # https://...
     ```
 
 ## 6. **Multiple Images**
@@ -4095,12 +4089,12 @@ Generate multiple variations in a single call:
         size=&quot;1024x1024&quot;
     )
 
-    # Get all image URLs
+    # Get all images as base64 strings
     images = response.consume()
     print(f&quot;Generated {len(images)} images&quot;)
 
-    for i, url in enumerate(images):
-        print(f&quot;Image {i+1}: {url}&quot;)
+    for i, b64 in enumerate(images):
+        print(f&quot;Image {i+1}: {b64[:30]}...&quot;)
     ```
 
 ## 7. **Background Control**
@@ -4280,7 +4274,7 @@ Generate images concurrently with `F.map_gather`:
 
     try:
         response = model(prompt=&quot;A landscape&quot;)
-        image_url = response.consume()
+        image_b64 = response.consume()
     except ImportError:
         print(&quot;Provider not installed&quot;)
     except ValueError as e:
@@ -4389,9 +4383,9 @@ Generate images concurrently with `F.map_gather`:
 </span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="c1"># Generate image</span>
 </span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="n">response</span> <span class="o">=</span> <span class="n">model</span><span class="p">(</span><span class="n">prompt</span><span class="o">=</span><span class="s2">&quot;A serene lake at sunset with mountains&quot;</span><span class="p">)</span>
 </span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>
-</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="c1"># Get image URL</span>
-</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="n">image_url</span> <span class="o">=</span> <span class="n">response</span><span class="o">.</span><span class="n">consume</span><span class="p">()</span>
-</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="nb">print</span><span class="p">(</span><span class="n">image_url</span><span class="p">)</span>  <span class="c1"># https://...</span>
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="c1"># Get image as base64 string</span>
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="n">image_b64</span> <span class="o">=</span> <span class="n">response</span><span class="o">.</span><span class="n">consume</span><span class="p">()</span>
+</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="nb">print</span><span class="p">(</span><span class="n">image_b64</span><span class="p">[:</span><span class="mi">30</span><span class="p">])</span>  <span class="c1"># iVBORw0KGgoAAAANSUhEUg...</span>
 </span></code></pre></div>
 </details>
 <h3 id="with-custom-parameters">With Custom Parameters</h3>
@@ -4408,7 +4402,7 @@ Generate images concurrently with `F.map_gather`:
 </span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>    <span class="n">n</span><span class="o">=</span><span class="mi">1</span>                <span class="c1"># Number of images</span>
 </span><span id="__span-1-10"><a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="p">)</span>
 </span><span id="__span-1-11"><a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>
-</span><span id="__span-1-12"><a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a><span class="n">image_url</span> <span class="o">=</span> <span class="n">response</span><span class="o">.</span><span class="n">consume</span><span class="p">()</span>
+</span><span id="__span-1-12"><a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a><span class="n">image_b64</span> <span class="o">=</span> <span class="n">response</span><span class="o">.</span><span class="n">consume</span><span class="p">()</span>
 </span></code></pre></div>
 </details>
 <h2 id="2-supported-providers">2. <strong>Supported Providers</strong></h2>
@@ -4484,46 +4478,41 @@ Generate images concurrently with `F.map_gather`:
 </span></code></pre></div>
 </details>
 <h2 id="5-response-formats">5. <strong>Response Formats</strong></h2>
-<h3 id="url-response-default">URL Response (Default)</h3>
+<div class="admonition info">
+<p class="admonition-title">gpt-image-1 always returns base64</p>
+<p><code>gpt-image-1</code> does not support the <code>response_format</code> parameter — it always returns a <strong>base64 string</strong>. The <code>response_format</code> parameter (<code>"url"</code> / <code>"base64"</code>) is only supported by legacy models (<code>dall-e-2</code>, <code>dall-e-3</code>).</p>
+</div>
+<h3 id="base64-default-for-gpt-image-1">Base64 (default for gpt-image-1)</h3>
 <details class="example" open="open">
 <summary>Example</summary>
 <div class="language-python highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
-</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>
-</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="n">model</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">text_to_image</span><span class="p">(</span><span class="s2">&quot;openai/gpt-image-1&quot;</span><span class="p">)</span>
-</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>
-</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="n">response</span> <span class="o">=</span> <span class="n">model</span><span class="p">(</span>
-</span><span id="__span-7-6"><a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>    <span class="n">prompt</span><span class="o">=</span><span class="s2">&quot;A sunset over the ocean&quot;</span><span class="p">,</span>
-</span><span id="__span-7-7"><a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>    <span class="n">response_format</span><span class="o">=</span><span class="s2">&quot;url&quot;</span>  <span class="c1"># Default</span>
-</span><span id="__span-7-8"><a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a><span class="p">)</span>
-</span><span id="__span-7-9"><a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a>
-</span><span id="__span-7-10"><a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a><span class="c1"># Get URL</span>
-</span><span id="__span-7-11"><a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a><span class="n">image_url</span> <span class="o">=</span> <span class="n">response</span><span class="o">.</span><span class="n">consume</span><span class="p">()</span>
-</span><span id="__span-7-12"><a id="__codelineno-7-12" name="__codelineno-7-12" href="#__codelineno-7-12"></a><span class="nb">print</span><span class="p">(</span><span class="n">image_url</span><span class="p">)</span>  <span class="c1"># https://...</span>
-</span><span id="__span-7-13"><a id="__codelineno-7-13" name="__codelineno-7-13" href="#__codelineno-7-13"></a>
-</span><span id="__span-7-14"><a id="__codelineno-7-14" name="__codelineno-7-14" href="#__codelineno-7-14"></a><span class="c1"># Download image</span>
-</span><span id="__span-7-15"><a id="__codelineno-7-15" name="__codelineno-7-15" href="#__codelineno-7-15"></a><span class="kn">import</span><span class="w"> </span><span class="nn">requests</span>
-</span><span id="__span-7-16"><a id="__codelineno-7-16" name="__codelineno-7-16" href="#__codelineno-7-16"></a><span class="n">img_data</span> <span class="o">=</span> <span class="n">requests</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">image_url</span><span class="p">)</span><span class="o">.</span><span class="n">content</span>
-</span><span id="__span-7-17"><a id="__codelineno-7-17" name="__codelineno-7-17" href="#__codelineno-7-17"></a><span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="s2">&quot;image.png&quot;</span><span class="p">,</span> <span class="s2">&quot;wb&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
-</span><span id="__span-7-18"><a id="__codelineno-7-18" name="__codelineno-7-18" href="#__codelineno-7-18"></a>    <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">img_data</span><span class="p">)</span>
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">base64</span>
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>
+</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="n">model</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">text_to_image</span><span class="p">(</span><span class="s2">&quot;openai/gpt-image-1&quot;</span><span class="p">)</span>
+</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>
+</span><span id="__span-7-6"><a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="n">response</span> <span class="o">=</span> <span class="n">model</span><span class="p">(</span><span class="n">prompt</span><span class="o">=</span><span class="s2">&quot;A colorful abstract painting&quot;</span><span class="p">)</span>
+</span><span id="__span-7-7"><a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>
+</span><span id="__span-7-8"><a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a><span class="c1"># Decode and save</span>
+</span><span id="__span-7-9"><a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a><span class="n">img_data</span> <span class="o">=</span> <span class="n">base64</span><span class="o">.</span><span class="n">b64decode</span><span class="p">(</span><span class="n">response</span><span class="o">.</span><span class="n">consume</span><span class="p">())</span>
+</span><span id="__span-7-10"><a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a><span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="s2">&quot;image.png&quot;</span><span class="p">,</span> <span class="s2">&quot;wb&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+</span><span id="__span-7-11"><a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a>    <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">img_data</span><span class="p">)</span>
 </span></code></pre></div>
 </details>
-<h3 id="base64-response">Base64 Response</h3>
+<h3 id="url-response-legacy-models-only">URL Response (legacy models only)</h3>
 <details class="example" open="open">
 <summary>Example</summary>
 <div class="language-python highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
-</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">base64</span>
-</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>
-</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="n">model</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">text_to_image</span><span class="p">(</span><span class="s2">&quot;openai/gpt-image-1&quot;</span><span class="p">)</span>
+</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>
+</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="c1"># response_format=&quot;url&quot; only works with dall-e-2 / dall-e-3</span>
+</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="n">model</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">text_to_image</span><span class="p">(</span><span class="s2">&quot;openai/dall-e-3&quot;</span><span class="p">)</span>
 </span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>
 </span><span id="__span-8-6"><a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="n">response</span> <span class="o">=</span> <span class="n">model</span><span class="p">(</span>
-</span><span id="__span-8-7"><a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a>    <span class="n">prompt</span><span class="o">=</span><span class="s2">&quot;A colorful abstract painting&quot;</span><span class="p">,</span>
-</span><span id="__span-8-8"><a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a>    <span class="n">response_format</span><span class="o">=</span><span class="s2">&quot;base64&quot;</span>
+</span><span id="__span-8-7"><a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a>    <span class="n">prompt</span><span class="o">=</span><span class="s2">&quot;A sunset over the ocean&quot;</span><span class="p">,</span>
+</span><span id="__span-8-8"><a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a>    <span class="n">response_format</span><span class="o">=</span><span class="s2">&quot;url&quot;</span>
 </span><span id="__span-8-9"><a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a><span class="p">)</span>
 </span><span id="__span-8-10"><a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a>
-</span><span id="__span-8-11"><a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a><span class="c1"># Decode and save</span>
-</span><span id="__span-8-12"><a id="__codelineno-8-12" name="__codelineno-8-12" href="#__codelineno-8-12"></a><span class="n">img_data</span> <span class="o">=</span> <span class="n">base64</span><span class="o">.</span><span class="n">b64decode</span><span class="p">(</span><span class="n">response</span><span class="o">.</span><span class="n">consume</span><span class="p">())</span>
-</span><span id="__span-8-13"><a id="__codelineno-8-13" name="__codelineno-8-13" href="#__codelineno-8-13"></a><span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="s2">&quot;image.png&quot;</span><span class="p">,</span> <span class="s2">&quot;wb&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
-</span><span id="__span-8-14"><a id="__codelineno-8-14" name="__codelineno-8-14" href="#__codelineno-8-14"></a>    <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">img_data</span><span class="p">)</span>
+</span><span id="__span-8-11"><a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a><span class="n">image_url</span> <span class="o">=</span> <span class="n">response</span><span class="o">.</span><span class="n">consume</span><span class="p">()</span>
+</span><span id="__span-8-12"><a id="__codelineno-8-12" name="__codelineno-8-12" href="#__codelineno-8-12"></a><span class="nb">print</span><span class="p">(</span><span class="n">image_url</span><span class="p">)</span>  <span class="c1"># https://...</span>
 </span></code></pre></div>
 </details>
 <h2 id="6-multiple-images">6. <strong>Multiple Images</strong></h2>
@@ -4540,12 +4529,12 @@ Generate images concurrently with `F.map_gather`:
 </span><span id="__span-9-8"><a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a>    <span class="n">size</span><span class="o">=</span><span class="s2">&quot;1024x1024&quot;</span>
 </span><span id="__span-9-9"><a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a><span class="p">)</span>
 </span><span id="__span-9-10"><a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a>
-</span><span id="__span-9-11"><a id="__codelineno-9-11" name="__codelineno-9-11" href="#__codelineno-9-11"></a><span class="c1"># Get all image URLs</span>
+</span><span id="__span-9-11"><a id="__codelineno-9-11" name="__codelineno-9-11" href="#__codelineno-9-11"></a><span class="c1"># Get all images as base64 strings</span>
 </span><span id="__span-9-12"><a id="__codelineno-9-12" name="__codelineno-9-12" href="#__codelineno-9-12"></a><span class="n">images</span> <span class="o">=</span> <span class="n">response</span><span class="o">.</span><span class="n">consume</span><span class="p">()</span>
 </span><span id="__span-9-13"><a id="__codelineno-9-13" name="__codelineno-9-13" href="#__codelineno-9-13"></a><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Generated </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">images</span><span class="p">)</span><span class="si">}</span><span class="s2"> images&quot;</span><span class="p">)</span>
 </span><span id="__span-9-14"><a id="__codelineno-9-14" name="__codelineno-9-14" href="#__codelineno-9-14"></a>
-</span><span id="__span-9-15"><a id="__codelineno-9-15" name="__codelineno-9-15" href="#__codelineno-9-15"></a><span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">url</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">images</span><span class="p">):</span>
-</span><span id="__span-9-16"><a id="__codelineno-9-16" name="__codelineno-9-16" href="#__codelineno-9-16"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Image </span><span class="si">{</span><span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">url</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</span><span id="__span-9-15"><a id="__codelineno-9-15" name="__codelineno-9-15" href="#__codelineno-9-15"></a><span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">b64</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">images</span><span class="p">):</span>
+</span><span id="__span-9-16"><a id="__codelineno-9-16" name="__codelineno-9-16" href="#__codelineno-9-16"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Image </span><span class="si">{</span><span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">b64</span><span class="p">[:</span><span class="mi">30</span><span class="p">]</span><span class="si">}</span><span class="s2">...&quot;</span><span class="p">)</span>
 </span></code></pre></div>
 </details>
 <h2 id="7-background-control">7. <strong>Background Control</strong></h2>
@@ -4705,7 +4694,7 @@ Generate images concurrently with `F.map_gather`:
 </span><span id="__span-17-4"><a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a>
 </span><span id="__span-17-5"><a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a><span class="k">try</span><span class="p">:</span>
 </span><span id="__span-17-6"><a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a>    <span class="n">response</span> <span class="o">=</span> <span class="n">model</span><span class="p">(</span><span class="n">prompt</span><span class="o">=</span><span class="s2">&quot;A landscape&quot;</span><span class="p">)</span>
-</span><span id="__span-17-7"><a id="__codelineno-17-7" name="__codelineno-17-7" href="#__codelineno-17-7"></a>    <span class="n">image_url</span> <span class="o">=</span> <span class="n">response</span><span class="o">.</span><span class="n">consume</span><span class="p">()</span>
+</span><span id="__span-17-7"><a id="__codelineno-17-7" name="__codelineno-17-7" href="#__codelineno-17-7"></a>    <span class="n">image_b64</span> <span class="o">=</span> <span class="n">response</span><span class="o">.</span><span class="n">consume</span><span class="p">()</span>
 </span><span id="__span-17-8"><a id="__codelineno-17-8" name="__codelineno-17-8" href="#__codelineno-17-8"></a><span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span>
 </span><span id="__span-17-9"><a id="__codelineno-17-9" name="__codelineno-17-9" href="#__codelineno-17-9"></a>    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Provider not installed&quot;</span><span class="p">)</span>
 </span><span id="__span-17-10"><a id="__codelineno-17-10" name="__codelineno-17-10" href="#__codelineno-17-10"></a><span class="k">except</span> <span class="ne">ValueError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>

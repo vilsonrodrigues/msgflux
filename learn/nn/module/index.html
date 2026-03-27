@@ -1898,7 +1898,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../mediamaker.md" class="md-nav__link">
+      <a href="../mediamaker/" class="md-nav__link">
         
   
   
@@ -3345,15 +3345,6 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#3-naming-and-description" class="md-nav__link">
-    <span class="md-ellipsis">
-      3. Naming and Description
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
   <a href="#4-contents" class="md-nav__link">
     <span class="md-ellipsis">
       4. Contents
@@ -3405,7 +3396,7 @@
 
 ## ✦₊⁺ Overview
 
-The `nn.Module` class is the foundation for all AI components in msgFlux, inspired by **PyTorch&#x27;s `torch.nn.Module`**.
+The `nn.Module` class is the foundation for all AI components in msgFlux, inspired by `torch.nn.Module`**.
 
 It provides a structured way to build, compose, and manage AI workflows with features like parameter serialization, hooks, and async support.
 
@@ -3424,6 +3415,8 @@ class MyWorkflow(nn.Module):
 
 workflow = MyWorkflow()
 result = workflow(&quot;World&quot;)  # &quot;Hello! World&quot;
+print(result)
+print(workflow.state_dict())
 ```
 
 ## 2. **Built-in Modules**
@@ -3432,27 +3425,16 @@ msgFlux provides ready-to-use modules:
 
 | Module | Description |
 |--------|-------------|
-| `nn.Agent` | Autonomous agents with tools and reasoning |
+| `nn.Sequential` | Chain modules in sequence |
+| `nn.ModuleDict` | Dictionary of named modules |
+| `nn.ModuleList` | Ordered list of modules |
+| `nn.Agent` | LM with tools and reasoning |
 | `nn.Transcriber` | Speech-to-text |
 | `nn.Speaker` | Text-to-speech |
-| `nn.Searcher` | Document retrieval |
+| `nn.Searcher` | Data retrieval |
 | `nn.Embedder` | Text embeddings |
 | `nn.MediaMaker` | Image/video generation |
 | `nn.Predictor` | ML model wrapper (sklearn, etc.) |
-
-## 3. **Naming and Description**
-
-Set module metadata:
-
-```python
-class MyAgent(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.set_name(&quot;my-agent&quot;)
-        self.set_description(&quot;An agent that helps with X&quot;)
-```
-
-This is useful when using modules as tools.
 
 ## 4. **Contents**
 
@@ -3534,7 +3516,7 @@ This is useful when using modules as tools.
 }());
 </script>
 <h2 id="overview">✦₊⁺ Overview</h2>
-<p>The <code>nn.Module</code> class is the foundation for all AI components in msgFlux, inspired by <strong>PyTorch's <code>torch.nn.Module</code></strong>.</p>
+<p>The <code>nn.Module</code> class is the foundation for all AI components in msgFlux, inspired by <code>torch.nn.Module</code>**.</p>
 <p>It provides a structured way to build, compose, and manage AI workflows with features like parameter serialization, hooks, and async support.</p>
 <h2 id="1-quick-start">1. <strong>Quick Start</strong></h2>
 <div class="language-python highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">nn</span>
@@ -3549,6 +3531,8 @@ This is useful when using modules as tools.
 </span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>
 </span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="n">workflow</span> <span class="o">=</span> <span class="n">MyWorkflow</span><span class="p">()</span>
 </span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="n">result</span> <span class="o">=</span> <span class="n">workflow</span><span class="p">(</span><span class="s2">&quot;World&quot;</span><span class="p">)</span>  <span class="c1"># &quot;Hello! World&quot;</span>
+</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="p">)</span>
+</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="nb">print</span><span class="p">(</span><span class="n">workflow</span><span class="o">.</span><span class="n">state_dict</span><span class="p">())</span>
 </span></code></pre></div>
 <h2 id="2-built-in-modules">2. <strong>Built-in Modules</strong></h2>
 <p>msgFlux provides ready-to-use modules:</p>
@@ -3561,8 +3545,20 @@ This is useful when using modules as tools.
 </thead>
 <tbody>
 <tr>
+<td><code>nn.Sequential</code></td>
+<td>Chain modules in sequence</td>
+</tr>
+<tr>
+<td><code>nn.ModuleDict</code></td>
+<td>Dictionary of named modules</td>
+</tr>
+<tr>
+<td><code>nn.ModuleList</code></td>
+<td>Ordered list of modules</td>
+</tr>
+<tr>
 <td><code>nn.Agent</code></td>
-<td>Autonomous agents with tools and reasoning</td>
+<td>LM with tools and reasoning</td>
 </tr>
 <tr>
 <td><code>nn.Transcriber</code></td>
@@ -3574,7 +3570,7 @@ This is useful when using modules as tools.
 </tr>
 <tr>
 <td><code>nn.Searcher</code></td>
-<td>Document retrieval</td>
+<td>Data retrieval</td>
 </tr>
 <tr>
 <td><code>nn.Embedder</code></td>
@@ -3590,15 +3586,6 @@ This is useful when using modules as tools.
 </tr>
 </tbody>
 </table>
-<h2 id="3-naming-and-description">3. <strong>Naming and Description</strong></h2>
-<p>Set module metadata:</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">MyAgent</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
-</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
-</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">set_name</span><span class="p">(</span><span class="s2">&quot;my-agent&quot;</span><span class="p">)</span>
-</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">set_description</span><span class="p">(</span><span class="s2">&quot;An agent that helps with X&quot;</span><span class="p">)</span>
-</span></code></pre></div>
-<p>This is useful when using modules as tools.</p>
 <h2 id="4-contents">4. <strong>Contents</strong></h2>
 <table>
 <thead>
