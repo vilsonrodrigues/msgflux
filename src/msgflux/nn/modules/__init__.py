@@ -9,6 +9,7 @@ if TYPE_CHECKING:
     from msgflux.nn.modules.mediamaker import MediaMaker
     from msgflux.nn.modules.module import Module
     from msgflux.nn.modules.predictor import Predictor
+    from msgflux.nn.modules.relay import Relay
     from msgflux.nn.modules.searcher import Searcher
     from msgflux.nn.modules.speaker import Speaker
     from msgflux.nn.modules.tool import LocalTool, MCPTool, Tool, ToolLibrary
@@ -25,6 +26,7 @@ __all__ = [
     "ModuleDict",
     "ModuleList",
     "Predictor",
+    "Relay",
     "Searcher",
     "Sequential",
     "Speaker",
@@ -44,6 +46,7 @@ _LAZY_IMPORTS = {
     "ModuleDict": ("msgflux.nn.modules.container", "ModuleDict"),
     "ModuleList": ("msgflux.nn.modules.container", "ModuleList"),
     "Predictor": ("msgflux.nn.modules.predictor", "Predictor"),
+    "Relay": ("msgflux.nn.modules.relay", "Relay"),
     "Searcher": ("msgflux.nn.modules.searcher", "Searcher"),
     "Sequential": ("msgflux.nn.modules.container", "Sequential"),
     "Speaker": ("msgflux.nn.modules.speaker", "Speaker"),
