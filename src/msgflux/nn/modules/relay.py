@@ -16,7 +16,7 @@ class Relay(Module, metaclass=AutoParams):
         ...     def forward(self, message, **kwargs):
         ...         text = self._extract_message_values(self.task, message)
         ...         result = text.strip().lower()
-        ...         return self._define_response_mode(result, message)
+        ...         return self._prepare_response(result, message)
         ...
         >>> cleaner = TextCleaner(
         ...     message_fields={"task": "inputs.raw_text"},
@@ -37,6 +37,7 @@ class Relay(Module, metaclass=AutoParams):
         hooks: Optional[list] = None,
         message_fields: Optional[Dict[str, Any]] = None,
         response_mode: Optional[str] = None,
+        templates: Optional[Dict[str, str]] = None,
         annotations: Optional[Dict[str, type]] = None,
         description: Optional[str] = None,
         name: Optional[str] = None,
@@ -70,6 +71,14 @@ class Relay(Module, metaclass=AutoParams):
             * ``None`` (default): Returns the response directly.
             * ``"<path>"``: Writes to ``obj.<path>`` and returns ``None``
               (``dotdict`` or ``Message`` is mutated in place).
+        templates:
+            Dictionary mapping template types to Jinja template strings.
+            Valid keys: "task", "response", "task_context", "system_prompt"
+            !!! example
+                templates={"response": "Result: {{ data }}"}
+
+            Use ``_prepare_response(result, message)`` in ``forward()``
+            to apply the response template before ``_define_response_mode``.
         annotations:
             Dictionary mapping parameter names to their types.
             Used for type validation and schema generation.
@@ -84,6 +93,7 @@ class Relay(Module, metaclass=AutoParams):
         self._set_hooks(hooks)
         self._set_message_fields(message_fields)
         self._set_response_mode(response_mode)
+        self._set_templates(templates)
         self.set_annotations(annotations or {})
         self.set_description(description)
         if name:

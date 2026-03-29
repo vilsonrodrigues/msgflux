@@ -25,7 +25,7 @@ Think of it as a **Predictor without a model** — pure data transformation with
 
             def forward(self, message, **kwargs):
                 text = self._extract_message_values(self.task, message)
-                return self._define_response_mode(text.strip().lower(), message)
+                return self._prepare_response(text.strip().lower(), message)
 
         cleaner = TextCleaner()
 
@@ -57,6 +57,7 @@ Think of it as a **Predictor without a model** — pure data transformation with
 | `modules` | `dict[str, Module] \| None` | Submodules registered as attributes on `self`. Access them via `self.<key>` in `forward()` |
 | `message_fields` | `dict \| None` | Map `Message` field names to input paths. Valid keys: `task`, `task_multimodal`, `model_preference` |
 | `response_mode` | `str \| None` | Field path on the `Message` where the result is written. `None` returns the result directly |
+| `templates` | `dict[str, str] \| None` | Jinja/format templates. Valid keys: `task`, `response`, `task_context`, `system_prompt`. Use `_prepare_response()` to apply |
 | `annotations` | `dict[str, type] \| None` | Type annotations for schema generation |
 | `description` | `str \| None` | Module description. Auto-populated from docstring via `AutoParams` |
 | `hooks` | `list[Hook] \| None` | Hook instances registered on the module |
@@ -80,8 +81,8 @@ class MyRelay(nn.Relay):
         # 2. Transform — apply your logic
         result = your_logic(data)
 
-        # 3. Respond — write back or return directly
-        return self._define_response_mode(result, message)
+        # 3. Respond — apply templates + write back or return
+        return self._prepare_response(result, message)
 ```
 
 **What each step does:**
@@ -90,7 +91,10 @@ class MyRelay(nn.Relay):
 |------|--------|----------|
 | Extract | `_extract_message_values(self.task, message)` | Reads data from the path defined in `message_fields["task"]` |
 | Transform | *(your code)* | Any Python logic — no restrictions |
-| Respond | `_define_response_mode(result, message)` | If `response_mode` is set, writes to `message` and returns `None`. Otherwise returns `result` directly |
+| Respond | `_prepare_response(result, message)` | Applies `templates["response"]` if set, then writes to `message` via `response_mode` (or returns directly) |
+
+!!! tip
+    `_prepare_response` = template formatting + `_define_response_mode`. If you don't need templates, you can call `_define_response_mode` directly.
 
 ---
 
@@ -122,7 +126,7 @@ Use `modules` to register pre-built modules on `self` — no need to override `_
             def forward(self, message, **kwargs):
                 text = self._extract_message_values(self.task, message)
                 result = self.agent(text)
-                return self._define_response_mode(result, message)
+                return self._prepare_response(result, message)
 
         pipeline = SummarizePipeline()
         ```
@@ -160,7 +164,7 @@ Use `modules` to register pre-built modules on `self` — no need to override `_
                 summary = self.summarizer(text)
                 label = self.sentiment(text)
                 result = {"summary": summary, "sentiment": label}
-                return self._define_response_mode(result, message)
+                return self._prepare_response(result, message)
         ```
 
 Registered modules are proper submodules — they appear in `named_modules()`, are included in `state_dict()`, and benefit from telemetry:
@@ -175,7 +179,89 @@ for name, module in pipeline.named_modules():
 
 ---
 
-### 4.2 Data Validation
+### 4.2 Response Templates
+
+Format the output with Jinja/format templates before it reaches `response_mode`:
+
+!!! info "Template styles"
+
+    === "String content (`.format()`)"
+
+        When the result is a **string**, the template uses Python's `.format()`:
+
+        ```python
+        import msgflux as mf
+        import msgflux.nn as nn
+
+        class StatusRelay(nn.Relay):
+            message_fields = {"task": "job.status"}
+            response_mode  = "job.display"
+            templates      = {"response": "Status: {}"}
+
+            def forward(self, message, **kwargs):
+                status = self._extract_message_values(self.task, message)
+                return self._prepare_response(status, message)
+
+        relay = StatusRelay()
+
+        msg = mf.Message()
+        msg.set("job.status", "completed")
+        relay(msg)
+        print(msg.get("job.display"))  # "Status: completed"
+        ```
+
+    === "Dict content (Jinja2)"
+
+        When the result is a **dict**, the template uses Jinja2 rendering:
+
+        ```python
+        import msgflux as mf
+        import msgflux.nn as nn
+
+        class ReportRelay(nn.Relay):
+            message_fields = {
+                "task": {
+                    "name": "user.name",
+                    "score": "user.score",
+                }
+            }
+            response_mode = "user.report"
+            templates     = {"response": "{{ name }} scored {{ score }} points."}
+
+            def forward(self, message, **kwargs):
+                data = self._extract_message_values(self.task, message)
+                return self._prepare_response(data, message)
+
+        relay = ReportRelay()
+
+        msg = mf.Message()
+        msg.set("user.name", "Alice")
+        msg.set("user.score", 95)
+        relay(msg)
+        print(msg.get("user.report"))  # "Alice scored 95 points."
+        ```
+
+    === "Direct return (no response_mode)"
+
+        Templates work with direct returns too:
+
+        ```python
+        class LabelRelay(nn.Relay):
+            message_fields = {"task": "text"}
+            templates = {"response": "Label: {}"}
+
+            def forward(self, message, **kwargs):
+                text = self._extract_message_values(self.task, message)
+                return self._prepare_response(text, message)
+
+        relay = LabelRelay()
+        result = relay(mf.dotdict(text="positive"))
+        print(result)  # "Label: positive"
+        ```
+
+---
+
+### 4.3 Data Validation
 
 Validate or filter data flowing through a pipeline:
 
@@ -197,7 +283,7 @@ class InputValidator(nn.Relay):
                 errors.append(f"Missing required field: {field}")
 
         result = {"valid": len(errors) == 0, "errors": errors, "data": data}
-        return self._define_response_mode(result, message)
+        return self._prepare_response(result, message)
 
 validator = InputValidator()
 
@@ -210,7 +296,7 @@ print(msg.get("form.validated"))
 
 ---
 
-### 4.2 Data Enrichment
+### 4.3 Data Enrichment
 
 Enrich data with external lookups or computed fields:
 
@@ -232,7 +318,7 @@ class PriceEnricher(nn.Relay):
             "price": PRICING.get(plan, 0),
             "currency": "USD",
         }
-        return self._define_response_mode(pricing, message)
+        return self._prepare_response(pricing, message)
 
 enricher = PriceEnricher()
 
@@ -245,7 +331,7 @@ print(msg.get("subscription.pricing"))
 
 ---
 
-### 4.3 Multiple Inputs (dict paths)
+### 4.4 Multiple Inputs (dict paths)
 
 Read multiple fields from the message at once using a dict in `message_fields`:
 
@@ -266,7 +352,7 @@ class FullNameBuilder(nn.Relay):
     def forward(self, message, **kwargs):
         data = self._extract_message_values(self.task, message)
         full_name = f"{data.first} {data.last}"
-        return self._define_response_mode(full_name, message)
+        return self._prepare_response(full_name, message)
 
 builder = FullNameBuilder()
 
@@ -279,7 +365,7 @@ print(msg.get("user.full_name"))  # "Alice Smith"
 
 ---
 
-### 4.4 OR Inputs (fallback paths)
+### 4.5 OR Inputs (fallback paths)
 
 Use a tuple to try multiple paths — the first non-`None` value wins:
 
@@ -296,7 +382,7 @@ class TextExtractor(nn.Relay):
 
     def forward(self, message, **kwargs):
         text = self._extract_message_values(self.task, message)
-        return self._define_response_mode(text, message)
+        return self._prepare_response(text, message)
 
 extractor = TextExtractor()
 
@@ -308,7 +394,7 @@ print(msg.get("extracted_text"))  # "Breaking News"
 
 ---
 
-### 4.5 Direct Return (no response_mode)
+### 4.6 Direct Return (no response_mode)
 
 When `response_mode` is `None`, the result is returned directly instead of being written to the message:
 
@@ -322,7 +408,7 @@ class WordCounter(nn.Relay):
     def forward(self, message, **kwargs):
         text = self._extract_message_values(self.task, message)
         count = len(text.split())
-        return self._define_response_mode(count, message)
+        return self._prepare_response(count, message)
 
 counter = WordCounter()
 
@@ -333,7 +419,7 @@ print(result)  # 4
 
 ---
 
-### 4.6 Async Support
+### 4.7 Async Support
 
 Implement `aforward` for async operations:
 
@@ -353,7 +439,7 @@ class GeoLookup(nn.Relay):
         async with httpx.AsyncClient() as client:
             resp = await client.get(f"https://ipapi.co/{ip}/json/")
             geo = resp.json()
-        return self._define_response_mode(geo, message)
+        return self._prepare_response(geo, message)
 
 lookup = GeoLookup()
 
@@ -365,7 +451,7 @@ print(msg.get("request.geo.country_name"))
 
 ---
 
-### 4.7 Guardrails with Hooks
+### 4.8 Guardrails with Hooks
 
 Use `Guard` hooks for input validation — no need to add validation logic inside `forward()`:
 
@@ -389,7 +475,7 @@ class SafeRelay(nn.Relay):
 
     def forward(self, message, **kwargs):
         text = self._extract_message_values(self.task, message)
-        return self._define_response_mode(text.upper(), message)
+        return self._prepare_response(text.upper(), message)
 ```
 
 ---
@@ -411,7 +497,7 @@ class Normalizer(nn.Relay):
     def forward(self, message, **kwargs):
         text = self._extract_message_values(self.task, message)
         result = text.strip().lower()
-        return self._define_response_mode(result, message)
+        return self._prepare_response(result, message)
 
 class Tokenizer(nn.Relay):
     message_fields = {"task": "inputs.normalized"}
@@ -420,7 +506,7 @@ class Tokenizer(nn.Relay):
     def forward(self, message, **kwargs):
         text = self._extract_message_values(self.task, message)
         tokens = text.split()
-        return self._define_response_mode(tokens, message)
+        return self._prepare_response(tokens, message)
 
 pipeline = nn.Sequential(Normalizer(), Tokenizer())
 
@@ -446,7 +532,7 @@ class InputFormatter(nn.Relay):
     def forward(self, message, **kwargs):
         raw = self._extract_message_values(self.task, message)
         formatted = f"User request: {raw}\nPlease respond concisely."
-        return self._define_response_mode(formatted, message)
+        return self._prepare_response(formatted, message)
 
 class ResponseParser(nn.Relay):
     """Extracts structured data from agent response."""
@@ -455,7 +541,7 @@ class ResponseParser(nn.Relay):
 
     def forward(self, message, **kwargs):
         text = self._extract_message_values(self.task, message)
-        return self._define_response_mode(
+        return self._prepare_response(
             {"text": text, "length": len(text)}, message
         )
 
@@ -497,7 +583,7 @@ class LanguageDetector(nn.Relay):
         text = self._extract_message_values(self.task, message)
         first_word = text.strip().split()[0].lower()
         lang = self.PATTERNS.get(first_word, "en")
-        return self._define_response_mode(lang, message)
+        return self._prepare_response(lang, message)
 
 class Router(nn.Module):
     def __init__(self):
@@ -535,7 +621,7 @@ class MarkdownFormatter(BaseFormatter):
     def forward(self, message, **kwargs):
         text = self._extract_message_values(self.task, message)
         result = text.replace("**", "<b>").replace("**", "</b>")
-        return self._define_response_mode(result, message)
+        return self._prepare_response(result, message)
 
 class CSVFormatter(BaseFormatter):
     message_fields = {"task": "inputs.rows"}
@@ -543,7 +629,7 @@ class CSVFormatter(BaseFormatter):
     def forward(self, message, **kwargs):
         rows = self._extract_message_values(self.task, message)
         csv = "\n".join(",".join(str(c) for c in row) for row in rows)
-        return self._define_response_mode(csv, message)
+        return self._prepare_response(csv, message)
 ```
 
 ---
