@@ -897,7 +897,7 @@
   
   
   <span class="md-ellipsis">
-    ⟳ Retriever
+    ⟳ Retrievers
     
   </span>
   
@@ -908,7 +908,7 @@
         <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_2_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_2_2">
             <span class="md-nav__icon md-icon"></span>
-            ⟳ Retriever
+            ⟳ Retrievers
           </label>
           <ul class="md-nav__list" data-md-scrollfix>
             
@@ -3901,7 +3901,7 @@ Use `Image`, `Audio`, `Video`, or `File` for multimodal inputs:
         # Task template automatically includes image placeholder
         print(agent.task_template)
 
-        response = agent(task_multimodal_inputs={
+        response = agent(task_multimodal={
             &quot;image&quot;: &quot;https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Gfp-wisconsin-madison-the-nature-boardwalk.jpg/800px-Gfp-wisconsin-madison-the-nature-boardwalk.jpg&quot;
         })
         print(response.label)        # &quot;Nature boardwalk&quot;
@@ -3927,7 +3927,7 @@ Use `Image`, `Audio`, `Video`, or `File` for multimodal inputs:
         # Task template automatically includes image placeholder
         print(agent.task_template)
 
-        response = agent(task_multimodal_inputs={
+        response = agent(task_multimodal={
             &quot;image&quot;: &quot;https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Gfp-wisconsin-madison-the-nature-boardwalk.jpg/800px-Gfp-wisconsin-madison-the-nature-boardwalk.jpg&quot;
         })
         print(response.label)        # &quot;Nature boardwalk&quot;
@@ -3978,9 +3978,9 @@ When using signatures, you can pass inputs in multiple ways:
         response = agent({&quot;english&quot;: &quot;hello world&quot;})
         ```
 
-    === &quot;With Context&quot;
+    === &quot;With Task Context&quot;
 
-        Combine with `context_inputs`:
+        Combine with `task_context`:
 
         ```python
         # pip install msgflux[openai]
@@ -4003,7 +4003,7 @@ When using signatures, you can pass inputs in multiple ways:
         response = agent(
             text=&quot;Long article...&quot;,
             style=&quot;casual&quot;,
-            context_inputs=&quot;Focus on the key takeaways&quot;
+            task_context=&quot;Focus on the key takeaways&quot;
         )
         ```
 
@@ -4157,11 +4157,11 @@ When an agent has a signature, its annotations are automatically configured base
 
     model = mf.Model.chat_completion(&quot;openai/gpt-4.1-mini&quot;)
 
-    # Without signature: default annotation is &quot;message: str&quot;
+    # Without signature: default annotation is &quot;task: str&quot;
     class BasicAgent(nn.Agent):
         model = model
 
-    print(BasicAgent().annotations)  # {&quot;message&quot;: str}
+    print(BasicAgent().annotations)  # {&quot;task&quot;: str}
 
     # With signature: annotations match the input fields
     class AnalyzeSentiment(mf.Signature):
@@ -4578,7 +4578,7 @@ When an agent has a signature, its annotations are automatically configured base
 </span><span id="__span-9-21"><a id="__codelineno-9-21" name="__codelineno-9-21" href="#__codelineno-9-21"></a><span class="c1"># Task template automatically includes image placeholder</span>
 </span><span id="__span-9-22"><a id="__codelineno-9-22" name="__codelineno-9-22" href="#__codelineno-9-22"></a><span class="nb">print</span><span class="p">(</span><span class="n">agent</span><span class="o">.</span><span class="n">task_template</span><span class="p">)</span>
 </span><span id="__span-9-23"><a id="__codelineno-9-23" name="__codelineno-9-23" href="#__codelineno-9-23"></a>
-</span><span id="__span-9-24"><a id="__codelineno-9-24" name="__codelineno-9-24" href="#__codelineno-9-24"></a><span class="n">response</span> <span class="o">=</span> <span class="n">agent</span><span class="p">(</span><span class="n">task_multimodal_inputs</span><span class="o">=</span><span class="p">{</span>
+</span><span id="__span-9-24"><a id="__codelineno-9-24" name="__codelineno-9-24" href="#__codelineno-9-24"></a><span class="n">response</span> <span class="o">=</span> <span class="n">agent</span><span class="p">(</span><span class="n">task_multimodal</span><span class="o">=</span><span class="p">{</span>
 </span><span id="__span-9-25"><a id="__codelineno-9-25" name="__codelineno-9-25" href="#__codelineno-9-25"></a>    <span class="s2">&quot;image&quot;</span><span class="p">:</span> <span class="s2">&quot;https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Gfp-wisconsin-madison-the-nature-boardwalk.jpg/800px-Gfp-wisconsin-madison-the-nature-boardwalk.jpg&quot;</span>
 </span><span id="__span-9-26"><a id="__codelineno-9-26" name="__codelineno-9-26" href="#__codelineno-9-26"></a><span class="p">})</span>
 </span><span id="__span-9-27"><a id="__codelineno-9-27" name="__codelineno-9-27" href="#__codelineno-9-27"></a><span class="nb">print</span><span class="p">(</span><span class="n">response</span><span class="o">.</span><span class="n">label</span><span class="p">)</span>        <span class="c1"># &quot;Nature boardwalk&quot;</span>
@@ -4602,7 +4602,7 @@ When an agent has a signature, its annotations are automatically configured base
 </span><span id="__span-10-14"><a id="__codelineno-10-14" name="__codelineno-10-14" href="#__codelineno-10-14"></a><span class="c1"># Task template automatically includes image placeholder</span>
 </span><span id="__span-10-15"><a id="__codelineno-10-15" name="__codelineno-10-15" href="#__codelineno-10-15"></a><span class="nb">print</span><span class="p">(</span><span class="n">agent</span><span class="o">.</span><span class="n">task_template</span><span class="p">)</span>
 </span><span id="__span-10-16"><a id="__codelineno-10-16" name="__codelineno-10-16" href="#__codelineno-10-16"></a>
-</span><span id="__span-10-17"><a id="__codelineno-10-17" name="__codelineno-10-17" href="#__codelineno-10-17"></a><span class="n">response</span> <span class="o">=</span> <span class="n">agent</span><span class="p">(</span><span class="n">task_multimodal_inputs</span><span class="o">=</span><span class="p">{</span>
+</span><span id="__span-10-17"><a id="__codelineno-10-17" name="__codelineno-10-17" href="#__codelineno-10-17"></a><span class="n">response</span> <span class="o">=</span> <span class="n">agent</span><span class="p">(</span><span class="n">task_multimodal</span><span class="o">=</span><span class="p">{</span>
 </span><span id="__span-10-18"><a id="__codelineno-10-18" name="__codelineno-10-18" href="#__codelineno-10-18"></a>    <span class="s2">&quot;image&quot;</span><span class="p">:</span> <span class="s2">&quot;https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Gfp-wisconsin-madison-the-nature-boardwalk.jpg/800px-Gfp-wisconsin-madison-the-nature-boardwalk.jpg&quot;</span>
 </span><span id="__span-10-19"><a id="__codelineno-10-19" name="__codelineno-10-19" href="#__codelineno-10-19"></a><span class="p">})</span>
 </span><span id="__span-10-20"><a id="__codelineno-10-20" name="__codelineno-10-20" href="#__codelineno-10-20"></a><span class="nb">print</span><span class="p">(</span><span class="n">response</span><span class="o">.</span><span class="n">label</span><span class="p">)</span>        <span class="c1"># &quot;Nature boardwalk&quot;</span>
@@ -4616,7 +4616,7 @@ When an agent has a signature, its annotations are automatically configured base
 <p>When using signatures, you can pass inputs in multiple ways:</p>
 <details class="note" open="open">
 <summary>Input Methods</summary>
-<div class="tabbed-set tabbed-alternate" data-tabs="4:3"><input checked="checked" id="__tabbed_4_1" name="__tabbed_4" type="radio" /><input id="__tabbed_4_2" name="__tabbed_4" type="radio" /><input id="__tabbed_4_3" name="__tabbed_4" type="radio" /><div class="tabbed-labels"><label for="__tabbed_4_1">As Kwargs</label><label for="__tabbed_4_2">As Dict</label><label for="__tabbed_4_3">With Context</label></div>
+<div class="tabbed-set tabbed-alternate" data-tabs="4:3"><input checked="checked" id="__tabbed_4_1" name="__tabbed_4" type="radio" /><input id="__tabbed_4_2" name="__tabbed_4" type="radio" /><input id="__tabbed_4_3" name="__tabbed_4" type="radio" /><div class="tabbed-labels"><label for="__tabbed_4_1">As Kwargs</label><label for="__tabbed_4_2">As Dict</label><label for="__tabbed_4_3">With Task Context</label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
 <p>Pass inputs as keyword arguments (recommended):</p>
@@ -4650,7 +4650,7 @@ When an agent has a signature, its annotations are automatically configured base
 </span></code></pre></div>
 </div>
 <div class="tabbed-block">
-<p>Combine with <code>context_inputs</code>:</p>
+<p>Combine with <code>task_context</code>:</p>
 <div class="language-python highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="c1"># pip install msgflux[openai]</span>
 </span><span id="__span-13-2"><a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
 </span><span id="__span-13-3"><a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">nn</span>
@@ -4671,7 +4671,7 @@ When an agent has a signature, its annotations are automatically configured base
 </span><span id="__span-13-18"><a id="__codelineno-13-18" name="__codelineno-13-18" href="#__codelineno-13-18"></a><span class="n">response</span> <span class="o">=</span> <span class="n">agent</span><span class="p">(</span>
 </span><span id="__span-13-19"><a id="__codelineno-13-19" name="__codelineno-13-19" href="#__codelineno-13-19"></a>    <span class="n">text</span><span class="o">=</span><span class="s2">&quot;Long article...&quot;</span><span class="p">,</span>
 </span><span id="__span-13-20"><a id="__codelineno-13-20" name="__codelineno-13-20" href="#__codelineno-13-20"></a>    <span class="n">style</span><span class="o">=</span><span class="s2">&quot;casual&quot;</span><span class="p">,</span>
-</span><span id="__span-13-21"><a id="__codelineno-13-21" name="__codelineno-13-21" href="#__codelineno-13-21"></a>    <span class="n">context_inputs</span><span class="o">=</span><span class="s2">&quot;Focus on the key takeaways&quot;</span>
+</span><span id="__span-13-21"><a id="__codelineno-13-21" name="__codelineno-13-21" href="#__codelineno-13-21"></a>    <span class="n">task_context</span><span class="o">=</span><span class="s2">&quot;Focus on the key takeaways&quot;</span>
 </span><span id="__span-13-22"><a id="__codelineno-13-22" name="__codelineno-13-22" href="#__codelineno-13-22"></a><span class="p">)</span>
 </span></code></pre></div>
 </div>
@@ -4852,11 +4852,11 @@ When an agent has a signature, its annotations are automatically configured base
 </span><span id="__span-18-5"><a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a>
 </span><span id="__span-18-6"><a id="__codelineno-18-6" name="__codelineno-18-6" href="#__codelineno-18-6"></a><span class="n">model</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">chat_completion</span><span class="p">(</span><span class="s2">&quot;openai/gpt-4.1-mini&quot;</span><span class="p">)</span>
 </span><span id="__span-18-7"><a id="__codelineno-18-7" name="__codelineno-18-7" href="#__codelineno-18-7"></a>
-</span><span id="__span-18-8"><a id="__codelineno-18-8" name="__codelineno-18-8" href="#__codelineno-18-8"></a><span class="c1"># Without signature: default annotation is &quot;message: str&quot;</span>
+</span><span id="__span-18-8"><a id="__codelineno-18-8" name="__codelineno-18-8" href="#__codelineno-18-8"></a><span class="c1"># Without signature: default annotation is &quot;task: str&quot;</span>
 </span><span id="__span-18-9"><a id="__codelineno-18-9" name="__codelineno-18-9" href="#__codelineno-18-9"></a><span class="k">class</span><span class="w"> </span><span class="nc">BasicAgent</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">):</span>
 </span><span id="__span-18-10"><a id="__codelineno-18-10" name="__codelineno-18-10" href="#__codelineno-18-10"></a>    <span class="n">model</span> <span class="o">=</span> <span class="n">model</span>
 </span><span id="__span-18-11"><a id="__codelineno-18-11" name="__codelineno-18-11" href="#__codelineno-18-11"></a>
-</span><span id="__span-18-12"><a id="__codelineno-18-12" name="__codelineno-18-12" href="#__codelineno-18-12"></a><span class="nb">print</span><span class="p">(</span><span class="n">BasicAgent</span><span class="p">()</span><span class="o">.</span><span class="n">annotations</span><span class="p">)</span>  <span class="c1"># {&quot;message&quot;: str}</span>
+</span><span id="__span-18-12"><a id="__codelineno-18-12" name="__codelineno-18-12" href="#__codelineno-18-12"></a><span class="nb">print</span><span class="p">(</span><span class="n">BasicAgent</span><span class="p">()</span><span class="o">.</span><span class="n">annotations</span><span class="p">)</span>  <span class="c1"># {&quot;task&quot;: str}</span>
 </span><span id="__span-18-13"><a id="__codelineno-18-13" name="__codelineno-18-13" href="#__codelineno-18-13"></a>
 </span><span id="__span-18-14"><a id="__codelineno-18-14" name="__codelineno-18-14" href="#__codelineno-18-14"></a><span class="c1"># With signature: annotations match the input fields</span>
 </span><span id="__span-18-15"><a id="__codelineno-18-15" name="__codelineno-18-15" href="#__codelineno-18-15"></a><span class="k">class</span><span class="w"> </span><span class="nc">AnalyzeSentiment</span><span class="p">(</span><span class="n">mf</span><span class="o">.</span><span class="n">Signature</span><span class="p">):</span>

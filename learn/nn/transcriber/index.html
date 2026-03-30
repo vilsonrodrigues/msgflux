@@ -897,7 +897,7 @@
   
   
   <span class="md-ellipsis">
-    ⟳ Retriever
+    ⟳ Retrievers
     
   </span>
   
@@ -908,7 +908,7 @@
         <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_2_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_2_2">
             <span class="md-nav__icon md-icon"></span>
-            ⟳ Retriever
+            ⟳ Retrievers
           </label>
           <ul class="md-nav__list" data-md-scrollfix>
             
@@ -3562,7 +3562,7 @@ The `nn.Transcriber` module wraps speech-to-text models to **transcribe audio** 
             &quot;&quot;&quot;Transcribes user voice notes.&quot;&quot;&quot;
             model          = mf.Model.speech_to_text(&quot;openai/whisper-1&quot;)
             response_mode  = &quot;content&quot;
-            message_fields = {&quot;task_multimodal_inputs&quot;: {&quot;audio&quot;: &quot;user_audio&quot;}}
+            message_fields = {&quot;task_multimodal&quot;: {&quot;audio&quot;: &quot;user_audio&quot;}}
 
         transcriber = Speech2Text()
         result = transcriber(&quot;/path/to/audio.mp3&quot;)
@@ -3617,7 +3617,7 @@ The `nn.Transcriber` module wraps speech-to-text models to **transcribe audio** 
 
         class Speech2Text(nn.Transcriber):
             model          = mf.Model.speech_to_text(&quot;openai/whisper-1&quot;)
-            message_fields = {&quot;task_multimodal_inputs&quot;: {&quot;audio&quot;: &quot;user_audio&quot;}}
+            message_fields = {&quot;task_multimodal&quot;: {&quot;audio&quot;: &quot;user_audio&quot;}}
             response_mode  = &quot;transcription&quot;
 
         transcriber = Speech2Text()
@@ -3703,13 +3703,13 @@ Transcribers are often the first step in a voice processing pipeline.
 
     class Speech2Text(nn.Transcriber):
         model          = mf.Model.speech_to_text(&quot;openai/whisper-1&quot;)
-        message_fields = {&quot;task_multimodal_inputs&quot;: {&quot;audio&quot;: &quot;user_audio&quot;}}
+        message_fields = {&quot;task_multimodal&quot;: {&quot;audio&quot;: &quot;user_audio&quot;}}
         response_mode  = &quot;content&quot;
 
     class Analyzer(nn.Agent):
         &quot;&quot;&quot;Analyzes the transcribed text.&quot;&quot;&quot;
         model          = mf.Model.chat_completion(&quot;openai/gpt-4.1-mini&quot;)
-        message_fields = {&quot;task_inputs&quot;: &quot;content&quot;}
+        message_fields = {&quot;task&quot;: &quot;content&quot;}
         response_mode  = &quot;analysis&quot;
 
     transcriber = Speech2Text()
@@ -3826,7 +3826,7 @@ print(params)
 </span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Transcribes user voice notes.&quot;&quot;&quot;</span>
 </span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    <span class="n">model</span>          <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">speech_to_text</span><span class="p">(</span><span class="s2">&quot;openai/whisper-1&quot;</span><span class="p">)</span>
 </span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    <span class="n">response_mode</span>  <span class="o">=</span> <span class="s2">&quot;content&quot;</span>
-</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    <span class="n">message_fields</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;task_multimodal_inputs&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;audio&quot;</span><span class="p">:</span> <span class="s2">&quot;user_audio&quot;</span><span class="p">}}</span>
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    <span class="n">message_fields</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;task_multimodal&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;audio&quot;</span><span class="p">:</span> <span class="s2">&quot;user_audio&quot;</span><span class="p">}}</span>
 </span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>
 </span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="n">transcriber</span> <span class="o">=</span> <span class="n">Speech2Text</span><span class="p">()</span>
 </span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="n">result</span> <span class="o">=</span> <span class="n">transcriber</span><span class="p">(</span><span class="s2">&quot;/path/to/audio.mp3&quot;</span><span class="p">)</span>
@@ -3873,7 +3873,7 @@ print(params)
 </span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>
 </span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="k">class</span><span class="w"> </span><span class="nc">Speech2Text</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Transcriber</span><span class="p">):</span>
 </span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>    <span class="n">model</span>          <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">speech_to_text</span><span class="p">(</span><span class="s2">&quot;openai/whisper-1&quot;</span><span class="p">)</span>
-</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>    <span class="n">message_fields</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;task_multimodal_inputs&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;audio&quot;</span><span class="p">:</span> <span class="s2">&quot;user_audio&quot;</span><span class="p">}}</span>
+</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>    <span class="n">message_fields</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;task_multimodal&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;audio&quot;</span><span class="p">:</span> <span class="s2">&quot;user_audio&quot;</span><span class="p">}}</span>
 </span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>    <span class="n">response_mode</span>  <span class="o">=</span> <span class="s2">&quot;transcription&quot;</span>
 </span><span id="__span-5-8"><a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>
 </span><span id="__span-5-9"><a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a><span class="n">transcriber</span> <span class="o">=</span> <span class="n">Speech2Text</span><span class="p">()</span>
@@ -3978,13 +3978,13 @@ print(params)
 </span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>
 </span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="k">class</span><span class="w"> </span><span class="nc">Speech2Text</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Transcriber</span><span class="p">):</span>
 </span><span id="__span-9-5"><a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>    <span class="n">model</span>          <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">speech_to_text</span><span class="p">(</span><span class="s2">&quot;openai/whisper-1&quot;</span><span class="p">)</span>
-</span><span id="__span-9-6"><a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>    <span class="n">message_fields</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;task_multimodal_inputs&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;audio&quot;</span><span class="p">:</span> <span class="s2">&quot;user_audio&quot;</span><span class="p">}}</span>
+</span><span id="__span-9-6"><a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>    <span class="n">message_fields</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;task_multimodal&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;audio&quot;</span><span class="p">:</span> <span class="s2">&quot;user_audio&quot;</span><span class="p">}}</span>
 </span><span id="__span-9-7"><a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a>    <span class="n">response_mode</span>  <span class="o">=</span> <span class="s2">&quot;content&quot;</span>
 </span><span id="__span-9-8"><a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a>
 </span><span id="__span-9-9"><a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a><span class="k">class</span><span class="w"> </span><span class="nc">Analyzer</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">):</span>
 </span><span id="__span-9-10"><a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Analyzes the transcribed text.&quot;&quot;&quot;</span>
 </span><span id="__span-9-11"><a id="__codelineno-9-11" name="__codelineno-9-11" href="#__codelineno-9-11"></a>    <span class="n">model</span>          <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">chat_completion</span><span class="p">(</span><span class="s2">&quot;openai/gpt-4.1-mini&quot;</span><span class="p">)</span>
-</span><span id="__span-9-12"><a id="__codelineno-9-12" name="__codelineno-9-12" href="#__codelineno-9-12"></a>    <span class="n">message_fields</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;task_inputs&quot;</span><span class="p">:</span> <span class="s2">&quot;content&quot;</span><span class="p">}</span>
+</span><span id="__span-9-12"><a id="__codelineno-9-12" name="__codelineno-9-12" href="#__codelineno-9-12"></a>    <span class="n">message_fields</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="s2">&quot;content&quot;</span><span class="p">}</span>
 </span><span id="__span-9-13"><a id="__codelineno-9-13" name="__codelineno-9-13" href="#__codelineno-9-13"></a>    <span class="n">response_mode</span>  <span class="o">=</span> <span class="s2">&quot;analysis&quot;</span>
 </span><span id="__span-9-14"><a id="__codelineno-9-14" name="__codelineno-9-14" href="#__codelineno-9-14"></a>
 </span><span id="__span-9-15"><a id="__codelineno-9-15" name="__codelineno-9-15" href="#__codelineno-9-15"></a><span class="n">transcriber</span> <span class="o">=</span> <span class="n">Speech2Text</span><span class="p">()</span>

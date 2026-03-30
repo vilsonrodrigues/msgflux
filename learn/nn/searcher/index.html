@@ -897,7 +897,7 @@
   
   
   <span class="md-ellipsis">
-    ⟳ Retriever
+    ⟳ Retrievers
     
   </span>
   
@@ -908,7 +908,7 @@
         <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_2_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_2_2">
             <span class="md-nav__icon md-icon"></span>
-            ⟳ Retriever
+            ⟳ Retrievers
           </label>
           <ul class="md-nav__list" data-md-scrollfix>
             
@@ -3724,7 +3724,7 @@ Use Jinja2 templates to format results into readable strings. When a `response` 
         ```python
         class StructuredSearcher(nn.Searcher):
             retriever      = bm25
-            message_fields = {&quot;task_inputs&quot;: &quot;query.user&quot;}
+            message_fields = {&quot;task&quot;: &quot;query.user&quot;}
             config         = {&quot;top_k&quot;: 3}
 
         searcher = StructuredSearcher()
@@ -3742,7 +3742,7 @@ Use Jinja2 templates to format results into readable strings. When a `response` 
         class PipelineSearcher(nn.Searcher):
             &quot;&quot;&quot;Writes results into msg.context for downstream modules.&quot;&quot;&quot;
             retriever      = bm25
-            message_fields = {&quot;task_inputs&quot;: &quot;question&quot;}
+            message_fields = {&quot;task&quot;: &quot;question&quot;}
             response_mode  = &quot;context&quot;
             config         = {&quot;top_k&quot;: 3}
 
@@ -4054,7 +4054,7 @@ A `Searcher` with a docstring can be plugged directly as a tool into an `Agent` 
 <div class="tabbed-block">
 <div class="language-python highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">StructuredSearcher</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Searcher</span><span class="p">):</span>
 </span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>    <span class="n">retriever</span>      <span class="o">=</span> <span class="n">bm25</span>
-</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>    <span class="n">message_fields</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;task_inputs&quot;</span><span class="p">:</span> <span class="s2">&quot;query.user&quot;</span><span class="p">}</span>
+</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>    <span class="n">message_fields</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="s2">&quot;query.user&quot;</span><span class="p">}</span>
 </span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>    <span class="n">config</span>         <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;top_k&quot;</span><span class="p">:</span> <span class="mi">3</span><span class="p">}</span>
 </span><span id="__span-9-5"><a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>
 </span><span id="__span-9-6"><a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="n">searcher</span> <span class="o">=</span> <span class="n">StructuredSearcher</span><span class="p">()</span>
@@ -4069,7 +4069,7 @@ A `Searcher` with a docstring can be plugged directly as a tool into an `Agent` 
 <div class="language-python highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">PipelineSearcher</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Searcher</span><span class="p">):</span>
 </span><span id="__span-10-2"><a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Writes results into msg.context for downstream modules.&quot;&quot;&quot;</span>
 </span><span id="__span-10-3"><a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>    <span class="n">retriever</span>      <span class="o">=</span> <span class="n">bm25</span>
-</span><span id="__span-10-4"><a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>    <span class="n">message_fields</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;task_inputs&quot;</span><span class="p">:</span> <span class="s2">&quot;question&quot;</span><span class="p">}</span>
+</span><span id="__span-10-4"><a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>    <span class="n">message_fields</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="s2">&quot;question&quot;</span><span class="p">}</span>
 </span><span id="__span-10-5"><a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>    <span class="n">response_mode</span>  <span class="o">=</span> <span class="s2">&quot;context&quot;</span>
 </span><span id="__span-10-6"><a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>    <span class="n">config</span>         <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;top_k&quot;</span><span class="p">:</span> <span class="mi">3</span><span class="p">}</span>
 </span><span id="__span-10-7"><a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a>

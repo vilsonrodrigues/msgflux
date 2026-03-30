@@ -890,7 +890,7 @@
   
   
   <span class="md-ellipsis">
-    ⟳ Retriever
+    ⟳ Retrievers
     
   </span>
   
@@ -901,7 +901,7 @@
         <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_2_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_2_2">
             <span class="md-nav__icon md-icon"></span>
-            ⟳ Retriever
+            ⟳ Retrievers
           </label>
           <ul class="md-nav__list" data-md-scrollfix>
             
@@ -3909,7 +3909,7 @@ class Refiner(nn.Agent):
     Rewrite the ad to address their concerns while keeping the core message.
     Return only the new ad text — nothing else.
     &quot;&quot;&quot;
-    message_fields = {&quot;task_inputs&quot;: &quot;refinement_input&quot;}
+    message_fields = {&quot;task&quot;: &quot;refinement_input&quot;}
     response_mode = &quot;ad_text&quot;
 
 
@@ -3995,7 +3995,7 @@ class CreativeDirector(nn.Agent):
 
     Return only the ad text.
     &quot;&quot;&quot;
-    message_fields = {&quot;task_inputs&quot;: &quot;product_description&quot;}
+    message_fields = {&quot;task&quot;: &quot;product_description&quot;}
     response_mode = &quot;ad_text&quot;
 
 
@@ -4003,7 +4003,7 @@ class PosterMaker(nn.MediaMaker):
     &quot;&quot;&quot;Generates a poster image from ad text.&quot;&quot;&quot;
 
     model = mf.Model.text_to_image(&quot;openai/gpt-image-1&quot;)
-    message_fields = {&quot;task_inputs&quot;: &quot;poster_prompt&quot;}
+    message_fields = {&quot;task&quot;: &quot;poster_prompt&quot;}
     response_mode = &quot;poster&quot;
     config = {&quot;size&quot;: &quot;1536x1024&quot;, &quot;quality&quot;: &quot;high&quot;}
 
@@ -4129,7 +4129,7 @@ class CreativeDirector(nn.Agent):
 
     Return only the ad text.
     &quot;&quot;&quot;
-    message_fields = {&quot;task_inputs&quot;: &quot;product_description&quot;}
+    message_fields = {&quot;task&quot;: &quot;product_description&quot;}
     response_mode = &quot;ad_text&quot;
 
 
@@ -4144,7 +4144,7 @@ class Refiner(nn.Agent):
     Rewrite the ad to address their concerns while keeping the core message.
     Return only the new ad text — nothing else.
     &quot;&quot;&quot;
-    message_fields = {&quot;task_inputs&quot;: &quot;refinement_input&quot;}
+    message_fields = {&quot;task&quot;: &quot;refinement_input&quot;}
     response_mode = &quot;ad_text&quot;
 
 
@@ -4154,7 +4154,7 @@ class PosterMaker(nn.MediaMaker):
     &quot;&quot;&quot;Generates a poster image from ad text.&quot;&quot;&quot;
 
     model = mf.Model.text_to_image(&quot;openai/gpt-image-1&quot;)
-    message_fields = {&quot;task_inputs&quot;: &quot;poster_prompt&quot;}
+    message_fields = {&quot;task&quot;: &quot;poster_prompt&quot;}
     response_mode = &quot;poster&quot;
     config = {&quot;size&quot;: &quot;1536x1024&quot;, &quot;quality&quot;: &quot;high&quot;}
 
@@ -4501,7 +4501,7 @@ When the score reaches 8+ or 3 iterations pass, the loop exits and the pipeline 
 </span><span id="__span-8-9"><a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a><span class="s2">    Rewrite the ad to address their concerns while keeping the core message.</span>
 </span><span id="__span-8-10"><a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a><span class="s2">    Return only the new ad text — nothing else.</span>
 </span><span id="__span-8-11"><a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a><span class="s2">    &quot;&quot;&quot;</span>
-</span><span id="__span-8-12"><a id="__codelineno-8-12" name="__codelineno-8-12" href="#__codelineno-8-12"></a>    <span class="n">message_fields</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;task_inputs&quot;</span><span class="p">:</span> <span class="s2">&quot;refinement_input&quot;</span><span class="p">}</span>
+</span><span id="__span-8-12"><a id="__codelineno-8-12" name="__codelineno-8-12" href="#__codelineno-8-12"></a>    <span class="n">message_fields</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="s2">&quot;refinement_input&quot;</span><span class="p">}</span>
 </span><span id="__span-8-13"><a id="__codelineno-8-13" name="__codelineno-8-13" href="#__codelineno-8-13"></a>    <span class="n">response_mode</span> <span class="o">=</span> <span class="s2">&quot;ad_text&quot;</span>
 </span><span id="__span-8-14"><a id="__codelineno-8-14" name="__codelineno-8-14" href="#__codelineno-8-14"></a>
 </span><span id="__span-8-15"><a id="__codelineno-8-15" name="__codelineno-8-15" href="#__codelineno-8-15"></a>
@@ -4572,7 +4572,7 @@ When the score reaches 8+ or 3 iterations pass, the loop exits and the pipeline 
 </span><span id="__span-11-11"><a id="__codelineno-11-11" name="__codelineno-11-11" href="#__codelineno-11-11"></a>
 </span><span id="__span-11-12"><a id="__codelineno-11-12" name="__codelineno-11-12" href="#__codelineno-11-12"></a><span class="s2">    Return only the ad text.</span>
 </span><span id="__span-11-13"><a id="__codelineno-11-13" name="__codelineno-11-13" href="#__codelineno-11-13"></a><span class="s2">    &quot;&quot;&quot;</span>
-</span><span id="__span-11-14"><a id="__codelineno-11-14" name="__codelineno-11-14" href="#__codelineno-11-14"></a>    <span class="n">message_fields</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;task_inputs&quot;</span><span class="p">:</span> <span class="s2">&quot;product_description&quot;</span><span class="p">}</span>
+</span><span id="__span-11-14"><a id="__codelineno-11-14" name="__codelineno-11-14" href="#__codelineno-11-14"></a>    <span class="n">message_fields</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="s2">&quot;product_description&quot;</span><span class="p">}</span>
 </span><span id="__span-11-15"><a id="__codelineno-11-15" name="__codelineno-11-15" href="#__codelineno-11-15"></a>    <span class="n">response_mode</span> <span class="o">=</span> <span class="s2">&quot;ad_text&quot;</span>
 </span><span id="__span-11-16"><a id="__codelineno-11-16" name="__codelineno-11-16" href="#__codelineno-11-16"></a>
 </span><span id="__span-11-17"><a id="__codelineno-11-17" name="__codelineno-11-17" href="#__codelineno-11-17"></a>
@@ -4580,7 +4580,7 @@ When the score reaches 8+ or 3 iterations pass, the loop exits and the pipeline 
 </span><span id="__span-11-19"><a id="__codelineno-11-19" name="__codelineno-11-19" href="#__codelineno-11-19"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Generates a poster image from ad text.&quot;&quot;&quot;</span>
 </span><span id="__span-11-20"><a id="__codelineno-11-20" name="__codelineno-11-20" href="#__codelineno-11-20"></a>
 </span><span id="__span-11-21"><a id="__codelineno-11-21" name="__codelineno-11-21" href="#__codelineno-11-21"></a>    <span class="n">model</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">text_to_image</span><span class="p">(</span><span class="s2">&quot;openai/gpt-image-1&quot;</span><span class="p">)</span>
-</span><span id="__span-11-22"><a id="__codelineno-11-22" name="__codelineno-11-22" href="#__codelineno-11-22"></a>    <span class="n">message_fields</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;task_inputs&quot;</span><span class="p">:</span> <span class="s2">&quot;poster_prompt&quot;</span><span class="p">}</span>
+</span><span id="__span-11-22"><a id="__codelineno-11-22" name="__codelineno-11-22" href="#__codelineno-11-22"></a>    <span class="n">message_fields</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="s2">&quot;poster_prompt&quot;</span><span class="p">}</span>
 </span><span id="__span-11-23"><a id="__codelineno-11-23" name="__codelineno-11-23" href="#__codelineno-11-23"></a>    <span class="n">response_mode</span> <span class="o">=</span> <span class="s2">&quot;poster&quot;</span>
 </span><span id="__span-11-24"><a id="__codelineno-11-24" name="__codelineno-11-24" href="#__codelineno-11-24"></a>    <span class="n">config</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;size&quot;</span><span class="p">:</span> <span class="s2">&quot;1536x1024&quot;</span><span class="p">,</span> <span class="s2">&quot;quality&quot;</span><span class="p">:</span> <span class="s2">&quot;high&quot;</span><span class="p">}</span>
 </span><span id="__span-11-25"><a id="__codelineno-11-25" name="__codelineno-11-25" href="#__codelineno-11-25"></a>
@@ -4698,7 +4698,7 @@ When the score reaches 8+ or 3 iterations pass, the loop exits and the pipeline 
 </span><span id="__span-13-65"><a id="__codelineno-13-65" name="__codelineno-13-65" href="#__codelineno-13-65"></a>
 </span><span id="__span-13-66"><a id="__codelineno-13-66" name="__codelineno-13-66" href="#__codelineno-13-66"></a><span class="s2">    Return only the ad text.</span>
 </span><span id="__span-13-67"><a id="__codelineno-13-67" name="__codelineno-13-67" href="#__codelineno-13-67"></a><span class="s2">    &quot;&quot;&quot;</span>
-</span><span id="__span-13-68"><a id="__codelineno-13-68" name="__codelineno-13-68" href="#__codelineno-13-68"></a>    <span class="n">message_fields</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;task_inputs&quot;</span><span class="p">:</span> <span class="s2">&quot;product_description&quot;</span><span class="p">}</span>
+</span><span id="__span-13-68"><a id="__codelineno-13-68" name="__codelineno-13-68" href="#__codelineno-13-68"></a>    <span class="n">message_fields</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="s2">&quot;product_description&quot;</span><span class="p">}</span>
 </span><span id="__span-13-69"><a id="__codelineno-13-69" name="__codelineno-13-69" href="#__codelineno-13-69"></a>    <span class="n">response_mode</span> <span class="o">=</span> <span class="s2">&quot;ad_text&quot;</span>
 </span><span id="__span-13-70"><a id="__codelineno-13-70" name="__codelineno-13-70" href="#__codelineno-13-70"></a>
 </span><span id="__span-13-71"><a id="__codelineno-13-71" name="__codelineno-13-71" href="#__codelineno-13-71"></a>
@@ -4713,7 +4713,7 @@ When the score reaches 8+ or 3 iterations pass, the loop exits and the pipeline 
 </span><span id="__span-13-80"><a id="__codelineno-13-80" name="__codelineno-13-80" href="#__codelineno-13-80"></a><span class="s2">    Rewrite the ad to address their concerns while keeping the core message.</span>
 </span><span id="__span-13-81"><a id="__codelineno-13-81" name="__codelineno-13-81" href="#__codelineno-13-81"></a><span class="s2">    Return only the new ad text — nothing else.</span>
 </span><span id="__span-13-82"><a id="__codelineno-13-82" name="__codelineno-13-82" href="#__codelineno-13-82"></a><span class="s2">    &quot;&quot;&quot;</span>
-</span><span id="__span-13-83"><a id="__codelineno-13-83" name="__codelineno-13-83" href="#__codelineno-13-83"></a>    <span class="n">message_fields</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;task_inputs&quot;</span><span class="p">:</span> <span class="s2">&quot;refinement_input&quot;</span><span class="p">}</span>
+</span><span id="__span-13-83"><a id="__codelineno-13-83" name="__codelineno-13-83" href="#__codelineno-13-83"></a>    <span class="n">message_fields</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="s2">&quot;refinement_input&quot;</span><span class="p">}</span>
 </span><span id="__span-13-84"><a id="__codelineno-13-84" name="__codelineno-13-84" href="#__codelineno-13-84"></a>    <span class="n">response_mode</span> <span class="o">=</span> <span class="s2">&quot;ad_text&quot;</span>
 </span><span id="__span-13-85"><a id="__codelineno-13-85" name="__codelineno-13-85" href="#__codelineno-13-85"></a>
 </span><span id="__span-13-86"><a id="__codelineno-13-86" name="__codelineno-13-86" href="#__codelineno-13-86"></a>
@@ -4723,7 +4723,7 @@ When the score reaches 8+ or 3 iterations pass, the loop exits and the pipeline 
 </span><span id="__span-13-90"><a id="__codelineno-13-90" name="__codelineno-13-90" href="#__codelineno-13-90"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Generates a poster image from ad text.&quot;&quot;&quot;</span>
 </span><span id="__span-13-91"><a id="__codelineno-13-91" name="__codelineno-13-91" href="#__codelineno-13-91"></a>
 </span><span id="__span-13-92"><a id="__codelineno-13-92" name="__codelineno-13-92" href="#__codelineno-13-92"></a>    <span class="n">model</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">text_to_image</span><span class="p">(</span><span class="s2">&quot;openai/gpt-image-1&quot;</span><span class="p">)</span>
-</span><span id="__span-13-93"><a id="__codelineno-13-93" name="__codelineno-13-93" href="#__codelineno-13-93"></a>    <span class="n">message_fields</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;task_inputs&quot;</span><span class="p">:</span> <span class="s2">&quot;poster_prompt&quot;</span><span class="p">}</span>
+</span><span id="__span-13-93"><a id="__codelineno-13-93" name="__codelineno-13-93" href="#__codelineno-13-93"></a>    <span class="n">message_fields</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="s2">&quot;poster_prompt&quot;</span><span class="p">}</span>
 </span><span id="__span-13-94"><a id="__codelineno-13-94" name="__codelineno-13-94" href="#__codelineno-13-94"></a>    <span class="n">response_mode</span> <span class="o">=</span> <span class="s2">&quot;poster&quot;</span>
 </span><span id="__span-13-95"><a id="__codelineno-13-95" name="__codelineno-13-95" href="#__codelineno-13-95"></a>    <span class="n">config</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;size&quot;</span><span class="p">:</span> <span class="s2">&quot;1536x1024&quot;</span><span class="p">,</span> <span class="s2">&quot;quality&quot;</span><span class="p">:</span> <span class="s2">&quot;high&quot;</span><span class="p">}</span>
 </span><span id="__span-13-96"><a id="__codelineno-13-96" name="__codelineno-13-96" href="#__codelineno-13-96"></a>

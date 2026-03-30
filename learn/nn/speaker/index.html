@@ -897,7 +897,7 @@
   
   
   <span class="md-ellipsis">
-    ⟳ Retriever
+    ⟳ Retrievers
     
   </span>
   
@@ -908,7 +908,7 @@
         <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_2_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_2_2">
             <span class="md-nav__icon md-icon"></span>
-            ⟳ Retriever
+            ⟳ Retrievers
           </label>
           <ul class="md-nav__list" data-md-scrollfix>
             
@@ -3799,7 +3799,7 @@ Speakers typically sit at the end of a voice pipeline (Agent → Speaker).
             &quot;&quot;&quot;Reads notifications.&quot;&quot;&quot;
             model = mf.Model.text_to_speech(&quot;openai/gpt-4o-mini-tts&quot;)
             response_mode = &quot;audio&quot;
-            message_fields = {&quot;task_inputs&quot;: &quot;notification.text&quot;}
+            message_fields = {&quot;task&quot;: &quot;notification.text&quot;}
             response_format = &quot;mp3&quot;
 
         speaker = NotificationSpeaker()
@@ -4161,7 +4161,7 @@ Speakers typically sit at the end of a voice pipeline (Agent → Speaker).
 </span><span id="__span-10-5"><a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Reads notifications.&quot;&quot;&quot;</span>
 </span><span id="__span-10-6"><a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>    <span class="n">model</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">text_to_speech</span><span class="p">(</span><span class="s2">&quot;openai/gpt-4o-mini-tts&quot;</span><span class="p">)</span>
 </span><span id="__span-10-7"><a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a>    <span class="n">response_mode</span> <span class="o">=</span> <span class="s2">&quot;audio&quot;</span>
-</span><span id="__span-10-8"><a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a>    <span class="n">message_fields</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;task_inputs&quot;</span><span class="p">:</span> <span class="s2">&quot;notification.text&quot;</span><span class="p">}</span>
+</span><span id="__span-10-8"><a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a>    <span class="n">message_fields</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="s2">&quot;notification.text&quot;</span><span class="p">}</span>
 </span><span id="__span-10-9"><a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a>    <span class="n">response_format</span> <span class="o">=</span> <span class="s2">&quot;mp3&quot;</span>
 </span><span id="__span-10-10"><a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a>
 </span><span id="__span-10-11"><a id="__codelineno-10-11" name="__codelineno-10-11" href="#__codelineno-10-11"></a><span class="n">speaker</span> <span class="o">=</span> <span class="n">NotificationSpeaker</span><span class="p">()</span>

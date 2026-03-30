@@ -890,7 +890,7 @@
   
   
   <span class="md-ellipsis">
-    ⟳ Retriever
+    ⟳ Retrievers
     
   </span>
   
@@ -901,7 +901,7 @@
         <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_2_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_2_2">
             <span class="md-nav__icon md-icon"></span>
-            ⟳ Retriever
+            ⟳ Retrievers
           </label>
           <ul class="md-nav__list" data-md-scrollfix>
             
@@ -3669,8 +3669,8 @@ class PosterPromptAgent(nn.Agent):
     Return only the image generation prompt — nothing else.
     &quot;&quot;&quot;
     message_fields = {
-        &quot;task_inputs&quot;: &quot;product_text&quot;,
-        &quot;task_multimodal_inputs&quot;: {&quot;image&quot;: &quot;product_image&quot;},
+        &quot;task&quot;: &quot;product_text&quot;,
+        &quot;task_multimodal&quot;: {&quot;image&quot;: &quot;product_image&quot;},
     }
     response_mode = &quot;poster_prompt&quot;
 ```
@@ -3685,7 +3685,7 @@ A `MediaMaker` takes the prompt and calls an image model to produce the poster b
 class PosterMaker(nn.MediaMaker):
     &quot;&quot;&quot;Generates a marketing poster from a descriptive prompt.&quot;&quot;&quot;
     model = mf.Model.text_to_image(&quot;openai/gpt-image-1.5&quot;)
-    message_fields = {&quot;task_inputs&quot;: &quot;poster_prompt&quot;}
+    message_fields = {&quot;task&quot;: &quot;poster_prompt&quot;}
     response_mode = &quot;poster&quot;
     negative_prompt = &quot;blurry, distorted, low quality, pixelated, watermark, text artifacts&quot;
 ```
@@ -3768,8 +3768,8 @@ class PosterPromptAgent(nn.Agent):
     typography hints. Return only the image generation prompt.
     &quot;&quot;&quot;
     message_fields = {
-        &quot;task_inputs&quot;: &quot;product_text&quot;,
-        &quot;task_multimodal_inputs&quot;: {&quot;image&quot;: &quot;product_image&quot;},
+        &quot;task&quot;: &quot;product_text&quot;,
+        &quot;task_multimodal&quot;: {&quot;image&quot;: &quot;product_image&quot;},
     }
     response_mode = &quot;poster_prompt&quot;
 
@@ -3777,7 +3777,7 @@ class PosterPromptAgent(nn.Agent):
 class PosterMaker(nn.MediaMaker):
     &quot;&quot;&quot;Generates a marketing poster from a descriptive prompt.&quot;&quot;&quot;
     model = mf.Model.text_to_image(&quot;openai/gpt-image-1.5&quot;)
-    message_fields = {&quot;task_inputs&quot;: &quot;poster_prompt&quot;}
+    message_fields = {&quot;task&quot;: &quot;poster_prompt&quot;}
     response_mode = &quot;poster&quot;
     negative_prompt = &quot;blurry, distorted, low quality, pixelated, watermark&quot;
 
@@ -4010,8 +4010,8 @@ the URL — the parser detects <code>&lt;!DOCTYPE</code> and <code>&lt;html</cod
 </span><span id="__span-5-18"><a id="__codelineno-5-18" name="__codelineno-5-18" href="#__codelineno-5-18"></a><span class="s2">    Return only the image generation prompt — nothing else.</span>
 </span><span id="__span-5-19"><a id="__codelineno-5-19" name="__codelineno-5-19" href="#__codelineno-5-19"></a><span class="s2">    &quot;&quot;&quot;</span>
 </span><span id="__span-5-20"><a id="__codelineno-5-20" name="__codelineno-5-20" href="#__codelineno-5-20"></a>    <span class="n">message_fields</span> <span class="o">=</span> <span class="p">{</span>
-</span><span id="__span-5-21"><a id="__codelineno-5-21" name="__codelineno-5-21" href="#__codelineno-5-21"></a>        <span class="s2">&quot;task_inputs&quot;</span><span class="p">:</span> <span class="s2">&quot;product_text&quot;</span><span class="p">,</span>
-</span><span id="__span-5-22"><a id="__codelineno-5-22" name="__codelineno-5-22" href="#__codelineno-5-22"></a>        <span class="s2">&quot;task_multimodal_inputs&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;image&quot;</span><span class="p">:</span> <span class="s2">&quot;product_image&quot;</span><span class="p">},</span>
+</span><span id="__span-5-21"><a id="__codelineno-5-21" name="__codelineno-5-21" href="#__codelineno-5-21"></a>        <span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="s2">&quot;product_text&quot;</span><span class="p">,</span>
+</span><span id="__span-5-22"><a id="__codelineno-5-22" name="__codelineno-5-22" href="#__codelineno-5-22"></a>        <span class="s2">&quot;task_multimodal&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;image&quot;</span><span class="p">:</span> <span class="s2">&quot;product_image&quot;</span><span class="p">},</span>
 </span><span id="__span-5-23"><a id="__codelineno-5-23" name="__codelineno-5-23" href="#__codelineno-5-23"></a>    <span class="p">}</span>
 </span><span id="__span-5-24"><a id="__codelineno-5-24" name="__codelineno-5-24" href="#__codelineno-5-24"></a>    <span class="n">response_mode</span> <span class="o">=</span> <span class="s2">&quot;poster_prompt&quot;</span>
 </span></code></pre></div>
@@ -4021,7 +4021,7 @@ the URL — the parser detects <code>&lt;!DOCTYPE</code> and <code>&lt;html</cod
 <div class="language-python highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">PosterMaker</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">MediaMaker</span><span class="p">):</span>
 </span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Generates a marketing poster from a descriptive prompt.&quot;&quot;&quot;</span>
 </span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>    <span class="n">model</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">text_to_image</span><span class="p">(</span><span class="s2">&quot;openai/gpt-image-1.5&quot;</span><span class="p">)</span>
-</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>    <span class="n">message_fields</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;task_inputs&quot;</span><span class="p">:</span> <span class="s2">&quot;poster_prompt&quot;</span><span class="p">}</span>
+</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>    <span class="n">message_fields</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="s2">&quot;poster_prompt&quot;</span><span class="p">}</span>
 </span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>    <span class="n">response_mode</span> <span class="o">=</span> <span class="s2">&quot;poster&quot;</span>
 </span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>    <span class="n">negative_prompt</span> <span class="o">=</span> <span class="s2">&quot;blurry, distorted, low quality, pixelated, watermark, text artifacts&quot;</span>
 </span></code></pre></div>
@@ -4096,8 +4096,8 @@ the URL — the parser detects <code>&lt;!DOCTYPE</code> and <code>&lt;html</cod
 </span><span id="__span-8-36"><a id="__codelineno-8-36" name="__codelineno-8-36" href="#__codelineno-8-36"></a><span class="s2">    typography hints. Return only the image generation prompt.</span>
 </span><span id="__span-8-37"><a id="__codelineno-8-37" name="__codelineno-8-37" href="#__codelineno-8-37"></a><span class="s2">    &quot;&quot;&quot;</span>
 </span><span id="__span-8-38"><a id="__codelineno-8-38" name="__codelineno-8-38" href="#__codelineno-8-38"></a>    <span class="n">message_fields</span> <span class="o">=</span> <span class="p">{</span>
-</span><span id="__span-8-39"><a id="__codelineno-8-39" name="__codelineno-8-39" href="#__codelineno-8-39"></a>        <span class="s2">&quot;task_inputs&quot;</span><span class="p">:</span> <span class="s2">&quot;product_text&quot;</span><span class="p">,</span>
-</span><span id="__span-8-40"><a id="__codelineno-8-40" name="__codelineno-8-40" href="#__codelineno-8-40"></a>        <span class="s2">&quot;task_multimodal_inputs&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;image&quot;</span><span class="p">:</span> <span class="s2">&quot;product_image&quot;</span><span class="p">},</span>
+</span><span id="__span-8-39"><a id="__codelineno-8-39" name="__codelineno-8-39" href="#__codelineno-8-39"></a>        <span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="s2">&quot;product_text&quot;</span><span class="p">,</span>
+</span><span id="__span-8-40"><a id="__codelineno-8-40" name="__codelineno-8-40" href="#__codelineno-8-40"></a>        <span class="s2">&quot;task_multimodal&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;image&quot;</span><span class="p">:</span> <span class="s2">&quot;product_image&quot;</span><span class="p">},</span>
 </span><span id="__span-8-41"><a id="__codelineno-8-41" name="__codelineno-8-41" href="#__codelineno-8-41"></a>    <span class="p">}</span>
 </span><span id="__span-8-42"><a id="__codelineno-8-42" name="__codelineno-8-42" href="#__codelineno-8-42"></a>    <span class="n">response_mode</span> <span class="o">=</span> <span class="s2">&quot;poster_prompt&quot;</span>
 </span><span id="__span-8-43"><a id="__codelineno-8-43" name="__codelineno-8-43" href="#__codelineno-8-43"></a>
@@ -4105,7 +4105,7 @@ the URL — the parser detects <code>&lt;!DOCTYPE</code> and <code>&lt;html</cod
 </span><span id="__span-8-45"><a id="__codelineno-8-45" name="__codelineno-8-45" href="#__codelineno-8-45"></a><span class="k">class</span><span class="w"> </span><span class="nc">PosterMaker</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">MediaMaker</span><span class="p">):</span>
 </span><span id="__span-8-46"><a id="__codelineno-8-46" name="__codelineno-8-46" href="#__codelineno-8-46"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Generates a marketing poster from a descriptive prompt.&quot;&quot;&quot;</span>
 </span><span id="__span-8-47"><a id="__codelineno-8-47" name="__codelineno-8-47" href="#__codelineno-8-47"></a>    <span class="n">model</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">text_to_image</span><span class="p">(</span><span class="s2">&quot;openai/gpt-image-1.5&quot;</span><span class="p">)</span>
-</span><span id="__span-8-48"><a id="__codelineno-8-48" name="__codelineno-8-48" href="#__codelineno-8-48"></a>    <span class="n">message_fields</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;task_inputs&quot;</span><span class="p">:</span> <span class="s2">&quot;poster_prompt&quot;</span><span class="p">}</span>
+</span><span id="__span-8-48"><a id="__codelineno-8-48" name="__codelineno-8-48" href="#__codelineno-8-48"></a>    <span class="n">message_fields</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="s2">&quot;poster_prompt&quot;</span><span class="p">}</span>
 </span><span id="__span-8-49"><a id="__codelineno-8-49" name="__codelineno-8-49" href="#__codelineno-8-49"></a>    <span class="n">response_mode</span> <span class="o">=</span> <span class="s2">&quot;poster&quot;</span>
 </span><span id="__span-8-50"><a id="__codelineno-8-50" name="__codelineno-8-50" href="#__codelineno-8-50"></a>    <span class="n">negative_prompt</span> <span class="o">=</span> <span class="s2">&quot;blurry, distorted, low quality, pixelated, watermark&quot;</span>
 </span><span id="__span-8-51"><a id="__codelineno-8-51" name="__codelineno-8-51" href="#__codelineno-8-51"></a>

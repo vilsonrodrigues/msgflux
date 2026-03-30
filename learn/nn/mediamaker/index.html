@@ -897,7 +897,7 @@
   
   
   <span class="md-ellipsis">
-    ⟳ Retriever
+    ⟳ Retrievers
     
   </span>
   
@@ -908,7 +908,7 @@
         <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_2_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_2_2">
             <span class="md-nav__icon md-icon"></span>
-            ⟳ Retriever
+            ⟳ Retrievers
           </label>
           <ul class="md-nav__list" data-md-scrollfix>
             
@@ -3601,7 +3601,7 @@
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `model` | `MEDIA_MODEL_TYPES` | Media generation model |
-| `message_fields` | `dict` | Map `Message` field names to inputs. Valid keys: `task_inputs`, `task_multimodal_inputs` |
+| `message_fields` | `dict` | Map `Message` field names to inputs. Valid keys: `task`, `task_multimodal` |
 | `response_mode` | `str \| None` | Field path on the `Message` where the result is written. `None` returns the result directly |
 | `response_format` | `&quot;base64&quot; \| &quot;url&quot; \| None` | Output format for the generated media |
 | `negative_prompt` | `str \| None` | What to avoid in generation |
@@ -3658,13 +3658,13 @@
         # Edit with reference image
         edited = editor(
             &quot;Make it look like sunset&quot;,
-            task_multimodal_inputs={&quot;image&quot;: &quot;/path/to/photo.jpg&quot;}
+            task_multimodal={&quot;image&quot;: &quot;/path/to/photo.jpg&quot;}
         )
 
         # Edit with mask
         edited = editor(
             &quot;Add a flamingo in the pool&quot;,
-            task_multimodal_inputs={
+            task_multimodal={
                 &quot;image&quot;: &quot;/path/to/pool.jpg&quot;,
                 &quot;mask&quot;: &quot;/path/to/mask.png&quot;
             }
@@ -3696,7 +3696,7 @@
 
         class Maker(nn.MediaMaker):
             model = mf.Model.text_to_image(&quot;openai/gpt-image-1&quot;)
-            message_fields = {&quot;task_inputs&quot;: &quot;prompt&quot;}
+            message_fields = {&quot;task&quot;: &quot;prompt&quot;}
             response_mode = &quot;generated_image&quot;
 
         maker = Maker()
@@ -3809,12 +3809,12 @@ Chain an `Agent` (prompt engineer) and a `MediaMaker` (image generator) using `I
         Create a detailed image generation prompt from the story scene.
         Focus on visual elements, lighting, style, and composition.
         &quot;&quot;&quot;
-        message_fields = {&quot;task_inputs&quot;: &quot;scene&quot;}
+        message_fields = {&quot;task&quot;: &quot;scene&quot;}
         response_mode = &quot;prompt&quot;
 
     class ImageGenerator(nn.MediaMaker):
         model = mf.Model.text_to_image(&quot;openai/gpt-image-1&quot;)
-        message_fields = {&quot;task_inputs&quot;: &quot;prompt&quot;}
+        message_fields = {&quot;task&quot;: &quot;prompt&quot;}
         response_mode = &quot;illustration&quot;
 
     prompter = StoryToPrompt()
@@ -3970,7 +3970,7 @@ print(params)
 <tr>
 <td><code>message_fields</code></td>
 <td><code>dict</code></td>
-<td>Map <code>Message</code> field names to inputs. Valid keys: <code>task_inputs</code>, <code>task_multimodal_inputs</code></td>
+<td>Map <code>Message</code> field names to inputs. Valid keys: <code>task</code>, <code>task_multimodal</code></td>
 </tr>
 <tr>
 <td><code>response_mode</code></td>
@@ -4048,13 +4048,13 @@ print(params)
 </span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="c1"># Edit with reference image</span>
 </span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="n">edited</span> <span class="o">=</span> <span class="n">editor</span><span class="p">(</span>
 </span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>    <span class="s2">&quot;Make it look like sunset&quot;</span><span class="p">,</span>
-</span><span id="__span-4-9"><a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>    <span class="n">task_multimodal_inputs</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;image&quot;</span><span class="p">:</span> <span class="s2">&quot;/path/to/photo.jpg&quot;</span><span class="p">}</span>
+</span><span id="__span-4-9"><a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>    <span class="n">task_multimodal</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;image&quot;</span><span class="p">:</span> <span class="s2">&quot;/path/to/photo.jpg&quot;</span><span class="p">}</span>
 </span><span id="__span-4-10"><a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a><span class="p">)</span>
 </span><span id="__span-4-11"><a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a>
 </span><span id="__span-4-12"><a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a><span class="c1"># Edit with mask</span>
 </span><span id="__span-4-13"><a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a><span class="n">edited</span> <span class="o">=</span> <span class="n">editor</span><span class="p">(</span>
 </span><span id="__span-4-14"><a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a>    <span class="s2">&quot;Add a flamingo in the pool&quot;</span><span class="p">,</span>
-</span><span id="__span-4-15"><a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a>    <span class="n">task_multimodal_inputs</span><span class="o">=</span><span class="p">{</span>
+</span><span id="__span-4-15"><a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a>    <span class="n">task_multimodal</span><span class="o">=</span><span class="p">{</span>
 </span><span id="__span-4-16"><a id="__codelineno-4-16" name="__codelineno-4-16" href="#__codelineno-4-16"></a>        <span class="s2">&quot;image&quot;</span><span class="p">:</span> <span class="s2">&quot;/path/to/pool.jpg&quot;</span><span class="p">,</span>
 </span><span id="__span-4-17"><a id="__codelineno-4-17" name="__codelineno-4-17" href="#__codelineno-4-17"></a>        <span class="s2">&quot;mask&quot;</span><span class="p">:</span> <span class="s2">&quot;/path/to/mask.png&quot;</span>
 </span><span id="__span-4-18"><a id="__codelineno-4-18" name="__codelineno-4-18" href="#__codelineno-4-18"></a>    <span class="p">}</span>
@@ -4081,7 +4081,7 @@ print(params)
 </span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>
 </span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="k">class</span><span class="w"> </span><span class="nc">Maker</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">MediaMaker</span><span class="p">):</span>
 </span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>    <span class="n">model</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">text_to_image</span><span class="p">(</span><span class="s2">&quot;openai/gpt-image-1&quot;</span><span class="p">)</span>
-</span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>    <span class="n">message_fields</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;task_inputs&quot;</span><span class="p">:</span> <span class="s2">&quot;prompt&quot;</span><span class="p">}</span>
+</span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>    <span class="n">message_fields</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="s2">&quot;prompt&quot;</span><span class="p">}</span>
 </span><span id="__span-6-7"><a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>    <span class="n">response_mode</span> <span class="o">=</span> <span class="s2">&quot;generated_image&quot;</span>
 </span><span id="__span-6-8"><a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a>
 </span><span id="__span-6-9"><a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="n">maker</span> <span class="o">=</span> <span class="n">Maker</span><span class="p">()</span>
@@ -4187,12 +4187,12 @@ print(params)
 </span><span id="__span-11-7"><a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a><span class="s2">    Create a detailed image generation prompt from the story scene.</span>
 </span><span id="__span-11-8"><a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a><span class="s2">    Focus on visual elements, lighting, style, and composition.</span>
 </span><span id="__span-11-9"><a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a><span class="s2">    &quot;&quot;&quot;</span>
-</span><span id="__span-11-10"><a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a>    <span class="n">message_fields</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;task_inputs&quot;</span><span class="p">:</span> <span class="s2">&quot;scene&quot;</span><span class="p">}</span>
+</span><span id="__span-11-10"><a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a>    <span class="n">message_fields</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="s2">&quot;scene&quot;</span><span class="p">}</span>
 </span><span id="__span-11-11"><a id="__codelineno-11-11" name="__codelineno-11-11" href="#__codelineno-11-11"></a>    <span class="n">response_mode</span> <span class="o">=</span> <span class="s2">&quot;prompt&quot;</span>
 </span><span id="__span-11-12"><a id="__codelineno-11-12" name="__codelineno-11-12" href="#__codelineno-11-12"></a>
 </span><span id="__span-11-13"><a id="__codelineno-11-13" name="__codelineno-11-13" href="#__codelineno-11-13"></a><span class="k">class</span><span class="w"> </span><span class="nc">ImageGenerator</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">MediaMaker</span><span class="p">):</span>
 </span><span id="__span-11-14"><a id="__codelineno-11-14" name="__codelineno-11-14" href="#__codelineno-11-14"></a>    <span class="n">model</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">text_to_image</span><span class="p">(</span><span class="s2">&quot;openai/gpt-image-1&quot;</span><span class="p">)</span>
-</span><span id="__span-11-15"><a id="__codelineno-11-15" name="__codelineno-11-15" href="#__codelineno-11-15"></a>    <span class="n">message_fields</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;task_inputs&quot;</span><span class="p">:</span> <span class="s2">&quot;prompt&quot;</span><span class="p">}</span>
+</span><span id="__span-11-15"><a id="__codelineno-11-15" name="__codelineno-11-15" href="#__codelineno-11-15"></a>    <span class="n">message_fields</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="s2">&quot;prompt&quot;</span><span class="p">}</span>
 </span><span id="__span-11-16"><a id="__codelineno-11-16" name="__codelineno-11-16" href="#__codelineno-11-16"></a>    <span class="n">response_mode</span> <span class="o">=</span> <span class="s2">&quot;illustration&quot;</span>
 </span><span id="__span-11-17"><a id="__codelineno-11-17" name="__codelineno-11-17" href="#__codelineno-11-17"></a>
 </span><span id="__span-11-18"><a id="__codelineno-11-18" name="__codelineno-11-18" href="#__codelineno-11-18"></a><span class="n">prompter</span> <span class="o">=</span> <span class="n">StoryToPrompt</span><span class="p">()</span>

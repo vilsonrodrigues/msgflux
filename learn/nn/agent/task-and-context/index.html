@@ -897,7 +897,7 @@
   
   
   <span class="md-ellipsis">
-    ⟳ Retriever
+    ⟳ Retrievers
     
   </span>
   
@@ -908,7 +908,7 @@
         <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_2_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_2_2">
             <span class="md-nav__icon md-icon"></span>
-            ⟳ Retriever
+            ⟳ Retrievers
           </label>
           <ul class="md-nav__list" data-md-scrollfix>
             
@@ -3574,7 +3574,9 @@
 </style>
 <div class="copy-markdown-container" data-markdown="# Task and Context
 
-The agent receives input through **task** (what to do) and **context** (background information). When both are provided, they&#x27;re combined using XML-like tags in the final prompt.
+The agent receives input through **task** (what to do) and **task_context**
+(background information). When both are provided, they&#x27;re combined using
+XML-like tags in the final prompt.
 
 ## Imperative vs Declarative
 
@@ -3591,16 +3593,16 @@ The **declarative approach** with `message_fields` shines when designing complex
 
 | Parameter | Description | Init | Runtime |
 |-----------|-------------|:----:|:-------:|
-| `task_inputs` | Main task input (string or dict for templates) | | ✅ |
-| `context_inputs` | Dynamic context passed at call time | | ✅ |
+| `task` | Main task input (string or dict for templates) | | ✅ |
+| `task_context` | Dynamic task context passed at call time | | ✅ |
 | `context_cache` | Fixed context stored in the agent | ✅ | |
-| `task_multimodal_inputs` | Multimodal inputs (image, audio, file) | | ✅ |
-| `task_messages` | Conversation history (ChatML format) | | ✅ |
+| `task_multimodal` | Multimodal inputs (image, audio, file) | | ✅ |
+| `messages` | Conversation history (ChatML format) | | ✅ |
 | `vars` | Variables for Agent, Templates and Tools | | ✅ |
 
 ## How Task and Context are Combined
 
-When you pass `context_inputs`, the context is injected **inside the task** using XML-like tags:
+When you pass `task_context`, the context is injected **inside the task** using XML-like tags:
 
 ```xml
 &lt;context&gt;
@@ -3614,13 +3616,14 @@ Create a pitch for this client
 &lt;/task&gt;
 ```
 
-This structure helps the model clearly distinguish between background information (context) and what it needs to do (task).
+This structure helps the model clearly distinguish between background
+information (task context) and what it needs to do (task).
 
 ???+ example
 
-    === &quot;Context Inputs (str)&quot;
+    === &quot;Task Context Inputs&quot;
 
-        Pass task as first argument and context via `context_inputs`:
+        Pass task as first argument and task context via `task_context`:
 
         ```python
         # pip install msgflux[openai]
@@ -3635,14 +3638,14 @@ This structure helps the model clearly distinguish between background informatio
 
         agent = SalesAgent()
 
-        context = &quot;&quot;&quot;
+        task_context = &quot;&quot;&quot;
         Company: FinData Analytics
         Industry: FinTech
         Product: AI-powered risk analysis
         &quot;&quot;&quot;
 
         params = agent.inspect_model_execution_params(
-            &quot;Create a pitch for this client&quot;, context_inputs=context
+            &quot;Create a pitch for this client&quot;, task_context=task_context
         )
         print(params)
         ```
@@ -3669,8 +3672,9 @@ This structure helps the model clearly distinguish between background informatio
             config = {&quot;verbose&quot;: True}
 
         agent = CompanyAgent()
+        task_context = &quot;Customer tier: enterprise\nIssue: invoice delay&quot;
         params = agent.inspect_model_execution_params(
-            &quot;Write a response to a customer complaint&quot;, context_inputs=context
+            &quot;Write a response to a customer complaint&quot;, task_context=task_context
         )
         print(params)
         ```
@@ -3691,7 +3695,7 @@ This structure helps the model clearly distinguish between background informatio
             model = mf.Model.chat_completion(&quot;openai/gpt-4.1-mini&quot;)
             tools = [scrape_website]
             templates = {&quot;task&quot;: &quot;Summarize the news on this site: {}&quot;}
-            message_fields = {&quot;task_inputs&quot;: &quot;content&quot;} # Where to read
+            message_fields = {&quot;task&quot;: &quot;content&quot;} # Where to read
             response_mode = &quot;summary&quot;                   # Where to write
 
         scraper = Scraper()
@@ -3718,8 +3722,8 @@ Templates use **Jinja2** syntax to format inputs and outputs. There are three te
 
 | Template | Purpose | Data Source |
 |----------|---------|-------------|
-| `task` | Format the task/question sent to the model | `task_inputs` dict + [vars](vars.md) |
-| `context` | Format background context | `context_inputs` dict + [vars](vars.md) |
+| `task` | Format the task/question sent to the model | `task` dict + [vars](vars.md) |
+| `task_context` | Format background context | `task_context` dict + [vars](vars.md) |
 | `response` | Format the model&#x27;s output before returning | Model output fields + [vars](vars.md) |
 
 !!! tip &quot;Response Template + Generation Schema&quot;
@@ -3753,14 +3757,14 @@ Templates use **Jinja2** syntax to format inputs and outputs. There are three te
         agent = Assistant()
 
         response = agent(
-            task_inputs={&quot;user_input&quot;: &quot;Who was Nikola Tesla?&quot;},
+            task={&quot;user_input&quot;: &quot;Who was Nikola Tesla?&quot;},
             vars={&quot;user_name&quot;: &quot;Bruce Wayne&quot;}
         )
         ```
 
-    === &quot;Context Template&quot;
+    === &quot;Task Context Template&quot;
 
-        Use `templates={&quot;context&quot;: ...}` to format structured context:
+        Use `templates={&quot;task_context&quot;: ...}` to format structured task context:
 
         ```python
         # pip install msgflux[openai]
@@ -3772,7 +3776,7 @@ Templates use **Jinja2** syntax to format inputs and outputs. There are three te
         class SalesAgent(nn.Module):
             model = mf.Model.chat_completion(&quot;openai/gpt-4.1-mini&quot;)
             templates = {
-                &quot;context&quot;: &quot;&quot;&quot;
+                &quot;task_context&quot;: &quot;&quot;&quot;
                 The client is **{{ client_name }}** in the **{{ industry }}** sector.
 
                 Challenges:
@@ -3787,7 +3791,7 @@ Templates use **Jinja2** syntax to format inputs and outputs. There are three te
 
         response = agent(
             &quot;Create a pitch&quot;,
-            context_inputs={
+            task_context={
                 &quot;client_name&quot;: &quot;EcoSupply Ltd.&quot;,
                 &quot;industry&quot;: &quot;Sustainable packaging&quot;,
                 &quot;pain_points&quot;: [&quot;High costs&quot;, &quot;Certification needs&quot;]
@@ -3857,7 +3861,7 @@ Templates use **Jinja2** syntax to format inputs and outputs. There are three te
                 {% endif %}
                 &quot;&quot;&quot;
             }
-            message_fields = {&quot;task_inputs&quot;: &quot;content&quot;}
+            message_fields = {&quot;task&quot;: &quot;content&quot;}
             response_mode = &quot;assistant.output&quot;
             config = {&quot;verbose&quot;: True}
 
@@ -4001,12 +4005,12 @@ Templates use **Jinja2** syntax to format inputs and outputs. There are three te
         # Output: &quot;The sentence was classified as positive, with a confidence of 92.5%.&quot;
         ```
 
-!!! info &quot;Task Template Without task_inputs&quot;
-    When you configure a `task` template but don&#x27;t pass `task_inputs`, the rendered template itself becomes the task. This is useful for scenarios where the prompt is fixed and only some component changes (like images or [vars](vars.md)).
+!!! info &quot;Task Template Without task&quot;
+    When you configure a `task` template but don&#x27;t pass `task`, the rendered template itself becomes the task. This is useful for scenarios where the prompt is fixed and only some component changes (like images or [vars](vars.md)).
 
 ## Multimodal Inputs
 
-Pass images, audio, or files via `task_multimodal_inputs`. Requires a multimodal model (e.g., `gpt-4.1`, `gpt-4.1-mini`).
+Pass images, audio, or files via `task_multimodal`. Requires a multimodal model (e.g., `gpt-4.1`, `gpt-4.1-mini`).
 
 | Media | Single | Multiple |
 |-------|:------:|:--------:|
@@ -4040,7 +4044,7 @@ Pass images, audio, or files via `task_multimodal_inputs`. Requires a multimodal
         # Single image (URL)
         response = agent(
             &quot;Describe this image&quot;,
-            task_multimodal_inputs={
+            task_multimodal={
                 &quot;image&quot;: &quot;https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Gfp-wisconsin-madison-the-nature-boardwalk.jpg/800px-Gfp-wisconsin-madison-the-nature-boardwalk.jpg&quot;
             }
         )
@@ -4048,7 +4052,7 @@ Pass images, audio, or files via `task_multimodal_inputs`. Requires a multimodal
         # Multiple images for comparison
         response = agent(
             &quot;Compare these two images&quot;,
-            task_multimodal_inputs={
+            task_multimodal={
                 &quot;image&quot;: [
                     &quot;https://upload.wikimedia.org/wikipedia/commons/thumb/4/47/PNG_transparency_demonstration_1.png/280px-PNG_transparency_demonstration_1.png&quot;,
                     &quot;https://upload.wikimedia.org/wikipedia/commons/thumb/a/a7/Camponotus_flavomarginatus_ant.jpg/320px-Camponotus_flavomarginatus_ant.jpg&quot;
@@ -4057,7 +4061,7 @@ Pass images, audio, or files via `task_multimodal_inputs`. Requires a multimodal
         )
 
         # With task template (fixed prompt, variable image)
-        # When task_inputs is not passed, the rendered template becomes the task
+        # When task is not passed, the rendered template becomes the task
         class DescribeAgent(nn.Agent):
             model = mf.Model.chat_completion(&quot;openai/gpt-4.1-mini&quot;)
             templates = {&quot;task&quot;: &quot;Describe this image in {{ language }}.&quot;}
@@ -4066,7 +4070,7 @@ Pass images, audio, or files via `task_multimodal_inputs`. Requires a multimodal
 
         # Inspect what the model would receive
         params = describe_agent.inspect_model_execution_params(
-            task_multimodal_inputs={
+            task_multimodal={
                 &quot;image&quot;: &quot;https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Gfp-wisconsin-madison-the-nature-boardwalk.jpg/800px-Gfp-wisconsin-madison-the-nature-boardwalk.jpg&quot;
             },
             vars={&quot;language&quot;: &quot;Portuguese&quot;}
@@ -4076,7 +4080,7 @@ Pass images, audio, or files via `task_multimodal_inputs`. Requires a multimodal
 
         # Execute the agent
         response = describe_agent(
-            task_multimodal_inputs={
+            task_multimodal={
                 &quot;image&quot;: &quot;https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Gfp-wisconsin-madison-the-nature-boardwalk.jpg/800px-Gfp-wisconsin-madison-the-nature-boardwalk.jpg&quot;
             },
             vars={&quot;language&quot;: &quot;Portuguese&quot;}
@@ -4101,8 +4105,8 @@ Pass images, audio, or files via `task_multimodal_inputs`. Requires a multimodal
         class VisionAgent(nn.Agent):
             model = mf.Model.chat_completion(&quot;openai/gpt-4.1-mini&quot;)
             message_fields = {
-                &quot;task_inputs&quot;: &quot;user.query&quot;,
-                &quot;task_multimodal_inputs&quot;: {&quot;image&quot;: &quot;user.image_url&quot;}
+                &quot;task&quot;: &quot;user.query&quot;,
+                &quot;task_multimodal&quot;: {&quot;image&quot;: &quot;user.image_url&quot;}
             }
 
         agent = VisionAgent()
@@ -4118,8 +4122,8 @@ Pass images, audio, or files via `task_multimodal_inputs`. Requires a multimodal
         class ComparisonAgent(nn.Agent):
             model = mf.Model.chat_completion(&quot;openai/gpt-4.1-mini&quot;)
             message_fields = {
-                &quot;task_inputs&quot;: &quot;user.query&quot;,
-                &quot;task_multimodal_inputs&quot;: {&quot;image&quot;: &quot;user.images&quot;}
+                &quot;task&quot;: &quot;user.query&quot;,
+                &quot;task_multimodal&quot;: {&quot;image&quot;: &quot;user.images&quot;}
             }
 
         comparison_agent = ComparisonAgent()
@@ -4152,7 +4156,7 @@ Pass images, audio, or files via `task_multimodal_inputs`. Requires a multimodal
 
         response = agent(
             &quot;Transcribe this audio and identify the speaker&#x27;s emotion&quot;,
-            task_multimodal_inputs={&quot;audio&quot;: &quot;/path/to/recording.wav&quot;}
+            task_multimodal={&quot;audio&quot;: &quot;/path/to/recording.wav&quot;}
         )
         ```
 
@@ -4175,13 +4179,13 @@ Pass images, audio, or files via `task_multimodal_inputs`. Requires a multimodal
         # From URL
         response = agent(
             &quot;Summarize the key findings of this paper&quot;,
-            task_multimodal_inputs={&quot;file&quot;: &quot;https://arxiv.org/pdf/1706.03762.pdf&quot;}
+            task_multimodal={&quot;file&quot;: &quot;https://arxiv.org/pdf/1706.03762.pdf&quot;}
         )
 
         # From local file
         response = agent(
             &quot;Extract the main conclusions&quot;,
-            task_multimodal_inputs={&quot;file&quot;: &quot;./report.pdf&quot;}
+            task_multimodal={&quot;file&quot;: &quot;./report.pdf&quot;}
         )
         ```
 
@@ -4313,8 +4317,8 @@ In declarative mode, you configure the agent once with `message_fields` and `res
 class MyAgent(nn.Agent):
     model = mf.Model.chat_completion(&quot;openai/gpt-4.1-mini&quot;)
     message_fields = {
-        &quot;task_inputs&quot;: &quot;user.query&quot;,            # Read task from msg.user.query
-        &quot;context_inputs&quot;: &quot;context.background&quot;  # Read context from msg.context.background
+        &quot;task&quot;: &quot;user.query&quot;,                 # Read task from msg.user.query
+        &quot;task_context&quot;: &quot;context.background&quot;  # Read context from msg.context.background
     }
     response_mode = &quot;agent.output&quot;              # Write response to msg.agent.output
 ```
@@ -4337,21 +4341,21 @@ It is especially powerful in dynamic pipelines where the same agent may receive 
 class QAAgent(nn.Agent):
     model = mf.Model.chat_completion(&quot;openai/gpt-4.1-mini&quot;)
     message_fields = {
-        &quot;task_inputs&quot;: (&quot;refined.question&quot;, &quot;user.question&quot;, &quot;user.raw_input&quot;)
+        &quot;task&quot;: (&quot;refined.question&quot;, &quot;user.question&quot;, &quot;user.raw_input&quot;)
     }
     response_mode = &quot;qa.answer&quot;
 ```
 
 If `refined.question` is present in the message, it is used. Otherwise the agent falls back to `user.question`, and then to `user.raw_input`.
 
-OR inputs also work inside dict-valued fields (e.g. `task_multimodal_inputs`):
+OR inputs also work inside dict-valued fields (e.g. `task_multimodal`):
 
 ```python
 class VisionAgent(nn.Agent):
     model = mf.Model.chat_completion(&quot;openai/gpt-4.1-mini&quot;)
     message_fields = {
-        &quot;task_inputs&quot;: (&quot;user.query&quot;, &quot;user.raw_input&quot;),        # OR on task
-        &quot;task_multimodal_inputs&quot;: {
+        &quot;task&quot;: (&quot;user.query&quot;, &quot;user.raw_input&quot;),        # OR on task
+        &quot;task_multimodal&quot;: {
             &quot;image&quot;: (&quot;user.photo_url&quot;, &quot;user.image&quot;)           # OR on image
         }
     }
@@ -4372,14 +4376,14 @@ class VisionAgent(nn.Agent):
     class Refiner(nn.Agent):
         model = mf.Model.chat_completion(&quot;openai/gpt-4.1-mini&quot;)
         instructions = &quot;Rewrite the question to be clearer and more specific.&quot;
-        message_fields = {&quot;task_inputs&quot;: &quot;user.question&quot;}
+        message_fields = {&quot;task&quot;: &quot;user.question&quot;}
         response_mode = &quot;refined.question&quot;
 
     class Answerer(nn.Agent):
         model = mf.Model.chat_completion(&quot;openai/gpt-4.1-mini&quot;)
         message_fields = {
             # Use refined question if available, fall back to original
-            &quot;task_inputs&quot;: (&quot;refined.question&quot;, &quot;user.question&quot;)
+            &quot;task&quot;: (&quot;refined.question&quot;, &quot;user.question&quot;)
         }
         response_mode = &quot;answer&quot;
 
@@ -4399,7 +4403,6 @@ class VisionAgent(nn.Agent):
     answerer(msg_b)  # uses user.question directly
     print(msg_b.answer)
     ```
-
 ">
   <button class="copy-markdown-button" onclick="copyMarkdownToClipboard(this)">
     <i id="copy-icon" class="ph ph-clipboard" style="font-size:16px;"></i>
@@ -4468,7 +4471,9 @@ class VisionAgent(nn.Agent):
     window.copyMarkdownToClipboard = copyMarkdownToClipboard;
 }());
 </script>
-<p>The agent receives input through <strong>task</strong> (what to do) and <strong>context</strong> (background information). When both are provided, they're combined using XML-like tags in the final prompt.</p>
+<p>The agent receives input through <strong>task</strong> (what to do) and <strong>task_context</strong>
+(background information). When both are provided, they're combined using
+XML-like tags in the final prompt.</p>
 <h2 id="imperative-vs-declarative">Imperative vs Declarative</h2>
 <p>There are two ways to pass inputs to an agent:</p>
 <table>
@@ -4502,14 +4507,14 @@ class VisionAgent(nn.Agent):
 </thead>
 <tbody>
 <tr>
-<td><code>task_inputs</code></td>
+<td><code>task</code></td>
 <td>Main task input (string or dict for templates)</td>
 <td style="text-align: center;"></td>
 <td style="text-align: center;">✅</td>
 </tr>
 <tr>
-<td><code>context_inputs</code></td>
-<td>Dynamic context passed at call time</td>
+<td><code>task_context</code></td>
+<td>Dynamic task context passed at call time</td>
 <td style="text-align: center;"></td>
 <td style="text-align: center;">✅</td>
 </tr>
@@ -4520,13 +4525,13 @@ class VisionAgent(nn.Agent):
 <td style="text-align: center;"></td>
 </tr>
 <tr>
-<td><code>task_multimodal_inputs</code></td>
+<td><code>task_multimodal</code></td>
 <td>Multimodal inputs (image, audio, file)</td>
 <td style="text-align: center;"></td>
 <td style="text-align: center;">✅</td>
 </tr>
 <tr>
-<td><code>task_messages</code></td>
+<td><code>messages</code></td>
 <td>Conversation history (ChatML format)</td>
 <td style="text-align: center;"></td>
 <td style="text-align: center;">✅</td>
@@ -4540,7 +4545,7 @@ class VisionAgent(nn.Agent):
 </tbody>
 </table>
 <h2 id="how-task-and-context-are-combined">How Task and Context are Combined</h2>
-<p>When you pass <code>context_inputs</code>, the context is injected <strong>inside the task</strong> using XML-like tags:</p>
+<p>When you pass <code>task_context</code>, the context is injected <strong>inside the task</strong> using XML-like tags:</p>
 <div class="language-xml highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nt">&lt;context&gt;</span>
 </span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>Company:<span class="w"> </span>FinData<span class="w"> </span>Analytics
 </span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>Industry:<span class="w"> </span>FinTech
@@ -4551,13 +4556,14 @@ class VisionAgent(nn.Agent):
 </span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>Create<span class="w"> </span>a<span class="w"> </span>pitch<span class="w"> </span>for<span class="w"> </span>this<span class="w"> </span>client
 </span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="nt">&lt;/task&gt;</span>
 </span></code></pre></div>
-<p>This structure helps the model clearly distinguish between background information (context) and what it needs to do (task).</p>
+<p>This structure helps the model clearly distinguish between background
+information (task context) and what it needs to do (task).</p>
 <details class="example" open="open">
 <summary>Example</summary>
-<div class="tabbed-set tabbed-alternate" data-tabs="1:3"><input checked="checked" id="__tabbed_1_1" name="__tabbed_1" type="radio" /><input id="__tabbed_1_2" name="__tabbed_1" type="radio" /><input id="__tabbed_1_3" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="__tabbed_1_1">Context Inputs (str)</label><label for="__tabbed_1_2">Context Cache</label><label for="__tabbed_1_3">Same Agent, Two Modes</label></div>
+<div class="tabbed-set tabbed-alternate" data-tabs="1:3"><input checked="checked" id="__tabbed_1_1" name="__tabbed_1" type="radio" /><input id="__tabbed_1_2" name="__tabbed_1" type="radio" /><input id="__tabbed_1_3" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="__tabbed_1_1">Task Context Inputs</label><label for="__tabbed_1_2">Context Cache</label><label for="__tabbed_1_3">Same Agent, Two Modes</label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
-<p>Pass task as first argument and context via <code>context_inputs</code>:</p>
+<p>Pass task as first argument and task context via <code>task_context</code>:</p>
 <div class="language-python highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="c1"># pip install msgflux[openai]</span>
 </span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
 </span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">nn</span>
@@ -4570,14 +4576,14 @@ class VisionAgent(nn.Agent):
 </span><span id="__span-1-10"><a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>
 </span><span id="__span-1-11"><a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="n">agent</span> <span class="o">=</span> <span class="n">SalesAgent</span><span class="p">()</span>
 </span><span id="__span-1-12"><a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>
-</span><span id="__span-1-13"><a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a><span class="n">context</span> <span class="o">=</span> <span class="s2">&quot;&quot;&quot;</span>
+</span><span id="__span-1-13"><a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a><span class="n">task_context</span> <span class="o">=</span> <span class="s2">&quot;&quot;&quot;</span>
 </span><span id="__span-1-14"><a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a><span class="s2">Company: FinData Analytics</span>
 </span><span id="__span-1-15"><a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a><span class="s2">Industry: FinTech</span>
 </span><span id="__span-1-16"><a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a><span class="s2">Product: AI-powered risk analysis</span>
 </span><span id="__span-1-17"><a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a><span class="s2">&quot;&quot;&quot;</span>
 </span><span id="__span-1-18"><a id="__codelineno-1-18" name="__codelineno-1-18" href="#__codelineno-1-18"></a>
 </span><span id="__span-1-19"><a id="__codelineno-1-19" name="__codelineno-1-19" href="#__codelineno-1-19"></a><span class="n">params</span> <span class="o">=</span> <span class="n">agent</span><span class="o">.</span><span class="n">inspect_model_execution_params</span><span class="p">(</span>
-</span><span id="__span-1-20"><a id="__codelineno-1-20" name="__codelineno-1-20" href="#__codelineno-1-20"></a>    <span class="s2">&quot;Create a pitch for this client&quot;</span><span class="p">,</span> <span class="n">context_inputs</span><span class="o">=</span><span class="n">context</span>
+</span><span id="__span-1-20"><a id="__codelineno-1-20" name="__codelineno-1-20" href="#__codelineno-1-20"></a>    <span class="s2">&quot;Create a pitch for this client&quot;</span><span class="p">,</span> <span class="n">task_context</span><span class="o">=</span><span class="n">task_context</span>
 </span><span id="__span-1-21"><a id="__codelineno-1-21" name="__codelineno-1-21" href="#__codelineno-1-21"></a><span class="p">)</span>
 </span><span id="__span-1-22"><a id="__codelineno-1-22" name="__codelineno-1-22" href="#__codelineno-1-22"></a><span class="nb">print</span><span class="p">(</span><span class="n">params</span><span class="p">)</span>
 </span></code></pre></div>
@@ -4601,10 +4607,11 @@ class VisionAgent(nn.Agent):
 </span><span id="__span-2-15"><a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a>    <span class="n">config</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;verbose&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">}</span>
 </span><span id="__span-2-16"><a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a>
 </span><span id="__span-2-17"><a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a><span class="n">agent</span> <span class="o">=</span> <span class="n">CompanyAgent</span><span class="p">()</span>
-</span><span id="__span-2-18"><a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a><span class="n">params</span> <span class="o">=</span> <span class="n">agent</span><span class="o">.</span><span class="n">inspect_model_execution_params</span><span class="p">(</span>
-</span><span id="__span-2-19"><a id="__codelineno-2-19" name="__codelineno-2-19" href="#__codelineno-2-19"></a>    <span class="s2">&quot;Write a response to a customer complaint&quot;</span><span class="p">,</span> <span class="n">context_inputs</span><span class="o">=</span><span class="n">context</span>
-</span><span id="__span-2-20"><a id="__codelineno-2-20" name="__codelineno-2-20" href="#__codelineno-2-20"></a><span class="p">)</span>
-</span><span id="__span-2-21"><a id="__codelineno-2-21" name="__codelineno-2-21" href="#__codelineno-2-21"></a><span class="nb">print</span><span class="p">(</span><span class="n">params</span><span class="p">)</span>
+</span><span id="__span-2-18"><a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a><span class="n">task_context</span> <span class="o">=</span> <span class="s2">&quot;Customer tier: enterprise</span><span class="se">\n</span><span class="s2">Issue: invoice delay&quot;</span>
+</span><span id="__span-2-19"><a id="__codelineno-2-19" name="__codelineno-2-19" href="#__codelineno-2-19"></a><span class="n">params</span> <span class="o">=</span> <span class="n">agent</span><span class="o">.</span><span class="n">inspect_model_execution_params</span><span class="p">(</span>
+</span><span id="__span-2-20"><a id="__codelineno-2-20" name="__codelineno-2-20" href="#__codelineno-2-20"></a>    <span class="s2">&quot;Write a response to a customer complaint&quot;</span><span class="p">,</span> <span class="n">task_context</span><span class="o">=</span><span class="n">task_context</span>
+</span><span id="__span-2-21"><a id="__codelineno-2-21" name="__codelineno-2-21" href="#__codelineno-2-21"></a><span class="p">)</span>
+</span><span id="__span-2-22"><a id="__codelineno-2-22" name="__codelineno-2-22" href="#__codelineno-2-22"></a><span class="nb">print</span><span class="p">(</span><span class="n">params</span><span class="p">)</span>
 </span></code></pre></div>
 </div>
 <div class="tabbed-block">
@@ -4620,7 +4627,7 @@ class VisionAgent(nn.Agent):
 </span><span id="__span-3-9"><a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>    <span class="n">model</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">chat_completion</span><span class="p">(</span><span class="s2">&quot;openai/gpt-4.1-mini&quot;</span><span class="p">)</span>
 </span><span id="__span-3-10"><a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a>    <span class="n">tools</span> <span class="o">=</span> <span class="p">[</span><span class="n">scrape_website</span><span class="p">]</span>
 </span><span id="__span-3-11"><a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a>    <span class="n">templates</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="s2">&quot;Summarize the news on this site: </span><span class="si">{}</span><span class="s2">&quot;</span><span class="p">}</span>
-</span><span id="__span-3-12"><a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a>    <span class="n">message_fields</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;task_inputs&quot;</span><span class="p">:</span> <span class="s2">&quot;content&quot;</span><span class="p">}</span> <span class="c1"># Where to read</span>
+</span><span id="__span-3-12"><a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a>    <span class="n">message_fields</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="s2">&quot;content&quot;</span><span class="p">}</span> <span class="c1"># Where to read</span>
 </span><span id="__span-3-13"><a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a>    <span class="n">response_mode</span> <span class="o">=</span> <span class="s2">&quot;summary&quot;</span>                   <span class="c1"># Where to write</span>
 </span><span id="__span-3-14"><a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a>
 </span><span id="__span-3-15"><a id="__codelineno-3-15" name="__codelineno-3-15" href="#__codelineno-3-15"></a><span class="n">scraper</span> <span class="o">=</span> <span class="n">Scraper</span><span class="p">()</span>
@@ -4658,12 +4665,12 @@ class VisionAgent(nn.Agent):
 <tr>
 <td><code>task</code></td>
 <td>Format the task/question sent to the model</td>
-<td><code>task_inputs</code> dict + <a href="../vars/">vars</a></td>
+<td><code>task</code> dict + <a href="../vars/">vars</a></td>
 </tr>
 <tr>
-<td><code>context</code></td>
+<td><code>task_context</code></td>
 <td>Format background context</td>
-<td><code>context_inputs</code> dict + <a href="../vars/">vars</a></td>
+<td><code>task_context</code> dict + <a href="../vars/">vars</a></td>
 </tr>
 <tr>
 <td><code>response</code></td>
@@ -4678,7 +4685,7 @@ class VisionAgent(nn.Agent):
 </div>
 <details class="note" open="open">
 <summary>Template Examples</summary>
-<div class="tabbed-set tabbed-alternate" data-tabs="2:7"><input checked="checked" id="__tabbed_2_1" name="__tabbed_2" type="radio" /><input id="__tabbed_2_2" name="__tabbed_2" type="radio" /><input id="__tabbed_2_3" name="__tabbed_2" type="radio" /><input id="__tabbed_2_4" name="__tabbed_2" type="radio" /><input id="__tabbed_2_5" name="__tabbed_2" type="radio" /><input id="__tabbed_2_6" name="__tabbed_2" type="radio" /><input id="__tabbed_2_7" name="__tabbed_2" type="radio" /><div class="tabbed-labels"><label for="__tabbed_2_1">Task Template</label><label for="__tabbed_2_2">Context Template</label><label for="__tabbed_2_3">Response Template (String)</label><label for="__tabbed_2_4">Response Template (Structured)</label><label for="__tabbed_2_5">Response + Extraction</label><label for="__tabbed_2_6">Response + Reasoning</label><label for="__tabbed_2_7">Signature + Response</label></div>
+<div class="tabbed-set tabbed-alternate" data-tabs="2:7"><input checked="checked" id="__tabbed_2_1" name="__tabbed_2" type="radio" /><input id="__tabbed_2_2" name="__tabbed_2" type="radio" /><input id="__tabbed_2_3" name="__tabbed_2" type="radio" /><input id="__tabbed_2_4" name="__tabbed_2" type="radio" /><input id="__tabbed_2_5" name="__tabbed_2" type="radio" /><input id="__tabbed_2_6" name="__tabbed_2" type="radio" /><input id="__tabbed_2_7" name="__tabbed_2" type="radio" /><div class="tabbed-labels"><label for="__tabbed_2_1">Task Template</label><label for="__tabbed_2_2">Task Context Template</label><label for="__tabbed_2_3">Response Template (String)</label><label for="__tabbed_2_4">Response Template (Structured)</label><label for="__tabbed_2_5">Response + Extraction</label><label for="__tabbed_2_6">Response + Reasoning</label><label for="__tabbed_2_7">Signature + Response</label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
 <p>Use <code>templates={"task": ...}</code> to format the task input:</p>
@@ -4703,13 +4710,13 @@ class VisionAgent(nn.Agent):
 </span><span id="__span-4-19"><a id="__codelineno-4-19" name="__codelineno-4-19" href="#__codelineno-4-19"></a><span class="n">agent</span> <span class="o">=</span> <span class="n">Assistant</span><span class="p">()</span>
 </span><span id="__span-4-20"><a id="__codelineno-4-20" name="__codelineno-4-20" href="#__codelineno-4-20"></a>
 </span><span id="__span-4-21"><a id="__codelineno-4-21" name="__codelineno-4-21" href="#__codelineno-4-21"></a><span class="n">response</span> <span class="o">=</span> <span class="n">agent</span><span class="p">(</span>
-</span><span id="__span-4-22"><a id="__codelineno-4-22" name="__codelineno-4-22" href="#__codelineno-4-22"></a>    <span class="n">task_inputs</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;user_input&quot;</span><span class="p">:</span> <span class="s2">&quot;Who was Nikola Tesla?&quot;</span><span class="p">},</span>
+</span><span id="__span-4-22"><a id="__codelineno-4-22" name="__codelineno-4-22" href="#__codelineno-4-22"></a>    <span class="n">task</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;user_input&quot;</span><span class="p">:</span> <span class="s2">&quot;Who was Nikola Tesla?&quot;</span><span class="p">},</span>
 </span><span id="__span-4-23"><a id="__codelineno-4-23" name="__codelineno-4-23" href="#__codelineno-4-23"></a>    <span class="nb">vars</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;user_name&quot;</span><span class="p">:</span> <span class="s2">&quot;Bruce Wayne&quot;</span><span class="p">}</span>
 </span><span id="__span-4-24"><a id="__codelineno-4-24" name="__codelineno-4-24" href="#__codelineno-4-24"></a><span class="p">)</span>
 </span></code></pre></div>
 </div>
 <div class="tabbed-block">
-<p>Use <code>templates={"context": ...}</code> to format structured context:</p>
+<p>Use <code>templates={"task_context": ...}</code> to format structured task context:</p>
 <div class="language-python highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="c1"># pip install msgflux[openai]</span>
 </span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
 </span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">nn</span>
@@ -4719,7 +4726,7 @@ class VisionAgent(nn.Agent):
 </span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="k">class</span><span class="w"> </span><span class="nc">SalesAgent</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
 </span><span id="__span-5-8"><a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>    <span class="n">model</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">chat_completion</span><span class="p">(</span><span class="s2">&quot;openai/gpt-4.1-mini&quot;</span><span class="p">)</span>
 </span><span id="__span-5-9"><a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a>    <span class="n">templates</span> <span class="o">=</span> <span class="p">{</span>
-</span><span id="__span-5-10"><a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a>        <span class="s2">&quot;context&quot;</span><span class="p">:</span> <span class="s2">&quot;&quot;&quot;</span>
+</span><span id="__span-5-10"><a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a>        <span class="s2">&quot;task_context&quot;</span><span class="p">:</span> <span class="s2">&quot;&quot;&quot;</span>
 </span><span id="__span-5-11"><a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a><span class="s2">        The client is **{{ client_name }}** in the **{{ industry }}** sector.</span>
 </span><span id="__span-5-12"><a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a>
 </span><span id="__span-5-13"><a id="__codelineno-5-13" name="__codelineno-5-13" href="#__codelineno-5-13"></a><span class="s2">        Challenges:</span>
@@ -4734,7 +4741,7 @@ class VisionAgent(nn.Agent):
 </span><span id="__span-5-22"><a id="__codelineno-5-22" name="__codelineno-5-22" href="#__codelineno-5-22"></a>
 </span><span id="__span-5-23"><a id="__codelineno-5-23" name="__codelineno-5-23" href="#__codelineno-5-23"></a><span class="n">response</span> <span class="o">=</span> <span class="n">agent</span><span class="p">(</span>
 </span><span id="__span-5-24"><a id="__codelineno-5-24" name="__codelineno-5-24" href="#__codelineno-5-24"></a>    <span class="s2">&quot;Create a pitch&quot;</span><span class="p">,</span>
-</span><span id="__span-5-25"><a id="__codelineno-5-25" name="__codelineno-5-25" href="#__codelineno-5-25"></a>    <span class="n">context_inputs</span><span class="o">=</span><span class="p">{</span>
+</span><span id="__span-5-25"><a id="__codelineno-5-25" name="__codelineno-5-25" href="#__codelineno-5-25"></a>    <span class="n">task_context</span><span class="o">=</span><span class="p">{</span>
 </span><span id="__span-5-26"><a id="__codelineno-5-26" name="__codelineno-5-26" href="#__codelineno-5-26"></a>        <span class="s2">&quot;client_name&quot;</span><span class="p">:</span> <span class="s2">&quot;EcoSupply Ltd.&quot;</span><span class="p">,</span>
 </span><span id="__span-5-27"><a id="__codelineno-5-27" name="__codelineno-5-27" href="#__codelineno-5-27"></a>        <span class="s2">&quot;industry&quot;</span><span class="p">:</span> <span class="s2">&quot;Sustainable packaging&quot;</span><span class="p">,</span>
 </span><span id="__span-5-28"><a id="__codelineno-5-28" name="__codelineno-5-28" href="#__codelineno-5-28"></a>        <span class="s2">&quot;pain_points&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;High costs&quot;</span><span class="p">,</span> <span class="s2">&quot;Certification needs&quot;</span><span class="p">]</span>
@@ -4798,7 +4805,7 @@ class VisionAgent(nn.Agent):
 </span><span id="__span-7-23"><a id="__codelineno-7-23" name="__codelineno-7-23" href="#__codelineno-7-23"></a><span class="s2">        {</span><span class="si">% e</span><span class="s2">ndif %}</span>
 </span><span id="__span-7-24"><a id="__codelineno-7-24" name="__codelineno-7-24" href="#__codelineno-7-24"></a><span class="s2">        &quot;&quot;&quot;</span>
 </span><span id="__span-7-25"><a id="__codelineno-7-25" name="__codelineno-7-25" href="#__codelineno-7-25"></a>    <span class="p">}</span>
-</span><span id="__span-7-26"><a id="__codelineno-7-26" name="__codelineno-7-26" href="#__codelineno-7-26"></a>    <span class="n">message_fields</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;task_inputs&quot;</span><span class="p">:</span> <span class="s2">&quot;content&quot;</span><span class="p">}</span>
+</span><span id="__span-7-26"><a id="__codelineno-7-26" name="__codelineno-7-26" href="#__codelineno-7-26"></a>    <span class="n">message_fields</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="s2">&quot;content&quot;</span><span class="p">}</span>
 </span><span id="__span-7-27"><a id="__codelineno-7-27" name="__codelineno-7-27" href="#__codelineno-7-27"></a>    <span class="n">response_mode</span> <span class="o">=</span> <span class="s2">&quot;assistant.output&quot;</span>
 </span><span id="__span-7-28"><a id="__codelineno-7-28" name="__codelineno-7-28" href="#__codelineno-7-28"></a>    <span class="n">config</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;verbose&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">}</span>
 </span><span id="__span-7-29"><a id="__codelineno-7-29" name="__codelineno-7-29" href="#__codelineno-7-29"></a>
@@ -4937,11 +4944,11 @@ class VisionAgent(nn.Agent):
 </div>
 </details>
 <div class="admonition info">
-<p class="admonition-title">Task Template Without task_inputs</p>
-<p>When you configure a <code>task</code> template but don't pass <code>task_inputs</code>, the rendered template itself becomes the task. This is useful for scenarios where the prompt is fixed and only some component changes (like images or <a href="../vars/">vars</a>).</p>
+<p class="admonition-title">Task Template Without task</p>
+<p>When you configure a <code>task</code> template but don't pass <code>task</code>, the rendered template itself becomes the task. This is useful for scenarios where the prompt is fixed and only some component changes (like images or <a href="../vars/">vars</a>).</p>
 </div>
 <h2 id="multimodal-inputs">Multimodal Inputs</h2>
-<p>Pass images, audio, or files via <code>task_multimodal_inputs</code>. Requires a multimodal model (e.g., <code>gpt-4.1</code>, <code>gpt-4.1-mini</code>).</p>
+<p>Pass images, audio, or files via <code>task_multimodal</code>. Requires a multimodal model (e.g., <code>gpt-4.1</code>, <code>gpt-4.1-mini</code>).</p>
 <table>
 <thead>
 <tr>
@@ -4997,7 +5004,7 @@ class VisionAgent(nn.Agent):
 </span><span id="__span-11-12"><a id="__codelineno-11-12" name="__codelineno-11-12" href="#__codelineno-11-12"></a><span class="c1"># Single image (URL)</span>
 </span><span id="__span-11-13"><a id="__codelineno-11-13" name="__codelineno-11-13" href="#__codelineno-11-13"></a><span class="n">response</span> <span class="o">=</span> <span class="n">agent</span><span class="p">(</span>
 </span><span id="__span-11-14"><a id="__codelineno-11-14" name="__codelineno-11-14" href="#__codelineno-11-14"></a>    <span class="s2">&quot;Describe this image&quot;</span><span class="p">,</span>
-</span><span id="__span-11-15"><a id="__codelineno-11-15" name="__codelineno-11-15" href="#__codelineno-11-15"></a>    <span class="n">task_multimodal_inputs</span><span class="o">=</span><span class="p">{</span>
+</span><span id="__span-11-15"><a id="__codelineno-11-15" name="__codelineno-11-15" href="#__codelineno-11-15"></a>    <span class="n">task_multimodal</span><span class="o">=</span><span class="p">{</span>
 </span><span id="__span-11-16"><a id="__codelineno-11-16" name="__codelineno-11-16" href="#__codelineno-11-16"></a>        <span class="s2">&quot;image&quot;</span><span class="p">:</span> <span class="s2">&quot;https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Gfp-wisconsin-madison-the-nature-boardwalk.jpg/800px-Gfp-wisconsin-madison-the-nature-boardwalk.jpg&quot;</span>
 </span><span id="__span-11-17"><a id="__codelineno-11-17" name="__codelineno-11-17" href="#__codelineno-11-17"></a>    <span class="p">}</span>
 </span><span id="__span-11-18"><a id="__codelineno-11-18" name="__codelineno-11-18" href="#__codelineno-11-18"></a><span class="p">)</span>
@@ -5005,7 +5012,7 @@ class VisionAgent(nn.Agent):
 </span><span id="__span-11-20"><a id="__codelineno-11-20" name="__codelineno-11-20" href="#__codelineno-11-20"></a><span class="c1"># Multiple images for comparison</span>
 </span><span id="__span-11-21"><a id="__codelineno-11-21" name="__codelineno-11-21" href="#__codelineno-11-21"></a><span class="n">response</span> <span class="o">=</span> <span class="n">agent</span><span class="p">(</span>
 </span><span id="__span-11-22"><a id="__codelineno-11-22" name="__codelineno-11-22" href="#__codelineno-11-22"></a>    <span class="s2">&quot;Compare these two images&quot;</span><span class="p">,</span>
-</span><span id="__span-11-23"><a id="__codelineno-11-23" name="__codelineno-11-23" href="#__codelineno-11-23"></a>    <span class="n">task_multimodal_inputs</span><span class="o">=</span><span class="p">{</span>
+</span><span id="__span-11-23"><a id="__codelineno-11-23" name="__codelineno-11-23" href="#__codelineno-11-23"></a>    <span class="n">task_multimodal</span><span class="o">=</span><span class="p">{</span>
 </span><span id="__span-11-24"><a id="__codelineno-11-24" name="__codelineno-11-24" href="#__codelineno-11-24"></a>        <span class="s2">&quot;image&quot;</span><span class="p">:</span> <span class="p">[</span>
 </span><span id="__span-11-25"><a id="__codelineno-11-25" name="__codelineno-11-25" href="#__codelineno-11-25"></a>            <span class="s2">&quot;https://upload.wikimedia.org/wikipedia/commons/thumb/4/47/PNG_transparency_demonstration_1.png/280px-PNG_transparency_demonstration_1.png&quot;</span><span class="p">,</span>
 </span><span id="__span-11-26"><a id="__codelineno-11-26" name="__codelineno-11-26" href="#__codelineno-11-26"></a>            <span class="s2">&quot;https://upload.wikimedia.org/wikipedia/commons/thumb/a/a7/Camponotus_flavomarginatus_ant.jpg/320px-Camponotus_flavomarginatus_ant.jpg&quot;</span>
@@ -5014,7 +5021,7 @@ class VisionAgent(nn.Agent):
 </span><span id="__span-11-29"><a id="__codelineno-11-29" name="__codelineno-11-29" href="#__codelineno-11-29"></a><span class="p">)</span>
 </span><span id="__span-11-30"><a id="__codelineno-11-30" name="__codelineno-11-30" href="#__codelineno-11-30"></a>
 </span><span id="__span-11-31"><a id="__codelineno-11-31" name="__codelineno-11-31" href="#__codelineno-11-31"></a><span class="c1"># With task template (fixed prompt, variable image)</span>
-</span><span id="__span-11-32"><a id="__codelineno-11-32" name="__codelineno-11-32" href="#__codelineno-11-32"></a><span class="c1"># When task_inputs is not passed, the rendered template becomes the task</span>
+</span><span id="__span-11-32"><a id="__codelineno-11-32" name="__codelineno-11-32" href="#__codelineno-11-32"></a><span class="c1"># When task is not passed, the rendered template becomes the task</span>
 </span><span id="__span-11-33"><a id="__codelineno-11-33" name="__codelineno-11-33" href="#__codelineno-11-33"></a><span class="k">class</span><span class="w"> </span><span class="nc">DescribeAgent</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">):</span>
 </span><span id="__span-11-34"><a id="__codelineno-11-34" name="__codelineno-11-34" href="#__codelineno-11-34"></a>    <span class="n">model</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">chat_completion</span><span class="p">(</span><span class="s2">&quot;openai/gpt-4.1-mini&quot;</span><span class="p">)</span>
 </span><span id="__span-11-35"><a id="__codelineno-11-35" name="__codelineno-11-35" href="#__codelineno-11-35"></a>    <span class="n">templates</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="s2">&quot;Describe this image in {{ language }}.&quot;</span><span class="p">}</span>
@@ -5023,7 +5030,7 @@ class VisionAgent(nn.Agent):
 </span><span id="__span-11-38"><a id="__codelineno-11-38" name="__codelineno-11-38" href="#__codelineno-11-38"></a>
 </span><span id="__span-11-39"><a id="__codelineno-11-39" name="__codelineno-11-39" href="#__codelineno-11-39"></a><span class="c1"># Inspect what the model would receive</span>
 </span><span id="__span-11-40"><a id="__codelineno-11-40" name="__codelineno-11-40" href="#__codelineno-11-40"></a><span class="n">params</span> <span class="o">=</span> <span class="n">describe_agent</span><span class="o">.</span><span class="n">inspect_model_execution_params</span><span class="p">(</span>
-</span><span id="__span-11-41"><a id="__codelineno-11-41" name="__codelineno-11-41" href="#__codelineno-11-41"></a>    <span class="n">task_multimodal_inputs</span><span class="o">=</span><span class="p">{</span>
+</span><span id="__span-11-41"><a id="__codelineno-11-41" name="__codelineno-11-41" href="#__codelineno-11-41"></a>    <span class="n">task_multimodal</span><span class="o">=</span><span class="p">{</span>
 </span><span id="__span-11-42"><a id="__codelineno-11-42" name="__codelineno-11-42" href="#__codelineno-11-42"></a>        <span class="s2">&quot;image&quot;</span><span class="p">:</span> <span class="s2">&quot;https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Gfp-wisconsin-madison-the-nature-boardwalk.jpg/800px-Gfp-wisconsin-madison-the-nature-boardwalk.jpg&quot;</span>
 </span><span id="__span-11-43"><a id="__codelineno-11-43" name="__codelineno-11-43" href="#__codelineno-11-43"></a>    <span class="p">},</span>
 </span><span id="__span-11-44"><a id="__codelineno-11-44" name="__codelineno-11-44" href="#__codelineno-11-44"></a>    <span class="nb">vars</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;language&quot;</span><span class="p">:</span> <span class="s2">&quot;Portuguese&quot;</span><span class="p">}</span>
@@ -5033,7 +5040,7 @@ class VisionAgent(nn.Agent):
 </span><span id="__span-11-48"><a id="__codelineno-11-48" name="__codelineno-11-48" href="#__codelineno-11-48"></a>
 </span><span id="__span-11-49"><a id="__codelineno-11-49" name="__codelineno-11-49" href="#__codelineno-11-49"></a><span class="c1"># Execute the agent</span>
 </span><span id="__span-11-50"><a id="__codelineno-11-50" name="__codelineno-11-50" href="#__codelineno-11-50"></a><span class="n">response</span> <span class="o">=</span> <span class="n">describe_agent</span><span class="p">(</span>
-</span><span id="__span-11-51"><a id="__codelineno-11-51" name="__codelineno-11-51" href="#__codelineno-11-51"></a>    <span class="n">task_multimodal_inputs</span><span class="o">=</span><span class="p">{</span>
+</span><span id="__span-11-51"><a id="__codelineno-11-51" name="__codelineno-11-51" href="#__codelineno-11-51"></a>    <span class="n">task_multimodal</span><span class="o">=</span><span class="p">{</span>
 </span><span id="__span-11-52"><a id="__codelineno-11-52" name="__codelineno-11-52" href="#__codelineno-11-52"></a>        <span class="s2">&quot;image&quot;</span><span class="p">:</span> <span class="s2">&quot;https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Gfp-wisconsin-madison-the-nature-boardwalk.jpg/800px-Gfp-wisconsin-madison-the-nature-boardwalk.jpg&quot;</span>
 </span><span id="__span-11-53"><a id="__codelineno-11-53" name="__codelineno-11-53" href="#__codelineno-11-53"></a>    <span class="p">},</span>
 </span><span id="__span-11-54"><a id="__codelineno-11-54" name="__codelineno-11-54" href="#__codelineno-11-54"></a>    <span class="nb">vars</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;language&quot;</span><span class="p">:</span> <span class="s2">&quot;Portuguese&quot;</span><span class="p">}</span>
@@ -5056,8 +5063,8 @@ class VisionAgent(nn.Agent):
 </span><span id="__span-12-8"><a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a><span class="k">class</span><span class="w"> </span><span class="nc">VisionAgent</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">):</span>
 </span><span id="__span-12-9"><a id="__codelineno-12-9" name="__codelineno-12-9" href="#__codelineno-12-9"></a>    <span class="n">model</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">chat_completion</span><span class="p">(</span><span class="s2">&quot;openai/gpt-4.1-mini&quot;</span><span class="p">)</span>
 </span><span id="__span-12-10"><a id="__codelineno-12-10" name="__codelineno-12-10" href="#__codelineno-12-10"></a>    <span class="n">message_fields</span> <span class="o">=</span> <span class="p">{</span>
-</span><span id="__span-12-11"><a id="__codelineno-12-11" name="__codelineno-12-11" href="#__codelineno-12-11"></a>        <span class="s2">&quot;task_inputs&quot;</span><span class="p">:</span> <span class="s2">&quot;user.query&quot;</span><span class="p">,</span>
-</span><span id="__span-12-12"><a id="__codelineno-12-12" name="__codelineno-12-12" href="#__codelineno-12-12"></a>        <span class="s2">&quot;task_multimodal_inputs&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;image&quot;</span><span class="p">:</span> <span class="s2">&quot;user.image_url&quot;</span><span class="p">}</span>
+</span><span id="__span-12-11"><a id="__codelineno-12-11" name="__codelineno-12-11" href="#__codelineno-12-11"></a>        <span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="s2">&quot;user.query&quot;</span><span class="p">,</span>
+</span><span id="__span-12-12"><a id="__codelineno-12-12" name="__codelineno-12-12" href="#__codelineno-12-12"></a>        <span class="s2">&quot;task_multimodal&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;image&quot;</span><span class="p">:</span> <span class="s2">&quot;user.image_url&quot;</span><span class="p">}</span>
 </span><span id="__span-12-13"><a id="__codelineno-12-13" name="__codelineno-12-13" href="#__codelineno-12-13"></a>    <span class="p">}</span>
 </span><span id="__span-12-14"><a id="__codelineno-12-14" name="__codelineno-12-14" href="#__codelineno-12-14"></a>
 </span><span id="__span-12-15"><a id="__codelineno-12-15" name="__codelineno-12-15" href="#__codelineno-12-15"></a><span class="n">agent</span> <span class="o">=</span> <span class="n">VisionAgent</span><span class="p">()</span>
@@ -5073,8 +5080,8 @@ class VisionAgent(nn.Agent):
 </span><span id="__span-12-25"><a id="__codelineno-12-25" name="__codelineno-12-25" href="#__codelineno-12-25"></a><span class="k">class</span><span class="w"> </span><span class="nc">ComparisonAgent</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">):</span>
 </span><span id="__span-12-26"><a id="__codelineno-12-26" name="__codelineno-12-26" href="#__codelineno-12-26"></a>    <span class="n">model</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">chat_completion</span><span class="p">(</span><span class="s2">&quot;openai/gpt-4.1-mini&quot;</span><span class="p">)</span>
 </span><span id="__span-12-27"><a id="__codelineno-12-27" name="__codelineno-12-27" href="#__codelineno-12-27"></a>    <span class="n">message_fields</span> <span class="o">=</span> <span class="p">{</span>
-</span><span id="__span-12-28"><a id="__codelineno-12-28" name="__codelineno-12-28" href="#__codelineno-12-28"></a>        <span class="s2">&quot;task_inputs&quot;</span><span class="p">:</span> <span class="s2">&quot;user.query&quot;</span><span class="p">,</span>
-</span><span id="__span-12-29"><a id="__codelineno-12-29" name="__codelineno-12-29" href="#__codelineno-12-29"></a>        <span class="s2">&quot;task_multimodal_inputs&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;image&quot;</span><span class="p">:</span> <span class="s2">&quot;user.images&quot;</span><span class="p">}</span>
+</span><span id="__span-12-28"><a id="__codelineno-12-28" name="__codelineno-12-28" href="#__codelineno-12-28"></a>        <span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="s2">&quot;user.query&quot;</span><span class="p">,</span>
+</span><span id="__span-12-29"><a id="__codelineno-12-29" name="__codelineno-12-29" href="#__codelineno-12-29"></a>        <span class="s2">&quot;task_multimodal&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;image&quot;</span><span class="p">:</span> <span class="s2">&quot;user.images&quot;</span><span class="p">}</span>
 </span><span id="__span-12-30"><a id="__codelineno-12-30" name="__codelineno-12-30" href="#__codelineno-12-30"></a>    <span class="p">}</span>
 </span><span id="__span-12-31"><a id="__codelineno-12-31" name="__codelineno-12-31" href="#__codelineno-12-31"></a>
 </span><span id="__span-12-32"><a id="__codelineno-12-32" name="__codelineno-12-32" href="#__codelineno-12-32"></a><span class="n">comparison_agent</span> <span class="o">=</span> <span class="n">ComparisonAgent</span><span class="p">()</span>
@@ -5104,7 +5111,7 @@ class VisionAgent(nn.Agent):
 </span><span id="__span-13-11"><a id="__codelineno-13-11" name="__codelineno-13-11" href="#__codelineno-13-11"></a>
 </span><span id="__span-13-12"><a id="__codelineno-13-12" name="__codelineno-13-12" href="#__codelineno-13-12"></a><span class="n">response</span> <span class="o">=</span> <span class="n">agent</span><span class="p">(</span>
 </span><span id="__span-13-13"><a id="__codelineno-13-13" name="__codelineno-13-13" href="#__codelineno-13-13"></a>    <span class="s2">&quot;Transcribe this audio and identify the speaker&#39;s emotion&quot;</span><span class="p">,</span>
-</span><span id="__span-13-14"><a id="__codelineno-13-14" name="__codelineno-13-14" href="#__codelineno-13-14"></a>    <span class="n">task_multimodal_inputs</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;audio&quot;</span><span class="p">:</span> <span class="s2">&quot;/path/to/recording.wav&quot;</span><span class="p">}</span>
+</span><span id="__span-13-14"><a id="__codelineno-13-14" name="__codelineno-13-14" href="#__codelineno-13-14"></a>    <span class="n">task_multimodal</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;audio&quot;</span><span class="p">:</span> <span class="s2">&quot;/path/to/recording.wav&quot;</span><span class="p">}</span>
 </span><span id="__span-13-15"><a id="__codelineno-13-15" name="__codelineno-13-15" href="#__codelineno-13-15"></a><span class="p">)</span>
 </span></code></pre></div>
 </div>
@@ -5124,13 +5131,13 @@ class VisionAgent(nn.Agent):
 </span><span id="__span-14-12"><a id="__codelineno-14-12" name="__codelineno-14-12" href="#__codelineno-14-12"></a><span class="c1"># From URL</span>
 </span><span id="__span-14-13"><a id="__codelineno-14-13" name="__codelineno-14-13" href="#__codelineno-14-13"></a><span class="n">response</span> <span class="o">=</span> <span class="n">agent</span><span class="p">(</span>
 </span><span id="__span-14-14"><a id="__codelineno-14-14" name="__codelineno-14-14" href="#__codelineno-14-14"></a>    <span class="s2">&quot;Summarize the key findings of this paper&quot;</span><span class="p">,</span>
-</span><span id="__span-14-15"><a id="__codelineno-14-15" name="__codelineno-14-15" href="#__codelineno-14-15"></a>    <span class="n">task_multimodal_inputs</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;file&quot;</span><span class="p">:</span> <span class="s2">&quot;https://arxiv.org/pdf/1706.03762.pdf&quot;</span><span class="p">}</span>
+</span><span id="__span-14-15"><a id="__codelineno-14-15" name="__codelineno-14-15" href="#__codelineno-14-15"></a>    <span class="n">task_multimodal</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;file&quot;</span><span class="p">:</span> <span class="s2">&quot;https://arxiv.org/pdf/1706.03762.pdf&quot;</span><span class="p">}</span>
 </span><span id="__span-14-16"><a id="__codelineno-14-16" name="__codelineno-14-16" href="#__codelineno-14-16"></a><span class="p">)</span>
 </span><span id="__span-14-17"><a id="__codelineno-14-17" name="__codelineno-14-17" href="#__codelineno-14-17"></a>
 </span><span id="__span-14-18"><a id="__codelineno-14-18" name="__codelineno-14-18" href="#__codelineno-14-18"></a><span class="c1"># From local file</span>
 </span><span id="__span-14-19"><a id="__codelineno-14-19" name="__codelineno-14-19" href="#__codelineno-14-19"></a><span class="n">response</span> <span class="o">=</span> <span class="n">agent</span><span class="p">(</span>
 </span><span id="__span-14-20"><a id="__codelineno-14-20" name="__codelineno-14-20" href="#__codelineno-14-20"></a>    <span class="s2">&quot;Extract the main conclusions&quot;</span><span class="p">,</span>
-</span><span id="__span-14-21"><a id="__codelineno-14-21" name="__codelineno-14-21" href="#__codelineno-14-21"></a>    <span class="n">task_multimodal_inputs</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;file&quot;</span><span class="p">:</span> <span class="s2">&quot;./report.pdf&quot;</span><span class="p">}</span>
+</span><span id="__span-14-21"><a id="__codelineno-14-21" name="__codelineno-14-21" href="#__codelineno-14-21"></a>    <span class="n">task_multimodal</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;file&quot;</span><span class="p">:</span> <span class="s2">&quot;./report.pdf&quot;</span><span class="p">}</span>
 </span><span id="__span-14-22"><a id="__codelineno-14-22" name="__codelineno-14-22" href="#__codelineno-14-22"></a><span class="p">)</span>
 </span></code></pre></div>
 </div>
@@ -5254,8 +5261,8 @@ class VisionAgent(nn.Agent):
 <div class="language-python highlight"><pre><span></span><code><span id="__span-18-1"><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">MyAgent</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">):</span>
 </span><span id="__span-18-2"><a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a>    <span class="n">model</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">chat_completion</span><span class="p">(</span><span class="s2">&quot;openai/gpt-4.1-mini&quot;</span><span class="p">)</span>
 </span><span id="__span-18-3"><a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a>    <span class="n">message_fields</span> <span class="o">=</span> <span class="p">{</span>
-</span><span id="__span-18-4"><a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a>        <span class="s2">&quot;task_inputs&quot;</span><span class="p">:</span> <span class="s2">&quot;user.query&quot;</span><span class="p">,</span>            <span class="c1"># Read task from msg.user.query</span>
-</span><span id="__span-18-5"><a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a>        <span class="s2">&quot;context_inputs&quot;</span><span class="p">:</span> <span class="s2">&quot;context.background&quot;</span>  <span class="c1"># Read context from msg.context.background</span>
+</span><span id="__span-18-4"><a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a>        <span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="s2">&quot;user.query&quot;</span><span class="p">,</span>                 <span class="c1"># Read task from msg.user.query</span>
+</span><span id="__span-18-5"><a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a>        <span class="s2">&quot;task_context&quot;</span><span class="p">:</span> <span class="s2">&quot;context.background&quot;</span>  <span class="c1"># Read context from msg.context.background</span>
 </span><span id="__span-18-6"><a id="__codelineno-18-6" name="__codelineno-18-6" href="#__codelineno-18-6"></a>    <span class="p">}</span>
 </span><span id="__span-18-7"><a id="__codelineno-18-7" name="__codelineno-18-7" href="#__codelineno-18-7"></a>    <span class="n">response_mode</span> <span class="o">=</span> <span class="s2">&quot;agent.output&quot;</span>              <span class="c1"># Write response to msg.agent.output</span>
 </span></code></pre></div>
@@ -5292,17 +5299,17 @@ class VisionAgent(nn.Agent):
 <div class="language-python highlight"><pre><span></span><code><span id="__span-19-1"><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">QAAgent</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">):</span>
 </span><span id="__span-19-2"><a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a>    <span class="n">model</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">chat_completion</span><span class="p">(</span><span class="s2">&quot;openai/gpt-4.1-mini&quot;</span><span class="p">)</span>
 </span><span id="__span-19-3"><a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a>    <span class="n">message_fields</span> <span class="o">=</span> <span class="p">{</span>
-</span><span id="__span-19-4"><a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a>        <span class="s2">&quot;task_inputs&quot;</span><span class="p">:</span> <span class="p">(</span><span class="s2">&quot;refined.question&quot;</span><span class="p">,</span> <span class="s2">&quot;user.question&quot;</span><span class="p">,</span> <span class="s2">&quot;user.raw_input&quot;</span><span class="p">)</span>
+</span><span id="__span-19-4"><a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a>        <span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="p">(</span><span class="s2">&quot;refined.question&quot;</span><span class="p">,</span> <span class="s2">&quot;user.question&quot;</span><span class="p">,</span> <span class="s2">&quot;user.raw_input&quot;</span><span class="p">)</span>
 </span><span id="__span-19-5"><a id="__codelineno-19-5" name="__codelineno-19-5" href="#__codelineno-19-5"></a>    <span class="p">}</span>
 </span><span id="__span-19-6"><a id="__codelineno-19-6" name="__codelineno-19-6" href="#__codelineno-19-6"></a>    <span class="n">response_mode</span> <span class="o">=</span> <span class="s2">&quot;qa.answer&quot;</span>
 </span></code></pre></div>
 <p>If <code>refined.question</code> is present in the message, it is used. Otherwise the agent falls back to <code>user.question</code>, and then to <code>user.raw_input</code>.</p>
-<p>OR inputs also work inside dict-valued fields (e.g. <code>task_multimodal_inputs</code>):</p>
+<p>OR inputs also work inside dict-valued fields (e.g. <code>task_multimodal</code>):</p>
 <div class="language-python highlight"><pre><span></span><code><span id="__span-20-1"><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">VisionAgent</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">):</span>
 </span><span id="__span-20-2"><a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a>    <span class="n">model</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">chat_completion</span><span class="p">(</span><span class="s2">&quot;openai/gpt-4.1-mini&quot;</span><span class="p">)</span>
 </span><span id="__span-20-3"><a id="__codelineno-20-3" name="__codelineno-20-3" href="#__codelineno-20-3"></a>    <span class="n">message_fields</span> <span class="o">=</span> <span class="p">{</span>
-</span><span id="__span-20-4"><a id="__codelineno-20-4" name="__codelineno-20-4" href="#__codelineno-20-4"></a>        <span class="s2">&quot;task_inputs&quot;</span><span class="p">:</span> <span class="p">(</span><span class="s2">&quot;user.query&quot;</span><span class="p">,</span> <span class="s2">&quot;user.raw_input&quot;</span><span class="p">),</span>        <span class="c1"># OR on task</span>
-</span><span id="__span-20-5"><a id="__codelineno-20-5" name="__codelineno-20-5" href="#__codelineno-20-5"></a>        <span class="s2">&quot;task_multimodal_inputs&quot;</span><span class="p">:</span> <span class="p">{</span>
+</span><span id="__span-20-4"><a id="__codelineno-20-4" name="__codelineno-20-4" href="#__codelineno-20-4"></a>        <span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="p">(</span><span class="s2">&quot;user.query&quot;</span><span class="p">,</span> <span class="s2">&quot;user.raw_input&quot;</span><span class="p">),</span>        <span class="c1"># OR on task</span>
+</span><span id="__span-20-5"><a id="__codelineno-20-5" name="__codelineno-20-5" href="#__codelineno-20-5"></a>        <span class="s2">&quot;task_multimodal&quot;</span><span class="p">:</span> <span class="p">{</span>
 </span><span id="__span-20-6"><a id="__codelineno-20-6" name="__codelineno-20-6" href="#__codelineno-20-6"></a>            <span class="s2">&quot;image&quot;</span><span class="p">:</span> <span class="p">(</span><span class="s2">&quot;user.photo_url&quot;</span><span class="p">,</span> <span class="s2">&quot;user.image&quot;</span><span class="p">)</span>           <span class="c1"># OR on image</span>
 </span><span id="__span-20-7"><a id="__codelineno-20-7" name="__codelineno-20-7" href="#__codelineno-20-7"></a>        <span class="p">}</span>
 </span><span id="__span-20-8"><a id="__codelineno-20-8" name="__codelineno-20-8" href="#__codelineno-20-8"></a>    <span class="p">}</span>
@@ -5320,14 +5327,14 @@ class VisionAgent(nn.Agent):
 </span><span id="__span-21-7"><a id="__codelineno-21-7" name="__codelineno-21-7" href="#__codelineno-21-7"></a><span class="k">class</span><span class="w"> </span><span class="nc">Refiner</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">):</span>
 </span><span id="__span-21-8"><a id="__codelineno-21-8" name="__codelineno-21-8" href="#__codelineno-21-8"></a>    <span class="n">model</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">chat_completion</span><span class="p">(</span><span class="s2">&quot;openai/gpt-4.1-mini&quot;</span><span class="p">)</span>
 </span><span id="__span-21-9"><a id="__codelineno-21-9" name="__codelineno-21-9" href="#__codelineno-21-9"></a>    <span class="n">instructions</span> <span class="o">=</span> <span class="s2">&quot;Rewrite the question to be clearer and more specific.&quot;</span>
-</span><span id="__span-21-10"><a id="__codelineno-21-10" name="__codelineno-21-10" href="#__codelineno-21-10"></a>    <span class="n">message_fields</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;task_inputs&quot;</span><span class="p">:</span> <span class="s2">&quot;user.question&quot;</span><span class="p">}</span>
+</span><span id="__span-21-10"><a id="__codelineno-21-10" name="__codelineno-21-10" href="#__codelineno-21-10"></a>    <span class="n">message_fields</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="s2">&quot;user.question&quot;</span><span class="p">}</span>
 </span><span id="__span-21-11"><a id="__codelineno-21-11" name="__codelineno-21-11" href="#__codelineno-21-11"></a>    <span class="n">response_mode</span> <span class="o">=</span> <span class="s2">&quot;refined.question&quot;</span>
 </span><span id="__span-21-12"><a id="__codelineno-21-12" name="__codelineno-21-12" href="#__codelineno-21-12"></a>
 </span><span id="__span-21-13"><a id="__codelineno-21-13" name="__codelineno-21-13" href="#__codelineno-21-13"></a><span class="k">class</span><span class="w"> </span><span class="nc">Answerer</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">):</span>
 </span><span id="__span-21-14"><a id="__codelineno-21-14" name="__codelineno-21-14" href="#__codelineno-21-14"></a>    <span class="n">model</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">chat_completion</span><span class="p">(</span><span class="s2">&quot;openai/gpt-4.1-mini&quot;</span><span class="p">)</span>
 </span><span id="__span-21-15"><a id="__codelineno-21-15" name="__codelineno-21-15" href="#__codelineno-21-15"></a>    <span class="n">message_fields</span> <span class="o">=</span> <span class="p">{</span>
 </span><span id="__span-21-16"><a id="__codelineno-21-16" name="__codelineno-21-16" href="#__codelineno-21-16"></a>        <span class="c1"># Use refined question if available, fall back to original</span>
-</span><span id="__span-21-17"><a id="__codelineno-21-17" name="__codelineno-21-17" href="#__codelineno-21-17"></a>        <span class="s2">&quot;task_inputs&quot;</span><span class="p">:</span> <span class="p">(</span><span class="s2">&quot;refined.question&quot;</span><span class="p">,</span> <span class="s2">&quot;user.question&quot;</span><span class="p">)</span>
+</span><span id="__span-21-17"><a id="__codelineno-21-17" name="__codelineno-21-17" href="#__codelineno-21-17"></a>        <span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="p">(</span><span class="s2">&quot;refined.question&quot;</span><span class="p">,</span> <span class="s2">&quot;user.question&quot;</span><span class="p">)</span>
 </span><span id="__span-21-18"><a id="__codelineno-21-18" name="__codelineno-21-18" href="#__codelineno-21-18"></a>    <span class="p">}</span>
 </span><span id="__span-21-19"><a id="__codelineno-21-19" name="__codelineno-21-19" href="#__codelineno-21-19"></a>    <span class="n">response_mode</span> <span class="o">=</span> <span class="s2">&quot;answer&quot;</span>
 </span><span id="__span-21-20"><a id="__codelineno-21-20" name="__codelineno-21-20" href="#__codelineno-21-20"></a>
