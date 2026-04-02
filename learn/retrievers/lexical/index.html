@@ -12,13 +12,13 @@
         <meta name="author" content="Vilson Rodrigues">
       
       
-        <link rel="canonical" href="https://msgflux.com/learn/nn/message/">
+        <link rel="canonical" href="https://msgflux.com/learn/retrievers/lexical/">
       
       
-        <link rel="prev" href="../module/visualization/">
+        <link rel="prev" href="../retriever/">
       
       
-        <link rel="next" href="../agent/">
+        <link rel="next" href="../fuzzy/">
       
       
       <link rel="icon" href="../../../assets/logo.png">
@@ -26,7 +26,7 @@
     
     
       
-        <title>Message - msgFlux</title>
+        <title>Lexical Retrievers - msgFlux</title>
       
     
     
@@ -86,7 +86,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#message" class="md-skip">
+        <a href="#lexical-retrievers" class="md-skip">
           Skip to content
         </a>
       
@@ -119,7 +119,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Message
+              Lexical Retrievers
             
           </span>
         </div>
@@ -867,8 +867,10 @@
                 
   
   
+    
   
   
+  
     
     
       
@@ -887,11 +889,11 @@
       
     
     
-    <li class="md-nav__item md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_2" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_2" checked>
         
           
           <label class="md-nav__link" for="__nav_2_2" id="__nav_2_2_label" tabindex="0">
@@ -907,7 +909,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_2_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_2_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_2_2">
             <span class="md-nav__icon md-icon"></span>
             ⟳ Retrievers
@@ -921,7 +923,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../retrievers/retriever/" class="md-nav__link">
+      <a href="../retriever/" class="md-nav__link">
         
   
   
@@ -941,10 +943,32 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../../retrievers/lexical/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    Lexical Retrievers
+    
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -955,6 +979,140 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      ✦₊⁺ Overview
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-quick-start" class="md-nav__link">
+    <span class="md-ellipsis">
+      1. Quick Start
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-providers" class="md-nav__link">
+    <span class="md-ellipsis">
+      2. Providers
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. Providers">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#bm25-built-in-no-dependencies" class="md-nav__link">
+    <span class="md-ellipsis">
+      bm25 — Built-in (no dependencies)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#bm25s-high-performance-scipy-sparse-matrices" class="md-nav__link">
+    <span class="md-ellipsis">
+      bm25s — High-performance (scipy sparse matrices)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rank_bm25-rank-bm25-library" class="md-nav__link">
+    <span class="md-ellipsis">
+      rank_bm25 — rank-bm25 library
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-parameters" class="md-nav__link">
+    <span class="md-ellipsis">
+      3. Parameters
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-adding-documents" class="md-nav__link">
+    <span class="md-ellipsis">
+      4. Adding Documents
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-search-parameters" class="md-nav__link">
+    <span class="md-ellipsis">
+      5. Search Parameters
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-batch-queries" class="md-nav__link">
+    <span class="md-ellipsis">
+      6. Batch Queries
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-score-statistics" class="md-nav__link">
+    <span class="md-ellipsis">
+      7. Score Statistics
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-async-support" class="md-nav__link">
+    <span class="md-ellipsis">
+      8. Async Support
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -967,7 +1125,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../retrievers/fuzzy/" class="md-nav__link">
+      <a href="../fuzzy/" class="md-nav__link">
         
   
   
@@ -990,7 +1148,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../retrievers/web/" class="md-nav__link">
+      <a href="../web/" class="md-nav__link">
         
   
   
@@ -1087,10 +1245,8 @@
                 
   
   
-    
   
   
-  
     
     
       
@@ -1119,11 +1275,11 @@
       
     
     
-    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_6" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_6" >
         
           
           <label class="md-nav__link" for="__nav_2_6" id="__nav_2_6_label" tabindex="0">
@@ -1139,7 +1295,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_6_label" aria-expanded="true">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_6_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_2_6">
             <span class="md-nav__icon md-icon"></span>
             ⟢ Modules
@@ -1188,7 +1344,7 @@
         
           
           <div class="md-nav__link md-nav__container">
-            <a href="../module/" class="md-nav__link ">
+            <a href="../../nn/module/" class="md-nav__link ">
               
   
   
@@ -1223,7 +1379,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../module/core-concepts/" class="md-nav__link">
+      <a href="../../nn/module/core-concepts/" class="md-nav__link">
         
   
   
@@ -1246,7 +1402,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../module/forward-and-async/" class="md-nav__link">
+      <a href="../../nn/module/forward-and-async/" class="md-nav__link">
         
   
   
@@ -1269,7 +1425,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../module/composing/" class="md-nav__link">
+      <a href="../../nn/module/composing/" class="md-nav__link">
         
   
   
@@ -1292,7 +1448,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../module/module-dict/" class="md-nav__link">
+      <a href="../../nn/module/module-dict/" class="md-nav__link">
         
   
   
@@ -1315,7 +1471,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../module/module-list/" class="md-nav__link">
+      <a href="../../nn/module/module-list/" class="md-nav__link">
         
   
   
@@ -1338,7 +1494,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../module/sequential/" class="md-nav__link">
+      <a href="../../nn/module/sequential/" class="md-nav__link">
         
   
   
@@ -1361,7 +1517,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../module/visualization/" class="md-nav__link">
+      <a href="../../nn/module/visualization/" class="md-nav__link">
         
   
   
@@ -1389,32 +1545,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    Message
-    
-  </span>
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../../nn/message/" class="md-nav__link">
         
   
   
@@ -1425,128 +1559,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#overview" class="md-nav__link">
-    <span class="md-ellipsis">
-      ✦₊⁺ Overview
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#1-quick-start" class="md-nav__link">
-    <span class="md-ellipsis">
-      1. Quick Start
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#2-default-fields" class="md-nav__link">
-    <span class="md-ellipsis">
-      2. Default Fields
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#3-with-nnagent" class="md-nav__link">
-    <span class="md-ellipsis">
-      3. With nn.Agent
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="3. With nn.Agent">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#message_fields" class="md-nav__link">
-    <span class="md-ellipsis">
-      message_fields
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#response_mode-options" class="md-nav__link">
-    <span class="md-ellipsis">
-      response_mode Options
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#4-in-workflows" class="md-nav__link">
-    <span class="md-ellipsis">
-      4. In Workflows
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="4. In Workflows">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#with-inline-dsl" class="md-nav__link">
-    <span class="md-ellipsis">
-      With inline DSL
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#5-multimodal-data" class="md-nav__link">
-    <span class="md-ellipsis">
-      5. Multimodal Data
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#6-complete-example" class="md-nav__link">
-    <span class="md-ellipsis">
-      6. Complete Example
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -1608,7 +1620,7 @@
         
           
           <div class="md-nav__link md-nav__container">
-            <a href="../agent/" class="md-nav__link ">
+            <a href="../../nn/agent/" class="md-nav__link ">
               
   
   
@@ -1643,7 +1655,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../agent/quickstart/" class="md-nav__link">
+      <a href="../../nn/agent/quickstart/" class="md-nav__link">
         
   
   
@@ -1666,7 +1678,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../agent/async/" class="md-nav__link">
+      <a href="../../nn/agent/async/" class="md-nav__link">
         
   
   
@@ -1689,7 +1701,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../agent/streaming/" class="md-nav__link">
+      <a href="../../nn/agent/streaming/" class="md-nav__link">
         
   
   
@@ -1712,7 +1724,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../agent/reasoning/" class="md-nav__link">
+      <a href="../../nn/agent/reasoning/" class="md-nav__link">
         
   
   
@@ -1735,7 +1747,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../agent/debug/" class="md-nav__link">
+      <a href="../../nn/agent/debug/" class="md-nav__link">
         
   
   
@@ -1758,7 +1770,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../agent/system-prompt/" class="md-nav__link">
+      <a href="../../nn/agent/system-prompt/" class="md-nav__link">
         
   
   
@@ -1781,7 +1793,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../agent/generation-schemas/" class="md-nav__link">
+      <a href="../../nn/agent/generation-schemas/" class="md-nav__link">
         
   
   
@@ -1804,7 +1816,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../agent/task-and-context/" class="md-nav__link">
+      <a href="../../nn/agent/task-and-context/" class="md-nav__link">
         
   
   
@@ -1827,7 +1839,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../agent/vars/" class="md-nav__link">
+      <a href="../../nn/agent/vars/" class="md-nav__link">
         
   
   
@@ -1850,7 +1862,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../agent/tools/" class="md-nav__link">
+      <a href="../../nn/agent/tools/" class="md-nav__link">
         
   
   
@@ -1873,7 +1885,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../agent/signatures/" class="md-nav__link">
+      <a href="../../nn/agent/signatures/" class="md-nav__link">
         
   
   
@@ -1896,7 +1908,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../agent/hooks/" class="md-nav__link">
+      <a href="../../nn/agent/hooks/" class="md-nav__link">
         
   
   
@@ -1919,7 +1931,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../agent/model-gateway/" class="md-nav__link">
+      <a href="../../nn/agent/model-gateway/" class="md-nav__link">
         
   
   
@@ -1942,7 +1954,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../agent/prefilling/" class="md-nav__link">
+      <a href="../../nn/agent/prefilling/" class="md-nav__link">
         
   
   
@@ -1973,7 +1985,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../functional/" class="md-nav__link">
+      <a href="../../nn/functional/" class="md-nav__link">
         
   
   
@@ -1996,7 +2008,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../transcriber/" class="md-nav__link">
+      <a href="../../nn/transcriber/" class="md-nav__link">
         
   
   
@@ -2019,7 +2031,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../searcher/" class="md-nav__link">
+      <a href="../../nn/searcher/" class="md-nav__link">
         
   
   
@@ -2042,7 +2054,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../speaker/" class="md-nav__link">
+      <a href="../../nn/speaker/" class="md-nav__link">
         
   
   
@@ -2065,7 +2077,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../mediamaker/" class="md-nav__link">
+      <a href="../../nn/mediamaker/" class="md-nav__link">
         
   
   
@@ -2088,7 +2100,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../predictor/" class="md-nav__link">
+      <a href="../../nn/predictor/" class="md-nav__link">
         
   
   
@@ -4221,37 +4233,37 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#2-default-fields" class="md-nav__link">
+  <a href="#2-providers" class="md-nav__link">
     <span class="md-ellipsis">
-      2. Default Fields
+      2. Providers
     </span>
   </a>
   
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#3-with-nnagent" class="md-nav__link">
-    <span class="md-ellipsis">
-      3. With nn.Agent
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="3. With nn.Agent">
+    <nav class="md-nav" aria-label="2. Providers">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#message_fields" class="md-nav__link">
+  <a href="#bm25-built-in-no-dependencies" class="md-nav__link">
     <span class="md-ellipsis">
-      message_fields
+      bm25 — Built-in (no dependencies)
     </span>
   </a>
   
 </li>
         
           <li class="md-nav__item">
-  <a href="#response_mode-options" class="md-nav__link">
+  <a href="#bm25s-high-performance-scipy-sparse-matrices" class="md-nav__link">
     <span class="md-ellipsis">
-      response_mode Options
+      bm25s — High-performance (scipy sparse matrices)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rank_bm25-rank-bm25-library" class="md-nav__link">
+    <span class="md-ellipsis">
+      rank_bm25 — rank-bm25 library
     </span>
   </a>
   
@@ -4263,42 +4275,54 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#4-in-workflows" class="md-nav__link">
+  <a href="#3-parameters" class="md-nav__link">
     <span class="md-ellipsis">
-      4. In Workflows
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="4. In Workflows">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#with-inline-dsl" class="md-nav__link">
-    <span class="md-ellipsis">
-      With inline DSL
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#5-multimodal-data" class="md-nav__link">
-    <span class="md-ellipsis">
-      5. Multimodal Data
+      3. Parameters
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#6-complete-example" class="md-nav__link">
+  <a href="#4-adding-documents" class="md-nav__link">
     <span class="md-ellipsis">
-      6. Complete Example
+      4. Adding Documents
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-search-parameters" class="md-nav__link">
+    <span class="md-ellipsis">
+      5. Search Parameters
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-batch-queries" class="md-nav__link">
+    <span class="md-ellipsis">
+      6. Batch Queries
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-score-statistics" class="md-nav__link">
+    <span class="md-ellipsis">
+      7. Score Statistics
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-async-support" class="md-nav__link">
+    <span class="md-ellipsis">
+      8. Async Support
     </span>
   </a>
   
@@ -4323,7 +4347,7 @@
   
 
 
-<h1 id="message">Message</h1><link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css">
+<h1 id="lexical-retrievers">Lexical Retrievers</h1><link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css">
 <style>
 .copy-markdown-button {
     background: transparent;
@@ -4343,197 +4367,236 @@
 .copy-markdown-button:active { transform: translateY(1px); }
 #copy-icon { transition: opacity 0.1s ease; }
 </style>
-<div class="copy-markdown-container" data-markdown="# Message
+<div class="copy-markdown-container" data-markdown="# Lexical Retrievers
 
 ## ✦₊⁺ Overview
 
-`Message` is a structured container for **data flow between modules**. It extends [`dotdict`](../dotdict.md) with default fields tailored for AI workflows.
+BM25 (Best Matching 25) is a classic lexical ranking algorithm that scores documents by term frequency and inverse document frequency. msgFlux ships three providers with the same interface — choose based on your performance and dependency needs.
 
-For general `dotdict` features — dot access, nested paths, `get()`/`set()`, serialization, immutability, and hidden keys — see the [`dotdict` docs](../dotdict.md).
+| Provider | Class | Dependency | Best For |
+|----------|-------|------------|----------|
+| `bm25` | `BM25LexicalRetriever` | none (built-in) | Zero-dependency setups |
+| `bm25s` | `BM25SLexicalRetriever` | `bm25s` | High-throughput / large corpora |
+| `rank_bm25` | `RankBM25LexicalRetriever` | `rank-bm25` | Drop-in familiar API |
+
+All three share the same `add()` / `__call__()` / `acall()` interface.
+
+---
 
 ## 1. **Quick Start**
 
-```python
-from msgflux import Message
+???+ example
 
-msg = Message(
-    content=&quot;Analyze this text&quot;,
-)
+    ```python
+    import msgflux as mf
 
-msg.set(&quot;context.data&quot;, {&quot;key&quot;: &quot;value&quot;})
-print(msg.content)       # &quot;Analyze this text&quot;
-print(msg.context.data)  # {&quot;key&quot;: &quot;value&quot;}
-```
+    retriever = mf.Retriever.lexical(&quot;bm25&quot;)
 
----
+    retriever.add([
+        &quot;Python is a high-level programming language.&quot;,
+        &quot;Machine learning is a subset of artificial intelligence.&quot;,
+        &quot;The Eiffel Tower is located in Paris, France.&quot;,
+        &quot;Neural networks are inspired by the human brain.&quot;,
+    ])
 
-## 2. **Default Fields**
+    response = retriever(&quot;What is machine learning?&quot;, top_k=2, return_score=True)
 
-`Message` pre-defines a set of fields that modules and agents expect:
-
-| Field | Description |
-|-------|-------------|
-| `content` | Main content (text, dict) |
-| `texts` | Text data container |
-| `context` | Context information |
-| `audios` | Audio data |
-| `images` | Image data |
-| `videos` | Video data |
-| `extra` | Extra data |
-| `outputs` | Module outputs |
-| `response` | Final response |
+    for result in response.data[0].results:
+        print(f&quot;[{result.score:.3f}] {result.data}&quot;)
+    # [4.21] Machine learning is a subset of artificial intelligence.
+    # [1.83] Neural networks are inspired by the human brain.
+    ```
 
 ---
 
-## 3. **With nn.Agent**
+## 2. **Providers**
 
-### message_fields
+### `bm25` — Built-in (no dependencies)
 
-`message_fields` controls which parts of the `Message` an agent reads as inputs:
-
-```python
-import msgflux.nn as nn
-
-class Analyzer(nn.Agent):
-    model = model
-    message_fields = {
-        &quot;task&quot;: &quot;content&quot;,                    # Read task
-        &quot;task_multimodal&quot;: {&quot;image&quot;: &quot;images.user&quot;},  # Read image
-        &quot;task_context&quot;: &quot;context.data&quot;,       # Read task context
-        &quot;vars&quot;: &quot;extra.vars&quot;                         # Read vars
-    }
-    response_mode = &quot;outputs.analysis&quot;               # Write response
-
-analyzer = Analyzer()
-
-msg = Message(
-    content=&quot;Analyze this image&quot;,
-    context={&quot;data&quot;: {&quot;type&quot;: &quot;product&quot;}}
-)
-msg.set(&quot;images.user&quot;, &quot;https://example.com/image.jpg&quot;)
-
-analyzer(msg)
-
-print(msg.outputs.analysis)  # Agent&#x27;s response
-```
-
-### response_mode Options
-
-`response_mode` controls how and where the module delivers its output:
-
-| Mode | Behavior |
-|------|----------|
-| `None` (default) | Return response directly |
-| `&quot;&lt;path&gt;&quot;` | Write to `msg.&lt;path&gt;` and return the `Message` |
-
-**Writing to a Message** — pass a string path *without* a trailing colon. The
-module writes to that field of the `Message` object and returns it:
-
-```python
-# Write response to msg.outputs.result, return the Message
-agent = nn.Agent(model, response_mode=&quot;outputs.result&quot;)
-msg = agent(Message(content=&quot;Hi&quot;))
-print(msg.outputs.result)
-```
-
----
-
-## 4. **In Workflows**
-
-### With inline DSL
-
-```python
-import msgflux.nn.functional as F
-
-
-def preprocess(msg):
-    msg.preprocessed_content = msg.content.upper()
-    return msg
-
-def analyze(msg):
-    msg.outputs.analysis = f&quot;Analyzed: {msg.preprocessed_content}&quot;
-    return msg
-
-modules = {&quot;preprocess&quot;: preprocess, &quot;analyze&quot;: analyze}
-
-msg = Message(content=&quot;hello world&quot;)
-F.inline(&quot;preprocess -&gt; analyze&quot;, modules, msg)
-
-print(msg.outputs.analysis)  # &quot;Analyzed: HELLO WORLD&quot;
-```
-
----
-
-## 5. **Multimodal Data**
-
-Store multimodal inputs directly on the message:
-
-```python
-msg = Message()
-
-# Audio
-msg.set(&quot;user_audio&quot;, &quot;/path/to/audio.mp3&quot;)
-
-# Images
-msg.set(&quot;user_image&quot;, &quot;https://example.com/image.jpg&quot;)
-msg.set(&quot;images.product&quot;, [&quot;img1.jpg&quot;, &quot;img2.jpg&quot;])
-
-# Files
-msg.set(&quot;user_file&quot;, &quot;/path/to/document.pdf&quot;)
-```
-
----
-
-## 6. **Complete Example**
+Pure Python implementation. No external packages required.
 
 ```python
 import msgflux as mf
-import msgflux.nn as nn
-import msgflux.nn.functional as F
-from msgflux import Message
 
+retriever = mf.Retriever.lexical(&quot;bm25&quot;, k1=1.5, b=0.75)
+```
 
-class Speech2Text(nn.Transcriber):
-    model = mf.Model.speech_to_text(&quot;openai/whisper-1&quot;)
-    message_fields = {&quot;task_multimodal&quot;: {&quot;audio&quot;: &quot;user_audio&quot;}}
-    response_mode = &quot;content&quot;
+### `bm25s` — High-performance (scipy sparse matrices)
 
+Uses the [`bm25s`](https://github.com/xhluca/bm25s) library. Significantly faster on large corpora. Supports multiple BM25 variants and stopword filtering.
 
-class Analyzer(nn.Agent):
-    model = mf.Model.chat_completion(&quot;openai/gpt-4.1-mini&quot;)
-    message_fields = {&quot;task&quot;: &quot;content&quot;}
-    response_mode = &quot;outputs.analysis&quot;
+```python
+import msgflux as mf
 
+retriever = mf.Retriever.lexical(&quot;bm25s&quot;,
+    k1=1.5,
+    b=0.75,
+    method=&quot;lucene&quot;,   # &quot;lucene&quot; | &quot;robertson&quot; | &quot;atire&quot; | &quot;bm25l&quot; | &quot;bm25+&quot;
+    stopwords=&quot;en&quot;,    # language code or list of stopwords
+)
+```
 
-class Pipeline(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.transcriber = Speech2Text()
-        self.analyzer = Analyzer()
-        self.components = nn.ModuleDict({
-            &quot;transcriber&quot;: self.transcriber,
-            &quot;analyzer&quot;: self.analyzer
-        })
-        self.register_buffer(&quot;flux&quot;, &quot;{user_audio is not None? transcriber} -&gt; analyzer&quot;)
+Install: `pip install bm25s`
 
-    def forward(self, msg):
-        return F.inline(self.flux, self.components, msg)
+### `rank_bm25` — rank-bm25 library
 
+Uses [`rank-bm25`](https://github.com/dorianbrown/rank_bm25), a popular BM25 library. Familiar to users already using it.
 
-# Usage
-pipeline = Pipeline()
+```python
+import msgflux as mf
 
-# Text input
-msg = Message(content=&quot;Analyze this text for sentiment.&quot;)
-pipeline(msg)
-print(msg.outputs.analysis)
+retriever = mf.Retriever.lexical(&quot;rank_bm25&quot;, k1=1.5, b=0.75)
+```
 
-# Audio input
-msg = Message()
-msg.user_audio = &quot;/path/to/audio.mp3&quot;
-pipeline(msg)
-print(msg.content)          # Transcription
-print(msg.outputs.analysis) # Analysis result
+Install: `pip install rank-bm25`
+
+---
+
+## 3. **Parameters**
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `k1` | `1.5` | Term frequency saturation — higher values reward repeated terms more |
+| `b` | `0.75` | Document length normalization — `0` disables it, `1` fully normalizes |
+| `method` | `&quot;lucene&quot;` | BM25 variant (`bm25s` only) |
+| `stopwords` | `None` | Language code or word list to filter (`bm25s` only) |
+
+---
+
+## 4. **Adding Documents**
+
+Call `.add()` with a list of strings before searching. Documents are indexed incrementally — you can call `.add()` multiple times:
+
+```python
+import msgflux as mf
+
+retriever = mf.Retriever.lexical(&quot;bm25&quot;)
+
+# First batch
+retriever.add([
+    &quot;Python is a general-purpose programming language.&quot;,
+    &quot;JavaScript runs in the browser.&quot;,
+])
+
+# Add more later
+retriever.add([
+    &quot;Rust provides memory safety without a garbage collector.&quot;,
+    &quot;Go is designed for simplicity and performance.&quot;,
+])
+
+response = retriever(&quot;compiled systems language&quot;)
+```
+
+---
+
+## 5. **Search Parameters**
+
+```python
+response = retriever(
+    queries,           # str or List[str]
+    top_k=5,           # max results per query (default: 5)
+    threshold=0.0,     # min BM25 score to include a result (default: 0.0)
+    return_score=False # include score in results (default: False)
+)
+```
+
+???+ example &quot;Threshold filtering&quot;
+
+    ```python
+    import msgflux as mf
+
+    retriever = mf.Retriever.lexical(&quot;bm25&quot;)
+    retriever.add([
+        &quot;Deep learning uses neural networks with many layers.&quot;,
+        &quot;The weather today is sunny and warm.&quot;,
+        &quot;Transformers revolutionized natural language processing.&quot;,
+    ])
+
+    # Only return documents with score &gt;= 1.0
+    response = retriever(&quot;neural network&quot;, threshold=1.0, return_score=True)
+
+    for result in response.data[0].results:
+        print(f&quot;[{result.score:.2f}] {result.data}&quot;)
+    # [3.87] Deep learning uses neural networks with many layers.
+    # [1.12] Transformers revolutionized natural language processing.
+    # (weather doc excluded — score below threshold)
+    ```
+
+---
+
+## 6. **Batch Queries**
+
+```python
+import msgflux as mf
+
+retriever = mf.Retriever.lexical(&quot;bm25&quot;)
+retriever.add([
+    &quot;Python is great for data science.&quot;,
+    &quot;Java is widely used in enterprise applications.&quot;,
+    &quot;Rust prevents memory bugs at compile time.&quot;,
+])
+
+queries = [&quot;data analysis language&quot;, &quot;safe systems programming&quot;]
+response = retriever(queries, top_k=1, return_score=True)
+
+for i, query in enumerate(queries):
+    result = response.data[i].results[0]
+    print(f&quot;{query!r} → [{result.score:.2f}] {result.data}&quot;)
+```
+
+---
+
+## 7. **Score Statistics**
+
+Inspect how scores are distributed across your corpus for a given query:
+
+```python
+import msgflux as mf
+
+retriever = mf.Retriever.lexical(&quot;bm25&quot;)
+retriever.add([
+    &quot;Machine learning automates pattern recognition.&quot;,
+    &quot;Deep learning is a subset of machine learning.&quot;,
+    &quot;The Eiffel Tower stands 330 metres tall.&quot;,
+])
+
+stats = retriever.get_score_statistics(&quot;machine learning&quot;)
+print(stats)
+# {
+#   &quot;min_score&quot;: 0.0,
+#   &quot;max_score&quot;: 5.43,
+#   &quot;mean_score&quot;: 2.21,
+#   &quot;median_score&quot;: 2.14,
+#   &quot;std_score&quot;: 2.18
+# }
+```
+
+Useful for choosing a `threshold` value — e.g. use `mean_score` to filter out below-average results.
+
+---
+
+## 8. **Async Support**
+
+```python
+import msgflux as mf
+
+retriever = mf.Retriever.lexical(&quot;bm25&quot;)
+retriever.add([
+    &quot;Async Python enables non-blocking I/O.&quot;,
+    &quot;Asyncio is the standard async library.&quot;,
+    &quot;Threading uses OS threads for concurrency.&quot;,
+])
+
+response = await retriever.acall(
+    [&quot;non-blocking concurrency&quot;, &quot;event loop&quot;],
+    top_k=2,
+    return_score=True,
+)
+
+for i, query in enumerate([&quot;non-blocking concurrency&quot;, &quot;event loop&quot;]):
+    print(f&quot;\n{query}&quot;)
+    for result in response.data[i].results:
+        print(f&quot;  [{result.score:.2f}] {result.data}&quot;)
 ```
 ">
   <button class="copy-markdown-button" onclick="copyMarkdownToClipboard(this)">
@@ -4604,208 +4667,234 @@ print(msg.outputs.analysis) # Analysis result
 }());
 </script>
 <h2 id="overview">✦₊⁺ Overview</h2>
-<p><code>Message</code> is a structured container for <strong>data flow between modules</strong>. It extends <a href="../../dotdict/"><code>dotdict</code></a> with default fields tailored for AI workflows.</p>
-<p>For general <code>dotdict</code> features — dot access, nested paths, <code>get()</code>/<code>set()</code>, serialization, immutability, and hidden keys — see the <a href="../../dotdict/"><code>dotdict</code> docs</a>.</p>
-<h2 id="1-quick-start">1. <strong>Quick Start</strong></h2>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="kn">import</span> <span class="n">Message</span>
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="n">msg</span> <span class="o">=</span> <span class="n">Message</span><span class="p">(</span>
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="n">content</span><span class="o">=</span><span class="s2">&quot;Analyze this text&quot;</span><span class="p">,</span>
-</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="p">)</span>
-</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>
-</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="n">msg</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">&quot;context.data&quot;</span><span class="p">,</span> <span class="p">{</span><span class="s2">&quot;key&quot;</span><span class="p">:</span> <span class="s2">&quot;value&quot;</span><span class="p">})</span>
-</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="nb">print</span><span class="p">(</span><span class="n">msg</span><span class="o">.</span><span class="n">content</span><span class="p">)</span>       <span class="c1"># &quot;Analyze this text&quot;</span>
-</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="nb">print</span><span class="p">(</span><span class="n">msg</span><span class="o">.</span><span class="n">context</span><span class="o">.</span><span class="n">data</span><span class="p">)</span>  <span class="c1"># {&quot;key&quot;: &quot;value&quot;}</span>
-</span></code></pre></div>
-<hr />
-<h2 id="2-default-fields">2. <strong>Default Fields</strong></h2>
-<p><code>Message</code> pre-defines a set of fields that modules and agents expect:</p>
+<p>BM25 (Best Matching 25) is a classic lexical ranking algorithm that scores documents by term frequency and inverse document frequency. msgFlux ships three providers with the same interface — choose based on your performance and dependency needs.</p>
 <table>
 <thead>
 <tr>
-<th>Field</th>
+<th>Provider</th>
+<th>Class</th>
+<th>Dependency</th>
+<th>Best For</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>bm25</code></td>
+<td><code>BM25LexicalRetriever</code></td>
+<td>none (built-in)</td>
+<td>Zero-dependency setups</td>
+</tr>
+<tr>
+<td><code>bm25s</code></td>
+<td><code>BM25SLexicalRetriever</code></td>
+<td><code>bm25s</code></td>
+<td>High-throughput / large corpora</td>
+</tr>
+<tr>
+<td><code>rank_bm25</code></td>
+<td><code>RankBM25LexicalRetriever</code></td>
+<td><code>rank-bm25</code></td>
+<td>Drop-in familiar API</td>
+</tr>
+</tbody>
+</table>
+<p>All three share the same <code>add()</code> / <code>__call__()</code> / <code>acall()</code> interface.</p>
+<hr />
+<h2 id="1-quick-start">1. <strong>Quick Start</strong></h2>
+<details class="example" open="open">
+<summary>Example</summary>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="n">retriever</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Retriever</span><span class="o">.</span><span class="n">lexical</span><span class="p">(</span><span class="s2">&quot;bm25&quot;</span><span class="p">)</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="n">retriever</span><span class="o">.</span><span class="n">add</span><span class="p">([</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    <span class="s2">&quot;Python is a high-level programming language.&quot;</span><span class="p">,</span>
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    <span class="s2">&quot;Machine learning is a subset of artificial intelligence.&quot;</span><span class="p">,</span>
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    <span class="s2">&quot;The Eiffel Tower is located in Paris, France.&quot;</span><span class="p">,</span>
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>    <span class="s2">&quot;Neural networks are inspired by the human brain.&quot;</span><span class="p">,</span>
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="p">])</span>
+</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>
+</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="n">response</span> <span class="o">=</span> <span class="n">retriever</span><span class="p">(</span><span class="s2">&quot;What is machine learning?&quot;</span><span class="p">,</span> <span class="n">top_k</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">return_score</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>
+</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="k">for</span> <span class="n">result</span> <span class="ow">in</span> <span class="n">response</span><span class="o">.</span><span class="n">data</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">results</span><span class="p">:</span>
+</span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;[</span><span class="si">{</span><span class="n">result</span><span class="o">.</span><span class="n">score</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">] </span><span class="si">{</span><span class="n">result</span><span class="o">.</span><span class="n">data</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</span><span id="__span-0-16"><a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="c1"># [4.21] Machine learning is a subset of artificial intelligence.</span>
+</span><span id="__span-0-17"><a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a><span class="c1"># [1.83] Neural networks are inspired by the human brain.</span>
+</span></code></pre></div>
+</details>
+<hr />
+<h2 id="2-providers">2. <strong>Providers</strong></h2>
+<h3 id="bm25-built-in-no-dependencies"><code>bm25</code> — Built-in (no dependencies)</h3>
+<p>Pure Python implementation. No external packages required.</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="n">retriever</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Retriever</span><span class="o">.</span><span class="n">lexical</span><span class="p">(</span><span class="s2">&quot;bm25&quot;</span><span class="p">,</span> <span class="n">k1</span><span class="o">=</span><span class="mf">1.5</span><span class="p">,</span> <span class="n">b</span><span class="o">=</span><span class="mf">0.75</span><span class="p">)</span>
+</span></code></pre></div>
+<h3 id="bm25s-high-performance-scipy-sparse-matrices"><code>bm25s</code> — High-performance (scipy sparse matrices)</h3>
+<p>Uses the <a href="https://github.com/xhluca/bm25s"><code>bm25s</code></a> library. Significantly faster on large corpora. Supports multiple BM25 variants and stopword filtering.</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="n">retriever</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Retriever</span><span class="o">.</span><span class="n">lexical</span><span class="p">(</span><span class="s2">&quot;bm25s&quot;</span><span class="p">,</span>
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>    <span class="n">k1</span><span class="o">=</span><span class="mf">1.5</span><span class="p">,</span>
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>    <span class="n">b</span><span class="o">=</span><span class="mf">0.75</span><span class="p">,</span>
+</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>    <span class="n">method</span><span class="o">=</span><span class="s2">&quot;lucene&quot;</span><span class="p">,</span>   <span class="c1"># &quot;lucene&quot; | &quot;robertson&quot; | &quot;atire&quot; | &quot;bm25l&quot; | &quot;bm25+&quot;</span>
+</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>    <span class="n">stopwords</span><span class="o">=</span><span class="s2">&quot;en&quot;</span><span class="p">,</span>    <span class="c1"># language code or list of stopwords</span>
+</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="p">)</span>
+</span></code></pre></div>
+<p>Install: <code>pip install bm25s</code></p>
+<h3 id="rank_bm25-rank-bm25-library"><code>rank_bm25</code> — rank-bm25 library</h3>
+<p>Uses <a href="https://github.com/dorianbrown/rank_bm25"><code>rank-bm25</code></a>, a popular BM25 library. Familiar to users already using it.</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="n">retriever</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Retriever</span><span class="o">.</span><span class="n">lexical</span><span class="p">(</span><span class="s2">&quot;rank_bm25&quot;</span><span class="p">,</span> <span class="n">k1</span><span class="o">=</span><span class="mf">1.5</span><span class="p">,</span> <span class="n">b</span><span class="o">=</span><span class="mf">0.75</span><span class="p">)</span>
+</span></code></pre></div>
+<p>Install: <code>pip install rank-bm25</code></p>
+<hr />
+<h2 id="3-parameters">3. <strong>Parameters</strong></h2>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Default</th>
 <th>Description</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>content</code></td>
-<td>Main content (text, dict)</td>
+<td><code>k1</code></td>
+<td><code>1.5</code></td>
+<td>Term frequency saturation — higher values reward repeated terms more</td>
 </tr>
 <tr>
-<td><code>texts</code></td>
-<td>Text data container</td>
+<td><code>b</code></td>
+<td><code>0.75</code></td>
+<td>Document length normalization — <code>0</code> disables it, <code>1</code> fully normalizes</td>
 </tr>
 <tr>
-<td><code>context</code></td>
-<td>Context information</td>
+<td><code>method</code></td>
+<td><code>"lucene"</code></td>
+<td>BM25 variant (<code>bm25s</code> only)</td>
 </tr>
 <tr>
-<td><code>audios</code></td>
-<td>Audio data</td>
-</tr>
-<tr>
-<td><code>images</code></td>
-<td>Image data</td>
-</tr>
-<tr>
-<td><code>videos</code></td>
-<td>Video data</td>
-</tr>
-<tr>
-<td><code>extra</code></td>
-<td>Extra data</td>
-</tr>
-<tr>
-<td><code>outputs</code></td>
-<td>Module outputs</td>
-</tr>
-<tr>
-<td><code>response</code></td>
-<td>Final response</td>
+<td><code>stopwords</code></td>
+<td><code>None</code></td>
+<td>Language code or word list to filter (<code>bm25s</code> only)</td>
 </tr>
 </tbody>
 </table>
 <hr />
-<h2 id="3-with-nnagent">3. <strong>With nn.Agent</strong></h2>
-<h3 id="message_fields">message_fields</h3>
-<p><code>message_fields</code> controls which parts of the <code>Message</code> an agent reads as inputs:</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">nn</span>
-</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>
-</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="k">class</span><span class="w"> </span><span class="nc">Analyzer</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">):</span>
-</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>    <span class="n">model</span> <span class="o">=</span> <span class="n">model</span>
-</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>    <span class="n">message_fields</span> <span class="o">=</span> <span class="p">{</span>
-</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>        <span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="s2">&quot;content&quot;</span><span class="p">,</span>                    <span class="c1"># Read task</span>
-</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>        <span class="s2">&quot;task_multimodal&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;image&quot;</span><span class="p">:</span> <span class="s2">&quot;images.user&quot;</span><span class="p">},</span>  <span class="c1"># Read image</span>
-</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>        <span class="s2">&quot;task_context&quot;</span><span class="p">:</span> <span class="s2">&quot;context.data&quot;</span><span class="p">,</span>       <span class="c1"># Read task context</span>
-</span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>        <span class="s2">&quot;vars&quot;</span><span class="p">:</span> <span class="s2">&quot;extra.vars&quot;</span>                         <span class="c1"># Read vars</span>
-</span><span id="__span-1-10"><a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>    <span class="p">}</span>
-</span><span id="__span-1-11"><a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>    <span class="n">response_mode</span> <span class="o">=</span> <span class="s2">&quot;outputs.analysis&quot;</span>               <span class="c1"># Write response</span>
-</span><span id="__span-1-12"><a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>
-</span><span id="__span-1-13"><a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a><span class="n">analyzer</span> <span class="o">=</span> <span class="n">Analyzer</span><span class="p">()</span>
-</span><span id="__span-1-14"><a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a>
-</span><span id="__span-1-15"><a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a><span class="n">msg</span> <span class="o">=</span> <span class="n">Message</span><span class="p">(</span>
-</span><span id="__span-1-16"><a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a>    <span class="n">content</span><span class="o">=</span><span class="s2">&quot;Analyze this image&quot;</span><span class="p">,</span>
-</span><span id="__span-1-17"><a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a>    <span class="n">context</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;data&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;product&quot;</span><span class="p">}}</span>
-</span><span id="__span-1-18"><a id="__codelineno-1-18" name="__codelineno-1-18" href="#__codelineno-1-18"></a><span class="p">)</span>
-</span><span id="__span-1-19"><a id="__codelineno-1-19" name="__codelineno-1-19" href="#__codelineno-1-19"></a><span class="n">msg</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">&quot;images.user&quot;</span><span class="p">,</span> <span class="s2">&quot;https://example.com/image.jpg&quot;</span><span class="p">)</span>
-</span><span id="__span-1-20"><a id="__codelineno-1-20" name="__codelineno-1-20" href="#__codelineno-1-20"></a>
-</span><span id="__span-1-21"><a id="__codelineno-1-21" name="__codelineno-1-21" href="#__codelineno-1-21"></a><span class="n">analyzer</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
-</span><span id="__span-1-22"><a id="__codelineno-1-22" name="__codelineno-1-22" href="#__codelineno-1-22"></a>
-</span><span id="__span-1-23"><a id="__codelineno-1-23" name="__codelineno-1-23" href="#__codelineno-1-23"></a><span class="nb">print</span><span class="p">(</span><span class="n">msg</span><span class="o">.</span><span class="n">outputs</span><span class="o">.</span><span class="n">analysis</span><span class="p">)</span>  <span class="c1"># Agent&#39;s response</span>
-</span></code></pre></div>
-<h3 id="response_mode-options">response_mode Options</h3>
-<p><code>response_mode</code> controls how and where the module delivers its output:</p>
-<table>
-<thead>
-<tr>
-<th>Mode</th>
-<th>Behavior</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>None</code> (default)</td>
-<td>Return response directly</td>
-</tr>
-<tr>
-<td><code>"&lt;path&gt;"</code></td>
-<td>Write to <code>msg.&lt;path&gt;</code> and return the <code>Message</code></td>
-</tr>
-</tbody>
-</table>
-<p><strong>Writing to a Message</strong> — pass a string path <em>without</em> a trailing colon. The
-module writes to that field of the <code>Message</code> object and returns it:</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="c1"># Write response to msg.outputs.result, return the Message</span>
-</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="n">agent</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">response_mode</span><span class="o">=</span><span class="s2">&quot;outputs.result&quot;</span><span class="p">)</span>
-</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="n">msg</span> <span class="o">=</span> <span class="n">agent</span><span class="p">(</span><span class="n">Message</span><span class="p">(</span><span class="n">content</span><span class="o">=</span><span class="s2">&quot;Hi&quot;</span><span class="p">))</span>
-</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="nb">print</span><span class="p">(</span><span class="n">msg</span><span class="o">.</span><span class="n">outputs</span><span class="o">.</span><span class="n">result</span><span class="p">)</span>
-</span></code></pre></div>
-<hr />
-<h2 id="4-in-workflows">4. <strong>In Workflows</strong></h2>
-<h3 id="with-inline-dsl">With inline DSL</h3>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn.functional</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">F</span>
-</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>
-</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>
-</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="k">def</span><span class="w"> </span><span class="nf">preprocess</span><span class="p">(</span><span class="n">msg</span><span class="p">):</span>
-</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>    <span class="n">msg</span><span class="o">.</span><span class="n">preprocessed_content</span> <span class="o">=</span> <span class="n">msg</span><span class="o">.</span><span class="n">content</span><span class="o">.</span><span class="n">upper</span><span class="p">()</span>
-</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>    <span class="k">return</span> <span class="n">msg</span>
-</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>
-</span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="k">def</span><span class="w"> </span><span class="nf">analyze</span><span class="p">(</span><span class="n">msg</span><span class="p">):</span>
-</span><span id="__span-3-9"><a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>    <span class="n">msg</span><span class="o">.</span><span class="n">outputs</span><span class="o">.</span><span class="n">analysis</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;Analyzed: </span><span class="si">{</span><span class="n">msg</span><span class="o">.</span><span class="n">preprocessed_content</span><span class="si">}</span><span class="s2">&quot;</span>
-</span><span id="__span-3-10"><a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a>    <span class="k">return</span> <span class="n">msg</span>
-</span><span id="__span-3-11"><a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a>
-</span><span id="__span-3-12"><a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a><span class="n">modules</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;preprocess&quot;</span><span class="p">:</span> <span class="n">preprocess</span><span class="p">,</span> <span class="s2">&quot;analyze&quot;</span><span class="p">:</span> <span class="n">analyze</span><span class="p">}</span>
-</span><span id="__span-3-13"><a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a>
-</span><span id="__span-3-14"><a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a><span class="n">msg</span> <span class="o">=</span> <span class="n">Message</span><span class="p">(</span><span class="n">content</span><span class="o">=</span><span class="s2">&quot;hello world&quot;</span><span class="p">)</span>
-</span><span id="__span-3-15"><a id="__codelineno-3-15" name="__codelineno-3-15" href="#__codelineno-3-15"></a><span class="n">F</span><span class="o">.</span><span class="n">inline</span><span class="p">(</span><span class="s2">&quot;preprocess -&gt; analyze&quot;</span><span class="p">,</span> <span class="n">modules</span><span class="p">,</span> <span class="n">msg</span><span class="p">)</span>
-</span><span id="__span-3-16"><a id="__codelineno-3-16" name="__codelineno-3-16" href="#__codelineno-3-16"></a>
-</span><span id="__span-3-17"><a id="__codelineno-3-17" name="__codelineno-3-17" href="#__codelineno-3-17"></a><span class="nb">print</span><span class="p">(</span><span class="n">msg</span><span class="o">.</span><span class="n">outputs</span><span class="o">.</span><span class="n">analysis</span><span class="p">)</span>  <span class="c1"># &quot;Analyzed: HELLO WORLD&quot;</span>
-</span></code></pre></div>
-<hr />
-<h2 id="5-multimodal-data">5. <strong>Multimodal Data</strong></h2>
-<p>Store multimodal inputs directly on the message:</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">msg</span> <span class="o">=</span> <span class="n">Message</span><span class="p">()</span>
+<h2 id="4-adding-documents">4. <strong>Adding Documents</strong></h2>
+<p>Call <code>.add()</code> with a list of strings before searching. Documents are indexed incrementally — you can call <code>.add()</code> multiple times:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
 </span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>
-</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="c1"># Audio</span>
-</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="n">msg</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">&quot;user_audio&quot;</span><span class="p">,</span> <span class="s2">&quot;/path/to/audio.mp3&quot;</span><span class="p">)</span>
-</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>
-</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="c1"># Images</span>
-</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="n">msg</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">&quot;user_image&quot;</span><span class="p">,</span> <span class="s2">&quot;https://example.com/image.jpg&quot;</span><span class="p">)</span>
-</span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="n">msg</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">&quot;images.product&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;img1.jpg&quot;</span><span class="p">,</span> <span class="s2">&quot;img2.jpg&quot;</span><span class="p">])</span>
-</span><span id="__span-4-9"><a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>
-</span><span id="__span-4-10"><a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a><span class="c1"># Files</span>
-</span><span id="__span-4-11"><a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a><span class="n">msg</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">&quot;user_file&quot;</span><span class="p">,</span> <span class="s2">&quot;/path/to/document.pdf&quot;</span><span class="p">)</span>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="n">retriever</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Retriever</span><span class="o">.</span><span class="n">lexical</span><span class="p">(</span><span class="s2">&quot;bm25&quot;</span><span class="p">)</span>
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>
+</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="c1"># First batch</span>
+</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="n">retriever</span><span class="o">.</span><span class="n">add</span><span class="p">([</span>
+</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>    <span class="s2">&quot;Python is a general-purpose programming language.&quot;</span><span class="p">,</span>
+</span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>    <span class="s2">&quot;JavaScript runs in the browser.&quot;</span><span class="p">,</span>
+</span><span id="__span-4-9"><a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="p">])</span>
+</span><span id="__span-4-10"><a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a>
+</span><span id="__span-4-11"><a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a><span class="c1"># Add more later</span>
+</span><span id="__span-4-12"><a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a><span class="n">retriever</span><span class="o">.</span><span class="n">add</span><span class="p">([</span>
+</span><span id="__span-4-13"><a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a>    <span class="s2">&quot;Rust provides memory safety without a garbage collector.&quot;</span><span class="p">,</span>
+</span><span id="__span-4-14"><a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a>    <span class="s2">&quot;Go is designed for simplicity and performance.&quot;</span><span class="p">,</span>
+</span><span id="__span-4-15"><a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a><span class="p">])</span>
+</span><span id="__span-4-16"><a id="__codelineno-4-16" name="__codelineno-4-16" href="#__codelineno-4-16"></a>
+</span><span id="__span-4-17"><a id="__codelineno-4-17" name="__codelineno-4-17" href="#__codelineno-4-17"></a><span class="n">response</span> <span class="o">=</span> <span class="n">retriever</span><span class="p">(</span><span class="s2">&quot;compiled systems language&quot;</span><span class="p">)</span>
 </span></code></pre></div>
 <hr />
-<h2 id="6-complete-example">6. <strong>Complete Example</strong></h2>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
-</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">nn</span>
-</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn.functional</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">F</span>
-</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="kn">import</span> <span class="n">Message</span>
-</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>
-</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>
-</span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="k">class</span><span class="w"> </span><span class="nc">Speech2Text</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Transcriber</span><span class="p">):</span>
-</span><span id="__span-5-8"><a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>    <span class="n">model</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">speech_to_text</span><span class="p">(</span><span class="s2">&quot;openai/whisper-1&quot;</span><span class="p">)</span>
-</span><span id="__span-5-9"><a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a>    <span class="n">message_fields</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;task_multimodal&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;audio&quot;</span><span class="p">:</span> <span class="s2">&quot;user_audio&quot;</span><span class="p">}}</span>
-</span><span id="__span-5-10"><a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a>    <span class="n">response_mode</span> <span class="o">=</span> <span class="s2">&quot;content&quot;</span>
-</span><span id="__span-5-11"><a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a>
-</span><span id="__span-5-12"><a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a>
-</span><span id="__span-5-13"><a id="__codelineno-5-13" name="__codelineno-5-13" href="#__codelineno-5-13"></a><span class="k">class</span><span class="w"> </span><span class="nc">Analyzer</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">):</span>
-</span><span id="__span-5-14"><a id="__codelineno-5-14" name="__codelineno-5-14" href="#__codelineno-5-14"></a>    <span class="n">model</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">chat_completion</span><span class="p">(</span><span class="s2">&quot;openai/gpt-4.1-mini&quot;</span><span class="p">)</span>
-</span><span id="__span-5-15"><a id="__codelineno-5-15" name="__codelineno-5-15" href="#__codelineno-5-15"></a>    <span class="n">message_fields</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="s2">&quot;content&quot;</span><span class="p">}</span>
-</span><span id="__span-5-16"><a id="__codelineno-5-16" name="__codelineno-5-16" href="#__codelineno-5-16"></a>    <span class="n">response_mode</span> <span class="o">=</span> <span class="s2">&quot;outputs.analysis&quot;</span>
-</span><span id="__span-5-17"><a id="__codelineno-5-17" name="__codelineno-5-17" href="#__codelineno-5-17"></a>
-</span><span id="__span-5-18"><a id="__codelineno-5-18" name="__codelineno-5-18" href="#__codelineno-5-18"></a>
-</span><span id="__span-5-19"><a id="__codelineno-5-19" name="__codelineno-5-19" href="#__codelineno-5-19"></a><span class="k">class</span><span class="w"> </span><span class="nc">Pipeline</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
-</span><span id="__span-5-20"><a id="__codelineno-5-20" name="__codelineno-5-20" href="#__codelineno-5-20"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-</span><span id="__span-5-21"><a id="__codelineno-5-21" name="__codelineno-5-21" href="#__codelineno-5-21"></a>        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
-</span><span id="__span-5-22"><a id="__codelineno-5-22" name="__codelineno-5-22" href="#__codelineno-5-22"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">transcriber</span> <span class="o">=</span> <span class="n">Speech2Text</span><span class="p">()</span>
-</span><span id="__span-5-23"><a id="__codelineno-5-23" name="__codelineno-5-23" href="#__codelineno-5-23"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">analyzer</span> <span class="o">=</span> <span class="n">Analyzer</span><span class="p">()</span>
-</span><span id="__span-5-24"><a id="__codelineno-5-24" name="__codelineno-5-24" href="#__codelineno-5-24"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">components</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">ModuleDict</span><span class="p">({</span>
-</span><span id="__span-5-25"><a id="__codelineno-5-25" name="__codelineno-5-25" href="#__codelineno-5-25"></a>            <span class="s2">&quot;transcriber&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">transcriber</span><span class="p">,</span>
-</span><span id="__span-5-26"><a id="__codelineno-5-26" name="__codelineno-5-26" href="#__codelineno-5-26"></a>            <span class="s2">&quot;analyzer&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">analyzer</span>
-</span><span id="__span-5-27"><a id="__codelineno-5-27" name="__codelineno-5-27" href="#__codelineno-5-27"></a>        <span class="p">})</span>
-</span><span id="__span-5-28"><a id="__codelineno-5-28" name="__codelineno-5-28" href="#__codelineno-5-28"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">register_buffer</span><span class="p">(</span><span class="s2">&quot;flux&quot;</span><span class="p">,</span> <span class="s2">&quot;{user_audio is not None? transcriber} -&gt; analyzer&quot;</span><span class="p">)</span>
-</span><span id="__span-5-29"><a id="__codelineno-5-29" name="__codelineno-5-29" href="#__codelineno-5-29"></a>
-</span><span id="__span-5-30"><a id="__codelineno-5-30" name="__codelineno-5-30" href="#__codelineno-5-30"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">msg</span><span class="p">):</span>
-</span><span id="__span-5-31"><a id="__codelineno-5-31" name="__codelineno-5-31" href="#__codelineno-5-31"></a>        <span class="k">return</span> <span class="n">F</span><span class="o">.</span><span class="n">inline</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">flux</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">components</span><span class="p">,</span> <span class="n">msg</span><span class="p">)</span>
-</span><span id="__span-5-32"><a id="__codelineno-5-32" name="__codelineno-5-32" href="#__codelineno-5-32"></a>
-</span><span id="__span-5-33"><a id="__codelineno-5-33" name="__codelineno-5-33" href="#__codelineno-5-33"></a>
-</span><span id="__span-5-34"><a id="__codelineno-5-34" name="__codelineno-5-34" href="#__codelineno-5-34"></a><span class="c1"># Usage</span>
-</span><span id="__span-5-35"><a id="__codelineno-5-35" name="__codelineno-5-35" href="#__codelineno-5-35"></a><span class="n">pipeline</span> <span class="o">=</span> <span class="n">Pipeline</span><span class="p">()</span>
-</span><span id="__span-5-36"><a id="__codelineno-5-36" name="__codelineno-5-36" href="#__codelineno-5-36"></a>
-</span><span id="__span-5-37"><a id="__codelineno-5-37" name="__codelineno-5-37" href="#__codelineno-5-37"></a><span class="c1"># Text input</span>
-</span><span id="__span-5-38"><a id="__codelineno-5-38" name="__codelineno-5-38" href="#__codelineno-5-38"></a><span class="n">msg</span> <span class="o">=</span> <span class="n">Message</span><span class="p">(</span><span class="n">content</span><span class="o">=</span><span class="s2">&quot;Analyze this text for sentiment.&quot;</span><span class="p">)</span>
-</span><span id="__span-5-39"><a id="__codelineno-5-39" name="__codelineno-5-39" href="#__codelineno-5-39"></a><span class="n">pipeline</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
-</span><span id="__span-5-40"><a id="__codelineno-5-40" name="__codelineno-5-40" href="#__codelineno-5-40"></a><span class="nb">print</span><span class="p">(</span><span class="n">msg</span><span class="o">.</span><span class="n">outputs</span><span class="o">.</span><span class="n">analysis</span><span class="p">)</span>
-</span><span id="__span-5-41"><a id="__codelineno-5-41" name="__codelineno-5-41" href="#__codelineno-5-41"></a>
-</span><span id="__span-5-42"><a id="__codelineno-5-42" name="__codelineno-5-42" href="#__codelineno-5-42"></a><span class="c1"># Audio input</span>
-</span><span id="__span-5-43"><a id="__codelineno-5-43" name="__codelineno-5-43" href="#__codelineno-5-43"></a><span class="n">msg</span> <span class="o">=</span> <span class="n">Message</span><span class="p">()</span>
-</span><span id="__span-5-44"><a id="__codelineno-5-44" name="__codelineno-5-44" href="#__codelineno-5-44"></a><span class="n">msg</span><span class="o">.</span><span class="n">user_audio</span> <span class="o">=</span> <span class="s2">&quot;/path/to/audio.mp3&quot;</span>
-</span><span id="__span-5-45"><a id="__codelineno-5-45" name="__codelineno-5-45" href="#__codelineno-5-45"></a><span class="n">pipeline</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
-</span><span id="__span-5-46"><a id="__codelineno-5-46" name="__codelineno-5-46" href="#__codelineno-5-46"></a><span class="nb">print</span><span class="p">(</span><span class="n">msg</span><span class="o">.</span><span class="n">content</span><span class="p">)</span>          <span class="c1"># Transcription</span>
-</span><span id="__span-5-47"><a id="__codelineno-5-47" name="__codelineno-5-47" href="#__codelineno-5-47"></a><span class="nb">print</span><span class="p">(</span><span class="n">msg</span><span class="o">.</span><span class="n">outputs</span><span class="o">.</span><span class="n">analysis</span><span class="p">)</span> <span class="c1"># Analysis result</span>
+<h2 id="5-search-parameters">5. <strong>Search Parameters</strong></h2>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">response</span> <span class="o">=</span> <span class="n">retriever</span><span class="p">(</span>
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>    <span class="n">queries</span><span class="p">,</span>           <span class="c1"># str or List[str]</span>
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>    <span class="n">top_k</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span>           <span class="c1"># max results per query (default: 5)</span>
+</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>    <span class="n">threshold</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span>     <span class="c1"># min BM25 score to include a result (default: 0.0)</span>
+</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>    <span class="n">return_score</span><span class="o">=</span><span class="kc">False</span> <span class="c1"># include score in results (default: False)</span>
+</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="p">)</span>
+</span></code></pre></div>
+<details class="example" open="open">
+<summary>Threshold filtering</summary>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="n">retriever</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Retriever</span><span class="o">.</span><span class="n">lexical</span><span class="p">(</span><span class="s2">&quot;bm25&quot;</span><span class="p">)</span>
+</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="n">retriever</span><span class="o">.</span><span class="n">add</span><span class="p">([</span>
+</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>    <span class="s2">&quot;Deep learning uses neural networks with many layers.&quot;</span><span class="p">,</span>
+</span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>    <span class="s2">&quot;The weather today is sunny and warm.&quot;</span><span class="p">,</span>
+</span><span id="__span-6-7"><a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>    <span class="s2">&quot;Transformers revolutionized natural language processing.&quot;</span><span class="p">,</span>
+</span><span id="__span-6-8"><a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="p">])</span>
+</span><span id="__span-6-9"><a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a>
+</span><span id="__span-6-10"><a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a><span class="c1"># Only return documents with score &gt;= 1.0</span>
+</span><span id="__span-6-11"><a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a><span class="n">response</span> <span class="o">=</span> <span class="n">retriever</span><span class="p">(</span><span class="s2">&quot;neural network&quot;</span><span class="p">,</span> <span class="n">threshold</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">return_score</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</span><span id="__span-6-12"><a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a>
+</span><span id="__span-6-13"><a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a><span class="k">for</span> <span class="n">result</span> <span class="ow">in</span> <span class="n">response</span><span class="o">.</span><span class="n">data</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">results</span><span class="p">:</span>
+</span><span id="__span-6-14"><a id="__codelineno-6-14" name="__codelineno-6-14" href="#__codelineno-6-14"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;[</span><span class="si">{</span><span class="n">result</span><span class="o">.</span><span class="n">score</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2">] </span><span class="si">{</span><span class="n">result</span><span class="o">.</span><span class="n">data</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</span><span id="__span-6-15"><a id="__codelineno-6-15" name="__codelineno-6-15" href="#__codelineno-6-15"></a><span class="c1"># [3.87] Deep learning uses neural networks with many layers.</span>
+</span><span id="__span-6-16"><a id="__codelineno-6-16" name="__codelineno-6-16" href="#__codelineno-6-16"></a><span class="c1"># [1.12] Transformers revolutionized natural language processing.</span>
+</span><span id="__span-6-17"><a id="__codelineno-6-17" name="__codelineno-6-17" href="#__codelineno-6-17"></a><span class="c1"># (weather doc excluded — score below threshold)</span>
+</span></code></pre></div>
+</details>
+<hr />
+<h2 id="6-batch-queries">6. <strong>Batch Queries</strong></h2>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="n">retriever</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Retriever</span><span class="o">.</span><span class="n">lexical</span><span class="p">(</span><span class="s2">&quot;bm25&quot;</span><span class="p">)</span>
+</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="n">retriever</span><span class="o">.</span><span class="n">add</span><span class="p">([</span>
+</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>    <span class="s2">&quot;Python is great for data science.&quot;</span><span class="p">,</span>
+</span><span id="__span-7-6"><a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>    <span class="s2">&quot;Java is widely used in enterprise applications.&quot;</span><span class="p">,</span>
+</span><span id="__span-7-7"><a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>    <span class="s2">&quot;Rust prevents memory bugs at compile time.&quot;</span><span class="p">,</span>
+</span><span id="__span-7-8"><a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a><span class="p">])</span>
+</span><span id="__span-7-9"><a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a>
+</span><span id="__span-7-10"><a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a><span class="n">queries</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;data analysis language&quot;</span><span class="p">,</span> <span class="s2">&quot;safe systems programming&quot;</span><span class="p">]</span>
+</span><span id="__span-7-11"><a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a><span class="n">response</span> <span class="o">=</span> <span class="n">retriever</span><span class="p">(</span><span class="n">queries</span><span class="p">,</span> <span class="n">top_k</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">return_score</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</span><span id="__span-7-12"><a id="__codelineno-7-12" name="__codelineno-7-12" href="#__codelineno-7-12"></a>
+</span><span id="__span-7-13"><a id="__codelineno-7-13" name="__codelineno-7-13" href="#__codelineno-7-13"></a><span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">query</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">queries</span><span class="p">):</span>
+</span><span id="__span-7-14"><a id="__codelineno-7-14" name="__codelineno-7-14" href="#__codelineno-7-14"></a>    <span class="n">result</span> <span class="o">=</span> <span class="n">response</span><span class="o">.</span><span class="n">data</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">results</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+</span><span id="__span-7-15"><a id="__codelineno-7-15" name="__codelineno-7-15" href="#__codelineno-7-15"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">query</span><span class="si">!r}</span><span class="s2"> → [</span><span class="si">{</span><span class="n">result</span><span class="o">.</span><span class="n">score</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2">] </span><span class="si">{</span><span class="n">result</span><span class="o">.</span><span class="n">data</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</span></code></pre></div>
+<hr />
+<h2 id="7-score-statistics">7. <strong>Score Statistics</strong></h2>
+<p>Inspect how scores are distributed across your corpus for a given query:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
+</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>
+</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="n">retriever</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Retriever</span><span class="o">.</span><span class="n">lexical</span><span class="p">(</span><span class="s2">&quot;bm25&quot;</span><span class="p">)</span>
+</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="n">retriever</span><span class="o">.</span><span class="n">add</span><span class="p">([</span>
+</span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>    <span class="s2">&quot;Machine learning automates pattern recognition.&quot;</span><span class="p">,</span>
+</span><span id="__span-8-6"><a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>    <span class="s2">&quot;Deep learning is a subset of machine learning.&quot;</span><span class="p">,</span>
+</span><span id="__span-8-7"><a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a>    <span class="s2">&quot;The Eiffel Tower stands 330 metres tall.&quot;</span><span class="p">,</span>
+</span><span id="__span-8-8"><a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a><span class="p">])</span>
+</span><span id="__span-8-9"><a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a>
+</span><span id="__span-8-10"><a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a><span class="n">stats</span> <span class="o">=</span> <span class="n">retriever</span><span class="o">.</span><span class="n">get_score_statistics</span><span class="p">(</span><span class="s2">&quot;machine learning&quot;</span><span class="p">)</span>
+</span><span id="__span-8-11"><a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a><span class="nb">print</span><span class="p">(</span><span class="n">stats</span><span class="p">)</span>
+</span><span id="__span-8-12"><a id="__codelineno-8-12" name="__codelineno-8-12" href="#__codelineno-8-12"></a><span class="c1"># {</span>
+</span><span id="__span-8-13"><a id="__codelineno-8-13" name="__codelineno-8-13" href="#__codelineno-8-13"></a><span class="c1">#   &quot;min_score&quot;: 0.0,</span>
+</span><span id="__span-8-14"><a id="__codelineno-8-14" name="__codelineno-8-14" href="#__codelineno-8-14"></a><span class="c1">#   &quot;max_score&quot;: 5.43,</span>
+</span><span id="__span-8-15"><a id="__codelineno-8-15" name="__codelineno-8-15" href="#__codelineno-8-15"></a><span class="c1">#   &quot;mean_score&quot;: 2.21,</span>
+</span><span id="__span-8-16"><a id="__codelineno-8-16" name="__codelineno-8-16" href="#__codelineno-8-16"></a><span class="c1">#   &quot;median_score&quot;: 2.14,</span>
+</span><span id="__span-8-17"><a id="__codelineno-8-17" name="__codelineno-8-17" href="#__codelineno-8-17"></a><span class="c1">#   &quot;std_score&quot;: 2.18</span>
+</span><span id="__span-8-18"><a id="__codelineno-8-18" name="__codelineno-8-18" href="#__codelineno-8-18"></a><span class="c1"># }</span>
+</span></code></pre></div>
+<p>Useful for choosing a <code>threshold</code> value — e.g. use <code>mean_score</code> to filter out below-average results.</p>
+<hr />
+<h2 id="8-async-support">8. <strong>Async Support</strong></h2>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
+</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>
+</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="n">retriever</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Retriever</span><span class="o">.</span><span class="n">lexical</span><span class="p">(</span><span class="s2">&quot;bm25&quot;</span><span class="p">)</span>
+</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="n">retriever</span><span class="o">.</span><span class="n">add</span><span class="p">([</span>
+</span><span id="__span-9-5"><a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>    <span class="s2">&quot;Async Python enables non-blocking I/O.&quot;</span><span class="p">,</span>
+</span><span id="__span-9-6"><a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>    <span class="s2">&quot;Asyncio is the standard async library.&quot;</span><span class="p">,</span>
+</span><span id="__span-9-7"><a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a>    <span class="s2">&quot;Threading uses OS threads for concurrency.&quot;</span><span class="p">,</span>
+</span><span id="__span-9-8"><a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a><span class="p">])</span>
+</span><span id="__span-9-9"><a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a>
+</span><span id="__span-9-10"><a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a><span class="n">response</span> <span class="o">=</span> <span class="k">await</span> <span class="n">retriever</span><span class="o">.</span><span class="n">acall</span><span class="p">(</span>
+</span><span id="__span-9-11"><a id="__codelineno-9-11" name="__codelineno-9-11" href="#__codelineno-9-11"></a>    <span class="p">[</span><span class="s2">&quot;non-blocking concurrency&quot;</span><span class="p">,</span> <span class="s2">&quot;event loop&quot;</span><span class="p">],</span>
+</span><span id="__span-9-12"><a id="__codelineno-9-12" name="__codelineno-9-12" href="#__codelineno-9-12"></a>    <span class="n">top_k</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
+</span><span id="__span-9-13"><a id="__codelineno-9-13" name="__codelineno-9-13" href="#__codelineno-9-13"></a>    <span class="n">return_score</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+</span><span id="__span-9-14"><a id="__codelineno-9-14" name="__codelineno-9-14" href="#__codelineno-9-14"></a><span class="p">)</span>
+</span><span id="__span-9-15"><a id="__codelineno-9-15" name="__codelineno-9-15" href="#__codelineno-9-15"></a>
+</span><span id="__span-9-16"><a id="__codelineno-9-16" name="__codelineno-9-16" href="#__codelineno-9-16"></a><span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">query</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">([</span><span class="s2">&quot;non-blocking concurrency&quot;</span><span class="p">,</span> <span class="s2">&quot;event loop&quot;</span><span class="p">]):</span>
+</span><span id="__span-9-17"><a id="__codelineno-9-17" name="__codelineno-9-17" href="#__codelineno-9-17"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="se">\n</span><span class="si">{</span><span class="n">query</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</span><span id="__span-9-18"><a id="__codelineno-9-18" name="__codelineno-9-18" href="#__codelineno-9-18"></a>    <span class="k">for</span> <span class="n">result</span> <span class="ow">in</span> <span class="n">response</span><span class="o">.</span><span class="n">data</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">results</span><span class="p">:</span>
+</span><span id="__span-9-19"><a id="__codelineno-9-19" name="__codelineno-9-19" href="#__codelineno-9-19"></a>        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;  [</span><span class="si">{</span><span class="n">result</span><span class="o">.</span><span class="n">score</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2">] </span><span class="si">{</span><span class="n">result</span><span class="o">.</span><span class="n">data</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
 </span></code></pre></div>
 
 
@@ -4844,7 +4933,7 @@ module writes to that field of the <code>Message</code> object and returns it:</
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../module/visualization/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Visualization">
+          <a href="../retriever/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Retriever">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
@@ -4854,20 +4943,20 @@ module writes to that field of the <code>Message</code> object and returns it:</
                 Previous
               </span>
               <div class="md-ellipsis">
-                Visualization
+                Retriever
               </div>
             </div>
           </a>
         
         
           
-          <a href="../agent/" class="md-footer__link md-footer__link--next" aria-label="Next: nn.Agent">
+          <a href="../fuzzy/" class="md-footer__link md-footer__link--next" aria-label="Next: Fuzzy Retriever">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                nn.Agent
+                Fuzzy Retriever
               </div>
             </div>
             <div class="md-footer__button md-icon">
