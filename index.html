@@ -2642,7 +2642,7 @@
   
   
     <li class="md-nav__item">
-      <a href="tutorials/pix-assistant.md" class="md-nav__link">
+      <a href="tutorials/pix-assistant/" class="md-nav__link">
         
   
   
@@ -3398,7 +3398,7 @@
   
   
   <span class="md-ellipsis">
-    Automation
+    Office
     
   </span>
   
@@ -3409,7 +3409,7 @@
         <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_9_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_3_9">
             <span class="md-nav__icon md-icon"></span>
-            Automation
+            Office
           </label>
           <ul class="md-nav__list" data-md-scrollfix>
             
@@ -4510,7 +4510,7 @@ Agents in msgFlux are flexible — prompt them directly, use **signatures** for 
 
     === &quot;Agent-as-Tool&quot;
 
-        An agent can serve as a tool for another agent. Decorate with `@tool_config` and pass the **class** to `tools`:
+        An agent can serve as a tool for another agent. Pass the **class** to `tools`. Use `@tool_config` when you need extra behavior, like routing the tool result directly to the caller:
 
         ```python linenums=&quot;1&quot;
         import msgflux as mf
@@ -5491,7 +5491,7 @@ We are grateful to the authors and maintainers of these projects.
 <p><code>customer_name</code> renders into the instructions template. <code>customer_id</code> is injected into <code>get_balance</code> via <code>kwargs["vars"]</code> — invisible to the model, but available to the tool.</p>
 </div>
 <div class="tabbed-block">
-<p>An agent can serve as a tool for another agent. Decorate with <code>@tool_config</code> and pass the <strong>class</strong> to <code>tools</code>:</p>
+<p>An agent can serve as a tool for another agent. Pass the <strong>class</strong> to <code>tools</code>. Use <code>@tool_config</code> when you need extra behavior, like routing the tool result directly to the caller:</p>
 <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-20-1"> 1</a></span>
 <span class="normal"><a href="#__codelineno-20-2"> 2</a></span>
 <span class="normal"><a href="#__codelineno-20-3"> 3</a></span>

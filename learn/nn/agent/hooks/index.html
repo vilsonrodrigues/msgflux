@@ -2750,7 +2750,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../../tutorials/pix-assistant.md" class="md-nav__link">
+      <a href="../../../../tutorials/pix-assistant/" class="md-nav__link">
         
   
   
@@ -3506,7 +3506,7 @@
   
   
   <span class="md-ellipsis">
-    Automation
+    Office
     
   </span>
   
@@ -3517,7 +3517,7 @@
         <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_9_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_3_9">
             <span class="md-nav__icon md-icon"></span>
-            Automation
+            Office
           </label>
           <ul class="md-nav__list" data-md-scrollfix>
             
@@ -4276,7 +4276,7 @@ A `Guard` validates inputs and/or outputs of a Module. Each Guard wraps a **vali
 - **`target`** — submodule to register on. Defaults to `&quot;generator&quot;`.
 - **`include_data`** — if `True`, attaches the data that triggered the guard to the raised exception via `exc.data`. Defaults to `False` for security (the data may contain unsafe content).
 
-The validator receives `data=...` and returns a dict with `&quot;safe&quot;` (bool).
+The validator receives `data` as a positional argument and must return either a dict with `&quot;safe&quot;` (bool) or a `ModelResponse` (auto-consumed by Guard).
 
 ```python
 from msgflux.nn.hooks import Guard
@@ -4359,7 +4359,8 @@ guard = Guard(validator=my_validator, on=&quot;pre&quot;)
 
     === &quot;With Moderation Model&quot;
 
-        Use OpenAI&#x27;s moderation model as a guard validator:
+        Pass a moderation model directly as the validator — Guard calls it with the
+        input data and auto-consumes the `ModelResponse`:
 
         ```python
         import msgflux as mf
@@ -4368,21 +4369,17 @@ guard = Guard(validator=my_validator, on=&quot;pre&quot;)
 
         moderation_model = mf.Model.moderation(&quot;openai/omni-moderation-latest&quot;)
 
-        def moderation_validator(data):
-            response = moderation_model(data=str(data))
-            return {&quot;safe&quot;: response.data.safe}
-
         class ModeratedBot(nn.Agent):
             &quot;&quot;&quot;A bot with pre and post moderation.&quot;&quot;&quot;
 
             model = mf.Model.chat_completion(&quot;openai/gpt-4.1-mini&quot;)
             hooks = [
                 Guard(
-                    validator=moderation_validator,
+                    validator=moderation_model,
                     on=&quot;pre&quot;,
                     message=&quot;Your message was flagged by our safety system.&quot;,
                 ),
-                Guard(validator=moderation_validator, on=&quot;post&quot;),
+                Guard(validator=moderation_model, on=&quot;post&quot;),
             ]
 
         agent = ModeratedBot()
@@ -4705,7 +4702,7 @@ handle = module.register_forward_hook(my_post_hook)
 <li><strong><code>target</code></strong> — submodule to register on. Defaults to <code>"generator"</code>.</li>
 <li><strong><code>include_data</code></strong> — if <code>True</code>, attaches the data that triggered the guard to the raised exception via <code>exc.data</code>. Defaults to <code>False</code> for security (the data may contain unsafe content).</li>
 </ul>
-<p>The validator receives <code>data=...</code> and returns a dict with <code>"safe"</code> (bool).</p>
+<p>The validator receives <code>data</code> as a positional argument and must return either a dict with <code>"safe"</code> (bool) or a <code>ModelResponse</code> (auto-consumed by Guard).</p>
 <div class="language-python highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">msgflux.nn.hooks</span><span class="w"> </span><span class="kn">import</span> <span class="n">Guard</span>
 </span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>
 </span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="k">def</span><span class="w"> </span><span class="nf">my_validator</span><span class="p">(</span><span class="n">data</span><span class="p">):</span>
@@ -4780,33 +4777,30 @@ handle = module.register_forward_hook(my_post_hook)
 </span></code></pre></div>
 </div>
 <div class="tabbed-block">
-<p>Use OpenAI's moderation model as a guard validator:</p>
+<p>Pass a moderation model directly as the validator — Guard calls it with the
+input data and auto-consumes the <code>ModelResponse</code>:</p>
 <div class="language-python highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
 </span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">nn</span>
 </span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">msgflux.nn.hooks</span><span class="w"> </span><span class="kn">import</span> <span class="n">Guard</span>
 </span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>
 </span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="n">moderation_model</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">moderation</span><span class="p">(</span><span class="s2">&quot;openai/omni-moderation-latest&quot;</span><span class="p">)</span>
 </span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>
-</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="k">def</span><span class="w"> </span><span class="nf">moderation_validator</span><span class="p">(</span><span class="n">data</span><span class="p">):</span>
-</span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>    <span class="n">response</span> <span class="o">=</span> <span class="n">moderation_model</span><span class="p">(</span><span class="n">data</span><span class="o">=</span><span class="nb">str</span><span class="p">(</span><span class="n">data</span><span class="p">))</span>
-</span><span id="__span-3-9"><a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>    <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;safe&quot;</span><span class="p">:</span> <span class="n">response</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">safe</span><span class="p">}</span>
-</span><span id="__span-3-10"><a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a>
-</span><span id="__span-3-11"><a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a><span class="k">class</span><span class="w"> </span><span class="nc">ModeratedBot</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">):</span>
-</span><span id="__span-3-12"><a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;A bot with pre and post moderation.&quot;&quot;&quot;</span>
-</span><span id="__span-3-13"><a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a>
-</span><span id="__span-3-14"><a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a>    <span class="n">model</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">chat_completion</span><span class="p">(</span><span class="s2">&quot;openai/gpt-4.1-mini&quot;</span><span class="p">)</span>
-</span><span id="__span-3-15"><a id="__codelineno-3-15" name="__codelineno-3-15" href="#__codelineno-3-15"></a>    <span class="n">hooks</span> <span class="o">=</span> <span class="p">[</span>
-</span><span id="__span-3-16"><a id="__codelineno-3-16" name="__codelineno-3-16" href="#__codelineno-3-16"></a>        <span class="n">Guard</span><span class="p">(</span>
-</span><span id="__span-3-17"><a id="__codelineno-3-17" name="__codelineno-3-17" href="#__codelineno-3-17"></a>            <span class="n">validator</span><span class="o">=</span><span class="n">moderation_validator</span><span class="p">,</span>
-</span><span id="__span-3-18"><a id="__codelineno-3-18" name="__codelineno-3-18" href="#__codelineno-3-18"></a>            <span class="n">on</span><span class="o">=</span><span class="s2">&quot;pre&quot;</span><span class="p">,</span>
-</span><span id="__span-3-19"><a id="__codelineno-3-19" name="__codelineno-3-19" href="#__codelineno-3-19"></a>            <span class="n">message</span><span class="o">=</span><span class="s2">&quot;Your message was flagged by our safety system.&quot;</span><span class="p">,</span>
-</span><span id="__span-3-20"><a id="__codelineno-3-20" name="__codelineno-3-20" href="#__codelineno-3-20"></a>        <span class="p">),</span>
-</span><span id="__span-3-21"><a id="__codelineno-3-21" name="__codelineno-3-21" href="#__codelineno-3-21"></a>        <span class="n">Guard</span><span class="p">(</span><span class="n">validator</span><span class="o">=</span><span class="n">moderation_validator</span><span class="p">,</span> <span class="n">on</span><span class="o">=</span><span class="s2">&quot;post&quot;</span><span class="p">),</span>
-</span><span id="__span-3-22"><a id="__codelineno-3-22" name="__codelineno-3-22" href="#__codelineno-3-22"></a>    <span class="p">]</span>
-</span><span id="__span-3-23"><a id="__codelineno-3-23" name="__codelineno-3-23" href="#__codelineno-3-23"></a>
-</span><span id="__span-3-24"><a id="__codelineno-3-24" name="__codelineno-3-24" href="#__codelineno-3-24"></a><span class="n">agent</span> <span class="o">=</span> <span class="n">ModeratedBot</span><span class="p">()</span>
-</span><span id="__span-3-25"><a id="__codelineno-3-25" name="__codelineno-3-25" href="#__codelineno-3-25"></a>
-</span><span id="__span-3-26"><a id="__codelineno-3-26" name="__codelineno-3-26" href="#__codelineno-3-26"></a><span class="n">response</span> <span class="o">=</span> <span class="n">agent</span><span class="p">(</span><span class="s2">&quot;Tell me about quantum computing&quot;</span><span class="p">)</span>  <span class="c1"># Safe</span>
+</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="k">class</span><span class="w"> </span><span class="nc">ModeratedBot</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">):</span>
+</span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;A bot with pre and post moderation.&quot;&quot;&quot;</span>
+</span><span id="__span-3-9"><a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>
+</span><span id="__span-3-10"><a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a>    <span class="n">model</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">chat_completion</span><span class="p">(</span><span class="s2">&quot;openai/gpt-4.1-mini&quot;</span><span class="p">)</span>
+</span><span id="__span-3-11"><a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a>    <span class="n">hooks</span> <span class="o">=</span> <span class="p">[</span>
+</span><span id="__span-3-12"><a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a>        <span class="n">Guard</span><span class="p">(</span>
+</span><span id="__span-3-13"><a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a>            <span class="n">validator</span><span class="o">=</span><span class="n">moderation_model</span><span class="p">,</span>
+</span><span id="__span-3-14"><a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a>            <span class="n">on</span><span class="o">=</span><span class="s2">&quot;pre&quot;</span><span class="p">,</span>
+</span><span id="__span-3-15"><a id="__codelineno-3-15" name="__codelineno-3-15" href="#__codelineno-3-15"></a>            <span class="n">message</span><span class="o">=</span><span class="s2">&quot;Your message was flagged by our safety system.&quot;</span><span class="p">,</span>
+</span><span id="__span-3-16"><a id="__codelineno-3-16" name="__codelineno-3-16" href="#__codelineno-3-16"></a>        <span class="p">),</span>
+</span><span id="__span-3-17"><a id="__codelineno-3-17" name="__codelineno-3-17" href="#__codelineno-3-17"></a>        <span class="n">Guard</span><span class="p">(</span><span class="n">validator</span><span class="o">=</span><span class="n">moderation_model</span><span class="p">,</span> <span class="n">on</span><span class="o">=</span><span class="s2">&quot;post&quot;</span><span class="p">),</span>
+</span><span id="__span-3-18"><a id="__codelineno-3-18" name="__codelineno-3-18" href="#__codelineno-3-18"></a>    <span class="p">]</span>
+</span><span id="__span-3-19"><a id="__codelineno-3-19" name="__codelineno-3-19" href="#__codelineno-3-19"></a>
+</span><span id="__span-3-20"><a id="__codelineno-3-20" name="__codelineno-3-20" href="#__codelineno-3-20"></a><span class="n">agent</span> <span class="o">=</span> <span class="n">ModeratedBot</span><span class="p">()</span>
+</span><span id="__span-3-21"><a id="__codelineno-3-21" name="__codelineno-3-21" href="#__codelineno-3-21"></a>
+</span><span id="__span-3-22"><a id="__codelineno-3-22" name="__codelineno-3-22" href="#__codelineno-3-22"></a><span class="n">response</span> <span class="o">=</span> <span class="n">agent</span><span class="p">(</span><span class="s2">&quot;Tell me about quantum computing&quot;</span><span class="p">)</span>  <span class="c1"># Safe</span>
 </span></code></pre></div>
 </div>
 <div class="tabbed-block">

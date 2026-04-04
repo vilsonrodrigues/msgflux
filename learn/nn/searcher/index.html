@@ -2760,7 +2760,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../tutorials/pix-assistant.md" class="md-nav__link">
+      <a href="../../../tutorials/pix-assistant/" class="md-nav__link">
         
   
   
@@ -3516,7 +3516,7 @@
   
   
   <span class="md-ellipsis">
-    Automation
+    Office
     
   </span>
   
@@ -3527,7 +3527,7 @@
         <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_9_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_3_9">
             <span class="md-nav__icon md-icon"></span>
-            Automation
+            Office
           </label>
           <ul class="md-nav__list" data-md-scrollfix>
             
@@ -4498,6 +4498,12 @@ Use Jinja2 templates to format results into readable strings. When a `response` 
 
 ## 6. **Message Fields &amp; Response Mode**
 
+`Searcher` uses `query` as its canonical input name.
+
+- direct calls can use `searcher(&quot;...&quot;)` or `searcher(query=&quot;...&quot;)`
+- `message_fields` should map `query`, not `task`
+- when used as an `Agent` tool, the generated tool schema also exposes `query`
+
 !!! info &quot;Structured input/output&quot;
 
     === &quot;Message Field Mapping&quot;
@@ -4505,7 +4511,7 @@ Use Jinja2 templates to format results into readable strings. When a `response` 
         ```python
         class StructuredSearcher(nn.Searcher):
             retriever      = bm25
-            message_fields = {&quot;task&quot;: &quot;query.user&quot;}
+            message_fields = {&quot;query&quot;: &quot;query.user&quot;}
             config         = {&quot;top_k&quot;: 3}
 
         searcher = StructuredSearcher()
@@ -4523,7 +4529,7 @@ Use Jinja2 templates to format results into readable strings. When a `response` 
         class PipelineSearcher(nn.Searcher):
             &quot;&quot;&quot;Writes results into msg.context for downstream modules.&quot;&quot;&quot;
             retriever      = bm25
-            message_fields = {&quot;task&quot;: &quot;question&quot;}
+            message_fields = {&quot;query&quot;: &quot;question&quot;}
             response_mode  = &quot;context&quot;
             config         = {&quot;top_k&quot;: 3}
 
@@ -4554,6 +4560,8 @@ Use Jinja2 templates to format results into readable strings. When a `response` 
 ## 7. **Integration with Agents**
 
 A `Searcher` with a docstring can be plugged directly as a tool into an `Agent` — no wrapper needed. The docstring becomes the tool description, the class name the tool name, and the default annotations define the schema.
+
+The tool input name is `query`, matching the search contract directly.
 
 !!! info &quot;Searcher as Agent tool&quot;
 
@@ -4865,6 +4873,12 @@ A `Searcher` with a docstring can be plugged directly as a tool into an `Agent` 
 </div>
 <hr />
 <h2 id="6-message-fields-response-mode">6. <strong>Message Fields &amp; Response Mode</strong></h2>
+<p><code>Searcher</code> uses <code>query</code> as its canonical input name.</p>
+<ul>
+<li>direct calls can use <code>searcher("...")</code> or <code>searcher(query="...")</code></li>
+<li><code>message_fields</code> should map <code>query</code>, not <code>task</code></li>
+<li>when used as an <code>Agent</code> tool, the generated tool schema also exposes <code>query</code></li>
+</ul>
 <div class="admonition info">
 <p class="admonition-title">Structured input/output</p>
 <div class="tabbed-set tabbed-alternate" data-tabs="4:3"><input checked="checked" id="__tabbed_4_1" name="__tabbed_4" type="radio" /><input id="__tabbed_4_2" name="__tabbed_4" type="radio" /><input id="__tabbed_4_3" name="__tabbed_4" type="radio" /><div class="tabbed-labels"><label for="__tabbed_4_1">Message Field Mapping</label><label for="__tabbed_4_2">Response Mode</label><label for="__tabbed_4_3">Hierarchies</label></div>
@@ -4872,7 +4886,7 @@ A `Searcher` with a docstring can be plugged directly as a tool into an `Agent` 
 <div class="tabbed-block">
 <div class="language-python highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">StructuredSearcher</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Searcher</span><span class="p">):</span>
 </span><span id="__span-10-2"><a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>    <span class="n">retriever</span>      <span class="o">=</span> <span class="n">bm25</span>
-</span><span id="__span-10-3"><a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>    <span class="n">message_fields</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="s2">&quot;query.user&quot;</span><span class="p">}</span>
+</span><span id="__span-10-3"><a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>    <span class="n">message_fields</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;query&quot;</span><span class="p">:</span> <span class="s2">&quot;query.user&quot;</span><span class="p">}</span>
 </span><span id="__span-10-4"><a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>    <span class="n">config</span>         <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;top_k&quot;</span><span class="p">:</span> <span class="mi">3</span><span class="p">}</span>
 </span><span id="__span-10-5"><a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>
 </span><span id="__span-10-6"><a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a><span class="n">searcher</span> <span class="o">=</span> <span class="n">StructuredSearcher</span><span class="p">()</span>
@@ -4887,7 +4901,7 @@ A `Searcher` with a docstring can be plugged directly as a tool into an `Agent` 
 <div class="language-python highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">PipelineSearcher</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Searcher</span><span class="p">):</span>
 </span><span id="__span-11-2"><a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Writes results into msg.context for downstream modules.&quot;&quot;&quot;</span>
 </span><span id="__span-11-3"><a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>    <span class="n">retriever</span>      <span class="o">=</span> <span class="n">bm25</span>
-</span><span id="__span-11-4"><a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>    <span class="n">message_fields</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="s2">&quot;question&quot;</span><span class="p">}</span>
+</span><span id="__span-11-4"><a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>    <span class="n">message_fields</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;query&quot;</span><span class="p">:</span> <span class="s2">&quot;question&quot;</span><span class="p">}</span>
 </span><span id="__span-11-5"><a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a>    <span class="n">response_mode</span>  <span class="o">=</span> <span class="s2">&quot;context&quot;</span>
 </span><span id="__span-11-6"><a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a>    <span class="n">config</span>         <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;top_k&quot;</span><span class="p">:</span> <span class="mi">3</span><span class="p">}</span>
 </span><span id="__span-11-7"><a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a>
@@ -4916,6 +4930,7 @@ A `Searcher` with a docstring can be plugged directly as a tool into an `Agent` 
 <hr />
 <h2 id="7-integration-with-agents">7. <strong>Integration with Agents</strong></h2>
 <p>A <code>Searcher</code> with a docstring can be plugged directly as a tool into an <code>Agent</code> — no wrapper needed. The docstring becomes the tool description, the class name the tool name, and the default annotations define the schema.</p>
+<p>The tool input name is <code>query</code>, matching the search contract directly.</p>
 <div class="admonition info">
 <p class="admonition-title">Searcher as Agent tool</p>
 <div class="language-python highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>

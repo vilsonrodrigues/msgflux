@@ -2741,7 +2741,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../../tutorials/pix-assistant.md" class="md-nav__link">
+      <a href="../../../../tutorials/pix-assistant/" class="md-nav__link">
         
   
   
@@ -3497,7 +3497,7 @@
   
   
   <span class="md-ellipsis">
-    Automation
+    Office
     
   </span>
   
@@ -3508,7 +3508,7 @@
         <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_9_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_3_9">
             <span class="md-nav__icon md-icon"></span>
-            Automation
+            Office
           </label>
           <ul class="md-nav__list" data-md-scrollfix>
             
@@ -4392,7 +4392,7 @@ Each `Action` contains:
 | Field       | Type              | Description                            |
 |-------------|-------------------|----------------------------------------|
 | `name`      | `str`             | The tool function to call              |
-| `arguments` | `List[Argument]`  | Named arguments passed to the tool     |
+| `arguments` | `dict[str, Any]`  | Named arguments passed to the tool     |
 
 !!! warning &quot;Tools are serialized as text&quot;
     Unlike standard tool calling, ReAct injects tool schemas into the system prompt as text descriptions rather than passing function definitions to the model&#x27;s native `tools` parameter. This makes the loop more portable across models and providers, but changes how tools are represented internally.
@@ -4821,7 +4821,7 @@ You can extend any reasoning schema by inheriting from it and redefining the `fi
 </tr>
 <tr>
 <td><code>arguments</code></td>
-<td><code>List[Argument]</code></td>
+<td><code>dict[str, Any]</code></td>
 <td>Named arguments passed to the tool</td>
 </tr>
 </tbody>
