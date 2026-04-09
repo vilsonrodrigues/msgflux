@@ -18,7 +18,7 @@
         <link rel="prev" href="../intent-router/">
       
       
-        <link rel="next" href="../../dependency-management/">
+        <link rel="next" href="../oracle-specialist-tool/">
       
       
         
@@ -3296,6 +3296,8 @@
       
         
       
+        
+      
     
     
     
@@ -3410,6 +3412,34 @@
     
   
     Call Transcript Analysis
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../streaming-support-triage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Streaming Support Triage
   
 
     
@@ -3716,6 +3746,10 @@
       
         
       
+        
+      
+        
+      
     
     
     
@@ -3967,6 +4001,62 @@
   
 </nav>
       
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../oracle-specialist-tool/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Oracle Specialist Tool
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../plan-tool-with-root-context/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Plan Tool with Root Context
+  
+
+    
+  </span>
+  
+  
+
+      </a>
     </li>
   
 
@@ -4668,11 +4758,9 @@ Here is the system most teams start with.
 User Query
     │
     ▼
-┌──────────────────────────────────────────┐
 │           GeneralAssistant               │
 │                                          │
 │  what kind of question?  ←──→  answer   │
-└──────────────────────────────────────────┘
          │ improvises the output shape
          ▼
   {&quot;response&quot;: &quot;...&quot;} or {&quot;answer&quot;: &quot;...&quot;} or just a string
@@ -4735,6 +4823,7 @@ Before dispatching to a specialist, the router needs to know what kind of questi
 import msgflux as mf
 import msgflux.nn as nn
 
+mf.load_dotenv()
 model = mf.Model.chat_completion(&quot;openai/gpt-4.1-mini&quot;)
 
 
@@ -4936,142 +5025,141 @@ class QueryRouter(nn.Module):
 
 ## Complete Script
 
-```python
-import msgflux as mf
-import msgflux.nn as nn
-from typing import Literal, Optional
+??? example &quot;Expand full script&quot;
+    ```python
+    import msgflux as mf
+    import msgflux.nn as nn
+    from typing import Literal, Optional
 
-model = mf.Model.chat_completion(&quot;openai/gpt-4.1-mini&quot;)
-
-
-class QueryClassification(mf.Signature):
-    &quot;&quot;&quot;Classify the query to route it to the best specialist.&quot;&quot;&quot;
-
-    query: str = mf.InputField(desc=&quot;The user&#x27;s question&quot;)
-
-    topic: Literal[&quot;technical&quot;, &quot;business&quot;, &quot;creative&quot;, &quot;general&quot;] = mf.OutputField(
-        desc=&quot;The primary domain of the query&quot;
-    )
-    complexity: Literal[&quot;simple&quot;, &quot;complex&quot;] = mf.OutputField(
-        desc=&quot;&#x27;simple&#x27; for direct answers, &#x27;complex&#x27; for deep research&quot;
-    )
-    keywords: list[str] = mf.OutputField(desc=&quot;Key terms that identify the domain&quot;)
+    model = mf.Model.chat_completion(&quot;openai/gpt-4.1-mini&quot;)
 
 
-class TechnicalAnswer(mf.Signature):
-    &quot;&quot;&quot;Answer technical questions clearly with practical examples.&quot;&quot;&quot;
+    class QueryClassification(mf.Signature):
+        &quot;&quot;&quot;Classify the query to route it to the best specialist.&quot;&quot;&quot;
 
-    query: str = mf.InputField(desc=&quot;The technical question&quot;)
-    answer: str = mf.OutputField(desc=&quot;Clear and accurate explanation&quot;)
-    code_example: Optional[str] = mf.OutputField(desc=&quot;Illustrative code snippet, if applicable&quot;)
-    references: list[str] = mf.OutputField(desc=&quot;Relevant documentation or resources&quot;)
+        query: str = mf.InputField(desc=&quot;The user&#x27;s question&quot;)
 
-
-class BusinessAnswer(mf.Signature):
-    &quot;&quot;&quot;Analyze business questions with strategic perspective.&quot;&quot;&quot;
-
-    query: str = mf.InputField(desc=&quot;The business question&quot;)
-    analysis: str = mf.OutputField(desc=&quot;Situation analysis&quot;)
-    key_points: list[str] = mf.OutputField(desc=&quot;Key points to consider&quot;)
-    recommendation: str = mf.OutputField(desc=&quot;Practical, actionable recommendation&quot;)
+        topic: Literal[&quot;technical&quot;, &quot;business&quot;, &quot;creative&quot;, &quot;general&quot;] = mf.OutputField(
+            desc=&quot;The primary domain of the query&quot;
+        )
+        complexity: Literal[&quot;simple&quot;, &quot;complex&quot;] = mf.OutputField(
+            desc=&quot;&#x27;simple&#x27; for direct answers, &#x27;complex&#x27; for deep research&quot;
+        )
+        keywords: list[str] = mf.OutputField(desc=&quot;Key terms that identify the domain&quot;)
 
 
-class CreativeAnswer(mf.Signature):
-    &quot;&quot;&quot;Generate creative and inspiring ideas.&quot;&quot;&quot;
+    class TechnicalAnswer(mf.Signature):
+        &quot;&quot;&quot;Answer technical questions clearly with practical examples.&quot;&quot;&quot;
 
-    query: str = mf.InputField(desc=&quot;The creative challenge or question&quot;)
-    ideas: list[str] = mf.OutputField(desc=&quot;3 to 5 original ideas&quot;)
-    suggestions: list[str] = mf.OutputField(desc=&quot;Tips to develop the ideas further&quot;)
-    inspiration: str = mf.OutputField(desc=&quot;An inspiring phrase or concept&quot;)
-
-
-class GeneralAnswer(mf.Signature):
-    &quot;&quot;&quot;Answer general questions thoroughly.&quot;&quot;&quot;
-
-    query: str = mf.InputField(desc=&quot;The user&#x27;s question&quot;)
-    answer: str = mf.OutputField(desc=&quot;Direct and informative response&quot;)
-    follow_up_questions: list[str] = mf.OutputField(desc=&quot;Questions the user might want to explore next&quot;)
+        query: str = mf.InputField(desc=&quot;The technical question&quot;)
+        answer: str = mf.OutputField(desc=&quot;Clear and accurate explanation&quot;)
+        code_example: Optional[str] = mf.OutputField(desc=&quot;Illustrative code snippet, if applicable&quot;)
+        references: list[str] = mf.OutputField(desc=&quot;Relevant documentation or resources&quot;)
 
 
-class QueryClassifier(nn.Agent):
-    model = model
-    signature = QueryClassification
-    config = {&quot;verbose&quot;: True}
+    class BusinessAnswer(mf.Signature):
+        &quot;&quot;&quot;Analyze business questions with strategic perspective.&quot;&quot;&quot;
+
+        query: str = mf.InputField(desc=&quot;The business question&quot;)
+        analysis: str = mf.OutputField(desc=&quot;Situation analysis&quot;)
+        key_points: list[str] = mf.OutputField(desc=&quot;Key points to consider&quot;)
+        recommendation: str = mf.OutputField(desc=&quot;Practical, actionable recommendation&quot;)
 
 
-class TechnicalExpert(nn.Agent):
-    model = model
-    signature = TechnicalAnswer
-    config = {&quot;verbose&quot;: True}
+    class CreativeAnswer(mf.Signature):
+        &quot;&quot;&quot;Generate creative and inspiring ideas.&quot;&quot;&quot;
+
+        query: str = mf.InputField(desc=&quot;The creative challenge or question&quot;)
+        ideas: list[str] = mf.OutputField(desc=&quot;3 to 5 original ideas&quot;)
+        suggestions: list[str] = mf.OutputField(desc=&quot;Tips to develop the ideas further&quot;)
+        inspiration: str = mf.OutputField(desc=&quot;An inspiring phrase or concept&quot;)
 
 
-class BusinessAnalyst(nn.Agent):
-    model = model
-    signature = BusinessAnswer
-    config = {&quot;verbose&quot;: True}
+    class GeneralAnswer(mf.Signature):
+        &quot;&quot;&quot;Answer general questions thoroughly.&quot;&quot;&quot;
+
+        query: str = mf.InputField(desc=&quot;The user&#x27;s question&quot;)
+        answer: str = mf.OutputField(desc=&quot;Direct and informative response&quot;)
+        follow_up_questions: list[str] = mf.OutputField(desc=&quot;Questions the user might want to explore next&quot;)
 
 
-class CreativeAdvisor(nn.Agent):
-    model = model
-    signature = CreativeAnswer
-    config = {&quot;verbose&quot;: True}
+    class QueryClassifier(nn.Agent):
+        model = model
+        signature = QueryClassification
+        config = {&quot;verbose&quot;: True}
 
 
-class GeneralAssistant(nn.Agent):
-    model = model
-    signature = GeneralAnswer
-    config = {&quot;verbose&quot;: True}
+    class TechnicalExpert(nn.Agent):
+        model = model
+        signature = TechnicalAnswer
+        config = {&quot;verbose&quot;: True}
 
 
-class QueryRouter(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.classifier = QueryClassifier()
-        self.experts = nn.ModuleDict({
-            &quot;technical&quot;: TechnicalExpert(),
-            &quot;business&quot;:  BusinessAnalyst(),
-            &quot;creative&quot;:  CreativeAdvisor(),
-            &quot;general&quot;:   GeneralAssistant(),
-        })
-
-    def forward(self, msg):
-        self.classifier(msg)
-        expert = self.experts.get(msg.topic, self.experts[&quot;general&quot;])
-        expert(msg)
-        return msg
-
-    async def aforward(self, msg):
-        await self.classifier.acall(msg)
-        expert = self.experts.get(msg.topic, self.experts[&quot;general&quot;])
-        await expert.acall(msg)
-        return msg
+    class BusinessAnalyst(nn.Agent):
+        model = model
+        signature = BusinessAnswer
+        config = {&quot;verbose&quot;: True}
 
 
-router = QueryRouter()
+    class CreativeAdvisor(nn.Agent):
+        model = model
+        signature = CreativeAnswer
+        config = {&quot;verbose&quot;: True}
 
-queries = [
-    &quot;How do I implement an LRU cache in Python?&quot;,
-    &quot;What pricing model should I use for a freemium product?&quot;,
-    &quot;Give me ideas for a mental wellness app.&quot;,
-    &quot;What is the Kyoto Protocol?&quot;,
-]
 
-for query in queries:
-    msg = mf.Message(query=query)
-    router(msg)
+    class GeneralAssistant(nn.Agent):
+        model = model
+        signature = GeneralAnswer
+        config = {&quot;verbose&quot;: True}
 
-    print(f&quot;\n{&#x27;─&#x27; * 60}&quot;)
-    print(f&quot;Query:    {msg.query}&quot;)
-    print(f&quot;Topic:    {msg.topic} ({msg.complexity})&quot;)
-    print(f&quot;Keywords: {msg.keywords}&quot;)
 
-    for field in (&quot;answer&quot;, &quot;analysis&quot;, &quot;ideas&quot;):
-        if msg.get(field):
-            print(f&quot;\n{field.capitalize()}:\n{msg[field]}&quot;)
-            break
-```
+    class QueryRouter(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.classifier = QueryClassifier()
+            self.experts = nn.ModuleDict({
+                &quot;technical&quot;: TechnicalExpert(),
+                &quot;business&quot;:  BusinessAnalyst(),
+                &quot;creative&quot;:  CreativeAdvisor(),
+                &quot;general&quot;:   GeneralAssistant(),
+            })
 
----
+        def forward(self, msg):
+            self.classifier(msg)
+            expert = self.experts.get(msg.topic, self.experts[&quot;general&quot;])
+            expert(msg)
+            return msg
+
+        async def aforward(self, msg):
+            await self.classifier.acall(msg)
+            expert = self.experts.get(msg.topic, self.experts[&quot;general&quot;])
+            await expert.acall(msg)
+            return msg
+
+
+    router = QueryRouter()
+
+    queries = [
+        &quot;How do I implement an LRU cache in Python?&quot;,
+        &quot;What pricing model should I use for a freemium product?&quot;,
+        &quot;Give me ideas for a mental wellness app.&quot;,
+        &quot;What is the Kyoto Protocol?&quot;,
+    ]
+
+    for query in queries:
+        msg = mf.Message(query=query)
+        router(msg)
+
+        print(f&quot;\n{&#x27;─&#x27; * 60}&quot;)
+        print(f&quot;Query:    {msg.query}&quot;)
+        print(f&quot;Topic:    {msg.topic} ({msg.complexity})&quot;)
+        print(f&quot;Keywords: {msg.keywords}&quot;)
+
+        for field in (&quot;answer&quot;, &quot;analysis&quot;, &quot;ideas&quot;):
+            if msg.get(field):
+                print(f&quot;\n{field.capitalize()}:\n{msg[field]}&quot;)
+                break
+    ```
 
 ## Further Reading
 
@@ -5153,14 +5241,12 @@ for query in queries:
 <div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>User Query
 </span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    │
 </span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    ▼
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>┌──────────────────────────────────────────┐
-</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>│           GeneralAssistant               │
-</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>│                                          │
-</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>│  what kind of question?  ←──→  answer   │
-</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>└──────────────────────────────────────────┘
-</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>         │ improvises the output shape
-</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>         ▼
-</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>  {&quot;response&quot;: &quot;...&quot;} or {&quot;answer&quot;: &quot;...&quot;} or just a string
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>│           GeneralAssistant               │
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>│                                          │
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>│  what kind of question?  ←──→  answer   │
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>         │ improvises the output shape
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>         ▼
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>  {&quot;response&quot;: &quot;...&quot;} or {&quot;answer&quot;: &quot;...&quot;} or just a string
 </span></code></pre></div>
 <ul>
 <li>The model receives every query regardless of domain — technical, business, creative, general.</li>
@@ -5274,19 +5360,20 @@ for query in queries:
 <div class="language-python highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
 </span><span id="__span-11-2"><a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">nn</span>
 </span><span id="__span-11-3"><a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>
-</span><span id="__span-11-4"><a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="n">model</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">chat_completion</span><span class="p">(</span><span class="s2">&quot;openai/gpt-4.1-mini&quot;</span><span class="p">)</span>
-</span><span id="__span-11-5"><a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a>
+</span><span id="__span-11-4"><a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="n">mf</span><span class="o">.</span><span class="n">load_dotenv</span><span class="p">()</span>
+</span><span id="__span-11-5"><a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a><span class="n">model</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">chat_completion</span><span class="p">(</span><span class="s2">&quot;openai/gpt-4.1-mini&quot;</span><span class="p">)</span>
 </span><span id="__span-11-6"><a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a>
-</span><span id="__span-11-7"><a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a><span class="k">class</span><span class="w"> </span><span class="nc">QuickClassifier</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">):</span>
-</span><span id="__span-11-8"><a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Classifies the user&#39;s query.&quot;&quot;&quot;</span>
-</span><span id="__span-11-9"><a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a>    <span class="n">model</span> <span class="o">=</span> <span class="n">model</span>
-</span><span id="__span-11-10"><a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a>    <span class="n">signature</span> <span class="o">=</span> <span class="s2">&quot;query -&gt; topic: str, complexity: Literal[&#39;simple&#39;, &#39;complex&#39;]&quot;</span>
-</span><span id="__span-11-11"><a id="__codelineno-11-11" name="__codelineno-11-11" href="#__codelineno-11-11"></a>
+</span><span id="__span-11-7"><a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a>
+</span><span id="__span-11-8"><a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a><span class="k">class</span><span class="w"> </span><span class="nc">QuickClassifier</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">):</span>
+</span><span id="__span-11-9"><a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Classifies the user&#39;s query.&quot;&quot;&quot;</span>
+</span><span id="__span-11-10"><a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a>    <span class="n">model</span> <span class="o">=</span> <span class="n">model</span>
+</span><span id="__span-11-11"><a id="__codelineno-11-11" name="__codelineno-11-11" href="#__codelineno-11-11"></a>    <span class="n">signature</span> <span class="o">=</span> <span class="s2">&quot;query -&gt; topic: str, complexity: Literal[&#39;simple&#39;, &#39;complex&#39;]&quot;</span>
 </span><span id="__span-11-12"><a id="__codelineno-11-12" name="__codelineno-11-12" href="#__codelineno-11-12"></a>
-</span><span id="__span-11-13"><a id="__codelineno-11-13" name="__codelineno-11-13" href="#__codelineno-11-13"></a><span class="n">classifier</span> <span class="o">=</span> <span class="n">QuickClassifier</span><span class="p">()</span>
-</span><span id="__span-11-14"><a id="__codelineno-11-14" name="__codelineno-11-14" href="#__codelineno-11-14"></a><span class="n">result</span> <span class="o">=</span> <span class="n">classifier</span><span class="p">(</span><span class="s2">&quot;How does backpropagation work in neural networks?&quot;</span><span class="p">)</span>
-</span><span id="__span-11-15"><a id="__codelineno-11-15" name="__codelineno-11-15" href="#__codelineno-11-15"></a><span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="p">)</span>
-</span><span id="__span-11-16"><a id="__codelineno-11-16" name="__codelineno-11-16" href="#__codelineno-11-16"></a><span class="c1"># {&#39;topic&#39;: &#39;technical&#39;, &#39;complexity&#39;: &#39;complex&#39;}</span>
+</span><span id="__span-11-13"><a id="__codelineno-11-13" name="__codelineno-11-13" href="#__codelineno-11-13"></a>
+</span><span id="__span-11-14"><a id="__codelineno-11-14" name="__codelineno-11-14" href="#__codelineno-11-14"></a><span class="n">classifier</span> <span class="o">=</span> <span class="n">QuickClassifier</span><span class="p">()</span>
+</span><span id="__span-11-15"><a id="__codelineno-11-15" name="__codelineno-11-15" href="#__codelineno-11-15"></a><span class="n">result</span> <span class="o">=</span> <span class="n">classifier</span><span class="p">(</span><span class="s2">&quot;How does backpropagation work in neural networks?&quot;</span><span class="p">)</span>
+</span><span id="__span-11-16"><a id="__codelineno-11-16" name="__codelineno-11-16" href="#__codelineno-11-16"></a><span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="p">)</span>
+</span><span id="__span-11-17"><a id="__codelineno-11-17" name="__codelineno-11-17" href="#__codelineno-11-17"></a><span class="c1"># {&#39;topic&#39;: &#39;technical&#39;, &#39;complexity&#39;: &#39;complex&#39;}</span>
 </span></code></pre></div>
 <hr />
 <h2 id="step-2-expanding-the-classification-contract">Step 2 — Expanding the Classification Contract</h2>
@@ -5444,6 +5531,8 @@ every stage.</p>
 </details>
 <hr />
 <h2 id="complete-script">Complete Script</h2>
+<details class="example">
+<summary>Expand full script</summary>
 <div class="language-python highlight"><pre><span></span><code><span id="__span-20-1"><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
 </span><span id="__span-20-2"><a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">nn</span>
 </span><span id="__span-20-3"><a id="__codelineno-20-3" name="__codelineno-20-3" href="#__codelineno-20-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Literal</span><span class="p">,</span> <span class="n">Optional</span>
@@ -5577,7 +5666,7 @@ every stage.</p>
 </span><span id="__span-20-131"><a id="__codelineno-20-131" name="__codelineno-20-131" href="#__codelineno-20-131"></a>            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="se">\n</span><span class="si">{</span><span class="n">field</span><span class="o">.</span><span class="n">capitalize</span><span class="p">()</span><span class="si">}</span><span class="s2">:</span><span class="se">\n</span><span class="si">{</span><span class="n">msg</span><span class="p">[</span><span class="n">field</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
 </span><span id="__span-20-132"><a id="__codelineno-20-132" name="__codelineno-20-132" href="#__codelineno-20-132"></a>            <span class="k">break</span>
 </span></code></pre></div>
-<hr />
+</details>
 <h2 id="further-reading">Further Reading</h2>
 <ul>
 <li><a href="../../learn/nn/agent/signatures/">Signatures</a> — declarative input/output contracts for agents</li>
@@ -5638,13 +5727,13 @@ every stage.</p>
         
         
           
-          <a href="../../dependency-management/" class="md-footer__link md-footer__link--next" aria-label="Next: Dependency Management">
+          <a href="../oracle-specialist-tool/" class="md-footer__link md-footer__link--next" aria-label="Next: Oracle Specialist Tool">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Dependency Management
+                Oracle Specialist Tool
               </div>
             </div>
             <div class="md-footer__button md-icon">

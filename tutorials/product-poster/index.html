@@ -3296,6 +3296,8 @@
       
         
       
+        
+      
     
     
     
@@ -3410,6 +3412,34 @@
     
   
     Call Transcript Analysis
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../streaming-support-triage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Streaming Support Triage
   
 
     
@@ -3934,6 +3964,10 @@
       
         
       
+        
+      
+        
+      
     
     
     
@@ -4020,6 +4054,62 @@
     
   
     Query Router with Signatures
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../oracle-specialist-tool/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Oracle Specialist Tool
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../plan-tool-with-root-context/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Plan Tool with Root Context
   
 
     
@@ -5087,45 +5177,32 @@ def save_poster(msg: mf.Message, out_dir: str = &quot;.&quot;) -&gt; str:
 
 ## Complete Script
 
-```python
-import asyncio
-import base64
-from urllib.parse import urljoin
+??? example &quot;Expand full script&quot;
+    ```python
+    import asyncio
+    import base64
+    from urllib.parse import urljoin
 
-import httpx
-import msgflux as mf
-import msgflux.nn as nn
+    import httpx
+    import msgflux as mf
+    import msgflux.nn as nn
 
-mf.load_dotenv()
+    mf.load_dotenv()
 
-PRODUCT_URL = &quot;https://books.toscrape.com/catalogue/a-light-in-the-attic_1000/index.html&quot;
-
-
-# Models
-vision_model = mf.Model.chat_completion(&quot;openai/gpt-4.1-mini&quot;)
-image_model  = mf.Model.text_to_image(&quot;openai/gpt-image-1.5&quot;)
+    PRODUCT_URL = &quot;https://books.toscrape.com/catalogue/a-light-in-the-attic_1000/index.html&quot;
 
 
-# Scraper
-class ProductScraper:
-    &quot;&quot;&quot;Fetches a product page and downloads its main image.&quot;&quot;&quot;
+    # Models
+    vision_model = mf.Model.chat_completion(&quot;openai/gpt-4.1-mini&quot;)
+    image_model  = mf.Model.text_to_image(&quot;openai/gpt-image-1.5&quot;)
 
-    def _fetch(self, url: str) -&gt; tuple[str, bytes]:
-        r = httpx.get(url, follow_redirects=True, timeout=30)
-        r.raise_for_status()
-        parser = mf.Parser.html(&quot;beautifulsoup&quot;, extract_images=True)
-        parsed = parser(r.content)
-        text   = parsed.data[&quot;text&quot;]
-        images = parsed.data[&quot;images&quot;]
-        if not images:
-            raise ValueError(&quot;No images found on the product page&quot;)
-        img = httpx.get(urljoin(url, images[0][&quot;url&quot;]), follow_redirects=True, timeout=30)
-        img.raise_for_status()
-        return text, img.content
 
-    async def _afetch(self, url: str) -&gt; tuple[str, bytes]:
-        async with httpx.AsyncClient(follow_redirects=True, timeout=30) as client:
-            r = await client.get(url)
+    # Scraper
+    class ProductScraper:
+        &quot;&quot;&quot;Fetches a product page and downloads its main image.&quot;&quot;&quot;
+
+        def _fetch(self, url: str) -&gt; tuple[str, bytes]:
+            r = httpx.get(url, follow_redirects=True, timeout=30)
             r.raise_for_status()
             parser = mf.Parser.html(&quot;beautifulsoup&quot;, extract_images=True)
             parsed = parser(r.content)
@@ -5133,74 +5210,86 @@ class ProductScraper:
             images = parsed.data[&quot;images&quot;]
             if not images:
                 raise ValueError(&quot;No images found on the product page&quot;)
-            img = await client.get(urljoin(url, images[0][&quot;url&quot;]))
+            img = httpx.get(urljoin(url, images[0][&quot;url&quot;]), follow_redirects=True, timeout=30)
             img.raise_for_status()
-        return text, img.content
+            return text, img.content
 
-    def __call__(self, msg: mf.Message) -&gt; mf.Message:
-        msg.product_text, msg.product_image = self._fetch(msg.product_url)
-        return msg
+        async def _afetch(self, url: str) -&gt; tuple[str, bytes]:
+            async with httpx.AsyncClient(follow_redirects=True, timeout=30) as client:
+                r = await client.get(url)
+                r.raise_for_status()
+                parser = mf.Parser.html(&quot;beautifulsoup&quot;, extract_images=True)
+                parsed = parser(r.content)
+                text   = parsed.data[&quot;text&quot;]
+                images = parsed.data[&quot;images&quot;]
+                if not images:
+                    raise ValueError(&quot;No images found on the product page&quot;)
+                img = await client.get(urljoin(url, images[0][&quot;url&quot;]))
+                img.raise_for_status()
+            return text, img.content
 
-    async def acall(self, msg: mf.Message) -&gt; mf.Message:
-        msg.product_text, msg.product_image = await self._afetch(msg.product_url)
-        return msg
+        def __call__(self, msg: mf.Message) -&gt; mf.Message:
+            msg.product_text, msg.product_image = self._fetch(msg.product_url)
+            return msg
 
-
-# Agents
-class PosterPromptAgent(nn.Agent):
-    &quot;&quot;&quot;Analyzes a product and crafts a poster generation prompt.&quot;&quot;&quot;
-    model        = vision_model
-    instructions = &quot;&quot;&quot;
-    You are an expert creative director specializing in product advertising.
-    Given a product description and its image, create a highly detailed prompt
-    for generating a professional marketing poster.
-    Include: visual style, lighting, mood, composition, color palette, and
-    typography hints. Return only the image generation prompt.
-    &quot;&quot;&quot;
-    message_fields = {
-        &quot;task&quot;:            &quot;product_text&quot;,
-        &quot;task_multimodal&quot;: {&quot;image&quot;: &quot;product_image&quot;},
-    }
-    response_mode = &quot;poster_prompt&quot;
+        async def acall(self, msg: mf.Message) -&gt; mf.Message:
+            msg.product_text, msg.product_image = await self._afetch(msg.product_url)
+            return msg
 
 
-class PosterMaker(nn.MediaMaker):
-    &quot;&quot;&quot;Generates a marketing poster from a descriptive prompt.&quot;&quot;&quot;
-    model          = image_model
-    message_fields = {&quot;task&quot;: &quot;poster_prompt&quot;}
-    response_mode  = &quot;poster&quot;
+    # Agents
+    class PosterPromptAgent(nn.Agent):
+        &quot;&quot;&quot;Analyzes a product and crafts a poster generation prompt.&quot;&quot;&quot;
+        model        = vision_model
+        instructions = &quot;&quot;&quot;
+        You are an expert creative director specializing in product advertising.
+        Given a product description and its image, create a highly detailed prompt
+        for generating a professional marketing poster.
+        Include: visual style, lighting, mood, composition, color palette, and
+        typography hints. Return only the image generation prompt.
+        &quot;&quot;&quot;
+        message_fields = {
+            &quot;task&quot;:            &quot;product_text&quot;,
+            &quot;task_multimodal&quot;: {&quot;image&quot;: &quot;product_image&quot;},
+        }
+        response_mode = &quot;poster_prompt&quot;
 
 
-# Pipeline
-flux = mf.Inline(
-    &quot;scraper -&gt; prompt_agent -&gt; poster_maker&quot;,
-    {
-        &quot;scraper&quot;:      ProductScraper(),
-        &quot;prompt_agent&quot;: PosterPromptAgent(),
-        &quot;poster_maker&quot;: PosterMaker(),
-    },
-)
+    class PosterMaker(nn.MediaMaker):
+        &quot;&quot;&quot;Generates a marketing poster from a descriptive prompt.&quot;&quot;&quot;
+        model          = image_model
+        message_fields = {&quot;task&quot;: &quot;poster_prompt&quot;}
+        response_mode  = &quot;poster&quot;
 
 
-# Run
-def save_poster(data: str | bytes, path: str = &quot;poster.png&quot;) -&gt; None:
-    if isinstance(data, str):
-        data = base64.b64decode(data)
-    with open(path, &quot;wb&quot;) as f:
-        f.write(data)
+    # Pipeline
+    flux = mf.Inline(
+        &quot;scraper -&gt; prompt_agent -&gt; poster_maker&quot;,
+        {
+            &quot;scraper&quot;:      ProductScraper(),
+            &quot;prompt_agent&quot;: PosterPromptAgent(),
+            &quot;poster_maker&quot;: PosterMaker(),
+        },
+    )
 
 
-msg = mf.Message()
-msg.product_url = PRODUCT_URL
+    # Run
+    def save_poster(data: str | bytes, path: str = &quot;poster.png&quot;) -&gt; None:
+        if isinstance(data, str):
+            data = base64.b64decode(data)
+        with open(path, &quot;wb&quot;) as f:
+            f.write(data)
 
-flux(msg)
 
-print(&quot;Prompt used:\n&quot;, msg.poster_prompt)
-save_poster(msg.poster)
-print(&quot;Poster saved to poster.png&quot;)
-```
+    msg = mf.Message()
+    msg.product_url = PRODUCT_URL
 
----
+    flux(msg)
+
+    print(&quot;Prompt used:\n&quot;, msg.poster_prompt)
+    save_poster(msg.poster)
+    print(&quot;Poster saved to poster.png&quot;)
+    ```
 
 ## Further Reading
 
@@ -5592,6 +5681,8 @@ print(&quot;Poster saved to poster.png&quot;)
 </span></code></pre></div>
 <hr />
 <h2 id="complete-script">Complete Script</h2>
+<details class="example">
+<summary>Expand full script</summary>
 <div class="language-python highlight"><pre><span></span><code><span id="__span-22-1"><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
 </span><span id="__span-22-2"><a id="__codelineno-22-2" name="__codelineno-22-2" href="#__codelineno-22-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">base64</span>
 </span><span id="__span-22-3"><a id="__codelineno-22-3" name="__codelineno-22-3" href="#__codelineno-22-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">urllib.parse</span><span class="w"> </span><span class="kn">import</span> <span class="n">urljoin</span>
@@ -5703,7 +5794,7 @@ print(&quot;Poster saved to poster.png&quot;)
 </span><span id="__span-22-109"><a id="__codelineno-22-109" name="__codelineno-22-109" href="#__codelineno-22-109"></a><span class="n">save_poster</span><span class="p">(</span><span class="n">msg</span><span class="o">.</span><span class="n">poster</span><span class="p">)</span>
 </span><span id="__span-22-110"><a id="__codelineno-22-110" name="__codelineno-22-110" href="#__codelineno-22-110"></a><span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Poster saved to poster.png&quot;</span><span class="p">)</span>
 </span></code></pre></div>
-<hr />
+</details>
 <h2 id="further-reading">Further Reading</h2>
 <ul>
 <li><a href="../../learn/nn/agent/">nn.Agent</a> — vision inputs, instructions, and message fields</li>
