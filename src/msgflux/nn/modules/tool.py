@@ -9,6 +9,7 @@ from typing import Any, Callable, Dict, Iterator, List, Mapping, Optional, Tuple
 import msgspec
 
 import msgflux.nn.functional as F
+from msgflux._private.executor import Executor
 from msgflux.auto import AutoParams
 from msgflux.core.dotdict import dotdict
 from msgflux.exceptions import TaskError
@@ -21,6 +22,7 @@ from msgflux.protocols.mcp import (
     extract_tool_result_text,
     filter_tools,
 )
+from msgflux.tasks import NotificationBus, TaskHandle, TaskStore
 from msgflux.telemetry.span import (
     aset_tool_attributes,
     set_tool_attributes,
@@ -71,6 +73,32 @@ class ToolResponses:
     def get_by_name(self, tool_name: str) -> Optional[ToolCall]:
         """Retrieve a tool_call by tool name."""
         return next((r for r in self.tool_calls if r.name == tool_name), None)
+
+
+class ToolLibraryHandle:
+    """Controlled handle exposed to runtime-aware tools."""
+
+    def __init__(self, library: "ToolLibrary"):
+        self._library = library
+
+    def add(self, tool: Union[str, Callable]) -> str:
+        self._library.add(tool)
+        if isinstance(tool, str):
+            return tool
+        return getattr(tool, "name", None) or getattr(tool, "__name__", None)
+
+    def remove(self, tool_name: str) -> str:
+        if tool_name in self._library._runtime_tool_names:
+            raise ValueError(f"The runtime tool `{tool_name}` cannot be removed.")
+        self._library.remove(tool_name)
+        return tool_name
+
+    def list_tools(self) -> List[str]:
+        return self._library.get_tool_names()
+
+
+def _uses_library_injection(config: Mapping[str, Any]) -> bool:
+    return config.get("inject_library", False) or config.get("special_tool", False)
 
 
 class Tool(Module):
@@ -262,9 +290,9 @@ class LocalTool(Tool):
 
 def _convert_module_to_nn_tool(impl: Callable) -> Tool:  # noqa: C901
     """Convert a callable in nn.Tool."""
-    tool_config = getattr(impl, "tool_config", dotdict())
+    tool_config = dotdict(deepcopy(getattr(impl, "tool_config", dotdict())))
 
-    name_overridden = tool_config.pop("name_overridden", None)
+    name_overridden = tool_config.get("name_overridden")
 
     # Case 1: Uninitialized or initialized class
     if inspect.isclass(impl) or callable(impl):
@@ -345,9 +373,22 @@ def _convert_module_to_nn_tool(impl: Callable) -> Tool:  # noqa: C901
 
     if tool_config.get("handoff", False) or tool_config.get("disable_input", False):
         annotations = {}  # pass only the model state
+    else:
+        if tool_config.get("inject_message", False):
+            annotations.pop("message", None)
+        if tool_config.get("inject_messages", False):
+            annotations.pop("messages", None)
+        if tool_config.get("inject_vars", False):
+            annotations.pop("vars", None)
+        if tool_config.get("inject_task", False):
+            annotations.pop("task", None)
+        if _uses_library_injection(tool_config):
+            annotations.pop("tool_library", None)
 
     if tool_config.get("spawn"):
         doc = "This tool will not generate a return. \n" + doc
+    if tool_config.get("background"):
+        doc = "This tool runs in the background and returns a task id. \n" + doc
 
     return LocalTool(
         name=name,
@@ -391,6 +432,10 @@ class ToolLibrary(Module, metaclass=AutoParams):
         self.register_buffer("special_library", [])
         self.register_buffer("tool_configs", {})
         self.register_buffer("mcp_clients", {})
+        self.task_store = TaskStore()
+        self.notification_bus = NotificationBus()
+        self._runtime_tool_names = {"task_get", "task_list", "task_output"}
+        self._task_runtime_enabled = False
         for tool in tools:
             self.add(tool)
         if special_tools:
@@ -402,7 +447,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
     def add(self, tool: Union[str, Callable]):
         """Add a local tool in library."""
         if isinstance(tool, str):
-            if tool in self.special_library.keys():
+            if tool in self.special_library:
                 raise ValueError(
                     f"The special tool name `{tool}` is already in special tool library"
                 )
@@ -416,8 +461,14 @@ class ToolLibrary(Module, metaclass=AutoParams):
 
             # Store tool config (may be empty dict for local tools)
             self.tool_configs[tool.name] = getattr(tool, "tool_config", {})
+            if self.tool_configs[tool.name].get("background", False):
+                self._ensure_task_runtime_tools()
 
             self.library.update({tool.name: tool})
+
+    def special_add(self, tool_name: str):
+        """Backward-compatible alias for special tool registration."""
+        self.add(tool_name)
 
     def remove(self, tool_name: str):
         if tool_name in self.library.keys():
@@ -435,6 +486,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
         for mcp_data in self.mcp_clients.values():
             F.wait_for(mcp_data["client"].disconnect)
         self.mcp_clients.clear()
+        self._task_runtime_enabled = False
 
     def _initialize_mcp_clients(self, mcp_servers: List[Dict[str, Any]]):
         """Initialize MCP clients from server configurations."""
@@ -565,6 +617,205 @@ class ToolLibrary(Module, metaclass=AutoParams):
             }
         return annotations
 
+    def drain_notification_messages(self) -> List[Dict[str, str]]:
+        """Drain pending task notifications as synthetic user messages."""
+        return self.notification_bus.drain_messages()
+
+    def peek_notification_messages(self) -> List[Dict[str, str]]:
+        """Return pending task notifications without consuming them."""
+        return [notification.to_message() for notification in self.notification_bus.list()]
+
+    def _ensure_task_runtime_tools(self) -> None:
+        if self._task_runtime_enabled:
+            return
+        self._task_runtime_enabled = True
+        self._register_runtime_tool(
+            name="task_get",
+            description="Get the current state of a background task by task_id.",
+            annotations={"task_id": str},
+            impl=self._task_get,
+        )
+        self._register_runtime_tool(
+            name="task_list",
+            description="List background tasks registered in the current tool library.",
+            annotations={"status": Optional[str]},
+            impl=self._task_list,
+        )
+        self._register_runtime_tool(
+            name="task_output",
+            description="Get the final output of a background task by task_id.",
+            annotations={"task_id": str},
+            impl=self._task_output,
+        )
+
+    def _register_runtime_tool(
+        self,
+        *,
+        name: str,
+        description: str,
+        annotations: Dict[str, Any],
+        impl: Callable,
+    ) -> None:
+        tool = LocalTool(
+            name=name,
+            description=description,
+            annotations=annotations,
+            tool_config={},
+            impl=impl,
+        )
+        self.library.update({name: tool})
+        self.tool_configs[name] = {}
+
+    def _task_get(self, task_id: str) -> Dict[str, Any]:
+        task = self.task_store.get(task_id)
+        if task is None:
+            return {"task_id": task_id, "status": "not_found"}
+        return task.to_dict()
+
+    def _task_list(self, status: Optional[str] = None) -> List[Dict[str, Any]]:
+        return [task.to_dict() for task in self.task_store.list(status=status)]
+
+    def _task_output(self, task_id: str) -> Any:
+        task = self.task_store.get(task_id)
+        if task is None:
+            return {"task_id": task_id, "status": "not_found"}
+        if task.status == "completed":
+            return task.result
+        if task.status == "failed":
+            return {"task_id": task_id, "status": task.status, "error": task.error}
+        return {
+            "task_id": task_id,
+            "status": task.status,
+            "progress": task.progress.to_dict(),
+        }
+
+    def _build_call_params(
+        self,
+        *,
+        tool: Tool,
+        tool_name: str,
+        tool_params: Any,
+        config: Mapping[str, Any],
+        message: Optional[Any],
+        messages: List[Dict[str, Any]],
+        vars: Mapping[str, Any],
+    ) -> Dict[str, Any]:
+        if config.get("handoff", False) or config.get("disable_input", False):
+            call_params: Dict[str, Any] = {}
+        else:
+            call_params = dict(tool_params or {})
+
+        inject_vars = config.get("inject_vars", False)
+        if inject_vars:
+            if isinstance(inject_vars, list):
+                for key in inject_vars:
+                    if key not in vars:
+                        raise ValueError(
+                            f"The tool `{tool_name}` requires the injected "
+                            f"parameter `{key}`, but it was not found."
+                        )
+                    call_params[key] = vars[key]
+            elif inject_vars is True:
+                call_params["vars"] = vars
+
+        if config.get("inject_messages", False):
+            if _should_copy_injected_messages(tool, config):
+                call_params["messages"] = deepcopy(messages)
+            else:
+                call_params["messages"] = messages
+
+        if config.get("inject_message", False):
+            call_params["message"] = message
+
+        if _uses_library_injection(config):
+            call_params["tool_library"] = ToolLibraryHandle(self)
+
+        return call_params
+
+    def _build_call_parameters_for_response(
+        self, params: Optional[Mapping[str, Any]]
+    ) -> Optional[Dict[str, Any]]:
+        if params is None:
+            return None
+        if hasattr(params, "to_dict"):
+            parameters = params.to_dict()
+        else:
+            parameters = dict(params)
+        for key in (
+            "vars",
+            "messages",
+            "message",
+            "task",
+            "tool_library",
+            "tool_call_id",
+        ):
+            parameters.pop(key, None)
+        return parameters
+
+    def _run_background_tool(
+        self,
+        *,
+        tool: Tool,
+        task_handle: TaskHandle,
+        tool_name: str,
+        call_params: Dict[str, Any],
+    ) -> Any:
+        task_handle.set_running()
+        try:
+            result = tool(**call_params)
+        except Exception as exc:
+            task_handle.fail(exc)
+            self.notification_bus.publish_task_failed(task_handle.task_id, tool_name)
+            raise
+        task_handle.complete(result)
+        self.notification_bus.publish_task_completed(task_handle.task_id, tool_name)
+        return result
+
+    def _log_background_task_failure(self, future: Any) -> None:
+        try:
+            future.result()
+        except Exception as exc:
+            logger.error(f"Background task error: {exc!s}", exc_info=True)
+
+    def _dispatch_background_tool(
+        self,
+        *,
+        tool: Tool,
+        tool_id: str,
+        tool_name: str,
+        call_params: Dict[str, Any],
+        config: Mapping[str, Any],
+    ) -> ToolCall:
+        task = self.task_store.create(
+            tool_name=tool_name,
+            metadata={"tool_call_id": tool_id},
+        )
+        runner_params = dict(call_params)
+        if config.get("inject_task", False):
+            runner_params["task"] = TaskHandle(task.task_id, self.task_store)
+        runner_params["tool_call_id"] = tool_id
+        future = Executor.get_instance().submit(
+            partial(
+                self._run_background_tool,
+                tool=tool,
+                task_handle=TaskHandle(task.task_id, self.task_store),
+                tool_name=tool_name,
+                call_params=runner_params,
+            )
+        )
+        future.add_done_callback(self._log_background_task_failure)
+        return ToolCall(
+            id=tool_id,
+            name=tool_name,
+            parameters=self._build_call_parameters_for_response(call_params),
+            result=(
+                f"The `{tool_name}` tool is running in the background with "
+                f"task_id='{task.task_id}'. Use `task_get(task_id='{task.task_id}')` "
+                f"to inspect status and progress, or "
+                f"`task_output(task_id='{task.task_id}')` when it completes."
+            ),
+        )
+
     def forward(  # noqa: C901
         self,
         tool_callings: List[Tuple[str, str, Any]],
@@ -618,25 +869,15 @@ class ToolLibrary(Module, metaclass=AutoParams):
             # Get tool
             tool = self.library[tool_name]
             config = self.tool_configs.get(tool_name, {})
-
-            if config.get("handoff", False) or config.get("disable_input", False):
-                call_params = {}
-            else:
-                call_params = tool_params or {}
-
-            # Handle inject_vars
-            inject_vars = config.get("inject_vars", False)
-            if inject_vars:
-                if isinstance(inject_vars, list):
-                    for key in inject_vars:
-                        if key not in vars:
-                            raise ValueError(
-                                f"The tool `{tool_name}` requires the injected "
-                                f"parameter `{key}`, but it was not found."
-                            )
-                        call_params[key] = vars[key]
-                elif inject_vars is True:
-                    call_params["vars"] = vars
+            call_params = self._build_call_params(
+                tool=tool,
+                tool_name=tool_name,
+                tool_params=tool_params,
+                config=config,
+                message=message,
+                messages=messages,
+                vars=vars,
+            )
 
             if config.get("spawn", False):
                 return_directly = False
@@ -652,6 +893,19 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 )
                 continue
 
+            if config.get("background", False):
+                return_directly = False
+                tool_calls.append(
+                    self._dispatch_background_tool(
+                        tool=tool,
+                        tool_id=tool_id,
+                        tool_name=tool_name,
+                        call_params=call_params,
+                        config=config,
+                    )
+                )
+                continue
+
             if config.get(
                 "call_as_response", False
             ):  # return function call as response
@@ -660,15 +914,6 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 )
                 return_directly = True
                 continue
-
-            if config.get("inject_messages", False):
-                if _should_copy_injected_messages(tool, config):
-                    call_params["messages"] = deepcopy(messages)
-                else:
-                    call_params["messages"] = messages
-
-            if config.get("inject_message", False):  # Add original message/envelope
-                call_params["message"] = message
 
             if not config.get("return_direct", False):
                 return_directly = False
@@ -689,14 +934,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
         if prepared_calls:
             results = F.scatter_gather(prepared_calls)
             for meta, result in zip(call_metadata, results):
-                if isinstance(meta.params, dict):
-                    parameters = meta.params.to_dict()
-                    parameters.pop("vars", None)
-                    parameters.pop("messages", None)
-                    parameters.pop("message", None)
-                    parameters.pop("tool_call_id", None)
-                else:
-                    parameters = None
+                parameters = self._build_call_parameters_for_response(meta.params)
                 tool_calls.append(
                     ToolCall(
                         id=meta.id,
@@ -763,25 +1001,15 @@ class ToolLibrary(Module, metaclass=AutoParams):
             # Get tool
             tool = self.library[tool_name]
             config = self.tool_configs.get(tool_name, {})
-
-            if config.get("handoff", False) or config.get("disable_input", False):
-                call_params = {}
-            else:
-                call_params = tool_params or {}
-
-            # Handle inject_vars
-            inject_vars = config.get("inject_vars", False)
-            if inject_vars:
-                if isinstance(inject_vars, list):
-                    for key in inject_vars:
-                        if key not in vars:
-                            raise ValueError(
-                                f"The tool `{tool_name}` requires the injected "
-                                f"parameter `{key}`, but it was not found."
-                            )
-                        call_params[key] = vars[key]
-                elif inject_vars is True:
-                    call_params["vars"] = vars
+            call_params = self._build_call_params(
+                tool=tool,
+                tool_name=tool_name,
+                tool_params=tool_params,
+                config=config,
+                message=message,
+                messages=messages,
+                vars=vars,
+            )
 
             if config.get("spawn", False):
                 return_directly = False
@@ -797,6 +1025,19 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 )
                 continue
 
+            if config.get("background", False):
+                return_directly = False
+                tool_calls.append(
+                    self._dispatch_background_tool(
+                        tool=tool,
+                        tool_id=tool_id,
+                        tool_name=tool_name,
+                        call_params=call_params,
+                        config=config,
+                    )
+                )
+                continue
+
             if config.get(
                 "call_as_response", False
             ):  # return function call as response
@@ -805,15 +1046,6 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 )
                 return_directly = True
                 continue
-
-            if config.get("inject_messages", False):
-                if _should_copy_injected_messages(tool, config):
-                    call_params["messages"] = deepcopy(messages)
-                else:
-                    call_params["messages"] = messages
-
-            if config.get("inject_message", False):  # Add original message/envelope
-                call_params["message"] = message
 
             if not config.get("return_direct", False):
                 return_directly = False
@@ -834,14 +1066,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
         if prepared_calls:
             results = await F.ascatter_gather(prepared_calls)
             for meta, result in zip(call_metadata, results):
-                if isinstance(meta.params, dict):
-                    parameters = meta.params.to_dict()
-                    parameters.pop("vars", None)
-                    parameters.pop("messages", None)
-                    parameters.pop("message", None)
-                    parameters.pop("tool_call_id", None)
-                else:
-                    parameters = None
+                parameters = self._build_call_parameters_for_response(meta.params)
                 tool_calls.append(
                     ToolCall(
                         id=meta.id,

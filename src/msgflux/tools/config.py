@@ -10,10 +10,14 @@ def tool_config(
     return_direct: Optional[bool] = False,
     call_as_response: Optional[bool] = False,
     spawn: Optional[bool] = False,
+    background: Optional[bool] = False,
     disable_input: Optional[bool] = False,
+    inject_task: Optional[bool] = False,
+    inject_library: Optional[bool] = False,
     inject_message: Optional[bool] = False,
     inject_messages: Optional[bool] = False,
     inject_vars: Optional[Union[bool, List[str]]] = False,
+    special_tool: Optional[bool] = False,
     handoff: Optional[bool] = False,
     name_override: Optional[str] = None,
     retry: Optional[Any] = None,
@@ -41,11 +45,21 @@ def tool_config(
         spawn:
             If True, the tool will be dispatched without waiting for a result.
             The model receives a confirmation that the task was started.
+        background:
+            If True, the tool runs in the background and returns a `task_id`
+            immediately. The result can be retrieved later via `task_get`
+            and `task_output`.
         disable_input:
             If True, removes public input parameters from the tool schema. The model
             will call the tool with no explicit arguments, and any arguments supplied
             by the model are ignored at runtime. This does not inject any runtime
             context by itself.
+        inject_task:
+            If True, inject a runtime `task` handle into the tool. This is only
+            valid together with `background=True`.
+        inject_library:
+            If True, inject a controlled `tool_library` handle into the tool so it
+            can add, remove, or list tools at runtime.
         inject_message:
             If True, the tool receives the original `message` passed to the Agent
             at runtime. This injected parameter does not become part of the tool
@@ -58,6 +72,8 @@ def tool_config(
             Indicates if the tool should receive vars. If True, the tool receives all
             vars as a named argument `vars`. If a list of vars is passed, only those
             vars will be passed.
+        special_tool:
+            Legacy alias for `inject_library`.
         handoff:
             If True, indicates that this function will receive the `messages`
             from the Agent.
@@ -79,6 +95,11 @@ def tool_config(
         ValueError:
            `spawn=True` is not compatible with `return_direct=True`
            and `call_as_response=True`.
+        ValueError:
+           `background=True` is not compatible with `return_direct=True`,
+           `call_as_response=True`, `spawn=True`, and `handoff=True`.
+        ValueError:
+           `inject_task=True` requires `background=True`.
         ValueError:
            `inject_vars=True` is not compatible with `call_as_response=True`.
 
@@ -110,6 +131,7 @@ def tool_config(
         _return_direct = return_direct  # Local copy
         _inject_message = inject_message  # Local copy
         _inject_messages = inject_messages  # Local copy
+        _inject_library = inject_library or special_tool
 
         if call_as_response is True and _return_direct is False:
             _return_direct = True
@@ -124,6 +146,15 @@ def tool_config(
                 " and `call_as_response=True`."
             )
 
+        if background and (_return_direct or call_as_response or spawn or handoff):
+            raise ValueError(
+                "`background=True` is not compatible with `return_direct=True`,"
+                " `call_as_response=True`, `spawn=True`, and `handoff=True`."
+            )
+
+        if inject_task and not background:
+            raise ValueError("`inject_task=True` requires `background=True`.")
+
         if inject_vars is not False and call_as_response is True:
             raise ValueError(
                 "`inject_vars` is not compatible with `call_as_response=True`"
@@ -133,12 +164,16 @@ def tool_config(
             "tool_config": dotdict(
                 {
                     "spawn": spawn,
+                    "background": background,
                     "call_as_response": call_as_response,
                     "handoff": handoff,
                     "disable_input": disable_input,
+                    "inject_task": inject_task,
+                    "inject_library": _inject_library,
                     "inject_message": _inject_message,
                     "inject_messages": _inject_messages,
                     "inject_vars": inject_vars,
+                    "special_tool": _inject_library,
                     "return_direct": _return_direct,
                     "name_overridden": name_override,
                     "retry": retry,

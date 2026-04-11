@@ -1090,7 +1090,11 @@ class Agent(Module, metaclass=AutoParams):
     # --- Task Preparation ---
 
     def _prepare_inputs(  # noqa: C901
-        self, message: Optional[Union[str, Message, Mapping[str, Any]]] = None, **kwargs
+        self,
+        message: Optional[Union[str, Message, Mapping[str, Any]]] = None,
+        *,
+        drain_notifications: bool = True,
+        **kwargs,
     ) -> Mapping[str, Any]:
         """Prepare model input in ChatML format and execution params."""
         # Extract reserved kwargs
@@ -1151,6 +1155,16 @@ class Agent(Module, metaclass=AutoParams):
         ):
             messages = self._get_content_from_message(self.messages, message)
 
+        if drain_notifications:
+            pending_notifications = self.tool_library.drain_notification_messages()
+        else:
+            pending_notifications = self.tool_library.peek_notification_messages()
+        if pending_notifications:
+            if messages is None:
+                messages = pending_notifications
+            else:
+                messages.extend(pending_notifications)
+
         content = self._render_task(message, task=task, vars=vars, **kwargs)
 
         if content is None and not messages:
@@ -1185,7 +1199,11 @@ class Agent(Module, metaclass=AutoParams):
         }
 
     async def _aprepare_inputs(  # noqa: C901
-        self, message: Optional[Union[str, Message, Mapping[str, Any]]] = None, **kwargs
+        self,
+        message: Optional[Union[str, Message, Mapping[str, Any]]] = None,
+        *,
+        drain_notifications: bool = True,
+        **kwargs,
     ) -> Mapping[str, Any]:
         """Async version of _prepare_inputs.
         Prepare model input in ChatML format and execution params.
@@ -1247,6 +1265,16 @@ class Agent(Module, metaclass=AutoParams):
             and self.messages is not None
         ):
             messages = self._get_content_from_message(self.messages, message)
+
+        if drain_notifications:
+            pending_notifications = self.tool_library.drain_notification_messages()
+        else:
+            pending_notifications = self.tool_library.peek_notification_messages()
+        if pending_notifications:
+            if messages is None:
+                messages = pending_notifications
+            else:
+                messages.extend(pending_notifications)
 
         content = await self._arender_task(message, task=task, vars=vars, **kwargs)
 
@@ -1625,7 +1653,11 @@ class Agent(Module, metaclass=AutoParams):
         Accepts the same arguments as forward() to inspect what would be sent to
         the model.
         """
-        inputs = self._prepare_inputs(message, **kwargs)
+        inputs = self._prepare_inputs(
+            message,
+            drain_notifications=False,
+            **kwargs,
+        )
         model_execution_params = self._prepare_model_execution(
             prefilling=self.prefilling, **inputs
         )
