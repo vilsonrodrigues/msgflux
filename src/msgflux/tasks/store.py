@@ -10,9 +10,13 @@ from uuid import uuid4
 from msgflux.agent_inbox import AgentInbox, AgentNotification
 
 
+# --- Module Utilities ---
+
 def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
+
+# --- Task Models ---
 
 @dataclass
 class TaskProgress:
@@ -50,6 +54,8 @@ class TaskStore:
         self._lock = RLock()
         self._tasks: Dict[str, TaskRecord] = {}
 
+    # --- Query Operations ---
+
     def create(
         self,
         tool_name: str,
@@ -81,6 +87,8 @@ class TaskStore:
             if status is not None:
                 tasks = [task for task in tasks if task.status == status]
             return deepcopy(tasks)
+
+    # --- State Transitions ---
 
     def set_running(
         self,
@@ -175,6 +183,8 @@ class TaskHandle:
         self._tool_name = tool_name
         self._agent_inbox = agent_inbox
 
+    # --- Task State Updates ---
+
     def set_running(
         self,
         *,
@@ -206,6 +216,8 @@ class TaskHandle:
 
     def fail(self, error: Any) -> Optional[TaskRecord]:
         return self._store.fail(self.task_id, error)
+
+    # --- Agent Notifications ---
 
     def notify(
         self,

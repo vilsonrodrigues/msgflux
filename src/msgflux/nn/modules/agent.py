@@ -1979,7 +1979,7 @@ class Agent(Module, metaclass=AutoParams):
             )
         return {"block": "*"}
 
-    # --- Checkpointing ---
+    # --- Message State Helpers ---
 
     def _coerce_chat_messages(
         self,
@@ -1996,6 +1996,8 @@ class Agent(Module, metaclass=AutoParams):
             f"given `{type(messages)}`"
         )
 
+    # --- Execution Context Resolution ---
+
     def _get_effective_checkpointer(self):
         if self.checkpointer is not None:
             return self.checkpointer
@@ -2006,6 +2008,8 @@ class Agent(Module, metaclass=AutoParams):
         if inherited is not None:
             return inherited
         return self.agent_inbox
+
+    # --- Inbox Delivery ---
 
     def _build_model_messages(
         self,
@@ -2054,6 +2058,8 @@ class Agent(Module, metaclass=AutoParams):
             return
         messages.append(notification_message)
 
+    # --- Session And Run Resolution ---
+
     def _resolve_session_id(
         self,
         *,
@@ -2085,6 +2091,8 @@ class Agent(Module, metaclass=AutoParams):
         if isinstance(inherited, str) and inherited:
             return inherited
         return f"run_{uuid4().hex[:8]}"
+
+    # --- Chat Turn Tracking ---
 
     def _start_chat_turn_if_needed(
         self,
@@ -2154,6 +2162,8 @@ class Agent(Module, metaclass=AutoParams):
                 reasoning_content=reasoning_content,
             )
 
+    # --- Response Extraction Helpers ---
+
     def _extract_reasoning_content(
         self,
         payload: Mapping[str, Any],
@@ -2188,6 +2198,8 @@ class Agent(Module, metaclass=AutoParams):
             response_metadata=metadata,
             status=status,
         )
+
+    # --- Checkpoint Persistence ---
 
     def _checkpoint_save(
         self,
@@ -2264,6 +2276,8 @@ class Agent(Module, metaclass=AutoParams):
         messages = inputs.get("messages")
         vars = inputs.get("vars", {})
         await self._acheckpoint_save(messages, vars, status="failed")
+
+    # --- Checkpoint Resume ---
 
     def _try_resume_from_checkpoint(
         self,
