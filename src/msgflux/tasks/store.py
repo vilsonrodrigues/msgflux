@@ -52,11 +52,12 @@ class TaskStore:
         self,
         tool_name: str,
         *,
+        task_id: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> TaskRecord:
         now = _utc_now()
         task = TaskRecord(
-            task_id=uuid4().hex[:8],
+            task_id=task_id or uuid4().hex[:8],
             tool_name=tool_name,
             status="queued",
             created_at=now,
@@ -155,7 +156,6 @@ class TaskStore:
             task.completed_at = now
             task.error = str(error)
             return deepcopy(task)
-
 
 class TaskHandle:
     """Small mutable handle injected into background tools."""

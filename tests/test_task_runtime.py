@@ -3,10 +3,14 @@ library-aware tools."""
 
 import threading
 import time
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, Mock
 
 import msgflux as mf
 import pytest
+from msgflux.chat_messages import ChatMessages
+from msgflux.context import execution_context
+from msgflux.data.stores import InMemoryCheckpointStore
+from msgflux.models.response import ModelResponse
 from msgflux.nn import Agent
 from msgflux.nn.modules.tool import ToolLibrary
 
@@ -23,9 +27,12 @@ def _wait_until(predicate, timeout: float = 2.0, interval: float = 0.02) -> None
 def _mock_model(text: str = "ok") -> MagicMock:
     model = MagicMock()
     model.model_type = "chat_completion"
-    resp = MagicMock()
+    resp = Mock(spec=ModelResponse)
     resp.response_type = "text_generation"
     resp.consume.return_value = text
+    resp.data = text
+    resp.reasoning = None
+    resp.metadata = {}
     model.return_value = resp
     return model
 
@@ -295,3 +302,50 @@ def test_inspect_model_execution_params_does_not_consume_notifications():
         and "<task_notification>" in message["content"]
     ]
     assert notification_messages == []
+
+
+def test_background_agent_inherits_context_and_checkpoint_run_id():
+    store = InMemoryCheckpointStore()
+    worker = Agent(name="worker", model=_mock_model("worker-done"))
+    worker.tool_config = {"background": True}
+
+    library = ToolLibrary(name="lib", tools=[worker])
+
+    with execution_context(
+        session_id="user_42",
+        namespace="root_agent",
+        run_id="run_root",
+        root_run_id="run_root",
+        checkpoint_store=store,
+    ):
+        dispatch = library([("call_1", "worker", {"task": "Solve this"})])
+
+    assert "task_id='" in dispatch.tool_calls[0].result
+    task_id = library([("call_2", "task_list", {})]).tool_calls[0].result[0]["task_id"]
+
+    _wait_until(
+        lambda: library([("call_3", "task_get", {"task_id": task_id})]).tool_calls[0]
+        .result["status"]
+        == "completed"
+    )
+
+    task_state = library([("call_4", "task_get", {"task_id": task_id})]).tool_calls[0].result
+    assert task_state["metadata"]["session_id"] == "user_42"
+    assert task_state["metadata"]["parent_run_id"] == "run_root"
+    assert task_state["metadata"]["root_run_id"] == "run_root"
+    assert task_state["metadata"]["checkpoint_session_id"] == "user_42"
+    assert task_state["metadata"]["checkpoint_run_id"] == task_id
+
+    state = store.load_state("worker", "user_42", task_id)
+    assert state is not None
+    assert state["status"] == "completed"
+
+    restored = ChatMessages()
+    restored._hydrate_state(state["messages"])
+    history = restored.to_chatml()
+    assert any(
+        message["role"] == "user" and "Solve this" in str(message["content"])
+        for message in history
+    )
+    assert history[-1]["role"] == "assistant"
+    assert history[-1]["content"] == "worker-done"

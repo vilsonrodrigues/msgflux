@@ -5,12 +5,14 @@ from dataclasses import asdict, dataclass, field
 from functools import partial
 from importlib import import_module
 from typing import Any, Callable, Dict, Iterator, List, Mapping, Optional, Tuple, Union
+from uuid import uuid4
 
 import msgspec
 
 import msgflux.nn.functional as F
 from msgflux._private.executor import Executor
 from msgflux.auto import AutoParams
+from msgflux.context import execution_context, get_execution_context
 from msgflux.core.dotdict import dotdict
 from msgflux.exceptions import TaskError
 from msgflux.logger import logger
@@ -99,6 +101,12 @@ class ToolLibraryHandle:
 
 def _uses_library_injection(config: Mapping[str, Any]) -> bool:
     return config.get("inject_library", False) or config.get("special_tool", False)
+
+
+def _is_agent_tool_impl(impl: Any) -> bool:
+    from msgflux.nn.modules.agent import Agent
+
+    return isinstance(impl, Agent)
 
 
 class Tool(Module):
@@ -370,6 +378,8 @@ def _convert_module_to_nn_tool(impl: Callable) -> Tool:  # noqa: C901
 
     if tool_config.get("handoff", False):
         name = "transfer_to_" + name
+
+    tool_config["tool_kind"] = "agent" if _is_agent_tool_impl(impl) else "tool"
 
     if tool_config.get("handoff", False) or tool_config.get("disable_input", False):
         annotations = {}  # pass only the model state
@@ -759,17 +769,20 @@ class ToolLibrary(Module, metaclass=AutoParams):
         task_handle: TaskHandle,
         tool_name: str,
         call_params: Dict[str, Any],
+        execution_scope: Optional[Dict[str, Any]] = None,
     ) -> Any:
-        task_handle.set_running()
-        try:
-            result = tool(**call_params)
-        except Exception as exc:
-            task_handle.fail(exc)
-            self.notification_bus.publish_task_failed(task_handle.task_id, tool_name)
-            raise
-        task_handle.complete(result)
-        self.notification_bus.publish_task_completed(task_handle.task_id, tool_name)
-        return result
+        scope = execution_scope or {}
+        with execution_context(**scope):
+            task_handle.set_running()
+            try:
+                result = tool(**call_params)
+            except Exception as exc:
+                task_handle.fail(exc)
+                self.notification_bus.publish_task_failed(task_handle.task_id, tool_name)
+                raise
+            task_handle.complete(result)
+            self.notification_bus.publish_task_completed(task_handle.task_id, tool_name)
+            return result
 
     def _log_background_task_failure(self, future: Any) -> None:
         try:
@@ -786,14 +799,47 @@ class ToolLibrary(Module, metaclass=AutoParams):
         call_params: Dict[str, Any],
         config: Mapping[str, Any],
     ) -> ToolCall:
+        task_kind = config.get("tool_kind", "tool")
+        execution_context = get_execution_context()
+        session_id = execution_context.get("session_id")
+        parent_run_id = execution_context.get("run_id")
+        root_run_id = execution_context.get("root_run_id")
+        checkpoint_store = execution_context.get("checkpoint_store")
+        task_id = uuid4().hex[:8]
         task = self.task_store.create(
+            task_id=task_id,
             tool_name=tool_name,
-            metadata={"tool_call_id": tool_id},
+            metadata={
+                "tool_call_id": tool_id,
+                "task_kind": task_kind,
+                "session_id": session_id,
+                "parent_run_id": parent_run_id,
+                "root_run_id": root_run_id,
+                "checkpoint_session_id": session_id,
+                "checkpoint_run_id": task_id if task_kind == "agent" else None,
+            },
         )
         runner_params = dict(call_params)
-        if config.get("inject_task", False):
+        if config.get("inject_task", False) and task_kind != "agent":
             runner_params["task"] = TaskHandle(task.task_id, self.task_store)
+        if task_kind == "agent":
+            if isinstance(session_id, str) and session_id:
+                runner_params.setdefault("session_id", session_id)
+            runner_params.setdefault("run_id", task.task_id)
         runner_params["tool_call_id"] = tool_id
+        execution_scope = {
+            "session_id": session_id if isinstance(session_id, str) and session_id else None,
+            "run_id": task.task_id,
+            "parent_run_id": (
+                parent_run_id
+                if isinstance(parent_run_id, str) and parent_run_id
+                else None
+            ),
+            "root_run_id": (
+                root_run_id if isinstance(root_run_id, str) and root_run_id else None
+            ),
+            "checkpoint_store": checkpoint_store,
+        }
         future = Executor.get_instance().submit(
             partial(
                 self._run_background_tool,
@@ -801,6 +847,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 task_handle=TaskHandle(task.task_id, self.task_store),
                 tool_name=tool_name,
                 call_params=runner_params,
+                execution_scope=execution_scope,
             )
         )
         future.add_done_callback(self._log_background_task_failure)

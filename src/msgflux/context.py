@@ -1,0 +1,138 @@
+"""Execution context propagated through msgFlux runtimes.
+
+This module owns the shared ContextVars used by components that need execution
+identity and inherited runtime configuration. The first durable features mainly
+use `session_id`, `run_id`, and `namespace`, but the extra fields are already
+present so nested runtimes can propagate lineage consistently later.
+"""
+
+from __future__ import annotations
+
+import contextvars
+from contextlib import contextmanager
+from typing import Any, Mapping, Optional
+from uuid import uuid4
+
+_CURRENT_SESSION_ID: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
+    "msgflux_session_id",
+    default=None,
+)
+_CURRENT_NAMESPACE: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
+    "msgflux_namespace",
+    default=None,
+)
+_CURRENT_RUN_ID: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
+    "msgflux_run_id",
+    default=None,
+)
+_CURRENT_PARENT_RUN_ID: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
+    "msgflux_parent_run_id",
+    default=None,
+)
+_CURRENT_ROOT_RUN_ID: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
+    "msgflux_root_run_id",
+    default=None,
+)
+_CURRENT_CHECKPOINT_STORE: contextvars.ContextVar[Any] = contextvars.ContextVar(
+    "msgflux_checkpoint_store",
+    default=None,
+)
+
+
+@contextmanager
+def execution_context(
+    *,
+    session_id: Optional[str] = None,
+    namespace: Optional[str] = None,
+    run_id: Optional[str] = None,
+    parent_run_id: Optional[str] = None,
+    root_run_id: Optional[str] = None,
+    checkpoint_store: Any = None,
+):
+    """Set execution identity for the enclosed scope.
+
+    Resolution rules intentionally favor explicit inputs and otherwise inherit
+    from the current context. When no session exists yet, a fresh session id is
+    generated automatically.
+    """
+
+    current_session_id = _CURRENT_SESSION_ID.get()
+    resolved_session_id = (
+        session_id if session_id is not None else current_session_id
+    )
+    if resolved_session_id is None:
+        resolved_session_id = f"sess_{uuid4().hex}"
+
+    current_namespace = _CURRENT_NAMESPACE.get()
+    resolved_namespace = namespace if namespace is not None else current_namespace
+
+    current_run_id = _CURRENT_RUN_ID.get()
+    resolved_run_id = run_id if run_id is not None else current_run_id
+
+    current_parent_run_id = _CURRENT_PARENT_RUN_ID.get()
+    resolved_parent_run_id = (
+        parent_run_id if parent_run_id is not None else current_parent_run_id
+    )
+
+    current_root_run_id = _CURRENT_ROOT_RUN_ID.get()
+    if root_run_id is not None:
+        resolved_root_run_id = root_run_id
+    elif current_root_run_id is not None:
+        resolved_root_run_id = current_root_run_id
+    else:
+        resolved_root_run_id = resolved_run_id
+
+    current_checkpoint_store = _CURRENT_CHECKPOINT_STORE.get()
+    resolved_checkpoint_store = (
+        checkpoint_store if checkpoint_store is not None else current_checkpoint_store
+    )
+
+    session_token = _CURRENT_SESSION_ID.set(resolved_session_id)
+    namespace_token = _CURRENT_NAMESPACE.set(resolved_namespace)
+    run_token = _CURRENT_RUN_ID.set(resolved_run_id)
+    parent_run_token = _CURRENT_PARENT_RUN_ID.set(resolved_parent_run_id)
+    root_run_token = _CURRENT_ROOT_RUN_ID.set(resolved_root_run_id)
+    checkpoint_token = _CURRENT_CHECKPOINT_STORE.set(resolved_checkpoint_store)
+    try:
+        yield
+    finally:
+        _CURRENT_SESSION_ID.reset(session_token)
+        _CURRENT_NAMESPACE.reset(namespace_token)
+        _CURRENT_RUN_ID.reset(run_token)
+        _CURRENT_PARENT_RUN_ID.reset(parent_run_token)
+        _CURRENT_ROOT_RUN_ID.reset(root_run_token)
+        _CURRENT_CHECKPOINT_STORE.reset(checkpoint_token)
+
+
+@contextmanager
+def session_context(
+    *,
+    session_id: Optional[str] = None,
+    namespace: Optional[str] = None,
+):
+    """Compatibility helper for callers that only care about session scope."""
+
+    with execution_context(session_id=session_id, namespace=namespace):
+        yield
+
+
+def get_execution_context() -> Mapping[str, Optional[Any]]:
+    """Return the current execution context."""
+
+    return {
+        "session_id": _CURRENT_SESSION_ID.get(),
+        "namespace": _CURRENT_NAMESPACE.get(),
+        "run_id": _CURRENT_RUN_ID.get(),
+        "parent_run_id": _CURRENT_PARENT_RUN_ID.get(),
+        "root_run_id": _CURRENT_ROOT_RUN_ID.get(),
+        "checkpoint_store": _CURRENT_CHECKPOINT_STORE.get(),
+    }
+
+
+def get_session_context() -> Mapping[str, Optional[str]]:
+    """Return the current session-scoped context."""
+
+    return {
+        "session_id": _CURRENT_SESSION_ID.get(),
+        "namespace": _CURRENT_NAMESPACE.get(),
+    }
