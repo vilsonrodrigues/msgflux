@@ -37,6 +37,10 @@ _CURRENT_CHECKPOINT_STORE: contextvars.ContextVar[Any] = contextvars.ContextVar(
     "msgflux_checkpoint_store",
     default=None,
 )
+_CURRENT_AGENT_INBOX: contextvars.ContextVar[Any] = contextvars.ContextVar(
+    "msgflux_agent_inbox",
+    default=None,
+)
 
 
 @contextmanager
@@ -48,6 +52,7 @@ def execution_context(
     parent_run_id: Optional[str] = None,
     root_run_id: Optional[str] = None,
     checkpoint_store: Any = None,
+    agent_inbox: Any = None,
 ):
     """Set execution identity for the enclosed scope.
 
@@ -86,6 +91,10 @@ def execution_context(
     resolved_checkpoint_store = (
         checkpoint_store if checkpoint_store is not None else current_checkpoint_store
     )
+    current_agent_inbox = _CURRENT_AGENT_INBOX.get()
+    resolved_agent_inbox = (
+        agent_inbox if agent_inbox is not None else current_agent_inbox
+    )
 
     session_token = _CURRENT_SESSION_ID.set(resolved_session_id)
     namespace_token = _CURRENT_NAMESPACE.set(resolved_namespace)
@@ -93,6 +102,7 @@ def execution_context(
     parent_run_token = _CURRENT_PARENT_RUN_ID.set(resolved_parent_run_id)
     root_run_token = _CURRENT_ROOT_RUN_ID.set(resolved_root_run_id)
     checkpoint_token = _CURRENT_CHECKPOINT_STORE.set(resolved_checkpoint_store)
+    inbox_token = _CURRENT_AGENT_INBOX.set(resolved_agent_inbox)
     try:
         yield
     finally:
@@ -102,6 +112,7 @@ def execution_context(
         _CURRENT_PARENT_RUN_ID.reset(parent_run_token)
         _CURRENT_ROOT_RUN_ID.reset(root_run_token)
         _CURRENT_CHECKPOINT_STORE.reset(checkpoint_token)
+        _CURRENT_AGENT_INBOX.reset(inbox_token)
 
 
 @contextmanager
@@ -126,6 +137,7 @@ def get_execution_context() -> Mapping[str, Optional[Any]]:
         "parent_run_id": _CURRENT_PARENT_RUN_ID.get(),
         "root_run_id": _CURRENT_ROOT_RUN_ID.get(),
         "checkpoint_store": _CURRENT_CHECKPOINT_STORE.get(),
+        "agent_inbox": _CURRENT_AGENT_INBOX.get(),
     }
 
 

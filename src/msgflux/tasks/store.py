@@ -7,6 +7,8 @@ from threading import RLock
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
+from msgflux.agent_inbox import AgentInbox, AgentNotification
+
 
 def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -160,9 +162,18 @@ class TaskStore:
 class TaskHandle:
     """Small mutable handle injected into background tools."""
 
-    def __init__(self, task_id: str, store: TaskStore):
+    def __init__(
+        self,
+        task_id: str,
+        store: TaskStore,
+        *,
+        tool_name: Optional[str] = None,
+        agent_inbox: Optional[AgentInbox] = None,
+    ):
         self.task_id = task_id
         self._store = store
+        self._tool_name = tool_name
+        self._agent_inbox = agent_inbox
 
     def set_running(
         self,
@@ -195,3 +206,32 @@ class TaskHandle:
 
     def fail(self, error: Any) -> Optional[TaskRecord]:
         return self._store.fail(self.task_id, error)
+
+    def notify(
+        self,
+        *,
+        status: str,
+        hint: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        dedupe_key: Optional[str] = None,
+        source: str = "task",
+    ) -> Optional[AgentNotification]:
+        if self._agent_inbox is None:
+            return None
+
+        payload = dict(metadata or {})
+        if self._tool_name:
+            payload.setdefault("tool", self._tool_name)
+
+        notification = AgentNotification(
+            notification_id=uuid4().hex[:8],
+            source=source,
+            ref=self.task_id,
+            status=status,
+            hint=hint,
+            metadata=payload,
+            dedupe_key=dedupe_key,
+            created_at=_utc_now(),
+        )
+        self._agent_inbox.publish(notification)
+        return notification

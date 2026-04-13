@@ -1,4 +1,3 @@
-from msgflux.tasks.notifications import Notification, NotificationBus
 from msgflux.tasks.store import (
     TaskHandle,
     TaskProgress,
@@ -7,8 +6,6 @@ from msgflux.tasks.store import (
 )
 
 __all__ = [
-    "Notification",
-    "NotificationBus",
     "TaskHandle",
     "TaskProgress",
     "TaskRecord",

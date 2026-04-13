@@ -95,6 +95,24 @@ class ChatMessages:
         normalized_items = self._normalize_item(item)
         self._items[index:index] = normalized_items
 
+    def insert_before_active_turn(self, item: Mapping[str, Any]) -> None:
+        if not isinstance(item, Mapping):
+            raise TypeError(f"`item` must be Mapping, given `{type(item)}`")
+        if self._active_turn_index is None:
+            self.append(item)
+            return
+
+        normalized_items = self._normalize_item(item)
+        start_item_index = self._turns[self._active_turn_index].get("start_item_index")
+        if not isinstance(start_item_index, int):
+            self.append(item)
+            return
+
+        self._items[start_item_index:start_item_index] = normalized_items
+        self._turns[self._active_turn_index]["start_item_index"] = (
+            start_item_index + len(normalized_items)
+        )
+
     def extend(self, items: Iterable[Mapping[str, Any]]) -> None:
         if isinstance(items, ChatMessages):
             items = items._items
@@ -243,6 +261,14 @@ class ChatMessages:
         if self._active_turn_index is None:
             return None
         return deepcopy(self._turns[self._active_turn_index])
+
+    def get_active_turn_size(self) -> int:
+        if self._active_turn_index is None:
+            return 0
+        start_item_index = self._turns[self._active_turn_index].get("start_item_index")
+        if not isinstance(start_item_index, int):
+            return 0
+        return len(self._items) - start_item_index
 
     def fork(self, *, upto_turn: Optional[int] = None) -> "ChatMessages":
         if upto_turn is None:

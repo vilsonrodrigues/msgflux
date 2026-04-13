@@ -37,6 +37,25 @@ def _mock_model(text: str = "ok") -> MagicMock:
     return model
 
 
+def _notification_messages(
+    messages,
+    *,
+    source: str | None = None,
+    status: str | None = None,
+):
+    result = []
+    for message in messages:
+        content = message.get("content")
+        if not isinstance(content, str) or "<notifications>" not in content:
+            continue
+        if source is not None and f'source="{source}"' not in content:
+            continue
+        if status is not None and f'status="{status}"' not in content:
+            continue
+        result.append(message)
+    return result
+
+
 def test_background_tool_schema_excludes_task_handle():
     @mf.tool_config(background=True, inject_task=True)
     def background_tool(query: str, task) -> str:
@@ -187,11 +206,7 @@ def test_agent_injects_pending_task_notifications_as_system_note_messages():
         release.wait(timeout=2.0)
         return value * 2
 
-    agent = Agent(
-        name="Assistant",
-        model=_mock_model(),
-        tools=[long_job],
-    )
+    agent = Agent(name="Assistant", model=_mock_model(), tools=[long_job])
 
     agent.tool_library([("call_1", "long_job", {"value": 5})])
     task_id = agent.tool_library([("call_2", "task_list", {})]).tool_calls[0].result[0][
@@ -206,37 +221,29 @@ def test_agent_injects_pending_task_notifications_as_system_note_messages():
         == "completed"
     )
 
+    _wait_until(
+        lambda: bool(
+            _notification_messages(
+                agent.inspect_model_execution_params("Continue.")["messages"],
+                source="task",
+                status="completed",
+            )
+        )
+    )
     params = agent.inspect_model_execution_params("Continue.")
-    notification_messages = [
-        message
-        for message in params["messages"]
-        if isinstance(message.get("content"), str)
-        and "<task_notification>" in message["content"]
-    ]
+    notification_messages = _notification_messages(
+        params["messages"],
+        source="task",
+        status="completed",
+    )
 
     assert len(notification_messages) == 1
-    assert "<system_note>" in notification_messages[0]["content"]
-    assert f"task_output(task_id='{task_id}')" in notification_messages[0]["content"]
-
-    params = agent._prepare_inputs("Continue again.")
-    notification_messages = [
-        message
-        for message in params["messages"]
-        if isinstance(message.get("content"), str)
-        and "<task_notification>" in message["content"]
-    ]
-
-    assert len(notification_messages) == 1
-
-    params = agent._prepare_inputs("Continue once more.")
-    notification_messages = [
-        message
-        for message in params["messages"]
-        if isinstance(message.get("content"), str)
-        and "<task_notification>" in message["content"]
-    ]
-
-    assert notification_messages == []
+    content = notification_messages[0]["content"]
+    assert "<system_note>" in content
+    assert "<notifications>" in content
+    assert f'ref="{task_id}"' in content
+    assert "tool=long_job" in content
+    assert f"task_output(task_id='{task_id}')" in content
 
 
 def test_inspect_model_execution_params_does_not_consume_notifications():
@@ -248,11 +255,8 @@ def test_inspect_model_execution_params_does_not_consume_notifications():
         release.wait(timeout=2.0)
         return value * 2
 
-    agent = Agent(
-        name="Assistant",
-        model=_mock_model(),
-        tools=[long_job],
-    )
+    model = _mock_model()
+    agent = Agent(name="Assistant", model=model, tools=[long_job])
 
     agent.tool_library([("call_1", "long_job", {"value": 5})])
     task_id = agent.tool_library([("call_2", "task_list", {})]).tool_calls[0].result[0][
@@ -267,41 +271,132 @@ def test_inspect_model_execution_params_does_not_consume_notifications():
         == "completed"
     )
 
+    _wait_until(
+        lambda: bool(
+            _notification_messages(
+                agent.inspect_model_execution_params("Continue.")["messages"],
+                source="task",
+                status="completed",
+            )
+        )
+    )
     params = agent.inspect_model_execution_params("Continue.")
-    notification_messages = [
-        message
-        for message in params["messages"]
-        if isinstance(message.get("content"), str)
-        and "<task_notification>" in message["content"]
-    ]
+    notification_messages = _notification_messages(
+        params["messages"],
+        source="task",
+        status="completed",
+    )
     assert len(notification_messages) == 1
 
     params = agent.inspect_model_execution_params("Continue again.")
-    notification_messages = [
-        message
-        for message in params["messages"]
-        if isinstance(message.get("content"), str)
-        and "<task_notification>" in message["content"]
-    ]
+    notification_messages = _notification_messages(
+        params["messages"],
+        source="task",
+        status="completed",
+    )
     assert len(notification_messages) == 1
 
-    params = agent._prepare_inputs("Continue now.")
-    notification_messages = [
-        message
-        for message in params["messages"]
-        if isinstance(message.get("content"), str)
-        and "<task_notification>" in message["content"]
-    ]
+    messages = ChatMessages()
+    agent("Continue now.", messages=messages)
+
+    model_messages = model.call_args.kwargs["messages"]
+    notification_messages = _notification_messages(
+        model_messages,
+        source="task",
+        status="completed",
+    )
     assert len(notification_messages) == 1
 
-    params = agent._prepare_inputs("Continue once more.")
-    notification_messages = [
-        message
-        for message in params["messages"]
-        if isinstance(message.get("content"), str)
-        and "<task_notification>" in message["content"]
-    ]
+    history_messages = messages.to_chatml()
+    persisted_notifications = _notification_messages(
+        history_messages,
+        source="task",
+        status="completed",
+    )
+    assert len(persisted_notifications) == 1
+    notification_index = history_messages.index(persisted_notifications[0])
+    user_index = next(
+        index
+        for index, message in enumerate(history_messages)
+        if message.get("role") == "user"
+        and isinstance(message.get("content"), str)
+        and "Continue now." in message["content"]
+    )
+    assert notification_index < user_index
+
+    params = agent.inspect_model_execution_params("Continue once more.")
+    notification_messages = _notification_messages(params["messages"])
     assert notification_messages == []
+
+
+def test_task_progress_notifications_are_persisted():
+    started = threading.Event()
+    release = threading.Event()
+
+    @mf.tool_config(background=True, inject_task=True)
+    def long_job(value: int, task) -> int:
+        """Emit progress updates while running in the background."""
+        task.notify(
+            source="task_progress",
+            status="update",
+            hint="Wait for the final completion notification before consuming output.",
+            metadata={"tool_stage": "prepare"},
+            dedupe_key=f"progress:{task.task_id}",
+        )
+        started.set()
+        release.wait(timeout=2.0)
+        return value * 2
+
+    model = _mock_model()
+    agent = Agent(
+        name="Assistant",
+        model=model,
+        tools=[long_job],
+    )
+
+    agent.tool_library([("call_1", "long_job", {"value": 5})])
+    task_id = agent.tool_library([("call_2", "task_list", {})]).tool_calls[0].result[0][
+        "task_id"
+    ]
+    assert started.wait(timeout=1.0)
+
+    messages = ChatMessages()
+    agent("Continue.", messages=messages)
+
+    model_messages = model.call_args.kwargs["messages"]
+    progress_notifications = _notification_messages(
+        model_messages,
+        source="task_progress",
+        status="update",
+    )
+    assert len(progress_notifications) == 1
+    assert f'ref="{task_id}"' in progress_notifications[0]["content"]
+    assert "tool_stage=prepare" in progress_notifications[0]["content"]
+
+    persisted_notifications = _notification_messages(
+        messages.to_chatml(),
+        source="task_progress",
+        status="update",
+    )
+    assert len(persisted_notifications) == 1
+
+    release.set()
+    _wait_until(
+        lambda: agent.tool_library(
+            [("call_3", "task_status", {"task_id": task_id})]
+        ).tool_calls[0].result["status"]
+        == "completed"
+    )
+
+
+def test_nested_agent_uses_inherited_inbox_from_execution_context():
+    parent_inbox = mf.AgentInbox()
+    child = Agent(name="child", model=_mock_model())
+
+    with execution_context(agent_inbox=parent_inbox):
+        effective_inbox = child._get_effective_agent_inbox()
+
+    assert effective_inbox is parent_inbox
 
 
 def test_background_agent_inherits_context_and_checkpoint_run_id():

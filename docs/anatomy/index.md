@@ -40,6 +40,8 @@ Use this section when you need to answer questions like:
 - [Checkpoints And Replay](checkpoints-and-replay.md): the planned durability
   contract for `session_id`, `run_id`, subagent recovery, and parallel worker
   replay.
+- [Agent Inbox](agent-inbox.md): the notification primitive for runtime
+  signals delivered to the model.
 - [Logical vs Provider Schema](logical-vs-provider-schema.md): why msgFlux
   separates runtime shape from provider-facing schema.
 - [Dict Lowering and Restoration](dict-lowering-and-restoration.md): how
