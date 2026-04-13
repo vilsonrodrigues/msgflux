@@ -91,6 +91,30 @@ runtime producer publishes AgentNotification
   -> provider call receives that message with the rest of the history
 ```
 
+More concretely:
+
+```text
+background tool / checkpoint / hook
+              |
+              v
+     AgentNotification(...)
+              |
+              v
+      AgentInbox.publish()
+              |
+              v
+   Agent._prepare_model_execution()
+              |
+              v
+     AgentInbox.drain() + render()
+              |
+              v
+<system_note><notifications>...</notifications></system_note>
+              |
+              v
+         provider call
+```
+
 ## Rendering
 
 The renderer should build one synthetic message containing a `<system_note>`

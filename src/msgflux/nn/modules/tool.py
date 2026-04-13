@@ -615,6 +615,8 @@ class ToolLibrary(Module, metaclass=AutoParams):
     def set_agent_inbox(self, agent_inbox: AgentInbox) -> None:
         self.agent_inbox = agent_inbox
 
+    # --- Task Runtime Registration ---
+
     def _ensure_task_runtime_tools(self) -> None:
         if self._task_runtime_enabled:
             return
@@ -664,6 +666,8 @@ class ToolLibrary(Module, metaclass=AutoParams):
         )
         self.library.update({name: tool})
         self.tool_configs[name] = {}
+
+    # --- Task Runtime Tools ---
 
     def _task_status(self, task_id: str) -> Dict[str, Any]:
         task = self.task_store.get(task_id)
@@ -716,6 +720,8 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 return self._build_task_timeout_result(task_id=task_id, task=task)
             time.sleep(0.05)
 
+    # --- Task Runtime Helpers ---
+
     def _build_task_result(self, *, task_id: str, task: Optional[Any]) -> Any:
         if task is None:
             return {"task_id": task_id, "status": "not_found"}
@@ -756,6 +762,8 @@ class ToolLibrary(Module, metaclass=AutoParams):
             current = self._task_futures.get(task_id)
             if current is future:
                 self._task_futures.pop(task_id, None)
+
+    # --- Tool Call Preparation ---
 
     def _build_call_params(
         self,
@@ -820,6 +828,8 @@ class ToolLibrary(Module, metaclass=AutoParams):
             parameters.pop(key, None)
         return parameters
 
+    # --- Background Task Execution ---
+
     def _run_background_tool(
         self,
         *,
@@ -866,6 +876,8 @@ class ToolLibrary(Module, metaclass=AutoParams):
             future.result()
         except Exception as exc:
             logger.error(f"Background task error: {exc!s}", exc_info=True)
+
+    # --- Background Task Dispatch ---
 
     def _dispatch_background_tool(
         self,
@@ -955,6 +967,8 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 f"`task_output(task_id='{task.task_id}')` when it completes."
             ),
         )
+
+    # --- Background Task Notifications ---
 
     def _publish_task_notification(
         self,

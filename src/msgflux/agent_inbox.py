@@ -11,9 +11,13 @@ from xml.sax.saxutils import escape
 from msgflux.logger import logger
 
 
+# --- Module Utilities ---
+
 def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
+
+# --- Notification Model ---
 
 @dataclass
 class AgentNotification:
@@ -39,8 +43,12 @@ class AgentInbox:
         self.verbose = verbose
         self.owner = owner
 
+    # --- Configuration ---
+
     def set_verbose(self, verbose: bool) -> None:
         self.verbose = bool(verbose)
+
+    # --- Queue Operations ---
 
     def publish(
         self,
@@ -108,6 +116,8 @@ class AgentInbox:
                 if notification.notification_id not in ids
             ]
 
+    # --- Rendering ---
+
     def render(
         self,
         notifications: Iterable[AgentNotification | Mapping[str, Any]],
@@ -141,6 +151,8 @@ class AgentInbox:
                 lines.append(f"<notification {attrs_repr} />")
         lines.extend(["</notifications>", "</system_note>"])
         return {"role": "user", "content": "\n".join(lines)}
+
+    # --- Normalization Helpers ---
 
     def _normalize(
         self,
@@ -179,6 +191,8 @@ class AgentInbox:
             dedupe_key=payload.get("dedupe_key"),
             created_at=created_at,
         )
+
+    # --- Escaping Helpers ---
 
     @staticmethod
     def _stringify(value: Any) -> str:
