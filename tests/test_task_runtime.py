@@ -120,7 +120,7 @@ def test_inject_library_can_add_background_tool_with_task_tools():
 
     add_result = library([("call_1", "add_background_multiplier", {})])
     assert "background_multiplier" in add_result.tool_calls[0].result
-    assert "task_get" in add_result.tool_calls[0].result
+    assert "task_status" in add_result.tool_calls[0].result
     assert "task_output" in add_result.tool_calls[0].result
 
     dispatch = library([("call_2", "background_multiplier", {"value": 4})])
@@ -153,7 +153,7 @@ def test_background_task_reports_progress_and_output():
     library = ToolLibrary(name="lib", tools=[long_job])
 
     dispatch = library([("call_1", "long_job", {"value": 21})])
-    assert "task_get" in library.get_tool_names()
+    assert "task_status" in library.get_tool_names()
     assert "task_output" in library.get_tool_names()
     assert started.wait(timeout=1.0)
     assert "task_id='" in dispatch.tool_calls[0].result
@@ -161,7 +161,7 @@ def test_background_task_reports_progress_and_output():
     list_result = library([("call_2", "task_list", {})])
     task_id = list_result.tool_calls[0].result[0]["task_id"]
 
-    get_result = library([("call_3", "task_get", {"task_id": task_id})])
+    get_result = library([("call_3", "task_status", {"task_id": task_id})])
     task_state = get_result.tool_calls[0].result
     assert task_state["status"] == "running"
     assert task_state["progress"]["stage"] == "work"
@@ -169,7 +169,7 @@ def test_background_task_reports_progress_and_output():
 
     release.set()
     _wait_until(
-        lambda: library([("call_4", "task_get", {"task_id": task_id})]).tool_calls[0]
+        lambda: library([("call_4", "task_status", {"task_id": task_id})]).tool_calls[0]
         .result["status"]
         == "completed"
     )
@@ -201,7 +201,7 @@ def test_agent_injects_pending_task_notifications_as_system_note_messages():
     release.set()
     _wait_until(
         lambda: agent.tool_library(
-            [("call_3", "task_get", {"task_id": task_id})]
+            [("call_3", "task_status", {"task_id": task_id})]
         ).tool_calls[0].result["status"]
         == "completed"
     )
@@ -262,7 +262,7 @@ def test_inspect_model_execution_params_does_not_consume_notifications():
     release.set()
     _wait_until(
         lambda: agent.tool_library(
-            [("call_3", "task_get", {"task_id": task_id})]
+            [("call_3", "task_status", {"task_id": task_id})]
         ).tool_calls[0].result["status"]
         == "completed"
     )
@@ -324,12 +324,12 @@ def test_background_agent_inherits_context_and_checkpoint_run_id():
     task_id = library([("call_2", "task_list", {})]).tool_calls[0].result[0]["task_id"]
 
     _wait_until(
-        lambda: library([("call_3", "task_get", {"task_id": task_id})]).tool_calls[0]
+        lambda: library([("call_3", "task_status", {"task_id": task_id})]).tool_calls[0]
         .result["status"]
         == "completed"
     )
 
-    task_state = library([("call_4", "task_get", {"task_id": task_id})]).tool_calls[0].result
+    task_state = library([("call_4", "task_status", {"task_id": task_id})]).tool_calls[0].result
     assert task_state["metadata"]["session_id"] == "user_42"
     assert task_state["metadata"]["parent_run_id"] == "run_root"
     assert task_state["metadata"]["root_run_id"] == "run_root"

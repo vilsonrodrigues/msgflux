@@ -112,7 +112,7 @@ Background tasks should support both delivery paths from the start.
 
 The active path is explicit polling through tools:
 
-- `task_get(task_id)` returns rich state
+- `task_status(task_id)` returns rich state
 - `task_output(task_id)` returns only the final output
 - `task_list(...)` returns tasks visible in the current scope
 
@@ -169,19 +169,20 @@ Recommended additions:
 
 - `background=True`
 - `inject_task=True`
-- `special_tool=True`
+- `inject_library=True`
 
 The important detail is that `inject_task=True` should inject a `TaskHandle`,
 not the store and not the full `ToolLibrary`.
 
-`special_tool=True` injects a controlled `tool_library` handle. The handle can
-add, remove, and list tools without exposing the whole `ToolLibrary` object.
+`inject_library=True` injects a controlled `tool_library` handle. The handle
+can add, remove, and list tools without exposing the whole `ToolLibrary`
+object.
 
-## Why Both `task_get` And `task_output`
+## Why Both `task_status` And `task_output`
 
 These tools solve different problems.
 
-- `task_get` is for orchestration and polling logic
+- `task_status` is for orchestration and polling logic
 - `task_output` is for consuming the final payload
 
 If `task_output` is the only reader, the runtime will collapse state, progress,

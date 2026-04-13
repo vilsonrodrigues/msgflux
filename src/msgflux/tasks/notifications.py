@@ -54,7 +54,7 @@ class NotificationBus:
             status="completed",
             message=(
                 f"Background task '{task_id}' from tool '{tool_name}' completed. "
-                f"Call task_output(task_id='{task_id}') to inspect the final result."
+                f"Use task_output(task_id='{task_id}') if you need the result."
             ),
             created_at=_utc_now(),
         )
@@ -71,7 +71,7 @@ class NotificationBus:
             status="failed",
             message=(
                 f"Background task '{task_id}' from tool '{tool_name}' failed. "
-                f"Call task_get(task_id='{task_id}') to inspect the error."
+                f"Use task_status(task_id='{task_id}') if you need error details."
             ),
             created_at=_utc_now(),
         )

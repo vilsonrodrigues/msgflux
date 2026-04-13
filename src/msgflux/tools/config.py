@@ -17,7 +17,6 @@ def tool_config(
     inject_message: Optional[bool] = False,
     inject_messages: Optional[bool] = False,
     inject_vars: Optional[Union[bool, List[str]]] = False,
-    special_tool: Optional[bool] = False,
     handoff: Optional[bool] = False,
     name_override: Optional[str] = None,
     retry: Optional[Any] = None,
@@ -47,7 +46,7 @@ def tool_config(
             The model receives a confirmation that the task was started.
         background:
             If True, the tool runs in the background and returns a `task_id`
-            immediately. The result can be retrieved later via `task_get`
+            immediately. The result can be retrieved later via `task_status`
             and `task_output`.
         disable_input:
             If True, removes public input parameters from the tool schema. The model
@@ -72,8 +71,6 @@ def tool_config(
             Indicates if the tool should receive vars. If True, the tool receives all
             vars as a named argument `vars`. If a list of vars is passed, only those
             vars will be passed.
-        special_tool:
-            Legacy alias for `inject_library`.
         handoff:
             If True, indicates that this function will receive the `messages`
             from the Agent.
@@ -131,7 +128,6 @@ def tool_config(
         _return_direct = return_direct  # Local copy
         _inject_message = inject_message  # Local copy
         _inject_messages = inject_messages  # Local copy
-        _inject_library = inject_library or special_tool
 
         if call_as_response is True and _return_direct is False:
             _return_direct = True
@@ -169,11 +165,10 @@ def tool_config(
                     "handoff": handoff,
                     "disable_input": disable_input,
                     "inject_task": inject_task,
-                    "inject_library": _inject_library,
+                    "inject_library": inject_library,
                     "inject_message": _inject_message,
                     "inject_messages": _inject_messages,
                     "inject_vars": inject_vars,
-                    "special_tool": _inject_library,
                     "return_direct": _return_direct,
                     "name_overridden": name_override,
                     "retry": retry,
