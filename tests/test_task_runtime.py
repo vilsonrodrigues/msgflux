@@ -140,6 +140,7 @@ def test_inject_library_can_add_background_tool_with_task_tools():
     add_result = library([("call_1", "add_background_multiplier", {})])
     assert "background_multiplier" in add_result.tool_calls[0].result
     assert "task_status" in add_result.tool_calls[0].result
+    assert "task_wait" in add_result.tool_calls[0].result
     assert "task_output" in add_result.tool_calls[0].result
 
     dispatch = library([("call_2", "background_multiplier", {"value": 4})])
@@ -173,6 +174,7 @@ def test_background_task_reports_progress_and_output():
 
     dispatch = library([("call_1", "long_job", {"value": 21})])
     assert "task_status" in library.get_tool_names()
+    assert "task_wait" in library.get_tool_names()
     assert "task_output" in library.get_tool_names()
     assert started.wait(timeout=1.0)
     assert "task_id='" in dispatch.tool_calls[0].result
@@ -195,6 +197,106 @@ def test_background_task_reports_progress_and_output():
 
     output_result = library([("call_5", "task_output", {"task_id": task_id})])
     assert output_result.tool_calls[0].result == 42
+
+
+def test_task_wait_returns_final_output():
+    release = threading.Event()
+
+    @mf.tool_config(background=True)
+    def long_job(value: int) -> int:
+        """Run a long job in the background."""
+        release.wait(timeout=2.0)
+        return value * 2
+
+    library = ToolLibrary(name="lib", tools=[long_job])
+
+    dispatch = library([("call_1", "long_job", {"value": 21})])
+    assert "task_wait" in library.get_tool_names()
+    task_id = library([("call_2", "task_list", {})]).tool_calls[0].result[0]["task_id"]
+    assert f"task_wait(task_id='{task_id}')" in dispatch.tool_calls[0].result
+
+    timer = threading.Timer(0.1, release.set)
+    timer.start()
+    try:
+        wait_result = library([("call_3", "task_wait", {"task_id": task_id, "timeout": 1.0})])
+    finally:
+        timer.cancel()
+
+    assert wait_result.tool_calls[0].result == 42
+
+
+def test_task_wait_returns_timeout_payload_with_progress():
+    release = threading.Event()
+
+    @mf.tool_config(background=True, inject_task=True)
+    def long_job(value: int, task) -> int:
+        """Run a long job in the background."""
+        task.update_progress(stage="work", message="Halfway", current=1, total=2)
+        release.wait(timeout=2.0)
+        return value * 2
+
+    library = ToolLibrary(name="lib", tools=[long_job])
+
+    library([("call_1", "long_job", {"value": 21})])
+    task_id = library([("call_2", "task_list", {})]).tool_calls[0].result[0]["task_id"]
+
+    wait_result = library([("call_3", "task_wait", {"task_id": task_id, "timeout": 0.05})])
+    payload = wait_result.tool_calls[0].result
+
+    assert payload["task_id"] == task_id
+    assert payload["status"] == "timeout"
+    assert payload["task_status"] == "running"
+    assert payload["progress"]["stage"] == "work"
+    assert payload["progress"]["percent"] == 50.0
+
+    release.set()
+    _wait_until(
+        lambda: library([("call_4", "task_status", {"task_id": task_id})]).tool_calls[0]
+        .result["status"]
+        == "completed"
+    )
+
+
+def test_task_wait_returns_failed_payload():
+    @mf.tool_config(background=True)
+    def failing_job() -> int:
+        """Always fail."""
+        raise RuntimeError("boom")
+
+    library = ToolLibrary(name="lib", tools=[failing_job])
+
+    library([("call_1", "failing_job", {})])
+    task_id = library([("call_2", "task_list", {})]).tool_calls[0].result[0]["task_id"]
+
+    wait_result = library([("call_3", "task_wait", {"task_id": task_id, "timeout": 1.0})])
+    payload = wait_result.tool_calls[0].result
+
+    assert payload["task_id"] == task_id
+    assert payload["status"] == "failed"
+    assert "boom" in payload["error"]
+
+
+def test_task_wait_falls_back_to_task_store_polling_without_future():
+    @mf.tool_config(background=True)
+    def placeholder() -> None:
+        """Enable task runtime tools for the library."""
+        return None
+
+    library = ToolLibrary(name="lib", tools=[placeholder])
+    task = library.task_store.create(tool_name="external_job")
+
+    def complete_task():
+        time.sleep(0.1)
+        library.task_store.complete(task.task_id, 99)
+
+    timer = threading.Thread(target=complete_task)
+    timer.start()
+    try:
+        wait_result = library([("call_1", "task_wait", {"task_id": task.task_id, "timeout": 1.0})])
+    finally:
+        timer.join(timeout=1.0)
+
+    assert wait_result.tool_calls[0].result == 99
 
 
 def test_agent_injects_pending_task_notifications_as_system_note_messages():

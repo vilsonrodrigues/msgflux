@@ -1,9 +1,12 @@
 import asyncio
 import inspect
+import time
+from concurrent.futures import TimeoutError as FutureTimeoutError
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from functools import partial
 from importlib import import_module
+from threading import Lock
 from typing import Any, Callable, Dict, Iterator, List, Mapping, Optional, Tuple, Union
 from uuid import uuid4
 
@@ -439,8 +442,10 @@ class ToolLibrary(Module, metaclass=AutoParams):
         self.register_buffer("mcp_clients", {})
         self.task_store = TaskStore()
         self.agent_inbox = AgentInbox(owner=f"{name}_tool_library")
-        self._runtime_tool_names = {"task_status", "task_list", "task_output"}
+        self._runtime_tool_names = {"task_status", "task_list", "task_output", "task_wait"}
         self._task_runtime_enabled = False
+        self._task_futures: Dict[str, Any] = {}
+        self._task_futures_lock = Lock()
         for tool in tools:
             self.add(tool)
         if mcp_servers:
@@ -475,6 +480,8 @@ class ToolLibrary(Module, metaclass=AutoParams):
             F.wait_for(mcp_data["client"].disconnect)
         self.mcp_clients.clear()
         self._task_runtime_enabled = False
+        with self._task_futures_lock:
+            self._task_futures.clear()
 
     def _initialize_mcp_clients(self, mcp_servers: List[Dict[str, Any]]):
         """Initialize MCP clients from server configurations."""
@@ -630,6 +637,15 @@ class ToolLibrary(Module, metaclass=AutoParams):
             annotations={"task_id": str},
             impl=self._task_output,
         )
+        self._register_runtime_tool(
+            name="task_wait",
+            description=(
+                "Wait for a background task to finish. "
+                "Returns the final output, failed payload, or a timeout status."
+            ),
+            annotations={"task_id": str, "timeout": Optional[float]},
+            impl=self._task_wait,
+        )
 
     def _register_runtime_tool(
         self,
@@ -660,6 +676,47 @@ class ToolLibrary(Module, metaclass=AutoParams):
 
     def _task_output(self, task_id: str) -> Any:
         task = self.task_store.get(task_id)
+        return self._build_task_result(task_id=task_id, task=task)
+
+    def _task_wait(self, task_id: str, timeout: Optional[float] = None) -> Any:
+        if timeout is not None:
+            if isinstance(timeout, bool) or not isinstance(timeout, (int, float)):
+                raise TypeError(
+                    "`timeout` must be float, int or None, "
+                    f"given `{type(timeout)}`"
+                )
+            if timeout < 0:
+                raise ValueError("`timeout` must be greater than or equal to 0.")
+
+        task = self.task_store.get(task_id)
+        if task is None:
+            return {"task_id": task_id, "status": "not_found"}
+        if task.status in {"completed", "failed"}:
+            return self._build_task_result(task_id=task_id, task=task)
+
+        future = self._get_task_future(task_id)
+        if future is not None:
+            try:
+                future.result(timeout=timeout)
+            except FutureTimeoutError:
+                task = self.task_store.get(task_id)
+                return self._build_task_timeout_result(task_id=task_id, task=task)
+            except Exception:
+                task = self.task_store.get(task_id)
+                return self._build_task_result(task_id=task_id, task=task)
+            task = self.task_store.get(task_id)
+            return self._build_task_result(task_id=task_id, task=task)
+
+        deadline = None if timeout is None else time.monotonic() + float(timeout)
+        while True:
+            task = self.task_store.get(task_id)
+            if task is None or task.status in {"completed", "failed"}:
+                return self._build_task_result(task_id=task_id, task=task)
+            if deadline is not None and time.monotonic() >= deadline:
+                return self._build_task_timeout_result(task_id=task_id, task=task)
+            time.sleep(0.05)
+
+    def _build_task_result(self, *, task_id: str, task: Optional[Any]) -> Any:
         if task is None:
             return {"task_id": task_id, "status": "not_found"}
         if task.status == "completed":
@@ -671,6 +728,34 @@ class ToolLibrary(Module, metaclass=AutoParams):
             "status": task.status,
             "progress": task.progress.to_dict(),
         }
+
+    def _build_task_timeout_result(self, *, task_id: str, task: Optional[Any]) -> Dict[str, Any]:
+        if task is None:
+            return {"task_id": task_id, "status": "not_found"}
+        payload = {
+            "task_id": task_id,
+            "status": "timeout",
+            "task_status": task.status,
+        }
+        if task.status not in {"completed", "failed"}:
+            payload["progress"] = task.progress.to_dict()
+        elif task.status == "failed":
+            payload["error"] = task.error
+        return payload
+
+    def _register_task_future(self, task_id: str, future: Any) -> None:
+        with self._task_futures_lock:
+            self._task_futures[task_id] = future
+
+    def _get_task_future(self, task_id: str) -> Optional[Any]:
+        with self._task_futures_lock:
+            return self._task_futures.get(task_id)
+
+    def _cleanup_task_future(self, task_id: str, future: Any) -> None:
+        with self._task_futures_lock:
+            current = self._task_futures.get(task_id)
+            if current is future:
+                self._task_futures.pop(task_id, None)
 
     def _build_call_params(
         self,
@@ -855,6 +940,8 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 agent_inbox=agent_inbox,
             )
         )
+        self._register_task_future(task.task_id, future)
+        future.add_done_callback(partial(self._cleanup_task_future, task.task_id))
         future.add_done_callback(self._log_background_task_failure)
         return ToolCall(
             id=tool_id,
@@ -863,7 +950,8 @@ class ToolLibrary(Module, metaclass=AutoParams):
             result=(
                 f"The `{tool_name}` tool is running in the background with "
                 f"task_id='{task.task_id}'. Use `task_status(task_id='{task.task_id}')` "
-                f"to inspect status and progress, or "
+                f"to inspect status and progress, `task_wait(task_id='{task.task_id}')` "
+                f"to block until it finishes, or "
                 f"`task_output(task_id='{task.task_id}')` when it completes."
             ),
         )
