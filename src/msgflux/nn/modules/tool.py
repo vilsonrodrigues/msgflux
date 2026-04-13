@@ -83,10 +83,8 @@ class ToolLibraryHandle:
     def __init__(self, library: "ToolLibrary"):
         self._library = library
 
-    def add(self, tool: Union[str, Callable]) -> str:
+    def add(self, tool: Callable) -> str:
         self._library.add(tool)
-        if isinstance(tool, str):
-            return tool
         return getattr(tool, "name", None) or getattr(tool, "__name__", None)
 
     def remove(self, tool_name: str) -> str:
@@ -100,7 +98,7 @@ class ToolLibraryHandle:
 
 
 def _uses_library_injection(config: Mapping[str, Any]) -> bool:
-    return config.get("inject_library", False) or config.get("special_tool", False)
+    return config.get("inject_library", False)
 
 
 def _is_agent_tool_impl(impl: Any) -> bool:
@@ -415,7 +413,6 @@ class ToolLibrary(Module, metaclass=AutoParams):
         self,
         name: str,
         tools: List[Callable],
-        special_tools: Optional[List[str]] = None,
         mcp_servers: Optional[List[Dict[str, Any]]] = None,
     ):
         """Initialize the ToolLibrary.
@@ -425,8 +422,6 @@ class ToolLibrary(Module, metaclass=AutoParams):
             Library name.
         tools:
             A list of callables.
-        special_tools:
-            Autonomy tools for the model.
         mcp_servers:
             List of MCP server configurations. Each config should contain:
             - name: Namespace for tools from this server
@@ -438,59 +433,41 @@ class ToolLibrary(Module, metaclass=AutoParams):
         super().__init__()
         self.set_name(f"{name}_tool_library")
         self.library = ModuleDict()
-        self.register_buffer("special_library", [])
         self.register_buffer("tool_configs", {})
         self.register_buffer("mcp_clients", {})
         self.task_store = TaskStore()
         self.notification_bus = NotificationBus()
-        self._runtime_tool_names = {"task_get", "task_list", "task_output"}
+        self._runtime_tool_names = {"task_status", "task_list", "task_output"}
         self._task_runtime_enabled = False
         for tool in tools:
             self.add(tool)
-        if special_tools:
-            for special_tool in special_tools:
-                self.special_add(special_tool)
         if mcp_servers:
             self._initialize_mcp_clients(mcp_servers)
 
-    def add(self, tool: Union[str, Callable]):
+    def add(self, tool: Callable):
         """Add a local tool in library."""
-        if isinstance(tool, str):
-            if tool in self.special_library:
-                raise ValueError(
-                    f"The special tool name `{tool}` is already in special tool library"
-                )
-            self.special_library.append(tool)
-        else:
-            name = getattr(tool, "name", None) or getattr(tool, "__name__", None)
-            if name in self.library.keys():
-                raise ValueError(f"The tool name `{name}` is already in tool library")
-            if not isinstance(tool, Tool):
-                tool = _convert_module_to_nn_tool(tool)
+        name = getattr(tool, "name", None) or getattr(tool, "__name__", None)
+        if name in self.library.keys():
+            raise ValueError(f"The tool name `{name}` is already in tool library")
+        if not isinstance(tool, Tool):
+            tool = _convert_module_to_nn_tool(tool)
 
-            # Store tool config (may be empty dict for local tools)
-            self.tool_configs[tool.name] = getattr(tool, "tool_config", {})
-            if self.tool_configs[tool.name].get("background", False):
-                self._ensure_task_runtime_tools()
+        # Store tool config (may be empty dict for local tools)
+        self.tool_configs[tool.name] = getattr(tool, "tool_config", {})
+        if self.tool_configs[tool.name].get("background", False):
+            self._ensure_task_runtime_tools()
 
-            self.library.update({tool.name: tool})
-
-    def special_add(self, tool_name: str):
-        """Backward-compatible alias for special tool registration."""
-        self.add(tool_name)
+        self.library.update({tool.name: tool})
 
     def remove(self, tool_name: str):
         if tool_name in self.library.keys():
             self.library.pop(tool_name)
             self.tool_configs.pop(tool_name, None)
-        elif tool_name in self.special_library:
-            self.special_library.remove(tool_name)
         else:
             raise ValueError(f"The tool name `{tool_name}` is not in tool library")
 
     def clear(self):
         self.library.clear()
-        self.special_library.clear()
         self.tool_configs.clear()
         for mcp_data in self.mcp_clients.values():
             F.wait_for(mcp_data["client"].disconnect)
@@ -639,10 +616,10 @@ class ToolLibrary(Module, metaclass=AutoParams):
             return
         self._task_runtime_enabled = True
         self._register_runtime_tool(
-            name="task_get",
-            description="Get the current state of a background task by task_id.",
+            name="task_status",
+            description="Get the current status of a background task by task_id.",
             annotations={"task_id": str},
-            impl=self._task_get,
+            impl=self._task_status,
         )
         self._register_runtime_tool(
             name="task_list",
@@ -675,7 +652,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
         self.library.update({name: tool})
         self.tool_configs[name] = {}
 
-    def _task_get(self, task_id: str) -> Dict[str, Any]:
+    def _task_status(self, task_id: str) -> Dict[str, Any]:
         task = self.task_store.get(task_id)
         if task is None:
             return {"task_id": task_id, "status": "not_found"}
@@ -856,7 +833,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
             parameters=self._build_call_parameters_for_response(call_params),
             result=(
                 f"The `{tool_name}` tool is running in the background with "
-                f"task_id='{task.task_id}'. Use `task_get(task_id='{task.task_id}')` "
+                f"task_id='{task.task_id}'. Use `task_status(task_id='{task.task_id}')` "
                 f"to inspect status and progress, or "
                 f"`task_output(task_id='{task.task_id}')` when it completes."
             ),

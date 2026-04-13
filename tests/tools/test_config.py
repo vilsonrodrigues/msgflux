@@ -69,7 +69,6 @@ class TestToolConfig:
         assert config.inject_vars is False
         assert config.inject_message is False
         assert config.inject_messages is False
-        assert config.special_tool is False
 
     def test_tool_config_call_as_response_sets_return_direct(self):
         """Test that call_as_response=True automatically sets return_direct=True."""
@@ -164,17 +163,6 @@ class TestToolConfig:
             pass
 
         assert sample_function.tool_config.inject_library is True
-        assert sample_function.tool_config.special_tool is True
-
-    def test_tool_config_special_tool_alias_sets_inject_library(self):
-        """Test that special_tool remains a compatible alias."""
-
-        @tool_config(special_tool=True)
-        def sample_function():
-            pass
-
-        assert sample_function.tool_config.inject_library is True
-        assert sample_function.tool_config.special_tool is True
 
     def test_tool_config_name_override(self):
         """Test that name_override changes the function name."""

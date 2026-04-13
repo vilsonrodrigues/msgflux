@@ -5,7 +5,7 @@ Background tasks let a tool start work now and return the final result later.
 The current design is intentionally small:
 
 - `background=True` dispatches the tool and returns a `task_id`
-- `task_get(task_id)` returns task state and progress
+- `task_status(task_id)` returns task state and progress
 - `task_output(task_id)` returns the final output
 - `task_list()` lists tasks visible in the current `ToolLibrary`
 - completed and failed tasks can also be delivered back to the agent as a
@@ -55,7 +55,7 @@ print(dispatch.tool_calls[0].result)
 tasks = agent.tool_library([("call_2", "task_list", {})])
 task_id = tasks.tool_calls[0].result[0]["task_id"]
 
-state = agent.tool_library([("call_3", "task_get", {"task_id": task_id})])
+state = agent.tool_library([("call_3", "task_status", {"task_id": task_id})])
 print(state.tool_calls[0].result)
 
 result = agent.tool_library([("call_4", "task_output", {"task_id": task_id})])
@@ -89,7 +89,7 @@ def process_items(items: list[str], task) -> int:
     return total
 ```
 
-While the task is running, `task_get(task_id)` returns something like:
+While the task is running, `task_status(task_id)` returns something like:
 
 ```python
 {
@@ -115,7 +115,7 @@ synthetic user message:
 <system_note>
 <task_notification>
 Background task 'abcd1234' from tool 'long_sum' completed.
-Call task_output(task_id='abcd1234') to inspect the final result.
+Use task_output(task_id='abcd1234') if you need the result.
 </task_notification>
 </system_note>
 ```
