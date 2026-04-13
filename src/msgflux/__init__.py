@@ -5,6 +5,7 @@ if TYPE_CHECKING:
     from msgspec_ext import load_dotenv
 
     from msgflux.cache import response_cache
+    from msgflux.chat_messages import ChatMessages
     from msgflux.core.dotdict import dotdict
     from msgflux.core.examples import Example
     from msgflux.core.message import Message
@@ -12,6 +13,11 @@ if TYPE_CHECKING:
     from msgflux.data.dbs import DB
     from msgflux.data.parsers import Parser
     from msgflux.data.retrievers import Retriever
+    from msgflux.data.stores import (
+        CheckpointStore,
+        InMemoryCheckpointStore,
+        SQLiteCheckpointStore,
+    )
     from msgflux.data.types import Audio, File, Image, Video
     from msgflux.dsl.inline import Inline
     from msgflux.dsl.signature import InputField, OutputField, Signature
@@ -29,11 +35,14 @@ if TYPE_CHECKING:
 __all__ = [
     "DB",
     "Audio",
+    "ChatMessages",
     "ChatBlock",
     "ChatML",
+    "CheckpointStore",
     "Example",
     "File",
     "Image",
+    "InMemoryCheckpointStore",
     "Inline",
     "InputField",
     "Message",
@@ -43,6 +52,7 @@ __all__ = [
     "Parser",
     "Registry",
     "Retriever",
+    "SQLiteCheckpointStore",
     "Signature",
     "Spans",
     "TaskError",
@@ -61,12 +71,15 @@ __all__ = [
 
 _LAZY_IMPORTS = {
     "Audio": ("msgflux.data.types", "Audio"),
+    "ChatMessages": ("msgflux.chat_messages", "ChatMessages"),
     "ChatBlock": ("msgflux.utils.chat", "ChatBlock"),
     "ChatML": ("msgflux.utils.chat", "ChatML"),
+    "CheckpointStore": ("msgflux.data.stores", "CheckpointStore"),
     "DB": ("msgflux.data.dbs", "DB"),
     "Example": ("msgflux.core.examples", "Example"),
     "File": ("msgflux.data.types", "File"),
     "Image": ("msgflux.data.types", "Image"),
+    "InMemoryCheckpointStore": ("msgflux.data.stores", "InMemoryCheckpointStore"),
     "Inline": ("msgflux.dsl.inline", "Inline"),
     "InputField": ("msgflux.dsl.signature", "InputField"),
     "Message": ("msgflux.core.message", "Message"),
@@ -89,6 +102,7 @@ _LAZY_IMPORTS = {
     "response_cache": ("msgflux.cache", "response_cache"),
     "save": ("msgflux.utils.msgspec", "save"),
     "set_envs": ("msgflux.envs", "set_envs"),
+    "SQLiteCheckpointStore": ("msgflux.data.stores", "SQLiteCheckpointStore"),
     "tool_config": ("msgflux.tools.config", "tool_config"),
 }
 

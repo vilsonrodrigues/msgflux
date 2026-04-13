@@ -17,6 +17,7 @@ class Notification:
     notification_id: str
     task_id: str
     tool_name: str
+    kind: str
     status: str
     message: str
     created_at: str
@@ -49,6 +50,7 @@ class NotificationBus:
             notification_id=uuid4().hex[:8],
             task_id=task_id,
             tool_name=tool_name,
+            kind="completed",
             status="completed",
             message=(
                 f"Background task '{task_id}' from tool '{tool_name}' completed. "
@@ -65,6 +67,7 @@ class NotificationBus:
             notification_id=uuid4().hex[:8],
             task_id=task_id,
             tool_name=tool_name,
+            kind="failed",
             status="failed",
             message=(
                 f"Background task '{task_id}' from tool '{tool_name}' failed. "
