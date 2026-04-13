@@ -6,6 +6,7 @@ The current design is intentionally small:
 
 - `background=True` dispatches the tool and returns a `task_id`
 - `task_status(task_id)` returns task state and progress
+- `task_wait(task_id)` blocks until the task completes, fails, or times out
 - `task_output(task_id)` returns the final output
 - `task_list()` lists tasks visible in the current `ToolLibrary`
 - completed and failed tasks can also be delivered back to the agent as a
@@ -61,6 +62,22 @@ print(state.tool_calls[0].result)
 result = agent.tool_library([("call_4", "task_output", {"task_id": task_id})])
 print(result.tool_calls[0].result)
 ```
+
+## Example 1B: Waiting For A Background Task
+
+Sometimes the agent has nothing useful to do until the task finishes.
+
+```python
+wait_result = agent.tool_library(
+    [("call_5", "task_wait", {"task_id": task_id, "timeout": 5.0})]
+)
+print(wait_result.tool_calls[0].result)
+```
+
+When the task completes, `task_wait` returns the same payload as
+`task_output(task_id)`. If the task fails, it returns the failed payload. If
+the timeout is reached first, it returns a timeout payload with the current
+task status and progress.
 
 ## Example 2: Reporting Progress
 

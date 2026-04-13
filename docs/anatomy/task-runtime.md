@@ -114,6 +114,7 @@ Background tasks should support both delivery paths from the start.
 The active path is explicit polling through tools:
 
 - `task_status(task_id)` returns rich state
+- `task_wait(task_id)` blocks until the task reaches a terminal state or times out
 - `task_output(task_id)` returns only the final output
 - `task_list(...)` returns tasks visible in the current scope
 
@@ -159,6 +160,40 @@ model emits tool call
           -> AgentInbox publishes completion/failure
 ```
 
+End-to-end shape:
+
+```text
+model tool call
+    |
+    v
+ToolLibrary.forward(...)
+    |
+    +--> TaskStore.create(status=queued)
+    |
+    +--> return task_id immediately
+    |
+    `--> Executor.submit(background runner)
+             |
+             v
+      TaskHandle.set_running/update_progress
+             |
+             +--> TaskStore updates task record
+             |
+             `--> AgentInbox.publish(
+                     source="task" | "task_progress",
+                     ref=task_id,
+                     status=...
+                 )
+
+later, on the next provider boundary:
+
+Agent._prepare_model_execution()
+    |
+    +--> AgentInbox.drain()
+    +--> render <system_note><notifications>...</notifications></system_note>
+    `--> provider call sees the notification
+```
+
 This means the immediate tool result becomes a lightweight dispatch response,
 not the business result itself.
 
@@ -184,6 +219,7 @@ object.
 These tools solve different problems.
 
 - `task_status` is for orchestration and polling logic
+- `task_wait` is for synchronous orchestration when the caller wants to pause
 - `task_output` is for consuming the final payload
 
 If `task_output` is the only reader, the runtime will collapse state, progress,
