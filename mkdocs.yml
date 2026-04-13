@@ -124,6 +124,7 @@ nav:
     - index.md
   - Anatomy:
     - anatomy/index.md
+    - anatomy/agent-inbox.md
     - anatomy/checkpoints-and-replay.md
   - Learn:
     - ✧ Models:

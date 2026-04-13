@@ -11,6 +11,7 @@ import msgspec
 
 import msgflux.nn.functional as F
 from msgflux._private.executor import Executor
+from msgflux.agent_inbox import AgentInbox, AgentNotification
 from msgflux.auto import AutoParams
 from msgflux.context import execution_context, get_execution_context
 from msgflux.core.dotdict import dotdict
@@ -24,7 +25,7 @@ from msgflux.protocols.mcp import (
     extract_tool_result_text,
     filter_tools,
 )
-from msgflux.tasks import NotificationBus, TaskHandle, TaskStore
+from msgflux.tasks import TaskHandle, TaskStore
 from msgflux.telemetry.span import (
     aset_tool_attributes,
     set_tool_attributes,
@@ -437,7 +438,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
         self.register_buffer("tool_configs", {})
         self.register_buffer("mcp_clients", {})
         self.task_store = TaskStore()
-        self.notification_bus = NotificationBus()
+        self.agent_inbox = AgentInbox(owner=f"{name}_tool_library")
         self._runtime_tool_names = {"task_status", "task_list", "task_output"}
         self._task_runtime_enabled = False
         for tool in tools:
@@ -604,13 +605,8 @@ class ToolLibrary(Module, metaclass=AutoParams):
             }
         return annotations
 
-    def drain_notification_messages(self) -> List[Dict[str, str]]:
-        """Drain pending task notifications as synthetic user messages."""
-        return self.notification_bus.drain_messages()
-
-    def peek_notification_messages(self) -> List[Dict[str, str]]:
-        """Return pending task notifications without consuming them."""
-        return [notification.to_message() for notification in self.notification_bus.list()]
+    def set_agent_inbox(self, agent_inbox: AgentInbox) -> None:
+        self.agent_inbox = agent_inbox
 
     def _ensure_task_runtime_tools(self) -> None:
         if self._task_runtime_enabled:
@@ -747,6 +743,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
         tool_name: str,
         call_params: Dict[str, Any],
         execution_scope: Optional[Dict[str, Any]] = None,
+        agent_inbox: Optional[AgentInbox] = None,
     ) -> Any:
         scope = execution_scope or {}
         with execution_context(**scope):
@@ -755,10 +752,28 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 result = tool(**call_params)
             except Exception as exc:
                 task_handle.fail(exc)
-                self.notification_bus.publish_task_failed(task_handle.task_id, tool_name)
+                self._publish_task_notification(
+                    task_id=task_handle.task_id,
+                    tool_name=tool_name,
+                    status="failed",
+                    hint=(
+                        f"Use task_status(task_id='{task_handle.task_id}') "
+                        "if you need error details."
+                    ),
+                    agent_inbox=agent_inbox,
+                )
                 raise
             task_handle.complete(result)
-            self.notification_bus.publish_task_completed(task_handle.task_id, tool_name)
+            self._publish_task_notification(
+                task_id=task_handle.task_id,
+                tool_name=tool_name,
+                status="completed",
+                hint=(
+                    f"Use task_output(task_id='{task_handle.task_id}') "
+                    "if you need the result."
+                ),
+                agent_inbox=agent_inbox,
+            )
             return result
 
     def _log_background_task_failure(self, future: Any) -> None:
@@ -782,6 +797,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
         parent_run_id = execution_context.get("run_id")
         root_run_id = execution_context.get("root_run_id")
         checkpoint_store = execution_context.get("checkpoint_store")
+        agent_inbox = execution_context.get("agent_inbox") or self.agent_inbox
         task_id = uuid4().hex[:8]
         task = self.task_store.create(
             task_id=task_id,
@@ -798,7 +814,12 @@ class ToolLibrary(Module, metaclass=AutoParams):
         )
         runner_params = dict(call_params)
         if config.get("inject_task", False) and task_kind != "agent":
-            runner_params["task"] = TaskHandle(task.task_id, self.task_store)
+            runner_params["task"] = TaskHandle(
+                task.task_id,
+                self.task_store,
+                tool_name=tool_name,
+                agent_inbox=agent_inbox,
+            )
         if task_kind == "agent":
             if isinstance(session_id, str) and session_id:
                 runner_params.setdefault("session_id", session_id)
@@ -816,15 +837,22 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 root_run_id if isinstance(root_run_id, str) and root_run_id else None
             ),
             "checkpoint_store": checkpoint_store,
+            "agent_inbox": agent_inbox,
         }
         future = Executor.get_instance().submit(
             partial(
                 self._run_background_tool,
                 tool=tool,
-                task_handle=TaskHandle(task.task_id, self.task_store),
+                task_handle=TaskHandle(
+                    task.task_id,
+                    self.task_store,
+                    tool_name=tool_name,
+                    agent_inbox=agent_inbox,
+                ),
                 tool_name=tool_name,
                 call_params=runner_params,
                 execution_scope=execution_scope,
+                agent_inbox=agent_inbox,
             )
         )
         future.add_done_callback(self._log_background_task_failure)
@@ -838,6 +866,30 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 f"to inspect status and progress, or "
                 f"`task_output(task_id='{task.task_id}')` when it completes."
             ),
+        )
+
+    def _publish_task_notification(
+        self,
+        *,
+        task_id: str,
+        tool_name: str,
+        status: str,
+        hint: str,
+        agent_inbox: Optional[AgentInbox] = None,
+    ) -> Optional[AgentNotification]:
+        inbox = agent_inbox or self.agent_inbox
+        if inbox is None:
+            return None
+        return inbox.publish(
+            AgentNotification(
+                notification_id=uuid4().hex[:8],
+                source="task",
+                ref=task_id,
+                status=status,
+                hint=hint,
+                metadata={"tool": tool_name},
+                dedupe_key=f"task:{task_id}:{status}",
+            )
         )
 
     def forward(  # noqa: C901

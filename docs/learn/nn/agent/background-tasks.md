@@ -108,15 +108,17 @@ While the task is running, `task_status(task_id)` returns something like:
 
 ## Example 3: Passive Notification Back Into The Agent
 
-Completed and failed tasks are injected back into the next agent turn as a
+Completed and failed tasks are injected back into the next provider call as a
 synthetic user message:
 
 ```text
 <system_note>
-<task_notification>
-Background task 'abcd1234' from tool 'long_sum' completed.
-Use task_output(task_id='abcd1234') if you need the result.
-</task_notification>
+<notifications>
+<notification source="task" ref="abcd1234" status="completed">
+tool=long_sum
+hint=Use task_output(task_id='abcd1234') if you need the result.
+</notification>
+</notifications>
 </system_note>
 ```
 
@@ -128,12 +130,34 @@ agent = nn.Agent(
     name="assistant",
     model=mf.Model.chat_completion("openai/gpt-4.1-mini"),
     instructions=(
-        "If you receive a <task_notification>, call task_output for that task "
-        "before answering."
+        "If you receive a task notification with status=completed, "
+        "call task_output for that task before answering."
     ),
     tools=[long_sum],
 )
 ```
+
+## Example 3B: Progress Notifications
+
+The same injected `task` handle can publish lightweight agent-visible updates.
+
+```python
+@mf.tool_config(background=True, inject_task=True)
+def process_items(items: list[str], task) -> int:
+    """Process items and publish progress notifications."""
+    total = len(items)
+    for index, item in enumerate(items, 1):
+        task.notify(
+            source="task_progress",
+            status="update",
+            metadata={"item": item, "current": index, "total": total},
+            dedupe_key=f"task_progress:{task.task_id}",
+        )
+    return total
+```
+
+These notifications are persisted like other inbox notifications. `dedupe_key`
+keeps the newest progress update for the same task visible to the model.
 
 ## Example 4: Dynamic Tool Mutation With `inject_library`
 
@@ -176,7 +200,7 @@ automatically in the same library.
 This is the current scope of the implementation:
 
 - task state is in-memory
-- notifications are consumed on the next agent input preparation
+- notifications are injected from `_prepare_model_execution()`
 - `inspect_model_execution_params()` peeks notifications without consuming them
 - there is no checkpoint resume yet
 - there is no mailbox or agent-to-agent messaging yet

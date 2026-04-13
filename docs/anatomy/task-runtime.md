@@ -25,7 +25,7 @@ tool call
      -> task status updates
      -> optional progress updates
      -> final result or error
-  -> NotificationBus.emit(...)
+  -> AgentInbox.publish(...)
 ```
 
 The important shift is that a background tool no longer writes directly to a
@@ -92,17 +92,18 @@ The first version only needs methods like:
 This keeps background progress cooperative. The runtime does not try to infer
 progress from stdout, logs, or provider output.
 
-### `NotificationBus`
+### `AgentInbox`
 
-`NotificationBus` is the delivery layer for task updates.
+`AgentInbox` is the delivery layer for task updates.
 
 It should not own task state. It only reacts to task events and decides how
 they are delivered.
 
 The first version only needs:
 
-- `publish_task_completed(task_record)`
-- `publish_task_failed(task_record)`
+- `publish(task_notification)`
+- `peek()`
+- `drain()`
 
 ## Two Delivery Paths
 
@@ -124,7 +125,7 @@ observe task state.
 The passive path is automatic delivery when a task changes state.
 
 The runtime materializes that delivery as a synthetic user message wrapped in
-`<system_note>` and `<task_notification>` tags.
+`<system_note>` and `<notifications>` tags.
 
 That choice keeps notifications compatible with the existing message-driven
 agent loop without inventing a second message protocol.
@@ -155,7 +156,7 @@ model emits tool call
           -> TaskHandle.set_running(...)
           -> tool body updates progress
           -> TaskHandle.complete(...) or fail(...)
-          -> NotificationBus publishes completion/failure
+          -> AgentInbox publishes completion/failure
 ```
 
 This means the immediate tool result becomes a lightweight dispatch response,
@@ -204,15 +205,15 @@ By default:
 The code should stay split by responsibility:
 
 ```text
-src/msgflux/runtime/tasks.py
+src/msgflux/tasks/store.py
   -> TaskRecord
   -> TaskProgress
   -> TaskStore
   -> TaskHandle
 
-src/msgflux/runtime/notifications.py
-  -> Notification
-  -> NotificationBus
+src/msgflux/agent_inbox.py
+  -> AgentNotification
+  -> AgentInbox
 
 src/msgflux/nn/modules/tool.py
   -> background dispatch integration
@@ -220,7 +221,7 @@ src/msgflux/nn/modules/tool.py
   -> TaskHandle injection
 
 src/msgflux/nn/modules/agent.py
-  -> notification delivery into message history
+  -> notification delivery into model execution
 ```
 
 `ToolLibrary` remains the execution boundary for tools. It should not absorb
@@ -250,7 +251,7 @@ This runtime shape keeps the boundaries clear:
 
 - `ToolLibrary` dispatches work
 - `TaskStore` owns task state
-- `NotificationBus` owns delivery
+- `AgentInbox` owns delivery
 - `Agent` consumes notifications as messages
 
 That gives msgFlux a base for polling, passive delivery, progress reporting,

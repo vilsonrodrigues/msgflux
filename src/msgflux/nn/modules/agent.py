@@ -17,6 +17,7 @@ from uuid import uuid4
 
 import msgspec
 
+from msgflux.agent_inbox import AgentInbox
 from msgflux.auto import AutoParams
 from msgflux.chat_messages import ChatMessages
 from msgflux.context import execution_context, get_execution_context
@@ -147,6 +148,7 @@ class Agent(Module, metaclass=AutoParams):
         description: Optional[str] = None,
         annotations: Optional[Mapping[str, type]] = None,
         checkpointer: Optional["CheckpointStore"] = None,
+        agent_inbox: Optional[AgentInbox] = None,
     ):
         """Initialize the Agent module.
 
@@ -339,6 +341,13 @@ class Agent(Module, metaclass=AutoParams):
 
         self._set_config(config)
         self.checkpointer = checkpointer
+        if agent_inbox is None:
+            self.agent_inbox = AgentInbox(
+                verbose=config.get("verbose", False) if config else False,
+                owner=name,
+            )
+        else:
+            self.agent_inbox = agent_inbox
 
         stream = config.get("stream", False) if config else False
 
@@ -482,6 +491,7 @@ class Agent(Module, metaclass=AutoParams):
             namespace=self.get_module_name(),
             run_id=inputs.get("run_id"),
             checkpoint_store=effective_checkpointer,
+            agent_inbox=self._get_effective_agent_inbox(),
         ):
             try:
                 model_response = self._execute_model(
@@ -515,6 +525,7 @@ class Agent(Module, metaclass=AutoParams):
             namespace=self.get_module_name(),
             run_id=inputs.get("run_id"),
             checkpoint_store=effective_checkpointer,
+            agent_inbox=self._get_effective_agent_inbox(),
         ):
             try:
                 model_response = await self._aexecute_model(
@@ -584,10 +595,15 @@ class Agent(Module, metaclass=AutoParams):
         prefilling: Optional[str] = None,
         model_preference: Optional[str] = None,
         tool_filter: Optional[ToolFilter] = None,
+        drain_notifications: bool = True,
         session_id: Optional[str] = None,  # noqa: ARG002
         run_id: Optional[str] = None,  # noqa: ARG002
     ) -> Mapping[str, Any]:
         system_prompt = self.get_system_prompt(vars)
+        model_messages = self._build_model_messages(
+            messages,
+            drain_notifications=drain_notifications,
+        )
 
         tool_schemas = self.tool_library.get_tool_json_schemas()
 
@@ -623,11 +639,7 @@ class Agent(Module, metaclass=AutoParams):
                 system_prompt = flow_control_tools
 
         model_execution_params = dotdict(
-            messages=(
-                messages.to_chatml()
-                if isinstance(messages, ChatMessages)
-                else messages
-            ),
+            messages=model_messages,
             system_prompt=system_prompt or None,
             prefilling=prefilling,
             stream=self.config.get("stream", False),
@@ -1212,7 +1224,6 @@ class Agent(Module, metaclass=AutoParams):
         self,
         message: Optional[Union[str, Message, Mapping[str, Any]]] = None,
         *,
-        drain_notifications: bool = True,
         start_turn: bool = True,
         **kwargs,
     ) -> Mapping[str, Any]:
@@ -1288,22 +1299,6 @@ class Agent(Module, metaclass=AutoParams):
         if should_use_chat_messages:
             messages = self._coerce_chat_messages(messages)
 
-        if drain_notifications:
-            pending_notifications = self.tool_library.drain_notification_messages()
-        else:
-            pending_notifications = self.tool_library.peek_notification_messages()
-        if pending_notifications:
-            if messages is None:
-                if should_use_chat_messages:
-                    messages = self._coerce_chat_messages()
-                    messages.extend(pending_notifications)
-                else:
-                    messages = list(pending_notifications)
-            elif isinstance(messages, ChatMessages):
-                messages.extend(pending_notifications)
-            else:
-                messages.extend(pending_notifications)
-
         content = self._render_task(message, task=task, vars=vars, **kwargs)
 
         if content is None and not messages:
@@ -1369,7 +1364,6 @@ class Agent(Module, metaclass=AutoParams):
         self,
         message: Optional[Union[str, Message, Mapping[str, Any]]] = None,
         *,
-        drain_notifications: bool = True,
         start_turn: bool = True,
         **kwargs,
     ) -> Mapping[str, Any]:
@@ -1446,22 +1440,6 @@ class Agent(Module, metaclass=AutoParams):
         )
         if should_use_chat_messages:
             messages = self._coerce_chat_messages(messages)
-
-        if drain_notifications:
-            pending_notifications = self.tool_library.drain_notification_messages()
-        else:
-            pending_notifications = self.tool_library.peek_notification_messages()
-        if pending_notifications:
-            if messages is None:
-                if should_use_chat_messages:
-                    messages = self._coerce_chat_messages()
-                    messages.extend(pending_notifications)
-                else:
-                    messages = list(pending_notifications)
-            elif isinstance(messages, ChatMessages):
-                messages.extend(pending_notifications)
-            else:
-                messages.extend(pending_notifications)
 
         content = await self._arender_task(message, task=task, vars=vars, **kwargs)
 
@@ -1867,14 +1845,11 @@ class Agent(Module, metaclass=AutoParams):
         Accepts the same arguments as forward() to inspect what would be sent to
         the model.
         """
-        inputs = self._prepare_inputs(
-            message,
-            drain_notifications=False,
-            start_turn=False,
-            **kwargs,
-        )
+        inputs = self._prepare_inputs(message, start_turn=False, **kwargs)
         model_execution_params = self._prepare_model_execution(
-            prefilling=self.prefilling, **inputs
+            prefilling=self.prefilling,
+            drain_notifications=False,
+            **inputs,
         )
         return model_execution_params
 
@@ -2025,6 +2000,59 @@ class Agent(Module, metaclass=AutoParams):
         if self.checkpointer is not None:
             return self.checkpointer
         return get_execution_context().get("checkpoint_store")
+
+    def _get_effective_agent_inbox(self):
+        inherited = get_execution_context().get("agent_inbox")
+        if inherited is not None:
+            return inherited
+        return self.agent_inbox
+
+    def _build_model_messages(
+        self,
+        messages: Union[ChatMessages, List[Mapping[str, Any]]],
+        *,
+        drain_notifications: bool = True,
+    ) -> List[Mapping[str, Any]]:
+        inbox = self._get_effective_agent_inbox()
+        notifications = []
+        if inbox is not None:
+            notifications = inbox.drain() if drain_notifications else inbox.peek()
+
+        if isinstance(messages, ChatMessages):
+            working_messages: Union[ChatMessages, List[Mapping[str, Any]]] = (
+                messages if drain_notifications else messages.copy()
+            )
+            provider_messages = working_messages.to_chatml()
+        else:
+            working_messages = messages if drain_notifications else list(messages)
+            provider_messages = list(working_messages)
+
+        if not notifications:
+            return provider_messages
+
+        notification_message = inbox.render(notifications) if inbox else None
+        self._persist_notification_message(working_messages, notification_message)
+        if isinstance(working_messages, ChatMessages):
+            provider_messages = working_messages.to_chatml()
+        else:
+            provider_messages = list(working_messages)
+
+        return provider_messages
+
+    def _persist_notification_message(
+        self,
+        messages: Union[ChatMessages, List[Mapping[str, Any]]],
+        notification_message: Optional[Mapping[str, Any]],
+    ) -> None:
+        if notification_message is None:
+            return
+        if isinstance(messages, ChatMessages):
+            if messages.get_active_turn_size() <= 2:
+                messages.insert_before_active_turn(notification_message)
+            else:
+                messages.append(notification_message)
+            return
+        messages.append(notification_message)
 
     def _resolve_session_id(
         self,
@@ -2363,6 +2391,7 @@ class Agent(Module, metaclass=AutoParams):
         self.tool_library = ToolLibrary(
             self.get_module_name(), tools or [], mcp_servers=mcp_servers
         )
+        self.tool_library.set_agent_inbox(self.agent_inbox)
 
     def _set_generation_schema(
         self, generation_schema: Optional[msgspec.Struct] = None
