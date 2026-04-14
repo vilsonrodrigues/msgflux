@@ -41,6 +41,10 @@ _CURRENT_AGENT_INBOX: contextvars.ContextVar[Any] = contextvars.ContextVar(
     "msgflux_agent_inbox",
     default=None,
 )
+_CURRENT_TASK_ACTIVITY_RECORDER: contextvars.ContextVar[Any] = contextvars.ContextVar(
+    "msgflux_task_activity_recorder",
+    default=None,
+)
 
 
 @contextmanager
@@ -53,6 +57,7 @@ def execution_context(
     root_run_id: Optional[str] = None,
     checkpoint_store: Any = None,
     agent_inbox: Any = None,
+    task_activity_recorder: Any = None,
 ):
     """Set execution identity for the enclosed scope.
 
@@ -95,6 +100,12 @@ def execution_context(
     resolved_agent_inbox = (
         agent_inbox if agent_inbox is not None else current_agent_inbox
     )
+    current_task_activity_recorder = _CURRENT_TASK_ACTIVITY_RECORDER.get()
+    resolved_task_activity_recorder = (
+        task_activity_recorder
+        if task_activity_recorder is not None
+        else current_task_activity_recorder
+    )
 
     session_token = _CURRENT_SESSION_ID.set(resolved_session_id)
     namespace_token = _CURRENT_NAMESPACE.set(resolved_namespace)
@@ -103,6 +114,9 @@ def execution_context(
     root_run_token = _CURRENT_ROOT_RUN_ID.set(resolved_root_run_id)
     checkpoint_token = _CURRENT_CHECKPOINT_STORE.set(resolved_checkpoint_store)
     inbox_token = _CURRENT_AGENT_INBOX.set(resolved_agent_inbox)
+    activity_token = _CURRENT_TASK_ACTIVITY_RECORDER.set(
+        resolved_task_activity_recorder
+    )
     try:
         yield
     finally:
@@ -113,6 +127,7 @@ def execution_context(
         _CURRENT_ROOT_RUN_ID.reset(root_run_token)
         _CURRENT_CHECKPOINT_STORE.reset(checkpoint_token)
         _CURRENT_AGENT_INBOX.reset(inbox_token)
+        _CURRENT_TASK_ACTIVITY_RECORDER.reset(activity_token)
 
 
 @contextmanager
@@ -138,6 +153,7 @@ def get_execution_context() -> Mapping[str, Optional[Any]]:
         "root_run_id": _CURRENT_ROOT_RUN_ID.get(),
         "checkpoint_store": _CURRENT_CHECKPOINT_STORE.get(),
         "agent_inbox": _CURRENT_AGENT_INBOX.get(),
+        "task_activity_recorder": _CURRENT_TASK_ACTIVITY_RECORDER.get(),
     }
 
 

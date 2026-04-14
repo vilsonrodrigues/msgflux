@@ -8,7 +8,7 @@ from typing import Any, Dict, Iterable, List, Mapping, Optional
 from uuid import uuid4
 from xml.sax.saxutils import escape
 
-from msgflux.logger import logger
+from msgflux.utils.console import cprint
 
 
 # --- Module Utilities ---
@@ -32,6 +32,93 @@ class AgentNotification:
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
+
+
+class ToolNotificationHandle:
+    """Controlled notification publisher injected into tools."""
+
+    def __init__(
+        self,
+        agent_inbox: Optional["AgentInbox"],
+        *,
+        source: str = "tool_status",
+        ref: Optional[str] = None,
+        metadata: Optional[Mapping[str, Any]] = None,
+    ):
+        self._agent_inbox = agent_inbox
+        self._source = source
+        self._ref = ref
+        self._metadata = deepcopy(dict(metadata or {}))
+
+    # --- Notification Publishing ---
+
+    def publish(
+        self,
+        *,
+        status: str,
+        hint: Optional[str] = None,
+        metadata: Optional[Mapping[str, Any]] = None,
+        dedupe_key: Optional[str] = None,
+        source: Optional[str] = None,
+        ref: Optional[str] = None,
+    ) -> Optional[AgentNotification]:
+        if self._agent_inbox is None:
+            return None
+
+        payload = deepcopy(self._metadata)
+        if metadata:
+            payload.update(dict(metadata))
+
+        return self._agent_inbox.publish(
+            AgentNotification(
+                notification_id=uuid4().hex[:8],
+                source=source or self._source,
+                ref=self._ref if ref is None else ref,
+                status=status,
+                hint=hint,
+                metadata=payload,
+                dedupe_key=dedupe_key,
+                created_at=_utc_now(),
+            )
+        )
+
+    def notify(
+        self,
+        *,
+        status: str,
+        hint: Optional[str] = None,
+        metadata: Optional[Mapping[str, Any]] = None,
+        dedupe_key: Optional[str] = None,
+        source: Optional[str] = None,
+        ref: Optional[str] = None,
+    ) -> Optional[AgentNotification]:
+        return self.publish(
+            status=status,
+            hint=hint,
+            metadata=metadata,
+            dedupe_key=dedupe_key,
+            source=source,
+            ref=ref,
+        )
+
+    def update(
+        self,
+        status: str,
+        *,
+        hint: Optional[str] = None,
+        metadata: Optional[Mapping[str, Any]] = None,
+        dedupe_key: Optional[str] = None,
+        source: Optional[str] = None,
+        ref: Optional[str] = None,
+    ) -> Optional[AgentNotification]:
+        return self.publish(
+            status=status,
+            hint=hint,
+            metadata=metadata,
+            dedupe_key=dedupe_key,
+            source=source,
+            ref=ref,
+        )
 
 
 class AgentInbox:
@@ -61,22 +148,18 @@ class AgentInbox:
                     if existing.dedupe_key == normalized.dedupe_key:
                         self._notifications[index] = normalized
                         if self.verbose:
-                            logger.debug(
-                                "AgentInbox[%s] replaced notification source=%s ref=%s status=%s",
-                                self.owner or "unknown",
-                                normalized.source,
-                                normalized.ref,
-                                normalized.status,
+                            self._print_verbose_event(
+                                "notification_replace",
+                                self._format_notification_summary(normalized),
+                                bc="br1",
                             )
                         return deepcopy(normalized)
             self._notifications.append(normalized)
         if self.verbose:
-            logger.debug(
-                "AgentInbox[%s] published notification source=%s ref=%s status=%s",
-                self.owner or "unknown",
-                normalized.source,
-                normalized.ref,
-                normalized.status,
+            self._print_verbose_event(
+                "notification_publish",
+                self._format_notification_summary(normalized),
+                bc="br1",
             )
         return deepcopy(normalized)
 
@@ -98,10 +181,10 @@ class AgentInbox:
             notifications = deepcopy(self._notifications)
             self._notifications.clear()
         if self.verbose and notifications:
-            logger.debug(
-                "AgentInbox[%s] drained %d notification(s)",
-                self.owner or "unknown",
-                len(notifications),
+            self._print_verbose_event(
+                "notification_drain",
+                f"{len(notifications)} notification(s)",
+                bc="b",
             )
         return notifications
 
@@ -199,6 +282,29 @@ class AgentInbox:
         if isinstance(value, bool):
             return "true" if value else "false"
         return str(value)
+
+    # --- Verbose Helpers ---
+
+    def _print_verbose_event(self, label: str, text: str, *, bc: str) -> None:
+        cprint(
+            f"[{self.owner or 'unknown'}][{label}] {text}",
+            bc=bc,
+            ls="b",
+        )
+
+    def _format_notification_summary(self, notification: AgentNotification) -> str:
+        parts = [f"source={notification.source}"]
+        if notification.ref:
+            parts.append(f"ref={notification.ref}")
+        if notification.status:
+            parts.append(f"status={notification.status}")
+        if notification.metadata:
+            metadata = ", ".join(
+                f"{key}={self._stringify(value)}"
+                for key, value in sorted(notification.metadata.items())
+            )
+            parts.append(f"metadata={metadata}")
+        return " ".join(parts)
 
     @staticmethod
     def _escape_text(value: Any) -> str:

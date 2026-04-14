@@ -13,6 +13,7 @@ def tool_config(
     background: Optional[bool] = False,
     disable_input: Optional[bool] = False,
     inject_task: Optional[bool] = False,
+    inject_notification: Optional[bool] = False,
     inject_library: Optional[bool] = False,
     inject_message: Optional[bool] = False,
     inject_messages: Optional[bool] = False,
@@ -56,6 +57,9 @@ def tool_config(
         inject_task:
             If True, inject a runtime `task` handle into the tool. This is only
             valid together with `background=True`.
+        inject_notification:
+            If True, inject a runtime `notification` handle into the tool so it
+            can publish agent-visible status updates.
         inject_library:
             If True, inject a controlled `tool_library` handle into the tool so it
             can add, remove, or list tools at runtime.
@@ -165,6 +169,7 @@ def tool_config(
                     "handoff": handoff,
                     "disable_input": disable_input,
                     "inject_task": inject_task,
+                    "inject_notification": inject_notification,
                     "inject_library": inject_library,
                     "inject_message": _inject_message,
                     "inject_messages": _inject_messages,

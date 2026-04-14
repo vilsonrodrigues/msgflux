@@ -9,8 +9,10 @@ The current design is intentionally small:
 - `task_wait(task_id)` blocks until the task completes, fails, or times out
 - `task_output(task_id)` returns the final output
 - `task_list()` lists tasks visible in the current `ToolLibrary`
+- `task_activity(task_id)` returns compact task activity entries
 - completed and failed tasks can also be delivered back to the agent as a
   passive notification
+- `inject_notification=True` lets a tool publish agent-visible status updates
 - `inject_library=True` lets a tool add or remove tools dynamically
 
 This page focuses on the current behavior, not future multi-agent planning.
@@ -52,6 +54,7 @@ agent = nn.Agent(
 dispatch = agent.tool_library([("call_1", "long_sum", {"a": 20, "b": 22})])
 print(dispatch.tool_calls[0].result)
 # The `long_sum` tool is running in the background with task_id='...'
+# Use `task_status(...)`, `task_activity(...)`, `task_wait(...)`, or `task_output(...)`
 
 tasks = agent.tool_library([("call_2", "task_list", {})])
 task_id = tasks.tool_calls[0].result[0]["task_id"]
@@ -78,6 +81,27 @@ When the task completes, `task_wait` returns the same payload as
 `task_output(task_id)`. If the task fails, it returns the failed payload. If
 the timeout is reached first, it returns a timeout payload with the current
 task status and progress.
+
+## Example 1C: Reading Task Activity
+
+`task_activity(task_id)` returns a compact list of activity entries for that
+task.
+
+```python
+activity = agent.tool_library([("call_6", "task_activity", {"task_id": task_id})])
+print(activity.tool_calls[0].result)
+```
+
+For normal background tools this mostly means task lifecycle and progress. For
+background subagents it can also include compact tool call entries such as:
+
+```python
+[
+    "Status: Task queued.",
+    "Status: Task running.",
+    "ToolCall: search_docs({'query': 'task runtime'})",
+]
+```
 
 ## Example 2: Reporting Progress
 
@@ -176,6 +200,50 @@ def process_items(items: list[str], task) -> int:
 These notifications are persisted like other inbox notifications. `dedupe_key`
 keeps the newest progress update for the same task visible to the model.
 
+## Example 3D: Sending A Message To A Background Subagent
+
+When the background task is itself an `Agent`, the dispatch response also
+advertises `task_message(task_id=..., message=...)`.
+
+```python
+message_result = agent.tool_library(
+    [("call_7", "task_message", {"task_id": task_id, "message": "Continue with compatibility mode."})]
+)
+print(message_result.tool_calls[0].result)
+```
+
+If the subagent is still running, the message is delivered into its local
+inbox and will be consumed on the next provider boundary. If it already stopped
+but has a checkpoint, msgFlux resumes it with the same `task_id`.
+
+## Example 3C: Status Updates With `inject_notification`
+
+Use `inject_notification=True` when the tool should publish lightweight status
+updates without depending on the full `task` handle.
+
+```python
+@mf.tool_config(background=True, inject_notification=True)
+def process_items(items: list[str], notification) -> int:
+    """Process items and publish task-scoped status updates."""
+    notification.update(
+        "prepare",
+        hint="Background work has started.",
+        metadata={"total": len(items)},
+        dedupe_key="process-items-status",
+    )
+    for index, item in enumerate(items, 1):
+        notification.update(
+            "process",
+            metadata={"item": item, "current": index, "total": len(items)},
+            dedupe_key="process-items-status",
+        )
+    return len(items)
+```
+
+For background tools, the injected `notification` handle is automatically bound
+to the current `task_id`, so the agent sees a normal notification envelope with
+`ref="<task_id>"`.
+
 ## Example 4: Dynamic Tool Mutation With `inject_library`
 
 `inject_library=True` exposes a small `tool_library` handle to the tool.
@@ -226,3 +294,9 @@ This is the current scope of the implementation:
 
 - [Tools](tools.md)
 - [Task Runtime](../../../anatomy/task-runtime.md)
+
+## Example Scripts
+
+- [`examples/background_task_wait_demo.py`](../../../../examples/background_task_wait_demo.py)
+- [`examples/background_task_notifications_demo.py`](../../../../examples/background_task_notifications_demo.py)
+- [`examples/background_task_status_updates_demo.py`](../../../../examples/background_task_status_updates_demo.py)

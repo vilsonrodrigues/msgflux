@@ -4,10 +4,10 @@ from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from threading import RLock
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Mapping, Optional
 from uuid import uuid4
 
-from msgflux.agent_inbox import AgentInbox, AgentNotification
+from msgflux.agent_inbox import AgentInbox, AgentNotification, ToolNotificationHandle
 
 
 # --- Module Utilities ---
@@ -25,6 +25,18 @@ class TaskProgress:
     current: Optional[int] = None
     total: Optional[int] = None
     percent: Optional[float] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
+class TaskActivity:
+    task_id: str
+    kind: str
+    summary: str
+    created_at: str
+    metadata: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -53,6 +65,7 @@ class TaskStore:
     def __init__(self):
         self._lock = RLock()
         self._tasks: Dict[str, TaskRecord] = {}
+        self._activities: Dict[str, List[TaskActivity]] = {}
 
     # --- Query Operations ---
 
@@ -74,6 +87,16 @@ class TaskStore:
         )
         with self._lock:
             self._tasks[task.task_id] = task
+            self._activities[task.task_id] = []
+            self._activities[task.task_id].append(
+                TaskActivity(
+                    task_id=task.task_id,
+                    kind="status",
+                    summary="Task queued.",
+                    created_at=now,
+                    metadata={"status": "queued", "tool": tool_name},
+                )
+            )
         return self.get(task.task_id)  # type: ignore[return-value]
 
     def get(self, task_id: str) -> Optional[TaskRecord]:
@@ -87,6 +110,41 @@ class TaskStore:
             if status is not None:
                 tasks = [task for task in tasks if task.status == status]
             return deepcopy(tasks)
+
+    def list_activity(self, task_id: str, *, limit: Optional[int] = None) -> List[TaskActivity]:
+        with self._lock:
+            activity = deepcopy(self._activities.get(task_id, []))
+        if limit is not None:
+            return activity[-limit:]
+        return activity
+
+    def get_last_activity(self, task_id: str) -> Optional[TaskActivity]:
+        with self._lock:
+            activity = self._activities.get(task_id, [])
+            if not activity:
+                return None
+            return deepcopy(activity[-1])
+
+    def add_activity(
+        self,
+        task_id: str,
+        *,
+        kind: str,
+        summary: str,
+        metadata: Optional[Mapping[str, Any]] = None,
+    ) -> Optional[TaskActivity]:
+        with self._lock:
+            if task_id not in self._tasks:
+                return None
+            activity = TaskActivity(
+                task_id=task_id,
+                kind=kind,
+                summary=summary,
+                created_at=_utc_now(),
+                metadata=deepcopy(dict(metadata or {})),
+            )
+            self._activities.setdefault(task_id, []).append(activity)
+            return deepcopy(activity)
 
     # --- State Transitions ---
 
@@ -107,6 +165,19 @@ class TaskStore:
                 task.progress.stage = stage
             if message is not None:
                 task.progress.message = message
+            self._activities.setdefault(task_id, []).append(
+                TaskActivity(
+                    task_id=task_id,
+                    kind="status",
+                    summary="Task running.",
+                    created_at=task.updated_at,
+                    metadata={
+                        "status": "running",
+                        "stage": task.progress.stage,
+                        "message": task.progress.message,
+                    },
+                )
+            )
             return deepcopy(task)
 
     def update_progress(
@@ -138,6 +209,15 @@ class TaskStore:
                 percent = (task.progress.current / task.progress.total) * 100
             if percent is not None:
                 task.progress.percent = round(percent, 2)
+            self._activities.setdefault(task_id, []).append(
+                TaskActivity(
+                    task_id=task_id,
+                    kind="progress",
+                    summary=task.progress.message or task.progress.stage or "Progress updated.",
+                    created_at=task.updated_at,
+                    metadata=task.progress.to_dict(),
+                )
+            )
             return deepcopy(task)
 
     def complete(self, task_id: str, result: Any) -> Optional[TaskRecord]:
@@ -153,6 +233,15 @@ class TaskStore:
             task.error = None
             if task.progress.percent is None and task.progress.total:
                 task.progress.percent = 100.0
+            self._activities.setdefault(task_id, []).append(
+                TaskActivity(
+                    task_id=task_id,
+                    kind="status",
+                    summary="Task completed.",
+                    created_at=now,
+                    metadata={"status": "completed"},
+                )
+            )
             return deepcopy(task)
 
     def fail(self, task_id: str, error: Any) -> Optional[TaskRecord]:
@@ -165,7 +254,101 @@ class TaskStore:
             task.updated_at = now
             task.completed_at = now
             task.error = str(error)
+            self._activities.setdefault(task_id, []).append(
+                TaskActivity(
+                    task_id=task_id,
+                    kind="error",
+                    summary="Task failed.",
+                    created_at=now,
+                    metadata={"status": "failed", "error": task.error},
+                )
+            )
             return deepcopy(task)
+
+    def request_stop(self, task_id: str) -> Optional[TaskRecord]:
+        with self._lock:
+            task = self._tasks.get(task_id)
+            if task is None:
+                return None
+            task.updated_at = _utc_now()
+            task.metadata["stop_requested"] = True
+            self._activities.setdefault(task_id, []).append(
+                TaskActivity(
+                    task_id=task_id,
+                    kind="status",
+                    summary="Stop requested.",
+                    created_at=task.updated_at,
+                    metadata={"status": task.status},
+                )
+            )
+            return deepcopy(task)
+
+    def clear_stop_request(self, task_id: str) -> Optional[TaskRecord]:
+        with self._lock:
+            task = self._tasks.get(task_id)
+            if task is None:
+                return None
+            task.metadata["stop_requested"] = False
+            task.updated_at = _utc_now()
+            return deepcopy(task)
+
+    def requeue(self, task_id: str) -> Optional[TaskRecord]:
+        with self._lock:
+            task = self._tasks.get(task_id)
+            if task is None:
+                return None
+            now = _utc_now()
+            task.status = "queued"
+            task.updated_at = now
+            task.completed_at = None
+            task.result = None
+            task.error = None
+            task.metadata["stop_requested"] = False
+            self._activities.setdefault(task_id, []).append(
+                TaskActivity(
+                    task_id=task_id,
+                    kind="status",
+                    summary="Task re-queued.",
+                    created_at=now,
+                    metadata={"status": "queued"},
+                )
+            )
+            return deepcopy(task)
+
+
+class TaskActivityRecorder:
+    """Small recorder for compact task activity entries."""
+
+    def __init__(self, task_id: str, store: TaskStore):
+        self.task_id = task_id
+        self._store = store
+
+    # --- Activity Publishing ---
+
+    def add(
+        self,
+        *,
+        kind: str,
+        summary: str,
+        metadata: Optional[Mapping[str, Any]] = None,
+    ) -> Optional[TaskActivity]:
+        return self._store.add_activity(
+            self.task_id,
+            kind=kind,
+            summary=summary,
+            metadata=metadata,
+        )
+
+    def tool_call(self, tool_name: str, parameters: Any) -> Optional[TaskActivity]:
+        summary = f"{tool_name}({self._truncate(str(parameters))})"
+        return self.add(kind="tool_call", summary=summary, metadata={"tool": tool_name})
+
+    @staticmethod
+    def _truncate(value: str, *, limit: int = 140) -> str:
+        text = " ".join(value.split())
+        if len(text) <= limit:
+            return text
+        return text[: limit - 3] + "..."
 
 class TaskHandle:
     """Small mutable handle injected into background tools."""
@@ -182,6 +365,11 @@ class TaskHandle:
         self._store = store
         self._tool_name = tool_name
         self._agent_inbox = agent_inbox
+        self._notification = ToolNotificationHandle(
+            agent_inbox,
+            ref=task_id,
+            metadata={"tool": tool_name} if tool_name else None,
+        )
 
     # --- Task State Updates ---
 
@@ -228,22 +416,10 @@ class TaskHandle:
         dedupe_key: Optional[str] = None,
         source: str = "task",
     ) -> Optional[AgentNotification]:
-        if self._agent_inbox is None:
-            return None
-
-        payload = dict(metadata or {})
-        if self._tool_name:
-            payload.setdefault("tool", self._tool_name)
-
-        notification = AgentNotification(
-            notification_id=uuid4().hex[:8],
-            source=source,
-            ref=self.task_id,
+        return self._notification.publish(
             status=status,
             hint=hint,
-            metadata=payload,
+            metadata=metadata,
             dedupe_key=dedupe_key,
-            created_at=_utc_now(),
+            source=source,
         )
-        self._agent_inbox.publish(notification)
-        return notification

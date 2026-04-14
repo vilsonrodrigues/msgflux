@@ -1,4 +1,6 @@
 from msgflux.tasks.store import (
+    TaskActivity,
+    TaskActivityRecorder,
     TaskHandle,
     TaskProgress,
     TaskRecord,
@@ -6,6 +8,8 @@ from msgflux.tasks.store import (
 )
 
 __all__ = [
+    "TaskActivity",
+    "TaskActivityRecorder",
     "TaskHandle",
     "TaskProgress",
     "TaskRecord",
