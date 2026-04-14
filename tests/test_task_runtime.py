@@ -192,11 +192,13 @@ def test_inject_library_can_add_background_tool_with_task_tools():
     add_result = library([("call_1", "add_background_multiplier", {})])
     assert "background_multiplier" in add_result.tool_calls[0].result
     assert "task_status" in add_result.tool_calls[0].result
+    assert "task_stop" in add_result.tool_calls[0].result
     assert "task_wait" in add_result.tool_calls[0].result
     assert "task_output" in add_result.tool_calls[0].result
 
     dispatch = library([("call_2", "background_multiplier", {"value": 4})])
     assert "task_id='" in dispatch.tool_calls[0].result
+    assert "task_activity" not in dispatch.tool_calls[0].result
 
     _wait_until(
         lambda: library([("call_3", "task_list", {})]).tool_calls[0].result[0]["status"]
@@ -226,6 +228,7 @@ def test_background_task_reports_progress_and_output():
 
     dispatch = library([("call_1", "long_job", {"value": 21})])
     assert "task_status" in library.get_tool_names()
+    assert "task_stop" in library.get_tool_names()
     assert "task_wait" in library.get_tool_names()
     assert "task_output" in library.get_tool_names()
     assert started.wait(timeout=1.0)
@@ -237,6 +240,8 @@ def test_background_task_reports_progress_and_output():
     get_result = library([("call_3", "task_status", {"task_id": task_id})])
     task_state = get_result.tool_calls[0].result
     assert task_state["status"] == "running"
+    assert "started_at" in task_state
+    assert isinstance(task_state["running_for_seconds"], float)
     assert task_state["progress"]["stage"] == "work"
     assert task_state["progress"]["percent"] == 50.0
 
@@ -246,6 +251,10 @@ def test_background_task_reports_progress_and_output():
         .result["status"]
         == "completed"
     )
+    final_state = library([("call_6", "task_status", {"task_id": task_id})]).tool_calls[
+        0
+    ].result
+    assert "elapsed_seconds" in final_state
 
     output_result = library([("call_5", "task_output", {"task_id": task_id})])
     assert output_result.tool_calls[0].result == 42
@@ -264,8 +273,10 @@ def test_task_wait_returns_final_output():
 
     dispatch = library([("call_1", "long_job", {"value": 21})])
     assert "task_wait" in library.get_tool_names()
+    assert "task_stop" in library.get_tool_names()
     task_id = library([("call_2", "task_list", {})]).tool_calls[0].result[0]["task_id"]
-    assert f"task_wait(task_id='{task_id}')" in dispatch.tool_calls[0].result
+    assert f"task_id='{task_id}'" in dispatch.tool_calls[0].result
+    assert "`task_wait`" in dispatch.tool_calls[0].result
 
     timer = threading.Timer(0.1, release.set)
     timer.start()
@@ -326,6 +337,49 @@ def test_task_wait_returns_failed_payload():
     assert payload["task_id"] == task_id
     assert payload["status"] == "failed"
     assert "boom" in payload["error"]
+
+
+def test_task_stop_stops_background_agent_at_next_checkpoint():
+    slow_tool_started = threading.Event()
+    release_tool = threading.Event()
+
+    def slow_tool() -> str:
+        """Block until released."""
+        slow_tool_started.set()
+        release_tool.wait(timeout=2.0)
+        return "tool finished"
+
+    worker_model = _ScriptedModel(
+        [
+            _tool_call_response("slow_tool", {}),
+            _text_response("should not happen"),
+        ]
+    )
+    worker = Agent(name="worker", model=worker_model, tools=[slow_tool])
+    worker.tool_config = {"background": True}
+
+    library = ToolLibrary(name="lib", tools=[worker])
+    dispatch = library([("call_1", "worker", {"task": "Start worker."})])
+    task_id = dispatch.tool_calls[0].result.split("task_id='")[1].split("'")[0]
+
+    assert slow_tool_started.wait(timeout=1.0)
+    stop_result = library([("call_2", "task_stop", {"task_id": task_id})]).tool_calls[
+        0
+    ].result
+    assert stop_result["status"] == "stop_requested"
+
+    release_tool.set()
+    _wait_until(
+        lambda: library([("call_3", "task_status", {"task_id": task_id})]).tool_calls[0]
+        .result["status"]
+        == "stopped"
+    )
+
+    status = library([("call_4", "task_status", {"task_id": task_id})]).tool_calls[
+        0
+    ].result
+    assert status["status"] == "stopped"
+    assert status["last_activity_summary"] == "Status: Task stopped."
 
 
 def test_task_wait_falls_back_to_task_store_polling_without_future():
@@ -660,12 +714,79 @@ def test_background_agent_dispatch_mentions_task_message_and_activity():
     dispatch = library([("call_1", "worker", {"task": "Solve this"})])
     result = dispatch.tool_calls[0].result
 
-    assert "task_activity(" in result
-    assert "task_message(" in result
-    assert "task_wait(" in result
-    assert "task_output(" in result
+    assert "`task_activity`" in result
+    assert "`task_message`" in result
+    assert "`task_stop`" in result
+    assert "`task_wait`" in result
+    assert "`task_output`" in result
     assert "task_message" in library.get_tool_names()
     assert "task_activity" in library.get_tool_names()
+    assert "task_stop" in library.get_tool_names()
+
+
+def test_inject_library_can_add_background_agent_with_agent_task_tools():
+    worker = Agent(name="worker", model=_mock_model("done"))
+    worker.tool_config = {"background": True}
+
+    @mf.tool_config(inject_library=True)
+    def add_worker(tool_library) -> list[str]:
+        """Register a background agent."""
+        tool_library.add(worker)
+        return tool_library.list_tools()
+
+    library = ToolLibrary(name="lib", tools=[add_worker])
+
+    add_result = library([("call_1", "add_worker", {})]).tool_calls[0].result
+
+    assert "worker" in add_result
+    assert "task_status" in add_result
+    assert "task_stop" in add_result
+    assert "task_wait" in add_result
+    assert "task_output" in add_result
+    assert "task_activity" in add_result
+    assert "task_message" in add_result
+
+
+def test_background_tool_dispatch_does_not_mention_task_activity():
+    @mf.tool_config(background=True)
+    def slow_pipeline(value: int) -> int:
+        """Run a simple background tool."""
+        return value * 2
+
+    library = ToolLibrary(name="lib", tools=[slow_pipeline])
+
+    dispatch = library([("call_1", "slow_pipeline", {"value": 4})])
+    result = dispatch.tool_calls[0].result
+
+    assert "`task_status`" in result
+    assert "`task_stop`" in result
+    assert "`task_wait`" in result
+    assert "`task_output`" in result
+    assert "`task_activity`" not in result
+    assert "`task_message`" not in result
+    assert "task_activity" not in library.get_tool_names()
+
+
+def test_task_activity_is_unsupported_for_non_agent_task():
+    @mf.tool_config(background=True)
+    def slow_pipeline(value: int) -> int:
+        """Run a simple background tool."""
+        return value * 2
+
+    worker = Agent(name="worker", model=_mock_model("done"))
+    worker.tool_config = {"background": True}
+
+    library = ToolLibrary(name="lib", tools=[slow_pipeline, worker])
+
+    dispatch = library([("call_1", "slow_pipeline", {"value": 4})])
+    task_id = dispatch.tool_calls[0].result.split("task_id='")[1].split("'")[0]
+
+    activity = library([("call_2", "task_activity", {"task_id": task_id})]).tool_calls[
+        0
+    ].result
+
+    assert activity["status"] == "unsupported"
+    assert "background agent tasks" in activity["error"]
 
 
 def test_task_activity_tracks_compact_subagent_tool_calls():

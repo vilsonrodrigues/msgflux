@@ -20,7 +20,7 @@ from msgflux.auto import AutoParams
 from msgflux.chat_messages import ChatMessages
 from msgflux.context import execution_context, get_execution_context
 from msgflux.core.dotdict import dotdict
-from msgflux.exceptions import TaskError
+from msgflux.exceptions import TaskError, TaskStopRequestedError
 from msgflux.logger import logger
 from msgflux.nn.modules.container import ModuleDict
 from msgflux.nn.modules.module import Module
@@ -451,7 +451,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
             "task_list",
             "task_output",
             "task_wait",
-            "task_activity",
+            "task_stop",
         }
         self._task_runtime_enabled = False
         self._agent_task_runtime_enabled = False
@@ -498,6 +498,14 @@ class ToolLibrary(Module, metaclass=AutoParams):
             F.wait_for(mcp_data["client"].disconnect)
         self.mcp_clients.clear()
         self._task_runtime_enabled = False
+        self._agent_task_runtime_enabled = False
+        self._runtime_tool_names = {
+            "task_status",
+            "task_list",
+            "task_output",
+            "task_wait",
+            "task_stop",
+        }
         with self._task_futures_lock:
             self._task_futures.clear()
 
@@ -667,16 +675,26 @@ class ToolLibrary(Module, metaclass=AutoParams):
             impl=self._task_wait,
         )
         self._register_runtime_tool(
-            name="task_activity",
-            description="List compact activity entries for a background task.",
-            annotations={"task_id": str, "limit": Optional[int]},
-            impl=self._task_activity,
+            name="task_stop",
+            description=(
+                "Request a cooperative stop for a background task. "
+                "Stops immediately only if the task has not started yet."
+            ),
+            annotations={"task_id": str},
+            impl=self._task_stop,
         )
 
     def _ensure_agent_task_runtime_tools(self) -> None:
         if self._agent_task_runtime_enabled:
             return
         self._agent_task_runtime_enabled = True
+        self._runtime_tool_names.add("task_activity")
+        self._register_runtime_tool(
+            name="task_activity",
+            description="List compact activity entries for a background agent task.",
+            annotations={"task_id": str, "limit": Optional[int]},
+            impl=self._task_activity,
+        )
         self._runtime_tool_names.add("task_message")
         self._register_runtime_tool(
             name="task_message",
@@ -743,7 +761,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
         self,
         task_id: str,
         limit: Optional[int] = 10,
-    ) -> List[str]:
+    ) -> Any:
         if limit is not None:
             if isinstance(limit, bool) or not isinstance(limit, int):
                 raise TypeError(
@@ -752,6 +770,15 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 )
             if limit <= 0:
                 raise ValueError("`limit` must be greater than 0.")
+        task = self.task_store.get(task_id)
+        if task is None:
+            return {"task_id": task_id, "status": "not_found"}
+        if task.metadata.get("task_kind") != "agent":
+            return {
+                "task_id": task_id,
+                "status": "unsupported",
+                "error": "task_activity is only available for background agent tasks.",
+            }
         activity = self.task_store.list_activity(task_id, limit=limit)
         return [self._format_task_activity_entry(item) for item in activity]
 
@@ -768,7 +795,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
         task = self.task_store.get(task_id)
         if task is None:
             return {"task_id": task_id, "status": "not_found"}
-        if task.status in {"completed", "failed"}:
+        if task.status in {"completed", "failed", "stopped"}:
             return self._build_task_result(task_id=task_id, task=task)
 
         future = self._get_task_future(task_id)
@@ -787,11 +814,46 @@ class ToolLibrary(Module, metaclass=AutoParams):
         deadline = None if timeout is None else time.monotonic() + float(timeout)
         while True:
             task = self.task_store.get(task_id)
-            if task is None or task.status in {"completed", "failed"}:
+            if task is None or task.status in {"completed", "failed", "stopped"}:
                 return self._build_task_result(task_id=task_id, task=task)
             if deadline is not None and time.monotonic() >= deadline:
                 return self._build_task_timeout_result(task_id=task_id, task=task)
             time.sleep(0.05)
+
+    def _task_stop(self, task_id: str) -> Dict[str, Any]:
+        task = self.task_store.get(task_id)
+        if task is None:
+            return {"task_id": task_id, "status": "not_found"}
+
+        if task.status in {"completed", "failed", "stopped"}:
+            return {
+                "task_id": task_id,
+                "status": task.status,
+                "message": "Task already reached a terminal state.",
+            }
+
+        self.task_store.request_stop(task_id)
+        future = self._get_task_future(task_id)
+        if future is not None and future.cancel():
+            stopped = self.task_store.stop(
+                task_id,
+                reason="Task was cancelled before it started running.",
+            )
+            return {
+                "task_id": task_id,
+                "status": "stopped",
+                "message": "Task stopped before execution started.",
+                "task_status": stopped.status if stopped is not None else "stopped",
+            }
+
+        return {
+            "task_id": task_id,
+            "status": "stop_requested",
+            "message": (
+                "Stop requested. The task will stop at the next cooperative "
+                "checkpoint."
+            ),
+        }
 
     def _task_message(self, task_id: str, message: str) -> Dict[str, Any]:
         task = self.task_store.get(task_id)
@@ -845,6 +907,12 @@ class ToolLibrary(Module, metaclass=AutoParams):
             return task.result
         if task.status == "failed":
             return {"task_id": task_id, "status": task.status, "error": task.error}
+        if task.status == "stopped":
+            return {
+                "task_id": task_id,
+                "status": task.status,
+                "reason": task.metadata.get("stop_reason"),
+            }
         return {
             "task_id": task_id,
             "status": task.status,
@@ -860,6 +928,9 @@ class ToolLibrary(Module, metaclass=AutoParams):
             "task_status": task.status,
         }
         if task.status not in {"completed", "failed"}:
+            if task.status == "stopped":
+                payload["reason"] = task.metadata.get("stop_reason")
+                return payload
             payload["progress"] = task.progress.to_dict()
         elif task.status == "failed":
             payload["error"] = task.error
@@ -897,20 +968,13 @@ class ToolLibrary(Module, metaclass=AutoParams):
         tool_name: str,
         task_kind: str,
     ) -> str:
-        actions = [
-            f"`task_status(task_id='{task_id}')` to inspect status and progress",
-            f"`task_activity(task_id='{task_id}')` to inspect recent activity",
-            f"`task_wait(task_id='{task_id}')` to block until it finishes",
-            f"`task_output(task_id='{task_id}')` when it completes",
-        ]
+        actions = ["`task_status`", "`task_stop`", "`task_wait`", "`task_output`"]
         if task_kind == "agent":
-            actions.insert(
-                2,
-                f"`task_message(task_id='{task_id}', message='...')` to send a message",
-            )
+            actions.insert(1, "`task_activity`")
+            actions.insert(2, "`task_message`")
         return (
             f"The `{tool_name}` tool is running in the background with "
-            f"task_id='{task_id}'. Use "
+            f"task_id='{task_id}'. Use that task_id with "
             + ", ".join(actions[:-1])
             + f", or {actions[-1]}."
         )
@@ -1060,6 +1124,19 @@ class ToolLibrary(Module, metaclass=AutoParams):
             task_handle.set_running()
             try:
                 result = tool(**call_params)
+            except TaskStopRequestedError as exc:
+                task_handle.stop(reason=str(exc))
+                self._publish_task_notification(
+                    task_id=task_handle.task_id,
+                    tool_name=tool_name,
+                    status="stopped",
+                    hint=(
+                        f"Use task_status(task_id='{task_handle.task_id}') "
+                        "if you need stop details."
+                    ),
+                    agent_inbox=agent_inbox,
+                )
+                raise
             except Exception as exc:
                 task_handle.fail(exc)
                 self._publish_task_notification(
@@ -1175,6 +1252,8 @@ class ToolLibrary(Module, metaclass=AutoParams):
     def _log_background_task_failure(self, future: Any) -> None:
         try:
             future.result()
+        except TaskStopRequestedError:
+            return
         except Exception as exc:
             logger.error(f"Background task error: {exc!s}", exc_info=True)
 
@@ -1252,6 +1331,12 @@ class ToolLibrary(Module, metaclass=AutoParams):
             ),
             "checkpoint_store": checkpoint_store,
             "agent_inbox": task_inbox or root_agent_inbox,
+            "task_handle": TaskHandle(
+                task.task_id,
+                self.task_store,
+                tool_name=tool_name,
+                agent_inbox=root_agent_inbox,
+            ),
             "task_activity_recorder": TaskActivityRecorder(task.task_id, self.task_store),
         }
         future = Executor.get_instance().submit(

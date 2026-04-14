@@ -150,16 +150,19 @@ class AgentInbox:
                         if self.verbose:
                             self._print_verbose_event(
                                 "notification_replace",
-                                self._format_notification_summary(normalized),
-                                bc="br1",
+                                self._render_notification_payload(normalized),
+                                suffix=(
+                                    f"\ndedupe_key={normalized.dedupe_key}"
+                                    if normalized.dedupe_key
+                                    else ""
+                                ),
                             )
                         return deepcopy(normalized)
             self._notifications.append(normalized)
         if self.verbose:
             self._print_verbose_event(
                 "notification_publish",
-                self._format_notification_summary(normalized),
-                bc="br1",
+                self._render_notification_payload(normalized),
             )
         return deepcopy(normalized)
 
@@ -183,8 +186,8 @@ class AgentInbox:
         if self.verbose and notifications:
             self._print_verbose_event(
                 "notification_drain",
-                f"{len(notifications)} notification(s)",
-                bc="b",
+                self.render(notifications)["content"],
+                prefix=f"{len(notifications)} notification(s)\n",
             )
         return notifications
 
@@ -285,26 +288,29 @@ class AgentInbox:
 
     # --- Verbose Helpers ---
 
-    def _print_verbose_event(self, label: str, text: str, *, bc: str) -> None:
+    def _print_verbose_event(
+        self,
+        label: str,
+        text: str,
+        *,
+        prefix: str = "",
+        suffix: str = "",
+    ) -> None:
         cprint(
-            f"[{self.owner or 'unknown'}][{label}] {text}",
-            bc=bc,
+            f"[{self.owner or 'unknown'}][{label}]\n{prefix}{text}{suffix}",
+            bc="b",
             ls="b",
         )
 
-    def _format_notification_summary(self, notification: AgentNotification) -> str:
-        parts = [f"source={notification.source}"]
-        if notification.ref:
-            parts.append(f"ref={notification.ref}")
-        if notification.status:
-            parts.append(f"status={notification.status}")
-        if notification.metadata:
-            metadata = ", ".join(
-                f"{key}={self._stringify(value)}"
-                for key, value in sorted(notification.metadata.items())
-            )
-            parts.append(f"metadata={metadata}")
-        return " ".join(parts)
+    def _render_notification_payload(self, notification: AgentNotification) -> str:
+        rendered = self.render([notification])
+        if rendered is None:
+            return ""
+        content = rendered["content"]
+        lines = content.splitlines()
+        if len(lines) >= 4:
+            return "\n".join(lines[2:-2])
+        return content
 
     @staticmethod
     def _escape_text(value: Any) -> str:

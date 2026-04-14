@@ -9,11 +9,13 @@ The current design is intentionally small:
 - `task_wait(task_id)` blocks until the task completes, fails, or times out
 - `task_output(task_id)` returns the final output
 - `task_list()` lists tasks visible in the current `ToolLibrary`
-- `task_activity(task_id)` returns compact task activity entries
+- `task_stop(task_id)` requests a cooperative stop
 - completed and failed tasks can also be delivered back to the agent as a
   passive notification
 - `inject_notification=True` lets a tool publish agent-visible status updates
 - `inject_library=True` lets a tool add or remove tools dynamically
+- `task_activity(task_id)` and `task_message(task_id, message)` are only
+  exposed when the library contains a background subagent
 
 This page focuses on the current behavior, not future multi-agent planning.
 
@@ -54,7 +56,7 @@ agent = nn.Agent(
 dispatch = agent.tool_library([("call_1", "long_sum", {"a": 20, "b": 22})])
 print(dispatch.tool_calls[0].result)
 # The `long_sum` tool is running in the background with task_id='...'
-# Use `task_status(...)`, `task_activity(...)`, `task_wait(...)`, or `task_output(...)`
+# Use that task_id with `task_status`, `task_stop`, `task_wait`, or `task_output`
 
 tasks = agent.tool_library([("call_2", "task_list", {})])
 task_id = tasks.tool_calls[0].result[0]["task_id"]
@@ -82,18 +84,30 @@ When the task completes, `task_wait` returns the same payload as
 the timeout is reached first, it returns a timeout payload with the current
 task status and progress.
 
-## Example 1C: Reading Task Activity
+## Example 1D: Stopping A Background Task
 
-`task_activity(task_id)` returns a compact list of activity entries for that
-task.
+`task_stop(task_id)` requests a cooperative stop.
+
+```python
+stop_result = agent.tool_library([("call_6", "task_stop", {"task_id": task_id})])
+print(stop_result.tool_calls[0].result)
+```
+
+If the task has not started yet, msgFlux may stop it immediately. If it is
+already running, the stop is observed at the next cooperative checkpoint. For
+background subagents, that means before the next provider call.
+
+## Example 1C: Reading Subagent Activity
+
+`task_activity(task_id)` returns a compact list of activity entries, but only
+for background subagent tasks.
 
 ```python
 activity = agent.tool_library([("call_6", "task_activity", {"task_id": task_id})])
 print(activity.tool_calls[0].result)
 ```
 
-For normal background tools this mostly means task lifecycle and progress. For
-background subagents it can also include compact tool call entries such as:
+For background subagents it can include compact tool call entries such as:
 
 ```python
 [
@@ -144,6 +158,16 @@ While the task is running, `task_status(task_id)` returns something like:
         "total": 3,
         "percent": 66.67,
     },
+}
+```
+
+It also includes timing helpers such as:
+
+```python
+{
+    "started_at": "2026-04-14T14:00:00.000000+00:00",
+    "running_for_seconds": 1.243,
+    "last_activity_summary": "Progress: Processed b.txt",
 }
 ```
 
@@ -203,7 +227,7 @@ keeps the newest progress update for the same task visible to the model.
 ## Example 3D: Sending A Message To A Background Subagent
 
 When the background task is itself an `Agent`, the dispatch response also
-advertises `task_message(task_id=..., message=...)`.
+advertises `task_activity` and `task_message(task_id=..., message=...)`.
 
 ```python
 message_result = agent.tool_library(

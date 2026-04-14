@@ -18,8 +18,12 @@ def test_agent_inbox_verbose_publish_and_drain_are_printed(capsys):
 
     captured = capsys.readouterr()
     assert "[assistant][notification_publish]" in captured.out
-    assert "source=task ref=task_123 status=completed" in captured.out
-    assert "[assistant][notification_drain] 1 notification(s)" in captured.out
+    assert '<notification source="task" ref="task_123" status="completed">' in captured.out
+    assert "tool=worker" in captured.out
+    assert "[assistant][notification_drain]" in captured.out
+    assert "1 notification(s)" in captured.out
+    assert "<system_note>" in captured.out
+    assert "</system_note>" in captured.out
 
 
 def test_agent_inbox_verbose_replace_is_printed(capsys):
@@ -44,4 +48,5 @@ def test_agent_inbox_verbose_replace_is_printed(capsys):
 
     captured = capsys.readouterr()
     assert "[assistant][notification_replace]" in captured.out
-    assert "status=process" in captured.out
+    assert 'status="process"' in captured.out
+    assert "dedupe_key=progress:task_123" in captured.out

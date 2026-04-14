@@ -114,10 +114,12 @@ Background tasks should support both delivery paths from the start.
 The active path is explicit polling through tools:
 
 - `task_status(task_id)` returns rich state
-- `task_activity(task_id)` returns compact activity entries
+- `task_stop(task_id)` requests a cooperative stop
 - `task_wait(task_id)` blocks until the task reaches a terminal state or times out
 - `task_output(task_id)` returns only the final output
 - `task_list(...)` returns tasks visible in the current scope
+- `task_activity(task_id)` returns compact activity entries, but only for
+  background agent tasks
 
 This path is canonical. A passive notification should never be the only way to
 observe task state.
@@ -139,6 +141,7 @@ The initial status machine should stay small:
 ```text
 queued -> running -> completed
 queued -> running -> failed
+queued -> running -> stopped
 ```
 
 The first implementation does not need retries, child tasks, or checkpoint
@@ -221,25 +224,31 @@ publish agent-visible status updates. For background tools, that handle is
 automatically bound to the current `task_id`.
 
 When the background tool is itself an `Agent`, the runtime also exposes
-`task_message(task_id=..., message=...)` so the caller can deliver a follow-up
-message to the subagent.
+`task_activity(task_id=...)` and `task_message(task_id=..., message=...)` so
+the caller can inspect recent activity and deliver a follow-up message to the
+subagent.
 
 ## Why Both `task_status` And `task_output`
 
 These tools solve different problems.
 
 - `task_status` is for orchestration and polling logic
-- `task_activity` is for compact recent activity
+- `task_stop` is for cooperative interruption
 - `task_wait` is for synchronous orchestration when the caller wants to pause
 - `task_output` is for consuming the final payload
+- `task_activity` is for compact recent activity from a background subagent
 
 If `task_output` is the only reader, the runtime will collapse state, progress,
 and final result into one interface. That makes notifications and collaboration
 harder later.
 
-`task_activity` fills the gap between `task_status` and `task_output`. It gives
-the model a compact view of what happened without dumping raw tool outputs into
-the prompt.
+When it is available, `task_activity` fills the gap between `task_status` and
+`task_output`. It gives the model a compact view of what happened inside a
+background subagent without dumping raw tool outputs into the prompt.
+
+`task_stop` should be treated as cooperative by default. It can stop a task
+immediately only when the background future has not started yet. Otherwise the
+task observes the stop request at the next checkpoint.
 
 ## Notification Policy
 
