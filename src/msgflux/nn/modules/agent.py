@@ -31,7 +31,7 @@ from msgflux.dsl.signature import (
     generate_annotations_from_signature,
 )
 from msgflux.dsl.typed_parsers.registry import typed_parser_registry
-from msgflux.exceptions import _GuardInterrupt
+from msgflux.exceptions import TaskStopRequestedError, _GuardInterrupt
 from msgflux.generation.control_flow import ToolFlowControl
 from msgflux.generation.templates import (
     EXPECTED_OUTPUTS_TEMPLATE,
@@ -502,6 +502,9 @@ class Agent(Module, metaclass=AutoParams):
                 )
             except _GuardInterrupt as e:
                 return self._define_response_mode(e.response, message)
+            except TaskStopRequestedError:
+                self._checkpoint_save(inputs.get("messages"), inputs.get("vars", {}), status="stopped")
+                raise
             except Exception:
                 self._checkpoint_save_on_error(inputs)
                 raise
@@ -536,6 +539,13 @@ class Agent(Module, metaclass=AutoParams):
                 )
             except _GuardInterrupt as e:
                 return self._define_response_mode(e.response, message)
+            except TaskStopRequestedError:
+                await self._acheckpoint_save(
+                    inputs.get("messages"),
+                    inputs.get("vars", {}),
+                    status="stopped",
+                )
+                raise
             except Exception:
                 await self._acheckpoint_save_on_error(inputs)
                 raise
@@ -558,6 +568,7 @@ class Agent(Module, metaclass=AutoParams):
         session_id: Optional[str] = None,  # noqa: ARG002
         run_id: Optional[str] = None,  # noqa: ARG002
     ) -> Union[ModelResponse, ModelStreamResponse]:
+        self._raise_if_background_task_stopped()
         model_execution_params = self._prepare_model_execution(
             messages=messages,
             prefilling=prefilling,
@@ -579,6 +590,7 @@ class Agent(Module, metaclass=AutoParams):
         session_id: Optional[str] = None,  # noqa: ARG002
         run_id: Optional[str] = None,  # noqa: ARG002
     ) -> Union[ModelResponse, ModelStreamResponse]:
+        self._raise_if_background_task_stopped()
         model_execution_params = self._prepare_model_execution(
             messages=messages,
             prefilling=prefilling,
@@ -2010,6 +2022,19 @@ class Agent(Module, metaclass=AutoParams):
         if inherited is not None:
             return inherited
         return self.agent_inbox
+
+    def _raise_if_background_task_stopped(self) -> None:
+        task_handle = get_execution_context().get("task_handle")
+        if task_handle is None:
+            return
+        if task_handle.is_stop_requested():
+            if self.config.get("verbose", False):
+                cprint(
+                    f"[{self.name}][task_stop] task_id={task_handle.task_id}",
+                    bc="b",
+                    ls="b",
+                )
+            raise TaskStopRequestedError(task_handle.task_id)
 
     # --- Inbox Delivery ---
 

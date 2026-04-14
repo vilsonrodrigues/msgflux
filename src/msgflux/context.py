@@ -41,6 +41,10 @@ _CURRENT_AGENT_INBOX: contextvars.ContextVar[Any] = contextvars.ContextVar(
     "msgflux_agent_inbox",
     default=None,
 )
+_CURRENT_TASK_HANDLE: contextvars.ContextVar[Any] = contextvars.ContextVar(
+    "msgflux_task_handle",
+    default=None,
+)
 _CURRENT_TASK_ACTIVITY_RECORDER: contextvars.ContextVar[Any] = contextvars.ContextVar(
     "msgflux_task_activity_recorder",
     default=None,
@@ -57,6 +61,7 @@ def execution_context(
     root_run_id: Optional[str] = None,
     checkpoint_store: Any = None,
     agent_inbox: Any = None,
+    task_handle: Any = None,
     task_activity_recorder: Any = None,
 ):
     """Set execution identity for the enclosed scope.
@@ -100,6 +105,10 @@ def execution_context(
     resolved_agent_inbox = (
         agent_inbox if agent_inbox is not None else current_agent_inbox
     )
+    current_task_handle = _CURRENT_TASK_HANDLE.get()
+    resolved_task_handle = (
+        task_handle if task_handle is not None else current_task_handle
+    )
     current_task_activity_recorder = _CURRENT_TASK_ACTIVITY_RECORDER.get()
     resolved_task_activity_recorder = (
         task_activity_recorder
@@ -114,6 +123,7 @@ def execution_context(
     root_run_token = _CURRENT_ROOT_RUN_ID.set(resolved_root_run_id)
     checkpoint_token = _CURRENT_CHECKPOINT_STORE.set(resolved_checkpoint_store)
     inbox_token = _CURRENT_AGENT_INBOX.set(resolved_agent_inbox)
+    task_handle_token = _CURRENT_TASK_HANDLE.set(resolved_task_handle)
     activity_token = _CURRENT_TASK_ACTIVITY_RECORDER.set(
         resolved_task_activity_recorder
     )
@@ -127,6 +137,7 @@ def execution_context(
         _CURRENT_ROOT_RUN_ID.reset(root_run_token)
         _CURRENT_CHECKPOINT_STORE.reset(checkpoint_token)
         _CURRENT_AGENT_INBOX.reset(inbox_token)
+        _CURRENT_TASK_HANDLE.reset(task_handle_token)
         _CURRENT_TASK_ACTIVITY_RECORDER.reset(activity_token)
 
 
@@ -153,6 +164,7 @@ def get_execution_context() -> Mapping[str, Optional[Any]]:
         "root_run_id": _CURRENT_ROOT_RUN_ID.get(),
         "checkpoint_store": _CURRENT_CHECKPOINT_STORE.get(),
         "agent_inbox": _CURRENT_AGENT_INBOX.get(),
+        "task_handle": _CURRENT_TASK_HANDLE.get(),
         "task_activity_recorder": _CURRENT_TASK_ACTIVITY_RECORDER.get(),
     }
 

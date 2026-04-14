@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Mapping, Optional
 from uuid import uuid4
 
 from msgflux.agent_inbox import AgentInbox, AgentNotification, ToolNotificationHandle
+from msgflux.exceptions import TaskStopRequestedError
 
 
 # --- Module Utilities ---
@@ -265,6 +266,29 @@ class TaskStore:
             )
             return deepcopy(task)
 
+    def stop(self, task_id: str, *, reason: Optional[str] = None) -> Optional[TaskRecord]:
+        with self._lock:
+            task = self._tasks.get(task_id)
+            if task is None:
+                return None
+            now = _utc_now()
+            task.status = "stopped"
+            task.updated_at = now
+            task.completed_at = now
+            task.metadata["stop_requested"] = False
+            if reason:
+                task.metadata["stop_reason"] = reason
+            self._activities.setdefault(task_id, []).append(
+                TaskActivity(
+                    task_id=task_id,
+                    kind="status",
+                    summary="Task stopped.",
+                    created_at=now,
+                    metadata={"status": "stopped", "reason": reason},
+                )
+            )
+            return deepcopy(task)
+
     def request_stop(self, task_id: str) -> Optional[TaskRecord]:
         with self._lock:
             task = self._tasks.get(task_id)
@@ -404,6 +428,19 @@ class TaskHandle:
 
     def fail(self, error: Any) -> Optional[TaskRecord]:
         return self._store.fail(self.task_id, error)
+
+    def stop(self, *, reason: Optional[str] = None) -> Optional[TaskRecord]:
+        return self._store.stop(self.task_id, reason=reason)
+
+    def is_stop_requested(self) -> bool:
+        task = self._store.get(self.task_id)
+        if task is None:
+            return False
+        return bool(task.metadata.get("stop_requested"))
+
+    def raise_if_stopped(self) -> None:
+        if self.is_stop_requested():
+            raise TaskStopRequestedError(self.task_id)
 
     # --- Agent Notifications ---
 
