@@ -1,9 +1,10 @@
 """Focused tests for background tasks, task progress, notifications, and
 library-aware tools."""
 
+from concurrent.futures import CancelledError as FutureCancelledError
 import threading
 import time
-from unittest.mock import MagicMock, Mock
+from unittest.mock import MagicMock, Mock, patch
 
 import msgflux as mf
 import pytest
@@ -242,6 +243,7 @@ def test_background_task_reports_progress_and_output():
     assert task_state["status"] == "running"
     assert "started_at" in task_state
     assert isinstance(task_state["running_for_seconds"], float)
+    assert task_state["metadata"]["supports_activity"] is False
     assert task_state["progress"]["stage"] == "work"
     assert task_state["progress"]["percent"] == 50.0
 
@@ -379,7 +381,19 @@ def test_task_stop_stops_background_agent_at_next_checkpoint():
         0
     ].result
     assert status["status"] == "stopped"
+    assert status["metadata"]["supports_activity"] is True
     assert status["last_activity_summary"] == "Status: Task stopped."
+
+
+def test_cancelled_background_future_is_not_logged_as_error():
+    library = ToolLibrary(name="lib", tools=[])
+    future = Mock()
+    future.result.side_effect = FutureCancelledError()
+
+    with patch("msgflux.nn.modules.tool.logger.error") as mock_error:
+        library._log_background_task_failure(future)
+
+    mock_error.assert_not_called()
 
 
 def test_task_wait_falls_back_to_task_store_polling_without_future():
@@ -867,7 +881,75 @@ def test_task_message_resumes_completed_background_agent():
             0
         ].result
 
-    assert output == "resumed pass"
+        assert output == "resumed pass"
+
+
+def test_task_message_resume_clears_previous_stop_reason():
+    slow_tool_started = threading.Event()
+    release_tool = threading.Event()
+
+    def slow_tool() -> str:
+        """Block until released."""
+        slow_tool_started.set()
+        release_tool.wait(timeout=2.0)
+        return "tool finished"
+
+    store = InMemoryCheckpointStore()
+    worker_model = _ScriptedModel(
+        [
+            _tool_call_response("slow_tool", {}),
+            _text_response("resumed pass"),
+        ]
+    )
+    worker = Agent(name="worker", model=worker_model, tools=[slow_tool])
+    worker.tool_config = {"background": True}
+
+    library = ToolLibrary(name="lib", tools=[worker])
+    with execution_context(
+        session_id="user_42",
+        namespace="root_agent",
+        run_id="run_root",
+        root_run_id="run_root",
+        checkpoint_store=store,
+    ):
+        dispatch = library([("call_1", "worker", {"task": "Start worker."})])
+        task_id = dispatch.tool_calls[0].result.split("task_id='")[1].split("'")[0]
+
+        assert slow_tool_started.wait(timeout=1.0)
+        stop_result = library(
+            [("call_2", "task_stop", {"task_id": task_id})]
+        ).tool_calls[0].result
+        assert stop_result["status"] == "stop_requested"
+
+        release_tool.set()
+        _wait_until(
+            lambda: library([("call_3", "task_status", {"task_id": task_id})])
+            .tool_calls[0]
+            .result["status"]
+            == "stopped"
+        )
+
+        stopped_state = library(
+            [("call_4", "task_status", {"task_id": task_id})]
+        ).tool_calls[0].result
+        assert "stop_reason" in stopped_state["metadata"]
+
+        message_result = library(
+            [("call_5", "task_message", {"task_id": task_id, "message": "Continue."})]
+        ).tool_calls[0].result
+        assert message_result["status"] == "resumed"
+
+        _wait_until(
+            lambda: library([("call_6", "task_status", {"task_id": task_id})])
+            .tool_calls[0]
+            .result["status"]
+            == "completed"
+        )
+
+        resumed_state = library(
+            [("call_7", "task_status", {"task_id": task_id})]
+        ).tool_calls[0].result
+        assert "stop_reason" not in resumed_state["metadata"]
 
     state = store.load_state("worker", "user_42", task_id)
     assert state is not None

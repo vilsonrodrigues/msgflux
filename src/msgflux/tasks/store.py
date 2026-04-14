@@ -328,6 +328,7 @@ class TaskStore:
             task.result = None
             task.error = None
             task.metadata["stop_requested"] = False
+            task.metadata.pop("stop_reason", None)
             self._activities.setdefault(task_id, []).append(
                 TaskActivity(
                     task_id=task_id,

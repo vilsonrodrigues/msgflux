@@ -1,6 +1,7 @@
 import asyncio
 import inspect
 import time
+from concurrent.futures import CancelledError as FutureCancelledError
 from concurrent.futures import TimeoutError as FutureTimeoutError
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field
@@ -1251,6 +1252,8 @@ class ToolLibrary(Module, metaclass=AutoParams):
     def _log_background_task_failure(self, future: Any) -> None:
         try:
             future.result()
+        except FutureCancelledError:
+            return
         except TaskStopRequestedError:
             return
         except Exception as exc:
@@ -1293,7 +1296,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 "root_run_id": root_run_id,
                 "checkpoint_session_id": session_id,
                 "checkpoint_run_id": task_id if task_kind == "agent" else None,
-                "supports_activity": True,
+                "supports_activity": task_kind == "agent",
                 "supports_message": task_kind == "agent",
                 "stop_requested": False,
             },
