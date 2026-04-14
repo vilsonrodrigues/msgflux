@@ -114,6 +114,7 @@ Background tasks should support both delivery paths from the start.
 The active path is explicit polling through tools:
 
 - `task_status(task_id)` returns rich state
+- `task_activity(task_id)` returns compact activity entries
 - `task_wait(task_id)` blocks until the task reaches a terminal state or times out
 - `task_output(task_id)` returns only the final output
 - `task_list(...)` returns tasks visible in the current scope
@@ -205,6 +206,7 @@ Recommended additions:
 
 - `background=True`
 - `inject_task=True`
+- `inject_notification=True`
 - `inject_library=True`
 
 The important detail is that `inject_task=True` should inject a `TaskHandle`,
@@ -214,17 +216,30 @@ not the store and not the full `ToolLibrary`.
 can add, remove, and list tools without exposing the whole `ToolLibrary`
 object.
 
+`inject_notification=True` injects a small `notification` handle that can
+publish agent-visible status updates. For background tools, that handle is
+automatically bound to the current `task_id`.
+
+When the background tool is itself an `Agent`, the runtime also exposes
+`task_message(task_id=..., message=...)` so the caller can deliver a follow-up
+message to the subagent.
+
 ## Why Both `task_status` And `task_output`
 
 These tools solve different problems.
 
 - `task_status` is for orchestration and polling logic
+- `task_activity` is for compact recent activity
 - `task_wait` is for synchronous orchestration when the caller wants to pause
 - `task_output` is for consuming the final payload
 
 If `task_output` is the only reader, the runtime will collapse state, progress,
 and final result into one interface. That makes notifications and collaboration
 harder later.
+
+`task_activity` fills the gap between `task_status` and `task_output`. It gives
+the model a compact view of what happened without dumping raw tool outputs into
+the prompt.
 
 ## Notification Policy
 
@@ -244,17 +259,21 @@ The code should stay split by responsibility:
 src/msgflux/tasks/store.py
   -> TaskRecord
   -> TaskProgress
+  -> TaskActivity
   -> TaskStore
+  -> TaskActivityRecorder
   -> TaskHandle
 
 src/msgflux/agent_inbox.py
   -> AgentNotification
   -> AgentInbox
+  -> ToolNotificationHandle
 
 src/msgflux/nn/modules/tool.py
   -> background dispatch integration
   -> task tools registration
   -> TaskHandle injection
+  -> notification injection
 
 src/msgflux/nn/modules/agent.py
   -> notification delivery into model execution

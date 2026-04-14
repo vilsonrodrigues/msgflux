@@ -65,6 +65,7 @@ class TestToolConfig:
         assert config.call_as_response is False
         assert config.disable_input is False
         assert config.inject_task is False
+        assert config.inject_notification is False
         assert config.inject_library is False
         assert config.inject_vars is False
         assert config.inject_message is False

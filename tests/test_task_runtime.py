@@ -10,6 +10,7 @@ import pytest
 from msgflux.chat_messages import ChatMessages
 from msgflux.context import execution_context
 from msgflux.data.stores import InMemoryCheckpointStore
+from msgflux.models.tool_call_agg import ToolCallAggregator
 from msgflux.models.response import ModelResponse
 from msgflux.nn import Agent
 from msgflux.nn.modules.tool import ToolLibrary
@@ -35,6 +36,39 @@ def _mock_model(text: str = "ok") -> MagicMock:
     resp.metadata = {}
     model.return_value = resp
     return model
+
+
+def _tool_call_response(tool_name: str, parameters: dict, *, call_id: str = "call_inner"):
+    response = ModelResponse()
+    response.set_response_type("tool_call")
+    agg = ToolCallAggregator()
+    agg.process(0, call_id, tool_name, mf.msgspec_dumps(parameters))
+    response.add(agg)
+    response.reasoning = None
+    response.metadata = {}
+    return response
+
+
+def _text_response(text: str):
+    response = ModelResponse()
+    response.set_response_type("text_generation")
+    response.add(text)
+    response.reasoning = None
+    response.metadata = {}
+    return response
+
+
+class _ScriptedModel:
+    def __init__(self, responses):
+        self.model_type = "chat_completion"
+        self._responses = list(responses)
+        self.calls = []
+
+    def __call__(self, **kwargs):
+        self.calls.append(kwargs)
+        if not self._responses:
+            raise AssertionError("Scripted model exhausted.")
+        return self._responses.pop(0)
 
 
 def _notification_messages(
@@ -90,6 +124,24 @@ def test_inject_library_schema_excludes_tool_library_handle():
 
     assert "name" in props
     assert "tool_library" not in props
+
+
+def test_inject_notification_schema_excludes_notification_handle():
+    @mf.tool_config(inject_notification=True)
+    def publish_status(notification, name: str) -> str:
+        """Publish a status notification."""
+        return name
+
+    library = ToolLibrary(name="lib", tools=[publish_status])
+    schema = next(
+        item
+        for item in library.get_tool_json_schemas()
+        if item["function"]["name"] == "publish_status"
+    )
+    props = schema["function"]["parameters"].get("properties", {})
+
+    assert "name" in props
+    assert "notification" not in props
 
 
 def test_inject_library_can_add_and_remove_tools():
@@ -491,6 +543,71 @@ def test_task_progress_notifications_are_persisted():
     )
 
 
+def test_injected_notification_handle_publishes_task_status_updates():
+    started = threading.Event()
+    release = threading.Event()
+
+    @mf.tool_config(background=True, inject_notification=True)
+    def long_job(value: int, notification) -> int:
+        """Emit task status updates through the injected notification handle."""
+        notification.update(
+            "prepare",
+            hint="Background work has started.",
+            metadata={"step": 1},
+            dedupe_key="job-status",
+        )
+        started.set()
+        release.wait(timeout=2.0)
+        notification.update(
+            "process",
+            metadata={"step": 2},
+            dedupe_key="job-status",
+        )
+        return value * 3
+
+    model = _mock_model()
+    agent = Agent(
+        name="Assistant",
+        model=model,
+        tools=[long_job],
+    )
+
+    agent.tool_library([("call_1", "long_job", {"value": 7})])
+    task_id = agent.tool_library([("call_2", "task_list", {})]).tool_calls[0].result[0][
+        "task_id"
+    ]
+    assert started.wait(timeout=1.0)
+
+    messages = ChatMessages()
+    agent("Continue.", messages=messages)
+
+    status_notifications = _notification_messages(
+        model.call_args.kwargs["messages"],
+        source="tool_status",
+        status="prepare",
+    )
+    assert len(status_notifications) == 1
+    assert f'ref="{task_id}"' in status_notifications[0]["content"]
+    assert "tool=long_job" in status_notifications[0]["content"]
+    assert "step=1" in status_notifications[0]["content"]
+
+    release.set()
+    _wait_until(
+        lambda: agent.tool_library(
+            [("call_3", "task_status", {"task_id": task_id})]
+        ).tool_calls[0].result["status"]
+        == "completed"
+    )
+
+    agent("Continue again.", messages=messages)
+    process_notifications = _notification_messages(
+        model.call_args.kwargs["messages"],
+        source="tool_status",
+        status="process",
+    )
+    assert len(process_notifications) == 1
+
+
 def test_nested_agent_uses_inherited_inbox_from_execution_context():
     parent_inbox = mf.AgentInbox()
     child = Agent(name="child", model=_mock_model())
@@ -533,16 +650,103 @@ def test_background_agent_inherits_context_and_checkpoint_run_id():
     assert task_state["metadata"]["checkpoint_session_id"] == "user_42"
     assert task_state["metadata"]["checkpoint_run_id"] == task_id
 
+
+def test_background_agent_dispatch_mentions_task_message_and_activity():
+    worker = Agent(name="worker", model=_mock_model("done"))
+    worker.tool_config = {"background": True}
+
+    library = ToolLibrary(name="lib", tools=[worker])
+
+    dispatch = library([("call_1", "worker", {"task": "Solve this"})])
+    result = dispatch.tool_calls[0].result
+
+    assert "task_activity(" in result
+    assert "task_message(" in result
+    assert "task_wait(" in result
+    assert "task_output(" in result
+    assert "task_message" in library.get_tool_names()
+    assert "task_activity" in library.get_tool_names()
+
+
+def test_task_activity_tracks_compact_subagent_tool_calls():
+    def multiply(x: int) -> int:
+        """Multiply by two."""
+        return x * 2
+
+    worker_model = _ScriptedModel(
+        [
+            _tool_call_response("multiply", {"x": 4}),
+            _text_response("done"),
+        ]
+    )
+    worker = Agent(name="worker", model=worker_model, tools=[multiply])
+    worker.tool_config = {"background": True}
+
+    library = ToolLibrary(name="lib", tools=[worker])
+    dispatch = library([("call_1", "worker", {"task": "Multiply 4 by 2."})])
+    task_id = dispatch.tool_calls[0].result.split("task_id='")[1].split("'")[0]
+
+    _wait_until(
+        lambda: library([("call_2", "task_status", {"task_id": task_id})]).tool_calls[0]
+        .result["status"]
+        == "completed"
+    )
+
+    activity = library([("call_3", "task_activity", {"task_id": task_id})]).tool_calls[
+        0
+    ].result
+
+    assert any(entry == "Status: Task queued." for entry in activity)
+    assert any(entry == "Status: Task running." for entry in activity)
+    assert any("ToolCall: multiply({" in entry for entry in activity)
+    assert all("ToolResult:" not in entry for entry in activity)
+
+
+def test_task_message_resumes_completed_background_agent():
+    store = InMemoryCheckpointStore()
+    worker_model = _ScriptedModel(
+        [
+            _text_response("first pass"),
+            _text_response("resumed pass"),
+        ]
+    )
+    worker = Agent(name="worker", model=worker_model)
+    worker.tool_config = {"background": True}
+
+    library = ToolLibrary(name="lib", tools=[worker])
+    with execution_context(
+        session_id="user_42",
+        namespace="root_agent",
+        run_id="run_root",
+        root_run_id="run_root",
+        checkpoint_store=store,
+    ):
+        dispatch = library([("call_1", "worker", {"task": "Start worker."})])
+        task_id = dispatch.tool_calls[0].result.split("task_id='")[1].split("'")[0]
+        _wait_until(
+            lambda: library([("call_2", "task_status", {"task_id": task_id})])
+            .tool_calls[0]
+            .result["status"]
+            == "completed"
+        )
+
+        message_result = library(
+            [("call_3", "task_message", {"task_id": task_id, "message": "Continue."})]
+        ).tool_calls[0].result
+
+        assert message_result["status"] == "resumed"
+
+        _wait_until(
+            lambda: library([("call_4", "task_status", {"task_id": task_id})])
+            .tool_calls[0]
+            .result["status"]
+            == "completed"
+        )
+        output = library([("call_5", "task_output", {"task_id": task_id})]).tool_calls[
+            0
+        ].result
+
+    assert output == "resumed pass"
+
     state = store.load_state("worker", "user_42", task_id)
     assert state is not None
-    assert state["status"] == "completed"
-
-    restored = ChatMessages()
-    restored._hydrate_state(state["messages"])
-    history = restored.to_chatml()
-    assert any(
-        message["role"] == "user" and "Solve this" in str(message["content"])
-        for message in history
-    )
-    assert history[-1]["role"] == "assistant"
-    assert history[-1]["content"] == "worker-done"

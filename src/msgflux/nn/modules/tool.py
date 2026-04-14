@@ -4,6 +4,7 @@ import time
 from concurrent.futures import TimeoutError as FutureTimeoutError
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field
+from datetime import datetime, timezone
 from functools import partial
 from importlib import import_module
 from threading import Lock
@@ -14,8 +15,9 @@ import msgspec
 
 import msgflux.nn.functional as F
 from msgflux._private.executor import Executor
-from msgflux.agent_inbox import AgentInbox, AgentNotification
+from msgflux.agent_inbox import AgentInbox, AgentNotification, ToolNotificationHandle
 from msgflux.auto import AutoParams
+from msgflux.chat_messages import ChatMessages
 from msgflux.context import execution_context, get_execution_context
 from msgflux.core.dotdict import dotdict
 from msgflux.exceptions import TaskError
@@ -28,7 +30,7 @@ from msgflux.protocols.mcp import (
     extract_tool_result_text,
     filter_tools,
 )
-from msgflux.tasks import TaskHandle, TaskStore
+from msgflux.tasks import TaskActivityRecorder, TaskHandle, TaskStore
 from msgflux.telemetry.span import (
     aset_tool_attributes,
     set_tool_attributes,
@@ -393,6 +395,8 @@ def _convert_module_to_nn_tool(impl: Callable) -> Tool:  # noqa: C901
             annotations.pop("vars", None)
         if tool_config.get("inject_task", False):
             annotations.pop("task", None)
+        if tool_config.get("inject_notification", False):
+            annotations.pop("notification", None)
         if _uses_library_injection(tool_config):
             annotations.pop("tool_library", None)
 
@@ -441,10 +445,19 @@ class ToolLibrary(Module, metaclass=AutoParams):
         self.register_buffer("mcp_clients", {})
         self.task_store = TaskStore()
         self.agent_inbox = AgentInbox(owner=f"{name}_tool_library")
-        self._runtime_tool_names = {"task_status", "task_list", "task_output", "task_wait"}
+        self._runtime_tool_names = {
+            "task_status",
+            "task_list",
+            "task_output",
+            "task_wait",
+            "task_activity",
+        }
         self._task_runtime_enabled = False
+        self._agent_task_runtime_enabled = False
         self._task_futures: Dict[str, Any] = {}
         self._task_futures_lock = Lock()
+        self._task_inboxes: Dict[str, AgentInbox] = {}
+        self._task_inboxes_lock = Lock()
         for tool in tools:
             self.add(tool)
         if mcp_servers:
@@ -462,6 +475,11 @@ class ToolLibrary(Module, metaclass=AutoParams):
         self.tool_configs[tool.name] = getattr(tool, "tool_config", {})
         if self.tool_configs[tool.name].get("background", False):
             self._ensure_task_runtime_tools()
+        if (
+            self.tool_configs[tool.name].get("background", False)
+            and self.tool_configs[tool.name].get("tool_kind") == "agent"
+        ):
+            self._ensure_agent_task_runtime_tools()
 
         self.library.update({tool.name: tool})
 
@@ -647,6 +665,28 @@ class ToolLibrary(Module, metaclass=AutoParams):
             annotations={"task_id": str, "timeout": Optional[float]},
             impl=self._task_wait,
         )
+        self._register_runtime_tool(
+            name="task_activity",
+            description="List compact activity entries for a background task.",
+            annotations={"task_id": str, "limit": Optional[int]},
+            impl=self._task_activity,
+        )
+
+    def _ensure_agent_task_runtime_tools(self) -> None:
+        if self._agent_task_runtime_enabled:
+            return
+        self._agent_task_runtime_enabled = True
+        self._runtime_tool_names.add("task_message")
+        self._register_runtime_tool(
+            name="task_message",
+            description=(
+                "Send a message to a background agent task. "
+                "If it is still running, deliver the message to its inbox. "
+                "If it already stopped, resume the task from its checkpoint."
+            ),
+            annotations={"task_id": str, "message": str},
+            impl=self._task_message,
+        )
 
     def _register_runtime_tool(
         self,
@@ -672,14 +712,47 @@ class ToolLibrary(Module, metaclass=AutoParams):
         task = self.task_store.get(task_id)
         if task is None:
             return {"task_id": task_id, "status": "not_found"}
-        return task.to_dict()
+        payload = task.to_dict()
+        payload.update(self._build_task_timing_fields(task))
+        last_activity = self.task_store.get_last_activity(task_id)
+        if last_activity is not None:
+            payload["last_activity_summary"] = self._format_task_activity_entry(
+                last_activity
+            )
+        return payload
 
     def _task_list(self, status: Optional[str] = None) -> List[Dict[str, Any]]:
-        return [task.to_dict() for task in self.task_store.list(status=status)]
+        tasks = []
+        for task in self.task_store.list(status=status):
+            payload = task.to_dict()
+            payload.update(self._build_task_timing_fields(task))
+            last_activity = self.task_store.get_last_activity(task.task_id)
+            if last_activity is not None:
+                payload["last_activity_summary"] = self._format_task_activity_entry(
+                    last_activity
+                )
+            tasks.append(payload)
+        return tasks
 
     def _task_output(self, task_id: str) -> Any:
         task = self.task_store.get(task_id)
         return self._build_task_result(task_id=task_id, task=task)
+
+    def _task_activity(
+        self,
+        task_id: str,
+        limit: Optional[int] = 10,
+    ) -> List[str]:
+        if limit is not None:
+            if isinstance(limit, bool) or not isinstance(limit, int):
+                raise TypeError(
+                    "`limit` must be int or None, "
+                    f"given `{type(limit)}`"
+                )
+            if limit <= 0:
+                raise ValueError("`limit` must be greater than 0.")
+        activity = self.task_store.list_activity(task_id, limit=limit)
+        return [self._format_task_activity_entry(item) for item in activity]
 
     def _task_wait(self, task_id: str, timeout: Optional[float] = None) -> Any:
         if timeout is not None:
@@ -719,6 +792,49 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 return self._build_task_timeout_result(task_id=task_id, task=task)
             time.sleep(0.05)
 
+    def _task_message(self, task_id: str, message: str) -> Dict[str, Any]:
+        task = self.task_store.get(task_id)
+        if task is None:
+            return {"task_id": task_id, "status": "not_found"}
+        if task.metadata.get("task_kind") != "agent":
+            return {
+                "task_id": task_id,
+                "status": "unsupported",
+                "error": "task_message is only available for background agent tasks.",
+            }
+        if not isinstance(message, str) or not message.strip():
+            raise ValueError("`message` must be a non-empty string.")
+
+        task_inbox = self._get_task_inbox(task_id)
+        if task.status == "running" and task_inbox is not None:
+            task_inbox.publish(
+                {
+                    "source": "task_message",
+                    "ref": task_id,
+                    "status": "message",
+                    "hint": message.strip(),
+                    "metadata": {"direction": "root_to_task"},
+                }
+            )
+            self.task_store.add_activity(
+                task_id,
+                kind="message",
+                summary=f"Root message: {self._truncate_activity_text(message)}",
+                metadata={"direction": "root_to_task"},
+            )
+            return {
+                "task_id": task_id,
+                "status": "delivered",
+                "message": "Message delivered to the running background agent.",
+            }
+
+        resumed = self._resume_background_agent_task(task=task, message=message.strip())
+        return {
+            "task_id": task_id,
+            "status": "resumed",
+            "message": resumed,
+        }
+
     # --- Task Runtime Helpers ---
 
     def _build_task_result(self, *, task_id: str, task: Optional[Any]) -> Any:
@@ -748,6 +864,73 @@ class ToolLibrary(Module, metaclass=AutoParams):
             payload["error"] = task.error
         return payload
 
+    def _build_task_timing_fields(self, task: Any) -> Dict[str, Any]:
+        started_at = task.created_at
+        now = time.time()
+        created_ts = self._parse_utc_timestamp(task.created_at)
+        completed_ts = self._parse_utc_timestamp(task.completed_at)
+        payload: Dict[str, Any] = {"started_at": started_at}
+        if created_ts is None:
+            return payload
+        if completed_ts is not None:
+            payload["elapsed_seconds"] = round(completed_ts - created_ts, 3)
+        else:
+            payload["running_for_seconds"] = round(now - created_ts, 3)
+        return payload
+
+    def _format_task_activity_entry(self, activity: Any) -> str:
+        label_map = {
+            "status": "Status",
+            "progress": "Progress",
+            "tool_call": "ToolCall",
+            "error": "Error",
+            "message": "Message",
+        }
+        label = label_map.get(activity.kind, activity.kind.title())
+        return f"{label}: {activity.summary}"
+
+    def _build_background_dispatch_result(
+        self,
+        *,
+        task_id: str,
+        tool_name: str,
+        task_kind: str,
+    ) -> str:
+        actions = [
+            f"`task_status(task_id='{task_id}')` to inspect status and progress",
+            f"`task_activity(task_id='{task_id}')` to inspect recent activity",
+            f"`task_wait(task_id='{task_id}')` to block until it finishes",
+            f"`task_output(task_id='{task_id}')` when it completes",
+        ]
+        if task_kind == "agent":
+            actions.insert(
+                2,
+                f"`task_message(task_id='{task_id}', message='...')` to send a message",
+            )
+        return (
+            f"The `{tool_name}` tool is running in the background with "
+            f"task_id='{task_id}'. Use "
+            + ", ".join(actions[:-1])
+            + f", or {actions[-1]}."
+        )
+
+    @staticmethod
+    def _parse_utc_timestamp(value: Optional[str]) -> Optional[float]:
+        if not isinstance(value, str) or not value:
+            return None
+        try:
+            normalized = value.replace("Z", "+00:00")
+            return datetime.fromisoformat(normalized).astimezone(timezone.utc).timestamp()
+        except ValueError:
+            return None
+
+    @staticmethod
+    def _truncate_activity_text(value: str, *, limit: int = 140) -> str:
+        text = " ".join(str(value).split())
+        if len(text) <= limit:
+            return text
+        return text[: limit - 3] + "..."
+
     def _register_task_future(self, task_id: str, future: Any) -> None:
         with self._task_futures_lock:
             self._task_futures[task_id] = future
@@ -761,6 +944,14 @@ class ToolLibrary(Module, metaclass=AutoParams):
             current = self._task_futures.get(task_id)
             if current is future:
                 self._task_futures.pop(task_id, None)
+
+    def _register_task_inbox(self, task_id: str, inbox: AgentInbox) -> None:
+        with self._task_inboxes_lock:
+            self._task_inboxes[task_id] = inbox
+
+    def _get_task_inbox(self, task_id: str) -> Optional[AgentInbox]:
+        with self._task_inboxes_lock:
+            return self._task_inboxes.get(task_id)
 
     # --- Tool Call Preparation ---
 
@@ -802,6 +993,13 @@ class ToolLibrary(Module, metaclass=AutoParams):
         if config.get("inject_message", False):
             call_params["message"] = message
 
+        if config.get("inject_notification", False) and config.get(
+            "tool_kind"
+        ) != "agent":
+            call_params["notification"] = self._build_notification_handle(
+                tool_name=tool_name
+            )
+
         if _uses_library_injection(config):
             call_params["tool_library"] = ToolLibraryHandle(self)
 
@@ -821,11 +1019,28 @@ class ToolLibrary(Module, metaclass=AutoParams):
             "messages",
             "message",
             "task",
+            "notification",
             "tool_library",
             "tool_call_id",
         ):
             parameters.pop(key, None)
         return parameters
+
+    def _build_notification_handle(
+        self,
+        *,
+        tool_name: str,
+        ref: Optional[str] = None,
+        agent_inbox: Optional[AgentInbox] = None,
+    ) -> ToolNotificationHandle:
+        execution_context = get_execution_context()
+        inbox = agent_inbox or execution_context.get("agent_inbox") or self.agent_inbox
+        metadata = {"tool": tool_name}
+        return ToolNotificationHandle(
+            inbox,
+            ref=ref,
+            metadata=metadata,
+        )
 
     # --- Background Task Execution ---
 
@@ -870,6 +1085,92 @@ class ToolLibrary(Module, metaclass=AutoParams):
             )
             return result
 
+    def _resume_background_agent_task(self, *, task: Any, message: str) -> str:
+        tool_name = task.tool_name
+        if tool_name not in self.library:
+            raise ValueError(f"The tool `{tool_name}` is no longer available.")
+        tool = self.library[tool_name]
+        checkpoint_namespace = (
+            tool.impl.get_module_name()
+            if hasattr(tool, "impl") and hasattr(tool.impl, "get_module_name")
+            else tool.get_module_name()
+        )
+
+        checkpoint_store = get_execution_context().get("checkpoint_store")
+        session_id = task.metadata.get("checkpoint_session_id") or task.metadata.get(
+            "session_id"
+        )
+        run_id = task.metadata.get("checkpoint_run_id") or task.task_id
+        restored_messages = ChatMessages()
+        restored_vars: Dict[str, Any] = {}
+        restored_model_preference = None
+
+        if checkpoint_store is not None and isinstance(session_id, str) and session_id:
+            state = checkpoint_store.load_state(
+                checkpoint_namespace,
+                session_id,
+                run_id,
+            )
+            if state is not None:
+                restored_messages._hydrate_state(state.get("messages", {}))
+                restored_vars = state.get("vars", {}) or {}
+                restored_model_preference = state.get("model_preference")
+
+        root_inbox = get_execution_context().get("agent_inbox") or self.agent_inbox
+        task_inbox = self._get_task_inbox(task.task_id)
+        if task_inbox is None:
+            task_inbox = AgentInbox(
+                verbose=getattr(root_inbox, "verbose", False),
+                owner=f"{tool_name}:{task.task_id}",
+            )
+            self._register_task_inbox(task.task_id, task_inbox)
+
+        self.task_store.requeue(task.task_id)
+        self.task_store.add_activity(
+            task.task_id,
+            kind="message",
+            summary=f"Root message: {self._truncate_activity_text(message)}",
+            metadata={"direction": "root_to_task", "resume": True},
+        )
+
+        execution_scope = {
+            "session_id": session_id if isinstance(session_id, str) and session_id else None,
+            "run_id": run_id,
+            "parent_run_id": task.metadata.get("parent_run_id"),
+            "root_run_id": task.metadata.get("root_run_id"),
+            "checkpoint_store": checkpoint_store,
+            "agent_inbox": task_inbox,
+            "task_activity_recorder": TaskActivityRecorder(task.task_id, self.task_store),
+        }
+        future = Executor.get_instance().submit(
+            partial(
+                self._run_background_tool,
+                tool=tool,
+                task_handle=TaskHandle(
+                    task.task_id,
+                    self.task_store,
+                    tool_name=tool_name,
+                    agent_inbox=root_inbox,
+                ),
+                tool_name=tool_name,
+                call_params={
+                    "messages": restored_messages,
+                    "session_id": session_id,
+                    "run_id": run_id,
+                    "model_preference": restored_model_preference,
+                    "vars": restored_vars,
+                    "tool_call_id": f"task_message_{task.task_id}",
+                    "task": message,
+                },
+                execution_scope=execution_scope,
+                agent_inbox=root_inbox,
+            )
+        )
+        self._register_task_future(task.task_id, future)
+        future.add_done_callback(partial(self._cleanup_task_future, task.task_id))
+        future.add_done_callback(self._log_background_task_failure)
+        return "Message scheduled and background agent resumed."
+
     def _log_background_task_failure(self, future: Any) -> None:
         try:
             future.result()
@@ -893,8 +1194,15 @@ class ToolLibrary(Module, metaclass=AutoParams):
         parent_run_id = execution_context.get("run_id")
         root_run_id = execution_context.get("root_run_id")
         checkpoint_store = execution_context.get("checkpoint_store")
-        agent_inbox = execution_context.get("agent_inbox") or self.agent_inbox
+        root_agent_inbox = execution_context.get("agent_inbox") or self.agent_inbox
         task_id = uuid4().hex[:8]
+        task_inbox = None
+        if task_kind == "agent":
+            task_inbox = AgentInbox(
+                verbose=getattr(root_agent_inbox, "verbose", False),
+                owner=f"{tool_name}:{task_id}",
+            )
+            self._register_task_inbox(task_id, task_inbox)
         task = self.task_store.create(
             task_id=task_id,
             tool_name=tool_name,
@@ -906,6 +1214,9 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 "root_run_id": root_run_id,
                 "checkpoint_session_id": session_id,
                 "checkpoint_run_id": task_id if task_kind == "agent" else None,
+                "supports_activity": True,
+                "supports_message": task_kind == "agent",
+                "stop_requested": False,
             },
         )
         runner_params = dict(call_params)
@@ -914,7 +1225,13 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 task.task_id,
                 self.task_store,
                 tool_name=tool_name,
-                agent_inbox=agent_inbox,
+                agent_inbox=root_agent_inbox,
+            )
+        if config.get("inject_notification", False) and task_kind != "agent":
+            runner_params["notification"] = self._build_notification_handle(
+                tool_name=tool_name,
+                ref=task.task_id,
+                agent_inbox=root_agent_inbox,
             )
         if task_kind == "agent":
             if isinstance(session_id, str) and session_id:
@@ -933,7 +1250,8 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 root_run_id if isinstance(root_run_id, str) and root_run_id else None
             ),
             "checkpoint_store": checkpoint_store,
-            "agent_inbox": agent_inbox,
+            "agent_inbox": task_inbox or root_agent_inbox,
+            "task_activity_recorder": TaskActivityRecorder(task.task_id, self.task_store),
         }
         future = Executor.get_instance().submit(
             partial(
@@ -943,12 +1261,12 @@ class ToolLibrary(Module, metaclass=AutoParams):
                     task.task_id,
                     self.task_store,
                     tool_name=tool_name,
-                    agent_inbox=agent_inbox,
+                    agent_inbox=root_agent_inbox,
                 ),
                 tool_name=tool_name,
                 call_params=runner_params,
                 execution_scope=execution_scope,
-                agent_inbox=agent_inbox,
+                agent_inbox=root_agent_inbox,
             )
         )
         self._register_task_future(task.task_id, future)
@@ -958,12 +1276,10 @@ class ToolLibrary(Module, metaclass=AutoParams):
             id=tool_id,
             name=tool_name,
             parameters=self._build_call_parameters_for_response(call_params),
-            result=(
-                f"The `{tool_name}` tool is running in the background with "
-                f"task_id='{task.task_id}'. Use `task_status(task_id='{task.task_id}')` "
-                f"to inspect status and progress, `task_wait(task_id='{task.task_id}')` "
-                f"to block until it finishes, or "
-                f"`task_output(task_id='{task.task_id}')` when it completes."
+            result=self._build_background_dispatch_result(
+                task_id=task.task_id,
+                tool_name=tool_name,
+                task_kind=task_kind,
             ),
         )
 
@@ -1025,6 +1341,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
         if vars is None:
             vars = {}
 
+        activity_recorder = get_execution_context().get("task_activity_recorder")
         prepared_calls = []
         call_metadata = []
         tool_calls: List[ToolCall] = []
@@ -1046,6 +1363,11 @@ class ToolLibrary(Module, metaclass=AutoParams):
             # Get tool
             tool = self.library[tool_name]
             config = self.tool_configs.get(tool_name, {})
+            if (
+                activity_recorder is not None
+                and tool_name not in self._runtime_tool_names
+            ):
+                activity_recorder.tool_call(tool_name, tool_params)
             call_params = self._build_call_params(
                 tool=tool,
                 tool_name=tool_name,
@@ -1157,6 +1479,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
         if vars is None:
             vars = {}
 
+        activity_recorder = get_execution_context().get("task_activity_recorder")
         prepared_calls = []
         call_metadata = []
         tool_calls: List[ToolCall] = []
@@ -1178,6 +1501,11 @@ class ToolLibrary(Module, metaclass=AutoParams):
             # Get tool
             tool = self.library[tool_name]
             config = self.tool_configs.get(tool_name, {})
+            if (
+                activity_recorder is not None
+                and tool_name not in self._runtime_tool_names
+            ):
+                activity_recorder.tool_call(tool_name, tool_params)
             call_params = self._build_call_params(
                 tool=tool,
                 tool_name=tool_name,
@@ -1253,5 +1581,4 @@ class ToolLibrary(Module, metaclass=AutoParams):
                         error=str(result) if isinstance(result, TaskError) else None,
                     )
                 )
-
         return ToolResponses(return_directly=return_directly, tool_calls=tool_calls)

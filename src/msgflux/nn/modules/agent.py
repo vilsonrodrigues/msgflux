@@ -348,6 +348,8 @@ class Agent(Module, metaclass=AutoParams):
             )
         else:
             self.agent_inbox = agent_inbox
+            if config and config.get("verbose", False):
+                self.agent_inbox.set_verbose(True)
 
         stream = config.get("stream", False) if config else False
 
