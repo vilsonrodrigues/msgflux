@@ -67,6 +67,7 @@ class TestToolConfig:
         assert config.inject_task is False
         assert config.inject_notification is False
         assert config.inject_library is False
+        assert config.on_demand is False
         assert config.inject_vars is False
         assert config.inject_message is False
         assert config.inject_messages is False
@@ -164,6 +165,15 @@ class TestToolConfig:
             pass
 
         assert sample_function.tool_config.inject_library is True
+
+    def test_tool_config_on_demand_true(self):
+        """Test that on_demand=True is stored correctly."""
+
+        @tool_config(on_demand=True)
+        def sample_function():
+            pass
+
+        assert sample_function.tool_config.on_demand is True
 
     def test_tool_config_name_override(self):
         """Test that name_override changes the function name."""
@@ -333,6 +343,7 @@ class TestToolConfigCombinations:
             handoff=False,
             call_as_response=False,
             disable_input=False,
+            on_demand=False,
             inject_vars=False,
             inject_message=False,
             inject_messages=False,
@@ -346,6 +357,7 @@ class TestToolConfigCombinations:
         assert config.handoff is False
         assert config.call_as_response is False
         assert config.disable_input is False
+        assert config.on_demand is False
         assert config.inject_vars is False
         assert config.inject_message is False
         assert config.inject_messages is False
