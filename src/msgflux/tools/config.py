@@ -11,6 +11,8 @@ def tool_config(
     call_as_response: Optional[bool] = False,
     spawn: Optional[bool] = False,
     disable_input: Optional[bool] = False,
+    inject_library: Optional[bool] = False,
+    on_demand: Optional[bool] = False,
     inject_message: Optional[bool] = False,
     inject_messages: Optional[bool] = False,
     inject_vars: Optional[Union[bool, List[str]]] = False,
@@ -46,6 +48,12 @@ def tool_config(
             will call the tool with no explicit arguments, and any arguments supplied
             by the model are ignored at runtime. This does not inject any runtime
             context by itself.
+        inject_library:
+            If True, inject a controlled `tool_library` handle so the tool can add,
+            remove, or list tools at runtime.
+        on_demand:
+            If True, keep the tool registered but hidden from the model until it is
+            loaded through `tool_search`.
         inject_message:
             If True, the tool receives the original `message` passed to the Agent
             at runtime. This injected parameter does not become part of the tool
@@ -136,6 +144,8 @@ def tool_config(
                     "call_as_response": call_as_response,
                     "handoff": handoff,
                     "disable_input": disable_input,
+                    "inject_library": inject_library,
+                    "on_demand": on_demand,
                     "inject_message": _inject_message,
                     "inject_messages": _inject_messages,
                     "inject_vars": inject_vars,

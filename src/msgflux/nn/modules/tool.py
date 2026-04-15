@@ -64,6 +64,30 @@ class ToolResponses:
         return next((r for r in self.tool_calls if r.name == tool_name), None)
 
 
+class ToolLibraryHandle:
+    """Controlled handle exposed to runtime-aware tools."""
+
+    def __init__(self, library: "ToolLibrary"):
+        self._library = library
+
+    def add(self, tool: Callable) -> str:
+        self._library.add(tool)
+        return getattr(tool, "name", None) or getattr(tool, "__name__", None)
+
+    def remove(self, tool_name: str) -> str:
+        if tool_name in self._library._runtime_tool_names:
+            raise ValueError(f"The runtime tool `{tool_name}` cannot be removed.")
+        self._library.remove(tool_name)
+        return tool_name
+
+    def list_tools(self) -> List[str]:
+        return self._library.get_tool_names()
+
+
+def _uses_library_injection(config: Mapping[str, Any]) -> bool:
+    return config.get("inject_library", False)
+
+
 class Tool(Module):
     """Tool is Module type that provide a json schema to tools."""
 
@@ -252,7 +276,7 @@ class LocalTool(Tool):
 
 def _convert_module_to_nn_tool(impl: Callable) -> Tool:  # noqa: C901
     """Convert a callable in nn.Tool."""
-    tool_config = getattr(impl, "tool_config", dotdict())
+    tool_config = dotdict(deepcopy(getattr(impl, "tool_config", dotdict())))
 
     name_overridden = tool_config.pop("name_overridden", None)
 
@@ -335,6 +359,9 @@ def _convert_module_to_nn_tool(impl: Callable) -> Tool:  # noqa: C901
 
     if tool_config.get("handoff", False) or tool_config.get("disable_input", False):
         annotations = {}  # pass only the model state
+    else:
+        if _uses_library_injection(tool_config):
+            annotations.pop("tool_library", None)
 
     if tool_config.get("spawn"):
         doc = "This tool will not generate a return. \n" + doc
@@ -381,6 +408,9 @@ class ToolLibrary(Module, metaclass=AutoParams):
         self.register_buffer("special_library", [])
         self.register_buffer("tool_configs", {})
         self.register_buffer("mcp_clients", {})
+        self._runtime_tool_names = {"tool_search"}
+        self._on_demand_runtime_enabled = False
+        self._loaded_on_demand_tool_names: set[str] = set()
         for tool in tools:
             self.add(tool)
         if special_tools:
@@ -408,11 +438,14 @@ class ToolLibrary(Module, metaclass=AutoParams):
             self.tool_configs[tool.name] = getattr(tool, "tool_config", {})
 
             self.library.update({tool.name: tool})
+            self._apply_tool_registration_effects(tool.name)
 
     def remove(self, tool_name: str):
         if tool_name in self.library.keys():
             self.library.pop(tool_name)
             self.tool_configs.pop(tool_name, None)
+            self._loaded_on_demand_tool_names.discard(tool_name)
+            self._sync_on_demand_runtime_tools()
         elif tool_name in self.special_library:
             self.special_library.remove(tool_name)
         else:
@@ -422,6 +455,8 @@ class ToolLibrary(Module, metaclass=AutoParams):
         self.library.clear()
         self.special_library.clear()
         self.tool_configs.clear()
+        self._on_demand_runtime_enabled = False
+        self._loaded_on_demand_tool_names.clear()
         for mcp_data in self.mcp_clients.values():
             F.wait_for(mcp_data["client"].disconnect)
         self.mcp_clients.clear()
@@ -494,6 +529,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
                     # Add to library (will have name like "namespace__tool_name")
                     self.library.update({mcp_tool.name: mcp_tool})
                     self.tool_configs[mcp_tool.name] = mcp_tool.tool_config
+                    self._apply_tool_registration_effects(mcp_tool.name)
 
                 self.mcp_clients[namespace] = {
                     "client": client,
@@ -530,17 +566,10 @@ class ToolLibrary(Module, metaclass=AutoParams):
     def get_tool_json_schemas(self) -> List[Dict[str, Any]]:
         """Returns a list of JSON schemas from local and MCP tools."""
         schemas = []
-
-        # Local tools
         for tool_name in self.library:
+            if not self._is_tool_exposed(tool_name):
+                continue
             schemas.append(self.library[tool_name].get_json_schema())
-
-        # MCP tools
-        if self.mcp_clients:
-            for namespace, mcp_data in self.mcp_clients.items():
-                for mcp_tool in mcp_data["tools"]:
-                    schema = convert_mcp_schema_to_tool_schema(mcp_tool, namespace)
-                    schemas.append(schema)
 
         return schemas
 
@@ -548,12 +577,182 @@ class ToolLibrary(Module, metaclass=AutoParams):
         """Return local tool annotations keyed by tool name."""
         annotations = {}
         for tool_name, tool in self.library.items():
+            if not self._is_tool_exposed(tool_name):
+                continue
             annotations[tool_name] = {
                 name: hint
                 for name, hint in tool.get_module_annotations().items()
                 if name != "return"
             }
         return annotations
+
+    # --- On-Demand Tool Helpers ---
+
+    def _apply_tool_registration_effects(self, tool_name: str) -> None:
+        if self.tool_configs.get(tool_name, {}).get("on_demand", False):
+            self._ensure_on_demand_runtime_tools()
+
+    def _get_on_demand_tool_names(self) -> List[str]:
+        return [
+            tool_name
+            for tool_name, config in self.tool_configs.items()
+            if config.get("on_demand", False)
+        ]
+
+    def _is_tool_exposed(self, tool_name: str) -> bool:
+        if tool_name in self._runtime_tool_names:
+            return True
+        if not self.tool_configs.get(tool_name, {}).get("on_demand", False):
+            return True
+        return tool_name in self._loaded_on_demand_tool_names
+
+    def _load_on_demand_tools(self, tool_names: List[str]) -> List[str]:
+        newly_loaded = []
+        for tool_name in tool_names:
+            if tool_name not in self._loaded_on_demand_tool_names:
+                self._loaded_on_demand_tool_names.add(tool_name)
+                newly_loaded.append(tool_name)
+        return newly_loaded
+
+    def _sync_on_demand_runtime_tools(self) -> None:
+        if self._get_on_demand_tool_names():
+            self._ensure_on_demand_runtime_tools()
+            return
+        if not self._on_demand_runtime_enabled:
+            return
+        self._on_demand_runtime_enabled = False
+        if "tool_search" in self.library:
+            self.library.pop("tool_search")
+        self.tool_configs.pop("tool_search", None)
+
+    def _ensure_on_demand_runtime_tools(self) -> None:
+        if self._on_demand_runtime_enabled:
+            return
+        self._on_demand_runtime_enabled = True
+        self._register_runtime_tool(
+            name="tool_search",
+            description=(
+                "Search registered on-demand tools by keyword or exact "
+                "selection. Matching tools become available in the next model "
+                "call. Use `select:tool_a,tool_b` for direct selection."
+            ),
+            annotations={"query": str, "max_results": Optional[int]},
+            impl=self._tool_search,
+        )
+
+    def _register_runtime_tool(
+        self,
+        *,
+        name: str,
+        description: str,
+        annotations: Dict[str, Any],
+        impl: Callable,
+    ) -> None:
+        if name in self.library and self.tool_configs.get(name):
+            raise ValueError(
+                f"The runtime tool `{name}` conflicts with an existing tool."
+            )
+        tool = LocalTool(
+            name=name,
+            description=description,
+            annotations=annotations,
+            tool_config={},
+            impl=impl,
+        )
+        self.library.update({name: tool})
+        self.tool_configs[name] = {}
+
+    def _tool_search(
+        self,
+        query: str,
+        max_results: Optional[int] = 5,
+    ) -> Dict[str, Any]:
+        if not isinstance(query, str) or not query.strip():
+            raise ValueError("`query` must be a non-empty string.")
+        if max_results is not None:
+            if isinstance(max_results, bool) or not isinstance(max_results, int):
+                raise TypeError(
+                    "`max_results` must be int or None, "
+                    f"given `{type(max_results)}`"
+                )
+            if max_results <= 0:
+                raise ValueError("`max_results` must be greater than 0.")
+
+        on_demand_tool_names = self._get_on_demand_tool_names()
+        total = len(on_demand_tool_names)
+        if total == 0:
+            return {
+                "query": query,
+                "matches": [],
+                "loaded": [],
+                "already_loaded": [],
+                "total_on_demand_tools": 0,
+            }
+
+        if query.lower().startswith("select:"):
+            requested = [
+                item.strip()
+                for item in query.split(":", 1)[1].split(",")
+                if item.strip()
+            ]
+            matches = self._select_on_demand_tools(requested)
+        else:
+            matches = self._search_on_demand_tools(
+                query=query,
+                max_results=max_results or 5,
+            )
+
+        newly_loaded = self._load_on_demand_tools(matches)
+        already_loaded = [
+            tool_name for tool_name in matches if tool_name not in newly_loaded
+        ]
+        return {
+            "query": query,
+            "matches": matches,
+            "loaded": newly_loaded,
+            "already_loaded": already_loaded,
+            "total_on_demand_tools": total,
+        }
+
+    def _select_on_demand_tools(self, requested: List[str]) -> List[str]:
+        resolved = []
+        normalized = {
+            tool_name.lower(): tool_name for tool_name in self._get_on_demand_tool_names()
+        }
+        for tool_name in requested:
+            match = normalized.get(tool_name.lower())
+            if match is not None and match not in resolved:
+                resolved.append(match)
+        return resolved
+
+    def _search_on_demand_tools(self, *, query: str, max_results: int) -> List[str]:
+        query_lower = query.strip().lower()
+        terms = [term for term in query_lower.split() if term]
+        if not terms:
+            return []
+
+        matches = []
+        for tool_name in self._get_on_demand_tool_names():
+            if tool_name not in self.library:
+                continue
+            tool = self.library[tool_name]
+            name_parts = tool_name.lower().replace("__", " ").replace("_", " ")
+            description = (tool.get_module_description() or "").lower()
+            score = 0
+            if query_lower == tool_name.lower():
+                score += 100
+            if query_lower in name_parts:
+                score += 40
+            for term in terms:
+                if term in name_parts:
+                    score += 15
+                if description and term in description:
+                    score += 5
+            if score > 0:
+                matches.append((score, tool_name))
+
+        matches.sort(key=lambda item: (-item[0], item[1]))
+        return [tool_name for _, tool_name in matches[:max_results]]
 
     def forward(  # noqa: C901
         self,
@@ -657,6 +856,9 @@ class ToolLibrary(Module, metaclass=AutoParams):
             if config.get("inject_message", False):  # Add original message/envelope
                 call_params["message"] = message
 
+            if _uses_library_injection(config):
+                call_params["tool_library"] = ToolLibraryHandle(self)
+
             if not config.get("return_direct", False):
                 return_directly = False
 
@@ -681,6 +883,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
                     parameters.pop("vars", None)
                     parameters.pop("messages", None)
                     parameters.pop("message", None)
+                    parameters.pop("tool_library", None)
                     parameters.pop("tool_call_id", None)
                 else:
                     parameters = None
@@ -799,6 +1002,9 @@ class ToolLibrary(Module, metaclass=AutoParams):
             if config.get("inject_message", False):  # Add original message/envelope
                 call_params["message"] = message
 
+            if _uses_library_injection(config):
+                call_params["tool_library"] = ToolLibraryHandle(self)
+
             if not config.get("return_direct", False):
                 return_directly = False
 
@@ -823,6 +1029,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
                     parameters.pop("vars", None)
                     parameters.pop("messages", None)
                     parameters.pop("message", None)
+                    parameters.pop("tool_library", None)
                     parameters.pop("tool_call_id", None)
                 else:
                     parameters = None
