@@ -15,6 +15,7 @@ def tool_config(
     inject_task: Optional[bool] = False,
     inject_notification: Optional[bool] = False,
     inject_library: Optional[bool] = False,
+    on_demand: Optional[bool] = False,
     inject_message: Optional[bool] = False,
     inject_messages: Optional[bool] = False,
     inject_vars: Optional[Union[bool, List[str]]] = False,
@@ -63,6 +64,9 @@ def tool_config(
         inject_library:
             If True, inject a controlled `tool_library` handle into the tool so it
             can add, remove, or list tools at runtime.
+        on_demand:
+            If True, keep the tool registered in the library but hide its schema
+            from the model until it is loaded through `tool_search`.
         inject_message:
             If True, the tool receives the original `message` passed to the Agent
             at runtime. This injected parameter does not become part of the tool
@@ -171,6 +175,7 @@ def tool_config(
                     "inject_task": inject_task,
                     "inject_notification": inject_notification,
                     "inject_library": inject_library,
+                    "on_demand": on_demand,
                     "inject_message": _inject_message,
                     "inject_messages": _inject_messages,
                     "inject_vars": inject_vars,

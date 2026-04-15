@@ -455,6 +455,8 @@ class ToolLibrary(Module, metaclass=AutoParams):
         }
         self._task_runtime_enabled = False
         self._agent_task_runtime_enabled = False
+        self._on_demand_runtime_enabled = False
+        self._loaded_on_demand_tool_names: set[str] = set()
         self._task_futures: Dict[str, Any] = {}
         self._task_futures_lock = Lock()
         self._task_inboxes: Dict[str, AgentInbox] = {}
@@ -474,20 +476,15 @@ class ToolLibrary(Module, metaclass=AutoParams):
 
         # Store tool config (may be empty dict for local tools)
         self.tool_configs[tool.name] = getattr(tool, "tool_config", {})
-        if self.tool_configs[tool.name].get("background", False):
-            self._ensure_task_runtime_tools()
-        if (
-            self.tool_configs[tool.name].get("background", False)
-            and self.tool_configs[tool.name].get("tool_kind") == "agent"
-        ):
-            self._ensure_agent_task_runtime_tools()
-
         self.library.update({tool.name: tool})
+        self._apply_tool_registration_effects(tool.name)
 
     def remove(self, tool_name: str):
         if tool_name in self.library.keys():
             self.library.pop(tool_name)
             self.tool_configs.pop(tool_name, None)
+            self._loaded_on_demand_tool_names.discard(tool_name)
+            self._sync_on_demand_runtime_tools()
         else:
             raise ValueError(f"The tool name `{tool_name}` is not in tool library")
 
@@ -499,6 +496,8 @@ class ToolLibrary(Module, metaclass=AutoParams):
         self.mcp_clients.clear()
         self._task_runtime_enabled = False
         self._agent_task_runtime_enabled = False
+        self._on_demand_runtime_enabled = False
+        self._loaded_on_demand_tool_names.clear()
         self._runtime_tool_names = {
             "task_status",
             "task_list",
@@ -577,6 +576,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
                     # Add to library (will have name like "namespace__tool_name")
                     self.library.update({mcp_tool.name: mcp_tool})
                     self.tool_configs[mcp_tool.name] = mcp_tool.tool_config
+                    self._apply_tool_registration_effects(mcp_tool.name)
 
                 self.mcp_clients[namespace] = {
                     "client": client,
@@ -613,17 +613,10 @@ class ToolLibrary(Module, metaclass=AutoParams):
     def get_tool_json_schemas(self) -> List[Dict[str, Any]]:
         """Returns a list of JSON schemas from local and MCP tools."""
         schemas = []
-
-        # Local tools
         for tool_name in self.library:
+            if not self._is_tool_exposed(tool_name):
+                continue
             schemas.append(self.library[tool_name].get_json_schema())
-
-        # MCP tools
-        if self.mcp_clients:
-            for namespace, mcp_data in self.mcp_clients.items():
-                for mcp_tool in mcp_data["tools"]:
-                    schema = convert_mcp_schema_to_tool_schema(mcp_tool, namespace)
-                    schemas.append(schema)
 
         return schemas
 
@@ -631,6 +624,8 @@ class ToolLibrary(Module, metaclass=AutoParams):
         """Return local tool annotations keyed by tool name."""
         annotations = {}
         for tool_name, tool in self.library.items():
+            if not self._is_tool_exposed(tool_name):
+                continue
             annotations[tool_name] = {
                 name: hint
                 for name, hint in tool.get_module_annotations().items()
@@ -640,6 +635,55 @@ class ToolLibrary(Module, metaclass=AutoParams):
 
     def set_agent_inbox(self, agent_inbox: AgentInbox) -> None:
         self.agent_inbox = agent_inbox
+
+    # --- Tool Visibility Helpers ---
+
+    def _apply_tool_registration_effects(self, tool_name: str) -> None:
+        config = self.tool_configs.get(tool_name, {})
+        if config.get("background", False):
+            self._ensure_task_runtime_tools()
+        if (
+            config.get("background", False)
+            and config.get("tool_kind") == "agent"
+        ):
+            self._ensure_agent_task_runtime_tools()
+        if config.get("on_demand", False):
+            self._ensure_on_demand_runtime_tools()
+
+    def _get_on_demand_tool_names(self) -> List[str]:
+        return [
+            tool_name
+            for tool_name, config in self.tool_configs.items()
+            if config.get("on_demand", False)
+        ]
+
+    def _is_tool_exposed(self, tool_name: str) -> bool:
+        if tool_name in self._runtime_tool_names:
+            return True
+        config = self.tool_configs.get(tool_name, {})
+        if not config.get("on_demand", False):
+            return True
+        return tool_name in self._loaded_on_demand_tool_names
+
+    def _load_on_demand_tools(self, tool_names: List[str]) -> List[str]:
+        newly_loaded = []
+        for tool_name in tool_names:
+            if tool_name not in self._loaded_on_demand_tool_names:
+                self._loaded_on_demand_tool_names.add(tool_name)
+                newly_loaded.append(tool_name)
+        return newly_loaded
+
+    def _sync_on_demand_runtime_tools(self) -> None:
+        if self._get_on_demand_tool_names():
+            self._ensure_on_demand_runtime_tools()
+            return
+        if not self._on_demand_runtime_enabled:
+            return
+        self._on_demand_runtime_enabled = False
+        self._runtime_tool_names.discard("tool_search")
+        if "tool_search" in self.library:
+            self.library.pop("tool_search")
+        self.tool_configs.pop("tool_search", None)
 
     # --- Task Runtime Registration ---
 
@@ -707,6 +751,22 @@ class ToolLibrary(Module, metaclass=AutoParams):
             impl=self._task_message,
         )
 
+    def _ensure_on_demand_runtime_tools(self) -> None:
+        if self._on_demand_runtime_enabled:
+            return
+        self._on_demand_runtime_enabled = True
+        self._runtime_tool_names.add("tool_search")
+        self._register_runtime_tool(
+            name="tool_search",
+            description=(
+                "Search registered on-demand tools by keyword or exact "
+                "selection. Matching tools become available in the next model "
+                "call. Use `select:tool_a,tool_b` for direct selection."
+            ),
+            annotations={"query": str, "max_results": Optional[int]},
+            impl=self._tool_search,
+        )
+
     def _register_runtime_tool(
         self,
         *,
@@ -722,6 +782,10 @@ class ToolLibrary(Module, metaclass=AutoParams):
             tool_config={},
             impl=impl,
         )
+        if name in self.library and self.tool_configs.get(name):
+            raise ValueError(
+                f"The runtime tool `{name}` conflicts with an existing tool."
+            )
         self.library.update({name: tool})
         self.tool_configs[name] = {}
 
@@ -756,6 +820,58 @@ class ToolLibrary(Module, metaclass=AutoParams):
     def _task_output(self, task_id: str) -> Any:
         task = self.task_store.get(task_id)
         return self._build_task_result(task_id=task_id, task=task)
+
+    def _tool_search(
+        self,
+        query: str,
+        max_results: Optional[int] = 5,
+    ) -> Dict[str, Any]:
+        if not isinstance(query, str) or not query.strip():
+            raise ValueError("`query` must be a non-empty string.")
+        if max_results is not None:
+            if isinstance(max_results, bool) or not isinstance(max_results, int):
+                raise TypeError(
+                    "`max_results` must be int or None, "
+                    f"given `{type(max_results)}`"
+                )
+            if max_results <= 0:
+                raise ValueError("`max_results` must be greater than 0.")
+
+        on_demand_tool_names = self._get_on_demand_tool_names()
+        total = len(on_demand_tool_names)
+        if total == 0:
+            return {
+                "query": query,
+                "matches": [],
+                "loaded": [],
+                "already_loaded": [],
+                "total_on_demand_tools": 0,
+            }
+
+        if query.lower().startswith("select:"):
+            requested = [
+                item.strip()
+                for item in query.split(":", 1)[1].split(",")
+                if item.strip()
+            ]
+            matches = self._select_on_demand_tools(requested)
+        else:
+            matches = self._search_on_demand_tools(
+                query=query,
+                max_results=max_results or 5,
+            )
+
+        newly_loaded = self._load_on_demand_tools(matches)
+        already_loaded = [
+            tool_name for tool_name in matches if tool_name not in newly_loaded
+        ]
+        return {
+            "query": query,
+            "matches": matches,
+            "loaded": newly_loaded,
+            "already_loaded": already_loaded,
+            "total_on_demand_tools": total,
+        }
 
     def _task_activity(
         self,
@@ -960,6 +1076,44 @@ class ToolLibrary(Module, metaclass=AutoParams):
         }
         label = label_map.get(activity.kind, activity.kind.title())
         return f"{label}: {activity.summary}"
+
+    def _select_on_demand_tools(self, requested: List[str]) -> List[str]:
+        resolved = []
+        normalized = {tool_name.lower(): tool_name for tool_name in self._get_on_demand_tool_names()}
+        for tool_name in requested:
+            match = normalized.get(tool_name.lower())
+            if match is not None and match not in resolved:
+                resolved.append(match)
+        return resolved
+
+    def _search_on_demand_tools(self, *, query: str, max_results: int) -> List[str]:
+        query_lower = query.strip().lower()
+        terms = [term for term in query_lower.split() if term]
+        if not terms:
+            return []
+
+        matches = []
+        for tool_name in self._get_on_demand_tool_names():
+            if tool_name not in self.library:
+                continue
+            tool = self.library[tool_name]
+            name_parts = tool_name.lower().replace("__", " ").replace("_", " ")
+            description = (tool.get_module_description() or "").lower()
+            score = 0
+            if query_lower == tool_name.lower():
+                score += 100
+            if query_lower in name_parts:
+                score += 40
+            for term in terms:
+                if term in name_parts:
+                    score += 15
+                if description and term in description:
+                    score += 5
+            if score > 0:
+                matches.append((score, tool_name))
+
+        matches.sort(key=lambda item: (-item[0], item[1]))
+        return [tool_name for _, tool_name in matches[:max_results]]
 
     def _build_background_dispatch_result(
         self,
