@@ -28,6 +28,7 @@ from msgflux.channels.social import (
     InMemorySocialDedupStore,
     InMemorySocialEventBus,
     OutboundSocialMessage,
+    SlackAdapter,
     SocialAttachment,
     SocialBoundary,
     SocialContext,
@@ -35,6 +36,7 @@ from msgflux.channels.social import (
     SocialHttpClient,
     SocialHttpConfig,
     SocialMessage,
+    SocialWebhookResponse,
     TelegramAdapter,
 )
 
@@ -71,6 +73,8 @@ __all__ = [
     "SocialHttpClient",
     "SocialHttpConfig",
     "SocialMessage",
+    "SocialWebhookResponse",
+    "SlackAdapter",
     "TelegramAdapter",
     "UnauthorizedError",
 ]
