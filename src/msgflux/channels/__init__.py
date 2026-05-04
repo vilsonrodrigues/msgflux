@@ -25,6 +25,7 @@ from msgflux.channels.registry import (
 )
 from msgflux.channels.run_manager import RunManager
 from msgflux.channels.social import (
+    DiscordInteractionsAdapter,
     InMemorySocialDedupStore,
     InMemorySocialEventBus,
     OutboundSocialMessage,
@@ -55,6 +56,7 @@ __all__ = [
     "ChannelRegistry",
     "ChannelSettings",
     "ForbiddenError",
+    "DiscordInteractionsAdapter",
     "InMemoryRateLimitStore",
     "InMemorySocialDedupStore",
     "InMemorySocialEventBus",
