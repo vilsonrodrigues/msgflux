@@ -68,6 +68,23 @@ calls.
 Create an application command that sends text to the Agent. A minimal command is
 `/ask` with one string option named `prompt`.
 
+msgFlux can create or update this command through the CLI:
+
+```bash
+uv run --with 'msgflux[server]' msgflux discord create-ask-command
+```
+
+For local testing in one server, prefer a guild command because it appears
+almost immediately:
+
+```bash
+uv run --with 'msgflux[server]' msgflux discord create-ask-command \
+  --guild-id YOUR_DISCORD_SERVER_ID
+```
+
+The CLI reads `DISCORD_APPLICATION_ID` and `DISCORD_BOT_TOKEN` from `.env` by
+default. Creating a command with the same name updates the existing command.
+
 The adapter reads command option values in this priority order:
 
 ```text
@@ -375,3 +392,18 @@ This adapter intentionally does not consume free-form Discord channel messages.
 Free-form messages require a Gateway session and, for message content, the
 `MESSAGE_CONTENT` privileged intent. The HTTP Interactions approach is simpler
 for local development and easier to operate as a stateless webhook service.
+
+## 13. **Direct Messages**
+
+With the Interactions adapter, users invoke the app through slash commands. For
+the most reliable development flow, install the app in a Discord server with the
+`applications.commands` scope and test `/ask` there.
+
+Direct-message usage depends on Discord installation and command context
+settings. Global commands can be available in bot DMs when the user and bot share
+a mutual server and the command allows the `BOT_DM` context. Guild commands do
+not appear in DMs.
+
+If your product needs open-ended direct conversations without slash commands,
+that is a different adapter shape: it requires Discord Gateway events rather than
+the current HTTP Interactions endpoint.

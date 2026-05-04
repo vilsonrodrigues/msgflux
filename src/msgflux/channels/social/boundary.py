@@ -112,7 +112,7 @@ class SocialBoundary:
             body,
         )
         if is_verified is False:
-            raise ForbiddenError("Invalid social webhook signature")
+            raise UnauthorizedError("Invalid social webhook signature")
 
         webhook_response = await self._webhook_response(adapter, body, http_request)
         if webhook_response is not None and not webhook_response.continue_processing:

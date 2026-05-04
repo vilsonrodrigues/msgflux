@@ -108,6 +108,7 @@ def test_discord_webhook_defers_and_processes_command():
     registry.social_adapter(
         "discord",
         DiscordInteractionsAdapter(
+            public_key_env="MSGFLUX_TEST_DISCORD_PUBLIC_KEY",
             sender=lambda outbound, _context: sent.append(outbound)
         ),
     )

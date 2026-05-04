@@ -2,6 +2,7 @@ import argparse
 from typing import Optional, Sequence
 
 from msgflux.channels.http.cli import run_server
+from msgflux.channels.social.discord.cli import run_discord
 from msgflux.channels.social.slack.cli import run_slack
 from msgflux.channels.social.telegram.cli import run_telegram
 
@@ -112,6 +113,48 @@ def build_parser() -> argparse.ArgumentParser:
         help="Show Slack auth.test details, including the bot user id",
     )
 
+    discord_parser = subparsers.add_parser(
+        "discord",
+        help="Manage Discord social channel configuration",
+    )
+    discord_parser.add_argument(
+        "--env-file",
+        default=".env",
+        help="Load DISCORD_APPLICATION_ID and DISCORD_BOT_TOKEN from this file.",
+    )
+    discord_parser.add_argument("--application-id")
+    discord_parser.add_argument(
+        "--application-id-env",
+        default="DISCORD_APPLICATION_ID",
+    )
+    discord_parser.add_argument("--bot-token")
+    discord_parser.add_argument("--bot-token-env", default="DISCORD_BOT_TOKEN")
+    discord_parser.add_argument("--timeout-s", default=10.0, type=float)
+    discord_subparsers = discord_parser.add_subparsers(
+        dest="discord_action",
+        required=True,
+    )
+    ask_parser = discord_subparsers.add_parser(
+        "create-ask-command",
+        help="Create or update a Discord /ask slash command",
+    )
+    ask_parser.add_argument(
+        "--guild-id",
+        help=(
+            "Create a guild command for immediate testing instead of a global command."
+        ),
+    )
+    ask_parser.add_argument("--name", default="ask")
+    ask_parser.add_argument(
+        "--description",
+        default="Ask the msgFlux assistant a question.",
+    )
+    ask_parser.add_argument("--option-name", default="prompt")
+    ask_parser.add_argument(
+        "--option-description",
+        default="Question or instruction for the assistant.",
+    )
+
     return parser
 
 
@@ -125,6 +168,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return run_telegram(args)
     if args.command == "slack":
         return run_slack(args)
+    if args.command == "discord":
+        return run_discord(args)
 
     parser.error("Unsupported command")
     return 2

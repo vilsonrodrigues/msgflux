@@ -93,3 +93,35 @@ def test_slack_cli_parses_auth_info():
     assert args.slack_action == "auth-info"
     assert args.env_file == ".env.local"
     assert args.bot_token_env == "CUSTOM_SLACK_TOKEN"
+
+
+def test_discord_cli_parses_create_ask_command():
+    parser = build_parser()
+
+    args = parser.parse_args(
+        [
+            "discord",
+            "--env-file",
+            ".env.local",
+            "--application-id-env",
+            "CUSTOM_DISCORD_APP_ID",
+            "--bot-token-env",
+            "CUSTOM_DISCORD_TOKEN",
+            "create-ask-command",
+            "--guild-id",
+            "G123",
+            "--name",
+            "support",
+            "--option-name",
+            "message",
+        ]
+    )
+
+    assert args.command == "discord"
+    assert args.discord_action == "create-ask-command"
+    assert args.env_file == ".env.local"
+    assert args.application_id_env == "CUSTOM_DISCORD_APP_ID"
+    assert args.bot_token_env == "CUSTOM_DISCORD_TOKEN"
+    assert args.guild_id == "G123"
+    assert args.name == "support"
+    assert args.option_name == "message"

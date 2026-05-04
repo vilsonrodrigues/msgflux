@@ -108,6 +108,22 @@ If none of those names exist, all option values are joined into a text block.
 This keeps the `/ask prompt:...` case simple while still allowing custom command
 option names.
 
+## Command Registration
+
+Discord application commands are registered through HTTP API calls, not through
+the Interactions Endpoint URL itself.
+
+msgFlux exposes a small CLI helper for the common `/ask` command:
+
+```bash
+uv run --with 'msgflux[server]' msgflux discord create-ask-command
+```
+
+The helper reads `DISCORD_APPLICATION_ID` and `DISCORD_BOT_TOKEN`, then upserts a
+global chat-input command with one required string option. Passing `--guild-id`
+targets a guild-specific command instead, which is better for local iteration
+because Discord propagates guild commands faster than global commands.
+
 ## Discord Identity Mapping
 
 Discord interaction identity is mapped into `SocialMessage` like this:

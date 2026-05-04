@@ -859,8 +859,8 @@ def test_telegram_webhook_rejects_invalid_secret():
             json=_telegram_payload(),
         )
 
-    assert response.status_code == 403
-    assert response.json()["error"]["code"] == "forbidden"
+    assert response.status_code == 401
+    assert response.json()["error"]["code"] == "unauthorized"
     assert sent == []
 
 
