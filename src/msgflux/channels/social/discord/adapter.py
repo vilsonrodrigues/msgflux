@@ -264,7 +264,7 @@ def _post_discord_webhook(
     timeout_s: float,
 ) -> Dict[str, Any]:
     data = msgspec.json.encode(payload)
-    headers = {"Content-Type": "application/json"}
+    headers = {"Content-Type": "application/json", "User-Agent": "msgflux"}
     if bot_token:
         headers["Authorization"] = f"Bot {bot_token}"
     request = URLRequest(  # noqa: S310

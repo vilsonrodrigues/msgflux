@@ -283,6 +283,12 @@ When a social rate limit rejects a message, msgFlux sends
 `"Too many requests. Try again later."`. Set it to `None` to drop rate-limited
 social events silently.
 
+If Agent execution fails after Discord has already received the deferred
+response, msgFlux sends `social_error_message` if configured. The default is
+`None`, so unexpected Agent failures are logged and not propagated to the user.
+If you enable this message, keep it generic and log the server-side exception for
+debugging.
+
 ## 9. **Commands**
 
 Handle strong commands before the Agent. The model should not decide what

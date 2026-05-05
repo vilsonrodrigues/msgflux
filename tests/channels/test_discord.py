@@ -109,7 +109,7 @@ def test_discord_webhook_defers_and_processes_command():
         "discord",
         DiscordInteractionsAdapter(
             public_key_env="MSGFLUX_TEST_DISCORD_PUBLIC_KEY",
-            sender=lambda outbound, _context: sent.append(outbound)
+            sender=lambda outbound, _context: sent.append(outbound),
         ),
     )
 
@@ -129,6 +129,8 @@ def test_discord_webhook_defers_and_processes_command():
             time.sleep(0.01)
 
     assert [message.text for message in sent] == ["echo: hello"]
+    assert sent[0].metadata["application_id"] == "A123"
+    assert sent[0].metadata["interaction_token"] == "interaction-token"
     assert agent.calls[0]["messages"] == [{"role": "user", "content": "hello"}]
 
 

@@ -376,18 +376,13 @@ class SocialBoundary:
             )
             text = _social_output_text(output)
             if text:
-                await call_processor(
-                    event.adapter.send,
-                    OutboundSocialMessage(
-                        channel=event.channel,
-                        conversation_id=event.message.conversation_id,
-                        text=text,
-                        metadata={
-                            "session_id": event.message.session_id,
-                            "sender_id": event.message.sender_id,
-                        },
-                    ),
+                await self.send(
                     social_context,
+                    text,
+                    metadata={
+                        "session_id": event.message.session_id,
+                        "sender_id": event.message.sender_id,
+                    },
                 )
             await self._registry.run_hooks(
                 "request_end",
@@ -420,6 +415,8 @@ class SocialBoundary:
                     e,
                 )
         except Exception as e:
+            logger.exception("Social agent event processing failed")
+            await self._send_unexpected_error(social_context)
             if request_started:
                 await self._registry.run_hooks(
                     "request_end",
@@ -436,8 +433,15 @@ class SocialBoundary:
 
     def _forget_task(self, session_id: str, task: asyncio.Task[Any]) -> None:
         self._runs.forget_active(session_id, task)
-        with suppress(asyncio.CancelledError):
-            task.exception()
+        try:
+            exc = task.exception()
+        except asyncio.CancelledError:
+            return
+        if exc is not None:
+            logger.error(
+                "Social background task failed",
+                exc_info=(type(exc), exc, exc.__traceback__),
+            )
 
     async def _authenticate_message(
         self,
@@ -507,6 +511,15 @@ class SocialBoundary:
 
         if message:
             await self._send_text(context, message)
+
+    async def _send_unexpected_error(self, context: SocialContext) -> None:
+        message = self._registry.settings().social_error_message
+        if not message:
+            return
+        try:
+            await self._send_text(context, message)
+        except Exception:
+            logger.exception("Failed to send social error message")
 
     async def _consume_loop(self) -> None:
         while True:

@@ -46,6 +46,13 @@ class SlowAgent:
         return {"answer": "finished"}
 
 
+class FailingAgent:
+    name = "support"
+
+    async def acall(self, **kwargs):
+        raise RuntimeError("boom")
+
+
 class RecordingAgent:
     name = "support"
 
@@ -380,6 +387,41 @@ def test_social_boundary_starts_and_stops_adapter_lifecycle():
     assert events == ["start", "stop"]
 
 
+def test_social_agent_failure_sends_configured_error_message():
+    pytest.importorskip("fastapi")
+    from fastapi.testclient import TestClient
+
+    sent = []
+    registry = ChannelRegistry()
+    registry.settings(social_error_message="Something went wrong.")
+    registry.agent(FailingAgent())
+    registry.social_adapter(
+        "telegram",
+        TelegramAdapter(
+            secret_token="secret",
+            sender=lambda outbound, _context: sent.append(outbound),
+        ),
+    )
+
+    @registry.social_route(channel="telegram")
+    def route_telegram(message, context):
+        return "support"
+
+    with TestClient(create_app(registry)) as client:
+        response = client.post(
+            "/social/telegram/webhook",
+            headers={"X-Telegram-Bot-Api-Secret-Token": "secret"},
+            json=_telegram_payload("fail"),
+        )
+        assert response.status_code == 200
+
+        deadline = time.time() + 2
+        while not sent and time.time() < deadline:
+            time.sleep(0.01)
+
+    assert [message.text for message in sent] == ["Something went wrong."]
+
+
 def test_telegram_social_command_can_return_outbound_from_context():
     pytest.importorskip("fastapi")
     from fastapi.testclient import TestClient
@@ -418,7 +460,8 @@ def test_telegram_social_command_can_return_outbound_from_context():
     assert len(sent) == 1
     assert sent[0].conversation_id == "456"
     assert sent[0].text == "help text"
-    assert sent[0].metadata == {"command": "/help"}
+    assert sent[0].metadata["command"] == "/help"
+    assert sent[0].metadata["message_id"] == "42"
 
 
 def test_telegram_social_command_can_send_multiple_messages():

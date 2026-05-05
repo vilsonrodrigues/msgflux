@@ -72,9 +72,12 @@ class OutboundSocialMessage:
         *,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> "OutboundSocialMessage":
+        outbound_metadata = dict(context.message.metadata)
+        if metadata:
+            outbound_metadata.update(metadata)
         return cls(
             channel=context.message.channel,
             conversation_id=context.message.conversation_id,
             text=text,
-            metadata=metadata or {},
+            metadata=outbound_metadata,
         )

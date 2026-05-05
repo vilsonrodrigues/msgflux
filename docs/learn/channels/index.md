@@ -720,6 +720,7 @@ registry.settings(
     social_debounce_s=0.5,
     social_dedup_ttl_s=300,
     social_rate_limit_message="Too many requests. Try again later.",
+    social_error_message=None,
     social_unauthorized_message=None,
     social_forbidden_message=None,
     enable_docs=False,
@@ -761,9 +762,10 @@ multiple short messages.
 This protects Slack, Telegram, and future social adapters from platform retries
 that resend the same event. Set it to `0` or `None` to disable dedupe.
 
-`social_rate_limit_message`, `social_unauthorized_message`, and
-`social_forbidden_message` control optional user-facing social error responses.
-By default, rate limits send a short retry-later message, while unauthorized and
+`social_rate_limit_message`, `social_error_message`,
+`social_unauthorized_message`, and `social_forbidden_message` control optional
+user-facing social error responses. By default, rate limits send a short
+retry-later message, while unexpected Agent failures, unauthorized events, and
 forbidden events are dropped silently.
 
 `enable_otel=True` instruments the FastAPI app through the official
