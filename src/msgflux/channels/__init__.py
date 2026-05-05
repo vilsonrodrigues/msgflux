@@ -1,6 +1,7 @@
 from msgflux.channels.exceptions import (
     AgentNotFoundError,
     ChannelError,
+    ChatCompletionQueueFullError,
     ForbiddenError,
     PayloadTooLargeError,
     RateLimitExceededError,
@@ -39,6 +40,7 @@ __all__ = [
     "AgentDefaults",
     "AgentMetadata",
     "AgentRun",
+    "ChatCompletionQueueFullError",
     "ChannelContext",
     "ChannelReadiness",
     "ChannelError",

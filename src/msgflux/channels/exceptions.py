@@ -34,6 +34,17 @@ class RequestTimeoutError(ChannelError):
     code = "request_timeout"
 
 
+class ChatCompletionQueueFullError(ChannelError):
+    status_code = 503
+    code = "chat_completion_queue_full"
+
+    def __init__(self, message: str, *, retry_after_s: float | None = None):
+        headers = {}
+        if retry_after_s is not None:
+            headers["Retry-After"] = str(max(1, int(retry_after_s)))
+        super().__init__(message, headers=headers)
+
+
 class RateLimitExceededError(ChannelError):
     status_code = 429
     code = "rate_limit_exceeded"

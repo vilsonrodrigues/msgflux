@@ -67,6 +67,8 @@ class ChannelSettings:
     enable_otel: bool = False
     otel_kwargs: Dict[str, Any] = field(default_factory=dict)
     disable_chat_completions: bool = False
+    chat_completion_max_concurrent_requests: Optional[int] = None
+    chat_completion_queue_timeout_s: Optional[float] = 0.0
     social_debounce_s: Optional[float] = None
     social_dedup_ttl_s: Optional[float] = 300.0
     social_unauthorized_message: Optional[str] = None

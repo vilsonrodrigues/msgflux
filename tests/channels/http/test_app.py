@@ -1,6 +1,7 @@
 import asyncio
 from types import SimpleNamespace
 
+import httpx
 import pytest
 
 from msgflux.channels import ChannelRegistry, RateLimitDecision
@@ -505,6 +506,48 @@ def test_request_timeout_returns_504():
 
     assert response.status_code == 504
     assert response.json()["error"]["code"] == "request_timeout"
+
+
+@pytest.mark.asyncio
+async def test_chat_completion_queue_returns_503_when_at_capacity():
+    pytest.importorskip("fastapi")
+
+    class BlockingAgent:
+        name = "support"
+
+        def __init__(self):
+            self.started = asyncio.Event()
+            self.release = asyncio.Event()
+
+        async def acall(self, **kwargs):
+            self.started.set()
+            await self.release.wait()
+            return "released"
+
+    agent = BlockingAgent()
+    registry = ChannelRegistry()
+    registry.agent(agent)
+    registry.settings(
+        chat_completion_max_concurrent_requests=1,
+        chat_completion_queue_timeout_s=0,
+    )
+    transport = httpx.ASGITransport(app=create_app(registry))
+    payload = {"model": "support", "messages": [{"role": "user", "content": "hi"}]}
+
+    async with httpx.AsyncClient(
+        transport=transport,
+        base_url="http://testserver",
+    ) as client:
+        first = asyncio.create_task(client.post("/v1/chat/completions", json=payload))
+        await asyncio.wait_for(agent.started.wait(), timeout=1)
+        second = await client.post("/v1/chat/completions", json=payload)
+        agent.release.set()
+        first_response = await first
+
+    assert second.status_code == 503
+    assert second.headers["retry-after"] == "1"
+    assert second.json()["error"]["code"] == "chat_completion_queue_full"
+    assert first_response.status_code == 200
 
 
 def test_lifespan_hooks_run_with_fastapi_lifespan():

@@ -29,15 +29,17 @@ class TelegramAdapter:
         secret_token_env: Optional[str] = None,
         sender: Optional[Processor] = None,
         timeout_s: float = 10.0,
-        http_config: Optional[SocialHttpConfig] = None,
+        outbound_http_config: Optional[SocialHttpConfig] = None,
     ) -> None:
         self.bot_token = bot_token
         self.bot_token_env = bot_token_env or DEFAULT_TELEGRAM_BOT_TOKEN_ENV
         self.secret_token = secret_token
         self.secret_token_env = secret_token_env or DEFAULT_TELEGRAM_WEBHOOK_SECRET_ENV
         self.sender = sender
-        self.http_config = http_config or SocialHttpConfig(timeout_s=timeout_s)
-        self._http = SocialHttpClient(self.http_config)
+        self.outbound_http_config = outbound_http_config or SocialHttpConfig(
+            timeout_s=timeout_s
+        )
+        self._http = SocialHttpClient(self.outbound_http_config)
 
     async def start(self) -> None:
         await self._http.start()

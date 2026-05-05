@@ -8,6 +8,7 @@ import msgspec
 
 from msgflux.channels.exceptions import (
     ChannelError,
+    ChatCompletionQueueFullError,
     PayloadTooLargeError,
     RequestTimeoutError,
 )
@@ -64,6 +65,7 @@ def create_app(registry: ChannelRegistry, **fastapi_kwargs: Any):
         streaming_response_cls,
         msgspec_json_response,
         settings,
+        _chat_completion_limiter(settings),
     )
     return app
 
@@ -76,6 +78,7 @@ def _register_routes(
     streaming_response_cls: Any,
     msgspec_json_response: Any,
     settings: Any,
+    chat_completion_limiter: asyncio.Semaphore | None,
 ) -> None:
     @app.get("/")
     async def home():
@@ -140,6 +143,7 @@ def _register_routes(
         streaming_response_cls,
         msgspec_json_response,
         settings,
+        chat_completion_limiter,
     )
 
     for social_channel in registry.social_boundary().adapters():
@@ -164,9 +168,15 @@ async def _handle_chat_completions(
     response_cls: Any,
     streaming_response_cls: Any,
     settings: Any,
+    chat_completion_limiter: asyncio.Semaphore | None,
 ):
     request_metadata = resolve_request_metadata(http_request)
+    slot: _RequestSlot | None = None
     try:
+        slot = await _acquire_chat_completion_slot(
+            chat_completion_limiter,
+            timeout_s=settings.chat_completion_queue_timeout_s,
+        )
         body = await _read_body(http_request, settings.max_request_bytes)
         request = decode_chat_completion_request(body)
     except msgspec.ValidationError as e:
@@ -209,8 +219,12 @@ async def _handle_chat_completions(
                 timeout_s=settings.request_timeout_s,
                 request_metadata=request_metadata,
             )
+            chunks = _prepend_stream_chunk(first_chunk, chunks)
+            if slot is not None:
+                chunks = _release_stream_on_close(chunks, slot)
+                slot = None
             return streaming_response_cls(
-                _prepend_stream_chunk(first_chunk, chunks),
+                chunks,
                 media_type="text/event-stream",
                 headers={
                     **_response_headers(request_metadata),
@@ -243,6 +257,9 @@ async def _handle_chat_completions(
         if handled is not None:
             return handled
         raise
+    finally:
+        if slot is not None:
+            slot.release()
 
 
 def _register_chat_completion_route(
@@ -253,6 +270,7 @@ def _register_chat_completion_route(
     streaming_response_cls: Any,
     msgspec_json_response: Any,
     settings: Any,
+    chat_completion_limiter: asyncio.Semaphore | None,
 ) -> None:
     if settings.disable_chat_completions:
         return
@@ -265,6 +283,7 @@ def _register_chat_completion_route(
             response_cls,
             streaming_response_cls,
             settings,
+            chat_completion_limiter,
         )
 
 
@@ -346,6 +365,12 @@ def _configure_cors(app: Any, settings: Any) -> None:
 
 
 def _validate_routes(registry: ChannelRegistry, settings: Any) -> None:
+    max_concurrent = settings.chat_completion_max_concurrent_requests
+    if max_concurrent is not None and max_concurrent < 1:
+        raise ValueError("chat_completion_max_concurrent_requests must be >= 1")
+    queue_timeout = settings.chat_completion_queue_timeout_s
+    if queue_timeout is not None and queue_timeout < 0:
+        raise ValueError("chat_completion_queue_timeout_s must be >= 0")
     if settings.social_debounce_s is not None and settings.social_debounce_s < 0:
         raise ValueError("social_debounce_s must be >= 0")
     if settings.social_dedup_ttl_s is not None and settings.social_dedup_ttl_s < 0:
@@ -358,6 +383,13 @@ def _validate_routes(registry: ChannelRegistry, settings: Any) -> None:
         raise ChannelError(
             "disable_chat_completions=True requires at least one social adapter"
         )
+
+
+def _chat_completion_limiter(settings: Any) -> asyncio.Semaphore | None:
+    max_concurrent = settings.chat_completion_max_concurrent_requests
+    if max_concurrent is None:
+        return None
+    return asyncio.Semaphore(max_concurrent)
 
 
 def _agent_metadata_payload(metadata: Any) -> dict[str, Any]:
@@ -415,6 +447,45 @@ async def _with_timeout(awaitable: Any, *, timeout_s: float | None) -> Any:
         raise RequestTimeoutError(f"Request exceeded {timeout_s} seconds") from e
 
 
+class _RequestSlot:
+    def __init__(self, limiter: asyncio.Semaphore):
+        self._limiter = limiter
+        self._released = False
+
+    def release(self) -> None:
+        if not self._released:
+            self._limiter.release()
+            self._released = True
+
+
+async def _acquire_chat_completion_slot(
+    limiter: asyncio.Semaphore | None,
+    *,
+    timeout_s: float | None,
+) -> _RequestSlot | None:
+    if limiter is None:
+        return None
+    if timeout_s == 0:
+        if limiter.locked():
+            raise ChatCompletionQueueFullError(
+                "Chat completion server is at capacity. Try again later.",
+                retry_after_s=1,
+            )
+        await limiter.acquire()
+        return _RequestSlot(limiter)
+    try:
+        if timeout_s is None:
+            await limiter.acquire()
+        else:
+            await asyncio.wait_for(limiter.acquire(), timeout=timeout_s)
+    except asyncio.TimeoutError as e:
+        raise ChatCompletionQueueFullError(
+            "Chat completion queue is full. Try again later.",
+            retry_after_s=1,
+        ) from e
+    return _RequestSlot(limiter)
+
+
 async def _first_stream_chunk(
     chunks: AsyncIterator[bytes],
     *,
@@ -439,6 +510,17 @@ async def _prepend_stream_chunk(
         yield first_chunk
     async for chunk in chunks:
         yield chunk
+
+
+async def _release_stream_on_close(
+    chunks: AsyncIterator[bytes],
+    slot: _RequestSlot,
+) -> AsyncIterator[bytes]:
+    try:
+        async for chunk in chunks:
+            yield chunk
+    finally:
+        slot.release()
 
 
 async def _with_stream_timeout(

@@ -1009,7 +1009,7 @@ async def test_telegram_adapter_sets_webhook_with_secret_env(monkeypatch):
 
 def test_telegram_adapter_accepts_social_http_config():
     adapter = TelegramAdapter(
-        http_config=SocialHttpConfig(
+        outbound_http_config=SocialHttpConfig(
             timeout_s=5,
             connect_timeout_s=1,
             read_timeout_s=4,
@@ -1021,7 +1021,7 @@ def test_telegram_adapter_accepts_social_http_config():
         )
     )
 
-    assert adapter.http_config.timeout_s == 5
-    assert adapter.http_config.max_connections == 20
-    assert adapter.http_config.timeout().connect == 1
-    assert adapter.http_config.limits().max_connections == 20
+    assert adapter.outbound_http_config.timeout_s == 5
+    assert adapter.outbound_http_config.max_connections == 20
+    assert adapter.outbound_http_config.timeout().connect == 1
+    assert adapter.outbound_http_config.limits().max_connections == 20
