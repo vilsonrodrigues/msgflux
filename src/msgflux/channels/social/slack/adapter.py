@@ -34,7 +34,7 @@ class SlackAdapter:
         signing_secret_env: Optional[str] = None,
         sender: Optional[Processor] = None,
         timeout_s: float = 10.0,
-        http_config: Optional[SocialHttpConfig] = None,
+        outbound_http_config: Optional[SocialHttpConfig] = None,
         signature_tolerance_s: int = SLACK_SIGNATURE_TOLERANCE_S,
     ) -> None:
         self.bot_token = bot_token
@@ -42,9 +42,11 @@ class SlackAdapter:
         self.signing_secret = signing_secret
         self.signing_secret_env = signing_secret_env or DEFAULT_SLACK_SIGNING_SECRET_ENV
         self.sender = sender
-        self.http_config = http_config or SocialHttpConfig(timeout_s=timeout_s)
+        self.outbound_http_config = outbound_http_config or SocialHttpConfig(
+            timeout_s=timeout_s
+        )
         self.signature_tolerance_s = signature_tolerance_s
-        self._http = SocialHttpClient(self.http_config)
+        self._http = SocialHttpClient(self.outbound_http_config)
 
     async def start(self) -> None:
         await self._http.start()
