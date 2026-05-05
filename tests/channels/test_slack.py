@@ -283,22 +283,26 @@ def test_slack_webhook_deduplicates_retried_event():
 async def test_slack_adapter_send_posts_threaded_message(monkeypatch):
     requests = []
 
-    class FakeResponse:
-        def __enter__(self):
+    class FakeAsyncClient:
+        def __init__(self, timeout):
+            self.timeout = timeout
+
+        async def __aenter__(self):
             return self
 
-        def __exit__(self, exc_type, exc, tb):
+        async def __aexit__(self, exc_type, exc, tb):
             return None
 
-        def read(self):
-            return b'{"ok": true, "ts": "1710000001.000100"}'
-
-    def fake_urlopen(request, timeout):
-        requests.append((request, timeout))
-        return FakeResponse()
+        async def post(self, url, *, content, headers):
+            requests.append((url, content, headers, self.timeout))
+            return slack_adapter_module.httpx.Response(
+                200,
+                content=b'{"ok": true, "ts": "1710000001.000100"}',
+                request=slack_adapter_module.httpx.Request("POST", url),
+            )
 
     monkeypatch.setenv("SLACK_BOT_TOKEN", "xoxb-token")
-    monkeypatch.setattr(slack_adapter_module, "urlopen", fake_urlopen)
+    monkeypatch.setattr(slack_adapter_module.httpx, "AsyncClient", FakeAsyncClient)
 
     adapter = SlackAdapter(timeout_s=3)
     outbound = slack_adapter_module.OutboundSocialMessage(
@@ -310,11 +314,11 @@ async def test_slack_adapter_send_posts_threaded_message(monkeypatch):
 
     await adapter.send(outbound)
 
-    request, timeout = requests[0]
+    url, content, headers, timeout = requests[0]
     assert timeout == 3
-    assert request.full_url == "https://slack.com/api/chat.postMessage"
-    assert request.get_header("Authorization") == "Bearer xoxb-token"
-    payload = json.loads(request.data.decode("utf-8"))
+    assert url == "https://slack.com/api/chat.postMessage"
+    assert headers["Authorization"] == "Bearer xoxb-token"
+    payload = json.loads(content.decode("utf-8"))
     assert payload == {
         "channel": "C123",
         "text": "hello",

@@ -24,16 +24,15 @@ def run_slack(args: Namespace) -> int:
 async def _run_slack_action(args: Namespace) -> Dict[str, Any]:
     action = args.slack_action
     if action == "auth-info":
-        return await asyncio.to_thread(
-            _slack_auth_info,
+        return await _slack_auth_info(
             _slack_bot_token(args),
             getattr(args, "timeout_s", 10.0),
         )
     raise ValueError(f"Unsupported Slack action `{action}`")
 
 
-def _slack_auth_info(token: str, timeout_s: float) -> Dict[str, Any]:
-    result = _post_slack_api(token, "auth.test", {}, timeout_s)
+async def _slack_auth_info(token: str, timeout_s: float) -> Dict[str, Any]:
+    result = await _post_slack_api(token, "auth.test", {}, timeout_s)
     if result.get("ok") is False:
         raise ChannelError(f"Slack auth.test failed: {result.get('error')}")
     return {

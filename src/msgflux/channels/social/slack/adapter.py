@@ -1,14 +1,11 @@
-import asyncio
 import hashlib
 import hmac
 import os
 import time
 from collections.abc import Mapping as ABCMapping
 from typing import Any, Dict, List, Optional
-from urllib.error import HTTPError, URLError
-from urllib.request import Request as URLRequest
-from urllib.request import urlopen
 
+import httpx
 import msgspec
 
 from msgflux.channels.exceptions import ChannelError
@@ -149,8 +146,7 @@ class SlackAdapter:
         if thread_ts:
             payload["thread_ts"] = thread_ts
 
-        await asyncio.to_thread(
-            _post_slack_api,
+        await _post_slack_api(
             self._bot_token(),
             "chat.postMessage",
             payload,
@@ -213,34 +209,32 @@ def _thread_ts(outbound: OutboundSocialMessage, context: Any = None) -> str:
     return ""
 
 
-def _post_slack_api(
+async def _post_slack_api(
     token: str,
     method: str,
     payload: Dict[str, Any],
     timeout_s: float,
 ) -> Dict[str, Any]:
-    data = msgspec.json.encode(payload)
-    request = URLRequest(
-        f"https://slack.com/api/{method}",
-        data=data,
-        headers={
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json; charset=utf-8",
-        },
-        method="POST",
-    )
     try:
-        with urlopen(request, timeout=timeout_s) as response:  # noqa: S310
-            body = response.read()
-    except HTTPError as e:
-        detail = e.read().decode("utf-8", errors="replace")
+        async with httpx.AsyncClient(timeout=timeout_s) as client:
+            response = await client.post(
+                f"https://slack.com/api/{method}",
+                content=msgspec.json.encode(payload),
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "application/json; charset=utf-8",
+                },
+            )
+            response.raise_for_status()
+    except httpx.HTTPStatusError as e:
         raise ChannelError(
-            f"Slack API `{method}` failed with HTTP {e.code}: {detail}"
+            f"Slack API `{method}` failed with HTTP "
+            f"{e.response.status_code}: {e.response.text}"
         ) from e
-    except URLError as e:
-        raise ChannelError(f"Slack API `{method}` failed: {e.reason}") from e
+    except httpx.HTTPError as e:
+        raise ChannelError(f"Slack API `{method}` failed: {e}") from e
 
-    result = msgspec.json.decode(body) if body else {}
+    result = msgspec.json.decode(response.content) if response.content else {}
     if not isinstance(result, ABCMapping):
         raise ChannelError(f"Slack API `{method}` returned an invalid response")
     if result.get("ok") is False:
