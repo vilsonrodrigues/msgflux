@@ -279,6 +279,38 @@ The merge strategy is intentionally simple:
 
 ## Active Session And Cancellation
 
+Social agent runs are background tasks keyed by `session_id`. The boundary does
+not hold the webhook request open while the agent runs.
+
+Admission control is applied immediately before the background run starts. This
+keeps webhook acknowledgement independent from agent capacity:
+
+```text
+webhook request
+  -> verify
+  -> decode
+  -> dedupe
+  -> enqueue event
+  -> acknowledge platform
+
+consumer
+  -> authenticate
+  -> command handling
+  -> route
+  -> acquire admission slot
+  -> run agent
+  -> release admission slot
+```
+
+The social lane can be constrained with `social_max_concurrent_runs`. The
+process-wide ceiling is `server_max_concurrent_runs`, shared with
+chat-completions. If capacity is exhausted, the event can wait up to
+`social_queue_timeout_s`.
+
+This design intentionally avoids using the inbound webhook request as the queue.
+Platforms such as Telegram, Slack, and Discord expect a fast acknowledgement and
+may retry if the webhook is held open for too long.
+
 Only one active agent task is allowed per `session_id`.
 
 If a non-command message arrives while a run is active, the boundary replies:

@@ -711,8 +711,11 @@ registry.settings(
     description="OpenAI-compatible support and billing agents.",
     max_request_bytes=2 * 1024 * 1024,
     request_timeout_s=30,
+    server_max_concurrent_runs=120,
     chat_completion_max_concurrent_requests=100,
     chat_completion_queue_timeout_s=0.5,
+    social_max_concurrent_runs=40,
+    social_queue_timeout_s=0,
     social_debounce_s=0.5,
     social_dedup_ttl_s=300,
     social_rate_limit_message="Too many requests. Try again later.",
@@ -734,10 +737,19 @@ Set `disable_chat_completions=True` when the server should expose only social
 webhook routes and not `/v1/chat/completions`. At least one social adapter must
 be registered when this is enabled.
 
-`chat_completion_max_concurrent_requests` limits how many
-`/v1/chat/completions` requests can execute at the same time. Requests above the
-limit wait up to `chat_completion_queue_timeout_s`; if no slot opens, the server
-returns `503` with error code `chat_completion_queue_full`.
+Admission control limits how many agent runs can execute at the same time.
+`server_max_concurrent_runs` is the process-wide ceiling shared by all channels.
+
+`chat_completion_max_concurrent_requests` limits the chat-completions lane.
+Requests above the limit wait up to `chat_completion_queue_timeout_s`; if no
+slot opens, the server returns `503` with error code
+`chat_completion_queue_full`.
+
+`social_max_concurrent_runs` limits the social lane. Social webhooks are still
+acknowledged quickly; admission control is applied when the background agent run
+is about to start. Events above the limit wait up to `social_queue_timeout_s`.
+If no slot opens, the platform can receive a configured
+`social_error_message`.
 
 `social_debounce_s` buffers multiple social messages for the same `session_id`
 for a short window before starting the Agent run. Each new message renews the
