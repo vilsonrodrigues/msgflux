@@ -34,15 +34,17 @@ class DiscordInteractionsAdapter:
         bot_token_env: Optional[str] = None,
         sender: Optional[Processor] = None,
         timeout_s: float = 10.0,
-        http_config: Optional[SocialHttpConfig] = None,
+        outbound_http_config: Optional[SocialHttpConfig] = None,
     ) -> None:
         self.public_key = public_key
         self.public_key_env = public_key_env or DEFAULT_DISCORD_PUBLIC_KEY_ENV
         self.bot_token = bot_token
         self.bot_token_env = bot_token_env or DEFAULT_DISCORD_BOT_TOKEN_ENV
         self.sender = sender
-        self.http_config = http_config or SocialHttpConfig(timeout_s=timeout_s)
-        self._http = SocialHttpClient(self.http_config)
+        self.outbound_http_config = outbound_http_config or SocialHttpConfig(
+            timeout_s=timeout_s
+        )
+        self._http = SocialHttpClient(self.outbound_http_config)
 
     async def start(self) -> None:
         await self._http.start()
