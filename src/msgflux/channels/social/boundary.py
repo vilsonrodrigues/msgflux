@@ -5,6 +5,7 @@ from dataclasses import replace
 from typing import Any, Callable, Dict, List, Optional
 
 from msgflux.channels.exceptions import (
+    AdmissionQueueFullError,
     ChannelError,
     ForbiddenError,
     RateLimitExceededError,
@@ -309,12 +310,19 @@ class SocialBoundary:
             },
         )
         run = None
+        slot = None
+        request_started = False
         try:
+            slot = await self._registry.admission_controller().acquire(
+                "social",
+                timeout_s=self._registry.settings().social_queue_timeout_s,
+            )
             await self._registry.run_hooks(
                 "request_start",
                 event.message,
                 channel_context,
             )
+            request_started = True
             agent = self._registry.get_agent(social_context.agent_name)
             await self._authorize_event(event.message, channel_context)
             await self._check_rate_limits(event.message, channel_context)
@@ -357,35 +365,41 @@ class SocialBoundary:
                 None,
             )
         except asyncio.CancelledError as e:
-            await self._registry.run_hooks(
-                "request_end",
-                event.message,
-                channel_context,
-                run,
-                None,
-                e,
-            )
+            if request_started:
+                await self._registry.run_hooks(
+                    "request_end",
+                    event.message,
+                    channel_context,
+                    run,
+                    None,
+                    e,
+                )
             raise
         except ChannelError as e:
             await self._send_configured_error(social_context, e)
-            await self._registry.run_hooks(
-                "request_end",
-                event.message,
-                channel_context,
-                run,
-                None,
-                e,
-            )
+            if request_started:
+                await self._registry.run_hooks(
+                    "request_end",
+                    event.message,
+                    channel_context,
+                    run,
+                    None,
+                    e,
+                )
         except Exception as e:
-            await self._registry.run_hooks(
-                "request_end",
-                event.message,
-                channel_context,
-                run,
-                None,
-                e,
-            )
+            if request_started:
+                await self._registry.run_hooks(
+                    "request_end",
+                    event.message,
+                    channel_context,
+                    run,
+                    None,
+                    e,
+                )
             raise
+        finally:
+            if slot is not None:
+                slot.release()
 
     def _forget_task(self, session_id: str, task: asyncio.Task[Any]) -> None:
         self._runs.forget_active(session_id, task)
@@ -455,6 +469,8 @@ class SocialBoundary:
             message = self._registry.settings().social_forbidden_message
         elif isinstance(exc, RateLimitExceededError):
             message = self._registry.settings().social_rate_limit_message
+        elif isinstance(exc, AdmissionQueueFullError):
+            message = self._registry.settings().social_error_message
 
         if message:
             await self._send_text(context, message)

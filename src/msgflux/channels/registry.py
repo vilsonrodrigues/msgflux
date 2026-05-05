@@ -9,6 +9,7 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any, Callable, Dict, List, Mapping, Optional, TypeVar, cast
 
+from msgflux.channels.admission import AdmissionController
 from msgflux.channels.exceptions import AgentNotFoundError, RateLimitExceededError
 
 T = TypeVar("T")
@@ -67,13 +68,17 @@ class ChannelSettings:
     enable_otel: bool = False
     otel_kwargs: Dict[str, Any] = field(default_factory=dict)
     disable_chat_completions: bool = False
+    server_max_concurrent_runs: Optional[int] = None
     chat_completion_max_concurrent_requests: Optional[int] = None
     chat_completion_queue_timeout_s: Optional[float] = 0.0
+    social_max_concurrent_runs: Optional[int] = None
+    social_queue_timeout_s: Optional[float] = 0.0
     social_debounce_s: Optional[float] = None
     social_dedup_ttl_s: Optional[float] = 300.0
     social_unauthorized_message: Optional[str] = None
     social_forbidden_message: Optional[str] = None
     social_rate_limit_message: Optional[str] = "Too many requests. Try again later."
+    social_error_message: Optional[str] = None
 
 
 @dataclass
@@ -168,6 +173,7 @@ class ChannelRegistry:
         self._rate_limit_store: Any = InMemoryRateLimitStore()
         self._social_dedup_store: Any = None
         self._social_boundary: Any = None
+        self._admission_controller: Optional[AdmissionController] = None
         self._readiness = ChannelReadiness()
 
     def settings(self, **updates: Any) -> ChannelSettings:
@@ -178,7 +184,20 @@ class ChannelRegistry:
             if not hasattr(self._settings, key):
                 raise TypeError(f"Unknown channel setting `{key}`")
             setattr(self._settings, key, value)
+        self._admission_controller = None
         return self._settings
+
+    def admission_controller(self) -> AdmissionController:
+        if self._admission_controller is None:
+            settings = self._settings
+            self._admission_controller = AdmissionController(
+                max_concurrent=settings.server_max_concurrent_runs,
+                chat_completion_max_concurrent=(
+                    settings.chat_completion_max_concurrent_requests
+                ),
+                social_max_concurrent=settings.social_max_concurrent_runs,
+            )
+        return self._admission_controller
 
     def defaults(
         self,

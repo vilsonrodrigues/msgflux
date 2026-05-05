@@ -132,8 +132,11 @@ def test_channel_registry_settings_are_global_and_validated():
         description="Support HTTP boundary.",
         max_request_bytes=1024,
         request_timeout_s=3,
+        server_max_concurrent_runs=3,
         chat_completion_max_concurrent_requests=2,
         chat_completion_queue_timeout_s=0.5,
+        social_max_concurrent_runs=1,
+        social_queue_timeout_s=0.25,
         enable_docs=False,
         disable_chat_completions=True,
         social_debounce_s=0.5,
@@ -151,8 +154,11 @@ def test_channel_registry_settings_are_global_and_validated():
     assert settings.description == "Support HTTP boundary."
     assert settings.max_request_bytes == 1024
     assert settings.request_timeout_s == 3
+    assert settings.server_max_concurrent_runs == 3
     assert settings.chat_completion_max_concurrent_requests == 2
     assert settings.chat_completion_queue_timeout_s == 0.5
+    assert settings.social_max_concurrent_runs == 1
+    assert settings.social_queue_timeout_s == 0.25
     assert settings.enable_docs is False
     assert settings.disable_chat_completions is True
     assert settings.social_debounce_s == 0.5

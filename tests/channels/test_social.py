@@ -641,6 +641,59 @@ def test_telegram_webhook_acknowledges_and_processes_message():
     assert route_contexts[0].state["conversation_id"] == "456"
 
 
+def test_telegram_social_run_respects_admission_limit():
+    pytest.importorskip("fastapi")
+    from fastapi.testclient import TestClient
+
+    sent = []
+    agent = SlowAgent()
+    registry = ChannelRegistry()
+    registry.agent(agent)
+    registry.settings(
+        social_max_concurrent_runs=1,
+        social_queue_timeout_s=0,
+        social_error_message="Server is busy. Try again later.",
+    )
+    registry.social_adapter(
+        "telegram",
+        TelegramAdapter(
+            secret_token="secret",
+            sender=lambda outbound, _context: sent.append(outbound),
+        ),
+    )
+
+    @registry.social_route(channel="telegram")
+    def route_telegram(message, context):
+        return "support"
+
+    second_payload = _telegram_payload("second")
+    second_payload["update_id"] = 1002
+    second_payload["message"]["message_id"] = 43
+    second_payload["message"]["chat"]["id"] = 789
+
+    with TestClient(create_app(registry)) as client:
+        first = client.post(
+            "/social/telegram/webhook",
+            headers={"X-Telegram-Bot-Api-Secret-Token": "secret"},
+            json=_telegram_payload("first"),
+        )
+        assert first.status_code == 200
+        assert agent.started.wait(timeout=2)
+
+        second = client.post(
+            "/social/telegram/webhook",
+            headers={"X-Telegram-Bot-Api-Secret-Token": "secret"},
+            json=second_payload,
+        )
+        assert second.status_code == 200
+
+        deadline = time.time() + 2
+        while not sent and time.time() < deadline:
+            time.sleep(0.01)
+
+    assert [message.text for message in sent] == ["Server is busy. Try again later."]
+
+
 def test_telegram_post_processor_can_send_intermediate_message():
     pytest.importorskip("fastapi")
     from fastapi.testclient import TestClient

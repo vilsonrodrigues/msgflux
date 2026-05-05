@@ -1,4 +1,6 @@
+from msgflux.channels.admission import AdmissionController, AdmissionSlot
 from msgflux.channels.exceptions import (
+    AdmissionQueueFullError,
     AgentNotFoundError,
     ChannelError,
     ChatCompletionQueueFullError,
@@ -41,6 +43,9 @@ __all__ = [
     "AgentDefaults",
     "AgentMetadata",
     "AgentRun",
+    "AdmissionController",
+    "AdmissionQueueFullError",
+    "AdmissionSlot",
     "ChatCompletionQueueFullError",
     "ChannelContext",
     "ChannelReadiness",
