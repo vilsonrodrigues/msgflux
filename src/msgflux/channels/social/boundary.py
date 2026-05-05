@@ -138,6 +138,10 @@ class SocialBoundary:
     async def start(self) -> None:
         if not self._adapters or self._consumer_task is not None:
             return
+        for adapter in self._adapters.values():
+            start = getattr(adapter, "start", None)
+            if callable(start):
+                await call_processor(start)
         self._consumer_task = asyncio.create_task(self._consume_loop())
 
     async def stop(self) -> None:
@@ -160,6 +164,10 @@ class SocialBoundary:
         self._pending_events.clear()
         self._pending_tasks.clear()
         self._consumer_task = None
+        for adapter in self._adapters.values():
+            stop = getattr(adapter, "stop", None)
+            if callable(stop):
+                await call_processor(stop)
 
     async def drain(self) -> None:
         await self._event_bus.drain()

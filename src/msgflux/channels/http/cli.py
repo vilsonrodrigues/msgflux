@@ -42,6 +42,7 @@ def run_server(args: Namespace) -> int:
         host=args.host,
         port=args.port,
         log_level=args.log_level,
+        loop="auto",
     )
     return 0
 

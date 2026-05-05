@@ -356,6 +356,29 @@ def test_telegram_social_command_requires_auth_first():
     assert agent.calls == []
 
 
+def test_social_boundary_starts_and_stops_adapter_lifecycle():
+    events = []
+    registry = ChannelRegistry()
+
+    class Adapter:
+        async def start(self):
+            events.append("start")
+
+        async def stop(self):
+            events.append("stop")
+
+    registry.social_adapter("test", Adapter())
+    boundary = registry.social_boundary()
+
+    async def run():
+        await boundary.start()
+        await boundary.stop()
+
+    asyncio.run(run())
+
+    assert events == ["start", "stop"]
+
+
 def test_telegram_social_command_can_return_outbound_from_context():
     pytest.importorskip("fastapi")
     from fastapi.testclient import TestClient

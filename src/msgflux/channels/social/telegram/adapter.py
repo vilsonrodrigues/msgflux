@@ -35,6 +35,16 @@ class TelegramAdapter:
         self.secret_token_env = secret_token_env or DEFAULT_TELEGRAM_WEBHOOK_SECRET_ENV
         self.sender = sender
         self.timeout_s = timeout_s
+        self._client: Optional[httpx.AsyncClient] = None
+
+    async def start(self) -> None:
+        if self._client is None:
+            self._client = httpx.AsyncClient(timeout=self.timeout_s)
+
+    async def stop(self) -> None:
+        if self._client is not None:
+            await self._client.aclose()
+            self._client = None
 
     async def set_webhook(
         self,
@@ -57,6 +67,7 @@ class TelegramAdapter:
             "setWebhook",
             payload,
             self.timeout_s,
+            client=self._client,
         )
 
     async def delete_webhook(
@@ -72,6 +83,7 @@ class TelegramAdapter:
             "deleteWebhook",
             payload,
             self.timeout_s,
+            client=self._client,
         )
 
     async def get_webhook_info(self) -> Dict[str, Any]:
@@ -80,6 +92,7 @@ class TelegramAdapter:
             "getWebhookInfo",
             {},
             self.timeout_s,
+            client=self._client,
         )
 
     async def verify(self, http_request: Any = None, _body: bytes = b"") -> bool:
@@ -153,6 +166,7 @@ class TelegramAdapter:
                 outbound.conversation_id,
                 chunk,
                 self.timeout_s,
+                client=self._client,
             )
 
     def _bot_token(self) -> str:
@@ -185,12 +199,15 @@ async def _post_telegram_message(
     chat_id: str,
     text: str,
     timeout_s: float,
+    *,
+    client: Optional[httpx.AsyncClient] = None,
 ) -> None:
     await _post_telegram_api(
         token,
         "sendMessage",
         {"chat_id": chat_id, "text": text},
         timeout_s,
+        client=client,
     )
 
 
@@ -199,15 +216,21 @@ async def _post_telegram_api(
     method: str,
     payload: Dict[str, Any],
     timeout_s: float,
+    *,
+    client: Optional[httpx.AsyncClient] = None,
 ) -> Dict[str, Any]:
     try:
-        async with httpx.AsyncClient(timeout=timeout_s) as client:
-            response = await client.post(
-                f"https://api.telegram.org/bot{token}/{method}",
-                content=msgspec.json.encode(payload),
-                headers={"Content-Type": "application/json"},
-            )
-            response.raise_for_status()
+        if client is None:
+            async with httpx.AsyncClient(timeout=timeout_s) as owned_client:
+                response = await _post_telegram_request(
+                    owned_client,
+                    token,
+                    method,
+                    payload,
+                )
+        else:
+            response = await _post_telegram_request(client, token, method, payload)
+        response.raise_for_status()
     except httpx.HTTPStatusError as e:
         raise ChannelError(
             f"Telegram API `{method}` failed with HTTP "
@@ -223,3 +246,16 @@ async def _post_telegram_api(
         description = result.get("description") or "unknown error"
         raise ChannelError(f"Telegram API `{method}` failed: {description}")
     return dict(result)
+
+
+async def _post_telegram_request(
+    client: httpx.AsyncClient,
+    token: str,
+    method: str,
+    payload: Dict[str, Any],
+) -> httpx.Response:
+    return await client.post(
+        f"https://api.telegram.org/bot{token}/{method}",
+        content=msgspec.json.encode(payload),
+        headers={"Content-Type": "application/json"},
+    )
