@@ -7,6 +7,7 @@ from typing import Any, Dict
 
 from msgflux.channels.env import load_env_file
 from msgflux.channels.exceptions import ChannelError
+from msgflux.channels.social.http import SocialHttpClient, SocialHttpConfig
 from msgflux.channels.social.slack.adapter import (
     DEFAULT_SLACK_BOT_TOKEN_ENV,
     _post_slack_api,
@@ -32,7 +33,8 @@ async def _run_slack_action(args: Namespace) -> Dict[str, Any]:
 
 
 async def _slack_auth_info(token: str, timeout_s: float) -> Dict[str, Any]:
-    result = await _post_slack_api(token, "auth.test", {}, timeout_s)
+    http_client = SocialHttpClient(SocialHttpConfig(timeout_s=timeout_s))
+    result = await _post_slack_api(token, "auth.test", {}, http_client)
     if result.get("ok") is False:
         raise ChannelError(f"Slack auth.test failed: {result.get('error')}")
     return {

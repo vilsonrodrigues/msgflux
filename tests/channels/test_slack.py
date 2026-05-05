@@ -284,8 +284,9 @@ async def test_slack_adapter_send_posts_threaded_message(monkeypatch):
     requests = []
 
     class FakeAsyncClient:
-        def __init__(self, timeout):
+        def __init__(self, timeout, limits=None):
             self.timeout = timeout
+            self.limits = limits
 
         async def __aenter__(self):
             return self
@@ -315,7 +316,7 @@ async def test_slack_adapter_send_posts_threaded_message(monkeypatch):
     await adapter.send(outbound)
 
     url, content, headers, timeout = requests[0]
-    assert timeout == 3
+    assert timeout == slack_adapter_module.httpx.Timeout(3)
     assert url == "https://slack.com/api/chat.postMessage"
     assert headers["Authorization"] == "Bearer xoxb-token"
     payload = json.loads(content.decode("utf-8"))
