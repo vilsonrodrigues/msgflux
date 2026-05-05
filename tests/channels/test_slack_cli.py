@@ -1,6 +1,7 @@
 import pytest
 from argparse import Namespace
 
+from msgflux.channels import SocialHttpClient
 from msgflux.channels.social.slack import cli as slack_cli
 
 
@@ -8,8 +9,8 @@ from msgflux.channels.social.slack import cli as slack_cli
 async def test_slack_auth_info_returns_bot_identity(monkeypatch):
     calls = []
 
-    async def fake_post(token, method, payload, timeout_s):
-        calls.append((token, method, payload, timeout_s))
+    async def fake_post(token, method, payload, http_client):
+        calls.append((token, method, payload, http_client))
         return {
             "ok": True,
             "url": "https://example.slack.com/",
@@ -32,7 +33,11 @@ async def test_slack_auth_info_returns_bot_identity(monkeypatch):
         slack_cli._slack_bot_token(args), args.timeout_s
     )
 
-    assert calls == [("xoxb-token", "auth.test", {}, 3)]
+    assert len(calls) == 1
+    token, method, payload, http_client = calls[0]
+    assert (token, method, payload) == ("xoxb-token", "auth.test", {})
+    assert isinstance(http_client, SocialHttpClient)
+    assert http_client.config.timeout_s == 3
     assert result == {
         "ok": True,
         "url": "https://example.slack.com/",
