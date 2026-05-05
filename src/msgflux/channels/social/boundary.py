@@ -16,6 +16,7 @@ from msgflux.channels.registry import (
     Processor,
     call_processor,
 )
+from msgflux.channels.run_manager import RunManager
 from msgflux.channels.social.bus import InMemorySocialEventBus
 from msgflux.channels.social.types import (
     OutboundSocialMessage,
@@ -35,9 +36,7 @@ class SocialBoundary:
         self._adapters: Dict[str, Any] = {}
         self._routes: Dict[str, List[Processor]] = {}
         self._commands: Dict[str, Dict[str, List[Processor]]] = {}
-        self._active_tasks: Dict[str, asyncio.Task[Any]] = {}
-        self._pending_events: Dict[str, List[SocialEvent]] = {}
-        self._pending_tasks: Dict[str, asyncio.Task[Any]] = {}
+        self._runs = RunManager()
         self._consumer_task: Optional[asyncio.Task[Any]] = None
 
     def adapter(self, channel: str, adapter: Any) -> Any:
@@ -150,19 +149,7 @@ class SocialBoundary:
         await self._event_bus.close()
         with suppress(asyncio.CancelledError):
             await self._consumer_task
-        for task in list(self._active_tasks.values()):
-            task.cancel()
-        for task in list(self._pending_tasks.values()):
-            task.cancel()
-        for task in list(self._active_tasks.values()):
-            with suppress(asyncio.CancelledError):
-                await task
-        for task in list(self._pending_tasks.values()):
-            with suppress(asyncio.CancelledError):
-                await task
-        self._active_tasks.clear()
-        self._pending_events.clear()
-        self._pending_tasks.clear()
+        await self._runs.cancel_all()
         self._consumer_task = None
         for adapter in self._adapters.values():
             stop = getattr(adapter, "stop", None)
@@ -171,32 +158,13 @@ class SocialBoundary:
 
     async def drain(self) -> None:
         await self._event_bus.drain()
-        pending_tasks = list(self._pending_tasks.values())
-        if pending_tasks:
-            await asyncio.gather(*pending_tasks, return_exceptions=True)
-        tasks = list(self._active_tasks.values())
-        if tasks:
-            await asyncio.gather(*tasks, return_exceptions=True)
+        await self._runs.drain()
 
     def active_task(self, session_id: str) -> Optional[asyncio.Task[Any]]:
-        task = self._active_tasks.get(str(session_id))
-        if task is None or task.done():
-            return None
-        return task
+        return self._runs.active_task(session_id)
 
     def cancel_session(self, session_id: str) -> bool:
-        cancelled = False
-        pending_task = self._pending_tasks.pop(str(session_id), None)
-        if pending_task is not None:
-            pending_task.cancel()
-            self._pending_events.pop(str(session_id), None)
-            cancelled = True
-
-        task = self.active_task(session_id)
-        if task is not None:
-            task.cancel()
-            cancelled = True
-        return cancelled
+        return self._runs.cancel_session(session_id)
 
     async def send(
         self,
@@ -286,31 +254,24 @@ class SocialBoundary:
             )
             return
 
-        task = asyncio.create_task(self._process_agent_event(event, social_context))
-        self._active_tasks[event.message.session_id] = task
-        task.add_done_callback(
-            lambda completed, session_id=event.message.session_id: self._forget_task(
-                session_id,
-                completed,
-            )
+        self._runs.create_active(
+            event.message.session_id,
+            self._process_agent_event(event, social_context),
+            done_callback=self._forget_task,
         )
 
     def _schedule_debounced_event(self, event: SocialEvent) -> None:
         session_id = event.message.session_id
-        self._pending_events.setdefault(session_id, []).append(event)
-
-        task = self._pending_tasks.pop(session_id, None)
-        if task is not None:
-            task.cancel()
-
-        self._pending_tasks[session_id] = asyncio.create_task(
-            self._process_debounced_session(session_id)
+        self._runs.add_pending_item(session_id, event)
+        self._runs.replace_pending(
+            session_id,
+            self._process_debounced_session(session_id),
         )
 
     async def _process_debounced_session(self, session_id: str) -> None:
         try:
             await asyncio.sleep(self._social_debounce_s())
-            events = self._pending_events.pop(session_id, [])
+            events = self._runs.pop_pending_items(session_id)
             if not events:
                 return
             await self._start_agent_event(_merge_social_events(events))
@@ -319,9 +280,9 @@ class SocialBoundary:
         except Exception:
             logger.exception("Debounced social event processing failed")
         finally:
-            task = self._pending_tasks.get(session_id)
-            if task is asyncio.current_task():
-                self._pending_tasks.pop(session_id, None)
+            task = asyncio.current_task()
+            if task is not None:
+                self._runs.forget_pending_if_current(session_id, task)
 
     def _social_debounce_s(self) -> float:
         value = getattr(self._registry.settings(), "social_debounce_s", None)
@@ -427,8 +388,7 @@ class SocialBoundary:
             raise
 
     def _forget_task(self, session_id: str, task: asyncio.Task[Any]) -> None:
-        if self._active_tasks.get(session_id) is task:
-            self._active_tasks.pop(session_id, None)
+        self._runs.forget_active(session_id, task)
         with suppress(asyncio.CancelledError):
             task.exception()
 

@@ -21,6 +21,7 @@ from msgflux.channels.registry import (
     RateLimitDecision,
     RateLimitPolicy,
 )
+from msgflux.channels.run_manager import RunManager
 from msgflux.channels.social import (
     InMemorySocialDedupStore,
     InMemorySocialEventBus,
@@ -57,6 +58,7 @@ __all__ = [
     "RateLimitExceededError",
     "RateLimitPolicy",
     "RequestTimeoutError",
+    "RunManager",
     "SocialAttachment",
     "SocialBoundary",
     "SocialContext",
