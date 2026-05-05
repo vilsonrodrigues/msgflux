@@ -1044,6 +1044,7 @@ plot = [
 ]
 server = [
     { name = "fastapi" },
+    { name = "httpx" },
     { name = "opentelemetry-instrumentation-fastapi" },
     { name = "uvicorn" },
 ]
@@ -1080,6 +1081,7 @@ requires-dist = [
     { name = "code2mermaid", marker = "extra == 'plot'", specifier = ">=0.3.0" },
     { name = "fastapi", marker = "extra == 'server'", specifier = ">=0.115.0" },
     { name = "httpx", marker = "extra == 'httpx'", specifier = ">=0.28.1" },
+    { name = "httpx", marker = "extra == 'server'", specifier = ">=0.28.1" },
     { name = "jinja2", specifier = ">=3.1.6" },
     { name = "mermaid-py", marker = "extra == 'plot'", specifier = ">=0.8.0" },
     { name = "msgspec-ext", specifier = ">=0.5.1" },

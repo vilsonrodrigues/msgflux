@@ -1,11 +1,8 @@
-import asyncio
 import os
 from collections.abc import Mapping as ABCMapping
 from typing import Any, Dict, List, Optional
-from urllib.error import HTTPError, URLError
-from urllib.request import Request as URLRequest
-from urllib.request import urlopen
 
+import httpx
 import msgspec
 
 from msgflux.channels.exceptions import ChannelError
@@ -55,8 +52,7 @@ class TelegramAdapter:
             payload["drop_pending_updates"] = drop_pending_updates
         if allowed_updates is not None:
             payload["allowed_updates"] = allowed_updates
-        return await asyncio.to_thread(
-            _post_telegram_api,
+        return await _post_telegram_api(
             self._bot_token(),
             "setWebhook",
             payload,
@@ -71,8 +67,7 @@ class TelegramAdapter:
         payload: Dict[str, Any] = {}
         if drop_pending_updates is not None:
             payload["drop_pending_updates"] = drop_pending_updates
-        return await asyncio.to_thread(
-            _post_telegram_api,
+        return await _post_telegram_api(
             self._bot_token(),
             "deleteWebhook",
             payload,
@@ -80,8 +75,7 @@ class TelegramAdapter:
         )
 
     async def get_webhook_info(self) -> Dict[str, Any]:
-        return await asyncio.to_thread(
-            _post_telegram_api,
+        return await _post_telegram_api(
             self._bot_token(),
             "getWebhookInfo",
             {},
@@ -154,8 +148,7 @@ class TelegramAdapter:
             return
 
         for chunk in _telegram_text_chunks(outbound.text):
-            await asyncio.to_thread(
-                _post_telegram_message,
+            await _post_telegram_message(
                 self._bot_token(),
                 outbound.conversation_id,
                 chunk,
@@ -187,13 +180,13 @@ def _telegram_text_chunks(text: str) -> List[str]:
     return [text[index : index + limit] for index in range(0, len(text), limit)]
 
 
-def _post_telegram_message(
+async def _post_telegram_message(
     token: str,
     chat_id: str,
     text: str,
     timeout_s: float,
 ) -> None:
-    _post_telegram_api(
+    await _post_telegram_api(
         token,
         "sendMessage",
         {"chat_id": chat_id, "text": text},
@@ -201,31 +194,29 @@ def _post_telegram_message(
     )
 
 
-def _post_telegram_api(
+async def _post_telegram_api(
     token: str,
     method: str,
     payload: Dict[str, Any],
     timeout_s: float,
 ) -> Dict[str, Any]:
-    data = msgspec.json.encode(payload)
-    request = URLRequest(
-        f"https://api.telegram.org/bot{token}/{method}",
-        data=data,
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
     try:
-        with urlopen(request, timeout=timeout_s) as response:  # noqa: S310
-            body = response.read()
-    except HTTPError as e:
-        detail = e.read().decode("utf-8", errors="replace")
+        async with httpx.AsyncClient(timeout=timeout_s) as client:
+            response = await client.post(
+                f"https://api.telegram.org/bot{token}/{method}",
+                content=msgspec.json.encode(payload),
+                headers={"Content-Type": "application/json"},
+            )
+            response.raise_for_status()
+    except httpx.HTTPStatusError as e:
         raise ChannelError(
-            f"Telegram API `{method}` failed with HTTP {e.code}: {detail}"
+            f"Telegram API `{method}` failed with HTTP "
+            f"{e.response.status_code}: {e.response.text}"
         ) from e
-    except URLError as e:
-        raise ChannelError(f"Telegram API `{method}` failed: {e.reason}") from e
+    except httpx.HTTPError as e:
+        raise ChannelError(f"Telegram API `{method}` failed: {e}") from e
 
-    result = msgspec.json.decode(body) if body else {}
+    result = msgspec.json.decode(response.content) if response.content else {}
     if not isinstance(result, ABCMapping):
         raise ChannelError(f"Telegram API `{method}` returned an invalid response")
     if result.get("ok") is False:

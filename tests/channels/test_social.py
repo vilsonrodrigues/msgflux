@@ -944,34 +944,38 @@ def test_telegram_webhook_applies_social_rate_limits():
 async def test_telegram_adapter_sets_webhook_with_secret_env(monkeypatch):
     requests = []
 
-    class FakeResponse:
-        def __enter__(self):
+    class FakeAsyncClient:
+        def __init__(self, timeout):
+            self.timeout = timeout
+
+        async def __aenter__(self):
             return self
 
-        def __exit__(self, exc_type, exc, tb):
+        async def __aexit__(self, exc_type, exc, tb):
             return None
 
-        def read(self):
-            return b'{"ok": true, "result": true}'
-
-    def fake_urlopen(request, timeout):
-        requests.append((request, timeout))
-        return FakeResponse()
+        async def post(self, url, *, content, headers):
+            requests.append((url, content, headers, self.timeout))
+            return telegram_adapter_module.httpx.Response(
+                200,
+                content=b'{"ok": true, "result": true}',
+                request=telegram_adapter_module.httpx.Request("POST", url),
+            )
 
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "bot-token")
     monkeypatch.setenv("TELEGRAM_WEBHOOK_SECRET", "webhook-secret")
-    monkeypatch.setattr(telegram_adapter_module, "urlopen", fake_urlopen)
+    monkeypatch.setattr(telegram_adapter_module.httpx, "AsyncClient", FakeAsyncClient)
 
     result = await TelegramAdapter(timeout_s=3).set_webhook(
         "https://example.com/social/telegram/webhook"
     )
 
     assert result == {"ok": True, "result": True}
-    request, timeout = requests[0]
+    url, content, headers, timeout = requests[0]
     assert timeout == 3
-    assert request.full_url == "https://api.telegram.org/botbot-token/setWebhook"
-    assert request.get_header("Content-type") == "application/json"
-    payload = json.loads(request.data.decode("utf-8"))
+    assert url == "https://api.telegram.org/botbot-token/setWebhook"
+    assert headers == {"Content-Type": "application/json"}
+    payload = json.loads(content.decode("utf-8"))
     assert payload == {
         "url": "https://example.com/social/telegram/webhook",
         "secret_token": "webhook-secret",

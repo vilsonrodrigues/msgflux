@@ -86,6 +86,7 @@ openai = [
 ]
 server = [
     "fastapi>=0.115.0",
+    "httpx>=0.28.1",
     "opentelemetry-instrumentation-fastapi>=0.43.1",
     "uvicorn>=0.30.0",
 ]
