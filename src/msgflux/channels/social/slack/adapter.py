@@ -42,6 +42,16 @@ class SlackAdapter:
         self.sender = sender
         self.timeout_s = timeout_s
         self.signature_tolerance_s = signature_tolerance_s
+        self._client: Optional[httpx.AsyncClient] = None
+
+    async def start(self) -> None:
+        if self._client is None:
+            self._client = httpx.AsyncClient(timeout=self.timeout_s)
+
+    async def stop(self) -> None:
+        if self._client is not None:
+            await self._client.aclose()
+            self._client = None
 
     async def verify(self, http_request: Any = None, body: bytes = b"") -> bool:
         secret = self._signing_secret()
@@ -151,6 +161,7 @@ class SlackAdapter:
             "chat.postMessage",
             payload,
             self.timeout_s,
+            client=self._client,
         )
 
     def _bot_token(self) -> str:
@@ -214,18 +225,21 @@ async def _post_slack_api(
     method: str,
     payload: Dict[str, Any],
     timeout_s: float,
+    *,
+    client: Optional[httpx.AsyncClient] = None,
 ) -> Dict[str, Any]:
     try:
-        async with httpx.AsyncClient(timeout=timeout_s) as client:
-            response = await client.post(
-                f"https://slack.com/api/{method}",
-                content=msgspec.json.encode(payload),
-                headers={
-                    "Authorization": f"Bearer {token}",
-                    "Content-Type": "application/json; charset=utf-8",
-                },
-            )
-            response.raise_for_status()
+        if client is None:
+            async with httpx.AsyncClient(timeout=timeout_s) as owned_client:
+                response = await _post_slack_request(
+                    owned_client,
+                    token,
+                    method,
+                    payload,
+                )
+        else:
+            response = await _post_slack_request(client, token, method, payload)
+        response.raise_for_status()
     except httpx.HTTPStatusError as e:
         raise ChannelError(
             f"Slack API `{method}` failed with HTTP "
@@ -241,6 +255,22 @@ async def _post_slack_api(
         error = result.get("error") or "unknown_error"
         raise ChannelError(f"Slack API `{method}` failed: {error}")
     return dict(result)
+
+
+async def _post_slack_request(
+    client: httpx.AsyncClient,
+    token: str,
+    method: str,
+    payload: Dict[str, Any],
+) -> httpx.Response:
+    return await client.post(
+        f"https://slack.com/api/{method}",
+        content=msgspec.json.encode(payload),
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json; charset=utf-8",
+        },
+    )
 
 
 def _headers(http_request: Any = None) -> Dict[str, str]:
