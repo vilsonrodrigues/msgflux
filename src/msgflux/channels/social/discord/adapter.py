@@ -1,11 +1,8 @@
-import asyncio
 import os
 from collections.abc import Mapping as ABCMapping
 from typing import Any, Dict, List, Optional
-from urllib.error import HTTPError, URLError
-from urllib.request import Request as URLRequest
-from urllib.request import urlopen
 
+import httpx
 import msgspec
 
 from msgflux.channels.exceptions import ChannelError
@@ -148,8 +145,7 @@ class DiscordInteractionsAdapter:
                 "Discord outbound messages require application_id and interaction_token"
             )
 
-        await asyncio.to_thread(
-            _post_discord_webhook,
+        await _post_discord_webhook(
             application_id,
             interaction_token,
             {"content": outbound.text},
@@ -256,35 +252,33 @@ def _outbound_metadata(
     return metadata
 
 
-def _post_discord_webhook(
+async def _post_discord_webhook(
     application_id: str,
     interaction_token: str,
     payload: Dict[str, Any],
     bot_token: str,
     timeout_s: float,
 ) -> Dict[str, Any]:
-    data = msgspec.json.encode(payload)
     headers = {"Content-Type": "application/json", "User-Agent": "msgflux"}
     if bot_token:
         headers["Authorization"] = f"Bot {bot_token}"
-    request = URLRequest(  # noqa: S310
-        f"{DISCORD_API_BASE_URL}/webhooks/{application_id}/{interaction_token}",
-        data=data,
-        headers=headers,
-        method="POST",
-    )
     try:
-        with urlopen(request, timeout=timeout_s) as response:  # noqa: S310
-            body = response.read()
-    except HTTPError as e:
-        detail = e.read().decode("utf-8", errors="replace")
+        async with httpx.AsyncClient(timeout=timeout_s) as client:
+            response = await client.post(
+                f"{DISCORD_API_BASE_URL}/webhooks/{application_id}/{interaction_token}",
+                content=msgspec.json.encode(payload),
+                headers=headers,
+            )
+            response.raise_for_status()
+    except httpx.HTTPStatusError as e:
         raise ChannelError(
-            f"Discord webhook followup failed with HTTP {e.code}: {detail}"
+            f"Discord webhook followup failed with HTTP "
+            f"{e.response.status_code}: {e.response.text}"
         ) from e
-    except URLError as e:
-        raise ChannelError(f"Discord webhook followup failed: {e.reason}") from e
+    except httpx.HTTPError as e:
+        raise ChannelError(f"Discord webhook followup failed: {e}") from e
 
-    result = msgspec.json.decode(body) if body else {}
+    result = msgspec.json.decode(response.content) if response.content else {}
     if result and not isinstance(result, ABCMapping):
         raise ChannelError("Discord webhook followup returned an invalid response")
     return dict(result)

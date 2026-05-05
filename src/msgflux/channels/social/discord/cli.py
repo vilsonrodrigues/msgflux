@@ -4,10 +4,8 @@ import os
 import sys
 from argparse import Namespace
 from typing import Any, Dict, Optional
-from urllib.error import HTTPError, URLError
-from urllib.request import Request as URLRequest
-from urllib.request import urlopen
 
+import httpx
 import msgspec
 
 from msgflux.channels.env import load_env_file
@@ -31,8 +29,7 @@ def run_discord(args: Namespace) -> int:
 async def _run_discord_action(args: Namespace) -> Dict[str, Any]:
     action = args.discord_action
     if action == "create-ask-command":
-        return await asyncio.to_thread(
-            _create_ask_command,
+        return await _create_ask_command(
             _discord_application_id(args),
             _discord_bot_token(args),
             getattr(args, "guild_id", None),
@@ -46,7 +43,7 @@ async def _run_discord_action(args: Namespace) -> Dict[str, Any]:
     raise ValueError(f"Unsupported Discord action `{action}`")
 
 
-def _create_ask_command(
+async def _create_ask_command(
     application_id: str,
     bot_token: str,
     guild_id: Optional[str],
@@ -75,7 +72,7 @@ def _create_ask_command(
         path = f"/applications/{application_id}/guilds/{guild_id}/commands"
         scope = "guild"
 
-    result = _post_discord_api(bot_token, path, payload, timeout_s)
+    result = await _post_discord_api(bot_token, path, payload, timeout_s)
     return {
         "ok": True,
         "scope": scope,
@@ -88,34 +85,33 @@ def _create_ask_command(
     }
 
 
-def _post_discord_api(
+async def _post_discord_api(
     bot_token: str,
     path: str,
     payload: Dict[str, Any],
     timeout_s: float,
 ) -> Dict[str, Any]:
-    request = URLRequest(  # noqa: S310
-        f"{DISCORD_API_BASE_URL}{path}",
-        data=msgspec.json.encode(payload),
-        headers={
-            "Authorization": f"Bot {bot_token}",
-            "Content-Type": "application/json",
-            "User-Agent": "msgflux",
-        },
-        method="POST",
-    )
     try:
-        with urlopen(request, timeout=timeout_s) as response:  # noqa: S310
-            body = response.read()
-    except HTTPError as e:
-        detail = e.read().decode("utf-8", errors="replace")
+        async with httpx.AsyncClient(timeout=timeout_s) as client:
+            response = await client.post(
+                f"{DISCORD_API_BASE_URL}{path}",
+                content=msgspec.json.encode(payload),
+                headers={
+                    "Authorization": f"Bot {bot_token}",
+                    "Content-Type": "application/json",
+                    "User-Agent": "msgflux",
+                },
+            )
+            response.raise_for_status()
+    except httpx.HTTPStatusError as e:
         raise ChannelError(
-            f"Discord API request failed with HTTP {e.code}: {detail}"
+            f"Discord API request failed with HTTP "
+            f"{e.response.status_code}: {e.response.text}"
         ) from e
-    except URLError as e:
-        raise ChannelError(f"Discord API request failed: {e.reason}") from e
+    except httpx.HTTPError as e:
+        raise ChannelError(f"Discord API request failed: {e}") from e
 
-    result = msgspec.json.decode(body) if body else {}
+    result = msgspec.json.decode(response.content) if response.content else {}
     if result and not isinstance(result, dict):
         raise ChannelError("Discord API returned an invalid response")
     return result

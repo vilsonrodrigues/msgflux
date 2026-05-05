@@ -138,21 +138,25 @@ def test_discord_webhook_defers_and_processes_command():
 async def test_discord_adapter_sends_followup_message(monkeypatch):
     requests = []
 
-    class FakeResponse:
-        def __enter__(self):
+    class FakeAsyncClient:
+        def __init__(self, timeout):
+            self.timeout = timeout
+
+        async def __aenter__(self):
             return self
 
-        def __exit__(self, exc_type, exc, tb):
+        async def __aexit__(self, exc_type, exc, tb):
             return None
 
-        def read(self):
-            return b'{"id": "M123"}'
+        async def post(self, url, *, content, headers):
+            requests.append((url, content, headers, self.timeout))
+            return discord_adapter_module.httpx.Response(
+                200,
+                content=b'{"id": "M123"}',
+                request=discord_adapter_module.httpx.Request("POST", url),
+            )
 
-    def fake_urlopen(request, timeout):
-        requests.append((request, timeout))
-        return FakeResponse()
-
-    monkeypatch.setattr(discord_adapter_module, "urlopen", fake_urlopen)
+    monkeypatch.setattr(discord_adapter_module.httpx, "AsyncClient", FakeAsyncClient)
 
     adapter = DiscordInteractionsAdapter(bot_token="bot-token", timeout_s=3)
     outbound = discord_adapter_module.OutboundSocialMessage(
@@ -167,10 +171,9 @@ async def test_discord_adapter_sends_followup_message(monkeypatch):
 
     await adapter.send(outbound)
 
-    request, timeout = requests[0]
+    url, content, headers, timeout = requests[0]
     assert timeout == 3
-    assert request.full_url == (
-        "https://discord.com/api/v10/webhooks/A123/interaction-token"
-    )
-    assert request.get_header("Authorization") == "Bot bot-token"
-    assert json.loads(request.data.decode("utf-8")) == {"content": "hello"}
+    assert url == "https://discord.com/api/v10/webhooks/A123/interaction-token"
+    assert headers["Authorization"] == "Bot bot-token"
+    assert headers["User-Agent"] == "msgflux"
+    assert json.loads(content.decode("utf-8")) == {"content": "hello"}

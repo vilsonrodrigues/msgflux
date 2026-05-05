@@ -1,12 +1,14 @@
+import pytest
 from argparse import Namespace
 
 from msgflux.channels.social.discord import cli as discord_cli
 
 
-def test_discord_create_ask_command_returns_summary(monkeypatch):
+@pytest.mark.asyncio
+async def test_discord_create_ask_command_returns_summary(monkeypatch):
     calls = []
 
-    def fake_post(token, path, payload, timeout_s):
+    async def fake_post(token, path, payload, timeout_s):
         calls.append((token, path, payload, timeout_s))
         return {
             "id": "C123",
@@ -18,7 +20,7 @@ def test_discord_create_ask_command_returns_summary(monkeypatch):
 
     monkeypatch.setattr(discord_cli, "_post_discord_api", fake_post)
 
-    result = discord_cli._create_ask_command(
+    result = await discord_cli._create_ask_command(
         "A123",
         "bot-token",
         "G123",
