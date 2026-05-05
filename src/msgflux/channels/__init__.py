@@ -28,6 +28,8 @@ from msgflux.channels.social import (
     SocialBoundary,
     SocialContext,
     SocialEvent,
+    SocialHttpClient,
+    SocialHttpConfig,
     SocialMessage,
     TelegramAdapter,
 )
@@ -57,6 +59,8 @@ __all__ = [
     "SocialBoundary",
     "SocialContext",
     "SocialEvent",
+    "SocialHttpClient",
+    "SocialHttpConfig",
     "SocialMessage",
     "TelegramAdapter",
     "UnauthorizedError",

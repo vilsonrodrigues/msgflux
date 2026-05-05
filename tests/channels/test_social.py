@@ -9,6 +9,7 @@ from msgflux.channels import (
     ChannelRegistry,
     OutboundSocialMessage,
     SocialAttachment,
+    SocialHttpConfig,
     SocialMessage,
     TelegramAdapter,
 )
@@ -968,8 +969,9 @@ async def test_telegram_adapter_sets_webhook_with_secret_env(monkeypatch):
     requests = []
 
     class FakeAsyncClient:
-        def __init__(self, timeout):
+        def __init__(self, timeout, limits=None):
             self.timeout = timeout
+            self.limits = limits
 
         async def __aenter__(self):
             return self
@@ -995,7 +997,7 @@ async def test_telegram_adapter_sets_webhook_with_secret_env(monkeypatch):
 
     assert result == {"ok": True, "result": True}
     url, content, headers, timeout = requests[0]
-    assert timeout == 3
+    assert timeout == telegram_adapter_module.httpx.Timeout(3)
     assert url == "https://api.telegram.org/botbot-token/setWebhook"
     assert headers == {"Content-Type": "application/json"}
     payload = json.loads(content.decode("utf-8"))
@@ -1003,3 +1005,23 @@ async def test_telegram_adapter_sets_webhook_with_secret_env(monkeypatch):
         "url": "https://example.com/social/telegram/webhook",
         "secret_token": "webhook-secret",
     }
+
+
+def test_telegram_adapter_accepts_social_http_config():
+    adapter = TelegramAdapter(
+        http_config=SocialHttpConfig(
+            timeout_s=5,
+            connect_timeout_s=1,
+            read_timeout_s=4,
+            write_timeout_s=2,
+            pool_timeout_s=0.5,
+            max_connections=20,
+            max_keepalive_connections=5,
+            keepalive_expiry_s=30,
+        )
+    )
+
+    assert adapter.http_config.timeout_s == 5
+    assert adapter.http_config.max_connections == 20
+    assert adapter.http_config.timeout().connect == 1
+    assert adapter.http_config.limits().max_connections == 20
