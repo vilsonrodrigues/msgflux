@@ -139,8 +139,9 @@ async def test_discord_adapter_sends_followup_message(monkeypatch):
     requests = []
 
     class FakeAsyncClient:
-        def __init__(self, timeout):
+        def __init__(self, timeout, limits=None):
             self.timeout = timeout
+            self.limits = limits
 
         async def __aenter__(self):
             return self
@@ -172,7 +173,7 @@ async def test_discord_adapter_sends_followup_message(monkeypatch):
     await adapter.send(outbound)
 
     url, content, headers, timeout = requests[0]
-    assert timeout == 3
+    assert timeout == discord_adapter_module.httpx.Timeout(3)
     assert url == "https://discord.com/api/v10/webhooks/A123/interaction-token"
     assert headers["Authorization"] == "Bot bot-token"
     assert headers["User-Agent"] == "msgflux"

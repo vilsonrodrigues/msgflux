@@ -6,7 +6,6 @@ from argparse import Namespace
 from typing import Any, Dict, Optional
 
 import httpx
-import msgspec
 
 from msgflux.channels.env import load_env_file
 from msgflux.channels.exceptions import ChannelError
@@ -14,6 +13,7 @@ from msgflux.channels.social.discord.adapter import (
     DEFAULT_DISCORD_BOT_TOKEN_ENV,
     DISCORD_API_BASE_URL,
 )
+from msgflux.channels.social.http import SocialHttpClient, SocialHttpConfig
 
 DEFAULT_DISCORD_APPLICATION_ID_ENV = "DISCORD_APPLICATION_ID"
 
@@ -91,18 +91,17 @@ async def _post_discord_api(
     payload: Dict[str, Any],
     timeout_s: float,
 ) -> Dict[str, Any]:
+    http_client = SocialHttpClient(SocialHttpConfig(timeout_s=timeout_s))
     try:
-        async with httpx.AsyncClient(timeout=timeout_s) as client:
-            response = await client.post(
-                f"{DISCORD_API_BASE_URL}{path}",
-                content=msgspec.json.encode(payload),
-                headers={
-                    "Authorization": f"Bot {bot_token}",
-                    "Content-Type": "application/json",
-                    "User-Agent": "msgflux",
-                },
-            )
-            response.raise_for_status()
+        result = await http_client.post_json(
+            f"{DISCORD_API_BASE_URL}{path}",
+            payload,
+            headers={
+                "Authorization": f"Bot {bot_token}",
+                "Content-Type": "application/json",
+                "User-Agent": "msgflux",
+            },
+        )
     except httpx.HTTPStatusError as e:
         raise ChannelError(
             f"Discord API request failed with HTTP "
@@ -111,8 +110,7 @@ async def _post_discord_api(
     except httpx.HTTPError as e:
         raise ChannelError(f"Discord API request failed: {e}") from e
 
-    result = msgspec.json.decode(response.content) if response.content else {}
-    if result and not isinstance(result, dict):
+    if not isinstance(result, dict):
         raise ChannelError("Discord API returned an invalid response")
     return result
 

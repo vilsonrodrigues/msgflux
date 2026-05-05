@@ -7,6 +7,7 @@ import msgspec
 
 from msgflux.channels.exceptions import ChannelError
 from msgflux.channels.registry import Processor, call_processor
+from msgflux.channels.social.http import SocialHttpClient, SocialHttpConfig
 from msgflux.channels.social.types import (
     OutboundSocialMessage,
     SocialAttachment,
@@ -33,23 +34,21 @@ class DiscordInteractionsAdapter:
         bot_token_env: Optional[str] = None,
         sender: Optional[Processor] = None,
         timeout_s: float = 10.0,
+        http_config: Optional[SocialHttpConfig] = None,
     ) -> None:
         self.public_key = public_key
         self.public_key_env = public_key_env or DEFAULT_DISCORD_PUBLIC_KEY_ENV
         self.bot_token = bot_token
         self.bot_token_env = bot_token_env or DEFAULT_DISCORD_BOT_TOKEN_ENV
         self.sender = sender
-        self.timeout_s = timeout_s
-        self._client: Optional[httpx.AsyncClient] = None
+        self.http_config = http_config or SocialHttpConfig(timeout_s=timeout_s)
+        self._http = SocialHttpClient(self.http_config)
 
     async def start(self) -> None:
-        if self._client is None:
-            self._client = httpx.AsyncClient(timeout=self.timeout_s)
+        await self._http.start()
 
     async def stop(self) -> None:
-        if self._client is not None:
-            await self._client.aclose()
-            self._client = None
+        await self._http.stop()
 
     async def verify(self, http_request: Any = None, body: bytes = b"") -> bool:
         public_key = self._public_key()
@@ -160,8 +159,7 @@ class DiscordInteractionsAdapter:
             interaction_token,
             {"content": outbound.text},
             self._bot_token(),
-            self.timeout_s,
-            client=self._client,
+            self._http,
         )
 
     def _public_key(self) -> str:
@@ -268,32 +266,17 @@ async def _post_discord_webhook(
     interaction_token: str,
     payload: Dict[str, Any],
     bot_token: str,
-    timeout_s: float,
-    *,
-    client: Optional[httpx.AsyncClient] = None,
+    http_client: SocialHttpClient,
 ) -> Dict[str, Any]:
     headers = {"Content-Type": "application/json", "User-Agent": "msgflux"}
     if bot_token:
         headers["Authorization"] = f"Bot {bot_token}"
     try:
-        if client is None:
-            async with httpx.AsyncClient(timeout=timeout_s) as owned_client:
-                response = await _post_discord_webhook_request(
-                    owned_client,
-                    application_id,
-                    interaction_token,
-                    payload,
-                    headers,
-                )
-        else:
-            response = await _post_discord_webhook_request(
-                client,
-                application_id,
-                interaction_token,
-                payload,
-                headers,
-            )
-        response.raise_for_status()
+        result = await http_client.post_json(
+            f"{DISCORD_API_BASE_URL}/webhooks/{application_id}/{interaction_token}",
+            payload,
+            headers=headers,
+        )
     except httpx.HTTPStatusError as e:
         raise ChannelError(
             f"Discord webhook followup failed with HTTP "
@@ -302,24 +285,9 @@ async def _post_discord_webhook(
     except httpx.HTTPError as e:
         raise ChannelError(f"Discord webhook followup failed: {e}") from e
 
-    result = msgspec.json.decode(response.content) if response.content else {}
-    if result and not isinstance(result, ABCMapping):
+    if not isinstance(result, ABCMapping):
         raise ChannelError("Discord webhook followup returned an invalid response")
     return dict(result)
-
-
-async def _post_discord_webhook_request(
-    client: httpx.AsyncClient,
-    application_id: str,
-    interaction_token: str,
-    payload: Dict[str, Any],
-    headers: Dict[str, str],
-) -> httpx.Response:
-    return await client.post(
-        f"{DISCORD_API_BASE_URL}/webhooks/{application_id}/{interaction_token}",
-        content=msgspec.json.encode(payload),
-        headers=headers,
-    )
 
 
 def _headers(http_request: Any = None) -> Dict[str, str]:
