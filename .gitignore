@@ -61,6 +61,7 @@ _build/
 
 # Project specific
 /sandbox/
+/tmp/
 /worktrees/
 .auto-format
 *.db
