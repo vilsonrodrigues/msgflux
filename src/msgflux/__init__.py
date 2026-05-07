@@ -8,6 +8,7 @@ if TYPE_CHECKING:
     from msgflux.core.dotdict import dotdict
     from msgflux.core.examples import Example
     from msgflux.core.message import Message
+    from msgflux.core.prompt_section import PromptContent, PromptSection
     from msgflux.core.registry import Registry
     from msgflux.data.dbs import DB
     from msgflux.data.parsers import Parser
@@ -41,6 +42,8 @@ __all__ = [
     "ModelGateway",
     "OutputField",
     "Parser",
+    "PromptContent",
+    "PromptSection",
     "Registry",
     "Retriever",
     "Signature",
@@ -74,6 +77,8 @@ _LAZY_IMPORTS = {
     "ModelGateway": ("msgflux.models.gateway", "ModelGateway"),
     "OutputField": ("msgflux.dsl.signature", "OutputField"),
     "Parser": ("msgflux.data.parsers", "Parser"),
+    "PromptContent": ("msgflux.core.prompt_section", "PromptContent"),
+    "PromptSection": ("msgflux.core.prompt_section", "PromptSection"),
     "Registry": ("msgflux.core.registry", "Registry"),
     "Retriever": ("msgflux.data.retrievers", "Retriever"),
     "Signature": ("msgflux.dsl.signature", "Signature"),

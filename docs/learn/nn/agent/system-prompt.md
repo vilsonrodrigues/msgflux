@@ -82,6 +82,53 @@ All components are assembled using a **system prompt template**, that can be cus
     </developer_note>
     ```
 
+## PromptSection
+
+`system_message`, `instructions`, `expected_output`, and `system_extra_message`
+also accept `PromptSection`. Use it to organize prompt content as concise
+key-value sections without creating a custom prompt template.
+
+```python
+import msgflux as mf
+import msgflux.nn as nn
+
+
+class Output(mf.PromptSection):
+    format = "three bullets"
+    tone = "direct"
+
+
+class SystemMessage(mf.PromptSection):
+    role = "business development assistant"
+    audience = "sales teams"
+    style = "concise"
+    output = Output
+
+
+class BusinessAgent(nn.Agent):
+    model = mf.Model.chat_completion("openai/gpt-4.1-mini")
+    system_message = SystemMessage
+    instructions = mf.PromptSection(
+        goal="identify needs and suggest outreach",
+        constraints=["avoid unsupported claims", "keep recommendations ethical"],
+    )
+```
+
+`PromptSection` renders to text before the system prompt template is applied:
+
+```text
+role: business development assistant
+audience: sales teams
+style: concise
+output:
+  format: three bullets
+  tone: direct
+```
+
+Multi-line strings are cleaned with Python docstring-style dedent, so class
+attributes and constructor values can use triple-quoted strings without keeping
+leading indentation.
+
 ## Examples
 
 **[In-Context Learning (ICL)](https://arxiv.org/abs/2005.14165)** is a technique where language models learn to perform tasks by observing examples provided directly in the prompt, without any parameter updates. This allows models to generalize from just a few demonstrations.

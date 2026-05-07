@@ -5,6 +5,7 @@ from unittest.mock import Mock, MagicMock, patch, AsyncMock
 
 from msgflux.nn.modules.agent import Agent, _RESERVED_KWARGS
 from msgflux.core.message import Message
+from msgflux.core.prompt_section import PromptSection
 from msgflux.models.response import ModelResponse, ModelStreamResponse
 from msgflux.nn.modules.tool import ToolLibrary, ToolResponses, ToolCall
 from msgflux.core.examples import Example
@@ -644,6 +645,51 @@ class TestAgentTemplates:
 
         assert isinstance(system_prompt, str)
         assert len(system_prompt) > 0
+
+    def test_agent_accepts_prompt_section_for_system_fields(self):
+        """Test Agent prompt fields accept PromptSection instances."""
+        mock_model = Mock()
+        mock_model.model_type = "chat_completion"
+
+        agent = Agent(
+            name="agent",
+            model=mock_model,
+            system_message=PromptSection(
+                role="senior software engineer",
+                style="concise",
+            ),
+            instructions=PromptSection(process=["inspect first", "test changes"]),
+            expected_output=PromptSection(format="short markdown"),
+            system_extra_message=PromptSection(note="prefer existing patterns"),
+        )
+
+        system_prompt = agent.get_system_prompt()
+
+        assert "role: senior software engineer" in system_prompt
+        assert "style: concise" in system_prompt
+        assert "process:" in system_prompt
+        assert "- inspect first" in system_prompt
+        assert "format: short markdown" in system_prompt
+        assert "note: prefer existing patterns" in system_prompt
+
+    def test_agent_accepts_prompt_section_class_attrs(self):
+        """Test Agent class attrs can declare PromptSection classes."""
+        mock_model = Mock()
+        mock_model.model_type = "chat_completion"
+
+        class SystemMessage(PromptSection):
+            role = "senior software engineer"
+            style = "concise"
+
+        class CodingAgent(Agent):
+            system_message = SystemMessage
+
+        agent = CodingAgent(model=mock_model)
+
+        system_prompt = agent.get_system_prompt()
+
+        assert "role: senior software engineer" in system_prompt
+        assert "style: concise" in system_prompt
 
     def test_agent_with_custom_task_template(self):
         """Test Agent with custom task template."""

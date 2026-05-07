@@ -19,6 +19,7 @@ from msgflux.auto import AutoParams
 from msgflux.core.dotdict import dotdict
 from msgflux.core.examples import Example, ExampleCollection
 from msgflux.core.message import Message
+from msgflux.core.prompt_section import PromptContent, normalize_prompt_content
 from msgflux.data.types import Audio, File, Image, Video
 from msgflux.dsl.signature import (
     Signature,
@@ -117,11 +118,11 @@ class Agent(Module, metaclass=AutoParams):
         name: str,
         model: Union[ChatCompletionModel, ModelGateway, "Generator", str],
         *,
-        system_message: Optional[str] = None,
-        instructions: Optional[str] = None,
-        expected_output: Optional[str] = None,
+        system_message: Optional[PromptContent] = None,
+        instructions: Optional[PromptContent] = None,
+        expected_output: Optional[PromptContent] = None,
         examples: Optional[Union[str, List[Union[Example, Mapping[str, Any]]]]] = None,
-        system_extra_message: Optional[str] = None,
+        system_extra_message: Optional[PromptContent] = None,
         hooks: Optional[List["Hook"]] = None,
         message_fields: Optional[Dict[str, Any]] = None,
         config: Optional[Dict[str, Any]] = None,
@@ -1841,66 +1842,52 @@ class Agent(Module, metaclass=AutoParams):
     def model(self, value: Union[ChatCompletionModel, ModelGateway, "Generator", str]):
         self._set_model(value)
 
-    def _set_system_message(self, system_message: Optional[str] = None):
-        if isinstance(system_message, str) or system_message is None:
-            if isinstance(system_message, str):
-                system_message = cleandoc(system_message)
-            if (
-                hasattr(self.generation_schema, "system_message")
-                and self.generation_schema.system_message is not None
-            ):
-                if system_message is None:
-                    system_message = self.generation_schema.system_message
-                else:
-                    system_message = (
-                        self.generation_schema.system_message + system_message
-                    )
-            self.system_message = Parameter(system_message, PromptSpec.SYSTEM_MESSAGE)
-        else:
-            raise TypeError(
-                "`system_message` requires a string or None "
-                f"given `{type(system_message)}`"
+    def _set_system_message(self, system_message: Optional[PromptContent] = None):
+        system_message = normalize_prompt_content(
+            system_message, field_name="system_message"
+        )
+        if (
+            hasattr(self.generation_schema, "system_message")
+            and self.generation_schema.system_message is not None
+        ):
+            schema_system_message = normalize_prompt_content(
+                self.generation_schema.system_message,
+                field_name="generation_schema.system_message",
             )
+            if system_message is None:
+                system_message = schema_system_message
+            else:
+                system_message = schema_system_message + system_message
+        self.system_message = Parameter(system_message, PromptSpec.SYSTEM_MESSAGE)
 
-    def _set_instructions(self, instructions: Optional[str] = None):
-        if isinstance(instructions, str) or instructions is None:
-            if isinstance(instructions, str):
-                instructions = cleandoc(instructions)
-            typed_parser_cls = typed_parser_registry.get(self.typed_parser, None)
-            if typed_parser_cls is not None:
-                instructions = self._format_template(
-                    {"instructions": instructions}, typed_parser_cls.template
-                )
-            self.instructions = Parameter(instructions, PromptSpec.INSTRUCTIONS)
-        else:
-            raise TypeError(
-                f"`instructions` requires a string or None given `{type(instructions)}`"
+    def _set_instructions(self, instructions: Optional[PromptContent] = None):
+        instructions = normalize_prompt_content(instructions, field_name="instructions")
+        typed_parser_cls = typed_parser_registry.get(self.typed_parser, None)
+        if typed_parser_cls is not None:
+            instructions = self._format_template(
+                {"instructions": instructions}, typed_parser_cls.template
             )
+        self.instructions = Parameter(instructions, PromptSpec.INSTRUCTIONS)
 
-    def _set_expected_output(self, expected_output: Optional[str] = None):
-        if isinstance(expected_output, str) or expected_output is None:  # TODO
-            if isinstance(expected_output, str):
-                expected_output = cleandoc(expected_output)
-            expected_output_temp = ""
-            if expected_output:
-                expected_output_temp += expected_output
-            typed_parser_cls = typed_parser_registry.get(self.typed_parser, None)
-            if typed_parser_cls is not None:  # Schema as expected output
-                response_format = response_format_from_msgspec_struct(
-                    self.generation_schema
-                )
-                schema = typed_parser_cls.schema_from_response_format(response_format)
-                content = {"expected_outputs": schema}
-                rendered = self._format_template(content, EXPECTED_OUTPUTS_TEMPLATE)
-                expected_output_temp += rendered
-            self.expected_output = Parameter(
-                expected_output_temp or None, PromptSpec.EXPECTED_OUTPUT
+    def _set_expected_output(self, expected_output: Optional[PromptContent] = None):
+        expected_output = normalize_prompt_content(
+            expected_output, field_name="expected_output"
+        )
+        expected_output_temp = ""
+        if expected_output:
+            expected_output_temp += expected_output
+        typed_parser_cls = typed_parser_registry.get(self.typed_parser, None)
+        if typed_parser_cls is not None:  # Schema as expected output
+            response_format = response_format_from_msgspec_struct(
+                self.generation_schema
             )
-        else:
-            raise TypeError(
-                "`expected_output` requires a string or None "
-                f"given `{type(expected_output)}`"
-            )
+            schema = typed_parser_cls.schema_from_response_format(response_format)
+            content = {"expected_outputs": schema}
+            rendered = self._format_template(content, EXPECTED_OUTPUTS_TEMPLATE)
+            expected_output_temp += rendered
+        self.expected_output = Parameter(
+            expected_output_temp or None, PromptSpec.EXPECTED_OUTPUT
+        )
 
     def _set_examples(
         self,
@@ -1996,16 +1983,13 @@ class Agent(Module, metaclass=AutoParams):
 
         self.register_buffer("config", config.copy())
 
-    def _set_system_extra_message(self, system_extra_message: Optional[str] = None):
-        if isinstance(system_extra_message, str) or system_extra_message is None:
-            if isinstance(system_extra_message, str):
-                system_extra_message = cleandoc(system_extra_message)
-            self.register_buffer("system_extra_message", system_extra_message)
-        else:
-            raise TypeError(
-                "`system_extra_message` requires a string or None "
-                f"given `{type(system_extra_message)}`"
-            )
+    def _set_system_extra_message(
+        self, system_extra_message: Optional[PromptContent] = None
+    ):
+        system_extra_message = normalize_prompt_content(
+            system_extra_message, field_name="system_extra_message"
+        )
+        self.register_buffer("system_extra_message", system_extra_message)
 
     def _set_vars(self, vars: Optional[str] = None):
         if isinstance(vars, str) or vars is None:
