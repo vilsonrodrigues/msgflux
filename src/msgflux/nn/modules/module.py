@@ -1,8 +1,10 @@
 import asyncio
+import contextvars
 import functools
 import inspect
 import weakref
 from collections import OrderedDict, namedtuple
+from collections.abc import AsyncGenerator
 from typing import (
     Any,
     Callable,
@@ -38,6 +40,12 @@ from msgflux.models.model import Model
 from msgflux.models.response import ModelResponse, ModelStreamResponse
 from msgflux.nn.hooks import Hook, RemovableHandle
 from msgflux.nn.parameter import Parameter
+from msgflux.runtime.events import (
+    EventStream,
+    EventType,
+    StreamEvent,
+    emit_event,
+)
 from msgflux.telemetry import Spans
 from msgflux.utils.convert import convert_camel_snake_to_title
 from msgflux.utils.mermaid import plot_mermaid
@@ -53,6 +61,11 @@ __all__ = [
     "register_module_module_registration_hook",
     "register_module_parameter_registration_hook",
 ]
+
+_streaming_events_active: contextvars.ContextVar[bool] = contextvars.ContextVar(
+    "msgflux_streaming_events_active",
+    default=False,
+)
 
 MSGFLUX_DESERIALIZABLE_CLS: Dict[str, Type] = {
     "model": Model,
@@ -1249,29 +1262,48 @@ class Module:
             state_dict = self.state_dict()
             encoded_state_dict = msgspec.json.encode(state_dict)
 
+        emit_event(
+            EventType.MODULE_START,
+            {"module_name": module_name, "module_type": module_type},
+        )
         # Trace capture
         current_span = trace.get_current_span()
         # If there is no active span or it is not recording, this is the root module
-        if current_span is None or not current_span.is_recording():
-            with Spans.init_flow(module_name_title) as span:
-                try:
-                    MsgTraceAttributes.set_module_name(module_name_title)
-                    MsgTraceAttributes.set_module_type(module_type)
-                    if envs.telemetry_capture_state_dict and encoded_state_dict:
-                        MsgTraceAttributes.set_custom(
-                            "module.state_dict", encoded_state_dict
-                        )
-                    module_output = self.forward(*args, **kwargs)
-                    span.set_status(Status(StatusCode.OK))
-                    return module_output
-                except Exception as e:
-                    span.record_exception(e)
-                    span.set_status(Status(StatusCode.ERROR, str(e)))
-                    raise
-        else:
-            return self._execute_with_span(
-                module_name_title, module_type, *args, **kwargs
+        try:
+            if current_span is None or not current_span.is_recording():
+                with Spans.init_flow(module_name_title) as span:
+                    try:
+                        MsgTraceAttributes.set_module_name(module_name_title)
+                        MsgTraceAttributes.set_module_type(module_type)
+                        if envs.telemetry_capture_state_dict and encoded_state_dict:
+                            MsgTraceAttributes.set_custom(
+                                "module.state_dict", encoded_state_dict
+                            )
+                        module_output = self.forward(*args, **kwargs)
+                        span.set_status(Status(StatusCode.OK))
+                    except Exception as e:
+                        span.record_exception(e)
+                        span.set_status(Status(StatusCode.ERROR, str(e)))
+                        raise
+            else:
+                module_output = self._execute_with_span(
+                    module_name_title, module_type, *args, **kwargs
+                )
+            emit_event(
+                EventType.MODULE_COMPLETE,
+                {"module_name": module_name, "module_type": module_type},
             )
+            return module_output
+        except Exception as e:
+            emit_event(
+                EventType.MODULE_ERROR,
+                {
+                    "module_name": module_name,
+                    "module_type": module_type,
+                    "error": str(e),
+                },
+            )
+            raise
 
     @staticmethod
     async def _adispatch_hook(hook, *args):
@@ -1350,29 +1382,48 @@ class Module:
             state_dict = self.state_dict()
             encoded_state_dict = msgspec.json.encode(state_dict)
 
+        emit_event(
+            EventType.MODULE_START,
+            {"module_name": module_name, "module_type": module_type},
+        )
         # Trace capture
         current_span = trace.get_current_span()
         # If there is no active span or it is not recording, this is the root module
-        if current_span is None or not current_span.is_recording():
-            async with Spans.ainit_flow(module_name_title) as span:
-                try:
-                    MsgTraceAttributes.set_module_name(module_name_title)
-                    MsgTraceAttributes.set_module_type(module_type)
-                    if envs.telemetry_capture_state_dict and encoded_state_dict:
-                        MsgTraceAttributes.set_custom(
-                            "module.state_dict", encoded_state_dict
-                        )
-                    module_output = await self.aforward(*args, **kwargs)
-                    span.set_status(Status(StatusCode.OK))
-                    return module_output
-                except Exception as e:
-                    span.record_exception(e)
-                    span.set_status(Status(StatusCode.ERROR, str(e)))
-                    raise
-        else:
-            return await self._aexecute_with_span(
-                module_name_title, module_type, *args, **kwargs
+        try:
+            if current_span is None or not current_span.is_recording():
+                async with Spans.ainit_flow(module_name_title) as span:
+                    try:
+                        MsgTraceAttributes.set_module_name(module_name_title)
+                        MsgTraceAttributes.set_module_type(module_type)
+                        if envs.telemetry_capture_state_dict and encoded_state_dict:
+                            MsgTraceAttributes.set_custom(
+                                "module.state_dict", encoded_state_dict
+                            )
+                        module_output = await self.aforward(*args, **kwargs)
+                        span.set_status(Status(StatusCode.OK))
+                    except Exception as e:
+                        span.record_exception(e)
+                        span.set_status(Status(StatusCode.ERROR, str(e)))
+                        raise
+            else:
+                module_output = await self._aexecute_with_span(
+                    module_name_title, module_type, *args, **kwargs
+                )
+            emit_event(
+                EventType.MODULE_COMPLETE,
+                {"module_name": module_name, "module_type": module_type},
             )
+            return module_output
+        except Exception as e:
+            emit_event(
+                EventType.MODULE_ERROR,
+                {
+                    "module_name": module_name,
+                    "module_type": module_type,
+                    "error": str(e),
+                },
+            )
+            raise
 
     __call__: Callable[..., Any] = _call_impl
 
@@ -1391,6 +1442,58 @@ class Module:
         else:
             # Use native async implementation
             return await self._acall_impl(*args, **kwargs)
+
+    async def astream_events(
+        self,
+        *args,
+        **kwargs,
+    ) -> AsyncGenerator[StreamEvent, None]:
+        error_holder: List[BaseException] = []
+        token = _streaming_events_active.set(True)
+
+        try:
+            async with EventStream() as stream:
+
+                async def _run():
+                    try:
+                        await self.acall(*args, **kwargs)
+                    except Exception as exc:
+                        error_holder.append(exc)
+                    finally:
+                        stream.close()
+
+                task = asyncio.create_task(_run())
+                async for event in stream:
+                    yield event
+                await task
+        finally:
+            _streaming_events_active.reset(token)
+
+        if error_holder:
+            raise error_holder[0]
+
+    def stream_events(self, *args, callback=None, **kwargs):
+        token = _streaming_events_active.set(True)
+        try:
+            with EventStream() as stream:
+                try:
+                    result = self.__call__(*args, **kwargs)
+                except BaseException:
+                    stream.close()
+                    if callback is not None:
+                        for event in stream.events:
+                            callback(event)
+                    raise
+                else:
+                    stream.close()
+                    events = stream.events
+                    if callback is not None:
+                        for event in events:
+                            callback(event)
+                        return result
+                    return events
+        finally:
+            _streaming_events_active.reset(token)
 
     def __getstate__(self):
         state = self.__dict__.copy()

@@ -9,12 +9,23 @@ from uuid import uuid4
 
 from msgflux.agent_inbox import AgentInbox, AgentNotification, ToolNotificationHandle
 from msgflux.exceptions import TaskPauseRequestedError, TaskStopRequestedError
+from msgflux.runtime.events import EventType, emit_task_event
 
 # --- Module Utilities ---
 
 
 def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _emit_task_record_event(event_type: str, task: TaskRecord) -> None:
+    emit_task_event(
+        event_type,
+        task_id=task.task_id,
+        tool_name=task.tool_name,
+        status=task.status,
+        data={"progress": task.progress.to_dict(), "metadata": task.metadata},
+    )
 
 
 # --- Task Models ---
@@ -99,7 +110,10 @@ class TaskStore:
                     metadata={"status": "queued", "tool": tool_name},
                 )
             )
-        return self.get(task.task_id)  # type: ignore[return-value]
+        created = self.get(task.task_id)
+        if created is not None:
+            _emit_task_record_event(EventType.TASK_CREATED, created)
+        return created  # type: ignore[return-value]
 
     def get(self, task_id: str) -> TaskRecord | None:
         with self._lock:
@@ -182,7 +196,9 @@ class TaskStore:
                     },
                 )
             )
-            return deepcopy(task)
+            updated = deepcopy(task)
+        _emit_task_record_event(EventType.TASK_RUNNING, updated)
+        return updated
 
     def update_progress(
         self,
@@ -228,7 +244,9 @@ class TaskStore:
                     metadata=task.progress.to_dict(),
                 )
             )
-            return deepcopy(task)
+            updated = deepcopy(task)
+        _emit_task_record_event(EventType.TASK_PROGRESS, updated)
+        return updated
 
     def complete(self, task_id: str, result: Any) -> TaskRecord | None:
         with self._lock:
@@ -252,7 +270,9 @@ class TaskStore:
                     metadata={"status": "completed"},
                 )
             )
-            return deepcopy(task)
+            updated = deepcopy(task)
+        _emit_task_record_event(EventType.TASK_COMPLETED, updated)
+        return updated
 
     def fail(self, task_id: str, error: Any) -> TaskRecord | None:
         with self._lock:
@@ -273,7 +293,9 @@ class TaskStore:
                     metadata={"status": "failed", "error": task.error},
                 )
             )
-            return deepcopy(task)
+            updated = deepcopy(task)
+        _emit_task_record_event(EventType.TASK_FAILED, updated)
+        return updated
 
     def stop(self, task_id: str, *, reason: str | None = None) -> TaskRecord | None:
         with self._lock:
@@ -296,7 +318,9 @@ class TaskStore:
                     metadata={"status": "stopped", "reason": reason},
                 )
             )
-            return deepcopy(task)
+            updated = deepcopy(task)
+        _emit_task_record_event(EventType.TASK_STOPPED, updated)
+        return updated
 
     def pause(self, task_id: str, *, reason: str | None = None) -> TaskRecord | None:
         with self._lock:
@@ -318,7 +342,9 @@ class TaskStore:
                     metadata={"status": "paused", "reason": reason},
                 )
             )
-            return deepcopy(task)
+            updated = deepcopy(task)
+        _emit_task_record_event(EventType.TASK_PAUSED, updated)
+        return updated
 
     def request_stop(self, task_id: str) -> TaskRecord | None:
         with self._lock:
@@ -336,7 +362,9 @@ class TaskStore:
                     metadata={"status": task.status},
                 )
             )
-            return deepcopy(task)
+            updated = deepcopy(task)
+        _emit_task_record_event(EventType.TASK_STOP_REQUESTED, updated)
+        return updated
 
     def clear_stop_request(self, task_id: str) -> TaskRecord | None:
         with self._lock:
@@ -370,7 +398,9 @@ class TaskStore:
                     metadata={"status": "queued"},
                 )
             )
-            return deepcopy(task)
+            updated = deepcopy(task)
+        _emit_task_record_event(EventType.TASK_REQUEUED, updated)
+        return updated
 
 
 class TaskActivityRecorder:

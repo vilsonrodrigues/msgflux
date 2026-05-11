@@ -271,3 +271,18 @@ hint=Use the enterprise refund policy for this answer.
 Use `incoming_user_message` for new user turns. Use `system_note` or another
 system-like source for runtime hints, progress, policy updates, or operator
 notes that should not be treated as a direct user request.
+
+## Observing Execution
+
+Use `stream_events()` or `astream_events()` when the application also needs
+runtime signals while execution control is active.
+
+```python
+async for event in agent.astream_events("Investigate this ticket.", scope=scope):
+    if event.name == mf.EventType.INBOX_NOTIFICATION:
+        print("new inbox item", event.attributes)
+    if event.name == mf.EventType.CHECKPOINT_SAVED:
+        print("checkpoint saved", event.attributes)
+```
+
+See [Event Streaming](event-streaming.md) for the event names and payloads.

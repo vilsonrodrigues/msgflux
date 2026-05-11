@@ -35,6 +35,13 @@ from msgflux.protocols.mcp import (
     extract_tool_result_text,
     filter_tools,
 )
+from msgflux.runtime.events import (
+    TOOL_CALL_METADATA_KEY,
+    ToolCallMetadata,
+    emit_tool_error,
+    emit_tool_result,
+    emit_tool_started,
+)
 from msgflux.tasks import TaskActivityRecorder, TaskHandle, TaskStore
 from msgflux.telemetry.span import (
     aset_tool_attributes,
@@ -123,6 +130,46 @@ class Tool(Module):
     def get_json_schema(self):
         return generate_tool_json_schema(self)
 
+    def _pop_tool_call_metadata(self, kwargs: Dict[str, Any]) -> ToolCallMetadata:
+        raw_metadata = kwargs.pop(TOOL_CALL_METADATA_KEY, None)
+        kwargs.pop("tool_call_id", None)
+        if isinstance(raw_metadata, ToolCallMetadata):
+            return raw_metadata
+        if isinstance(raw_metadata, Mapping):
+            return ToolCallMetadata(**dict(raw_metadata))
+        return ToolCallMetadata(tool_name=self.get_module_name())
+
+    def _emit_tool_execution(self, metadata: ToolCallMetadata, fn: Callable[[], Any]):
+        metadata = self._ensure_tool_metadata(metadata)
+        emit_tool_started(metadata)
+        try:
+            result = fn()
+        except Exception as exc:
+            emit_tool_error(metadata, exc)
+            raise
+        emit_tool_result(metadata, result)
+        return result
+
+    async def _aemit_tool_execution(
+        self,
+        metadata: ToolCallMetadata,
+        fn: Callable[[], Any],
+    ):
+        metadata = self._ensure_tool_metadata(metadata)
+        emit_tool_started(metadata)
+        try:
+            result = await fn()
+        except Exception as exc:
+            emit_tool_error(metadata, exc)
+            raise
+        emit_tool_result(metadata, result)
+        return result
+
+    def _ensure_tool_metadata(self, metadata: ToolCallMetadata) -> ToolCallMetadata:
+        if metadata.tool_name:
+            return metadata
+        return ToolCallMetadata(**{**metadata.to_dict(), "tool_name": self.name})
+
 
 class MCPTool(Tool):
     """MCP Tool Proxy - wraps remote MCP tool as a Tool object.
@@ -191,30 +238,40 @@ class MCPTool(Tool):
     @set_tool_attributes(execution_type="remote", protocol="mcp")
     def forward(self, **kwargs) -> Any:
         """Execute MCP tool call."""
-        # Call MCP tool (wrap async in sync)
-        result = F.wait_for(self._mcp_client.call_tool, self._mcp_tool_name, kwargs)
+        metadata = self._pop_tool_call_metadata(kwargs)
 
-        # Handle errors
-        if result.isError:
-            error_text = extract_tool_result_text(result)
-            raise RuntimeError(f"MCP tool error: {error_text}")
+        def _run():
+            # Call MCP tool (wrap async in sync)
+            result = F.wait_for(self._mcp_client.call_tool, self._mcp_tool_name, kwargs)
 
-        # Extract and return result
-        return extract_tool_result_text(result)
+            # Handle errors
+            if result.isError:
+                error_text = extract_tool_result_text(result)
+                raise RuntimeError(f"MCP tool error: {error_text}")
+
+            # Extract and return result
+            return extract_tool_result_text(result)
+
+        return self._emit_tool_execution(metadata, _run)
 
     @aset_tool_attributes(execution_type="remote", protocol="mcp")
     async def aforward(self, **kwargs) -> Any:
         """Execute MCP tool call asynchronously."""
-        # Call MCP tool
-        result = await self._mcp_client.call_tool(self._mcp_tool_name, kwargs)
+        metadata = self._pop_tool_call_metadata(kwargs)
 
-        # Handle errors
-        if result.isError:
-            error_text = extract_tool_result_text(result)
-            raise RuntimeError(f"MCP tool error: {error_text}")
+        async def _run():
+            # Call MCP tool
+            result = await self._mcp_client.call_tool(self._mcp_tool_name, kwargs)
 
-        # Extract and return result
-        return extract_tool_result_text(result)
+            # Handle errors
+            if result.isError:
+                error_text = extract_tool_result_text(result)
+                raise RuntimeError(f"MCP tool error: {error_text}")
+
+            # Extract and return result
+            return extract_tool_result_text(result)
+
+        return await self._aemit_tool_execution(metadata, _run)
 
 
 class LocalTool(Tool):
@@ -285,23 +342,33 @@ class LocalTool(Tool):
 
     @set_tool_attributes(execution_type="local")
     def forward(self, **kwargs):
+        metadata = self._pop_tool_call_metadata(kwargs)
         kwargs = self._restore_transport_params(kwargs)
         kwargs = self._strip_none_default_kwargs(kwargs)
-        if inspect.iscoroutinefunction(self.impl):
-            return F.wait_for(self.impl, **kwargs)
-        return self.impl(**kwargs)
+
+        def _run():
+            if inspect.iscoroutinefunction(self.impl):
+                return F.wait_for(self.impl, **kwargs)
+            return self.impl(**kwargs)
+
+        return self._emit_tool_execution(metadata, _run)
 
     @aset_tool_attributes(execution_type="local")
     async def aforward(self, *args, **kwargs):
+        metadata = self._pop_tool_call_metadata(kwargs)
         kwargs = self._restore_transport_params(kwargs)
         kwargs = self._strip_none_default_kwargs(kwargs)
-        if hasattr(self.impl, "acall"):
-            return await self.impl.acall(*args, **kwargs)
-        elif inspect.iscoroutinefunction(self.impl):
-            return await self.impl(*args, **kwargs)
-        # Fall back to sync call in executor to avoid blocking event loop
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, lambda: self.impl(*args, **kwargs))
+
+        async def _run():
+            if hasattr(self.impl, "acall"):
+                return await self.impl.acall(*args, **kwargs)
+            if inspect.iscoroutinefunction(self.impl):
+                return await self.impl(*args, **kwargs)
+            # Fall back to sync call in executor to avoid blocking event loop
+            loop = asyncio.get_event_loop()
+            return await loop.run_in_executor(None, lambda: self.impl(*args, **kwargs))
+
+        return await self._aemit_tool_execution(metadata, _run)
 
 
 def _convert_module_to_nn_tool(impl: Callable) -> Tool:  # noqa: C901
@@ -1245,9 +1312,54 @@ class ToolLibrary(Module, metaclass=AutoParams):
             "scope",
             "tool_library",
             "tool_call_id",
+            TOOL_CALL_METADATA_KEY,
         ):
             parameters.pop(key, None)
         return parameters
+
+    def _build_tool_call_metadata(
+        self,
+        *,
+        tool_id: str,
+        tool_name: str,
+        tool_params: Any,
+        task_id: str | None = None,
+        task_kind: str | None = None,
+    ) -> ToolCallMetadata:
+        context = get_execution_context()
+        params = tool_params if isinstance(tool_params, Mapping) else {}
+        return ToolCallMetadata(
+            tool_call_id=tool_id,
+            tool_name=tool_name,
+            caller_name=(
+                context.get("namespace")
+                if isinstance(context.get("namespace"), str)
+                else None
+            ),
+            caller_namespace=(
+                context.get("namespace")
+                if isinstance(context.get("namespace"), str)
+                else None
+            ),
+            caller_session_id=(
+                context.get("session_id")
+                if isinstance(context.get("session_id"), str)
+                else None
+            ),
+            caller_run_id=(
+                context.get("run_id")
+                if isinstance(context.get("run_id"), str)
+                else None
+            ),
+            caller_root_run_id=(
+                context.get("root_run_id")
+                if isinstance(context.get("root_run_id"), str)
+                else None
+            ),
+            task_id=task_id,
+            task_kind=task_kind,
+            arguments=deepcopy(dict(params)),
+        )
 
     def _build_notification_handle(
         self,
@@ -1423,7 +1535,13 @@ class ToolLibrary(Module, metaclass=AutoParams):
                     ),
                     "model_preference": restored_model_preference,
                     "vars": restored_vars,
-                    "tool_call_id": f"task_message_{task.task_id}",
+                    TOOL_CALL_METADATA_KEY: self._build_tool_call_metadata(
+                        tool_id=f"task_message_{task.task_id}",
+                        tool_name=tool_name,
+                        tool_params={"task": message},
+                        task_id=task.task_id,
+                        task_kind="agent",
+                    ),
                     "task": message,
                 },
                 execution_scope=execution_scope,
@@ -1455,6 +1573,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
         tool: Tool,
         tool_id: str,
         tool_name: str,
+        tool_params: Any,
         call_params: Dict[str, Any],
         config: Mapping[str, Any],
     ) -> ToolCall:
@@ -1521,7 +1640,13 @@ class ToolLibrary(Module, metaclass=AutoParams):
                     else task.task_id
                 ),
             )
-        runner_params["tool_call_id"] = tool_id
+        runner_params[TOOL_CALL_METADATA_KEY] = self._build_tool_call_metadata(
+            tool_id=tool_id,
+            tool_name=tool_name,
+            tool_params=tool_params,
+            task_id=task.task_id,
+            task_kind=str(task_kind),
+        )
         execution_scope = {
             "session_id": session_id
             if isinstance(session_id, str) and session_id
@@ -1674,6 +1799,11 @@ class ToolLibrary(Module, metaclass=AutoParams):
 
             if config.get("spawn", False):
                 return_directly = False
+                call_params[TOOL_CALL_METADATA_KEY] = self._build_tool_call_metadata(
+                    tool_id=tool_id,
+                    tool_name=tool_name,
+                    tool_params=tool_params,
+                )
                 F.spawn(tool, **call_params)
                 tool_calls.append(
                     ToolCall(
@@ -1693,6 +1823,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
                         tool=tool,
                         tool_id=tool_id,
                         tool_name=tool_name,
+                        tool_params=tool_params,
                         call_params=call_params,
                         config=config,
                     )
@@ -1711,8 +1842,11 @@ class ToolLibrary(Module, metaclass=AutoParams):
             if not config.get("return_direct", False):
                 return_directly = False
 
-            # Add tool_call_id for telemetry
-            call_params["tool_call_id"] = tool_id
+            call_params[TOOL_CALL_METADATA_KEY] = self._build_tool_call_metadata(
+                tool_id=tool_id,
+                tool_name=tool_name,
+                tool_params=tool_params,
+            )
             prepared_calls.append(partial(tool, **call_params))
 
             call_metadata.append(
@@ -1812,6 +1946,11 @@ class ToolLibrary(Module, metaclass=AutoParams):
 
             if config.get("spawn", False):
                 return_directly = False
+                call_params[TOOL_CALL_METADATA_KEY] = self._build_tool_call_metadata(
+                    tool_id=tool_id,
+                    tool_name=tool_name,
+                    tool_params=tool_params,
+                )
                 await F.aspawn(tool, **call_params)
                 tool_calls.append(
                     ToolCall(
@@ -1831,6 +1970,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
                         tool=tool,
                         tool_id=tool_id,
                         tool_name=tool_name,
+                        tool_params=tool_params,
                         call_params=call_params,
                         config=config,
                     )
@@ -1849,8 +1989,11 @@ class ToolLibrary(Module, metaclass=AutoParams):
             if not config.get("return_direct", False):
                 return_directly = False
 
-            # Add tool_call_id for telemetry
-            call_params["tool_call_id"] = tool_id
+            call_params[TOOL_CALL_METADATA_KEY] = self._build_tool_call_metadata(
+                tool_id=tool_id,
+                tool_name=tool_name,
+                tool_params=tool_params,
+            )
             prepared_calls.append(partial(tool.acall, **call_params))
 
             call_metadata.append(

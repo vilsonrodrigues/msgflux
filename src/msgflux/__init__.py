@@ -35,6 +35,7 @@ if TYPE_CHECKING:
     from msgflux.exceptions import TaskError
     from msgflux.models import Model
     from msgflux.models.gateway import ModelGateway
+    from msgflux.runtime import EventStream, EventType, StreamEvent, ToolCallMetadata
     from msgflux.telemetry import Spans
     from msgflux.tools.config import tool_config
     from msgflux.utils.chat import ChatBlock, ChatML
@@ -53,6 +54,8 @@ __all__ = [
     "ChatBlock",
     "ChatML",
     "CheckpointStore",
+    "EventStream",
+    "EventType",
     "Example",
     "ExecutionScope",
     "File",
@@ -72,8 +75,10 @@ __all__ = [
     "SQLiteAgentInboxStore",
     "Signature",
     "Spans",
+    "StreamEvent",
     "Store",
     "TaskError",
+    "ToolCallMetadata",
     "Video",
     "cprint",
     "dotdict",
@@ -98,6 +103,8 @@ _LAZY_IMPORTS = {
     "InMemoryAgentInboxStore": ("msgflux.agent_inbox", "InMemoryAgentInboxStore"),
     "ChatMessages": ("msgflux.chat_messages", "ChatMessages"),
     "ExecutionScope": ("msgflux.context", "ExecutionScope"),
+    "EventStream": ("msgflux.runtime", "EventStream"),
+    "EventType": ("msgflux.runtime", "EventType"),
     "ChatBlock": ("msgflux.utils.chat", "ChatBlock"),
     "ChatML": ("msgflux.utils.chat", "ChatML"),
     "CheckpointStore": ("msgflux.data.stores", "CheckpointStore"),
@@ -117,7 +124,9 @@ _LAZY_IMPORTS = {
     "Retriever": ("msgflux.data.retrievers", "Retriever"),
     "Signature": ("msgflux.dsl.signature", "Signature"),
     "Spans": ("msgflux.telemetry", "Spans"),
+    "StreamEvent": ("msgflux.runtime", "StreamEvent"),
     "TaskError": ("msgflux.exceptions", "TaskError"),
+    "ToolCallMetadata": ("msgflux.runtime", "ToolCallMetadata"),
     "Video": ("msgflux.data.types", "Video"),
     "cprint": ("msgflux.utils.console", "cprint"),
     "dotdict": ("msgflux.core.dotdict", "dotdict"),

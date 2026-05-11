@@ -14,6 +14,20 @@ from opentelemetry import trace
 
 from msgflux.envs import envs
 from msgflux.models.response import ModelStreamResponse
+from msgflux.runtime.events import TOOL_CALL_METADATA_KEY, ToolCallMetadata
+
+
+def _extract_tool_call_id(kwargs: dict) -> str | None:
+    """Read runtime-only tool metadata without hiding it from Tool.forward."""
+    metadata = kwargs.get(TOOL_CALL_METADATA_KEY)
+    tool_call_id = kwargs.pop("tool_call_id", None)
+    if isinstance(metadata, ToolCallMetadata):
+        return metadata.tool_call_id or tool_call_id
+    if isinstance(metadata, dict):
+        candidate = metadata.get("tool_call_id")
+        if isinstance(candidate, str):
+            return candidate
+    return tool_call_id if isinstance(tool_call_id, str) else None
 
 
 def set_tool_attributes(  # noqa: C901
@@ -40,8 +54,7 @@ def set_tool_attributes(  # noqa: C901
     def decorator(func: Callable) -> Callable:
         @wraps(func)
         def wrapper(self, **kwargs):
-            # Extract tool_call_id from kwargs (passed by ToolLibrary)
-            tool_call_id = kwargs.pop("tool_call_id", None)
+            tool_call_id = _extract_tool_call_id(kwargs)
 
             span = trace.get_current_span()
             if span.is_recording():
@@ -66,7 +79,13 @@ def set_tool_attributes(  # noqa: C901
 
                 # Capture arguments (without tool_call_id)
                 try:
-                    encoded_args = msgspec.json.encode(kwargs)
+                    encoded_args = msgspec.json.encode(
+                        {
+                            key: value
+                            for key, value in kwargs.items()
+                            if key != TOOL_CALL_METADATA_KEY
+                        }
+                    )
                     MsgTraceAttributes.set_tool_call_arguments(encoded_args.decode())
                 except (TypeError, ValueError):
                     pass
@@ -109,8 +128,7 @@ def aset_tool_attributes(  # noqa: C901
     def decorator(func: Callable) -> Callable:
         @wraps(func)
         async def wrapper(self, *args, **kwargs):
-            # Extract tool_call_id from kwargs
-            tool_call_id = kwargs.pop("tool_call_id", None)
+            tool_call_id = _extract_tool_call_id(kwargs)
 
             span = trace.get_current_span()
             if span.is_recording():
@@ -135,7 +153,13 @@ def aset_tool_attributes(  # noqa: C901
 
                 # Capture arguments
                 try:
-                    encoded_args = msgspec.json.encode(kwargs)
+                    encoded_args = msgspec.json.encode(
+                        {
+                            key: value
+                            for key, value in kwargs.items()
+                            if key != TOOL_CALL_METADATA_KEY
+                        }
+                    )
                     MsgTraceAttributes.set_tool_call_arguments(encoded_args.decode())
                 except (TypeError, ValueError):
                     pass
