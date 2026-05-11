@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from msgspec_ext import load_dotenv
 
-    from msgflux.agent_inbox import AgentInbox, AgentNotification
+    from msgflux.agent_inbox import AgentControlMessage, AgentInbox, AgentNotification
     from msgflux.cache import response_cache
     from msgflux.chat_messages import ChatMessages
     from msgflux.context import ExecutionScope, execution_context, get_execution_scope
@@ -38,6 +38,7 @@ __all__ = [
     "DB",
     "Audio",
     "AgentInbox",
+    "AgentControlMessage",
     "AgentNotification",
     "ChatMessages",
     "ChatBlock",
@@ -79,6 +80,7 @@ __all__ = [
 _LAZY_IMPORTS = {
     "Audio": ("msgflux.data.types", "Audio"),
     "AgentInbox": ("msgflux.agent_inbox", "AgentInbox"),
+    "AgentControlMessage": ("msgflux.agent_inbox", "AgentControlMessage"),
     "AgentNotification": ("msgflux.agent_inbox", "AgentNotification"),
     "ChatMessages": ("msgflux.chat_messages", "ChatMessages"),
     "ExecutionScope": ("msgflux.context", "ExecutionScope"),

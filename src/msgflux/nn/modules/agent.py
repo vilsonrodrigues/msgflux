@@ -17,7 +17,7 @@ from uuid import uuid4
 
 import msgspec
 
-from msgflux.agent_inbox import AgentInbox
+from msgflux.agent_inbox import AgentInbox, AgentNotification
 from msgflux.auto import AutoParams
 from msgflux.chat_messages import ChatMessages
 from msgflux.context import ExecutionScope, execution_context, get_execution_context
@@ -31,7 +31,11 @@ from msgflux.dsl.signature import (
     generate_annotations_from_signature,
 )
 from msgflux.dsl.typed_parsers.registry import typed_parser_registry
-from msgflux.exceptions import TaskStopRequestedError, _GuardInterrupt
+from msgflux.exceptions import (
+    TaskPauseRequestedError,
+    TaskStopRequestedError,
+    _GuardInterrupt,
+)
 from msgflux.generation.control_flow import ToolFlowControl
 from msgflux.generation.templates import (
     EXPECTED_OUTPUTS_TEMPLATE,
@@ -516,6 +520,11 @@ class Agent(Module, metaclass=AutoParams):
                     inputs.get("messages"), inputs.get("vars", {}), status="stopped"
                 )
                 raise
+            except TaskPauseRequestedError:
+                self._checkpoint_save(
+                    inputs.get("messages"), inputs.get("vars", {}), status="paused"
+                )
+                raise
             except Exception:
                 self._checkpoint_save_on_error(inputs)
                 raise
@@ -553,6 +562,13 @@ class Agent(Module, metaclass=AutoParams):
                     inputs.get("messages"),
                     inputs.get("vars", {}),
                     status="stopped",
+                )
+                raise
+            except TaskPauseRequestedError:
+                await self._acheckpoint_save(
+                    inputs.get("messages"),
+                    inputs.get("vars", {}),
+                    status="paused",
                 )
                 raise
             except Exception:
@@ -906,6 +922,7 @@ class Agent(Module, metaclass=AutoParams):
 
                 # Use interface to build history
                 messages = flow_control.build_history(raw_response, messages)
+                self._drain_inbox_into_messages(messages)
                 self._checkpoint_save(messages, vars)
 
             model_response = self._execute_model(
@@ -984,6 +1001,7 @@ class Agent(Module, metaclass=AutoParams):
 
                 # Use interface to build history (async version)
                 messages = await flow_control.abuild_history(raw_response, messages)
+                self._drain_inbox_into_messages(messages)
                 await self._acheckpoint_save(messages, vars)
 
             model_response = await self._aexecute_model(
@@ -1058,6 +1076,7 @@ class Agent(Module, metaclass=AutoParams):
                 raw_response.insert_results(id_results)
                 tool_responses_message = raw_response.get_messages()
                 messages.extend(tool_responses_message)
+                self._drain_inbox_into_messages(messages)
                 self._checkpoint_save(messages, vars)
             else:
                 return model_response, messages
@@ -1134,6 +1153,7 @@ class Agent(Module, metaclass=AutoParams):
                 raw_response.insert_results(id_results)
                 tool_responses_message = raw_response.get_messages()
                 messages.extend(tool_responses_message)
+                self._drain_inbox_into_messages(messages)
                 await self._acheckpoint_save(messages, vars)
             else:
                 return model_response, messages
@@ -2051,6 +2071,10 @@ class Agent(Module, metaclass=AutoParams):
             return inherited
         return getattr(self, "agent_inbox", None)
 
+    def set_agent_inbox(self, agent_inbox: AgentInbox) -> None:
+        self.agent_inbox = agent_inbox
+        self.tool_library.set_agent_inbox(agent_inbox)
+
     def _raise_if_background_task_stopped(self) -> None:
         task_handle = get_execution_context().get("task_handle")
         if task_handle is None:
@@ -2064,6 +2088,54 @@ class Agent(Module, metaclass=AutoParams):
                 )
             raise TaskStopRequestedError(task_handle.task_id)
 
+    def _handle_control_notifications(
+        self,
+        notifications: List[AgentNotification],
+    ) -> List[AgentNotification]:
+        remaining = []
+        for notification in notifications:
+            if notification.source != "control":
+                remaining.append(notification)
+                continue
+
+            command = (notification.status or "").lower()
+            reason = notification.hint or notification.metadata.get("reason")
+            task_handle = get_execution_context().get("task_handle")
+            task_id = getattr(task_handle, "task_id", None)
+
+            if command in {"stop", "cancel"}:
+                raise TaskStopRequestedError(
+                    task_id or get_execution_context().get("run_id") or "unknown",
+                    str(reason) if reason else None,
+                )
+            if command == "pause":
+                raise TaskPauseRequestedError(
+                    task_id if isinstance(task_id, str) else None,
+                    str(reason) if reason else None,
+                )
+
+            remaining.append(notification)
+        return remaining
+
+    def _drain_inbox_into_messages(
+        self,
+        messages: Union[ChatMessages, List[Mapping[str, Any]]],
+        *,
+        drain_notifications: bool = True,
+    ) -> bool:
+        inbox = self._get_effective_agent_inbox()
+        if inbox is None:
+            return False
+
+        notifications = inbox.drain() if drain_notifications else inbox.peek()
+        notifications = self._handle_control_notifications(notifications)
+        if not notifications:
+            return False
+
+        notification_message = inbox.render(notifications)
+        self._persist_notification_message(messages, notification_message)
+        return notification_message is not None
+
     # --- Inbox Delivery ---
 
     def _build_model_messages(
@@ -2072,31 +2144,20 @@ class Agent(Module, metaclass=AutoParams):
         *,
         drain_notifications: bool = True,
     ) -> List[Mapping[str, Any]]:
-        inbox = self._get_effective_agent_inbox()
-        notifications = []
-        if inbox is not None:
-            notifications = inbox.drain() if drain_notifications else inbox.peek()
-
         if isinstance(messages, ChatMessages):
             working_messages: Union[ChatMessages, List[Mapping[str, Any]]] = (
                 messages if drain_notifications else messages.copy()
             )
-            provider_messages = working_messages.to_chatml()
         else:
             working_messages = messages if drain_notifications else list(messages)
-            provider_messages = list(working_messages)
 
-        if not notifications:
-            return provider_messages
-
-        notification_message = inbox.render(notifications) if inbox else None
-        self._persist_notification_message(working_messages, notification_message)
+        self._drain_inbox_into_messages(
+            working_messages,
+            drain_notifications=drain_notifications,
+        )
         if isinstance(working_messages, ChatMessages):
-            provider_messages = working_messages.to_chatml()
-        else:
-            provider_messages = list(working_messages)
-
-        return provider_messages
+            return working_messages.to_chatml()
+        return list(working_messages)
 
     def _persist_notification_message(
         self,
