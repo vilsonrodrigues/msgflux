@@ -221,8 +221,9 @@ def process_items(items: list[str], task) -> int:
     return total
 ```
 
-These notifications are persisted like other inbox notifications. `dedupe_key`
-keeps the newest progress update for the same task visible to the model.
+These notifications are persisted when the agent inbox uses an
+`AgentInboxStore`. `dedupe_key` keeps the newest progress update for the same
+task visible to the model.
 
 ## Example 3D: Sending A Message To A Background Subagent
 
@@ -321,6 +322,6 @@ This is the current scope of the implementation:
 
 ## Example Scripts
 
-- [`examples/background_task_wait_demo.py`](../../../../examples/background_task_wait_demo.py)
-- [`examples/background_task_notifications_demo.py`](../../../../examples/background_task_notifications_demo.py)
-- [`examples/background_task_status_updates_demo.py`](../../../../examples/background_task_status_updates_demo.py)
+- `examples/background_task_wait_demo.py`
+- `examples/background_task_notifications_demo.py`
+- `examples/background_task_status_updates_demo.py`

@@ -1,6 +1,11 @@
 """Tests for msgflux.agent_inbox."""
 
-from msgflux.agent_inbox import AgentControlMessage, AgentInbox
+from msgflux.agent_inbox import (
+    AgentControlMessage,
+    AgentInbox,
+    InMemoryAgentInboxStore,
+    SQLiteAgentInboxStore,
+)
 
 
 def test_agent_inbox_verbose_publish_and_drain_are_printed(capsys):
@@ -80,3 +85,60 @@ def test_agent_inbox_renders_incoming_user_message():
             "</incoming_user_message>"
         ),
     }
+
+
+def test_agent_inbox_persists_notifications_with_memory_store():
+    store = InMemoryAgentInboxStore()
+    writer = AgentInbox(
+        store=store,
+        namespace="assistant",
+        session_id="user_1",
+        run_id="run_1",
+    )
+    reader = AgentInbox(
+        store=store,
+        namespace="assistant",
+        session_id="user_1",
+        run_id="run_1",
+    )
+
+    writer.user_message("Continue with the new constraint.")
+
+    notifications = reader.peek()
+    assert len(notifications) == 1
+    assert notifications[0].source == "incoming_user_message"
+    assert notifications[0].hint == "Continue with the new constraint."
+
+    drained = reader.drain()
+    assert len(drained) == 1
+    assert writer.peek() == []
+
+
+def test_agent_inbox_persists_notifications_with_sqlite_store(tmp_path):
+    path = tmp_path / "agent-inboxes.sqlite3"
+    store = SQLiteAgentInboxStore(path=str(path))
+    writer = AgentInbox(
+        store=store,
+        namespace="assistant",
+        session_id="user_1",
+        run_id="run_1",
+    )
+
+    writer.pause(reason="operator needs review")
+    store.close()
+
+    reopened = SQLiteAgentInboxStore(path=str(path))
+    reader = AgentInbox(
+        store=reopened,
+        namespace="assistant",
+        session_id="user_1",
+        run_id="run_1",
+    )
+    notification = reader.drain()[0]
+
+    assert notification.source == "control"
+    assert notification.status == "pause"
+    assert notification.hint == "operator needs review"
+    assert reader.peek() == []
+
+    reopened.close()
