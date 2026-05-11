@@ -19,7 +19,7 @@ from msgflux._private.executor import Executor
 from msgflux.agent_inbox import AgentInbox, AgentNotification, ToolNotificationHandle
 from msgflux.auto import AutoParams
 from msgflux.chat_messages import ChatMessages
-from msgflux.context import execution_context, get_execution_context
+from msgflux.context import ExecutionScope, execution_context, get_execution_context
 from msgflux.core.dotdict import dotdict
 from msgflux.exceptions import TaskError, TaskStopRequestedError
 from msgflux.logger import logger
@@ -1237,6 +1237,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
             "message",
             "task",
             "notification",
+            "scope",
             "tool_library",
             "tool_call_id",
         ):
@@ -1389,8 +1390,15 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 tool_name=tool_name,
                 call_params={
                     "messages": restored_messages,
-                    "session_id": session_id,
-                    "run_id": run_id,
+                    "scope": ExecutionScope(
+                        session_id=(
+                            session_id if isinstance(session_id, str) else "default"
+                        ),
+                        namespace=checkpoint_namespace,
+                        run_id=run_id,
+                        parent_run_id=task.metadata.get("parent_run_id"),
+                        root_run_id=task.metadata.get("root_run_id"),
+                    ),
                     "model_preference": restored_model_preference,
                     "vars": restored_vars,
                     "tool_call_id": f"task_message_{task.task_id}",
@@ -1472,9 +1480,21 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 agent_inbox=root_agent_inbox,
             )
         if task_kind == "agent":
-            if isinstance(session_id, str) and session_id:
-                runner_params.setdefault("session_id", session_id)
-            runner_params.setdefault("run_id", task.task_id)
+            runner_params["scope"] = ExecutionScope(
+                session_id=session_id if isinstance(session_id, str) else "default",
+                namespace=tool_name,
+                run_id=task.task_id,
+                parent_run_id=(
+                    parent_run_id
+                    if isinstance(parent_run_id, str) and parent_run_id
+                    else None
+                ),
+                root_run_id=(
+                    root_run_id
+                    if isinstance(root_run_id, str) and root_run_id
+                    else task.task_id
+                ),
+            )
         runner_params["tool_call_id"] = tool_id
         execution_scope = {
             "session_id": session_id

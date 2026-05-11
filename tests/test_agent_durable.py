@@ -46,7 +46,10 @@ def test_agent_saves_completed_checkpoint():
     agent = _make_agent(checkpointer=store)
     agent.generator.forward = Mock(return_value=_text_response("42"))
 
-    result = agent("What is 6*7?", session_id="user_42", run_id="run_math")
+    scope = ExecutionScope(
+        session_id="user_42", namespace="test_agent", run_id="run_math"
+    )
+    result = agent("What is 6*7?", scope=scope)
 
     assert result == "42"
     state = store.load_state("test_agent", "user_42", "run_math")
@@ -91,8 +94,11 @@ def test_agent_resumes_exact_run_id():
     agent.generator.forward = Mock(return_value=_text_response("4"))
     result = agent(
         "this input should be ignored on resume",
-        session_id="user_42",
-        run_id="run_resume",
+        scope=ExecutionScope(
+            session_id="user_42",
+            namespace="test_agent",
+            run_id="run_resume",
+        ),
     )
 
     assert result == "4"
