@@ -68,6 +68,12 @@ def test_agent_stream_events_emits_model_and_tool_events():
     assert EventType.TOOL_STARTED in names
     assert EventType.TOOL_RESULT in names
     assert EventType.AGENT_COMPLETE in names
+    model_responses = [
+        event.attributes["response_type"]
+        for event in events
+        if event.name == EventType.MODEL_RESPONSE
+    ]
+    assert model_responses == ["tool_call", "text_generation"]
 
     tool_started = next(
         event for event in events if event.name == EventType.TOOL_STARTED

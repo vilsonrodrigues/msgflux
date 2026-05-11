@@ -1242,12 +1242,29 @@ class Module:
         """
         with Spans.init_module(module_name_title, module_type) as span:
             try:
+                module_name = self.get_module_name()
                 MsgTraceAttributes.set_module_name(module_name_title)
                 MsgTraceAttributes.set_module_type(module_type)
+                emit_event(
+                    EventType.MODULE_START,
+                    {"module_name": module_name, "module_type": module_type},
+                )
                 result = self.forward(*args, **kwargs)
                 span.set_status(Status(StatusCode.OK))
+                emit_event(
+                    EventType.MODULE_COMPLETE,
+                    {"module_name": module_name, "module_type": module_type},
+                )
                 return result
             except Exception as e:
+                emit_event(
+                    EventType.MODULE_ERROR,
+                    {
+                        "module_name": self.get_module_name(),
+                        "module_type": module_type,
+                        "error": str(e),
+                    },
+                )
                 span.record_exception(e)
                 span.set_status(Status(StatusCode.ERROR, str(e)))
                 raise
@@ -1262,48 +1279,42 @@ class Module:
             state_dict = self.state_dict()
             encoded_state_dict = msgspec.json.encode(state_dict)
 
-        emit_event(
-            EventType.MODULE_START,
-            {"module_name": module_name, "module_type": module_type},
-        )
         # Trace capture
         current_span = trace.get_current_span()
         # If there is no active span or it is not recording, this is the root module
-        try:
-            if current_span is None or not current_span.is_recording():
-                with Spans.init_flow(module_name_title) as span:
-                    try:
-                        MsgTraceAttributes.set_module_name(module_name_title)
-                        MsgTraceAttributes.set_module_type(module_type)
-                        if envs.telemetry_capture_state_dict and encoded_state_dict:
-                            MsgTraceAttributes.set_custom(
-                                "module.state_dict", encoded_state_dict
-                            )
-                        module_output = self.forward(*args, **kwargs)
-                        span.set_status(Status(StatusCode.OK))
-                    except Exception as e:
-                        span.record_exception(e)
-                        span.set_status(Status(StatusCode.ERROR, str(e)))
-                        raise
-            else:
-                module_output = self._execute_with_span(
-                    module_name_title, module_type, *args, **kwargs
-                )
-            emit_event(
-                EventType.MODULE_COMPLETE,
-                {"module_name": module_name, "module_type": module_type},
-            )
-            return module_output
-        except Exception as e:
-            emit_event(
-                EventType.MODULE_ERROR,
-                {
-                    "module_name": module_name,
-                    "module_type": module_type,
-                    "error": str(e),
-                },
-            )
-            raise
+        if current_span is None or not current_span.is_recording():
+            with Spans.init_flow(module_name_title) as span:
+                try:
+                    MsgTraceAttributes.set_module_name(module_name_title)
+                    MsgTraceAttributes.set_module_type(module_type)
+                    if envs.telemetry_capture_state_dict and encoded_state_dict:
+                        MsgTraceAttributes.set_custom(
+                            "module.state_dict", encoded_state_dict
+                        )
+                    emit_event(
+                        EventType.MODULE_START,
+                        {"module_name": module_name, "module_type": module_type},
+                    )
+                    module_output = self.forward(*args, **kwargs)
+                    span.set_status(Status(StatusCode.OK))
+                    emit_event(
+                        EventType.MODULE_COMPLETE,
+                        {"module_name": module_name, "module_type": module_type},
+                    )
+                    return module_output
+                except Exception as e:
+                    emit_event(
+                        EventType.MODULE_ERROR,
+                        {
+                            "module_name": module_name,
+                            "module_type": module_type,
+                            "error": str(e),
+                        },
+                    )
+                    span.record_exception(e)
+                    span.set_status(Status(StatusCode.ERROR, str(e)))
+                    raise
+        return self._execute_with_span(module_name_title, module_type, *args, **kwargs)
 
     @staticmethod
     async def _adispatch_hook(hook, *args):
@@ -1362,12 +1373,29 @@ class Module:
         """
         async with Spans.ainit_module(module_name_title, module_type) as span:
             try:
+                module_name = self.get_module_name()
                 MsgTraceAttributes.set_module_name(module_name_title)
                 MsgTraceAttributes.set_module_type(module_type)
+                emit_event(
+                    EventType.MODULE_START,
+                    {"module_name": module_name, "module_type": module_type},
+                )
                 result = await self.aforward(*args, **kwargs)
                 span.set_status(Status(StatusCode.OK))
+                emit_event(
+                    EventType.MODULE_COMPLETE,
+                    {"module_name": module_name, "module_type": module_type},
+                )
                 return result
             except Exception as e:
+                emit_event(
+                    EventType.MODULE_ERROR,
+                    {
+                        "module_name": self.get_module_name(),
+                        "module_type": module_type,
+                        "error": str(e),
+                    },
+                )
                 span.record_exception(e)
                 span.set_status(Status(StatusCode.ERROR, str(e)))
                 raise
@@ -1382,48 +1410,44 @@ class Module:
             state_dict = self.state_dict()
             encoded_state_dict = msgspec.json.encode(state_dict)
 
-        emit_event(
-            EventType.MODULE_START,
-            {"module_name": module_name, "module_type": module_type},
-        )
         # Trace capture
         current_span = trace.get_current_span()
         # If there is no active span or it is not recording, this is the root module
-        try:
-            if current_span is None or not current_span.is_recording():
-                async with Spans.ainit_flow(module_name_title) as span:
-                    try:
-                        MsgTraceAttributes.set_module_name(module_name_title)
-                        MsgTraceAttributes.set_module_type(module_type)
-                        if envs.telemetry_capture_state_dict and encoded_state_dict:
-                            MsgTraceAttributes.set_custom(
-                                "module.state_dict", encoded_state_dict
-                            )
-                        module_output = await self.aforward(*args, **kwargs)
-                        span.set_status(Status(StatusCode.OK))
-                    except Exception as e:
-                        span.record_exception(e)
-                        span.set_status(Status(StatusCode.ERROR, str(e)))
-                        raise
-            else:
-                module_output = await self._aexecute_with_span(
-                    module_name_title, module_type, *args, **kwargs
-                )
-            emit_event(
-                EventType.MODULE_COMPLETE,
-                {"module_name": module_name, "module_type": module_type},
-            )
-            return module_output
-        except Exception as e:
-            emit_event(
-                EventType.MODULE_ERROR,
-                {
-                    "module_name": module_name,
-                    "module_type": module_type,
-                    "error": str(e),
-                },
-            )
-            raise
+        if current_span is None or not current_span.is_recording():
+            async with Spans.ainit_flow(module_name_title) as span:
+                try:
+                    MsgTraceAttributes.set_module_name(module_name_title)
+                    MsgTraceAttributes.set_module_type(module_type)
+                    if envs.telemetry_capture_state_dict and encoded_state_dict:
+                        MsgTraceAttributes.set_custom(
+                            "module.state_dict", encoded_state_dict
+                        )
+                    emit_event(
+                        EventType.MODULE_START,
+                        {"module_name": module_name, "module_type": module_type},
+                    )
+                    module_output = await self.aforward(*args, **kwargs)
+                    span.set_status(Status(StatusCode.OK))
+                    emit_event(
+                        EventType.MODULE_COMPLETE,
+                        {"module_name": module_name, "module_type": module_type},
+                    )
+                    return module_output
+                except Exception as e:
+                    emit_event(
+                        EventType.MODULE_ERROR,
+                        {
+                            "module_name": module_name,
+                            "module_type": module_type,
+                            "error": str(e),
+                        },
+                    )
+                    span.record_exception(e)
+                    span.set_status(Status(StatusCode.ERROR, str(e)))
+                    raise
+        return await self._aexecute_with_span(
+            module_name_title, module_type, *args, **kwargs
+        )
 
     __call__: Callable[..., Any] = _call_impl
 
