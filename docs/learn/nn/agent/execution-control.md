@@ -68,6 +68,21 @@ Available checkpoint stores:
 - `mf.Store.checkpoint("in_memory")`
 - `mf.Store.checkpoint("sqlite", path=".msgflux/checkpoints.sqlite3")`
 
+When you call an agent with a `scope.run_id`, msgFlux first checks whether a
+checkpoint already exists for `(namespace, session_id, run_id)`.
+
+Resume behavior:
+
+- `running`: resumed from the saved snapshot.
+- `paused`: resumed from the saved snapshot.
+- `failed`: resumed from the saved snapshot. This is the primary recovery path
+  after a provider, tool, process, or infrastructure failure.
+- `completed`: not resumed.
+- `stopped`: not resumed.
+
+On resume, the new task input is ignored and the saved messages/vars continue
+from the checkpointed state. Use a new `run_id` when you want a fresh execution.
+
 ## Persisting The Inbox
 
 `AgentInbox` is in-memory by default:

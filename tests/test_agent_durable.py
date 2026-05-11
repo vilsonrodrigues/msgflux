@@ -110,3 +110,43 @@ def test_agent_resumes_exact_run_id():
     restored._hydrate_state(state["messages"])
     assert restored.to_chatml()[0]["content"] == "What is 2+2?"
     assert restored.to_chatml()[-1]["content"] == "4"
+
+
+def test_agent_resumes_failed_run_id():
+    store = InMemoryCheckpointStore()
+    agent = _make_agent(checkpointer=store)
+
+    chat = ChatMessages(session_id="user_42", namespace="test_agent")
+    chat.begin_turn(inputs="Call flaky backend", turn_id="run_failed")
+    chat.add_user("Call flaky backend")
+    store.save_state(
+        "test_agent",
+        "user_42",
+        "run_failed",
+        {
+            "status": "failed",
+            "messages": chat._to_state(),
+            "vars": {"attempt": 1},
+        },
+    )
+
+    agent.generator.forward = Mock(return_value=_text_response("recovered"))
+    result = agent(
+        "this retry input should be ignored on resume",
+        scope=ExecutionScope(
+            session_id="user_42",
+            namespace="test_agent",
+            run_id="run_failed",
+        ),
+    )
+
+    assert result == "recovered"
+    state = store.load_state("test_agent", "user_42", "run_failed")
+    assert state is not None
+    assert state["status"] == "completed"
+    assert state["vars"] == {"attempt": 1}
+
+    restored = ChatMessages()
+    restored._hydrate_state(state["messages"])
+    assert restored.to_chatml()[0]["content"] == "Call flaky backend"
+    assert restored.to_chatml()[-1]["content"] == "recovered"
