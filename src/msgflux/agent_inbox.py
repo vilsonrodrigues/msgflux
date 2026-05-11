@@ -14,6 +14,7 @@ from uuid import uuid4
 from xml.sax.saxutils import escape
 
 from msgflux.context import ExecutionScope
+from msgflux.data.stores.registry import register_store
 from msgflux.utils.console import cprint
 
 # --- Module Utilities ---
@@ -75,6 +76,7 @@ class AgentInboxStore(ABC):
         raise NotImplementedError
 
 
+@register_store("agent_inbox", "in_memory")
 class InMemoryAgentInboxStore(AgentInboxStore):
     """In-memory inbox store for tests and local prototyping."""
 
@@ -186,6 +188,7 @@ ON CONFLICT(namespace, session_id, run_id) DO UPDATE SET
 """
 
 
+@register_store("agent_inbox", "sqlite")
 class SQLiteAgentInboxStore(AgentInboxStore):
     """SQLite-backed inbox store."""
 

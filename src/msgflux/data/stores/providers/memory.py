@@ -3,11 +3,13 @@ from __future__ import annotations
 import time
 from copy import deepcopy
 from threading import RLock
-from typing import Any, Dict, List, Mapping, Optional
+from typing import Any, Dict, List, Mapping
 
 from msgflux.data.stores.base import CheckpointStore
+from msgflux.data.stores.registry import register_store
 
 
+@register_store("checkpoint", "in_memory")
 class InMemoryCheckpointStore(CheckpointStore):
     """In-memory checkpoint store for tests and local prototyping."""
 
@@ -17,7 +19,7 @@ class InMemoryCheckpointStore(CheckpointStore):
 
     def _get_run(
         self, namespace: str, session_id: str, run_id: str
-    ) -> Optional[Dict[str, Any]]:
+    ) -> Dict[str, Any] | None:
         return self._data.get(namespace, {}).get(session_id, {}).get(run_id)
 
     def _ensure_run(
@@ -48,7 +50,7 @@ class InMemoryCheckpointStore(CheckpointStore):
         namespace: str,
         session_id: str,
         run_id: str,
-    ) -> Optional[Mapping[str, Any]]:
+    ) -> Mapping[str, Any] | None:
         with self._lock:
             run = self._get_run(namespace, session_id, run_id)
             if run is None:
@@ -97,8 +99,8 @@ class InMemoryCheckpointStore(CheckpointStore):
         namespace: str,
         session_id: str,
         *,
-        status: Optional[str] = None,
-        limit: Optional[int] = None,
+        status: str | None = None,
+        limit: int | None = None,
     ) -> List[Mapping[str, Any]]:
         with self._lock:
             session_runs = self._data.get(namespace, {}).get(session_id, {})
@@ -134,10 +136,10 @@ class InMemoryCheckpointStore(CheckpointStore):
 
     def clear(
         self,
-        namespace: Optional[str] = None,
-        session_id: Optional[str] = None,
+        namespace: str | None = None,
+        session_id: str | None = None,
         *,
-        older_than: Optional[float] = None,
+        older_than: float | None = None,
     ) -> int:
         cutoff = time.time() - older_than if older_than is not None else None
         removed = 0

@@ -6,6 +6,7 @@ from msgflux.agent_inbox import (
     InMemoryAgentInboxStore,
     SQLiteAgentInboxStore,
 )
+from msgflux.data.stores import Store
 
 
 def test_agent_inbox_verbose_publish_and_drain_are_printed(capsys):
@@ -112,6 +113,19 @@ def test_agent_inbox_persists_notifications_with_memory_store():
     drained = reader.drain()
     assert len(drained) == 1
     assert writer.peek() == []
+
+
+def test_store_factory_creates_agent_inbox_stores(tmp_path):
+    memory_store = Store.agent_inbox("in_memory")
+    sqlite_store = Store.agent_inbox(
+        "sqlite",
+        path=str(tmp_path / "agent-inboxes.sqlite3"),
+    )
+
+    assert isinstance(memory_store, InMemoryAgentInboxStore)
+    assert isinstance(sqlite_store, SQLiteAgentInboxStore)
+
+    sqlite_store.close()
 
 
 def test_agent_inbox_persists_notifications_with_sqlite_store(tmp_path):

@@ -26,6 +26,7 @@ if TYPE_CHECKING:
         CheckpointStore,
         InMemoryCheckpointStore,
         SQLiteCheckpointStore,
+        Store,
     )
     from msgflux.data.types import Audio, File, Image, Video
     from msgflux.dsl.inline import Inline
@@ -71,6 +72,7 @@ __all__ = [
     "SQLiteAgentInboxStore",
     "Signature",
     "Spans",
+    "Store",
     "TaskError",
     "Video",
     "cprint",
@@ -130,6 +132,7 @@ _LAZY_IMPORTS = {
     "set_envs": ("msgflux.envs", "set_envs"),
     "SQLiteCheckpointStore": ("msgflux.data.stores", "SQLiteCheckpointStore"),
     "SQLiteAgentInboxStore": ("msgflux.agent_inbox", "SQLiteAgentInboxStore"),
+    "Store": ("msgflux.data.stores", "Store"),
     "tool_config": ("msgflux.tools.config", "tool_config"),
 }
 
