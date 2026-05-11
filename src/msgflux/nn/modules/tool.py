@@ -21,7 +21,11 @@ from msgflux.auto import AutoParams
 from msgflux.chat_messages import ChatMessages
 from msgflux.context import ExecutionScope, execution_context, get_execution_context
 from msgflux.core.dotdict import dotdict
-from msgflux.exceptions import TaskError, TaskStopRequestedError
+from msgflux.exceptions import (
+    TaskError,
+    TaskPauseRequestedError,
+    TaskStopRequestedError,
+)
 from msgflux.logger import logger
 from msgflux.nn.modules.container import ModuleDict
 from msgflux.nn.modules.module import Module
@@ -1290,6 +1294,19 @@ class ToolLibrary(Module, metaclass=AutoParams):
                     agent_inbox=agent_inbox,
                 )
                 raise
+            except TaskPauseRequestedError as exc:
+                task_handle.pause(reason=str(exc))
+                self._publish_task_notification(
+                    task_id=task_handle.task_id,
+                    tool_name=tool_name,
+                    status="paused",
+                    hint=(
+                        f"Use task_message(task_id='{task_handle.task_id}', "
+                        "message='...') to resume the paused task."
+                    ),
+                    agent_inbox=agent_inbox,
+                )
+                raise
             except Exception as exc:
                 task_handle.fail(exc)
                 self._publish_task_notification(
@@ -1419,6 +1436,8 @@ class ToolLibrary(Module, metaclass=AutoParams):
         except FutureCancelledError:
             return
         except TaskStopRequestedError:
+            return
+        except TaskPauseRequestedError:
             return
         except Exception as exc:
             logger.error(f"Background task error: {exc!s}", exc_info=True)

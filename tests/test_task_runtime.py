@@ -11,6 +11,7 @@ import pytest
 from msgflux.chat_messages import ChatMessages
 from msgflux.context import execution_context
 from msgflux.data.stores import InMemoryCheckpointStore
+from msgflux.exceptions import TaskPauseRequestedError, TaskStopRequestedError
 from msgflux.models.tool_call_agg import ToolCallAggregator
 from msgflux.models.response import ModelResponse
 from msgflux.nn import Agent
@@ -91,6 +92,15 @@ def _notification_messages(
             continue
         result.append(message)
     return result
+
+
+def _incoming_user_messages(messages):
+    return [
+        message
+        for message in messages
+        if isinstance(message.get("content"), str)
+        and "<incoming_user_message>" in message["content"]
+    ]
 
 
 def test_background_tool_schema_excludes_task_handle():
@@ -578,6 +588,80 @@ def test_inspect_model_execution_params_does_not_consume_notifications():
     params = agent.inspect_model_execution_params("Continue once more.")
     notification_messages = _notification_messages(params["messages"])
     assert notification_messages == []
+
+
+def test_agent_control_stop_interrupts_before_model_call():
+    inbox = mf.AgentInbox()
+    model = _mock_model()
+    agent = Agent(name="Assistant", model=model)
+    agent.set_agent_inbox(inbox)
+
+    inbox.stop(reason="operator requested stop")
+
+    with pytest.raises(TaskStopRequestedError, match="operator requested stop"):
+        agent("Continue.")
+
+    assert not model.called
+
+
+def test_agent_control_pause_saves_checkpoint_before_model_call():
+    inbox = mf.AgentInbox()
+    store = InMemoryCheckpointStore()
+    model = _mock_model()
+    agent = Agent(name="Assistant", model=model, checkpointer=store)
+    agent.set_agent_inbox(inbox)
+    scope = mf.ExecutionScope(session_id="user_42", run_id="run_pause")
+
+    inbox.pause(reason="wait for user input")
+
+    with pytest.raises(TaskPauseRequestedError, match="wait for user input"):
+        agent("Continue.", scope=scope)
+
+    state = store.load_state("Assistant", "user_42", "run_pause")
+    assert state is not None
+    assert state["status"] == "paused"
+    assert not model.called
+
+
+def test_agent_incoming_user_message_is_injected_before_model_call():
+    inbox = mf.AgentInbox()
+    model = _mock_model()
+    agent = Agent(name="Assistant", model=model)
+    agent.set_agent_inbox(inbox)
+
+    inbox.user_message("I changed my mind.")
+    agent("Continue.")
+
+    incoming = _incoming_user_messages(model.call_args.kwargs["messages"])
+    assert len(incoming) == 1
+    assert "I changed my mind." in incoming[0]["content"]
+
+
+def test_agent_drains_notifications_after_tool_call_before_next_model_call():
+    @mf.tool_config(inject_notification=True)
+    def publish_status(notification) -> str:
+        """Publish an in-loop status update."""
+        notification.update(status="progress", hint="Tool completed.")
+        return "ok"
+
+    model = _ScriptedModel(
+        [
+            _tool_call_response("publish_status", {}),
+            _text_response("done"),
+        ]
+    )
+    agent = Agent(name="Assistant", model=model, tools=[publish_status])
+
+    agent("Run tool.")
+
+    assert len(model.calls) == 2
+    notifications = _notification_messages(
+        model.calls[1]["messages"],
+        source="tool_status",
+        status="progress",
+    )
+    assert len(notifications) == 1
+    assert "Tool completed." in notifications[0]["content"]
 
 
 def test_task_progress_notifications_are_persisted():

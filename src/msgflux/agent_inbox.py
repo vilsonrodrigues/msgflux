@@ -4,14 +4,14 @@ from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from threading import Lock
-from typing import Any, Dict, Iterable, List, Mapping, Optional
+from typing import Any, Dict, Iterable, List, Mapping
 from uuid import uuid4
 from xml.sax.saxutils import escape
 
 from msgflux.utils.console import cprint
 
-
 # --- Module Utilities ---
+
 
 def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -19,19 +19,45 @@ def _utc_now() -> str:
 
 # --- Notification Model ---
 
+
 @dataclass
 class AgentNotification:
     notification_id: str
     source: str
-    ref: Optional[str] = None
-    status: Optional[str] = None
-    hint: Optional[str] = None
+    ref: str | None = None
+    status: str | None = None
+    hint: str | None = None
     metadata: Dict[str, Any] = field(default_factory=dict)
-    dedupe_key: Optional[str] = None
+    dedupe_key: str | None = None
     created_at: str = field(default_factory=_utc_now)
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
+
+
+@dataclass(frozen=True)
+class AgentControlMessage:
+    """Runtime control signal delivered through an AgentInbox."""
+
+    command: str
+    reason: str | None = None
+    metadata: Dict[str, Any] = field(default_factory=dict)
+    control_id: str = field(default_factory=lambda: uuid4().hex[:8])
+    created_at: str = field(default_factory=_utc_now)
+
+    def to_notification(self) -> AgentNotification:
+        metadata = deepcopy(self.metadata)
+        if self.reason:
+            metadata["reason"] = self.reason
+        return AgentNotification(
+            notification_id=self.control_id,
+            source="control",
+            status=self.command,
+            hint=self.reason,
+            metadata=metadata,
+            dedupe_key=f"control:{self.command}",
+            created_at=self.created_at,
+        )
 
 
 class ToolNotificationHandle:
@@ -39,11 +65,11 @@ class ToolNotificationHandle:
 
     def __init__(
         self,
-        agent_inbox: Optional["AgentInbox"],
+        agent_inbox: AgentInbox | None,
         *,
         source: str = "tool_status",
-        ref: Optional[str] = None,
-        metadata: Optional[Mapping[str, Any]] = None,
+        ref: str | None = None,
+        metadata: Mapping[str, Any] | None = None,
     ):
         self._agent_inbox = agent_inbox
         self._source = source
@@ -56,12 +82,12 @@ class ToolNotificationHandle:
         self,
         *,
         status: str,
-        hint: Optional[str] = None,
-        metadata: Optional[Mapping[str, Any]] = None,
-        dedupe_key: Optional[str] = None,
-        source: Optional[str] = None,
-        ref: Optional[str] = None,
-    ) -> Optional[AgentNotification]:
+        hint: str | None = None,
+        metadata: Mapping[str, Any] | None = None,
+        dedupe_key: str | None = None,
+        source: str | None = None,
+        ref: str | None = None,
+    ) -> AgentNotification | None:
         if self._agent_inbox is None:
             return None
 
@@ -86,12 +112,12 @@ class ToolNotificationHandle:
         self,
         *,
         status: str,
-        hint: Optional[str] = None,
-        metadata: Optional[Mapping[str, Any]] = None,
-        dedupe_key: Optional[str] = None,
-        source: Optional[str] = None,
-        ref: Optional[str] = None,
-    ) -> Optional[AgentNotification]:
+        hint: str | None = None,
+        metadata: Mapping[str, Any] | None = None,
+        dedupe_key: str | None = None,
+        source: str | None = None,
+        ref: str | None = None,
+    ) -> AgentNotification | None:
         return self.publish(
             status=status,
             hint=hint,
@@ -105,12 +131,12 @@ class ToolNotificationHandle:
         self,
         status: str,
         *,
-        hint: Optional[str] = None,
-        metadata: Optional[Mapping[str, Any]] = None,
-        dedupe_key: Optional[str] = None,
-        source: Optional[str] = None,
-        ref: Optional[str] = None,
-    ) -> Optional[AgentNotification]:
+        hint: str | None = None,
+        metadata: Mapping[str, Any] | None = None,
+        dedupe_key: str | None = None,
+        source: str | None = None,
+        ref: str | None = None,
+    ) -> AgentNotification | None:
         return self.publish(
             status=status,
             hint=hint,
@@ -124,7 +150,7 @@ class ToolNotificationHandle:
 class AgentInbox:
     """Small inbox for notifications delivered to an agent runtime."""
 
-    def __init__(self, *, verbose: bool = False, owner: Optional[str] = None):
+    def __init__(self, *, verbose: bool = False, owner: str | None = None):
         self._lock = Lock()
         self._notifications: List[AgentNotification] = []
         self.verbose = verbose
@@ -132,14 +158,14 @@ class AgentInbox:
 
     # --- Configuration ---
 
-    def set_verbose(self, verbose: bool) -> None:
+    def set_verbose(self, verbose: bool) -> None:  # noqa: FBT001
         self.verbose = bool(verbose)
 
     # --- Queue Operations ---
 
     def publish(
         self,
-        notification: AgentNotification | Mapping[str, Any],
+        notification: AgentNotification | AgentControlMessage | Mapping[str, Any],
     ) -> AgentNotification:
         normalized = self._normalize(notification)
         with self._lock:
@@ -166,9 +192,49 @@ class AgentInbox:
             )
         return deepcopy(normalized)
 
+    def control(
+        self,
+        command: str,
+        *,
+        reason: str | None = None,
+        metadata: Mapping[str, Any] | None = None,
+    ) -> AgentNotification:
+        return self.publish(
+            AgentControlMessage(
+                command=command,
+                reason=reason,
+                metadata=deepcopy(dict(metadata or {})),
+            ).to_notification()
+        )
+
+    def stop(self, *, reason: str | None = None) -> AgentNotification:
+        return self.control("stop", reason=reason)
+
+    def cancel(self, *, reason: str | None = None) -> AgentNotification:
+        return self.control("cancel", reason=reason)
+
+    def pause(self, *, reason: str | None = None) -> AgentNotification:
+        return self.control("pause", reason=reason)
+
+    def user_message(
+        self,
+        content: str,
+        *,
+        metadata: Mapping[str, Any] | None = None,
+    ) -> AgentNotification:
+        return self.publish(
+            {
+                "source": "incoming_user_message",
+                "hint": content,
+                "metadata": deepcopy(dict(metadata or {})),
+            }
+        )
+
     def publish_many(
         self,
-        notifications: Iterable[AgentNotification | Mapping[str, Any]],
+        notifications: Iterable[
+            AgentNotification | AgentControlMessage | Mapping[str, Any]
+        ],
     ) -> List[AgentNotification]:
         published: List[AgentNotification] = []
         for notification in notifications:
@@ -192,7 +258,7 @@ class AgentInbox:
         return notifications
 
     def ack(self, notification_ids: Iterable[str]) -> None:
-        ids = {notification_id for notification_id in notification_ids}
+        ids = set(notification_ids)
         if not ids:
             return
         with self._lock:
@@ -204,16 +270,41 @@ class AgentInbox:
 
     # --- Rendering ---
 
-    def render(
+    def render(  # noqa: C901
         self,
         notifications: Iterable[AgentNotification | Mapping[str, Any]],
-    ) -> Optional[Dict[str, str]]:
+    ) -> Dict[str, str] | None:
         normalized = [self._normalize(notification) for notification in notifications]
         if not normalized:
             return None
 
-        lines = ["<system_note>", "<notifications>"]
-        for notification in normalized:
+        incoming_messages = [
+            notification
+            for notification in normalized
+            if notification.source == "incoming_user_message"
+        ]
+        system_notifications = [
+            notification
+            for notification in normalized
+            if notification.source != "incoming_user_message"
+        ]
+
+        lines: List[str] = []
+        for notification in incoming_messages:
+            lines.append("<incoming_user_message>")
+            if notification.hint:
+                lines.append(self._escape_text(notification.hint))
+            for key, value in sorted(notification.metadata.items()):
+                lines.append(
+                    f"{self._escape_text(key)}={self._escape_text(self._stringify(value))}"
+                )
+            lines.append("</incoming_user_message>")
+
+        if not system_notifications:
+            return {"role": "user", "content": "\n".join(lines)}
+
+        lines.extend(["<system_note>", "<notifications>"])
+        for notification in system_notifications:
             attrs = [f'source="{self._escape_attr(notification.source)}"']
             if notification.ref:
                 attrs.append(f'ref="{self._escape_attr(notification.ref)}"')
@@ -242,10 +333,12 @@ class AgentInbox:
 
     def _normalize(
         self,
-        notification: AgentNotification | Mapping[str, Any],
+        notification: AgentNotification | AgentControlMessage | Mapping[str, Any],
     ) -> AgentNotification:
         if isinstance(notification, AgentNotification):
             return deepcopy(notification)
+        if isinstance(notification, AgentControlMessage):
+            return notification.to_notification()
 
         payload = dict(notification)
         source = payload.get("source")
