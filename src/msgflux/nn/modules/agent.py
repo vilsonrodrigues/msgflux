@@ -20,7 +20,7 @@ import msgspec
 from msgflux.agent_inbox import AgentInbox
 from msgflux.auto import AutoParams
 from msgflux.chat_messages import ChatMessages
-from msgflux.context import execution_context, get_execution_context
+from msgflux.context import ExecutionScope, execution_context, get_execution_context
 from msgflux.core.dotdict import dotdict
 from msgflux.core.examples import Example, ExampleCollection
 from msgflux.core.message import Message
@@ -68,6 +68,7 @@ _RESERVED_KWARGS = {
     "task_context",
     "model_preference",
     "tool_filter",
+    "scope",
     "session_id",
     "run_id",
     "tool_call_id",
@@ -409,6 +410,42 @@ class Agent(Module, metaclass=AutoParams):
             self._set_instructions(instructions)
             self._set_system_message(system_message)
 
+    def _get_requested_scope(
+        self, kwargs: Mapping[str, Any]
+    ) -> Optional[ExecutionScope]:
+        scope = kwargs.get("scope")
+        if scope is None:
+            return None
+        if not isinstance(scope, ExecutionScope):
+            raise TypeError(
+                f"`scope` must be an ExecutionScope or None, given `{type(scope)}`"
+            )
+        return scope
+
+    def _get_requested_session_id(
+        self,
+        kwargs: Mapping[str, Any],
+        scope: Optional[ExecutionScope],
+    ) -> Optional[str]:
+        session_id = kwargs.get("session_id")
+        if session_id is not None:
+            return session_id
+        if scope is not None:
+            return scope.session_id
+        return None
+
+    def _get_requested_run_id(
+        self,
+        kwargs: Mapping[str, Any],
+        scope: Optional[ExecutionScope],
+    ) -> Optional[str]:
+        run_id = kwargs.get("run_id")
+        if run_id is not None:
+            return run_id
+        if scope is not None:
+            return scope.run_id
+        return None
+
     def forward(
         self,
         message: Optional[Union[str, Mapping[str, Any], Message]] = None,
@@ -480,15 +517,17 @@ class Agent(Module, metaclass=AutoParams):
             >>> # Filter tools - block specific tools
             >>> agent("query", tool_filter={"block": ["browser"]})
         """
+        requested_scope = self._get_requested_scope(kwargs)
         resumed = self._try_resume_from_checkpoint(
             kwargs.get("messages"),
-            session_id=kwargs.get("session_id"),
-            run_id=kwargs.get("run_id"),
+            session_id=self._get_requested_session_id(kwargs, requested_scope),
+            run_id=self._get_requested_run_id(kwargs, requested_scope),
         )
         inputs = resumed or self._prepare_inputs(message, **kwargs)
 
         effective_checkpointer = self._get_effective_checkpointer()
         with execution_context(
+            scope=inputs.get("scope"),
             session_id=inputs.get("session_id"),
             namespace=self.get_module_name(),
             run_id=inputs.get("run_id"),
@@ -519,15 +558,17 @@ class Agent(Module, metaclass=AutoParams):
         **kwargs: Any,
     ) -> Union[str, Mapping[str, None], ModelStreamResponse, Message]:
         """Async version of forward."""
+        requested_scope = self._get_requested_scope(kwargs)
         resumed = await self._atry_resume_from_checkpoint(
             kwargs.get("messages"),
-            session_id=kwargs.get("session_id"),
-            run_id=kwargs.get("run_id"),
+            session_id=self._get_requested_session_id(kwargs, requested_scope),
+            run_id=self._get_requested_run_id(kwargs, requested_scope),
         )
         inputs = resumed or await self._aprepare_inputs(message, **kwargs)
 
         effective_checkpointer = self._get_effective_checkpointer()
         with execution_context(
+            scope=inputs.get("scope"),
             session_id=inputs.get("session_id"),
             namespace=self.get_module_name(),
             run_id=inputs.get("run_id"),
@@ -569,6 +610,7 @@ class Agent(Module, metaclass=AutoParams):
         tool_filter: Optional[ToolFilter] = None,
         session_id: Optional[str] = None,  # noqa: ARG002
         run_id: Optional[str] = None,  # noqa: ARG002
+        scope: Optional[ExecutionScope] = None,  # noqa: ARG002
     ) -> Union[ModelResponse, ModelStreamResponse]:
         self._raise_if_background_task_stopped()
         model_execution_params = self._prepare_model_execution(
@@ -591,6 +633,7 @@ class Agent(Module, metaclass=AutoParams):
         tool_filter: Optional[ToolFilter] = None,
         session_id: Optional[str] = None,  # noqa: ARG002
         run_id: Optional[str] = None,  # noqa: ARG002
+        scope: Optional[ExecutionScope] = None,  # noqa: ARG002
     ) -> Union[ModelResponse, ModelStreamResponse]:
         self._raise_if_background_task_stopped()
         model_execution_params = self._prepare_model_execution(
@@ -615,6 +658,7 @@ class Agent(Module, metaclass=AutoParams):
         drain_notifications: bool = True,
         session_id: Optional[str] = None,  # noqa: ARG002
         run_id: Optional[str] = None,  # noqa: ARG002
+        scope: Optional[ExecutionScope] = None,  # noqa: ARG002
     ) -> Mapping[str, Any]:
         system_prompt = self.get_system_prompt(vars)
         model_messages = self._build_model_messages(
@@ -696,6 +740,7 @@ class Agent(Module, metaclass=AutoParams):
         tool_filter: Optional[ToolFilter] = None,
         session_id: Optional[str] = None,  # noqa: ARG002
         run_id: Optional[str] = None,  # noqa: ARG002
+        scope: Optional[ExecutionScope] = None,  # noqa: ARG002
     ) -> Union[str, Mapping[str, Any], Message, ModelStreamResponse]:
         if isinstance(model_response, ModelStreamResponse):
             wait_for_event(model_response._response_type_event)
@@ -765,6 +810,7 @@ class Agent(Module, metaclass=AutoParams):
         tool_filter: Optional[ToolFilter] = None,
         session_id: Optional[str] = None,  # noqa: ARG002
         run_id: Optional[str] = None,  # noqa: ARG002
+        scope: Optional[ExecutionScope] = None,  # noqa: ARG002
     ) -> Union[str, Mapping[str, Any], Message, ModelStreamResponse]:
         if isinstance(model_response, ModelStreamResponse):
             await await_for_event(model_response._response_type_event)
@@ -1251,9 +1297,18 @@ class Agent(Module, metaclass=AutoParams):
         messages = kwargs.pop("messages", None)
         model_preference = kwargs.pop("model_preference", None)
         tool_filter = kwargs.pop("tool_filter", None)
+        scope = kwargs.pop("scope", None)
+        if scope is not None and not isinstance(scope, ExecutionScope):
+            raise TypeError(
+                f"`scope` must be an ExecutionScope or None, given `{type(scope)}`"
+            )
         session_id = kwargs.pop("session_id", None)
         run_id = kwargs.pop("run_id", None)
         kwargs.pop("tool_call_id", None)
+        if session_id is None and scope is not None:
+            session_id = scope.session_id
+        if run_id is None and scope is not None:
+            run_id = scope.run_id
 
         # Get remaining kwargs (potential task inputs)
         remaining_kwargs = {
@@ -1310,6 +1365,7 @@ class Agent(Module, metaclass=AutoParams):
         should_use_chat_messages = (
             effective_checkpointer is not None
             or isinstance(messages, ChatMessages)
+            or scope is not None
             or session_id is not None
             or run_id is not None
         )
@@ -1336,6 +1392,11 @@ class Agent(Module, metaclass=AutoParams):
             messages=messages,
             run_id=run_id,
         )
+        effective_scope = (scope or get_execution_context()["scope"]).with_overrides(
+            session_id=effective_session_id,
+            namespace=self.get_module_name(),
+            run_id=effective_run_id,
+        )
 
         if isinstance(messages, ChatMessages):
             messages.configure_session(
@@ -1375,6 +1436,7 @@ class Agent(Module, metaclass=AutoParams):
             "vars": vars,
             "session_id": effective_session_id,
             "run_id": effective_run_id,
+            "scope": effective_scope,
         }
 
     async def _aprepare_inputs(  # noqa: C901
@@ -1393,9 +1455,18 @@ class Agent(Module, metaclass=AutoParams):
         messages = kwargs.pop("messages", None)
         model_preference = kwargs.pop("model_preference", None)
         tool_filter = kwargs.pop("tool_filter", None)
+        scope = kwargs.pop("scope", None)
+        if scope is not None and not isinstance(scope, ExecutionScope):
+            raise TypeError(
+                f"`scope` must be an ExecutionScope or None, given `{type(scope)}`"
+            )
         session_id = kwargs.pop("session_id", None)
         run_id = kwargs.pop("run_id", None)
         kwargs.pop("tool_call_id", None)
+        if session_id is None and scope is not None:
+            session_id = scope.session_id
+        if run_id is None and scope is not None:
+            run_id = scope.run_id
 
         # Get remaining kwargs (potential task inputs)
         remaining_kwargs = {
@@ -1452,6 +1523,7 @@ class Agent(Module, metaclass=AutoParams):
         should_use_chat_messages = (
             effective_checkpointer is not None
             or isinstance(messages, ChatMessages)
+            or scope is not None
             or session_id is not None
             or run_id is not None
         )
@@ -1477,6 +1549,11 @@ class Agent(Module, metaclass=AutoParams):
         effective_run_id = self._resolve_run_id(
             messages=messages,
             run_id=run_id,
+        )
+        effective_scope = (scope or get_execution_context()["scope"]).with_overrides(
+            session_id=effective_session_id,
+            namespace=self.get_module_name(),
+            run_id=effective_run_id,
         )
 
         if isinstance(messages, ChatMessages):
@@ -1517,6 +1594,7 @@ class Agent(Module, metaclass=AutoParams):
             "vars": vars,
             "session_id": effective_session_id,
             "run_id": effective_run_id,
+            "scope": effective_scope,
         }
 
     def _render_task(  # noqa: C901
@@ -2016,15 +2094,16 @@ class Agent(Module, metaclass=AutoParams):
     # --- Execution Context Resolution ---
 
     def _get_effective_checkpointer(self):
-        if self.checkpointer is not None:
-            return self.checkpointer
+        checkpointer = getattr(self, "checkpointer", None)
+        if checkpointer is not None:
+            return checkpointer
         return get_execution_context().get("checkpoint_store")
 
     def _get_effective_agent_inbox(self):
         inherited = get_execution_context().get("agent_inbox")
         if inherited is not None:
             return inherited
-        return self.agent_inbox
+        return getattr(self, "agent_inbox", None)
 
     def _raise_if_background_task_stopped(self) -> None:
         task_handle = get_execution_context().get("task_handle")

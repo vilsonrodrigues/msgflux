@@ -4,9 +4,10 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from msgspec_ext import load_dotenv
 
-    from msgflux.cache import response_cache
     from msgflux.agent_inbox import AgentInbox, AgentNotification
+    from msgflux.cache import response_cache
     from msgflux.chat_messages import ChatMessages
+    from msgflux.context import ExecutionScope, execution_context, get_execution_scope
     from msgflux.core.dotdict import dotdict
     from msgflux.core.examples import Example
     from msgflux.core.message import Message
@@ -43,6 +44,7 @@ __all__ = [
     "ChatML",
     "CheckpointStore",
     "Example",
+    "ExecutionScope",
     "File",
     "Image",
     "InMemoryCheckpointStore",
@@ -62,7 +64,9 @@ __all__ = [
     "Video",
     "cprint",
     "dotdict",
+    "execution_context",
     "get_fn_name",
+    "get_execution_scope",
     "load",
     "load_dotenv",
     "msgspec_dumps",
@@ -77,6 +81,7 @@ _LAZY_IMPORTS = {
     "AgentInbox": ("msgflux.agent_inbox", "AgentInbox"),
     "AgentNotification": ("msgflux.agent_inbox", "AgentNotification"),
     "ChatMessages": ("msgflux.chat_messages", "ChatMessages"),
+    "ExecutionScope": ("msgflux.context", "ExecutionScope"),
     "ChatBlock": ("msgflux.utils.chat", "ChatBlock"),
     "ChatML": ("msgflux.utils.chat", "ChatML"),
     "CheckpointStore": ("msgflux.data.stores", "CheckpointStore"),
@@ -100,7 +105,9 @@ _LAZY_IMPORTS = {
     "Video": ("msgflux.data.types", "Video"),
     "cprint": ("msgflux.utils.console", "cprint"),
     "dotdict": ("msgflux.core.dotdict", "dotdict"),
+    "execution_context": ("msgflux.context", "execution_context"),
     "get_fn_name": ("msgflux.utils.inspect", "get_fn_name"),
+    "get_execution_scope": ("msgflux.context", "get_execution_scope"),
     "load": ("msgflux.utils.msgspec", "load"),
     "load_dotenv": ("msgspec_ext", "load_dotenv"),
     "msgspec_dumps": ("msgflux.utils.msgspec", "msgspec_dumps"),

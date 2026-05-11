@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from datetime import datetime, timezone
-from typing import Any, Iterable, Iterator, List, Mapping, Optional
+from typing import Any, Iterable, Iterator, List, Mapping
 
 from msgflux.context import (
     _CURRENT_NAMESPACE,
@@ -27,24 +27,24 @@ class ChatMessages:
 
     def __init__(
         self,
-        items: Optional[Iterable[Mapping[str, Any]]] = None,
+        items: Iterable[Mapping[str, Any]] | None = None,
         *,
-        session_id: Optional[str] = None,
-        namespace: Optional[str] = None,
+        session_id: str | None = None,
+        namespace: str | None = None,
     ):
         self._items: List[dict[str, Any]] = []
         self.metadata: dict[str, Any] = {}
-        self.reasoning_content: Optional[str] = None
-        self.reasoning_text: Optional[str] = None
-        self.response_id: Optional[str] = None
-        self.session_id: Optional[str] = (
+        self.reasoning_content: str | None = None
+        self.reasoning_text: str | None = None
+        self.response_id: str | None = None
+        self.session_id: str | None = (
             session_id if session_id is not None else _CURRENT_SESSION_ID.get()
         )
-        self.namespace: Optional[str] = (
+        self.namespace: str | None = (
             namespace if namespace is not None else _CURRENT_NAMESPACE.get()
         )
         self._turns: List[dict[str, Any]] = []
-        self._active_turn_index: Optional[int] = None
+        self._active_turn_index: int | None = None
 
         if items is not None:
             self.extend(items)
@@ -122,7 +122,7 @@ class ChatMessages:
             normalized_items = self._normalize_item(item)
             self._items.extend(normalized_items)
 
-    def copy(self) -> "ChatMessages":
+    def copy(self) -> ChatMessages:
         copied = ChatMessages(
             self._items,
             session_id=self.session_id,
@@ -142,8 +142,8 @@ class ChatMessages:
     def configure_session(
         self,
         *,
-        session_id: Optional[str] = None,
-        namespace: Optional[str] = None,
+        session_id: str | None = None,
+        namespace: str | None = None,
     ) -> None:
         resolved_session_id = (
             session_id
@@ -165,11 +165,11 @@ class ChatMessages:
         *,
         inputs: Any = None,
         context_inputs: Any = None,
-        vars: Optional[Mapping[str, Any]] = None,  # noqa: A002
-        session_id: Optional[str] = None,
-        namespace: Optional[str] = None,
-        turn_id: Optional[str] = None,
-        metadata: Optional[Mapping[str, Any]] = None,
+        vars: Mapping[str, Any] | None = None,  # noqa: A002
+        session_id: str | None = None,
+        namespace: str | None = None,
+        turn_id: str | None = None,
+        metadata: Mapping[str, Any] | None = None,
     ) -> str:
         if self._active_turn_index is not None:
             self.end_turn(status="interrupted")
@@ -221,10 +221,10 @@ class ChatMessages:
         self,
         *,
         assistant_output: Any = None,
-        response_type: Optional[str] = None,
-        response_metadata: Optional[Mapping[str, Any]] = None,
+        response_type: str | None = None,
+        response_metadata: Mapping[str, Any] | None = None,
         status: str = "completed",
-    ) -> Optional[Mapping[str, Any]]:
+    ) -> Mapping[str, Any] | None:
         if self._active_turn_index is None:
             return None
 
@@ -257,7 +257,7 @@ class ChatMessages:
     def turns(self) -> List[dict[str, Any]]:
         return deepcopy(self._turns)
 
-    def get_active_turn(self) -> Optional[Mapping[str, Any]]:
+    def get_active_turn(self) -> Mapping[str, Any] | None:
         if self._active_turn_index is None:
             return None
         return deepcopy(self._turns[self._active_turn_index])
@@ -270,7 +270,7 @@ class ChatMessages:
             return 0
         return len(self._items) - start_item_index
 
-    def fork(self, *, upto_turn: Optional[int] = None) -> "ChatMessages":
+    def fork(self, *, upto_turn: int | None = None) -> ChatMessages:
         if upto_turn is None:
             return self.copy()
 
@@ -363,7 +363,7 @@ class ChatMessages:
         return examples
 
     @classmethod
-    def from_chatml(cls, messages: Iterable[Mapping[str, Any]]) -> "ChatMessages":
+    def from_chatml(cls, messages: Iterable[Mapping[str, Any]]) -> ChatMessages:
         return cls(messages)
 
     def add_chatml(self, messages: Iterable[Mapping[str, Any]]) -> None:
@@ -383,10 +383,10 @@ class ChatMessages:
     def add_user_multimodal(
         self,
         *,
-        text: Optional[str] = None,
-        media: Optional[Mapping[str, Any]] = None,
-        image_block_kwargs: Optional[Mapping[str, Any]] = None,
-        video_block_kwargs: Optional[Mapping[str, Any]] = None,
+        text: str | None = None,
+        media: Mapping[str, Any] | None = None,
+        image_block_kwargs: Mapping[str, Any] | None = None,
+        video_block_kwargs: Mapping[str, Any] | None = None,
     ) -> None:
         if media is None:
             self.add_user("" if text is None else text)
@@ -404,10 +404,10 @@ class ChatMessages:
     async def aadd_user_multimodal(
         self,
         *,
-        text: Optional[str] = None,
-        media: Optional[Mapping[str, Any]] = None,
-        image_block_kwargs: Optional[Mapping[str, Any]] = None,
-        video_block_kwargs: Optional[Mapping[str, Any]] = None,
+        text: str | None = None,
+        media: Mapping[str, Any] | None = None,
+        image_block_kwargs: Mapping[str, Any] | None = None,
+        video_block_kwargs: Mapping[str, Any] | None = None,
     ) -> None:
         if media is None:
             self.add_user("" if text is None else text)
@@ -426,10 +426,10 @@ class ChatMessages:
     def build_multimodal_content(
         cls,
         *,
-        text: Optional[str] = None,
-        media: Optional[Mapping[str, Any]] = None,
-        image_block_kwargs: Optional[Mapping[str, Any]] = None,
-        video_block_kwargs: Optional[Mapping[str, Any]] = None,
+        text: str | None = None,
+        media: Mapping[str, Any] | None = None,
+        image_block_kwargs: Mapping[str, Any] | None = None,
+        video_block_kwargs: Mapping[str, Any] | None = None,
     ) -> List[dict[str, Any]]:
         if media is not None and not isinstance(media, Mapping):
             raise TypeError(f"`media` must be Mapping or None, given `{type(media)}`")
@@ -460,10 +460,10 @@ class ChatMessages:
     async def abuild_multimodal_content(
         cls,
         *,
-        text: Optional[str] = None,
-        media: Optional[Mapping[str, Any]] = None,
-        image_block_kwargs: Optional[Mapping[str, Any]] = None,
-        video_block_kwargs: Optional[Mapping[str, Any]] = None,
+        text: str | None = None,
+        media: Mapping[str, Any] | None = None,
+        image_block_kwargs: Mapping[str, Any] | None = None,
+        video_block_kwargs: Mapping[str, Any] | None = None,
     ) -> List[dict[str, Any]]:
         if media is not None and not isinstance(media, Mapping):
             raise TypeError(f"`media` must be Mapping or None, given `{type(media)}`")
@@ -511,7 +511,7 @@ class ChatMessages:
         )
 
     def add_assistant_response(
-        self, content: Any, reasoning_content: Optional[str] = None
+        self, content: Any, reasoning_content: str | None = None
     ) -> None:
         if reasoning_content:
             self.add_reasoning(reasoning_content, role="assistant")
@@ -523,7 +523,7 @@ class ChatMessages:
             raise TypeError(f"`metadata` must be Mapping, given `{type(metadata)}`")
         self.metadata.update(self._safe_copy(dict(metadata)))
 
-    def set_response_id(self, response_id: Optional[str]) -> None:
+    def set_response_id(self, response_id: str | None) -> None:
         if response_id is not None and not isinstance(response_id, str):
             response_id = str(response_id)
         self.response_id = response_id
@@ -531,9 +531,24 @@ class ChatMessages:
     def to_items(self) -> List[dict[str, Any]]:
         return deepcopy(self._items)
 
+    def set_item_disabled(
+        self,
+        index: int,
+        *,
+        disabled: bool = True,
+        reason: str | None = None,
+    ) -> None:
+        item = self._items[index]
+        item["disabled"] = bool(disabled)
+        if reason is not None:
+            item.setdefault("metadata", {})
+            item["metadata"]["disabled_reason"] = reason
+
     def to_chatml(self) -> List[dict[str, Any]]:  # noqa: C901
         messages: List[dict[str, Any]] = []
         for item in self._items:
+            if item.get("disabled") is True:
+                continue
             item_type = item.get("type")
             if item_type == "turn_marker":
                 continue
@@ -589,6 +604,8 @@ class ChatMessages:
     def to_responses_input(self) -> List[dict[str, Any]]:  # noqa: C901
         result: List[dict[str, Any]] = []
         for item in self._items:
+            if item.get("disabled") is True:
+                continue
             item_type = item.get("type")
             if item_type == "turn_marker":
                 continue
@@ -863,7 +880,12 @@ class ChatMessages:
 
         if isinstance(output, Mapping):
             output_type = output.get("type")
-            if output_type in {"input_text", "input_image", "input_file", "input_audio"}:
+            if output_type in {
+                "input_text",
+                "input_image",
+                "input_file",
+                "input_audio",
+            }:
                 return [deepcopy(dict(output))]
             if output_type == "text":
                 return [{"type": "input_text", "text": output.get("text", "")}]
@@ -944,7 +966,7 @@ class ChatMessages:
 
     def _response_part_to_chatml(
         self, part: Mapping[str, Any]
-    ) -> Optional[dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         part_type = part.get("type")
         if part_type in ("output_text", "input_text"):
             return {"type": "text", "text": part.get("text", "")}
@@ -968,7 +990,7 @@ class ChatMessages:
 
     def _response_message_to_chatml(
         self, message: Mapping[str, Any]
-    ) -> Optional[dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         role = message.get("role")
         content = message.get("content", [])
         if role not in {"user", "assistant", "system", "developer"}:
@@ -1028,7 +1050,7 @@ class ChatMessages:
 
         return [normalized]
 
-    def _extract_reasoning_content(self, item: Mapping[str, Any]) -> Optional[str]:
+    def _extract_reasoning_content(self, item: Mapping[str, Any]) -> str | None:
         for field in ("reasoning_content", "reasoning_text", "think"):
             value = item.get(field)
             if isinstance(value, str) and value:
@@ -1053,7 +1075,7 @@ class ChatMessages:
 
     def _reasoning_item_to_chatml(
         self, item: Mapping[str, Any]
-    ) -> Optional[dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         reasoning_content = self._extract_reasoning_content(item)
         if reasoning_content is None:
             return None
@@ -1062,7 +1084,7 @@ class ChatMessages:
 
     def _reasoning_item_to_responses(
         self, item: Mapping[str, Any]
-    ) -> Optional[dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         reasoning_content = self._extract_reasoning_content(item)
         if reasoning_content is None:
             return None
@@ -1073,7 +1095,7 @@ class ChatMessages:
             "content": self._normalize_message_content_for_responses(reasoning_content),
         }
 
-    def _extract_turn_reasoning(self, turn: Mapping[str, Any]) -> Optional[str]:
+    def _extract_turn_reasoning(self, turn: Mapping[str, Any]) -> str | None:
         start_item_index = turn.get("start_item_index")
         end_item_index = turn.get("end_item_index")
         if not isinstance(start_item_index, int) or not isinstance(end_item_index, int):
@@ -1104,7 +1126,7 @@ class ChatMessages:
         media_source: Any,
         image_block_kwargs: Mapping[str, Any],
         video_block_kwargs: Mapping[str, Any],
-    ) -> Optional[dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         if isinstance(media_source, Mapping):
             return deepcopy(dict(media_source))
 
@@ -1132,7 +1154,7 @@ class ChatMessages:
         media_source: Any,
         image_block_kwargs: Mapping[str, Any],
         video_block_kwargs: Mapping[str, Any],
-    ) -> Optional[dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         if isinstance(media_source, Mapping):
             return deepcopy(dict(media_source))
 
@@ -1157,7 +1179,7 @@ class ChatMessages:
 
     def _audio_url_to_input_audio(
         self, audio_part: Mapping[str, Any]
-    ) -> Optional[dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         audio_url = audio_part.get("audio_url")
         if not isinstance(audio_url, Mapping):
             return None
