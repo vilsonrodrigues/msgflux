@@ -39,7 +39,9 @@ def _mock_model(text: str = "ok") -> MagicMock:
     return model
 
 
-def _tool_call_response(tool_name: str, parameters: dict, *, call_id: str = "call_inner"):
+def _tool_call_response(
+    tool_name: str, parameters: dict, *, call_id: str = "call_inner"
+):
     response = ModelResponse()
     response.set_response_type("tool_call")
     agg = ToolCallAggregator()
@@ -202,8 +204,10 @@ def test_inject_library_can_add_background_tool_with_task_tools():
     assert "task_activity" not in dispatch.tool_calls[0].result
 
     _wait_until(
-        lambda: library([("call_3", "task_list", {})]).tool_calls[0].result[0]["status"]
-        == "completed"
+        lambda: (
+            library([("call_3", "task_list", {})]).tool_calls[0].result[0]["status"]
+            == "completed"
+        )
     )
 
     task_id = library([("call_4", "task_list", {})]).tool_calls[0].result[0]["task_id"]
@@ -249,13 +253,16 @@ def test_background_task_reports_progress_and_output():
 
     release.set()
     _wait_until(
-        lambda: library([("call_4", "task_status", {"task_id": task_id})]).tool_calls[0]
-        .result["status"]
-        == "completed"
+        lambda: (
+            library([("call_4", "task_status", {"task_id": task_id})])
+            .tool_calls[0]
+            .result["status"]
+            == "completed"
+        )
     )
-    final_state = library([("call_6", "task_status", {"task_id": task_id})]).tool_calls[
-        0
-    ].result
+    final_state = (
+        library([("call_6", "task_status", {"task_id": task_id})]).tool_calls[0].result
+    )
     assert "elapsed_seconds" in final_state
 
     output_result = library([("call_5", "task_output", {"task_id": task_id})])
@@ -283,7 +290,9 @@ def test_task_wait_returns_final_output():
     timer = threading.Timer(0.1, release.set)
     timer.start()
     try:
-        wait_result = library([("call_3", "task_wait", {"task_id": task_id, "timeout": 1.0})])
+        wait_result = library(
+            [("call_3", "task_wait", {"task_id": task_id, "timeout": 1.0})]
+        )
     finally:
         timer.cancel()
 
@@ -305,7 +314,9 @@ def test_task_wait_returns_timeout_payload_with_progress():
     library([("call_1", "long_job", {"value": 21})])
     task_id = library([("call_2", "task_list", {})]).tool_calls[0].result[0]["task_id"]
 
-    wait_result = library([("call_3", "task_wait", {"task_id": task_id, "timeout": 0.05})])
+    wait_result = library(
+        [("call_3", "task_wait", {"task_id": task_id, "timeout": 0.05})]
+    )
     payload = wait_result.tool_calls[0].result
 
     assert payload["task_id"] == task_id
@@ -316,9 +327,12 @@ def test_task_wait_returns_timeout_payload_with_progress():
 
     release.set()
     _wait_until(
-        lambda: library([("call_4", "task_status", {"task_id": task_id})]).tool_calls[0]
-        .result["status"]
-        == "completed"
+        lambda: (
+            library([("call_4", "task_status", {"task_id": task_id})])
+            .tool_calls[0]
+            .result["status"]
+            == "completed"
+        )
     )
 
 
@@ -333,7 +347,9 @@ def test_task_wait_returns_failed_payload():
     library([("call_1", "failing_job", {})])
     task_id = library([("call_2", "task_list", {})]).tool_calls[0].result[0]["task_id"]
 
-    wait_result = library([("call_3", "task_wait", {"task_id": task_id, "timeout": 1.0})])
+    wait_result = library(
+        [("call_3", "task_wait", {"task_id": task_id, "timeout": 1.0})]
+    )
     payload = wait_result.tool_calls[0].result
 
     assert payload["task_id"] == task_id
@@ -365,21 +381,24 @@ def test_task_stop_stops_background_agent_at_next_checkpoint():
     task_id = dispatch.tool_calls[0].result.split("task_id='")[1].split("'")[0]
 
     assert slow_tool_started.wait(timeout=1.0)
-    stop_result = library([("call_2", "task_stop", {"task_id": task_id})]).tool_calls[
-        0
-    ].result
+    stop_result = (
+        library([("call_2", "task_stop", {"task_id": task_id})]).tool_calls[0].result
+    )
     assert stop_result["status"] == "stop_requested"
 
     release_tool.set()
     _wait_until(
-        lambda: library([("call_3", "task_status", {"task_id": task_id})]).tool_calls[0]
-        .result["status"]
-        == "stopped"
+        lambda: (
+            library([("call_3", "task_status", {"task_id": task_id})])
+            .tool_calls[0]
+            .result["status"]
+            == "stopped"
+        )
     )
 
-    status = library([("call_4", "task_status", {"task_id": task_id})]).tool_calls[
-        0
-    ].result
+    status = (
+        library([("call_4", "task_status", {"task_id": task_id})]).tool_calls[0].result
+    )
     assert status["status"] == "stopped"
     assert status["metadata"]["supports_activity"] is True
     assert status["last_activity_summary"] == "Status: Task stopped."
@@ -412,7 +431,9 @@ def test_task_wait_falls_back_to_task_store_polling_without_future():
     timer = threading.Thread(target=complete_task)
     timer.start()
     try:
-        wait_result = library([("call_1", "task_wait", {"task_id": task.task_id, "timeout": 1.0})])
+        wait_result = library(
+            [("call_1", "task_wait", {"task_id": task.task_id, "timeout": 1.0})]
+        )
     finally:
         timer.join(timeout=1.0)
 
@@ -431,16 +452,20 @@ def test_agent_injects_pending_task_notifications_as_system_note_messages():
     agent = Agent(name="Assistant", model=_mock_model(), tools=[long_job])
 
     agent.tool_library([("call_1", "long_job", {"value": 5})])
-    task_id = agent.tool_library([("call_2", "task_list", {})]).tool_calls[0].result[0][
-        "task_id"
-    ]
+    task_id = (
+        agent.tool_library([("call_2", "task_list", {})])
+        .tool_calls[0]
+        .result[0]["task_id"]
+    )
 
     release.set()
     _wait_until(
-        lambda: agent.tool_library(
-            [("call_3", "task_status", {"task_id": task_id})]
-        ).tool_calls[0].result["status"]
-        == "completed"
+        lambda: (
+            agent.tool_library([("call_3", "task_status", {"task_id": task_id})])
+            .tool_calls[0]
+            .result["status"]
+            == "completed"
+        )
     )
 
     _wait_until(
@@ -481,16 +506,20 @@ def test_inspect_model_execution_params_does_not_consume_notifications():
     agent = Agent(name="Assistant", model=model, tools=[long_job])
 
     agent.tool_library([("call_1", "long_job", {"value": 5})])
-    task_id = agent.tool_library([("call_2", "task_list", {})]).tool_calls[0].result[0][
-        "task_id"
-    ]
+    task_id = (
+        agent.tool_library([("call_2", "task_list", {})])
+        .tool_calls[0]
+        .result[0]["task_id"]
+    )
 
     release.set()
     _wait_until(
-        lambda: agent.tool_library(
-            [("call_3", "task_status", {"task_id": task_id})]
-        ).tool_calls[0].result["status"]
-        == "completed"
+        lambda: (
+            agent.tool_library([("call_3", "task_status", {"task_id": task_id})])
+            .tool_calls[0]
+            .result["status"]
+            == "completed"
+        )
     )
 
     _wait_until(
@@ -577,9 +606,11 @@ def test_task_progress_notifications_are_persisted():
     )
 
     agent.tool_library([("call_1", "long_job", {"value": 5})])
-    task_id = agent.tool_library([("call_2", "task_list", {})]).tool_calls[0].result[0][
-        "task_id"
-    ]
+    task_id = (
+        agent.tool_library([("call_2", "task_list", {})])
+        .tool_calls[0]
+        .result[0]["task_id"]
+    )
     assert started.wait(timeout=1.0)
 
     messages = ChatMessages()
@@ -604,10 +635,12 @@ def test_task_progress_notifications_are_persisted():
 
     release.set()
     _wait_until(
-        lambda: agent.tool_library(
-            [("call_3", "task_status", {"task_id": task_id})]
-        ).tool_calls[0].result["status"]
-        == "completed"
+        lambda: (
+            agent.tool_library([("call_3", "task_status", {"task_id": task_id})])
+            .tool_calls[0]
+            .result["status"]
+            == "completed"
+        )
     )
 
 
@@ -641,9 +674,11 @@ def test_injected_notification_handle_publishes_task_status_updates():
     )
 
     agent.tool_library([("call_1", "long_job", {"value": 7})])
-    task_id = agent.tool_library([("call_2", "task_list", {})]).tool_calls[0].result[0][
-        "task_id"
-    ]
+    task_id = (
+        agent.tool_library([("call_2", "task_list", {})])
+        .tool_calls[0]
+        .result[0]["task_id"]
+    )
     assert started.wait(timeout=1.0)
 
     messages = ChatMessages()
@@ -661,10 +696,12 @@ def test_injected_notification_handle_publishes_task_status_updates():
 
     release.set()
     _wait_until(
-        lambda: agent.tool_library(
-            [("call_3", "task_status", {"task_id": task_id})]
-        ).tool_calls[0].result["status"]
-        == "completed"
+        lambda: (
+            agent.tool_library([("call_3", "task_status", {"task_id": task_id})])
+            .tool_calls[0]
+            .result["status"]
+            == "completed"
+        )
     )
 
     agent("Continue again.", messages=messages)
@@ -706,12 +743,17 @@ def test_background_agent_inherits_context_and_checkpoint_run_id():
     task_id = library([("call_2", "task_list", {})]).tool_calls[0].result[0]["task_id"]
 
     _wait_until(
-        lambda: library([("call_3", "task_status", {"task_id": task_id})]).tool_calls[0]
-        .result["status"]
-        == "completed"
+        lambda: (
+            library([("call_3", "task_status", {"task_id": task_id})])
+            .tool_calls[0]
+            .result["status"]
+            == "completed"
+        )
     )
 
-    task_state = library([("call_4", "task_status", {"task_id": task_id})]).tool_calls[0].result
+    task_state = (
+        library([("call_4", "task_status", {"task_id": task_id})]).tool_calls[0].result
+    )
     assert task_state["metadata"]["session_id"] == "user_42"
     assert task_state["metadata"]["parent_run_id"] == "run_root"
     assert task_state["metadata"]["root_run_id"] == "run_root"
@@ -795,9 +837,11 @@ def test_task_activity_is_unsupported_for_non_agent_task():
     dispatch = library([("call_1", "slow_pipeline", {"value": 4})])
     task_id = dispatch.tool_calls[0].result.split("task_id='")[1].split("'")[0]
 
-    activity = library([("call_2", "task_activity", {"task_id": task_id})]).tool_calls[
-        0
-    ].result
+    activity = (
+        library([("call_2", "task_activity", {"task_id": task_id})])
+        .tool_calls[0]
+        .result
+    )
 
     assert activity["status"] == "unsupported"
     assert "background agent tasks" in activity["error"]
@@ -822,14 +866,19 @@ def test_task_activity_tracks_compact_subagent_tool_calls():
     task_id = dispatch.tool_calls[0].result.split("task_id='")[1].split("'")[0]
 
     _wait_until(
-        lambda: library([("call_2", "task_status", {"task_id": task_id})]).tool_calls[0]
-        .result["status"]
-        == "completed"
+        lambda: (
+            library([("call_2", "task_status", {"task_id": task_id})])
+            .tool_calls[0]
+            .result["status"]
+            == "completed"
+        )
     )
 
-    activity = library([("call_3", "task_activity", {"task_id": task_id})]).tool_calls[
-        0
-    ].result
+    activity = (
+        library([("call_3", "task_activity", {"task_id": task_id})])
+        .tool_calls[0]
+        .result
+    )
 
     assert any(entry == "Status: Task queued." for entry in activity)
     assert any(entry == "Status: Task running." for entry in activity)
@@ -859,27 +908,43 @@ def test_task_message_resumes_completed_background_agent():
         dispatch = library([("call_1", "worker", {"task": "Start worker."})])
         task_id = dispatch.tool_calls[0].result.split("task_id='")[1].split("'")[0]
         _wait_until(
-            lambda: library([("call_2", "task_status", {"task_id": task_id})])
-            .tool_calls[0]
-            .result["status"]
-            == "completed"
+            lambda: (
+                library([("call_2", "task_status", {"task_id": task_id})])
+                .tool_calls[0]
+                .result["status"]
+                == "completed"
+            )
         )
 
-        message_result = library(
-            [("call_3", "task_message", {"task_id": task_id, "message": "Continue."})]
-        ).tool_calls[0].result
+        message_result = (
+            library(
+                [
+                    (
+                        "call_3",
+                        "task_message",
+                        {"task_id": task_id, "message": "Continue."},
+                    )
+                ]
+            )
+            .tool_calls[0]
+            .result
+        )
 
         assert message_result["status"] == "resumed"
 
         _wait_until(
-            lambda: library([("call_4", "task_status", {"task_id": task_id})])
-            .tool_calls[0]
-            .result["status"]
-            == "completed"
+            lambda: (
+                library([("call_4", "task_status", {"task_id": task_id})])
+                .tool_calls[0]
+                .result["status"]
+                == "completed"
+            )
         )
-        output = library([("call_5", "task_output", {"task_id": task_id})]).tool_calls[
-            0
-        ].result
+        output = (
+            library([("call_5", "task_output", {"task_id": task_id})])
+            .tool_calls[0]
+            .result
+        )
 
         assert output == "resumed pass"
 
@@ -916,39 +981,59 @@ def test_task_message_resume_clears_previous_stop_reason():
         task_id = dispatch.tool_calls[0].result.split("task_id='")[1].split("'")[0]
 
         assert slow_tool_started.wait(timeout=1.0)
-        stop_result = library(
-            [("call_2", "task_stop", {"task_id": task_id})]
-        ).tool_calls[0].result
+        stop_result = (
+            library([("call_2", "task_stop", {"task_id": task_id})])
+            .tool_calls[0]
+            .result
+        )
         assert stop_result["status"] == "stop_requested"
 
         release_tool.set()
         _wait_until(
-            lambda: library([("call_3", "task_status", {"task_id": task_id})])
-            .tool_calls[0]
-            .result["status"]
-            == "stopped"
+            lambda: (
+                library([("call_3", "task_status", {"task_id": task_id})])
+                .tool_calls[0]
+                .result["status"]
+                == "stopped"
+            )
         )
 
-        stopped_state = library(
-            [("call_4", "task_status", {"task_id": task_id})]
-        ).tool_calls[0].result
+        stopped_state = (
+            library([("call_4", "task_status", {"task_id": task_id})])
+            .tool_calls[0]
+            .result
+        )
         assert "stop_reason" in stopped_state["metadata"]
 
-        message_result = library(
-            [("call_5", "task_message", {"task_id": task_id, "message": "Continue."})]
-        ).tool_calls[0].result
+        message_result = (
+            library(
+                [
+                    (
+                        "call_5",
+                        "task_message",
+                        {"task_id": task_id, "message": "Continue."},
+                    )
+                ]
+            )
+            .tool_calls[0]
+            .result
+        )
         assert message_result["status"] == "resumed"
 
         _wait_until(
-            lambda: library([("call_6", "task_status", {"task_id": task_id})])
-            .tool_calls[0]
-            .result["status"]
-            == "completed"
+            lambda: (
+                library([("call_6", "task_status", {"task_id": task_id})])
+                .tool_calls[0]
+                .result["status"]
+                == "completed"
+            )
         )
 
-        resumed_state = library(
-            [("call_7", "task_status", {"task_id": task_id})]
-        ).tool_calls[0].result
+        resumed_state = (
+            library([("call_7", "task_status", {"task_id": task_id})])
+            .tool_calls[0]
+            .result
+        )
         assert "stop_reason" not in resumed_state["metadata"]
 
     state = store.load_state("worker", "user_42", task_id)

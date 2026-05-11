@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from inspect import cleandoc
-from typing import TYPE_CHECKING
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
     Dict,
@@ -503,7 +503,9 @@ class Agent(Module, metaclass=AutoParams):
             except _GuardInterrupt as e:
                 return self._define_response_mode(e.response, message)
             except TaskStopRequestedError:
-                self._checkpoint_save(inputs.get("messages"), inputs.get("vars", {}), status="stopped")
+                self._checkpoint_save(
+                    inputs.get("messages"), inputs.get("vars", {}), status="stopped"
+                )
                 raise
             except Exception:
                 self._checkpoint_save_on_error(inputs)
@@ -606,6 +608,7 @@ class Agent(Module, metaclass=AutoParams):
         self,
         messages: Union[ChatMessages, List[Mapping[str, Any]]],
         vars: Mapping[str, Any],
+        *,
         prefilling: Optional[str] = None,
         model_preference: Optional[str] = None,
         tool_filter: Optional[ToolFilter] = None,
@@ -2125,7 +2128,7 @@ class Agent(Module, metaclass=AutoParams):
         self,
         *,
         messages: ChatMessages,
-        content: Optional[Union[str, Mapping[str, Any], List[Mapping[str, Any]]]],
+        content: Optional[Union[str, Mapping[str, Any], List[Mapping[str, Any]]]],  # noqa: ARG002
         task: Any,
         vars: Mapping[str, Any],
         turn_id: str,
@@ -2147,7 +2150,9 @@ class Agent(Module, metaclass=AutoParams):
 
         raw_context_inputs = kwargs.get("task_context")
         if raw_context_inputs is None and isinstance(message, dotdict):
-            raw_context_inputs = self._extract_message_values(self.task_context, message)
+            raw_context_inputs = self._extract_message_values(
+                self.task_context, message
+            )
 
         messages.begin_turn(
             inputs=raw_task_inputs,
