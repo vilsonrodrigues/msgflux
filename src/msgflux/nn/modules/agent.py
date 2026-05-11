@@ -69,8 +69,6 @@ _RESERVED_KWARGS = {
     "model_preference",
     "tool_filter",
     "scope",
-    "session_id",
-    "run_id",
     "tool_call_id",
 }
 
@@ -422,30 +420,6 @@ class Agent(Module, metaclass=AutoParams):
             )
         return scope
 
-    def _get_requested_session_id(
-        self,
-        kwargs: Mapping[str, Any],
-        scope: Optional[ExecutionScope],
-    ) -> Optional[str]:
-        session_id = kwargs.get("session_id")
-        if session_id is not None:
-            return session_id
-        if scope is not None:
-            return scope.session_id
-        return None
-
-    def _get_requested_run_id(
-        self,
-        kwargs: Mapping[str, Any],
-        scope: Optional[ExecutionScope],
-    ) -> Optional[str]:
-        run_id = kwargs.get("run_id")
-        if run_id is not None:
-            return run_id
-        if scope is not None:
-            return scope.run_id
-        return None
-
     def forward(
         self,
         message: Optional[Union[str, Mapping[str, Any], Message]] = None,
@@ -520,17 +494,13 @@ class Agent(Module, metaclass=AutoParams):
         requested_scope = self._get_requested_scope(kwargs)
         resumed = self._try_resume_from_checkpoint(
             kwargs.get("messages"),
-            session_id=self._get_requested_session_id(kwargs, requested_scope),
-            run_id=self._get_requested_run_id(kwargs, requested_scope),
+            scope=requested_scope,
         )
         inputs = resumed or self._prepare_inputs(message, **kwargs)
 
         effective_checkpointer = self._get_effective_checkpointer()
         with execution_context(
             scope=inputs.get("scope"),
-            session_id=inputs.get("session_id"),
-            namespace=self.get_module_name(),
-            run_id=inputs.get("run_id"),
             checkpoint_store=effective_checkpointer,
             agent_inbox=self._get_effective_agent_inbox(),
         ):
@@ -561,17 +531,13 @@ class Agent(Module, metaclass=AutoParams):
         requested_scope = self._get_requested_scope(kwargs)
         resumed = await self._atry_resume_from_checkpoint(
             kwargs.get("messages"),
-            session_id=self._get_requested_session_id(kwargs, requested_scope),
-            run_id=self._get_requested_run_id(kwargs, requested_scope),
+            scope=requested_scope,
         )
         inputs = resumed or await self._aprepare_inputs(message, **kwargs)
 
         effective_checkpointer = self._get_effective_checkpointer()
         with execution_context(
             scope=inputs.get("scope"),
-            session_id=inputs.get("session_id"),
-            namespace=self.get_module_name(),
-            run_id=inputs.get("run_id"),
             checkpoint_store=effective_checkpointer,
             agent_inbox=self._get_effective_agent_inbox(),
         ):
@@ -1302,13 +1268,7 @@ class Agent(Module, metaclass=AutoParams):
             raise TypeError(
                 f"`scope` must be an ExecutionScope or None, given `{type(scope)}`"
             )
-        session_id = kwargs.pop("session_id", None)
-        run_id = kwargs.pop("run_id", None)
         kwargs.pop("tool_call_id", None)
-        if session_id is None and scope is not None:
-            session_id = scope.session_id
-        if run_id is None and scope is not None:
-            run_id = scope.run_id
 
         # Get remaining kwargs (potential task inputs)
         remaining_kwargs = {
@@ -1366,8 +1326,6 @@ class Agent(Module, metaclass=AutoParams):
             effective_checkpointer is not None
             or isinstance(messages, ChatMessages)
             or scope is not None
-            or session_id is not None
-            or run_id is not None
         )
         if should_use_chat_messages:
             messages = self._coerce_chat_messages(messages)
@@ -1386,11 +1344,11 @@ class Agent(Module, metaclass=AutoParams):
 
         effective_session_id = self._resolve_session_id(
             messages=messages,
-            session_id=session_id,
+            session_id=scope.session_id if scope is not None else None,
         )
         effective_run_id = self._resolve_run_id(
             messages=messages,
-            run_id=run_id,
+            run_id=scope.run_id if scope is not None else None,
         )
         effective_scope = (scope or get_execution_context()["scope"]).with_overrides(
             session_id=effective_session_id,
@@ -1434,8 +1392,6 @@ class Agent(Module, metaclass=AutoParams):
             "model_preference": model_preference,
             "tool_filter": tool_filter,
             "vars": vars,
-            "session_id": effective_session_id,
-            "run_id": effective_run_id,
             "scope": effective_scope,
         }
 
@@ -1460,13 +1416,7 @@ class Agent(Module, metaclass=AutoParams):
             raise TypeError(
                 f"`scope` must be an ExecutionScope or None, given `{type(scope)}`"
             )
-        session_id = kwargs.pop("session_id", None)
-        run_id = kwargs.pop("run_id", None)
         kwargs.pop("tool_call_id", None)
-        if session_id is None and scope is not None:
-            session_id = scope.session_id
-        if run_id is None and scope is not None:
-            run_id = scope.run_id
 
         # Get remaining kwargs (potential task inputs)
         remaining_kwargs = {
@@ -1524,8 +1474,6 @@ class Agent(Module, metaclass=AutoParams):
             effective_checkpointer is not None
             or isinstance(messages, ChatMessages)
             or scope is not None
-            or session_id is not None
-            or run_id is not None
         )
         if should_use_chat_messages:
             messages = self._coerce_chat_messages(messages)
@@ -1544,11 +1492,11 @@ class Agent(Module, metaclass=AutoParams):
 
         effective_session_id = self._resolve_session_id(
             messages=messages,
-            session_id=session_id,
+            session_id=scope.session_id if scope is not None else None,
         )
         effective_run_id = self._resolve_run_id(
             messages=messages,
-            run_id=run_id,
+            run_id=scope.run_id if scope is not None else None,
         )
         effective_scope = (scope or get_execution_context()["scope"]).with_overrides(
             session_id=effective_session_id,
@@ -1592,8 +1540,6 @@ class Agent(Module, metaclass=AutoParams):
             "model_preference": model_preference,
             "tool_filter": tool_filter,
             "vars": vars,
-            "session_id": effective_session_id,
-            "run_id": effective_run_id,
             "scope": effective_scope,
         }
 
@@ -2394,18 +2340,18 @@ class Agent(Module, metaclass=AutoParams):
         self,
         messages_kwarg: Optional[Union[ChatMessages, List[Mapping[str, Any]]]],
         *,
-        session_id: Optional[str] = None,
-        run_id: Optional[str] = None,
+        scope: Optional[ExecutionScope] = None,
     ) -> Optional[Mapping[str, Any]]:
         checkpointer = self._get_effective_checkpointer()
         if checkpointer is None:
             return None
+        run_id = scope.run_id if scope is not None else None
         if not isinstance(run_id, str) or not run_id:
             return None
 
         effective_session_id = self._resolve_session_id(
             messages=messages_kwarg,
-            session_id=session_id,
+            session_id=scope.session_id if scope is not None else None,
         )
         state = checkpointer.load_state(
             self.get_module_name(),
@@ -2419,30 +2365,34 @@ class Agent(Module, metaclass=AutoParams):
 
         restored = ChatMessages()
         restored._hydrate_state(state.get("messages", {}))
+        effective_scope = (scope or get_execution_context()["scope"]).with_overrides(
+            session_id=effective_session_id,
+            namespace=self.get_module_name(),
+            run_id=run_id,
+        )
         return {
             "messages": restored,
             "vars": state.get("vars", {}),
             "model_preference": state.get("model_preference"),
-            "session_id": effective_session_id,
-            "run_id": run_id,
+            "scope": effective_scope,
         }
 
     async def _atry_resume_from_checkpoint(
         self,
         messages_kwarg: Optional[Union[ChatMessages, List[Mapping[str, Any]]]],
         *,
-        session_id: Optional[str] = None,
-        run_id: Optional[str] = None,
+        scope: Optional[ExecutionScope] = None,
     ) -> Optional[Mapping[str, Any]]:
         checkpointer = self._get_effective_checkpointer()
         if checkpointer is None:
             return None
+        run_id = scope.run_id if scope is not None else None
         if not isinstance(run_id, str) or not run_id:
             return None
 
         effective_session_id = self._resolve_session_id(
             messages=messages_kwarg,
-            session_id=session_id,
+            session_id=scope.session_id if scope is not None else None,
         )
         if hasattr(checkpointer, "aload_state"):
             state = await checkpointer.aload_state(
@@ -2464,12 +2414,16 @@ class Agent(Module, metaclass=AutoParams):
 
         restored = ChatMessages()
         restored._hydrate_state(state.get("messages", {}))
+        effective_scope = (scope or get_execution_context()["scope"]).with_overrides(
+            session_id=effective_session_id,
+            namespace=self.get_module_name(),
+            run_id=run_id,
+        )
         return {
             "messages": restored,
             "vars": state.get("vars", {}),
             "model_preference": state.get("model_preference"),
-            "session_id": effective_session_id,
-            "run_id": run_id,
+            "scope": effective_scope,
         }
 
     # --- Configuration ---
