@@ -637,6 +637,28 @@ def test_agent_incoming_user_message_is_injected_before_model_call():
     assert "I changed my mind." in incoming[0]["content"]
 
 
+def test_agent_consumes_persisted_incoming_user_message_for_scope():
+    store = mf.InMemoryAgentInboxStore()
+    inbox = mf.AgentInbox(store=store)
+    model = _mock_model()
+    agent = Agent(name="Assistant", model=model, agent_inbox=inbox)
+    scope = mf.ExecutionScope(session_id="user_42", run_id="run_42")
+    external_inbox = mf.AgentInbox(
+        store=store,
+        namespace="Assistant",
+        session_id="user_42",
+        run_id="run_42",
+    )
+
+    external_inbox.user_message("Use the customer-visible tone.")
+    agent("Continue.", scope=scope)
+
+    incoming = _incoming_user_messages(model.call_args.kwargs["messages"])
+    assert len(incoming) == 1
+    assert "Use the customer-visible tone." in incoming[0]["content"]
+    assert external_inbox.peek() == []
+
+
 def test_agent_drains_notifications_after_tool_call_before_next_model_call():
     @mf.tool_config(inject_notification=True)
     def publish_status(notification) -> str:

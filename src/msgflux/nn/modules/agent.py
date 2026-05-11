@@ -503,10 +503,16 @@ class Agent(Module, metaclass=AutoParams):
         inputs = resumed or self._prepare_inputs(message, **kwargs)
 
         effective_checkpointer = self._get_effective_checkpointer()
+        effective_inbox = self._get_effective_agent_inbox()
+        if effective_inbox is not None:
+            effective_inbox.bind_scope(
+                inputs.get("scope"),
+                namespace=self.get_module_name(),
+            )
         with execution_context(
             scope=inputs.get("scope"),
             checkpoint_store=effective_checkpointer,
-            agent_inbox=self._get_effective_agent_inbox(),
+            agent_inbox=effective_inbox,
         ):
             try:
                 model_response = self._execute_model(
@@ -545,10 +551,16 @@ class Agent(Module, metaclass=AutoParams):
         inputs = resumed or await self._aprepare_inputs(message, **kwargs)
 
         effective_checkpointer = self._get_effective_checkpointer()
+        effective_inbox = self._get_effective_agent_inbox()
+        if effective_inbox is not None:
+            effective_inbox.bind_scope(
+                inputs.get("scope"),
+                namespace=self.get_module_name(),
+            )
         with execution_context(
             scope=inputs.get("scope"),
             checkpoint_store=effective_checkpointer,
-            agent_inbox=self._get_effective_agent_inbox(),
+            agent_inbox=effective_inbox,
         ):
             try:
                 model_response = await self._aexecute_model(

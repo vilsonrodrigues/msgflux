@@ -1367,9 +1367,13 @@ class ToolLibrary(Module, metaclass=AutoParams):
         root_inbox = get_execution_context().get("agent_inbox") or self.agent_inbox
         task_inbox = self._get_task_inbox(task.task_id)
         if task_inbox is None:
-            task_inbox = AgentInbox(
-                verbose=getattr(root_inbox, "verbose", False),
+            task_inbox = root_inbox.fork(
                 owner=f"{tool_name}:{task.task_id}",
+                namespace=checkpoint_namespace,
+                session_id=(
+                    session_id if isinstance(session_id, str) and session_id else None
+                ),
+                run_id=run_id,
             )
             self._register_task_inbox(task.task_id, task_inbox)
 
@@ -1463,9 +1467,11 @@ class ToolLibrary(Module, metaclass=AutoParams):
         task_id = uuid4().hex[:8]
         task_inbox = None
         if task_kind == "agent":
-            task_inbox = AgentInbox(
-                verbose=getattr(root_agent_inbox, "verbose", False),
+            task_inbox = root_agent_inbox.fork(
                 owner=f"{tool_name}:{task_id}",
+                namespace=tool_name,
+                session_id=session_id if isinstance(session_id, str) else None,
+                run_id=task_id,
             )
             self._register_task_inbox(task_id, task_inbox)
         task = self.task_store.create(

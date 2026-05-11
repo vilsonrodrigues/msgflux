@@ -4,7 +4,14 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from msgspec_ext import load_dotenv
 
-    from msgflux.agent_inbox import AgentControlMessage, AgentInbox, AgentNotification
+    from msgflux.agent_inbox import (
+        AgentControlMessage,
+        AgentInbox,
+        AgentInboxStore,
+        AgentNotification,
+        InMemoryAgentInboxStore,
+        SQLiteAgentInboxStore,
+    )
     from msgflux.cache import response_cache
     from msgflux.chat_messages import ChatMessages
     from msgflux.context import ExecutionScope, execution_context, get_execution_scope
@@ -38,6 +45,7 @@ __all__ = [
     "DB",
     "Audio",
     "AgentInbox",
+    "AgentInboxStore",
     "AgentControlMessage",
     "AgentNotification",
     "ChatMessages",
@@ -49,6 +57,7 @@ __all__ = [
     "File",
     "Image",
     "InMemoryCheckpointStore",
+    "InMemoryAgentInboxStore",
     "Inline",
     "InputField",
     "Message",
@@ -59,6 +68,7 @@ __all__ = [
     "Registry",
     "Retriever",
     "SQLiteCheckpointStore",
+    "SQLiteAgentInboxStore",
     "Signature",
     "Spans",
     "TaskError",
@@ -80,8 +90,10 @@ __all__ = [
 _LAZY_IMPORTS = {
     "Audio": ("msgflux.data.types", "Audio"),
     "AgentInbox": ("msgflux.agent_inbox", "AgentInbox"),
+    "AgentInboxStore": ("msgflux.agent_inbox", "AgentInboxStore"),
     "AgentControlMessage": ("msgflux.agent_inbox", "AgentControlMessage"),
     "AgentNotification": ("msgflux.agent_inbox", "AgentNotification"),
+    "InMemoryAgentInboxStore": ("msgflux.agent_inbox", "InMemoryAgentInboxStore"),
     "ChatMessages": ("msgflux.chat_messages", "ChatMessages"),
     "ExecutionScope": ("msgflux.context", "ExecutionScope"),
     "ChatBlock": ("msgflux.utils.chat", "ChatBlock"),
@@ -117,6 +129,7 @@ _LAZY_IMPORTS = {
     "save": ("msgflux.utils.msgspec", "save"),
     "set_envs": ("msgflux.envs", "set_envs"),
     "SQLiteCheckpointStore": ("msgflux.data.stores", "SQLiteCheckpointStore"),
+    "SQLiteAgentInboxStore": ("msgflux.agent_inbox", "SQLiteAgentInboxStore"),
     "tool_config": ("msgflux.tools.config", "tool_config"),
 }
 
