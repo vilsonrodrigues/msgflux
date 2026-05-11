@@ -791,6 +791,16 @@ class Agent(Module, metaclass=AutoParams):
             wait_for_event(model_response._response_type_event)
             self._ensure_stream_response_ready(model_response)
 
+        initial_response_type = (
+            model_response.response_type
+            if isinstance(model_response, (ModelResponse, ModelStreamResponse))
+            else None
+        )
+        if initial_response_type is not None:
+            emit_model_response(
+                self.get_module_name(), response_type=initial_response_type
+            )
+
         if "tool_call" in model_response.response_type:
             model_response, messages = self._process_tool_call_response(
                 message,
@@ -819,7 +829,8 @@ class Agent(Module, metaclass=AutoParams):
             response_type = "tool_responses"
             reasoning = None
 
-        emit_model_response(self.get_module_name(), response_type=response_type)
+        if response_type != initial_response_type:
+            emit_model_response(self.get_module_name(), response_type=response_type)
         self._append_response_to_chat_messages(
             messages,
             raw_response,
@@ -862,6 +873,16 @@ class Agent(Module, metaclass=AutoParams):
             await await_for_event(model_response._response_type_event)
             self._ensure_stream_response_ready(model_response)
 
+        initial_response_type = (
+            model_response.response_type
+            if isinstance(model_response, (ModelResponse, ModelStreamResponse))
+            else None
+        )
+        if initial_response_type is not None:
+            emit_model_response(
+                self.get_module_name(), response_type=initial_response_type
+            )
+
         if "tool_call" in model_response.response_type:
             model_response, messages = await self._aprocess_tool_call_response(
                 message,
@@ -893,7 +914,8 @@ class Agent(Module, metaclass=AutoParams):
             response_type = "tool_responses"
             reasoning = None
 
-        emit_model_response(self.get_module_name(), response_type=response_type)
+        if response_type != initial_response_type:
+            emit_model_response(self.get_module_name(), response_type=response_type)
         self._append_response_to_chat_messages(
             messages,
             raw_response,
