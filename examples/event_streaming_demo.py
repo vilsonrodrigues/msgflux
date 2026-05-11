@@ -4,6 +4,7 @@
 # ruff: noqa: T201
 
 import argparse
+import asyncio
 import json
 import time
 from collections.abc import Mapping
@@ -64,7 +65,7 @@ def build_agent(model_name: str) -> nn.Agent:
     )
 
 
-def main() -> None:
+async def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", default="openai/gpt-4.1-mini")
     parser.add_argument("--ticket", default="MSGFLUX-42")
@@ -76,15 +77,14 @@ def main() -> None:
         run_id=f"ticket-{args.ticket.lower()}",
     )
 
-    result = agent.stream_events(
+    async for event in agent.astream_events(
         f"Check ticket {args.ticket} and summarize the current state.",
         scope=scope,
-        callback=print_event,
-    )
+    ):
+        print_event(event)
 
-    print("\nFinal response:")
-    print(result)
+    print("\nEvent stream completed.")
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
