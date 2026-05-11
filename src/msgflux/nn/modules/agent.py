@@ -2433,7 +2433,7 @@ class Agent(Module, metaclass=AutoParams):
         )
         if state is None:
             return None
-        if state.get("status") in {"completed", "failed", "stopped"}:
+        if state.get("status") in {"completed", "stopped"}:
             return None
 
         restored = ChatMessages()
@@ -2482,7 +2482,7 @@ class Agent(Module, metaclass=AutoParams):
 
         if state is None:
             return None
-        if state.get("status") in {"completed", "failed", "stopped"}:
+        if state.get("status") in {"completed", "stopped"}:
             return None
 
         restored = ChatMessages()
