@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from functools import partial
 from importlib import import_module
 from threading import Lock
-from typing import Any, Callable, Dict, Iterator, List, Mapping, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Iterator, List, Mapping, Optional, Tuple
 from uuid import uuid4
 
 import msgspec
@@ -109,9 +109,8 @@ def _uses_library_injection(config: Mapping[str, Any]) -> bool:
 
 
 def _is_agent_tool_impl(impl: Any) -> bool:
-    from msgflux.nn.modules.agent import Agent
-
-    return isinstance(impl, Agent)
+    agent_type = import_module("msgflux.nn.modules.agent").Agent
+    return isinstance(impl, agent_type)
 
 
 class Tool(Module):
@@ -642,10 +641,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
         config = self.tool_configs.get(tool_name, {})
         if config.get("background", False):
             self._ensure_task_runtime_tools()
-        if (
-            config.get("background", False)
-            and config.get("tool_kind") == "agent"
-        ):
+        if config.get("background", False) and config.get("tool_kind") == "agent":
             self._ensure_agent_task_runtime_tools()
         if config.get("on_demand", False):
             self._ensure_on_demand_runtime_tools()
@@ -831,8 +827,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
         if max_results is not None:
             if isinstance(max_results, bool) or not isinstance(max_results, int):
                 raise TypeError(
-                    "`max_results` must be int or None, "
-                    f"given `{type(max_results)}`"
+                    f"`max_results` must be int or None, given `{type(max_results)}`"
                 )
             if max_results <= 0:
                 raise ValueError("`max_results` must be greater than 0.")
@@ -880,10 +875,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
     ) -> Any:
         if limit is not None:
             if isinstance(limit, bool) or not isinstance(limit, int):
-                raise TypeError(
-                    "`limit` must be int or None, "
-                    f"given `{type(limit)}`"
-                )
+                raise TypeError(f"`limit` must be int or None, given `{type(limit)}`")
             if limit <= 0:
                 raise ValueError("`limit` must be greater than 0.")
         task = self.task_store.get(task_id)
@@ -898,12 +890,11 @@ class ToolLibrary(Module, metaclass=AutoParams):
         activity = self.task_store.list_activity(task_id, limit=limit)
         return [self._format_task_activity_entry(item) for item in activity]
 
-    def _task_wait(self, task_id: str, timeout: Optional[float] = None) -> Any:
+    def _task_wait(self, task_id: str, timeout: Optional[float] = None) -> Any:  # noqa: C901
         if timeout is not None:
             if isinstance(timeout, bool) or not isinstance(timeout, (int, float)):
                 raise TypeError(
-                    "`timeout` must be float, int or None, "
-                    f"given `{type(timeout)}`"
+                    f"`timeout` must be float, int or None, given `{type(timeout)}`"
                 )
             if timeout < 0:
                 raise ValueError("`timeout` must be greater than or equal to 0.")
@@ -966,8 +957,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
             "task_id": task_id,
             "status": "stop_requested",
             "message": (
-                "Stop requested. The task will stop at the next cooperative "
-                "checkpoint."
+                "Stop requested. The task will stop at the next cooperative checkpoint."
             ),
         }
 
@@ -1035,7 +1025,9 @@ class ToolLibrary(Module, metaclass=AutoParams):
             "progress": task.progress.to_dict(),
         }
 
-    def _build_task_timeout_result(self, *, task_id: str, task: Optional[Any]) -> Dict[str, Any]:
+    def _build_task_timeout_result(
+        self, *, task_id: str, task: Optional[Any]
+    ) -> Dict[str, Any]:
         if task is None:
             return {"task_id": task_id, "status": "not_found"}
         payload = {
@@ -1079,7 +1071,10 @@ class ToolLibrary(Module, metaclass=AutoParams):
 
     def _select_on_demand_tools(self, requested: List[str]) -> List[str]:
         resolved = []
-        normalized = {tool_name.lower(): tool_name for tool_name in self._get_on_demand_tool_names()}
+        normalized = {
+            tool_name.lower(): tool_name
+            for tool_name in self._get_on_demand_tool_names()
+        }
         for tool_name in requested:
             match = normalized.get(tool_name.lower())
             if match is not None and match not in resolved:
@@ -1139,7 +1134,9 @@ class ToolLibrary(Module, metaclass=AutoParams):
             return None
         try:
             normalized = value.replace("Z", "+00:00")
-            return datetime.fromisoformat(normalized).astimezone(timezone.utc).timestamp()
+            return (
+                datetime.fromisoformat(normalized).astimezone(timezone.utc).timestamp()
+            )
         except ValueError:
             return None
 
@@ -1174,7 +1171,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
 
     # --- Tool Call Preparation ---
 
-    def _build_call_params(
+    def _build_call_params(  # noqa: C901
         self,
         *,
         tool: Tool,
@@ -1212,9 +1209,10 @@ class ToolLibrary(Module, metaclass=AutoParams):
         if config.get("inject_message", False):
             call_params["message"] = message
 
-        if config.get("inject_notification", False) and config.get(
-            "tool_kind"
-        ) != "agent":
+        if (
+            config.get("inject_notification", False)
+            and config.get("tool_kind") != "agent"
+        ):
             call_params["notification"] = self._build_notification_handle(
                 tool_name=tool_name
             )
@@ -1366,13 +1364,17 @@ class ToolLibrary(Module, metaclass=AutoParams):
         )
 
         execution_scope = {
-            "session_id": session_id if isinstance(session_id, str) and session_id else None,
+            "session_id": session_id
+            if isinstance(session_id, str) and session_id
+            else None,
             "run_id": run_id,
             "parent_run_id": task.metadata.get("parent_run_id"),
             "root_run_id": task.metadata.get("root_run_id"),
             "checkpoint_store": checkpoint_store,
             "agent_inbox": task_inbox,
-            "task_activity_recorder": TaskActivityRecorder(task.task_id, self.task_store),
+            "task_activity_recorder": TaskActivityRecorder(
+                task.task_id, self.task_store
+            ),
         }
         future = Executor.get_instance().submit(
             partial(
@@ -1475,7 +1477,9 @@ class ToolLibrary(Module, metaclass=AutoParams):
             runner_params.setdefault("run_id", task.task_id)
         runner_params["tool_call_id"] = tool_id
         execution_scope = {
-            "session_id": session_id if isinstance(session_id, str) and session_id else None,
+            "session_id": session_id
+            if isinstance(session_id, str) and session_id
+            else None,
             "run_id": task.task_id,
             "parent_run_id": (
                 parent_run_id
@@ -1493,7 +1497,9 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 tool_name=tool_name,
                 agent_inbox=root_agent_inbox,
             ),
-            "task_activity_recorder": TaskActivityRecorder(task.task_id, self.task_store),
+            "task_activity_recorder": TaskActivityRecorder(
+                task.task_id, self.task_store
+            ),
         }
         future = Executor.get_instance().submit(
             partial(
