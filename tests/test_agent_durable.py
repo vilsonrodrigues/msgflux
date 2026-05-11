@@ -3,6 +3,7 @@ from unittest.mock import Mock
 import pytest
 
 from msgflux.chat_messages import ChatMessages
+from msgflux.context import ExecutionScope
 from msgflux.data.stores import InMemoryCheckpointStore
 from msgflux.models.response import ModelResponse
 from msgflux.nn.modules.agent import Agent
@@ -52,6 +53,21 @@ def test_agent_saves_completed_checkpoint():
     assert state is not None
     assert state["status"] == "completed"
     assert state["messages"]["session_id"] == "user_42"
+
+
+def test_agent_accepts_execution_scope_for_checkpoint_identity():
+    store = InMemoryCheckpointStore()
+    agent = _make_agent(checkpointer=store)
+    agent.generator.forward = Mock(return_value=_text_response("scoped"))
+
+    scope = ExecutionScope(session_id="user_42", namespace="outer", run_id="run_scope")
+    result = agent("Use the scoped identity", scope=scope)
+
+    assert result == "scoped"
+    state = store.load_state("test_agent", "user_42", "run_scope")
+    assert state is not None
+    assert state["status"] == "completed"
+    assert state["messages"]["namespace"] == "test_agent"
 
 
 def test_agent_resumes_exact_run_id():
