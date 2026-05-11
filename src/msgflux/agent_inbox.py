@@ -15,6 +15,7 @@ from xml.sax.saxutils import escape
 
 from msgflux.context import ExecutionScope
 from msgflux.data.stores.registry import register_store
+from msgflux.runtime.events import emit_inbox_notification, emit_tool_update
 from msgflux.utils.console import cprint
 
 # --- Module Utilities ---
@@ -352,7 +353,7 @@ class ToolNotificationHandle:
         if metadata:
             payload.update(dict(metadata))
 
-        return self._agent_inbox.publish(
+        published = self._agent_inbox.publish(
             AgentNotification(
                 notification_id=uuid4().hex[:8],
                 source=source or self._source,
@@ -364,6 +365,8 @@ class ToolNotificationHandle:
                 created_at=_utc_now(),
             )
         )
+        emit_tool_update(None, status=status, hint=hint, data=published.metadata)
+        return published
 
     def notify(
         self,
@@ -504,6 +507,12 @@ class AgentInbox:
                                     else ""
                                 ),
                             )
+                        emit_inbox_notification(
+                            source=normalized.source,
+                            status=normalized.status,
+                            ref=normalized.ref,
+                            notification_id=normalized.notification_id,
+                        )
                         return deepcopy(normalized)
             notifications.append(normalized)
             self._save_notifications_locked(notifications)
@@ -512,6 +521,12 @@ class AgentInbox:
                 "notification_publish",
                 self._render_notification_payload(normalized),
             )
+        emit_inbox_notification(
+            source=normalized.source,
+            status=normalized.status,
+            ref=normalized.ref,
+            notification_id=normalized.notification_id,
+        )
         return deepcopy(normalized)
 
     def control(

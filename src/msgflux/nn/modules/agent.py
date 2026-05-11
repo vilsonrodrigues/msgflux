@@ -52,6 +52,19 @@ from msgflux.nn.modules.generator import Generator
 from msgflux.nn.modules.module import Module
 from msgflux.nn.modules.tool import ToolLibrary, ToolResponses
 from msgflux.nn.parameter import Parameter
+from msgflux.runtime.events import (
+    EventType,
+    ToolCallMetadata,
+    emit_agent_complete,
+    emit_agent_error,
+    emit_agent_resumed,
+    emit_agent_start,
+    emit_checkpoint_saved,
+    emit_event,
+    emit_model_request,
+    emit_model_response,
+    emit_tool_call,
+)
 from msgflux.tools.definitions import ToolDefinitions
 from msgflux.utils.chat import ChatBlock, response_format_from_msgspec_struct
 from msgflux.utils.common import has_format_placeholder, is_jinja_template
@@ -500,7 +513,12 @@ class Agent(Module, metaclass=AutoParams):
             kwargs.get("messages"),
             scope=requested_scope,
         )
+        resumed_status = (
+            resumed.get("checkpoint_status") if resumed is not None else None
+        )
         inputs = resumed or self._prepare_inputs(message, **kwargs)
+        inputs = dict(inputs)
+        inputs.pop("checkpoint_status", None)
 
         effective_checkpointer = self._get_effective_checkpointer()
         effective_inbox = self._get_effective_agent_inbox()
@@ -514,6 +532,12 @@ class Agent(Module, metaclass=AutoParams):
             checkpoint_store=effective_checkpointer,
             agent_inbox=effective_inbox,
         ):
+            emit_agent_start(self.get_module_name(), resumed=resumed is not None)
+            if resumed is not None:
+                emit_agent_resumed(
+                    self.get_module_name(),
+                    status=resumed_status,
+                )
             try:
                 model_response = self._execute_model(
                     prefilling=self.prefilling,
@@ -525,16 +549,20 @@ class Agent(Module, metaclass=AutoParams):
                 self._checkpoint_save(
                     inputs.get("messages"), inputs.get("vars", {}), status="stopped"
                 )
+                emit_agent_error(self.get_module_name(), "stopped")
                 raise
             except TaskPauseRequestedError:
                 self._checkpoint_save(
                     inputs.get("messages"), inputs.get("vars", {}), status="paused"
                 )
+                emit_agent_error(self.get_module_name(), "paused")
                 raise
-            except Exception:
+            except Exception as exc:
                 self._checkpoint_save_on_error(inputs)
+                emit_agent_error(self.get_module_name(), exc)
                 raise
             response = self._process_model_response(message, model_response, **inputs)
+            emit_agent_complete(self.get_module_name())
             return response
 
     async def aforward(
@@ -548,7 +576,12 @@ class Agent(Module, metaclass=AutoParams):
             kwargs.get("messages"),
             scope=requested_scope,
         )
+        resumed_status = (
+            resumed.get("checkpoint_status") if resumed is not None else None
+        )
         inputs = resumed or await self._aprepare_inputs(message, **kwargs)
+        inputs = dict(inputs)
+        inputs.pop("checkpoint_status", None)
 
         effective_checkpointer = self._get_effective_checkpointer()
         effective_inbox = self._get_effective_agent_inbox()
@@ -562,6 +595,12 @@ class Agent(Module, metaclass=AutoParams):
             checkpoint_store=effective_checkpointer,
             agent_inbox=effective_inbox,
         ):
+            emit_agent_start(self.get_module_name(), resumed=resumed is not None)
+            if resumed is not None:
+                emit_agent_resumed(
+                    self.get_module_name(),
+                    status=resumed_status,
+                )
             try:
                 model_response = await self._aexecute_model(
                     prefilling=self.prefilling,
@@ -575,6 +614,7 @@ class Agent(Module, metaclass=AutoParams):
                     inputs.get("vars", {}),
                     status="stopped",
                 )
+                emit_agent_error(self.get_module_name(), "stopped")
                 raise
             except TaskPauseRequestedError:
                 await self._acheckpoint_save(
@@ -582,15 +622,18 @@ class Agent(Module, metaclass=AutoParams):
                     inputs.get("vars", {}),
                     status="paused",
                 )
+                emit_agent_error(self.get_module_name(), "paused")
                 raise
-            except Exception:
+            except Exception as exc:
                 await self._acheckpoint_save_on_error(inputs)
+                emit_agent_error(self.get_module_name(), exc)
                 raise
             response = await self._aprocess_model_response(
                 message,
                 model_response,
                 **inputs,
             )
+            emit_agent_complete(self.get_module_name())
             return response
 
     # --- Model Execution ---
@@ -616,6 +659,10 @@ class Agent(Module, metaclass=AutoParams):
         )
         if self.config.get("verbose", False):
             cprint(f"[{self.name}][call_model]", bc="br1", ls="b")
+        emit_model_request(
+            self.get_module_name(),
+            message_count=len(model_execution_params.get("messages") or []),
+        )
         return self.generator(**model_execution_params)
 
     async def _aexecute_model(
@@ -639,6 +686,10 @@ class Agent(Module, metaclass=AutoParams):
         )
         if self.config.get("verbose", False):
             cprint(f"[{self.name}][call_model]", bc="br1", ls="b")
+        emit_model_request(
+            self.get_module_name(),
+            message_count=len(model_execution_params.get("messages") or []),
+        )
         return await self.generator.acall(**model_execution_params)
 
     def _prepare_model_execution(
@@ -768,6 +819,7 @@ class Agent(Module, metaclass=AutoParams):
             response_type = "tool_responses"
             reasoning = None
 
+        emit_model_response(self.get_module_name(), response_type=response_type)
         self._append_response_to_chat_messages(
             messages,
             raw_response,
@@ -841,6 +893,7 @@ class Agent(Module, metaclass=AutoParams):
             response_type = "tool_responses"
             reasoning = None
 
+        emit_model_response(self.get_module_name(), response_type=response_type)
         self._append_response_to_chat_messages(
             messages,
             raw_response,
@@ -1188,6 +1241,20 @@ class Agent(Module, metaclass=AutoParams):
             for call in tool_callings:
                 repr_str = f"[{self.name}][tool_call] {call[1]}: {call[2]}"
                 cprint(repr_str, bc="br2", ls="b")
+        for step, call in enumerate(tool_callings, start=1):
+            emit_tool_call(
+                ToolCallMetadata(
+                    tool_call_id=call[0],
+                    tool_name=call[1],
+                    caller_name=self.get_module_name(),
+                    step=step,
+                    arguments=(
+                        call[2]
+                        if len(call) > 2 and isinstance(call[2], Mapping)
+                        else {}
+                    ),
+                )
+            )
         tool_results = self.tool_library(
             tool_callings=tool_callings,
             message=message,
@@ -1217,6 +1284,20 @@ class Agent(Module, metaclass=AutoParams):
             for call in tool_callings:
                 repr_str = f"[{self.name}][tool_call] {call[1]}: {call[2]}"
                 cprint(repr_str, bc="br2", ls="b")
+        for step, call in enumerate(tool_callings, start=1):
+            emit_tool_call(
+                ToolCallMetadata(
+                    tool_call_id=call[0],
+                    tool_name=call[1],
+                    caller_name=self.get_module_name(),
+                    step=step,
+                    arguments=(
+                        call[2]
+                        if len(call) > 2 and isinstance(call[2], Mapping)
+                        else {}
+                    ),
+                )
+            )
         tool_results = await self.tool_library.acall(
             tool_callings=tool_callings,
             message=message,
@@ -2114,6 +2195,15 @@ class Agent(Module, metaclass=AutoParams):
             reason = notification.hint or notification.metadata.get("reason")
             task_handle = get_execution_context().get("task_handle")
             task_id = getattr(task_handle, "task_id", None)
+            emit_event(
+                EventType.CONTROL_RECEIVED,
+                {
+                    "command": command,
+                    "reason": str(reason) if reason else None,
+                    "task_id": task_id,
+                    "notification_id": notification.notification_id,
+                },
+            )
 
             if command in {"stop", "cancel"}:
                 raise TaskStopRequestedError(
@@ -2357,6 +2447,12 @@ class Agent(Module, metaclass=AutoParams):
             },
         }
         checkpointer.save_state(self.get_module_name(), session_id, run_id, state)
+        emit_checkpoint_saved(
+            namespace=self.get_module_name(),
+            session_id=session_id,
+            run_id=run_id,
+            status=status,
+        )
 
     async def _acheckpoint_save(
         self,
@@ -2392,6 +2488,12 @@ class Agent(Module, metaclass=AutoParams):
             )
         else:
             checkpointer.save_state(self.get_module_name(), session_id, run_id, state)
+        emit_checkpoint_saved(
+            namespace=self.get_module_name(),
+            session_id=session_id,
+            run_id=run_id,
+            status=status,
+        )
 
     def _checkpoint_save_on_error(self, inputs: Mapping[str, Any]) -> None:
         if self._get_effective_checkpointer() is None:
@@ -2448,6 +2550,7 @@ class Agent(Module, metaclass=AutoParams):
             "vars": state.get("vars", {}),
             "model_preference": state.get("model_preference"),
             "scope": effective_scope,
+            "checkpoint_status": state.get("status"),
         }
 
     async def _atry_resume_from_checkpoint(
@@ -2497,6 +2600,7 @@ class Agent(Module, metaclass=AutoParams):
             "vars": state.get("vars", {}),
             "model_preference": state.get("model_preference"),
             "scope": effective_scope,
+            "checkpoint_status": state.get("status"),
         }
 
     # --- Configuration ---

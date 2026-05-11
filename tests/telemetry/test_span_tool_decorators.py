@@ -3,7 +3,8 @@
 import pytest
 from unittest.mock import Mock, patch
 
-from msgflux.telemetry.span import set_tool_attributes, aset_tool_attributes
+from msgflux.runtime.events import TOOL_CALL_METADATA_KEY, ToolCallMetadata
+from msgflux.telemetry.span import aset_tool_attributes, set_tool_attributes
 
 
 class MockTool:
@@ -85,6 +86,32 @@ class TestSetToolAttributes:
 
         assert result == "result"
         mock_attrs.set_tool_call_id.assert_called_with("call_123")
+
+    @patch("msgflux.telemetry.span.trace.get_current_span")
+    @patch("msgflux.telemetry.span.MsgTraceAttributes")
+    @patch("msgflux.telemetry.span.envs")
+    def test_decorator_extracts_tool_metadata(
+        self, mock_envs, mock_attrs, mock_get_span
+    ):
+        """Runtime tool metadata must not be serialized as tool args."""
+        mock_span = Mock()
+        mock_span.is_recording.return_value = True
+        mock_get_span.return_value = mock_span
+        mock_envs.telemetry_capture_tool_call_responses = False
+
+        tool = MockTool(name="metadata_tool")
+
+        @set_tool_attributes(execution_type="local")
+        def execute(self, **kwargs):
+            assert TOOL_CALL_METADATA_KEY in kwargs
+            return "result"
+
+        metadata = ToolCallMetadata(tool_call_id="call_meta")
+        result = execute(tool, **{TOOL_CALL_METADATA_KEY: metadata, "x": 1})
+
+        assert result == "result"
+        mock_attrs.set_tool_call_id.assert_called_with("call_meta")
+        mock_attrs.set_tool_call_arguments.assert_called_with('{"x":1}')
 
     @patch("msgflux.telemetry.span.trace.get_current_span")
     def test_decorator_when_span_not_recording(self, mock_get_span):
