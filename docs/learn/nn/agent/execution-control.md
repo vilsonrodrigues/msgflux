@@ -33,9 +33,40 @@ scope = mf.ExecutionScope(
 result = agent("Investigate this ticket.", scope=scope)
 ```
 
-`session_id` identifies the conversation or user session. `run_id` identifies
-the current resumable execution. If no scope is passed, msgFlux still runs with
-a default session.
+- `session_id`: identifies the conversation, user session, or chat thread.
+- `run_id`: identifies the current resumable execution inside that session.
+
+If no scope is passed, msgFlux still runs with a default session.
+
+## Checkpointing
+
+Use a checkpointer when a run should resume after pause, stop, process restart,
+or tool-driven continuation.
+
+```python
+checkpointer = mf.Store.checkpoint(
+    "sqlite",
+    path=".msgflux/checkpoints.sqlite3",
+)
+
+agent = nn.Agent(
+    name="support_agent",
+    model=mf.Model.chat_completion("openai/gpt-4.1-mini"),
+    checkpointer=checkpointer,
+)
+
+scope = mf.ExecutionScope(
+    session_id="customer_42",
+    run_id="ticket_9001",
+)
+
+agent("Investigate this ticket.", scope=scope)
+```
+
+Available checkpoint stores:
+
+- `mf.Store.checkpoint("in_memory")`
+- `mf.Store.checkpoint("sqlite", path=".msgflux/checkpoints.sqlite3")`
 
 ## Persisting The Inbox
 
@@ -49,13 +80,53 @@ Pass a store when pending messages and control signals should survive process
 restarts or be written by another runtime component:
 
 ```python
-store = mf.SQLiteAgentInboxStore(".msgflux/inbox.sqlite3")
+inbox_store = mf.Store.agent_inbox(
+    "sqlite",
+    path=".msgflux/inbox.sqlite3",
+)
 
 agent = nn.Agent(
     name="support_agent",
     model=mf.Model.chat_completion("openai/gpt-4.1-mini"),
-    agent_inbox=mf.AgentInbox(store=store),
+    agent_inbox=mf.AgentInbox(store=inbox_store),
 )
+```
+
+Available inbox stores:
+
+- `mf.Store.agent_inbox("in_memory")`
+- `mf.Store.agent_inbox("sqlite", path=".msgflux/inbox.sqlite3")`
+
+You can also instantiate concrete classes directly, but the `Store` factory is
+the preferred public interface for application code.
+
+## Full Persistent Runtime
+
+Use both stores when you want resumable execution and durable inbox delivery.
+
+```python
+checkpointer = mf.Store.checkpoint(
+    "sqlite",
+    path=".msgflux/checkpoints.sqlite3",
+)
+inbox_store = mf.Store.agent_inbox(
+    "sqlite",
+    path=".msgflux/inbox.sqlite3",
+)
+
+agent = nn.Agent(
+    name="support_agent",
+    model=mf.Model.chat_completion("openai/gpt-4.1-mini"),
+    checkpointer=checkpointer,
+    agent_inbox=mf.AgentInbox(store=inbox_store),
+)
+
+scope = mf.ExecutionScope(
+    session_id="customer_42",
+    run_id="ticket_9001",
+)
+
+agent("Investigate this ticket.", scope=scope)
 ```
 
 When the agent starts, it binds the inbox to the active `ExecutionScope` using
@@ -71,7 +142,7 @@ run_id = "ticket_9001"
 For tests and local shared-memory scenarios, use `InMemoryAgentInboxStore`:
 
 ```python
-store = mf.InMemoryAgentInboxStore()
+store = mf.Store.agent_inbox("in_memory")
 agent = nn.Agent(
     name="support_agent",
     model=model,
@@ -107,7 +178,7 @@ If the writer does not have the `agent` object, create another inbox with the
 same store and execution key:
 
 ```python
-store = mf.SQLiteAgentInboxStore(".msgflux/inbox.sqlite3")
+store = mf.Store.agent_inbox("sqlite", path=".msgflux/inbox.sqlite3")
 
 external_inbox = mf.AgentInbox(
     store=store,

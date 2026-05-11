@@ -4,9 +4,10 @@ import json
 import sqlite3
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Mapping, Optional
+from typing import Any, Dict, List, Mapping
 
 from msgflux.data.stores.base import CheckpointStore
+from msgflux.data.stores.registry import register_store
 
 _UPSERT_STATE = """\
 INSERT INTO checkpoints
@@ -66,6 +67,7 @@ CREATE INDEX IF NOT EXISTS idx_events_run
 """
 
 
+@register_store("checkpoint", "sqlite")
 class SQLiteCheckpointStore(CheckpointStore):
     """SQLite-backed checkpoint store."""
 
@@ -107,7 +109,7 @@ class SQLiteCheckpointStore(CheckpointStore):
         namespace: str,
         session_id: str,
         run_id: str,
-    ) -> Optional[Mapping[str, Any]]:
+    ) -> Mapping[str, Any] | None:
         row = self._conn.execute(
             _SELECT_STATE,
             (namespace, session_id, run_id),
@@ -183,8 +185,8 @@ class SQLiteCheckpointStore(CheckpointStore):
         namespace: str,
         session_id: str,
         *,
-        status: Optional[str] = None,
-        limit: Optional[int] = None,
+        status: str | None = None,
+        limit: int | None = None,
     ) -> List[Mapping[str, Any]]:
         query = (
             "SELECT run_id, status, updated_at FROM checkpoints "
@@ -217,10 +219,10 @@ class SQLiteCheckpointStore(CheckpointStore):
 
     def clear(
         self,
-        namespace: Optional[str] = None,
-        session_id: Optional[str] = None,
+        namespace: str | None = None,
+        session_id: str | None = None,
         *,
-        older_than: Optional[float] = None,
+        older_than: float | None = None,
     ) -> int:
         query = "DELETE FROM checkpoints WHERE 1=1"
         params: List[Any] = []

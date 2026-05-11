@@ -1,4 +1,5 @@
 from msgflux.data.stores import InMemoryCheckpointStore, SQLiteCheckpointStore
+from msgflux.data.stores import Store
 
 
 def test_in_memory_checkpoint_store_state_and_events():
@@ -45,3 +46,15 @@ def test_sqlite_checkpoint_store_roundtrip(tmp_path):
     assert runs[0]["status"] == "completed"
 
     store.close()
+
+
+def test_store_factory_creates_checkpoint_stores(tmp_path):
+    memory_store = Store.checkpoint("in_memory")
+    sqlite_store = Store.checkpoint(
+        "sqlite", path=str(tmp_path / "checkpoints.sqlite3")
+    )
+
+    assert isinstance(memory_store, InMemoryCheckpointStore)
+    assert isinstance(sqlite_store, SQLiteCheckpointStore)
+
+    sqlite_store.close()
