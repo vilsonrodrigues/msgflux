@@ -1,6 +1,6 @@
 # Event Streaming
 
-Use `stream_events()` when you need execution signals for a CLI, web UI,
+Use `astream_events()` when you need live execution signals for a CLI, web UI,
 debugger, or orchestration layer.
 
 Event streaming is separate from response streaming. Response streaming yields
@@ -32,8 +32,9 @@ for event in events:
     print(event.name, event.attributes)
 ```
 
-If you pass a callback, `stream_events()` returns the normal module result and
-calls the callback once for every captured event:
+`stream_events()` is synchronous. It captures events during execution and returns
+them after the module finishes. If you pass a callback, the callback is invoked
+after execution with the captured events, not as a live stream:
 
 ```python
 seen = []
@@ -43,7 +44,7 @@ result = agent.stream_events(
 )
 ```
 
-## Async Use
+## Live Async Use
 
 Use `astream_events()` to consume events while execution is still running:
 
