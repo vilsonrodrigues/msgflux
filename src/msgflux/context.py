@@ -26,6 +26,7 @@ class ExecutionScope:
     run_id: str | None = None
     parent_run_id: str | None = None
     root_run_id: str | None = None
+    permission_mode: str | None = None
 
     def with_overrides(
         self,
@@ -35,6 +36,7 @@ class ExecutionScope:
         run_id: str | None = None,
         parent_run_id: str | None = None,
         root_run_id: str | None = None,
+        permission_mode: str | None = None,
     ) -> ExecutionScope:
         resolved_run_id = run_id if run_id is not None else self.run_id
         return ExecutionScope(
@@ -49,6 +51,9 @@ class ExecutionScope:
                 if root_run_id is not None
                 else self.root_run_id or resolved_run_id
             ),
+            permission_mode=(
+                permission_mode if permission_mode is not None else self.permission_mode
+            ),
         )
 
     def to_dict(self) -> dict[str, str | None]:
@@ -58,6 +63,7 @@ class ExecutionScope:
             "run_id": self.run_id,
             "parent_run_id": self.parent_run_id,
             "root_run_id": self.root_run_id,
+            "permission_mode": self.permission_mode,
         }
 
 
@@ -116,6 +122,7 @@ def execution_context(
     run_id: str | None = None,
     parent_run_id: str | None = None,
     root_run_id: str | None = None,
+    permission_mode: str | None = None,
     checkpoint_store: Any = None,
     agent_inbox: Any = None,
     task_handle: Any = None,
@@ -174,12 +181,17 @@ def execution_context(
     else:
         resolved_root_run_id = resolved_run_id
 
+    resolved_permission_mode = (
+        permission_mode if permission_mode is not None else base_scope.permission_mode
+    )
+
     resolved_scope = ExecutionScope(
         session_id=resolved_session_id,
         namespace=resolved_namespace,
         run_id=resolved_run_id,
         parent_run_id=resolved_parent_run_id,
         root_run_id=resolved_root_run_id,
+        permission_mode=resolved_permission_mode,
     )
 
     current_checkpoint_store = _CURRENT_CHECKPOINT_STORE.get()
@@ -262,6 +274,7 @@ def get_execution_context() -> Mapping[str, Any | None]:
         "run_id": scope.run_id,
         "parent_run_id": scope.parent_run_id,
         "root_run_id": scope.root_run_id,
+        "permission_mode": scope.permission_mode,
         "checkpoint_store": _CURRENT_CHECKPOINT_STORE.get(),
         "agent_inbox": _CURRENT_AGENT_INBOX.get(),
         "task_handle": _CURRENT_TASK_HANDLE.get(),

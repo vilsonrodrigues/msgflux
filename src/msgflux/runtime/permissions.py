@@ -75,29 +75,47 @@ class PermissionManager:
     def __init__(
         self,
         *,
-        policy: PermissionPolicy = "bypass",
+        default_mode: PermissionPolicy = "bypass",
+        policy: PermissionPolicy | None = None,
         timeout: float | None = None,
     ) -> None:
-        self.policy = policy
+        self.default_mode = policy or default_mode
+        self._validate_policy(self.default_mode)
         self.timeout = timeout
         self._pending: dict[str, asyncio.Future[PermissionDecision]] = {}
         self._requests: dict[str, PermissionRequest] = {}
 
     # --- Policy ---
 
+    @property
+    def policy(self) -> PermissionPolicy:
+        return self.default_mode
+
+    @policy.setter
+    def policy(self, policy: PermissionPolicy) -> None:
+        self.set_default_mode(policy)
+
+    def set_default_mode(self, mode: PermissionPolicy) -> None:
+        self._validate_policy(mode)
+        self.default_mode = mode
+
     def set_policy(self, policy: PermissionPolicy) -> None:
-        self._validate_policy(policy)
-        self.policy = policy
+        self.set_default_mode(policy)
 
     @contextmanager
-    def use_policy(self, policy: PermissionPolicy) -> Iterator[None]:
-        self._validate_policy(policy)
-        previous_policy = self.policy
-        self.policy = policy
+    def use_default_mode(self, mode: PermissionPolicy) -> Iterator[None]:
+        self._validate_policy(mode)
+        previous_mode = self.default_mode
+        self.default_mode = mode
         try:
             yield
         finally:
-            self.policy = previous_policy
+            self.default_mode = previous_mode
+
+    @contextmanager
+    def use_policy(self, policy: PermissionPolicy) -> Iterator[None]:
+        with self.use_default_mode(policy):
+            yield
 
     # --- Request Lifecycle ---
 
@@ -137,7 +155,7 @@ class PermissionManager:
         policy: PermissionPolicy | None = None,
         timeout: float | None = None,
     ) -> PermissionDecision:
-        resolved_policy = policy or self.policy
+        resolved_policy = policy or self.default_mode
         self._requests[request.request_id] = request
         emit_permission_requested(
             {**request.to_dict(), "policy": resolved_policy},

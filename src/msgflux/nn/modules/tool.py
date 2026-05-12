@@ -45,6 +45,7 @@ from msgflux.runtime.events import (
     emit_tool_result,
     emit_tool_started,
 )
+from msgflux.runtime.permissions import PermissionManager, PermissionRuntimeError
 from msgflux.tasks import TaskActivityRecorder, TaskHandle, TaskStore
 from msgflux.telemetry.span import (
     aset_tool_attributes,
@@ -137,6 +138,12 @@ def _current_runtime_context_kwargs() -> Dict[str, Any]:
         "task_activity_recorder": context.get("task_activity_recorder"),
         "permission_manager": context.get("permission_manager"),
     }
+
+
+def _get_scope_permission_mode() -> str | None:
+    scope = get_execution_context().get("scope")
+    permission_mode = getattr(scope, "permission_mode", None)
+    return permission_mode if isinstance(permission_mode, str) else None
 
 
 def _call_with_runtime_context(
@@ -1386,6 +1393,152 @@ class ToolLibrary(Module, metaclass=AutoParams):
             parameters.pop(key, None)
         return parameters
 
+    def _get_tool_permission_config(
+        self,
+        *,
+        tool: Tool,
+        config: Mapping[str, Any],
+    ) -> Mapping[str, Any] | None:
+        permission = config.get("permission")
+        if permission is None:
+            permission = getattr(tool, "permission", None)
+        if permission is None and hasattr(tool, "impl"):
+            permission = getattr(tool.impl, "permission", None)
+        if permission in (None, False):
+            return None
+        if permission is True:
+            return {}
+        if not isinstance(permission, Mapping):
+            raise TypeError("Tool permission config must be a mapping, True, or None.")
+        return permission
+
+    def _resolve_permission_mode(
+        self,
+        permission_config: Mapping[str, Any],
+        manager: PermissionManager,
+    ) -> str:
+        mode = permission_config.get("mode") or permission_config.get("policy")
+        if mode is None:
+            mode = _get_scope_permission_mode()
+        if mode is None:
+            mode = manager.default_mode
+        if not isinstance(mode, str):
+            raise TypeError("Permission mode must be a string.")
+        return mode
+
+    def _resolve_permission_resource(
+        self,
+        permission_config: Mapping[str, Any],
+        tool_params: Any,
+    ) -> str | None:
+        resource = permission_config.get("resource")
+        if isinstance(resource, str):
+            return resource
+        resource_arg = permission_config.get("resource_arg")
+        if isinstance(resource_arg, str) and isinstance(tool_params, Mapping):
+            value = tool_params.get(resource_arg)
+            return str(value) if value is not None else None
+        return None
+
+    async def _aenforce_tool_permission(
+        self,
+        *,
+        tool_name: str,
+        tool_params: Any,
+        permission_config: Mapping[str, Any] | None,
+        metadata: ToolCallMetadata,
+    ) -> None:
+        if permission_config is None:
+            return
+        context = get_execution_context()
+        manager = context.get("permission_manager")
+        manager_missing = manager is None
+        if manager is None:
+            manager = PermissionManager()
+        if not isinstance(manager, PermissionManager):
+            raise TypeError("`permission_manager` must be a PermissionManager.")
+        mode = self._resolve_permission_mode(permission_config, manager)
+        if manager_missing and mode == "ask_user":
+            raise PermissionRuntimeError(
+                "`ask_user` permission mode requires an active PermissionManager."
+            )
+        action = permission_config.get("action") or tool_name
+        if not isinstance(action, str):
+            raise TypeError("Permission action must be a string.")
+        risk = permission_config.get("risk", "medium")
+        permission_metadata = permission_config.get("metadata")
+        if permission_metadata is not None and not isinstance(
+            permission_metadata, Mapping
+        ):
+            raise TypeError("Permission metadata must be a mapping.")
+        await manager.enforce(
+            action,
+            resource=self._resolve_permission_resource(
+                permission_config,
+                tool_params,
+            ),
+            tool_name=tool_name,
+            tool_call_id=metadata.tool_call_id,
+            caller_name=metadata.caller_name,
+            risk=risk,
+            reason=permission_config.get("reason"),
+            metadata=permission_metadata,
+            policy=mode,
+        )
+
+    def _enforce_tool_permission(
+        self,
+        *,
+        tool_name: str,
+        tool_params: Any,
+        permission_config: Mapping[str, Any] | None,
+        metadata: ToolCallMetadata,
+    ) -> None:
+        if permission_config is None:
+            return
+        try:
+            F.wait_for(
+                self._aenforce_tool_permission,
+                tool_name=tool_name,
+                tool_params=tool_params,
+                permission_config=permission_config,
+                metadata=metadata,
+            )
+        except PermissionRuntimeError:
+            raise
+
+    def _build_permission_checked_call(
+        self,
+        *,
+        tool: Tool,
+        tool_name: str,
+        tool_params: Any,
+        call_params: Dict[str, Any],
+        permission_config: Mapping[str, Any] | None,
+        metadata: ToolCallMetadata,
+    ) -> _RuntimeContextCall:
+        runtime_context = _current_runtime_context_kwargs()
+
+        def _run():
+            self._enforce_tool_permission(
+                tool_name=tool_name,
+                tool_params=tool_params,
+                permission_config=permission_config,
+                metadata=metadata,
+            )
+            return tool(**call_params)
+
+        async def _arun():
+            await self._aenforce_tool_permission(
+                tool_name=tool_name,
+                tool_params=tool_params,
+                permission_config=permission_config,
+                metadata=metadata,
+            )
+            return await tool.acall(**call_params)
+
+        return _RuntimeContextCall(runtime_context, _run, _arun)
+
     def _build_tool_call_metadata(
         self,
         *,
@@ -1455,6 +1608,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
         task_handle: TaskHandle,
         tool_name: str,
         call_params: Dict[str, Any],
+        permission_config: Mapping[str, Any] | None = None,
         execution_scope: Optional[Dict[str, Any]] = None,
         agent_inbox: Optional[AgentInbox] = None,
     ) -> Any:
@@ -1462,6 +1616,15 @@ class ToolLibrary(Module, metaclass=AutoParams):
         with execution_context(**scope):
             task_handle.set_running()
             try:
+                metadata = call_params.get(TOOL_CALL_METADATA_KEY)
+                if not isinstance(metadata, ToolCallMetadata):
+                    metadata = ToolCallMetadata(tool_name=tool_name)
+                self._enforce_tool_permission(
+                    tool_name=tool_name,
+                    tool_params=call_params,
+                    permission_config=permission_config,
+                    metadata=metadata,
+                )
                 result = tool(**call_params)
             except TaskStopRequestedError as exc:
                 task_handle.stop(reason=str(exc))
@@ -1603,6 +1766,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
                         run_id=run_id,
                         parent_run_id=task.metadata.get("parent_run_id"),
                         root_run_id=task.metadata.get("root_run_id"),
+                        permission_mode=task.metadata.get("permission_mode"),
                     ),
                     "model_preference": restored_model_preference,
                     "vars": restored_vars,
@@ -1647,12 +1811,14 @@ class ToolLibrary(Module, metaclass=AutoParams):
         tool_params: Any,
         call_params: Dict[str, Any],
         config: Mapping[str, Any],
+        permission_config: Mapping[str, Any] | None = None,
     ) -> ToolCall:
         task_kind = config.get("tool_kind", "tool")
         execution_context = get_execution_context()
         session_id = execution_context.get("session_id")
         parent_run_id = execution_context.get("run_id")
         root_run_id = execution_context.get("root_run_id")
+        permission_mode = execution_context.get("permission_mode")
         checkpoint_store = execution_context.get("checkpoint_store")
         permission_manager = execution_context.get("permission_manager")
         root_agent_inbox = execution_context.get("agent_inbox") or self.agent_inbox
@@ -1675,6 +1841,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 "session_id": session_id,
                 "parent_run_id": parent_run_id,
                 "root_run_id": root_run_id,
+                "permission_mode": permission_mode,
                 "checkpoint_session_id": session_id,
                 "checkpoint_run_id": task_id if task_kind == "agent" else None,
                 "supports_activity": task_kind == "agent",
@@ -1711,6 +1878,9 @@ class ToolLibrary(Module, metaclass=AutoParams):
                     if isinstance(root_run_id, str) and root_run_id
                     else task.task_id
                 ),
+                permission_mode=(
+                    permission_mode if isinstance(permission_mode, str) else None
+                ),
             )
         runner_params[TOOL_CALL_METADATA_KEY] = self._build_tool_call_metadata(
             tool_id=tool_id,
@@ -1731,6 +1901,9 @@ class ToolLibrary(Module, metaclass=AutoParams):
             ),
             "root_run_id": (
                 root_run_id if isinstance(root_run_id, str) and root_run_id else None
+            ),
+            "permission_mode": (
+                permission_mode if isinstance(permission_mode, str) else None
             ),
             "checkpoint_store": checkpoint_store,
             "permission_manager": permission_manager,
@@ -1757,6 +1930,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 ),
                 tool_name=tool_name,
                 call_params=runner_params,
+                permission_config=permission_config,
                 execution_scope=execution_scope,
                 agent_inbox=root_agent_inbox,
             )
@@ -1855,6 +2029,10 @@ class ToolLibrary(Module, metaclass=AutoParams):
             # Get tool
             tool = self.library[tool_name]
             config = self.tool_configs.get(tool_name, {})
+            permission_config = self._get_tool_permission_config(
+                tool=tool,
+                config=config,
+            )
             if (
                 activity_recorder is not None
                 and tool_name not in self._runtime_tool_names
@@ -1872,16 +2050,20 @@ class ToolLibrary(Module, metaclass=AutoParams):
 
             if config.get("spawn", False):
                 return_directly = False
-                call_params[TOOL_CALL_METADATA_KEY] = self._build_tool_call_metadata(
+                metadata = self._build_tool_call_metadata(
                     tool_id=tool_id,
                     tool_name=tool_name,
                     tool_params=tool_params,
                 )
+                call_params[TOOL_CALL_METADATA_KEY] = metadata
                 F.spawn(
-                    _RuntimeContextCall(
-                        _current_runtime_context_kwargs(),
-                        partial(tool, **call_params),
-                        partial(tool.acall, **call_params),
+                    self._build_permission_checked_call(
+                        tool=tool,
+                        tool_name=tool_name,
+                        tool_params=tool_params,
+                        call_params=call_params,
+                        permission_config=permission_config,
+                        metadata=metadata,
                     )
                 )
                 tool_calls.append(
@@ -1905,6 +2087,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
                         tool_params=tool_params,
                         call_params=call_params,
                         config=config,
+                        permission_config=permission_config,
                     )
                 )
                 continue
@@ -1921,16 +2104,20 @@ class ToolLibrary(Module, metaclass=AutoParams):
             if not config.get("return_direct", False):
                 return_directly = False
 
-            call_params[TOOL_CALL_METADATA_KEY] = self._build_tool_call_metadata(
+            metadata = self._build_tool_call_metadata(
                 tool_id=tool_id,
                 tool_name=tool_name,
                 tool_params=tool_params,
             )
+            call_params[TOOL_CALL_METADATA_KEY] = metadata
             prepared_calls.append(
-                _RuntimeContextCall(
-                    _current_runtime_context_kwargs(),
-                    partial(tool, **call_params),
-                    partial(tool.acall, **call_params),
+                self._build_permission_checked_call(
+                    tool=tool,
+                    tool_name=tool_name,
+                    tool_params=tool_params,
+                    call_params=call_params,
+                    permission_config=permission_config,
+                    metadata=metadata,
                 )
             )
 
@@ -2014,6 +2201,10 @@ class ToolLibrary(Module, metaclass=AutoParams):
             # Get tool
             tool = self.library[tool_name]
             config = self.tool_configs.get(tool_name, {})
+            permission_config = self._get_tool_permission_config(
+                tool=tool,
+                config=config,
+            )
             if (
                 activity_recorder is not None
                 and tool_name not in self._runtime_tool_names
@@ -2031,16 +2222,20 @@ class ToolLibrary(Module, metaclass=AutoParams):
 
             if config.get("spawn", False):
                 return_directly = False
-                call_params[TOOL_CALL_METADATA_KEY] = self._build_tool_call_metadata(
+                metadata = self._build_tool_call_metadata(
                     tool_id=tool_id,
                     tool_name=tool_name,
                     tool_params=tool_params,
                 )
+                call_params[TOOL_CALL_METADATA_KEY] = metadata
                 await F.aspawn(
-                    _RuntimeContextCall(
-                        _current_runtime_context_kwargs(),
-                        partial(tool, **call_params),
-                        partial(tool.acall, **call_params),
+                    self._build_permission_checked_call(
+                        tool=tool,
+                        tool_name=tool_name,
+                        tool_params=tool_params,
+                        call_params=call_params,
+                        permission_config=permission_config,
+                        metadata=metadata,
                     )
                 )
                 tool_calls.append(
@@ -2064,6 +2259,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
                         tool_params=tool_params,
                         call_params=call_params,
                         config=config,
+                        permission_config=permission_config,
                     )
                 )
                 continue
@@ -2080,16 +2276,20 @@ class ToolLibrary(Module, metaclass=AutoParams):
             if not config.get("return_direct", False):
                 return_directly = False
 
-            call_params[TOOL_CALL_METADATA_KEY] = self._build_tool_call_metadata(
+            metadata = self._build_tool_call_metadata(
                 tool_id=tool_id,
                 tool_name=tool_name,
                 tool_params=tool_params,
             )
+            call_params[TOOL_CALL_METADATA_KEY] = metadata
             prepared_calls.append(
-                _RuntimeContextCall(
-                    _current_runtime_context_kwargs(),
-                    partial(tool, **call_params),
-                    partial(tool.acall, **call_params),
+                self._build_permission_checked_call(
+                    tool=tool,
+                    tool_name=tool_name,
+                    tool_params=tool_params,
+                    call_params=call_params,
+                    permission_config=permission_config,
+                    metadata=metadata,
                 )
             )
 

@@ -2,7 +2,8 @@ import asyncio
 
 import pytest
 
-from msgflux.context import execution_context, get_execution_context
+import msgflux as mf
+from msgflux.context import ExecutionScope, execution_context, get_execution_context
 from msgflux.models.response import ModelResponse
 from msgflux.models.tool_call_agg import ToolCallAggregator
 from msgflux.nn import Agent
@@ -182,3 +183,133 @@ def test_agent_exposes_default_permission_manager_to_tools():
     agent("Read the active permission policy.")
 
     assert seen_policies == ["bypass"]
+
+
+def test_tool_permission_uses_scope_mode_over_manager_default():
+    @mf.tool_config(
+        permission={
+            "action": "file.write",
+            "risk": "high",
+            "resource_arg": "path",
+        }
+    )
+    def write_file(path: str, content: str) -> str:
+        """Write a file."""
+        return f"{path}:{content}"
+
+    manager = PermissionManager(default_mode="deny")
+    model = _ScriptedModel(
+        [
+            _tool_call_response(
+                "write_file",
+                {"path": "workspace/report.txt", "content": "ok"},
+            ),
+            _text_response("done"),
+        ]
+    )
+    agent = Agent(
+        name="Assistant",
+        model=model,
+        tools=[write_file],
+        permission_manager=manager,
+    )
+
+    with EventStream() as stream:
+        with execution_context(
+            scope=ExecutionScope(
+                session_id="user_1",
+                run_id="run_1",
+                permission_mode="bypass",
+            )
+        ):
+            agent("Write the report.")
+        stream.close()
+        events = stream.events
+
+    requested = next(
+        event for event in events if event.name == EventType.PERMISSION_REQUESTED
+    )
+    assert requested.attributes["policy"] == "bypass"
+    assert requested.attributes["action"] == "file.write"
+    assert requested.attributes["resource"] == "workspace/report.txt"
+
+
+def test_tool_permission_config_mode_overrides_scope_mode():
+    @mf.tool_config(
+        permission={
+            "action": "file.write",
+            "mode": "deny",
+        }
+    )
+    def write_file(path: str) -> str:
+        """Write a file."""
+        return path
+
+    model = _ScriptedModel(
+        [
+            _tool_call_response("write_file", {"path": "workspace/report.txt"}),
+            _text_response("done"),
+        ]
+    )
+    agent = Agent(
+        name="Assistant",
+        model=model,
+        tools=[write_file],
+        permission_manager=PermissionManager(default_mode="bypass"),
+    )
+
+    with execution_context(scope=ExecutionScope(permission_mode="bypass")):
+        response = agent("Write the report.")
+
+    assert response == "done"
+
+
+def test_subagent_tool_permissions_inherit_parent_scope_mode():
+    @mf.tool_config(
+        permission={
+            "action": "file.write",
+            "resource_arg": "path",
+        }
+    )
+    def write_file(path: str) -> str:
+        """Write a file."""
+        return path
+
+    child_model = _ScriptedModel(
+        [
+            _tool_call_response("write_file", {"path": "workspace/child.txt"}),
+            _text_response("child done"),
+        ]
+    )
+    child_agent = Agent(name="FileWorker", model=child_model, tools=[write_file])
+    parent_model = _ScriptedModel(
+        [
+            _tool_call_response("FileWorker", {"task": "Write child file."}),
+            _text_response("parent done"),
+        ]
+    )
+    parent_agent = Agent(
+        name="MainAgent",
+        model=parent_model,
+        tools=[child_agent],
+        permission_manager=PermissionManager(default_mode="deny"),
+    )
+
+    with EventStream() as stream:
+        with execution_context(
+            scope=ExecutionScope(
+                session_id="user_1",
+                run_id="run_parent",
+                permission_mode="bypass",
+            )
+        ):
+            parent_agent("Delegate file writing.")
+        stream.close()
+        events = stream.events
+
+    requested = next(
+        event for event in events if event.name == EventType.PERMISSION_REQUESTED
+    )
+    assert requested.attributes["policy"] == "bypass"
+    assert requested.attributes["tool_name"] == "write_file"
+    assert requested.attributes["caller_name"] == "FileWorker"
