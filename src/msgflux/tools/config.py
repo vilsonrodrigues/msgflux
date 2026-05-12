@@ -22,6 +22,7 @@ def tool_config(
     handoff: Optional[bool] = False,
     name_override: Optional[str] = None,
     retry: Optional[Any] = None,
+    permission: Optional[Dict[str, Any]] = None,
 ) -> Callable:
     """Decorator to inject meta-properties into functions, classes, or instances.
 
@@ -89,6 +90,10 @@ def tool_config(
             Retry configuration for this tool. Accepts a tenacity retry decorator
             for custom retry behavior, False to disable retry, or None (default)
             to use the default retry from envs.
+        permission:
+            Permission metadata for tools that require runtime approval. Expected
+            keys include `action`, `mode`, `risk`, `resource`, `resource_arg`,
+            `reason`, and `metadata`.
 
     Returns:
         A decorator that modifies the target by injecting the specified properties.
@@ -182,6 +187,7 @@ def tool_config(
                     "return_direct": _return_direct,
                     "name_overridden": name_override,
                     "retry": retry,
+                    "permission": permission,
                 }
             )
         }
