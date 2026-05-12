@@ -5,7 +5,12 @@ from msgflux.context import execution_context
 from msgflux.models.response import ModelResponse
 from msgflux.models.tool_call_agg import ToolCallAggregator
 from msgflux.nn import Agent, Module, ToolLibrary
-from msgflux.runtime import EventStream, EventType
+from msgflux.runtime import (
+    EventStream,
+    EventType,
+    emit_compaction_post,
+    emit_compaction_pre,
+)
 from msgflux.tasks import TaskStore
 
 
@@ -171,3 +176,35 @@ def test_checkpoint_save_emits_runtime_event():
     assert checkpoint_event.attributes["checkpoint_namespace"] == "Assistant"
     assert checkpoint_event.attributes["checkpoint_session_id"] == "session_1"
     assert checkpoint_event.attributes["status"] == "completed"
+
+
+def test_compaction_events_are_available_for_hooks():
+    with EventStream() as stream:
+        emit_compaction_pre(
+            target="messages",
+            strategy="summarize",
+            message_count=12,
+            token_count=4096,
+            metadata={"hook": "context_window"},
+        )
+        emit_compaction_post(
+            target="messages",
+            strategy="summarize",
+            message_count_before=12,
+            message_count_after=4,
+            token_count_before=4096,
+            token_count_after=900,
+            metadata={"hook": "context_window"},
+        )
+        stream.close()
+        events = stream.events
+
+    assert [event.name for event in events] == [
+        EventType.COMPACTION_PRE,
+        EventType.COMPACTION_POST,
+    ]
+    assert events[0].attributes["target"] == "messages"
+    assert events[0].attributes["strategy"] == "summarize"
+    assert events[0].attributes["message_count"] == 12
+    assert events[1].attributes["message_count_before"] == 12
+    assert events[1].attributes["message_count_after"] == 4

@@ -20,6 +20,8 @@ __all__ = [
     "emit_agent_resumed",
     "emit_agent_start",
     "emit_checkpoint_saved",
+    "emit_compaction_post",
+    "emit_compaction_pre",
     "emit_event",
     "emit_inbox_notification",
     "emit_model_request",
@@ -65,6 +67,8 @@ class EventType:
     INBOX_NOTIFICATION = "gen_ai.inbox.notification"
     CONTROL_RECEIVED = "gen_ai.control.received"
     CHECKPOINT_SAVED = "gen_ai.checkpoint.saved"
+    COMPACTION_PRE = "gen_ai.compaction.pre"
+    COMPACTION_POST = "gen_ai.compaction.post"
 
     MODULE_START = "gen_ai.module.start"
     MODULE_COMPLETE = "gen_ai.module.complete"
@@ -245,3 +249,45 @@ def emit_checkpoint_saved(
             "status": status,
         },
     )
+
+
+def emit_compaction_pre(
+    *,
+    target: str | None = None,
+    strategy: str | None = None,
+    message_count: int | None = None,
+    token_count: int | None = None,
+    metadata: Mapping[str, Any] | None = None,
+) -> None:
+    payload = {
+        "target": target,
+        "strategy": strategy,
+        "message_count": message_count,
+        "token_count": token_count,
+    }
+    if metadata:
+        payload["metadata"] = dict(metadata)
+    emit_event(EventType.COMPACTION_PRE, payload)
+
+
+def emit_compaction_post(
+    *,
+    target: str | None = None,
+    strategy: str | None = None,
+    message_count_before: int | None = None,
+    message_count_after: int | None = None,
+    token_count_before: int | None = None,
+    token_count_after: int | None = None,
+    metadata: Mapping[str, Any] | None = None,
+) -> None:
+    payload = {
+        "target": target,
+        "strategy": strategy,
+        "message_count_before": message_count_before,
+        "message_count_after": message_count_after,
+        "token_count_before": token_count_before,
+        "token_count_after": token_count_after,
+    }
+    if metadata:
+        payload["metadata"] = dict(metadata)
+    emit_event(EventType.COMPACTION_POST, payload)

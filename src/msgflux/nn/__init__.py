@@ -25,6 +25,8 @@ __all__ = [
     "Parameter",
     "StreamEvent",
     "ToolCallMetadata",
+    "emit_compaction_post",
+    "emit_compaction_pre",
     "functional",
     "modules",
     "parameter",
@@ -50,7 +52,14 @@ __all__ = [
 def __getattr__(name: str):
     if name in {"functional", "modules", "parameter"}:
         value = import_module(f"msgflux.nn.{name}")
-    elif name in {"EventStream", "EventType", "StreamEvent", "ToolCallMetadata"}:
+    elif name in {
+        "EventStream",
+        "EventType",
+        "StreamEvent",
+        "ToolCallMetadata",
+        "emit_compaction_post",
+        "emit_compaction_pre",
+    }:
         value = getattr(import_module("msgflux.runtime"), name)
     elif name == "Parameter":
         value = getattr(import_module("msgflux.nn.parameter"), name)
