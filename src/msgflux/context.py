@@ -101,6 +101,10 @@ _CURRENT_TASK_ACTIVITY_RECORDER: contextvars.ContextVar[Any] = contextvars.Conte
     "msgflux_task_activity_recorder",
     default=None,
 )
+_CURRENT_PERMISSION_MANAGER: contextvars.ContextVar[Any] = contextvars.ContextVar(
+    "msgflux_permission_manager",
+    default=None,
+)
 
 
 @contextmanager
@@ -116,6 +120,7 @@ def execution_context(
     agent_inbox: Any = None,
     task_handle: Any = None,
     task_activity_recorder: Any = None,
+    permission_manager: Any = None,
 ):
     """Set execution identity for the enclosed scope.
 
@@ -195,6 +200,12 @@ def execution_context(
         if task_activity_recorder is not None
         else current_task_activity_recorder
     )
+    current_permission_manager = _CURRENT_PERMISSION_MANAGER.get()
+    resolved_permission_manager = (
+        permission_manager
+        if permission_manager is not None
+        else current_permission_manager
+    )
 
     scope_token = _CURRENT_SCOPE.set(resolved_scope)
     session_token = _CURRENT_SESSION_ID.set(resolved_scope.session_id)
@@ -208,6 +219,7 @@ def execution_context(
     activity_token = _CURRENT_TASK_ACTIVITY_RECORDER.set(
         resolved_task_activity_recorder
     )
+    permission_token = _CURRENT_PERMISSION_MANAGER.set(resolved_permission_manager)
     try:
         yield resolved_scope
     finally:
@@ -221,6 +233,7 @@ def execution_context(
         _CURRENT_AGENT_INBOX.reset(inbox_token)
         _CURRENT_TASK_HANDLE.reset(task_handle_token)
         _CURRENT_TASK_ACTIVITY_RECORDER.reset(activity_token)
+        _CURRENT_PERMISSION_MANAGER.reset(permission_token)
 
 
 @contextmanager
@@ -253,6 +266,7 @@ def get_execution_context() -> Mapping[str, Any | None]:
         "agent_inbox": _CURRENT_AGENT_INBOX.get(),
         "task_handle": _CURRENT_TASK_HANDLE.get(),
         "task_activity_recorder": _CURRENT_TASK_ACTIVITY_RECORDER.get(),
+        "permission_manager": _CURRENT_PERMISSION_MANAGER.get(),
     }
 
 

@@ -127,6 +127,52 @@ def _is_agent_tool_impl(impl: Any) -> bool:
     return isinstance(impl, agent_type)
 
 
+def _current_runtime_context_kwargs() -> Dict[str, Any]:
+    context = get_execution_context()
+    return {
+        "scope": context.get("scope"),
+        "checkpoint_store": context.get("checkpoint_store"),
+        "agent_inbox": context.get("agent_inbox"),
+        "task_handle": context.get("task_handle"),
+        "task_activity_recorder": context.get("task_activity_recorder"),
+        "permission_manager": context.get("permission_manager"),
+    }
+
+
+def _call_with_runtime_context(
+    runtime_context: Mapping[str, Any],
+    fn: Callable[[], Any],
+) -> Any:
+    with execution_context(**runtime_context):
+        return fn()
+
+
+async def _acall_with_runtime_context(
+    runtime_context: Mapping[str, Any],
+    fn: Callable[[], Any],
+) -> Any:
+    with execution_context(**runtime_context):
+        return await fn()
+
+
+class _RuntimeContextCall:
+    def __init__(
+        self,
+        runtime_context: Mapping[str, Any],
+        fn: Callable[[], Any],
+        afn: Callable[[], Any],
+    ) -> None:
+        self.runtime_context = runtime_context
+        self.fn = fn
+        self.afn = afn
+
+    def __call__(self) -> Any:
+        return _call_with_runtime_context(self.runtime_context, self.fn)
+
+    async def acall(self) -> Any:
+        return await _acall_with_runtime_context(self.runtime_context, self.afn)
+
+
 class Tool(Module):
     """Tool is Module type that provide a json schema to tools."""
 
@@ -374,6 +420,7 @@ class LocalTool(Tool):
         metadata = self._pop_tool_call_metadata(kwargs)
         kwargs = self._restore_transport_params(kwargs)
         kwargs = self._strip_none_default_kwargs(kwargs)
+        runtime_context = _current_runtime_context_kwargs()
 
         async def _run():
             if hasattr(self.impl, "acall"):
@@ -382,7 +429,13 @@ class LocalTool(Tool):
                 return await self.impl(*args, **kwargs)
             # Fall back to sync call in executor to avoid blocking event loop
             loop = asyncio.get_event_loop()
-            return await loop.run_in_executor(None, lambda: self.impl(*args, **kwargs))
+            return await loop.run_in_executor(
+                None,
+                lambda: _call_with_runtime_context(
+                    runtime_context,
+                    lambda: self.impl(*args, **kwargs),
+                ),
+            )
 
         return await self._aemit_tool_execution(metadata, _run)
 
@@ -1474,6 +1527,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
         )
 
         checkpoint_store = get_execution_context().get("checkpoint_store")
+        permission_manager = get_execution_context().get("permission_manager")
         session_id = task.metadata.get("checkpoint_session_id") or task.metadata.get(
             "session_id"
         )
@@ -1522,6 +1576,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
             "parent_run_id": task.metadata.get("parent_run_id"),
             "root_run_id": task.metadata.get("root_run_id"),
             "checkpoint_store": checkpoint_store,
+            "permission_manager": permission_manager,
             "agent_inbox": task_inbox,
             "task_activity_recorder": TaskActivityRecorder(
                 task.task_id, self.task_store
@@ -1599,6 +1654,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
         parent_run_id = execution_context.get("run_id")
         root_run_id = execution_context.get("root_run_id")
         checkpoint_store = execution_context.get("checkpoint_store")
+        permission_manager = execution_context.get("permission_manager")
         root_agent_inbox = execution_context.get("agent_inbox") or self.agent_inbox
         task_id = uuid4().hex[:8]
         task_inbox = None
@@ -1677,6 +1733,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 root_run_id if isinstance(root_run_id, str) and root_run_id else None
             ),
             "checkpoint_store": checkpoint_store,
+            "permission_manager": permission_manager,
             "agent_inbox": task_inbox or root_agent_inbox,
             "task_handle": TaskHandle(
                 task.task_id,
@@ -1820,7 +1877,13 @@ class ToolLibrary(Module, metaclass=AutoParams):
                     tool_name=tool_name,
                     tool_params=tool_params,
                 )
-                F.spawn(tool, **call_params)
+                F.spawn(
+                    _RuntimeContextCall(
+                        _current_runtime_context_kwargs(),
+                        partial(tool, **call_params),
+                        partial(tool.acall, **call_params),
+                    )
+                )
                 tool_calls.append(
                     ToolCall(
                         id=tool_id,
@@ -1863,7 +1926,13 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 tool_name=tool_name,
                 tool_params=tool_params,
             )
-            prepared_calls.append(partial(tool, **call_params))
+            prepared_calls.append(
+                _RuntimeContextCall(
+                    _current_runtime_context_kwargs(),
+                    partial(tool, **call_params),
+                    partial(tool.acall, **call_params),
+                )
+            )
 
             call_metadata.append(
                 dotdict(
@@ -1967,7 +2036,13 @@ class ToolLibrary(Module, metaclass=AutoParams):
                     tool_name=tool_name,
                     tool_params=tool_params,
                 )
-                await F.aspawn(tool, **call_params)
+                await F.aspawn(
+                    _RuntimeContextCall(
+                        _current_runtime_context_kwargs(),
+                        partial(tool, **call_params),
+                        partial(tool.acall, **call_params),
+                    )
+                )
                 tool_calls.append(
                     ToolCall(
                         id=tool_id,
@@ -2010,7 +2085,13 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 tool_name=tool_name,
                 tool_params=tool_params,
             )
-            prepared_calls.append(partial(tool.acall, **call_params))
+            prepared_calls.append(
+                _RuntimeContextCall(
+                    _current_runtime_context_kwargs(),
+                    partial(tool, **call_params),
+                    partial(tool.acall, **call_params),
+                )
+            )
 
             call_metadata.append(
                 dotdict(

@@ -70,6 +70,7 @@ from msgflux.runtime.events import (
     emit_turn_start,
     emit_user_message_injected,
 )
+from msgflux.runtime.permissions import PermissionManager, PermissionPolicy
 from msgflux.tools.definitions import ToolDefinitions
 from msgflux.utils.chat import ChatBlock, response_format_from_msgspec_struct
 from msgflux.utils.common import has_format_placeholder, is_jinja_template
@@ -170,6 +171,7 @@ class Agent(Module, metaclass=AutoParams):
         annotations: Optional[Mapping[str, type]] = None,
         checkpointer: Optional["CheckpointStore"] = None,
         agent_inbox: Optional[AgentInbox] = None,
+        permission_manager: Optional[PermissionManager] = None,
     ):
         """Initialize the Agent module.
 
@@ -309,6 +311,9 @@ class Agent(Module, metaclass=AutoParams):
             The Agent description. It's useful when using an agent-as-tool.
         annotations
             Define the input and output annotations to use the agent-as-a-function.
+        permission_manager:
+            Runtime permission coordinator inherited by tools and subagents through
+            the execution context. Defaults to bypass.
         """
         if annotations is None:
             annotations = _DEFAULT_AGENT_ANNOTATIONS.copy()
@@ -362,6 +367,7 @@ class Agent(Module, metaclass=AutoParams):
 
         self._set_config(config)
         self.checkpointer = checkpointer
+        self.permission_manager = permission_manager or PermissionManager()
         if agent_inbox is None:
             self.agent_inbox = AgentInbox(
                 verbose=config.get("verbose", False) if config else False,
@@ -527,6 +533,7 @@ class Agent(Module, metaclass=AutoParams):
 
         effective_checkpointer = self._get_effective_checkpointer()
         effective_inbox = self._get_effective_agent_inbox()
+        effective_permission_manager = self._get_effective_permission_manager()
         if effective_inbox is not None:
             effective_inbox.bind_scope(
                 inputs.get("scope"),
@@ -536,6 +543,7 @@ class Agent(Module, metaclass=AutoParams):
             scope=inputs.get("scope"),
             checkpoint_store=effective_checkpointer,
             agent_inbox=effective_inbox,
+            permission_manager=effective_permission_manager,
         ):
             emit_agent_start(self.get_module_name(), resumed=resumed is not None)
             emit_turn_start(self.get_module_name(), resumed=resumed is not None)
@@ -595,6 +603,7 @@ class Agent(Module, metaclass=AutoParams):
 
         effective_checkpointer = self._get_effective_checkpointer()
         effective_inbox = self._get_effective_agent_inbox()
+        effective_permission_manager = self._get_effective_permission_manager()
         if effective_inbox is not None:
             effective_inbox.bind_scope(
                 inputs.get("scope"),
@@ -604,6 +613,7 @@ class Agent(Module, metaclass=AutoParams):
             scope=inputs.get("scope"),
             checkpoint_store=effective_checkpointer,
             agent_inbox=effective_inbox,
+            permission_manager=effective_permission_manager,
         ):
             emit_agent_start(self.get_module_name(), resumed=resumed is not None)
             emit_turn_start(self.get_module_name(), resumed=resumed is not None)
@@ -2242,6 +2252,18 @@ class Agent(Module, metaclass=AutoParams):
         if inherited is not None:
             return inherited
         return getattr(self, "agent_inbox", None)
+
+    def _get_effective_permission_manager(self):
+        inherited = get_execution_context().get("permission_manager")
+        if inherited is not None:
+            return inherited
+        return getattr(self, "permission_manager", None)
+
+    def set_permission_manager(self, permission_manager: PermissionManager) -> None:
+        self.permission_manager = permission_manager
+
+    def set_permission_policy(self, policy: PermissionPolicy) -> None:
+        self.permission_manager.set_policy(policy)
 
     def set_agent_inbox(self, agent_inbox: AgentInbox) -> None:
         self.agent_inbox = agent_inbox

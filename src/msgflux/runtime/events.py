@@ -27,6 +27,9 @@ __all__ = [
     "emit_inbox_notification",
     "emit_model_request",
     "emit_model_response",
+    "emit_permission_denied",
+    "emit_permission_granted",
+    "emit_permission_requested",
     "emit_subagent_complete",
     "emit_subagent_error",
     "emit_subagent_start",
@@ -63,6 +66,10 @@ class EventType:
     MODEL_RESPONSE_CHUNK = "gen_ai.model.response.chunk"
     MODEL_REASONING = "gen_ai.model.reasoning"
     MODEL_REASONING_CHUNK = "gen_ai.model.reasoning.chunk"
+
+    PERMISSION_REQUESTED = "gen_ai.permission.requested"
+    PERMISSION_GRANTED = "gen_ai.permission.granted"
+    PERMISSION_DENIED = "gen_ai.permission.denied"
 
     TOOL_CALL = "gen_ai.tool.call"
     TOOL_STARTED = "gen_ai.tool.started"
@@ -224,6 +231,18 @@ def emit_user_message_injected(
         EventType.USER_MESSAGE_INJECTED,
         {"message_count": message_count, "notification_ids": notification_ids or []},
     )
+
+
+def emit_permission_requested(attributes: Mapping[str, Any]) -> None:
+    emit_event(EventType.PERMISSION_REQUESTED, attributes)
+
+
+def emit_permission_granted(attributes: Mapping[str, Any]) -> None:
+    emit_event(EventType.PERMISSION_GRANTED, attributes)
+
+
+def emit_permission_denied(attributes: Mapping[str, Any]) -> None:
+    emit_event(EventType.PERMISSION_DENIED, attributes)
 
 
 def emit_tool_call(metadata: ToolCallMetadata) -> None:

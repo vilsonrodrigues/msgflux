@@ -1,0 +1,184 @@
+import asyncio
+
+import pytest
+
+from msgflux.context import execution_context, get_execution_context
+from msgflux.models.response import ModelResponse
+from msgflux.models.tool_call_agg import ToolCallAggregator
+from msgflux.nn import Agent
+from msgflux.runtime import EventStream, EventType
+from msgflux.runtime.permissions import (
+    PermissionDeniedError,
+    PermissionManager,
+    PermissionTimeoutError,
+)
+from msgflux.utils.msgspec import msgspec_dumps
+
+
+def _tool_call_response(
+    tool_name: str,
+    parameters: dict,
+    *,
+    call_id: str = "call_1",
+) -> ModelResponse:
+    response = ModelResponse()
+    response.set_response_type("tool_call")
+    agg = ToolCallAggregator()
+    agg.process(0, call_id, tool_name, msgspec_dumps(parameters))
+    response.add(agg)
+    response.reasoning = None
+    response.metadata = {}
+    return response
+
+
+def _text_response(text: str) -> ModelResponse:
+    response = ModelResponse()
+    response.set_response_type("text_generation")
+    response.add(text)
+    response.reasoning = None
+    response.metadata = {}
+    return response
+
+
+class _ScriptedModel:
+    def __init__(self, responses):
+        self.model_type = "chat_completion"
+        self._responses = list(responses)
+
+    def __call__(self, **kwargs):
+        if not self._responses:
+            raise AssertionError("Scripted model exhausted.")
+        return self._responses.pop(0)
+
+    async def acall(self, **kwargs):
+        return self(**kwargs)
+
+
+@pytest.mark.asyncio
+async def test_permission_manager_bypass_emits_request_and_grant_events():
+    manager = PermissionManager(policy="bypass")
+
+    with EventStream() as stream:
+        decision = await manager.request(
+            "file.write",
+            resource="workspace/report.txt",
+            tool_name="write_file",
+            caller_name="Assistant",
+            risk="high",
+        )
+        stream.close()
+        events = stream.events
+
+    assert decision.approved is True
+    assert [event.name for event in events] == [
+        EventType.PERMISSION_REQUESTED,
+        EventType.PERMISSION_GRANTED,
+    ]
+    requested = events[0].attributes
+    assert requested["action"] == "file.write"
+    assert requested["policy"] == "bypass"
+    assert requested["tool_name"] == "write_file"
+    assert requested["caller_name"] == "Assistant"
+
+
+@pytest.mark.asyncio
+async def test_permission_manager_deny_policy_can_be_enforced():
+    manager = PermissionManager(policy="deny")
+
+    with pytest.raises(PermissionDeniedError, match="denied by policy"):
+        await manager.enforce("file.write", resource="workspace/report.txt")
+
+
+@pytest.mark.asyncio
+async def test_permission_manager_ask_user_can_be_approved_externally():
+    manager = PermissionManager(policy="ask_user")
+
+    with EventStream() as stream:
+        task = asyncio.create_task(manager.request("file.write"))
+        await asyncio.sleep(0)
+
+        [pending] = manager.list_pending()
+        decision = manager.approve(pending.request_id, reason="approved by test")
+        result = await task
+
+        stream.close()
+        events = stream.events
+
+    assert decision.approved is True
+    assert result == decision
+    assert [event.name for event in events] == [
+        EventType.PERMISSION_REQUESTED,
+        EventType.PERMISSION_GRANTED,
+    ]
+
+
+@pytest.mark.asyncio
+async def test_permission_manager_ask_user_timeout_raises_and_denies():
+    manager = PermissionManager(policy="ask_user", timeout=0.001)
+
+    with EventStream() as stream:
+        with pytest.raises(PermissionTimeoutError):
+            await manager.request("file.write")
+        stream.close()
+        events = stream.events
+
+    assert manager.list_pending() == []
+    assert [event.name for event in events] == [
+        EventType.PERMISSION_REQUESTED,
+        EventType.PERMISSION_DENIED,
+    ]
+
+
+@pytest.mark.asyncio
+async def test_permission_policy_can_change_per_session_context():
+    manager = PermissionManager(policy="ask_user")
+
+    with execution_context(permission_manager=manager):
+        ctx_manager = get_execution_context()["permission_manager"]
+        assert ctx_manager is manager
+
+        manager.set_policy("bypass")
+        decision = await ctx_manager.request("file.write", tool_name="write_file")
+
+    assert decision.approved is True
+
+
+@pytest.mark.asyncio
+async def test_permission_policy_context_manager_restores_previous_policy():
+    manager = PermissionManager(policy="ask_user")
+
+    with manager.use_policy("bypass"):
+        assert manager.policy == "bypass"
+        decision = await manager.request("file.write")
+
+    assert decision.approved is True
+    assert manager.policy == "ask_user"
+
+
+def test_agent_exposes_default_permission_manager_to_tools():
+    seen_policies = []
+
+    def read_permission_policy() -> str:
+        """Read the active permission policy."""
+        manager = get_execution_context()["permission_manager"]
+        seen_policies.append(manager.policy)
+        return manager.policy
+
+    manager = PermissionManager(policy="ask_user")
+    model = _ScriptedModel(
+        [
+            _tool_call_response("read_permission_policy", {}),
+            _text_response("ok"),
+        ]
+    )
+    agent = Agent(
+        name="Assistant",
+        model=model,
+        tools=[read_permission_policy],
+        permission_manager=manager,
+    )
+    agent.set_permission_policy("bypass")
+
+    agent("Read the active permission policy.")
+
+    assert seen_policies == ["bypass"]
