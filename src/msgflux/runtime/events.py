@@ -20,18 +20,27 @@ __all__ = [
     "emit_agent_resumed",
     "emit_agent_start",
     "emit_checkpoint_saved",
+    "emit_checkpoint_loaded",
     "emit_compaction_post",
     "emit_compaction_pre",
     "emit_event",
     "emit_inbox_notification",
     "emit_model_request",
     "emit_model_response",
+    "emit_subagent_complete",
+    "emit_subagent_error",
+    "emit_subagent_start",
     "emit_task_event",
     "emit_tool_call",
     "emit_tool_error",
     "emit_tool_result",
     "emit_tool_started",
     "emit_tool_update",
+    "emit_turn_complete",
+    "emit_turn_error",
+    "emit_turn_start",
+    "emit_user_message_injected",
+    "emit_user_message_received",
 ]
 
 
@@ -41,6 +50,13 @@ class EventType:
     AGENT_COMPLETE = "gen_ai.agent.complete"
     AGENT_ERROR = "gen_ai.agent.error"
     AGENT_STEP = "gen_ai.agent.step"
+
+    TURN_START = "gen_ai.turn.start"
+    TURN_COMPLETE = "gen_ai.turn.complete"
+    TURN_ERROR = "gen_ai.turn.error"
+
+    USER_MESSAGE_RECEIVED = "gen_ai.user_message.received"
+    USER_MESSAGE_INJECTED = "gen_ai.user_message.injected"
 
     MODEL_REQUEST = "gen_ai.model.request"
     MODEL_RESPONSE = "gen_ai.model.response"
@@ -67,8 +83,13 @@ class EventType:
     INBOX_NOTIFICATION = "gen_ai.inbox.notification"
     CONTROL_RECEIVED = "gen_ai.control.received"
     CHECKPOINT_SAVED = "gen_ai.checkpoint.saved"
+    CHECKPOINT_LOADED = "gen_ai.checkpoint.loaded"
     COMPACTION_PRE = "gen_ai.compaction.pre"
     COMPACTION_POST = "gen_ai.compaction.post"
+
+    SUBAGENT_START = "gen_ai.subagent.start"
+    SUBAGENT_COMPLETE = "gen_ai.subagent.complete"
+    SUBAGENT_ERROR = "gen_ai.subagent.error"
 
     MODULE_START = "gen_ai.module.start"
     MODULE_COMPLETE = "gen_ai.module.complete"
@@ -167,6 +188,44 @@ def emit_model_response(agent_name: str, *, response_type: str | None = None) ->
     )
 
 
+def emit_turn_start(agent_name: str, *, resumed: bool = False) -> None:
+    emit_event(EventType.TURN_START, {"agent_name": agent_name, "resumed": resumed})
+
+
+def emit_turn_complete(agent_name: str, *, response_type: str | None = None) -> None:
+    emit_event(
+        EventType.TURN_COMPLETE,
+        {"agent_name": agent_name, "response_type": response_type},
+    )
+
+
+def emit_turn_error(agent_name: str, error: BaseException | str) -> None:
+    emit_event(EventType.TURN_ERROR, {"agent_name": agent_name, "error": str(error)})
+
+
+def emit_user_message_received(
+    *,
+    notification_id: str | None = None,
+    source: str = "incoming_user_message",
+    metadata: Mapping[str, Any] | None = None,
+) -> None:
+    payload = {"notification_id": notification_id, "source": source}
+    if metadata:
+        payload["metadata"] = dict(metadata)
+    emit_event(EventType.USER_MESSAGE_RECEIVED, payload)
+
+
+def emit_user_message_injected(
+    *,
+    message_count: int,
+    notification_ids: list[str] | None = None,
+) -> None:
+    emit_event(
+        EventType.USER_MESSAGE_INJECTED,
+        {"message_count": message_count, "notification_ids": notification_ids or []},
+    )
+
+
 def emit_tool_call(metadata: ToolCallMetadata) -> None:
     emit_event(EventType.TOOL_CALL, metadata.to_dict())
 
@@ -199,6 +258,30 @@ def emit_tool_update(
     if data:
         payload["data"] = dict(data)
     emit_event(EventType.TOOL_UPDATE, payload)
+
+
+def _subagent_payload(metadata: ToolCallMetadata) -> dict[str, Any]:
+    payload = metadata.to_dict()
+    if metadata.tool_name:
+        payload["subagent_name"] = metadata.tool_name
+    return payload
+
+
+def emit_subagent_start(metadata: ToolCallMetadata) -> None:
+    emit_event(EventType.SUBAGENT_START, _subagent_payload(metadata))
+
+
+def emit_subagent_complete(metadata: ToolCallMetadata, result: Any = None) -> None:
+    payload = _subagent_payload(metadata)
+    if result is not None:
+        payload["result"] = result
+    emit_event(EventType.SUBAGENT_COMPLETE, payload)
+
+
+def emit_subagent_error(metadata: ToolCallMetadata, error: BaseException | str) -> None:
+    payload = _subagent_payload(metadata)
+    payload["error"] = str(error)
+    emit_event(EventType.SUBAGENT_ERROR, payload)
 
 
 def emit_task_event(
@@ -242,6 +325,24 @@ def emit_checkpoint_saved(
 ) -> None:
     emit_event(
         EventType.CHECKPOINT_SAVED,
+        {
+            "checkpoint_namespace": namespace,
+            "checkpoint_session_id": session_id,
+            "checkpoint_run_id": run_id,
+            "status": status,
+        },
+    )
+
+
+def emit_checkpoint_loaded(
+    *,
+    namespace: str,
+    session_id: str,
+    run_id: str,
+    status: str | None = None,
+) -> None:
+    emit_event(
+        EventType.CHECKPOINT_LOADED,
         {
             "checkpoint_namespace": namespace,
             "checkpoint_session_id": session_id,

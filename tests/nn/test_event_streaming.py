@@ -49,6 +49,9 @@ class _ScriptedModel:
             raise AssertionError("Scripted model exhausted.")
         return self._responses.pop(0)
 
+    async def acall(self, **kwargs):
+        return self(**kwargs)
+
 
 def test_agent_stream_events_emits_model_and_tool_events():
     def add(a: int, b: int) -> int:
@@ -94,6 +97,17 @@ def test_agent_stream_events_emits_model_and_tool_events():
     assert tool_result.attributes["caller_namespace"] == "Assistant"
 
 
+def test_agent_stream_events_emits_turn_events():
+    model = _ScriptedModel([_text_response("ok")])
+    agent = Agent(name="Assistant", model=model)
+
+    events = agent.stream_events("Say ok.")
+    names = [event.name for event in events]
+
+    assert EventType.TURN_START in names
+    assert EventType.TURN_COMPLETE in names
+
+
 def test_stream_events_callback_returns_result_and_receives_events():
     class Echo(Module):
         def forward(self, value: str) -> str:
@@ -130,6 +144,38 @@ def test_task_store_and_inbox_emit_runtime_events():
     assert EventType.INBOX_NOTIFICATION in names
 
 
+def test_incoming_user_message_emits_received_event():
+    inbox = mf.AgentInbox()
+
+    with EventStream() as stream:
+        published = inbox.user_message(
+            "new instruction",
+            metadata={"origin": "test"},
+        )
+        stream.close()
+        events = stream.events
+
+    received = next(
+        event for event in events if event.name == EventType.USER_MESSAGE_RECEIVED
+    )
+    assert received.attributes["notification_id"] == published.notification_id
+    assert received.attributes["metadata"] == {"origin": "test"}
+
+
+def test_agent_injects_user_message_event():
+    inbox = mf.AgentInbox()
+    inbox.user_message("Use concise tone.")
+    model = _ScriptedModel([_text_response("ok")])
+    agent = Agent(name="Assistant", model=model, agent_inbox=inbox)
+
+    events = agent.stream_events("Continue.")
+
+    injected = next(
+        event for event in events if event.name == EventType.USER_MESSAGE_INJECTED
+    )
+    assert injected.attributes["message_count"] == 1
+
+
 def test_tool_metadata_reaches_otel_but_not_tool_impl():
     def inspect_payload(x: str) -> str:
         """Return a value without accepting runtime-only kwargs."""
@@ -147,6 +193,27 @@ def test_tool_metadata_reaches_otel_but_not_tool_impl():
     assert result.attributes["caller_name"] == "Caller"
     assert result.attributes["caller_namespace"] == "Caller"
     assert result.attributes["caller_session_id"] == "s1"
+
+
+def test_agent_tool_emits_subagent_events():
+    child_model = _ScriptedModel([_text_response("child ok")])
+    child_agent = Agent(name="ChildAgent", model=child_model)
+    library = ToolLibrary("tools", [child_agent])
+
+    with execution_context(namespace="ParentAgent", session_id="s1", run_id="r1"):
+        events = library.stream_events(
+            [("call_child", "ChildAgent", {"task": "Run child."})]
+        )
+
+    names = [event.name for event in events]
+    assert EventType.SUBAGENT_START in names
+    assert EventType.SUBAGENT_COMPLETE in names
+    subagent_start = next(
+        event for event in events if event.name == EventType.SUBAGENT_START
+    )
+    assert subagent_start.attributes["tool_call_id"] == "call_child"
+    assert subagent_start.attributes["subagent_name"] == "ChildAgent"
+    assert subagent_start.attributes["caller_name"] == "ParentAgent"
 
 
 def test_checkpoint_save_emits_runtime_event():
@@ -176,6 +243,37 @@ def test_checkpoint_save_emits_runtime_event():
     assert checkpoint_event.attributes["checkpoint_namespace"] == "Assistant"
     assert checkpoint_event.attributes["checkpoint_session_id"] == "session_1"
     assert checkpoint_event.attributes["status"] == "completed"
+
+
+def test_checkpoint_loaded_event_is_emitted_on_resume():
+    store = mf.InMemoryCheckpointStore()
+    chat = mf.ChatMessages(session_id="session_1", namespace="Assistant")
+    chat.begin_turn(inputs="Recover this.", turn_id="run_1")
+    chat.add_user("Recover this.")
+    store.save_state(
+        "Assistant",
+        "session_1",
+        "run_1",
+        {"status": "failed", "messages": chat._to_state(), "vars": {}},
+    )
+    agent = Agent(
+        name="Assistant",
+        model=_ScriptedModel([_text_response("recovered")]),
+        checkpointer=store,
+    )
+
+    events = agent.stream_events(
+        "ignored",
+        scope=mf.ExecutionScope(session_id="session_1", run_id="run_1"),
+    )
+
+    loaded = next(
+        event for event in events if event.name == EventType.CHECKPOINT_LOADED
+    )
+    assert loaded.attributes["checkpoint_namespace"] == "Assistant"
+    assert loaded.attributes["checkpoint_session_id"] == "session_1"
+    assert loaded.attributes["checkpoint_run_id"] == "run_1"
+    assert loaded.attributes["status"] == "failed"
 
 
 def test_compaction_events_are_available_for_hooks():

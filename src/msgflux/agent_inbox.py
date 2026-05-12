@@ -15,7 +15,11 @@ from xml.sax.saxutils import escape
 
 from msgflux.context import ExecutionScope
 from msgflux.data.stores.registry import register_store
-from msgflux.runtime.events import emit_inbox_notification, emit_tool_update
+from msgflux.runtime.events import (
+    emit_inbox_notification,
+    emit_tool_update,
+    emit_user_message_received,
+)
 from msgflux.utils.console import cprint
 
 # --- Module Utilities ---
@@ -513,6 +517,12 @@ class AgentInbox:
                             ref=normalized.ref,
                             notification_id=normalized.notification_id,
                         )
+                        if normalized.source == "incoming_user_message":
+                            emit_user_message_received(
+                                notification_id=normalized.notification_id,
+                                source=normalized.source,
+                                metadata=normalized.metadata,
+                            )
                         return deepcopy(normalized)
             notifications.append(normalized)
             self._save_notifications_locked(notifications)
@@ -527,6 +537,12 @@ class AgentInbox:
             ref=normalized.ref,
             notification_id=normalized.notification_id,
         )
+        if normalized.source == "incoming_user_message":
+            emit_user_message_received(
+                notification_id=normalized.notification_id,
+                source=normalized.source,
+                metadata=normalized.metadata,
+            )
         return deepcopy(normalized)
 
     def control(

@@ -38,6 +38,9 @@ from msgflux.protocols.mcp import (
 from msgflux.runtime.events import (
     TOOL_CALL_METADATA_KEY,
     ToolCallMetadata,
+    emit_subagent_complete,
+    emit_subagent_error,
+    emit_subagent_start,
     emit_tool_error,
     emit_tool_result,
     emit_tool_started,
@@ -140,12 +143,19 @@ class Tool(Module):
 
     def _emit_tool_execution(self, metadata: ToolCallMetadata, fn: Callable[[], Any]):
         metadata = self._ensure_tool_metadata(metadata)
+        is_subagent = isinstance(self, LocalTool) and _is_agent_tool_impl(self.impl)
         emit_tool_started(metadata)
+        if is_subagent:
+            emit_subagent_start(metadata)
         try:
             result = fn()
         except Exception as exc:
+            if is_subagent:
+                emit_subagent_error(metadata, exc)
             emit_tool_error(metadata, exc)
             raise
+        if is_subagent:
+            emit_subagent_complete(metadata, result)
         emit_tool_result(metadata, result)
         return result
 
@@ -155,12 +165,19 @@ class Tool(Module):
         fn: Callable[[], Any],
     ):
         metadata = self._ensure_tool_metadata(metadata)
+        is_subagent = isinstance(self, LocalTool) and _is_agent_tool_impl(self.impl)
         emit_tool_started(metadata)
+        if is_subagent:
+            emit_subagent_start(metadata)
         try:
             result = await fn()
         except Exception as exc:
+            if is_subagent:
+                emit_subagent_error(metadata, exc)
             emit_tool_error(metadata, exc)
             raise
+        if is_subagent:
+            emit_subagent_complete(metadata, result)
         emit_tool_result(metadata, result)
         return result
 
