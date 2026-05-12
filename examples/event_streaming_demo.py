@@ -33,6 +33,10 @@ def print_event(event) -> None:
             "response_type",
             "tool_name",
             "tool_call_id",
+            "caller_name",
+            "caller_namespace",
+            "caller_session_id",
+            "caller_run_id",
             "status",
             "result",
         )
