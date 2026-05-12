@@ -1,4 +1,5 @@
 import asyncio
+from threading import Thread
 
 import pytest
 
@@ -6,7 +7,8 @@ import msgflux as mf
 from msgflux.context import ExecutionScope, execution_context, get_execution_context
 from msgflux.models.response import ModelResponse
 from msgflux.models.tool_call_agg import ToolCallAggregator
-from msgflux.nn import Agent
+from msgflux.nn import Agent, ToolLibrary
+from msgflux.nn.modules import tool as tool_module
 from msgflux.runtime import EventStream, EventType
 from msgflux.runtime.permissions import (
     PermissionDeniedError,
@@ -111,6 +113,22 @@ async def test_permission_manager_ask_user_can_be_approved_externally():
         EventType.PERMISSION_REQUESTED,
         EventType.PERMISSION_GRANTED,
     ]
+
+
+@pytest.mark.asyncio
+async def test_permission_manager_approval_is_thread_safe():
+    manager = PermissionManager(policy="ask_user")
+    task = asyncio.create_task(manager.request("file.write"))
+    await asyncio.sleep(0)
+
+    [pending] = manager.list_pending()
+    thread = Thread(target=lambda: manager.approve(pending.request_id))
+    thread.start()
+    thread.join()
+
+    decision = await asyncio.wait_for(task, timeout=1)
+
+    assert decision.approved is True
 
 
 @pytest.mark.asyncio
@@ -234,34 +252,78 @@ def test_tool_permission_uses_scope_mode_over_manager_default():
     assert requested.attributes["resource"] == "workspace/report.txt"
 
 
-def test_tool_permission_config_mode_overrides_scope_mode():
+def test_scope_permission_mode_overrides_tool_permission_mode():
+    calls = []
+
     @mf.tool_config(
         permission={
             "action": "file.write",
-            "mode": "deny",
+            "mode": "bypass",
         }
     )
     def write_file(path: str) -> str:
         """Write a file."""
+        calls.append(path)
         return path
 
-    model = _ScriptedModel(
-        [
-            _tool_call_response("write_file", {"path": "workspace/report.txt"}),
-            _text_response("done"),
-        ]
-    )
-    agent = Agent(
-        name="Assistant",
-        model=model,
-        tools=[write_file],
+    library = ToolLibrary("tools", [write_file])
+
+    with execution_context(
+        scope=ExecutionScope(permission_mode="deny"),
         permission_manager=PermissionManager(default_mode="bypass"),
-    )
+    ):
+        response = library([("call_1", "write_file", {"path": "workspace/report.txt"})])
 
-    with execution_context(scope=ExecutionScope(permission_mode="bypass")):
-        response = agent("Write the report.")
+    assert calls == []
+    assert response.tool_calls[0].error is not None
 
-    assert response == "done"
+
+def test_invalid_scope_permission_mode_is_rejected():
+    with pytest.raises(ValueError, match="Unknown permission mode"):
+        with execution_context(permission_mode="askuser"):
+            pass
+
+
+def test_spawn_tool_is_not_dispatched_when_permission_is_denied(monkeypatch):
+    dispatched = []
+
+    @mf.tool_config(spawn=True, permission={"action": "file.write"})
+    def write_file(path: str) -> str:
+        """Write a file."""
+        return path
+
+    def fake_spawn(*args, **kwargs):
+        dispatched.append((args, kwargs))
+
+    monkeypatch.setattr(tool_module.F, "spawn", fake_spawn)
+    library = ToolLibrary("tools", [write_file])
+
+    with execution_context(
+        scope=ExecutionScope(permission_mode="deny"),
+        permission_manager=PermissionManager(default_mode="bypass"),
+    ):
+        response = library([("call_1", "write_file", {"path": "workspace/report.txt"})])
+
+    assert dispatched == []
+    assert response.tool_calls[0].error is not None
+
+
+def test_background_tool_is_not_started_when_permission_is_denied():
+    @mf.tool_config(background=True, permission={"action": "file.write"})
+    def write_file(path: str) -> str:
+        """Write a file."""
+        return path
+
+    library = ToolLibrary("tools", [write_file])
+
+    with execution_context(
+        scope=ExecutionScope(permission_mode="deny"),
+        permission_manager=PermissionManager(default_mode="bypass"),
+    ):
+        response = library([("call_1", "write_file", {"path": "workspace/report.txt"})])
+
+    assert response.tool_calls[0].error is not None
+    assert library.task_store.list() == []
 
 
 def test_subagent_tool_permissions_inherit_parent_scope_mode():

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from asyncio import AbstractEventLoop
 from collections.abc import Iterator
 from contextlib import contextmanager
 from copy import deepcopy
@@ -69,6 +70,12 @@ class PermissionDecision:
         }
 
 
+@dataclass(frozen=True)
+class _PendingPermission:
+    future: asyncio.Future[PermissionDecision]
+    loop: AbstractEventLoop
+
+
 class PermissionManager:
     """Async-first permission coordinator for runtime/tool approval flows."""
 
@@ -82,7 +89,7 @@ class PermissionManager:
         self.default_mode = policy or default_mode
         self._validate_policy(self.default_mode)
         self.timeout = timeout
-        self._pending: dict[str, asyncio.Future[PermissionDecision]] = {}
+        self._pending: dict[str, _PendingPermission] = {}
         self._requests: dict[str, PermissionRequest] = {}
 
     # --- Policy ---
@@ -156,6 +163,7 @@ class PermissionManager:
         timeout: float | None = None,
     ) -> PermissionDecision:
         resolved_policy = policy or self.default_mode
+        self._validate_policy(resolved_policy)
         self._requests[request.request_id] = request
         emit_permission_requested(
             {**request.to_dict(), "policy": resolved_policy},
@@ -186,7 +194,10 @@ class PermissionManager:
 
         loop = asyncio.get_running_loop()
         future: asyncio.Future[PermissionDecision] = loop.create_future()
-        self._pending[request.request_id] = future
+        self._pending[request.request_id] = _PendingPermission(
+            future=future,
+            loop=loop,
+        )
         try:
             decision = await asyncio.wait_for(
                 future,
@@ -263,8 +274,8 @@ class PermissionManager:
         )
 
     def _resolve(self, decision: PermissionDecision) -> PermissionDecision:
-        future = self._pending.pop(decision.request_id, None)
-        if future is None:
+        pending = self._pending.pop(decision.request_id, None)
+        if pending is None:
             raise KeyError(
                 f"Permission request `{decision.request_id}` is not pending."
             )
@@ -272,8 +283,12 @@ class PermissionManager:
             emit_permission_granted(decision.to_dict())
         else:
             emit_permission_denied(decision.to_dict())
-        if not future.done():
-            future.set_result(decision)
+
+        def _set_result() -> None:
+            if not pending.future.done():
+                pending.future.set_result(decision)
+
+        pending.loop.call_soon_threadsafe(_set_result)
         return decision
 
     # --- Introspection ---

@@ -92,8 +92,9 @@ def tool_config(
             to use the default retry from envs.
         permission:
             Permission metadata for tools that require runtime approval. Expected
-            keys include `action`, `mode`, `risk`, `resource`, `resource_arg`,
-            `reason`, and `metadata`.
+            keys include `action`, `risk`, `resource`, `resource_arg`, `reason`,
+            and `metadata`. The active permission mode is resolved from the
+            execution scope or permission manager, not from the tool.
 
     Returns:
         A decorator that modifies the target by injecting the specified properties.
