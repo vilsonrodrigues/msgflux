@@ -203,9 +203,10 @@ def test_agent_exposes_default_permission_manager_to_tools():
     assert seen_policies == ["bypass"]
 
 
-def test_tool_permission_uses_scope_mode_over_manager_default():
+@pytest.mark.asyncio
+async def test_tool_approval_uses_scope_mode_over_manager_default():
     @mf.tool_config(
-        permission={
+        approval={
             "action": "file.write",
             "risk": "high",
             "resource_arg": "path",
@@ -240,7 +241,7 @@ def test_tool_permission_uses_scope_mode_over_manager_default():
                 permission_mode="bypass",
             )
         ):
-            agent("Write the report.")
+            await agent.acall("Write the report.")
         stream.close()
         events = stream.events
 
@@ -252,9 +253,9 @@ def test_tool_permission_uses_scope_mode_over_manager_default():
     assert requested.attributes["resource"] == "workspace/report.txt"
 
 
-def test_tool_permission_config_rejects_permission_mode():
+def test_tool_approval_config_rejects_permission_mode():
     @mf.tool_config(
-        permission={
+        approval={
             "action": "file.write",
             "mode": "bypass",
         }
@@ -273,8 +274,8 @@ def test_tool_permission_config_rejects_permission_mode():
             library([("call_1", "write_file", {"path": "workspace/report.txt"})])
 
 
-def test_sync_tool_execution_rejects_ask_user_permission_mode():
-    @mf.tool_config(permission={"action": "file.write"})
+def test_sync_tool_execution_rejects_approval():
+    @mf.tool_config(approval={"action": "file.write"})
     def write_file(path: str) -> str:
         """Write a file."""
         return path
@@ -288,7 +289,7 @@ def test_sync_tool_execution_rejects_ask_user_permission_mode():
         response = library([("call_1", "write_file", {"path": "workspace/report.txt"})])
 
     assert response.tool_calls[0].error is not None
-    assert "only supported by async tool execution" in response.tool_calls[0].error
+    assert "Tool approval requires async execution" in response.tool_calls[0].error
 
 
 def test_invalid_scope_permission_mode_is_rejected():
@@ -297,32 +298,36 @@ def test_invalid_scope_permission_mode_is_rejected():
             pass
 
 
-def test_spawn_tool_is_not_dispatched_when_permission_is_denied(monkeypatch):
+@pytest.mark.asyncio
+async def test_spawn_tool_is_not_dispatched_when_permission_is_denied(monkeypatch):
     dispatched = []
 
-    @mf.tool_config(spawn=True, permission={"action": "file.write"})
+    @mf.tool_config(spawn=True, approval={"action": "file.write"})
     def write_file(path: str) -> str:
         """Write a file."""
         return path
 
-    def fake_spawn(*args, **kwargs):
+    async def fake_spawn(*args, **kwargs):
         dispatched.append((args, kwargs))
 
-    monkeypatch.setattr(tool_module.F, "spawn", fake_spawn)
+    monkeypatch.setattr(tool_module.F, "aspawn", fake_spawn)
     library = ToolLibrary("tools", [write_file])
 
     with execution_context(
         scope=ExecutionScope(permission_mode="deny"),
         permission_manager=PermissionManager(default_mode="bypass"),
     ):
-        response = library([("call_1", "write_file", {"path": "workspace/report.txt"})])
+        response = await library.aforward(
+            [("call_1", "write_file", {"path": "workspace/report.txt"})]
+        )
 
     assert dispatched == []
     assert response.tool_calls[0].error is not None
 
 
-def test_background_tool_is_not_started_when_permission_is_denied():
-    @mf.tool_config(background=True, permission={"action": "file.write"})
+@pytest.mark.asyncio
+async def test_background_tool_is_not_started_when_permission_is_denied():
+    @mf.tool_config(background=True, approval={"action": "file.write"})
     def write_file(path: str) -> str:
         """Write a file."""
         return path
@@ -333,15 +338,74 @@ def test_background_tool_is_not_started_when_permission_is_denied():
         scope=ExecutionScope(permission_mode="deny"),
         permission_manager=PermissionManager(default_mode="bypass"),
     ):
-        response = library([("call_1", "write_file", {"path": "workspace/report.txt"})])
+        response = await library.aforward(
+            [("call_1", "write_file", {"path": "workspace/report.txt"})]
+        )
 
     assert response.tool_calls[0].error is not None
     assert library.task_store.list() == []
 
 
-def test_subagent_tool_permissions_inherit_parent_scope_mode():
+@pytest.mark.asyncio
+async def test_async_tool_approvals_are_resolved_before_dispatch():
+    calls = []
+
+    @mf.tool_config(approval={"action": "file.write", "resource": "workspace/a.txt"})
+    def write_a() -> str:
+        """Write file A."""
+        calls.append("write_a")
+        return "a"
+
+    @mf.tool_config(approval={"action": "file.write", "resource": "workspace/b.txt"})
+    def write_b() -> str:
+        """Write file B."""
+        calls.append("write_b")
+        return "b"
+
+    async def wait_for_pending_count(manager: PermissionManager, count: int) -> None:
+        for _ in range(20):
+            if len(manager.list_pending()) == count:
+                return
+            await asyncio.sleep(0)
+        raise AssertionError(f"Expected {count} pending permission request(s).")
+
+    library = ToolLibrary("tools", [write_a, write_b])
+    manager = PermissionManager(default_mode="ask_user")
+
+    async def run_tools():
+        with execution_context(
+            scope=ExecutionScope(permission_mode="ask_user"),
+            permission_manager=manager,
+        ):
+            return await library.aforward(
+                [
+                    ("call_1", "write_a", {}),
+                    ("call_2", "write_b", {}),
+                ]
+            )
+
+    task = asyncio.create_task(run_tools())
+
+    await wait_for_pending_count(manager, 1)
+    [first_pending] = manager.list_pending()
+    manager.approve(first_pending.request_id)
+
+    await wait_for_pending_count(manager, 1)
+    assert calls == []
+
+    [second_pending] = manager.list_pending()
+    manager.approve(second_pending.request_id)
+
+    response = await asyncio.wait_for(task, timeout=1)
+
+    assert calls == ["write_a", "write_b"]
+    assert [tool_call.error for tool_call in response.tool_calls] == [None, None]
+
+
+@pytest.mark.asyncio
+async def test_subagent_tool_approvals_inherit_parent_scope_mode():
     @mf.tool_config(
-        permission={
+        approval={
             "action": "file.write",
             "resource_arg": "path",
         }
@@ -378,7 +442,7 @@ def test_subagent_tool_permissions_inherit_parent_scope_mode():
                 permission_mode="bypass",
             )
         ):
-            parent_agent("Delegate file writing.")
+            await parent_agent.acall("Delegate file writing.")
         stream.close()
         events = stream.events
 
