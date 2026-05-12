@@ -81,7 +81,12 @@ def test_agent_stream_events_emits_model_and_tool_events():
     assert tool_started.attributes["tool_call_id"] == "call_1"
     assert tool_started.attributes["tool_name"] == "add"
     assert tool_started.attributes["caller_name"] == "Assistant"
+    assert tool_started.attributes["caller_namespace"] == "Assistant"
     assert tool_started.attributes["arguments"] == {"a": 2, "b": 3}
+
+    tool_result = next(event for event in events if event.name == EventType.TOOL_RESULT)
+    assert tool_result.attributes["caller_name"] == "Assistant"
+    assert tool_result.attributes["caller_namespace"] == "Assistant"
 
 
 def test_stream_events_callback_returns_result_and_receives_events():
@@ -134,6 +139,8 @@ def test_tool_metadata_reaches_otel_but_not_tool_impl():
     assert EventType.TOOL_STARTED in names
     result = next(event for event in events if event.name == EventType.TOOL_RESULT)
     assert result.attributes["tool_call_id"] == "call_1"
+    assert result.attributes["caller_name"] == "Caller"
+    assert result.attributes["caller_namespace"] == "Caller"
     assert result.attributes["caller_session_id"] == "s1"
 
 

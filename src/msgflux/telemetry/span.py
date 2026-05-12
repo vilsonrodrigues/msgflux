@@ -20,14 +20,13 @@ from msgflux.runtime.events import TOOL_CALL_METADATA_KEY, ToolCallMetadata
 def _extract_tool_call_id(kwargs: dict) -> str | None:
     """Read runtime-only tool metadata without hiding it from Tool.forward."""
     metadata = kwargs.get(TOOL_CALL_METADATA_KEY)
-    tool_call_id = kwargs.pop("tool_call_id", None)
     if isinstance(metadata, ToolCallMetadata):
-        return metadata.tool_call_id or tool_call_id
+        return metadata.tool_call_id
     if isinstance(metadata, dict):
         candidate = metadata.get("tool_call_id")
         if isinstance(candidate, str):
             return candidate
-    return tool_call_id if isinstance(tool_call_id, str) else None
+    return None
 
 
 def set_tool_attributes(  # noqa: C901

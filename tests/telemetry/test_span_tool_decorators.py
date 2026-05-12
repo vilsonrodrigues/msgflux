@@ -69,27 +69,6 @@ class TestSetToolAttributes:
     @patch("msgflux.telemetry.span.trace.get_current_span")
     @patch("msgflux.telemetry.span.MsgTraceAttributes")
     @patch("msgflux.telemetry.span.envs")
-    def test_decorator_with_tool_call_id(self, mock_envs, mock_attrs, mock_get_span):
-        """Test decorator captures tool_call_id."""
-        mock_span = Mock()
-        mock_span.is_recording.return_value = True
-        mock_get_span.return_value = mock_span
-        mock_envs.telemetry_capture_tool_call_responses = True
-
-        tool = MockTool(name="id_tool")
-
-        @set_tool_attributes(execution_type="local")
-        def execute(self, **kwargs):
-            return "result"
-
-        result = execute(tool, tool_call_id="call_123")
-
-        assert result == "result"
-        mock_attrs.set_tool_call_id.assert_called_with("call_123")
-
-    @patch("msgflux.telemetry.span.trace.get_current_span")
-    @patch("msgflux.telemetry.span.MsgTraceAttributes")
-    @patch("msgflux.telemetry.span.envs")
     def test_decorator_extracts_tool_metadata(
         self, mock_envs, mock_attrs, mock_get_span
     ):

@@ -132,7 +132,6 @@ class Tool(Module):
 
     def _pop_tool_call_metadata(self, kwargs: Dict[str, Any]) -> ToolCallMetadata:
         raw_metadata = kwargs.pop(TOOL_CALL_METADATA_KEY, None)
-        kwargs.pop("tool_call_id", None)
         if isinstance(raw_metadata, ToolCallMetadata):
             return raw_metadata
         if isinstance(raw_metadata, Mapping):

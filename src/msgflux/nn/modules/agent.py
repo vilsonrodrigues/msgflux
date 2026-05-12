@@ -1263,12 +1263,33 @@ class Agent(Module, metaclass=AutoParams):
             for call in tool_callings:
                 repr_str = f"[{self.name}][tool_call] {call[1]}: {call[2]}"
                 cprint(repr_str, bc="br2", ls="b")
+        context = get_execution_context()
         for step, call in enumerate(tool_callings, start=1):
             emit_tool_call(
                 ToolCallMetadata(
                     tool_call_id=call[0],
                     tool_name=call[1],
                     caller_name=self.get_module_name(),
+                    caller_namespace=(
+                        context.get("namespace")
+                        if isinstance(context.get("namespace"), str)
+                        else None
+                    ),
+                    caller_session_id=(
+                        context.get("session_id")
+                        if isinstance(context.get("session_id"), str)
+                        else None
+                    ),
+                    caller_run_id=(
+                        context.get("run_id")
+                        if isinstance(context.get("run_id"), str)
+                        else None
+                    ),
+                    caller_root_run_id=(
+                        context.get("root_run_id")
+                        if isinstance(context.get("root_run_id"), str)
+                        else None
+                    ),
                     step=step,
                     arguments=(
                         call[2]
@@ -1306,12 +1327,33 @@ class Agent(Module, metaclass=AutoParams):
             for call in tool_callings:
                 repr_str = f"[{self.name}][tool_call] {call[1]}: {call[2]}"
                 cprint(repr_str, bc="br2", ls="b")
+        context = get_execution_context()
         for step, call in enumerate(tool_callings, start=1):
             emit_tool_call(
                 ToolCallMetadata(
                     tool_call_id=call[0],
                     tool_name=call[1],
                     caller_name=self.get_module_name(),
+                    caller_namespace=(
+                        context.get("namespace")
+                        if isinstance(context.get("namespace"), str)
+                        else None
+                    ),
+                    caller_session_id=(
+                        context.get("session_id")
+                        if isinstance(context.get("session_id"), str)
+                        else None
+                    ),
+                    caller_run_id=(
+                        context.get("run_id")
+                        if isinstance(context.get("run_id"), str)
+                        else None
+                    ),
+                    caller_root_run_id=(
+                        context.get("root_run_id")
+                        if isinstance(context.get("root_run_id"), str)
+                        else None
+                    ),
                     step=step,
                     arguments=(
                         call[2]
