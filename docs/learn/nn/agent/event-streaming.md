@@ -71,6 +71,28 @@ Important event groups:
 - Task: `TASK_CREATED`, `TASK_RUNNING`, `TASK_PROGRESS`, `TASK_COMPLETED`,
   `TASK_FAILED`, `TASK_PAUSED`, `TASK_STOPPED`, `TASK_STOP_REQUESTED`.
 - Runtime: `INBOX_NOTIFICATION`, `CONTROL_RECEIVED`, `CHECKPOINT_SAVED`.
+- Compaction: `COMPACTION_PRE`, `COMPACTION_POST`.
+
+Compaction events are not emitted by the agent automatically. They are exposed
+for hooks or custom runtime code that compact chat history, snapshots, or other
+context state:
+
+```python
+mf.emit_compaction_pre(
+    target="messages",
+    strategy="summarize",
+    message_count=len(messages),
+)
+
+# run compaction
+
+mf.emit_compaction_post(
+    target="messages",
+    strategy="summarize",
+    message_count_before=24,
+    message_count_after=6,
+)
+```
 
 ## Tool Metadata
 

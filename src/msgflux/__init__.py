@@ -35,7 +35,14 @@ if TYPE_CHECKING:
     from msgflux.exceptions import TaskError
     from msgflux.models import Model
     from msgflux.models.gateway import ModelGateway
-    from msgflux.runtime import EventStream, EventType, StreamEvent, ToolCallMetadata
+    from msgflux.runtime import (
+        EventStream,
+        EventType,
+        StreamEvent,
+        ToolCallMetadata,
+        emit_compaction_post,
+        emit_compaction_pre,
+    )
     from msgflux.telemetry import Spans
     from msgflux.tools.config import tool_config
     from msgflux.utils.chat import ChatBlock, ChatML
@@ -82,6 +89,8 @@ __all__ = [
     "Video",
     "cprint",
     "dotdict",
+    "emit_compaction_post",
+    "emit_compaction_pre",
     "execution_context",
     "get_fn_name",
     "get_execution_scope",
@@ -131,6 +140,8 @@ _LAZY_IMPORTS = {
     "cprint": ("msgflux.utils.console", "cprint"),
     "dotdict": ("msgflux.core.dotdict", "dotdict"),
     "execution_context": ("msgflux.context", "execution_context"),
+    "emit_compaction_post": ("msgflux.runtime", "emit_compaction_post"),
+    "emit_compaction_pre": ("msgflux.runtime", "emit_compaction_pre"),
     "get_fn_name": ("msgflux.utils.inspect", "get_fn_name"),
     "get_execution_scope": ("msgflux.context", "get_execution_scope"),
     "load": ("msgflux.utils.msgspec", "load"),
