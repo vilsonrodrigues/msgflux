@@ -1410,6 +1410,12 @@ class ToolLibrary(Module, metaclass=AutoParams):
             return {}
         if not isinstance(permission, Mapping):
             raise TypeError("Tool permission config must be a mapping, True, or None.")
+        forbidden_keys = {"mode", "policy"} & set(permission)
+        if forbidden_keys:
+            raise ValueError(
+                "Tool permission config cannot define permission mode or policy. "
+                "Use ExecutionScope.permission_mode or PermissionManager.default_mode."
+            )
         return permission
 
     def _resolve_permission_mode(
@@ -1495,6 +1501,16 @@ class ToolLibrary(Module, metaclass=AutoParams):
         if permission_config is None:
             return
         try:
+            context = get_execution_context()
+            manager = context.get("permission_manager")
+            if not isinstance(manager, PermissionManager):
+                manager = PermissionManager()
+            mode = self._resolve_permission_mode(permission_config, manager)
+            if mode == "ask_user":
+                raise PermissionRuntimeError(
+                    "`ask_user` permission mode is only supported by async tool "
+                    "execution. Use `acall`/`aforward` instead of sync `forward`."
+                )
             result = F.wait_for(
                 self._aenforce_tool_permission,
                 tool_name=tool_name,
@@ -2133,14 +2149,28 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 tool_params=tool_params,
             )
             call_params[TOOL_CALL_METADATA_KEY] = metadata
-            prepared_calls.append(
-                self._build_permission_checked_call(
-                    tool=tool,
+            try:
+                self._enforce_tool_permission(
                     tool_name=tool_name,
                     tool_params=tool_params,
-                    call_params=call_params,
                     permission_config=permission_config,
                     metadata=metadata,
+                )
+            except PermissionRuntimeError as exc:
+                tool_calls.append(
+                    ToolCall(
+                        id=tool_id,
+                        name=tool_name,
+                        parameters=tool_params,
+                        error=str(exc),
+                    )
+                )
+                continue
+            prepared_calls.append(
+                _RuntimeContextCall(
+                    _current_runtime_context_kwargs(),
+                    partial(tool, **call_params),
+                    partial(tool.acall, **call_params),
                 )
             )
 

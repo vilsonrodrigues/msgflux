@@ -252,9 +252,7 @@ def test_tool_permission_uses_scope_mode_over_manager_default():
     assert requested.attributes["resource"] == "workspace/report.txt"
 
 
-def test_scope_permission_mode_overrides_tool_permission_mode():
-    calls = []
-
+def test_tool_permission_config_rejects_permission_mode():
     @mf.tool_config(
         permission={
             "action": "file.write",
@@ -263,7 +261,6 @@ def test_scope_permission_mode_overrides_tool_permission_mode():
     )
     def write_file(path: str) -> str:
         """Write a file."""
-        calls.append(path)
         return path
 
     library = ToolLibrary("tools", [write_file])
@@ -272,10 +269,26 @@ def test_scope_permission_mode_overrides_tool_permission_mode():
         scope=ExecutionScope(permission_mode="deny"),
         permission_manager=PermissionManager(default_mode="bypass"),
     ):
+        with pytest.raises(ValueError, match="cannot define permission mode"):
+            library([("call_1", "write_file", {"path": "workspace/report.txt"})])
+
+
+def test_sync_tool_execution_rejects_ask_user_permission_mode():
+    @mf.tool_config(permission={"action": "file.write"})
+    def write_file(path: str) -> str:
+        """Write a file."""
+        return path
+
+    library = ToolLibrary("tools", [write_file])
+
+    with execution_context(
+        scope=ExecutionScope(permission_mode="ask_user"),
+        permission_manager=PermissionManager(default_mode="bypass"),
+    ):
         response = library([("call_1", "write_file", {"path": "workspace/report.txt"})])
 
-    assert calls == []
     assert response.tool_calls[0].error is not None
+    assert "only supported by async tool execution" in response.tool_calls[0].error
 
 
 def test_invalid_scope_permission_mode_is_rejected():
