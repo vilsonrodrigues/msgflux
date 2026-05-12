@@ -279,16 +279,24 @@ class PermissionManager:
             raise KeyError(
                 f"Permission request `{decision.request_id}` is not pending."
             )
-        if decision.approved:
-            emit_permission_granted(decision.to_dict())
-        else:
-            emit_permission_denied(decision.to_dict())
 
         def _set_result() -> None:
             if not pending.future.done():
                 pending.future.set_result(decision)
 
-        pending.loop.call_soon_threadsafe(_set_result)
+        try:
+            pending.loop.call_soon_threadsafe(_set_result)
+        except RuntimeError as exc:
+            self._pending[decision.request_id] = pending
+            raise PermissionRuntimeError(
+                f"Permission request `{decision.request_id}` cannot be resolved "
+                "because its event loop is not accepting callbacks."
+            ) from exc
+
+        if decision.approved:
+            emit_permission_granted(decision.to_dict())
+        else:
+            emit_permission_denied(decision.to_dict())
         return decision
 
     # --- Introspection ---
