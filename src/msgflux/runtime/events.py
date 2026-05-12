@@ -42,6 +42,9 @@ __all__ = [
     "emit_turn_complete",
     "emit_turn_error",
     "emit_turn_start",
+    "emit_user_interaction_answered",
+    "emit_user_interaction_cancelled",
+    "emit_user_interaction_requested",
     "emit_user_message_injected",
     "emit_user_message_received",
 ]
@@ -70,6 +73,10 @@ class EventType:
     PERMISSION_REQUESTED = "gen_ai.permission.requested"
     PERMISSION_GRANTED = "gen_ai.permission.granted"
     PERMISSION_DENIED = "gen_ai.permission.denied"
+
+    USER_INTERACTION_REQUESTED = "gen_ai.user_interaction.requested"
+    USER_INTERACTION_ANSWERED = "gen_ai.user_interaction.answered"
+    USER_INTERACTION_CANCELLED = "gen_ai.user_interaction.cancelled"
 
     TOOL_CALL = "gen_ai.tool.call"
     TOOL_STARTED = "gen_ai.tool.started"
@@ -243,6 +250,18 @@ def emit_permission_granted(attributes: Mapping[str, Any]) -> None:
 
 def emit_permission_denied(attributes: Mapping[str, Any]) -> None:
     emit_event(EventType.PERMISSION_DENIED, attributes)
+
+
+def emit_user_interaction_requested(attributes: Mapping[str, Any]) -> None:
+    emit_event(EventType.USER_INTERACTION_REQUESTED, attributes)
+
+
+def emit_user_interaction_answered(attributes: Mapping[str, Any]) -> None:
+    emit_event(EventType.USER_INTERACTION_ANSWERED, attributes)
+
+
+def emit_user_interaction_cancelled(attributes: Mapping[str, Any]) -> None:
+    emit_event(EventType.USER_INTERACTION_CANCELLED, attributes)
 
 
 def emit_tool_call(metadata: ToolCallMetadata) -> None:
