@@ -1414,12 +1414,10 @@ class ToolLibrary(Module, metaclass=AutoParams):
 
     def _resolve_permission_mode(
         self,
-        permission_config: Mapping[str, Any],
+        permission_config: Mapping[str, Any],  # noqa: ARG002
         manager: PermissionManager,
     ) -> str:
-        mode = permission_config.get("mode") or permission_config.get("policy")
-        if mode is None:
-            mode = _get_scope_permission_mode()
+        mode = _get_scope_permission_mode()
         if mode is None:
             mode = manager.default_mode
         if not isinstance(mode, str):
@@ -1497,13 +1495,15 @@ class ToolLibrary(Module, metaclass=AutoParams):
         if permission_config is None:
             return
         try:
-            F.wait_for(
+            result = F.wait_for(
                 self._aenforce_tool_permission,
                 tool_name=tool_name,
                 tool_params=tool_params,
                 permission_config=permission_config,
                 metadata=metadata,
             )
+            if isinstance(result, TaskError):
+                raise result.exception
         except PermissionRuntimeError:
             raise
 
@@ -1608,7 +1608,6 @@ class ToolLibrary(Module, metaclass=AutoParams):
         task_handle: TaskHandle,
         tool_name: str,
         call_params: Dict[str, Any],
-        permission_config: Mapping[str, Any] | None = None,
         execution_scope: Optional[Dict[str, Any]] = None,
         agent_inbox: Optional[AgentInbox] = None,
     ) -> Any:
@@ -1616,15 +1615,6 @@ class ToolLibrary(Module, metaclass=AutoParams):
         with execution_context(**scope):
             task_handle.set_running()
             try:
-                metadata = call_params.get(TOOL_CALL_METADATA_KEY)
-                if not isinstance(metadata, ToolCallMetadata):
-                    metadata = ToolCallMetadata(tool_name=tool_name)
-                self._enforce_tool_permission(
-                    tool_name=tool_name,
-                    tool_params=call_params,
-                    permission_config=permission_config,
-                    metadata=metadata,
-                )
                 result = tool(**call_params)
             except TaskStopRequestedError as exc:
                 task_handle.stop(reason=str(exc))
@@ -1822,6 +1812,26 @@ class ToolLibrary(Module, metaclass=AutoParams):
         checkpoint_store = execution_context.get("checkpoint_store")
         permission_manager = execution_context.get("permission_manager")
         root_agent_inbox = execution_context.get("agent_inbox") or self.agent_inbox
+        metadata = self._build_tool_call_metadata(
+            tool_id=tool_id,
+            tool_name=tool_name,
+            tool_params=tool_params,
+            task_kind=str(task_kind),
+        )
+        try:
+            self._enforce_tool_permission(
+                tool_name=tool_name,
+                tool_params=tool_params,
+                permission_config=permission_config,
+                metadata=metadata,
+            )
+        except PermissionRuntimeError as exc:
+            return ToolCall(
+                id=tool_id,
+                name=tool_name,
+                parameters=self._build_call_parameters_for_response(call_params),
+                error=str(exc),
+            )
         task_id = uuid4().hex[:8]
         task_inbox = None
         if task_kind == "agent":
@@ -1930,7 +1940,6 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 ),
                 tool_name=tool_name,
                 call_params=runner_params,
-                permission_config=permission_config,
                 execution_scope=execution_scope,
                 agent_inbox=root_agent_inbox,
             )
@@ -2056,14 +2065,28 @@ class ToolLibrary(Module, metaclass=AutoParams):
                     tool_params=tool_params,
                 )
                 call_params[TOOL_CALL_METADATA_KEY] = metadata
-                F.spawn(
-                    self._build_permission_checked_call(
-                        tool=tool,
+                try:
+                    self._enforce_tool_permission(
                         tool_name=tool_name,
                         tool_params=tool_params,
-                        call_params=call_params,
                         permission_config=permission_config,
                         metadata=metadata,
+                    )
+                except PermissionRuntimeError as exc:
+                    tool_calls.append(
+                        ToolCall(
+                            id=tool_id,
+                            name=tool_name,
+                            parameters=tool_params,
+                            error=str(exc),
+                        )
+                    )
+                    continue
+                F.spawn(
+                    _RuntimeContextCall(
+                        _current_runtime_context_kwargs(),
+                        partial(tool, **call_params),
+                        partial(tool.acall, **call_params),
                     )
                 )
                 tool_calls.append(
@@ -2228,14 +2251,28 @@ class ToolLibrary(Module, metaclass=AutoParams):
                     tool_params=tool_params,
                 )
                 call_params[TOOL_CALL_METADATA_KEY] = metadata
-                await F.aspawn(
-                    self._build_permission_checked_call(
-                        tool=tool,
+                try:
+                    await self._aenforce_tool_permission(
                         tool_name=tool_name,
                         tool_params=tool_params,
-                        call_params=call_params,
                         permission_config=permission_config,
                         metadata=metadata,
+                    )
+                except PermissionRuntimeError as exc:
+                    tool_calls.append(
+                        ToolCall(
+                            id=tool_id,
+                            name=tool_name,
+                            parameters=tool_params,
+                            error=str(exc),
+                        )
+                    )
+                    continue
+                await F.aspawn(
+                    _RuntimeContextCall(
+                        _current_runtime_context_kwargs(),
+                        partial(tool, **call_params),
+                        partial(tool.acall, **call_params),
                     )
                 )
                 tool_calls.append(

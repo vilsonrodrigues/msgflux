@@ -15,6 +15,15 @@ from typing import Any, Mapping
 
 DEFAULT_SESSION_ID = "default"
 DEFAULT_NAMESPACE = "default"
+SUPPORTED_PERMISSION_MODES = {"bypass", "ask_user", "deny"}
+
+
+def _validate_permission_mode(permission_mode: str | None) -> None:
+    if (
+        permission_mode is not None
+        and permission_mode not in SUPPORTED_PERMISSION_MODES
+    ):
+        raise ValueError(f"Unknown permission mode: {permission_mode}")
 
 
 @dataclass(frozen=True)
@@ -184,6 +193,7 @@ def execution_context(
     resolved_permission_mode = (
         permission_mode if permission_mode is not None else base_scope.permission_mode
     )
+    _validate_permission_mode(resolved_permission_mode)
 
     resolved_scope = ExecutionScope(
         session_id=resolved_session_id,
