@@ -22,7 +22,7 @@ def tool_config(
     handoff: Optional[bool] = False,
     name_override: Optional[str] = None,
     retry: Optional[Any] = None,
-    permission: Optional[Dict[str, Any]] = None,
+    approval: Optional[Dict[str, Any]] = None,
 ) -> Callable:
     """Decorator to inject meta-properties into functions, classes, or instances.
 
@@ -90,8 +90,8 @@ def tool_config(
             Retry configuration for this tool. Accepts a tenacity retry decorator
             for custom retry behavior, False to disable retry, or None (default)
             to use the default retry from envs.
-        permission:
-            Permission metadata for tools that require runtime approval. Expected
+        approval:
+            Approval metadata for tools that require runtime approval. Expected
             keys include `action`, `risk`, `resource`, `resource_arg`, `reason`,
             and `metadata`. The active permission mode is resolved from the
             execution scope or permission manager, not from the tool.
@@ -188,7 +188,7 @@ def tool_config(
                     "return_direct": _return_direct,
                     "name_overridden": name_override,
                     "retry": retry,
-                    "permission": permission,
+                    "approval": approval,
                 }
             )
         }
