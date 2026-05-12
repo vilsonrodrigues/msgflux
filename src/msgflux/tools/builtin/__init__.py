@@ -1,7 +1,8 @@
 """Built-in agent tools ready for use out of the box."""
 
+from msgflux.tools.builtin.ask_user import AskUser
 from msgflux.tools.builtin.web_fetch import WebFetch
 from msgflux.tools.builtin.web_search import WebSearch
 from msgflux.tools.builtin.weather import Weather
 
-__all__ = ["WebFetch", "WebSearch", "Weather"]
+__all__ = ["AskUser", "WebFetch", "WebSearch", "Weather"]
