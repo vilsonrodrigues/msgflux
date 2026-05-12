@@ -59,11 +59,16 @@ from msgflux.runtime.events import (
     emit_agent_error,
     emit_agent_resumed,
     emit_agent_start,
+    emit_checkpoint_loaded,
     emit_checkpoint_saved,
     emit_event,
     emit_model_request,
     emit_model_response,
     emit_tool_call,
+    emit_turn_complete,
+    emit_turn_error,
+    emit_turn_start,
+    emit_user_message_injected,
 )
 from msgflux.tools.definitions import ToolDefinitions
 from msgflux.utils.chat import ChatBlock, response_format_from_msgspec_struct
@@ -533,6 +538,7 @@ class Agent(Module, metaclass=AutoParams):
             agent_inbox=effective_inbox,
         ):
             emit_agent_start(self.get_module_name(), resumed=resumed is not None)
+            emit_turn_start(self.get_module_name(), resumed=resumed is not None)
             if resumed is not None:
                 emit_agent_resumed(
                     self.get_module_name(),
@@ -549,19 +555,23 @@ class Agent(Module, metaclass=AutoParams):
                 self._checkpoint_save(
                     inputs.get("messages"), inputs.get("vars", {}), status="stopped"
                 )
+                emit_turn_error(self.get_module_name(), "stopped")
                 emit_agent_error(self.get_module_name(), "stopped")
                 raise
             except TaskPauseRequestedError:
                 self._checkpoint_save(
                     inputs.get("messages"), inputs.get("vars", {}), status="paused"
                 )
+                emit_turn_error(self.get_module_name(), "paused")
                 emit_agent_error(self.get_module_name(), "paused")
                 raise
             except Exception as exc:
                 self._checkpoint_save_on_error(inputs)
+                emit_turn_error(self.get_module_name(), exc)
                 emit_agent_error(self.get_module_name(), exc)
                 raise
             response = self._process_model_response(message, model_response, **inputs)
+            emit_turn_complete(self.get_module_name())
             emit_agent_complete(self.get_module_name())
             return response
 
@@ -596,6 +606,7 @@ class Agent(Module, metaclass=AutoParams):
             agent_inbox=effective_inbox,
         ):
             emit_agent_start(self.get_module_name(), resumed=resumed is not None)
+            emit_turn_start(self.get_module_name(), resumed=resumed is not None)
             if resumed is not None:
                 emit_agent_resumed(
                     self.get_module_name(),
@@ -614,6 +625,7 @@ class Agent(Module, metaclass=AutoParams):
                     inputs.get("vars", {}),
                     status="stopped",
                 )
+                emit_turn_error(self.get_module_name(), "stopped")
                 emit_agent_error(self.get_module_name(), "stopped")
                 raise
             except TaskPauseRequestedError:
@@ -622,10 +634,12 @@ class Agent(Module, metaclass=AutoParams):
                     inputs.get("vars", {}),
                     status="paused",
                 )
+                emit_turn_error(self.get_module_name(), "paused")
                 emit_agent_error(self.get_module_name(), "paused")
                 raise
             except Exception as exc:
                 await self._acheckpoint_save_on_error(inputs)
+                emit_turn_error(self.get_module_name(), exc)
                 emit_agent_error(self.get_module_name(), exc)
                 raise
             response = await self._aprocess_model_response(
@@ -633,6 +647,7 @@ class Agent(Module, metaclass=AutoParams):
                 model_response,
                 **inputs,
             )
+            emit_turn_complete(self.get_module_name())
             emit_agent_complete(self.get_module_name())
             return response
 
@@ -2300,6 +2315,16 @@ class Agent(Module, metaclass=AutoParams):
 
         notification_message = inbox.render(notifications)
         self._persist_notification_message(messages, notification_message)
+        incoming_ids = [
+            notification.notification_id
+            for notification in notifications
+            if notification.source == "incoming_user_message"
+        ]
+        if incoming_ids:
+            emit_user_message_injected(
+                message_count=len(incoming_ids),
+                notification_ids=incoming_ids,
+            )
         return notification_message is not None
 
     # --- Inbox Delivery ---
@@ -2609,6 +2634,12 @@ class Agent(Module, metaclass=AutoParams):
             namespace=self.get_module_name(),
             run_id=run_id,
         )
+        emit_checkpoint_loaded(
+            namespace=self.get_module_name(),
+            session_id=effective_session_id,
+            run_id=run_id,
+            status=state.get("status"),
+        )
         return {
             "messages": restored,
             "vars": state.get("vars", {}),
@@ -2658,6 +2689,12 @@ class Agent(Module, metaclass=AutoParams):
             session_id=effective_session_id,
             namespace=self.get_module_name(),
             run_id=run_id,
+        )
+        emit_checkpoint_loaded(
+            namespace=self.get_module_name(),
+            session_id=effective_session_id,
+            run_id=run_id,
+            status=state.get("status"),
         )
         return {
             "messages": restored,

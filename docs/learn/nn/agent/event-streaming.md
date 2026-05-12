@@ -65,13 +65,29 @@ if event.name == mf.EventType.TOOL_STARTED:
 Important event groups:
 
 - Agent: `AGENT_START`, `AGENT_RESUMED`, `AGENT_COMPLETE`, `AGENT_ERROR`.
+- Turn: `TURN_START`, `TURN_COMPLETE`, `TURN_ERROR`.
 - Model: `MODEL_REQUEST`, `MODEL_RESPONSE`.
 - Tool: `TOOL_CALL`, `TOOL_STARTED`, `TOOL_RESULT`, `TOOL_ERROR`,
   `TOOL_UPDATE`.
+- Subagent: `SUBAGENT_START`, `SUBAGENT_COMPLETE`, `SUBAGENT_ERROR`.
 - Task: `TASK_CREATED`, `TASK_RUNNING`, `TASK_PROGRESS`, `TASK_COMPLETED`,
   `TASK_FAILED`, `TASK_PAUSED`, `TASK_STOPPED`, `TASK_STOP_REQUESTED`.
-- Runtime: `INBOX_NOTIFICATION`, `CONTROL_RECEIVED`, `CHECKPOINT_SAVED`.
+- Runtime: `INBOX_NOTIFICATION`, `CONTROL_RECEIVED`, `CHECKPOINT_LOADED`,
+  `CHECKPOINT_SAVED`, `USER_MESSAGE_RECEIVED`, `USER_MESSAGE_INJECTED`.
 - Compaction: `COMPACTION_PRE`, `COMPACTION_POST`.
+
+Subagent events are emitted only when a tool wraps an `Agent`. In that case the
+stream includes both the generic tool events and the subagent events:
+
+```text
+TOOL_STARTED
+SUBAGENT_START
+SUBAGENT_COMPLETE
+TOOL_RESULT
+```
+
+Use `tool.*` to answer "which tool did the model call?" and `subagent.*` to
+render or replay nested agent execution.
 
 Compaction events are not emitted by the agent automatically. They are exposed
 for hooks or custom runtime code that compact chat history, snapshots, or other
