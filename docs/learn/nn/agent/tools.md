@@ -217,7 +217,7 @@ during the tool loop.
 ```python
 import msgflux as mf
 import msgflux.nn as nn
-from msgflux.tools.builtin import SendUserMessage
+from msgflux.tools.builtin import SEND_USER_MESSAGE_TOOL_NAME, SendUserMessage
 
 agent = nn.Agent(
     name="developer_agent",
@@ -233,14 +233,20 @@ agent = nn.Agent(
 The tool accepts:
 
 - `message`: required short user-facing update.
+- `status`: optional status for UI surfaces. Supported values are `info`,
+  `progress`, `success`, `warning`, and `error`.
 - `title`: optional short title for UI surfaces.
-- `attachments`: optional list of string metadata objects for event consumers
-  to render, such as `{"path": "/workspace/chart.png", "mime_type": "image/png"}`.
-- `metadata`: optional adapter-specific metadata.
+- `attachments`: optional path or list of paths for event consumers to render.
 
 `SendUserMessage` does not load, encode, or persist attachment files. It only
-emits their descriptors in the runtime event; the CLI, UI, or stream consumer
-decides how to render them.
+emits the attachment paths in the runtime event; the CLI, UI, or stream
+consumer decides how to load or render them.
+
+The tool name is also exported as a constant for prompts or tool guides:
+
+```python
+assert SEND_USER_MESSAGE_TOOL_NAME == "SendUserMessage"
+```
 
 #### TodoWrite
 

@@ -248,15 +248,13 @@ def emit_user_message_injected(
 def emit_user_message_sent(
     message: str,
     *,
+    status: str = "info",
     title: str | None = None,
-    attachments: list[Mapping[str, str]] | None = None,
-    metadata: Mapping[str, str] | None = None,
+    attachments: list[str] | None = None,
 ) -> None:
-    payload = {"message": message, "title": title}
+    payload = {"message": message, "status": status, "title": title}
     if attachments:
-        payload["attachments"] = [dict(attachment) for attachment in attachments]
-    if metadata:
-        payload["metadata"] = dict(metadata)
+        payload["attachments"] = list(attachments)
     emit_event(EventType.USER_MESSAGE_SENT, payload)
 
 
