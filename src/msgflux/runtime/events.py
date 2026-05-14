@@ -19,7 +19,6 @@ __all__ = [
     "emit_agent_error",
     "emit_agent_resumed",
     "emit_agent_start",
-    "emit_brief_message",
     "emit_checkpoint_saved",
     "emit_checkpoint_loaded",
     "emit_compaction_post",
@@ -49,6 +48,7 @@ __all__ = [
     "emit_user_interaction_requested",
     "emit_user_message_injected",
     "emit_user_message_received",
+    "emit_user_message_sent",
 ]
 
 
@@ -65,7 +65,7 @@ class EventType:
 
     USER_MESSAGE_RECEIVED = "gen_ai.user_message.received"
     USER_MESSAGE_INJECTED = "gen_ai.user_message.injected"
-    BRIEF_MESSAGE = "gen_ai.brief.message"
+    USER_MESSAGE_SENT = "gen_ai.user_message.sent"
 
     MODEL_REQUEST = "gen_ai.model.request"
     MODEL_RESPONSE = "gen_ai.model.response"
@@ -245,16 +245,19 @@ def emit_user_message_injected(
     )
 
 
-def emit_brief_message(
+def emit_user_message_sent(
     message: str,
     *,
     title: str | None = None,
-    metadata: Mapping[str, Any] | None = None,
+    attachments: list[Mapping[str, str]] | None = None,
+    metadata: Mapping[str, str] | None = None,
 ) -> None:
     payload = {"message": message, "title": title}
+    if attachments:
+        payload["attachments"] = [dict(attachment) for attachment in attachments]
     if metadata:
         payload["metadata"] = dict(metadata)
-    emit_event(EventType.BRIEF_MESSAGE, payload)
+    emit_event(EventType.USER_MESSAGE_SENT, payload)
 
 
 def emit_permission_requested(attributes: Mapping[str, Any]) -> None:

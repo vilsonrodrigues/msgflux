@@ -207,25 +207,25 @@ When the model decides to use a tool, the Agent intercepts the response, execute
 
 msgFlux provides built-in tools that work out of the box:
 
-#### Brief
+#### SendUserMessage
 
-`Brief` sends a short non-blocking message to the user while the agent keeps
-working. It emits a `gen_ai.brief.message` runtime event, which makes it useful
-for CLIs, UIs, and streaming clients that need progress updates during the tool
-loop.
+`SendUserMessage` sends a short non-blocking message to the user while the
+agent keeps working. It emits a `gen_ai.user_message.sent` runtime event, which
+makes it useful for CLIs, UIs, and streaming clients that need progress updates
+during the tool loop.
 
 ```python
 import msgflux as mf
 import msgflux.nn as nn
-from msgflux.tools.builtin import Brief
+from msgflux.tools.builtin import SendUserMessage
 
 agent = nn.Agent(
     name="developer_agent",
     model=mf.Model.chat_completion("openai/gpt-4.1-mini"),
-    tools=[Brief()],
+    tools=[SendUserMessage()],
     instructions=(
-        "Use brief to send concise progress updates to the user while you "
-        "continue working."
+        "Use SendUserMessage to send concise progress updates to the user "
+        "while you continue working."
     ),
 )
 ```
@@ -234,7 +234,13 @@ The tool accepts:
 
 - `message`: required short user-facing update.
 - `title`: optional short title for UI surfaces.
+- `attachments`: optional list of string metadata objects for event consumers
+  to render, such as `{"path": "/workspace/chart.png", "mime_type": "image/png"}`.
 - `metadata`: optional adapter-specific metadata.
+
+`SendUserMessage` does not load, encode, or persist attachment files. It only
+emits their descriptors in the runtime event; the CLI, UI, or stream consumer
+decides how to render them.
 
 #### TodoWrite
 

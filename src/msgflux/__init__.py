@@ -59,7 +59,6 @@ if TYPE_CHECKING:
         UserInteractionTimeoutError,
         UserQuestion,
         UserQuestionOption,
-        emit_brief_message,
         emit_checkpoint_loaded,
         emit_compaction_post,
         emit_compaction_pre,
@@ -78,6 +77,7 @@ if TYPE_CHECKING:
         emit_user_interaction_requested,
         emit_user_message_injected,
         emit_user_message_received,
+        emit_user_message_sent,
     )
     from msgflux.telemetry import Spans
     from msgflux.tools.config import tool_config
@@ -162,7 +162,7 @@ __all__ = [
     "emit_user_interaction_requested",
     "emit_user_message_injected",
     "emit_user_message_received",
-    "emit_brief_message",
+    "emit_user_message_sent",
     "execution_context",
     "get_fn_name",
     "get_execution_scope",
@@ -260,7 +260,7 @@ _LAZY_IMPORTS = {
     ),
     "emit_user_message_injected": ("msgflux.runtime", "emit_user_message_injected"),
     "emit_user_message_received": ("msgflux.runtime", "emit_user_message_received"),
-    "emit_brief_message": ("msgflux.runtime", "emit_brief_message"),
+    "emit_user_message_sent": ("msgflux.runtime", "emit_user_message_sent"),
     "execution_context": ("msgflux.context", "execution_context"),
     "get_fn_name": ("msgflux.utils.inspect", "get_fn_name"),
     "get_execution_scope": ("msgflux.context", "get_execution_scope"),

@@ -7,7 +7,6 @@ from msgflux.runtime.events import (
     emit_agent_error,
     emit_agent_resumed,
     emit_agent_start,
-    emit_brief_message,
     emit_checkpoint_loaded,
     emit_checkpoint_saved,
     emit_compaction_post,
@@ -37,6 +36,7 @@ from msgflux.runtime.events import (
     emit_user_interaction_requested,
     emit_user_message_injected,
     emit_user_message_received,
+    emit_user_message_sent,
 )
 from msgflux.runtime.interactions import (
     AskUserManager,
@@ -89,7 +89,6 @@ __all__ = [
     "emit_agent_error",
     "emit_agent_resumed",
     "emit_agent_start",
-    "emit_brief_message",
     "emit_checkpoint_saved",
     "emit_checkpoint_loaded",
     "emit_compaction_post",
@@ -119,5 +118,6 @@ __all__ = [
     "emit_user_interaction_requested",
     "emit_user_message_injected",
     "emit_user_message_received",
+    "emit_user_message_sent",
     "normalize_questions",
 ]
