@@ -34,6 +34,7 @@ __all__ = [
     "emit_subagent_error",
     "emit_subagent_start",
     "emit_task_event",
+    "emit_todo_updated",
     "emit_tool_call",
     "emit_tool_error",
     "emit_tool_result",
@@ -93,6 +94,8 @@ class EventType:
     TASK_FAILED = "gen_ai.task.failed"
     TASK_STOP_REQUESTED = "gen_ai.task.stop_requested"
     TASK_REQUEUED = "gen_ai.task.requeued"
+
+    TODO_UPDATED = "gen_ai.todo.updated"
 
     INBOX_NOTIFICATION = "gen_ai.inbox.notification"
     CONTROL_RECEIVED = "gen_ai.control.received"
@@ -334,6 +337,10 @@ def emit_task_event(
     if data:
         payload["data"] = dict(data)
     emit_event(event_type, payload)
+
+
+def emit_todo_updated(attributes: Mapping[str, Any]) -> None:
+    emit_event(EventType.TODO_UPDATED, attributes)
 
 
 def emit_inbox_notification(

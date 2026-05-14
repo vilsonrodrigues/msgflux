@@ -207,6 +207,49 @@ When the model decides to use a tool, the Agent intercepts the response, execute
 
 msgFlux provides built-in tools that work out of the box:
 
+#### TodoWrite
+
+`TodoWrite` updates a session-scoped todo list and emits
+`gen_ai.todo.updated` runtime events. Use it when you want streaming clients,
+CLIs, or UIs to show agent progress during multi-step work.
+
+```python
+import msgflux as mf
+import msgflux.nn as nn
+from msgflux.tools.builtin import TodoWrite
+
+todo_write = TodoWrite()
+
+agent = nn.Agent(
+    name="developer_agent",
+    model=mf.Model.chat_completion("openai/gpt-4.1-mini"),
+    tools=[todo_write],
+    instructions=(
+        "Use todo_write for non-trivial multi-step work. Keep at most one "
+        "todo in_progress at a time."
+    ),
+)
+```
+
+The tool contract is intentionally typed with `msgspec.Struct`, not
+`list[dict[str, str]]`:
+
+```python
+from typing import Literal
+
+import msgspec
+
+
+class TodoItem(msgspec.Struct):
+    content: str
+    active_form: str
+    status: Literal["pending", "in_progress", "completed"]
+```
+
+The model only supplies `content`, `active_form`, and `status`. There is no
+`id` field in the public contract to avoid spending tool-call tokens on runtime
+bookkeeping.
+
 #### WebFetch
 
 `WebFetch` fetches web pages and converts them to Markdown. It uses a parser endpoint (default: `https://markdown.new/`) or falls back to semantic HTML parsing.

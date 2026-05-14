@@ -22,6 +22,7 @@ from msgflux.runtime.events import (
     emit_subagent_error,
     emit_subagent_start,
     emit_task_event,
+    emit_todo_updated,
     emit_tool_call,
     emit_tool_error,
     emit_tool_result,
@@ -57,6 +58,7 @@ from msgflux.runtime.permissions import (
     PermissionRuntimeError,
     PermissionTimeoutError,
 )
+from msgflux.runtime.todos import TodoItem, TodoManager, TodoStatus
 
 __all__ = [
     "EventStream",
@@ -71,6 +73,9 @@ __all__ = [
     "PermissionRisk",
     "PermissionTimeoutError",
     "StreamEvent",
+    "TodoItem",
+    "TodoManager",
+    "TodoStatus",
     "ToolCallMetadata",
     "UserInteractionAnswer",
     "UserInteractionCancelledError",
@@ -98,6 +103,7 @@ __all__ = [
     "emit_subagent_error",
     "emit_subagent_start",
     "emit_task_event",
+    "emit_todo_updated",
     "emit_tool_call",
     "emit_tool_error",
     "emit_tool_result",
