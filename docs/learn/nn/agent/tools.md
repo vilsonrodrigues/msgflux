@@ -207,6 +207,35 @@ When the model decides to use a tool, the Agent intercepts the response, execute
 
 msgFlux provides built-in tools that work out of the box:
 
+#### Brief
+
+`Brief` sends a short non-blocking message to the user while the agent keeps
+working. It emits a `gen_ai.brief.message` runtime event, which makes it useful
+for CLIs, UIs, and streaming clients that need progress updates during the tool
+loop.
+
+```python
+import msgflux as mf
+import msgflux.nn as nn
+from msgflux.tools.builtin import Brief
+
+agent = nn.Agent(
+    name="developer_agent",
+    model=mf.Model.chat_completion("openai/gpt-4.1-mini"),
+    tools=[Brief()],
+    instructions=(
+        "Use brief to send concise progress updates to the user while you "
+        "continue working."
+    ),
+)
+```
+
+The tool accepts:
+
+- `message`: required short user-facing update.
+- `title`: optional short title for UI surfaces.
+- `metadata`: optional adapter-specific metadata.
+
 #### TodoWrite
 
 `TodoWrite` updates a session-scoped todo list and emits
