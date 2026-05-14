@@ -250,6 +250,51 @@ The model only supplies `content`, `active_form`, and `status`. There is no
 `id` field in the public contract to avoid spending tool-call tokens on runtime
 bookkeeping.
 
+You can also use `TodoManager` directly when the application needs to inspect
+or update todo state outside a model tool call:
+
+```python
+from msgflux.context import execution_context
+from msgflux.runtime import EventStream, TodoItem, TodoManager
+
+manager = TodoManager()
+
+with execution_context(session_id="session_123", namespace="agent"):
+    with EventStream() as stream:
+        manager.update(
+            [
+                TodoItem(
+                    content="Review the repository",
+                    active_form="Reviewing the repository",
+                    status="in_progress",
+                ),
+                TodoItem(
+                    content="Write tests",
+                    active_form="Writing tests",
+                    status="pending",
+                ),
+            ]
+        )
+        stream.close()
+
+    todos = manager.get()
+    events = stream.events
+```
+
+`TodoManager` stores todos in memory by `(session_id, namespace)`. If you do not
+pass `session_id` or `namespace` explicitly, it reads the active execution
+scope. This lets an agent, a subagent, and external runtime code share the same
+session-scoped todo state without manually threading identifiers through every
+call.
+
+Useful methods:
+
+- `manager.update(todos)` replaces the full todo list and emits
+  `gen_ai.todo.updated`.
+- `manager.get()` returns the current todo list for the active scope.
+- `manager.clear()` replaces the current todo list with an empty list and emits
+  `gen_ai.todo.updated`.
+
 #### WebFetch
 
 `WebFetch` fetches web pages and converts them to Markdown. It uses a parser endpoint (default: `https://markdown.new/`) or falls back to semantic HTML parsing.
