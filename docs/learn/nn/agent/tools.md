@@ -286,6 +286,53 @@ The tool name is exported as a constant for prompts or tool guides:
 assert FILE_READ_TOOL_NAME == "Read"
 ```
 
+#### FileEdit
+
+`FileEdit` edits a text file by replacing an exact `old_string` with
+`new_string`. It is async-only because edits can require user approval before
+writing to disk.
+
+```python
+import msgflux as mf
+import msgflux.nn as nn
+from msgflux.tools.builtin import FILE_EDIT_TOOL_NAME, FileEdit
+
+agent = nn.Agent(
+    name="developer_agent",
+    model=mf.Model.chat_completion("openai/gpt-4.1-mini"),
+    tools=[FileEdit()],
+    instructions=(
+        "Use Edit for precise file edits. Read the file first, then provide "
+        "an exact old_string and replacement new_string."
+    ),
+)
+```
+
+The tool accepts:
+
+- `file_path`: required path to the text file.
+- `old_string`: exact text to replace.
+- `new_string`: replacement text.
+- `replace_all`: optional boolean; use only when every occurrence should be
+  replaced.
+
+`FileEdit` computes a unified diff before writing. The runtime emits:
+
+- `gen_ai.file.edit.proposed` before permission is resolved.
+- `gen_ai.file.edit.applied` after the file is written.
+- `gen_ai.file.edit.rejected` when permission denies the edit.
+- `gen_ai.file.edit.failed` when validation or writing fails.
+
+When `permission_mode="ask_user"`, the permission request metadata includes a
+`preview` object containing the diff, line counts, and file path. CLIs and UIs
+can render that diff before approving or denying the request.
+
+The tool name is exported as a constant for prompts or tool guides:
+
+```python
+assert FILE_EDIT_TOOL_NAME == "Edit"
+```
+
 #### TodoWrite
 
 `TodoWrite` updates a session-scoped todo list and emits

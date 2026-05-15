@@ -12,6 +12,10 @@ from msgflux.runtime.events import (
     emit_compaction_post,
     emit_compaction_pre,
     emit_event,
+    emit_file_edit_applied,
+    emit_file_edit_failed,
+    emit_file_edit_proposed,
+    emit_file_edit_rejected,
     emit_file_read,
     emit_inbox_notification,
     emit_model_request,
@@ -38,6 +42,11 @@ from msgflux.runtime.events import (
     emit_user_message_injected,
     emit_user_message_received,
     emit_user_message_sent,
+)
+from msgflux.runtime.file_edit import (
+    FileEditOperation,
+    FileEditProposal,
+    FileEditRuntime,
 )
 from msgflux.runtime.interactions import (
     AskUserManager,
@@ -66,6 +75,9 @@ __all__ = [
     "EventStream",
     "EventType",
     "AskUserManager",
+    "FileEditOperation",
+    "FileEditProposal",
+    "FileEditRuntime",
     "PermissionDecision",
     "PermissionDeniedError",
     "PermissionManager",
@@ -96,6 +108,10 @@ __all__ = [
     "emit_compaction_pre",
     "emit_event",
     "emit_file_read",
+    "emit_file_edit_applied",
+    "emit_file_edit_failed",
+    "emit_file_edit_proposed",
+    "emit_file_edit_rejected",
     "emit_inbox_notification",
     "emit_model_request",
     "emit_model_response",

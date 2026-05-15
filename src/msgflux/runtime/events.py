@@ -25,6 +25,10 @@ __all__ = [
     "emit_compaction_pre",
     "emit_event",
     "emit_file_read",
+    "emit_file_edit_applied",
+    "emit_file_edit_failed",
+    "emit_file_edit_proposed",
+    "emit_file_edit_rejected",
     "emit_inbox_notification",
     "emit_model_request",
     "emit_model_response",
@@ -69,6 +73,10 @@ class EventType:
     USER_MESSAGE_SENT = "gen_ai.user_message.sent"
 
     FILE_READ = "gen_ai.file.read"
+    FILE_EDIT_PROPOSED = "gen_ai.file.edit.proposed"
+    FILE_EDIT_APPLIED = "gen_ai.file.edit.applied"
+    FILE_EDIT_REJECTED = "gen_ai.file.edit.rejected"
+    FILE_EDIT_FAILED = "gen_ai.file.edit.failed"
 
     MODEL_REQUEST = "gen_ai.model.request"
     MODEL_RESPONSE = "gen_ai.model.response"
@@ -282,6 +290,26 @@ def emit_file_read(
             "reason": reason,
         },
     )
+
+
+def _emit_file_edit_event(event_type: str, attributes: Mapping[str, Any]) -> None:
+    emit_event(event_type, attributes)
+
+
+def emit_file_edit_proposed(attributes: Mapping[str, Any]) -> None:
+    _emit_file_edit_event(EventType.FILE_EDIT_PROPOSED, attributes)
+
+
+def emit_file_edit_applied(attributes: Mapping[str, Any]) -> None:
+    _emit_file_edit_event(EventType.FILE_EDIT_APPLIED, attributes)
+
+
+def emit_file_edit_rejected(attributes: Mapping[str, Any]) -> None:
+    _emit_file_edit_event(EventType.FILE_EDIT_REJECTED, attributes)
+
+
+def emit_file_edit_failed(attributes: Mapping[str, Any]) -> None:
+    _emit_file_edit_event(EventType.FILE_EDIT_FAILED, attributes)
 
 
 def emit_permission_requested(attributes: Mapping[str, Any]) -> None:
