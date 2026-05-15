@@ -48,6 +48,11 @@ from msgflux.runtime.file_edit import (
     FileEditProposal,
     FileEditRuntime,
 )
+from msgflux.runtime.file_reads import (
+    FileReadRecord,
+    FileReadTracker,
+    get_file_read_tracker,
+)
 from msgflux.runtime.interactions import (
     AskUserManager,
     UserInteractionAnswer,
@@ -78,6 +83,8 @@ __all__ = [
     "FileEditOperation",
     "FileEditProposal",
     "FileEditRuntime",
+    "FileReadRecord",
+    "FileReadTracker",
     "PermissionDecision",
     "PermissionDeniedError",
     "PermissionManager",
@@ -137,5 +144,6 @@ __all__ = [
     "emit_user_message_injected",
     "emit_user_message_received",
     "emit_user_message_sent",
+    "get_file_read_tracker",
     "normalize_questions",
 ]

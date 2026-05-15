@@ -1,4 +1,7 @@
-from msgflux.runtime.file_edit import FileEditRuntime
+from msgflux.runtime.file_edit import (
+    DEFAULT_MAX_FILE_EDIT_DIFF_CHARS,
+    FileEditRuntime,
+)
 
 FILE_EDIT_TOOL_NAME = "Edit"
 
@@ -15,8 +18,16 @@ class FileEdit:
     read_only = False
     concurrency_safe = False
 
-    def __init__(self, runtime: FileEditRuntime | None = None) -> None:
-        self.runtime = runtime or FileEditRuntime(tool_name=self.name)
+    def __init__(
+        self,
+        runtime: FileEditRuntime | None = None,
+        *,
+        max_diff_chars: int = DEFAULT_MAX_FILE_EDIT_DIFF_CHARS,
+    ) -> None:
+        self.runtime = runtime or FileEditRuntime(
+            tool_name=self.name,
+            max_diff_chars=max_diff_chars,
+        )
 
     def __call__(
         self,

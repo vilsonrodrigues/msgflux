@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from difflib import unified_diff
-from hashlib import sha256
 from pathlib import Path
 from typing import Literal
 
@@ -13,6 +12,7 @@ from msgflux.runtime.events import (
     emit_file_edit_proposed,
     emit_file_edit_rejected,
 )
+from msgflux.runtime.file_reads import get_file_read_tracker, hash_text
 from msgflux.runtime.permissions import (
     PermissionDeniedError,
     PermissionManager,
@@ -21,6 +21,7 @@ from msgflux.runtime.permissions import (
 )
 
 FileEditOperation = Literal["replace"]
+DEFAULT_MAX_FILE_EDIT_DIFF_CHARS = 100_000
 
 
 @dataclass(frozen=True)
@@ -32,6 +33,8 @@ class FileEditProposal:
     new_text_hash: str
     lines_added: int
     lines_removed: int
+    diff_truncated: bool = False
+    diff_chars_original: int = 0
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -42,14 +45,26 @@ class FileEditProposal:
             "new_text_hash": self.new_text_hash,
             "lines_added": self.lines_added,
             "lines_removed": self.lines_removed,
+            "diff_truncated": self.diff_truncated,
+            "diff_chars_original": self.diff_chars_original,
         }
 
 
 class FileEditRuntime:
     """Shared file-edit runtime for tools that propose and apply text changes."""
 
-    def __init__(self, *, tool_name: str = "Edit") -> None:
+    def __init__(
+        self,
+        *,
+        tool_name: str = "Edit",
+        max_diff_chars: int = DEFAULT_MAX_FILE_EDIT_DIFF_CHARS,
+    ) -> None:
+        if max_diff_chars <= 0:
+            raise ValueError(
+                "FileEditRuntime max_diff_chars must be greater than zero."
+            )
         self.tool_name = tool_name
+        self.max_diff_chars = max_diff_chars
 
     async def replace(
         self,
@@ -61,7 +76,7 @@ class FileEditRuntime:
     ) -> str:
         path = Path(file_path).expanduser().resolve()
         try:
-            proposal, new_content = self._build_replace_proposal(
+            proposal, new_content, line_ending = self._build_replace_proposal(
                 path=path,
                 old_string=old_string,
                 new_string=new_string,
@@ -69,7 +84,9 @@ class FileEditRuntime:
             )
             emit_file_edit_proposed(proposal.to_dict())
             await self._enforce_permission(proposal)
-            path.write_text(new_content, encoding="utf-8")
+            self._ensure_file_unchanged_since_read(path=path, proposal=proposal)
+            path.write_bytes(new_content.replace("\n", line_ending).encode("utf-8"))
+            get_file_read_tracker().mark_read(path, new_content)
             emit_file_edit_applied(proposal.to_dict())
             return f"Edit applied to {path}."
         except PermissionDeniedError:
@@ -88,7 +105,7 @@ class FileEditRuntime:
         old_string: str,
         new_string: str,
         replace_all: bool,
-    ) -> tuple[FileEditProposal, str]:
+    ) -> tuple[FileEditProposal, str, str]:
         if not old_string:
             raise ValueError("Edit `old_string` cannot be empty.")
         if old_string == new_string:
@@ -98,7 +115,18 @@ class FileEditRuntime:
         if not path.is_file():
             raise ValueError(f"Path is not a file: {path}")
 
-        old_content = path.read_text(encoding="utf-8")
+        old_content, line_ending = self._read_text_preserving_newlines(path)
+        read_record = get_file_read_tracker().get(path)
+        if read_record is None:
+            raise ValueError(
+                "File must be read with the Read tool before it can be edited."
+            )
+        current_hash = hash_text(old_content)
+        if read_record.text_hash != current_hash:
+            raise ValueError(
+                "File has changed since it was last read. Read the file again "
+                "before editing."
+            )
         occurrences = old_content.count(old_string)
         if occurrences == 0:
             raise ValueError("Edit `old_string` was not found in the file.")
@@ -115,18 +143,35 @@ class FileEditRuntime:
             old_content=old_content,
             new_content=new_content,
         )
+        diff_for_payload, diff_truncated = self._truncate_diff(diff)
         return (
             FileEditProposal(
                 path=str(path),
                 operation="replace",
-                diff=diff,
-                old_text_hash=self._hash_text(old_content),
-                new_text_hash=self._hash_text(new_content),
+                diff=diff_for_payload,
+                old_text_hash=current_hash,
+                new_text_hash=hash_text(new_content),
                 lines_added=self._count_diff_lines(diff, "+"),
                 lines_removed=self._count_diff_lines(diff, "-"),
+                diff_truncated=diff_truncated,
+                diff_chars_original=len(diff),
             ),
             new_content,
+            line_ending,
         )
+
+    def _ensure_file_unchanged_since_read(
+        self,
+        *,
+        path: Path,
+        proposal: FileEditProposal,
+    ) -> None:
+        current_content, _line_ending = self._read_text_preserving_newlines(path)
+        if hash_text(current_content) != proposal.old_text_hash:
+            raise ValueError(
+                "File changed after the edit was proposed. Read the file again "
+                "before retrying the edit."
+            )
 
     async def _enforce_permission(self, proposal: FileEditProposal) -> None:
         context = get_execution_context()
@@ -164,6 +209,12 @@ class FileEditRuntime:
             raise TypeError("Permission mode must be a string.")
         return mode
 
+    def _read_text_preserving_newlines(self, path: Path) -> tuple[str, str]:
+        raw = path.read_bytes()
+        text = raw.decode("utf-8")
+        line_ending = "\r\n" if b"\r\n" in raw else "\n"
+        return text.replace("\r\n", "\n"), line_ending
+
     def _build_diff(self, *, path: Path, old_content: str, new_content: str) -> str:
         return "".join(
             unified_diff(
@@ -181,5 +232,8 @@ class FileEditRuntime:
             if line.startswith(prefix) and not line.startswith(prefix * 3)
         )
 
-    def _hash_text(self, text: str) -> str:
-        return sha256(text.encode("utf-8")).hexdigest()
+    def _truncate_diff(self, diff: str) -> tuple[str, bool]:
+        if len(diff) <= self.max_diff_chars:
+            return diff, False
+        marker = "\n...[diff truncated]...\n"
+        return diff[: self.max_diff_chars] + marker, True

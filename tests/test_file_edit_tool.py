@@ -10,13 +10,18 @@ from msgflux.runtime import (
     PermissionDeniedError,
     PermissionManager,
 )
-from msgflux.tools.builtin import FILE_EDIT_TOOL_NAME, FileEdit
+from msgflux.tools.builtin import FILE_EDIT_TOOL_NAME, FileEdit, FileRead
+
+
+def _read_file(file_path):
+    FileRead()(str(file_path))
 
 
 @pytest.mark.asyncio
 async def test_file_edit_bypass_applies_edit_and_emits_events(tmp_path):
     file_path = tmp_path / "example.txt"
     file_path.write_text("hello world\n", encoding="utf-8")
+    _read_file(file_path)
     tool = FileEdit()
 
     with execution_context(permission_manager=PermissionManager(default_mode="bypass")):
@@ -49,6 +54,7 @@ async def test_file_edit_bypass_applies_edit_and_emits_events(tmp_path):
 async def test_file_edit_deny_rejects_without_writing(tmp_path):
     file_path = tmp_path / "example.txt"
     file_path.write_text("hello world\n", encoding="utf-8")
+    _read_file(file_path)
     tool = FileEdit()
 
     with execution_context(permission_manager=PermissionManager(default_mode="deny")):
@@ -74,6 +80,7 @@ async def test_file_edit_deny_rejects_without_writing(tmp_path):
 async def test_file_edit_ask_user_waits_for_approval(tmp_path):
     file_path = tmp_path / "example.txt"
     file_path.write_text("hello world\n", encoding="utf-8")
+    _read_file(file_path)
     manager = PermissionManager(default_mode="ask_user")
     tool = FileEdit()
 
@@ -103,6 +110,7 @@ async def test_file_edit_ask_user_waits_for_approval(tmp_path):
 async def test_file_edit_scope_policy_overrides_manager_default(tmp_path):
     file_path = tmp_path / "example.txt"
     file_path.write_text("hello world\n", encoding="utf-8")
+    _read_file(file_path)
     manager = PermissionManager(default_mode="deny")
     tool = FileEdit()
 
@@ -123,6 +131,7 @@ async def test_file_edit_scope_policy_overrides_manager_default(tmp_path):
 async def test_file_edit_tool_library_executes_async(tmp_path):
     file_path = tmp_path / "example.txt"
     file_path.write_text("hello world\n", encoding="utf-8")
+    _read_file(file_path)
     library = ToolLibrary("agent", [FileEdit()])
 
     with execution_context(permission_manager=PermissionManager(default_mode="bypass")):
@@ -165,6 +174,7 @@ def test_file_edit_sync_call_raises_clear_error(tmp_path):
 async def test_file_edit_rejects_ambiguous_old_string(tmp_path):
     file_path = tmp_path / "example.txt"
     file_path.write_text("hello hello\n", encoding="utf-8")
+    _read_file(file_path)
     tool = FileEdit()
 
     with pytest.raises(ValueError, match="appears multiple times"):
@@ -173,3 +183,138 @@ async def test_file_edit_rejects_ambiguous_old_string(tmp_path):
             old_string="hello",
             new_string="goodbye",
         )
+
+
+@pytest.mark.asyncio
+async def test_file_edit_requires_prior_read(tmp_path):
+    file_path = tmp_path / "example.txt"
+    file_path.write_text("hello world\n", encoding="utf-8")
+    tool = FileEdit()
+
+    with pytest.raises(ValueError, match="must be read with the Read tool"):
+        await tool.acall(
+            file_path=str(file_path),
+            old_string="hello",
+            new_string="goodbye",
+        )
+
+
+@pytest.mark.asyncio
+async def test_file_edit_requires_read_in_same_execution_scope(tmp_path):
+    file_path = tmp_path / "example.txt"
+    file_path.write_text("hello world\n", encoding="utf-8")
+    tool = FileEdit()
+
+    with execution_context(session_id="session_a", run_id="run_a"):
+        _read_file(file_path)
+
+    with execution_context(session_id="session_b", run_id="run_b"):
+        with pytest.raises(ValueError, match="must be read with the Read tool"):
+            await tool.acall(
+                file_path=str(file_path),
+                old_string="hello",
+                new_string="goodbye",
+            )
+
+
+@pytest.mark.asyncio
+async def test_file_edit_rejects_external_change_after_read(tmp_path):
+    file_path = tmp_path / "example.txt"
+    file_path.write_text("hello world\n", encoding="utf-8")
+    _read_file(file_path)
+    file_path.write_text("hello changed\n", encoding="utf-8")
+    tool = FileEdit()
+
+    with pytest.raises(ValueError, match="changed since it was last read"):
+        await tool.acall(
+            file_path=str(file_path),
+            old_string="hello",
+            new_string="goodbye",
+        )
+
+
+@pytest.mark.asyncio
+async def test_file_edit_rejects_change_after_permission_proposal(tmp_path):
+    file_path = tmp_path / "example.txt"
+    file_path.write_text("hello world\n", encoding="utf-8")
+    _read_file(file_path)
+    manager = PermissionManager(default_mode="ask_user")
+    tool = FileEdit()
+
+    async def mutate_and_approve_pending():
+        while not manager.list_pending():
+            await asyncio.sleep(0)
+        request = manager.list_pending()[0]
+        file_path.write_text("hello changed\n", encoding="utf-8")
+        manager.approve(request.request_id)
+
+    with execution_context(permission_manager=manager):
+        task = asyncio.create_task(mutate_and_approve_pending())
+        with pytest.raises(ValueError, match="changed after the edit was proposed"):
+            await tool.acall(
+                file_path=str(file_path),
+                old_string="hello",
+                new_string="goodbye",
+            )
+        await task
+
+
+@pytest.mark.asyncio
+async def test_file_edit_updates_read_tracker_after_successful_edit(tmp_path):
+    file_path = tmp_path / "example.txt"
+    file_path.write_text("hello world\n", encoding="utf-8")
+    _read_file(file_path)
+    tool = FileEdit()
+
+    await tool.acall(
+        file_path=str(file_path),
+        old_string="hello",
+        new_string="goodbye",
+    )
+    await tool.acall(
+        file_path=str(file_path),
+        old_string="world",
+        new_string="team",
+    )
+
+    assert file_path.read_text(encoding="utf-8") == "goodbye team\n"
+
+
+@pytest.mark.asyncio
+async def test_file_edit_preserves_crlf_line_endings(tmp_path):
+    file_path = tmp_path / "example.txt"
+    file_path.write_bytes(b"hello world\r\nsecond line\r\n")
+    _read_file(file_path)
+    tool = FileEdit()
+
+    await tool.acall(
+        file_path=str(file_path),
+        old_string="hello",
+        new_string="goodbye",
+    )
+
+    assert file_path.read_bytes() == b"goodbye world\r\nsecond line\r\n"
+
+
+@pytest.mark.asyncio
+async def test_file_edit_truncates_large_diff_in_event_payload(tmp_path):
+    file_path = tmp_path / "example.txt"
+    file_path.write_text("alpha\nbeta\ngamma\n", encoding="utf-8")
+    _read_file(file_path)
+    tool = FileEdit(max_diff_chars=40)
+
+    with EventStream() as stream:
+        await tool.acall(
+            file_path=str(file_path),
+            old_string="alpha\nbeta\ngamma",
+            new_string="one\ntwo\nthree",
+        )
+        stream.close()
+        events = stream.events
+
+    proposed = next(
+        event for event in events if event.name == EventType.FILE_EDIT_PROPOSED
+    )
+    assert proposed.attributes["diff_truncated"] is True
+    assert proposed.attributes["diff_chars_original"] > 40
+    assert "...[diff truncated]..." in proposed.attributes["diff"]

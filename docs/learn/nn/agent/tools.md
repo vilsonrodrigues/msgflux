@@ -316,7 +316,14 @@ The tool accepts:
 - `replace_all`: optional boolean; use only when every occurrence should be
   replaced.
 
-`FileEdit` computes a unified diff before writing. The runtime emits:
+The file must be read with `FileRead` before editing. `FileEdit` records a
+SHA-256 hash when the file is read and verifies the file has not changed before
+writing. After a successful edit, the read tracker is updated so multiple
+sequential edits to the same file can proceed safely.
+
+`FileEdit` computes a unified diff before writing. Large diffs are truncated in
+events and permission previews, while line counts and hashes remain available.
+The runtime emits:
 
 - `gen_ai.file.edit.proposed` before permission is resolved.
 - `gen_ai.file.edit.applied` after the file is written.

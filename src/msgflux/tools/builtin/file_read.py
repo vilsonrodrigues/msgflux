@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from msgflux.runtime.events import emit_file_read
+from msgflux.runtime.file_reads import get_file_read_tracker
 
 FILE_READ_TOOL_NAME = "Read"
 
@@ -87,6 +88,7 @@ class FileRead:
         content = resolved_path.read_bytes()
         self._ensure_text_content(resolved_path, content)
         text = content.decode("utf-8")
+        get_file_read_tracker().mark_read(resolved_path, text.replace("\r\n", "\n"))
         lines = text.splitlines()
 
         start_index = min(line_start - 1, len(lines))
