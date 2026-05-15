@@ -14,17 +14,15 @@ def test_send_user_message_tool_emits_user_facing_event():
             result = tool(
                 message="I am checking the repository now.",
                 status="progress",
-                title="Progress",
                 attachments="/workspace/screenshot.png",
             )
             stream.close()
             events = stream.events
 
-    assert result == {"message": "Message sent to the user."}
+    assert result == "Message sent to the user."
     assert [event.name for event in events] == [EventType.USER_MESSAGE_SENT]
     assert events[0].attributes["message"] == "I am checking the repository now."
     assert events[0].attributes["status"] == "progress"
-    assert events[0].attributes["title"] == "Progress"
     assert events[0].attributes["attachments"] == ["/workspace/screenshot.png"]
     assert events[0].attributes["scope"]["session_id"] == "session_a"
     assert events[0].attributes["scope"]["namespace"] == "agent"
@@ -56,7 +54,7 @@ def test_send_user_message_tool_library_executes_and_preserves_metadata():
     response = responses.get_by_name(SEND_USER_MESSAGE_TOOL_NAME)
     assert response is not None
     assert response.error is None
-    assert response.result == {"message": "Message sent to the user."}
+    assert response.result == "Message sent to the user."
     assert library.library[SEND_USER_MESSAGE_TOOL_NAME].display_name == (
         "Send User Message"
     )
@@ -88,7 +86,7 @@ async def test_send_user_message_tool_async_call_emits_event():
         stream.close()
         events = stream.events
 
-    assert result == {"message": "Message sent to the user."}
+    assert result == "Message sent to the user."
     assert [event.name for event in events] == [EventType.USER_MESSAGE_SENT]
 
 

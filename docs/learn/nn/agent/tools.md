@@ -235,7 +235,6 @@ The tool accepts:
 - `message`: required short user-facing update.
 - `status`: optional status for UI surfaces. Supported values are `info`,
   `progress`, `success`, `warning`, and `error`.
-- `title`: optional short title for UI surfaces.
 - `attachments`: optional path or list of paths for event consumers to render.
 
 `SendUserMessage` does not load, encode, or persist attachment files. It only

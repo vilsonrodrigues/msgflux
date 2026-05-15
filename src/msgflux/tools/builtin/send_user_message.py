@@ -23,15 +23,13 @@ class SendUserMessage:
         self,
         message: str,
         status: SendUserMessageStatus = "info",
-        title: str | None = None,
         attachments: str | list[str] | None = None,
-    ) -> dict[str, str]:
+    ) -> str:
         """Send a short message to the user.
 
         Args:
             message: Short user-facing message.
             status: Message status for UI surfaces.
-            title: Optional short title for UI surfaces.
             attachments: Optional local path or list of local paths for the
                 runtime event consumer to render.
         """
@@ -41,18 +39,14 @@ class SendUserMessage:
         if status not in {"info", "progress", "success", "warning", "error"}:
             raise ValueError(f"Invalid SendUserMessage status: {status}")
 
-        normalized_title = title.strip() if isinstance(title, str) else None
-        if normalized_title == "":
-            normalized_title = None
         normalized_attachments = self._normalize_attachments(attachments)
 
         emit_user_message_sent(
             normalized_message,
             status=status,
-            title=normalized_title,
             attachments=normalized_attachments,
         )
-        return {"message": "Message sent to the user."}
+        return "Message sent to the user."
 
     def _normalize_attachments(
         self,
@@ -81,13 +75,11 @@ class SendUserMessage:
         self,
         message: str,
         status: SendUserMessageStatus = "info",
-        title: str | None = None,
         attachments: str | list[str] | None = None,
-    ) -> dict[str, str]:
+    ) -> str:
         return self(
             message=message,
             status=status,
-            title=title,
             attachments=attachments,
         )
 
