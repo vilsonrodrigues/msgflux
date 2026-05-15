@@ -3,7 +3,7 @@ import pytest
 from msgflux.context import execution_context
 from msgflux.nn import ToolLibrary
 from msgflux.runtime import EventStream, EventType
-from msgflux.tools.builtin import Brief, SEND_USER_MESSAGE_TOOL_NAME, SendUserMessage
+from msgflux.tools.builtin import SEND_USER_MESSAGE_TOOL_NAME, SendUserMessage
 
 
 def test_send_user_message_tool_emits_user_facing_event():
@@ -109,7 +109,3 @@ def test_send_user_message_tool_rejects_non_string_attachment():
 
     with pytest.raises(TypeError, match="attachments must be paths as strings"):
         tool("Working.", attachments=["/workspace/report.png", 42])
-
-
-def test_brief_alias_points_to_send_user_message():
-    assert Brief is SendUserMessage

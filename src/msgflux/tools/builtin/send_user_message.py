@@ -3,7 +3,6 @@ from typing import Literal
 from msgflux.runtime.events import emit_user_message_sent
 
 SEND_USER_MESSAGE_TOOL_NAME = "SendUserMessage"
-LEGACY_BRIEF_TOOL_NAME = "Brief"
 SendUserMessageStatus = Literal["info", "progress", "success", "warning", "error"]
 
 
@@ -82,6 +81,3 @@ class SendUserMessage:
             status=status,
             attachments=attachments,
         )
-
-
-Brief = SendUserMessage

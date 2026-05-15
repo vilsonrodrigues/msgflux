@@ -24,6 +24,7 @@ __all__ = [
     "emit_compaction_post",
     "emit_compaction_pre",
     "emit_event",
+    "emit_file_read",
     "emit_inbox_notification",
     "emit_model_request",
     "emit_model_response",
@@ -66,6 +67,8 @@ class EventType:
     USER_MESSAGE_RECEIVED = "gen_ai.user_message.received"
     USER_MESSAGE_INJECTED = "gen_ai.user_message.injected"
     USER_MESSAGE_SENT = "gen_ai.user_message.sent"
+
+    FILE_READ = "gen_ai.file.read"
 
     MODEL_REQUEST = "gen_ai.model.request"
     MODEL_RESPONSE = "gen_ai.model.response"
@@ -255,6 +258,30 @@ def emit_user_message_sent(
     if attachments:
         payload["attachments"] = list(attachments)
     emit_event(EventType.USER_MESSAGE_SENT, payload)
+
+
+def emit_file_read(
+    *,
+    path: str,
+    line_start: int,
+    line_end: int,
+    lines_returned: int,
+    chars_returned: int,
+    truncated: bool,
+    reason: str | None = None,
+) -> None:
+    emit_event(
+        EventType.FILE_READ,
+        {
+            "path": path,
+            "line_start": line_start,
+            "line_end": line_end,
+            "lines_returned": lines_returned,
+            "chars_returned": chars_returned,
+            "truncated": truncated,
+            "reason": reason,
+        },
+    )
 
 
 def emit_permission_requested(attributes: Mapping[str, Any]) -> None:

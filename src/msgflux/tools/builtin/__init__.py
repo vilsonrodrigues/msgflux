@@ -1,10 +1,9 @@
 """Built-in agent tools ready for use out of the box."""
 
 from msgflux.tools.builtin.ask_user import AskUser
+from msgflux.tools.builtin.file_read import FILE_READ_TOOL_NAME, FileRead
 from msgflux.tools.builtin.send_user_message import (
-    LEGACY_BRIEF_TOOL_NAME,
     SEND_USER_MESSAGE_TOOL_NAME,
-    Brief,
     SendUserMessage,
 )
 from msgflux.tools.builtin.todo_write import TodoWrite
@@ -14,10 +13,10 @@ from msgflux.tools.builtin.web_search import WebSearch
 
 __all__ = [
     "AskUser",
-    "Brief",
-    "LEGACY_BRIEF_TOOL_NAME",
+    "FILE_READ_TOOL_NAME",
     "SEND_USER_MESSAGE_TOOL_NAME",
     "SendUserMessage",
+    "FileRead",
     "TodoWrite",
     "WebFetch",
     "WebSearch",

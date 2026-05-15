@@ -247,6 +247,45 @@ The tool name is also exported as a constant for prompts or tool guides:
 assert SEND_USER_MESSAGE_TOOL_NAME == "SendUserMessage"
 ```
 
+#### FileRead
+
+`FileRead` reads text files with line and character limits. It emits
+`gen_ai.file.read` runtime events without putting file content in the event
+payload.
+
+```python
+import msgflux as mf
+import msgflux.nn as nn
+from msgflux.tools.builtin import FILE_READ_TOOL_NAME, FileRead
+
+agent = nn.Agent(
+    name="developer_agent",
+    model=mf.Model.chat_completion("openai/gpt-4.1-mini"),
+    tools=[FileRead()],
+    instructions=(
+        "Use Read to inspect files. For large files, read targeted chunks with "
+        "offset and limit instead of reading everything at once."
+    ),
+)
+```
+
+The tool accepts:
+
+- `file_path`: required path to the text file.
+- `offset`: optional 1-based line number to start reading from.
+- `limit`: optional maximum number of lines to return.
+- `max_chars`: optional maximum number of characters to return.
+
+`FileRead` returns line-numbered text and tells the model how to continue when
+output is truncated. It refuses blocked device paths, image files, binary files,
+and non-UTF-8 files.
+
+The tool name is exported as a constant for prompts or tool guides:
+
+```python
+assert FILE_READ_TOOL_NAME == "Read"
+```
+
 #### TodoWrite
 
 `TodoWrite` updates a session-scoped todo list and emits
