@@ -3,7 +3,7 @@ from msgflux.runtime.file_edit import (
     FileEditRuntime,
 )
 
-FILE_EDIT_TOOL_NAME = "Edit"
+FILE_EDIT_TOOL_NAME = "edit"
 
 
 class FileEdit:

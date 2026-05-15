@@ -20,7 +20,7 @@ from msgflux.runtime.permissions import (
     PermissionRuntimeError,
 )
 
-FileEditOperation = Literal["replace"]
+FileEditOperation = Literal["replace", "add", "update", "delete"]
 DEFAULT_MAX_FILE_EDIT_DIFF_CHARS = 100_000
 
 
@@ -48,6 +48,15 @@ class FileEditProposal:
             "diff_truncated": self.diff_truncated,
             "diff_chars_original": self.diff_chars_original,
         }
+
+
+@dataclass(frozen=True)
+class _PatchOperation:
+    operation: FileEditOperation
+    path: Path
+    old_text: str | None
+    new_text: str | None
+    line_ending: str = "\n"
 
 
 class FileEditRuntime:
@@ -96,6 +105,38 @@ class FileEditRuntime:
         except Exception as exc:
             payload = {"path": str(path), "operation": "replace", "error": str(exc)}
             emit_file_edit_failed(payload)
+            raise
+
+    async def apply_patch(self, *, patch: str) -> str:
+        try:
+            operations = self._parse_apply_patch(patch)
+            proposals = [
+                self._build_patch_proposal(operation) for operation in operations
+            ]
+            for proposal in proposals:
+                emit_file_edit_proposed(proposal.to_dict())
+            for proposal in proposals:
+                await self._enforce_permission(proposal)
+            for proposal in proposals:
+                self._ensure_patch_target_unchanged(proposal)
+            for operation in operations:
+                self._write_patch_operation(operation)
+            for operation in operations:
+                if operation.new_text is not None:
+                    get_file_read_tracker().mark_read(
+                        operation.path,
+                        operation.new_text,
+                    )
+            for proposal in proposals:
+                emit_file_edit_applied(proposal.to_dict())
+            return f"Patch applied to {len(operations)} file(s)."
+        except PermissionDeniedError:
+            emit_file_edit_rejected({"path": None, "operation": "apply_patch"})
+            raise
+        except Exception as exc:
+            emit_file_edit_failed(
+                {"path": None, "operation": "apply_patch", "error": str(exc)}
+            )
             raise
 
     def _build_replace_proposal(
@@ -173,6 +214,19 @@ class FileEditRuntime:
                 "before retrying the edit."
             )
 
+    def _ensure_patch_target_unchanged(self, proposal: FileEditProposal) -> None:
+        if proposal.operation == "add":
+            if Path(proposal.path).exists():
+                raise ValueError(f"File already exists: {proposal.path}")
+            return
+        path = Path(proposal.path)
+        current_content, _line_ending = self._read_text_preserving_newlines(path)
+        if hash_text(current_content) != proposal.old_text_hash:
+            raise ValueError(
+                "File changed after the patch was proposed. Read the file again "
+                "before retrying the patch."
+            )
+
     async def _enforce_permission(self, proposal: FileEditProposal) -> None:
         context = get_execution_context()
         manager = context.get("permission_manager")
@@ -214,6 +268,175 @@ class FileEditRuntime:
         text = raw.decode("utf-8")
         line_ending = "\r\n" if b"\r\n" in raw else "\n"
         return text.replace("\r\n", "\n"), line_ending
+
+    def _parse_apply_patch(self, patch: str) -> list[_PatchOperation]:  # noqa: C901
+        lines = patch.splitlines()
+        if not lines or lines[0] != "*** Begin Patch":
+            raise ValueError("Patch must start with `*** Begin Patch`.")
+        if lines[-1] != "*** End Patch":
+            raise ValueError("Patch must end with `*** End Patch`.")
+
+        operations: list[_PatchOperation] = []
+        index = 1
+        while index < len(lines) - 1:
+            line = lines[index]
+            if line.startswith("*** Add File: "):
+                path = self._resolve_patch_path(line.removeprefix("*** Add File: "))
+                index += 1
+                added_lines = []
+                while index < len(lines) - 1 and not lines[index].startswith("*** "):
+                    if not lines[index].startswith("+"):
+                        raise ValueError("Add File lines must start with `+`.")
+                    added_lines.append(lines[index][1:])
+                    index += 1
+                operations.append(
+                    _PatchOperation(
+                        operation="add",
+                        path=path,
+                        old_text=None,
+                        new_text="\n".join(added_lines) + "\n",
+                    )
+                )
+                continue
+            if line.startswith("*** Delete File: "):
+                path = self._resolve_patch_path(
+                    line.removeprefix("*** Delete File: ")
+                )
+                old_text, line_ending = self._read_existing_patch_target(path)
+                operations.append(
+                    _PatchOperation(
+                        operation="delete",
+                        path=path,
+                        old_text=old_text,
+                        new_text=None,
+                        line_ending=line_ending,
+                    )
+                )
+                index += 1
+                continue
+            if line.startswith("*** Update File: "):
+                path = self._resolve_patch_path(
+                    line.removeprefix("*** Update File: ")
+                )
+                index += 1
+                old_text, line_ending = self._read_existing_patch_target(path)
+                new_text = old_text
+                while index < len(lines) - 1 and not lines[index].startswith("*** "):
+                    if lines[index].startswith("@@"):
+                        index += 1
+                        continue
+                    old_block: list[str] = []
+                    new_block: list[str] = []
+                    while (
+                        index < len(lines) - 1
+                        and not lines[index].startswith("*** ")
+                        and not lines[index].startswith("@@")
+                    ):
+                        patch_line = lines[index]
+                        if patch_line.startswith(" "):
+                            old_block.append(patch_line[1:])
+                            new_block.append(patch_line[1:])
+                        elif patch_line.startswith("-"):
+                            old_block.append(patch_line[1:])
+                        elif patch_line.startswith("+"):
+                            new_block.append(patch_line[1:])
+                        else:
+                            raise ValueError(
+                                "Update File hunk lines must start with space, "
+                                "`-`, or `+`."
+                            )
+                        index += 1
+                    old_chunk = "\n".join(old_block)
+                    new_chunk = "\n".join(new_block)
+                    if not old_chunk:
+                        raise ValueError(
+                            "Update File hunk must include context or removed lines."
+                        )
+                    if old_chunk not in new_text:
+                        raise ValueError(
+                            f"Patch hunk was not found in file: {path}"
+                        )
+                    new_text = new_text.replace(old_chunk, new_chunk, 1)
+                operations.append(
+                    _PatchOperation(
+                        operation="update",
+                        path=path,
+                        old_text=old_text,
+                        new_text=new_text,
+                        line_ending=line_ending,
+                    )
+                )
+                continue
+            raise ValueError(f"Unknown patch operation: {line}")
+
+        if not operations:
+            raise ValueError("Patch does not contain any file operations.")
+        self._validate_unique_patch_paths(operations)
+        return operations
+
+    def _validate_unique_patch_paths(self, operations: list[_PatchOperation]) -> None:
+        seen_paths: set[Path] = set()
+        for operation in operations:
+            if operation.path in seen_paths:
+                raise ValueError(
+                    f"Patch contains multiple operations for file: {operation.path}"
+                )
+            seen_paths.add(operation.path)
+
+    def _resolve_patch_path(self, path: str) -> Path:
+        if not path.strip():
+            raise ValueError("Patch file path cannot be empty.")
+        return Path(path).expanduser().resolve()
+
+    def _read_existing_patch_target(self, path: Path) -> tuple[str, str]:
+        if not path.exists():
+            raise FileNotFoundError(f"File not found: {path}")
+        if not path.is_file():
+            raise ValueError(f"Path is not a file: {path}")
+        content, line_ending = self._read_text_preserving_newlines(path)
+        read_record = get_file_read_tracker().get(path)
+        if read_record is None:
+            raise ValueError(
+                "File must be read with the Read tool before it can be patched."
+            )
+        if read_record.text_hash != hash_text(content):
+            raise ValueError(
+                "File has changed since it was last read. Read the file again "
+                "before patching."
+            )
+        return content, line_ending
+
+    def _build_patch_proposal(self, operation: _PatchOperation) -> FileEditProposal:
+        old_content = operation.old_text or ""
+        new_content = operation.new_text or ""
+        diff = self._build_diff(
+            path=operation.path,
+            old_content=old_content,
+            new_content=new_content,
+        )
+        diff_for_payload, diff_truncated = self._truncate_diff(diff)
+        return FileEditProposal(
+            path=str(operation.path),
+            operation=operation.operation,
+            diff=diff_for_payload,
+            old_text_hash=hash_text(old_content),
+            new_text_hash=hash_text(new_content),
+            lines_added=self._count_diff_lines(diff, "+"),
+            lines_removed=self._count_diff_lines(diff, "-"),
+            diff_truncated=diff_truncated,
+            diff_chars_original=len(diff),
+        )
+
+    def _write_patch_operation(self, operation: _PatchOperation) -> None:
+        if operation.operation == "delete":
+            operation.path.unlink()
+            return
+        if operation.new_text is None:
+            raise ValueError("Patch operation has no new content to write.")
+        operation.path.parent.mkdir(parents=True, exist_ok=True)
+        operation.path.write_bytes(
+            operation.new_text.replace("\n", operation.line_ending).encode("utf-8")
+        )
 
     def _build_diff(self, *, path: Path, old_content: str, new_content: str) -> str:
         return "".join(

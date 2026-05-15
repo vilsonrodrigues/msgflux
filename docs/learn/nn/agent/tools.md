@@ -302,7 +302,7 @@ agent = nn.Agent(
     model=mf.Model.chat_completion("openai/gpt-4.1-mini"),
     tools=[FileEdit()],
     instructions=(
-        "Use Edit for precise file edits. Read the file first, then provide "
+        "Use edit for precise file edits. Read the file first, then provide "
         "an exact old_string and replacement new_string."
     ),
 )
@@ -337,8 +337,23 @@ can render that diff before approving or denying the request.
 The tool name is exported as a constant for prompts or tool guides:
 
 ```python
-assert FILE_EDIT_TOOL_NAME == "Edit"
+assert FILE_EDIT_TOOL_NAME == "edit"
 ```
+
+#### ApplyPatch
+
+`ApplyPatch` applies a Codex-style patch to one or more files. It is async-only
+and uses the same diff, permission, SHA-256, and event flow as `FileEdit`.
+
+```python
+from msgflux.tools.builtin import APPLY_PATCH_TOOL_NAME, ApplyPatch
+
+assert APPLY_PATCH_TOOL_NAME == "apply_patch"
+```
+
+Patch text must start with `*** Begin Patch` and end with `*** End Patch`.
+`Update File` and `Delete File` operations require the target file to have been
+read with `FileRead` in the active execution scope before the patch is applied.
 
 #### TodoWrite
 

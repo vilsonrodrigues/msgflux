@@ -1,5 +1,6 @@
 """Built-in agent tools ready for use out of the box."""
 
+from msgflux.tools.builtin.apply_patch import APPLY_PATCH_TOOL_NAME, ApplyPatch
 from msgflux.tools.builtin.ask_user import AskUser
 from msgflux.tools.builtin.file_edit import FILE_EDIT_TOOL_NAME, Edit, FileEdit
 from msgflux.tools.builtin.file_read import FILE_READ_TOOL_NAME, FileRead
@@ -14,6 +15,8 @@ from msgflux.tools.builtin.web_search import WebSearch
 
 __all__ = [
     "AskUser",
+    "APPLY_PATCH_TOOL_NAME",
+    "ApplyPatch",
     "Edit",
     "FILE_EDIT_TOOL_NAME",
     "FILE_READ_TOOL_NAME",
