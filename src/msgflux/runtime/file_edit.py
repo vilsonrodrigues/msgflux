@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import asyncio
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from difflib import unified_diff
 from pathlib import Path
+from threading import RLock
 from typing import Literal
 
 from msgflux.context import get_execution_context
@@ -59,6 +63,40 @@ class _PatchOperation:
     line_ending: str = "\n"
 
 
+class _FileEditCoordinator:
+    """Serializes writes per file path without blocking unrelated files."""
+
+    def __init__(self) -> None:
+        self._locks: dict[Path, asyncio.Lock] = {}
+        self._guard = RLock()
+
+    @asynccontextmanager
+    async def lock_paths(self, paths: list[Path]) -> AsyncIterator[None]:
+        # Always acquire locks in path order. Multi-file patches can overlap, and
+        # deterministic ordering avoids deadlocks when two patches touch the same
+        # files in different orders.
+        ordered_paths = sorted(set(paths), key=lambda path: path.as_posix())
+        locks = [self._get_lock(path) for path in ordered_paths]
+        for lock in locks:
+            await lock.acquire()
+        try:
+            yield
+        finally:
+            for lock in reversed(locks):
+                lock.release()
+
+    def _get_lock(self, path: Path) -> asyncio.Lock:
+        with self._guard:
+            lock = self._locks.get(path)
+            if lock is None:
+                lock = asyncio.Lock()
+                self._locks[path] = lock
+            return lock
+
+
+_FILE_EDIT_COORDINATOR = _FileEditCoordinator()
+
+
 class FileEditRuntime:
     """Shared file-edit runtime for tools that propose and apply text changes."""
 
@@ -93,9 +131,15 @@ class FileEditRuntime:
             )
             emit_file_edit_proposed(proposal.to_dict())
             await self._enforce_permission(proposal)
-            self._ensure_file_unchanged_since_read(path=path, proposal=proposal)
-            path.write_bytes(new_content.replace("\n", line_ending).encode("utf-8"))
-            get_file_read_tracker().mark_read(path, new_content)
+            async with _FILE_EDIT_COORDINATOR.lock_paths([path]):
+                # Approval can take an arbitrary amount of time. Re-check the
+                # file under the path lock so a parallel edit cannot apply based
+                # on the same stale read snapshot.
+                self._ensure_file_unchanged_since_read(path=path, proposal=proposal)
+                path.write_bytes(
+                    new_content.replace("\n", line_ending).encode("utf-8")
+                )
+                get_file_read_tracker().mark_read(path, new_content)
             emit_file_edit_applied(proposal.to_dict())
             return f"Edit applied to {path}."
         except PermissionDeniedError:
@@ -117,16 +161,21 @@ class FileEditRuntime:
                 emit_file_edit_proposed(proposal.to_dict())
             for proposal in proposals:
                 await self._enforce_permission(proposal)
-            for proposal in proposals:
-                self._ensure_patch_target_unchanged(proposal)
-            for operation in operations:
-                self._write_patch_operation(operation)
-            for operation in operations:
-                if operation.new_text is not None:
-                    get_file_read_tracker().mark_read(
-                        operation.path,
-                        operation.new_text,
-                    )
+            async with _FILE_EDIT_COORDINATOR.lock_paths(
+                [operation.path for operation in operations]
+            ):
+                # The patch proposal was built before permission resolution.
+                # Revalidating inside the lock rejects concurrent edits instead
+                # of applying a patch generated from an obsolete file state.
+                for proposal in proposals:
+                    self._ensure_patch_target_unchanged(proposal)
+                self._write_patch_operations_atomically(operations)
+                for operation in operations:
+                    if operation.new_text is not None:
+                        get_file_read_tracker().mark_read(
+                            operation.path,
+                            operation.new_text,
+                        )
             for proposal in proposals:
                 emit_file_edit_applied(proposal.to_dict())
             return f"Patch applied to {len(operations)} file(s)."
@@ -437,6 +486,34 @@ class FileEditRuntime:
         operation.path.write_bytes(
             operation.new_text.replace("\n", operation.line_ending).encode("utf-8")
         )
+
+    def _write_patch_operations_atomically(
+        self,
+        operations: list[_PatchOperation],
+    ) -> None:
+        snapshots = {
+            operation.path: (
+                operation.path.exists(),
+                operation.path.read_bytes() if operation.path.exists() else None,
+            )
+            for operation in operations
+        }
+        written: list[Path] = []
+        try:
+            for operation in operations:
+                self._write_patch_operation(operation)
+                written.append(operation.path)
+        except Exception:
+            # A multi-file patch must be all-or-nothing. If a later write fails
+            # after an earlier file was changed, restore every touched path to
+            # its original bytes before surfacing the original error.
+            for path in reversed(written):
+                existed, content = snapshots[path]
+                if existed and content is not None:
+                    path.write_bytes(content)
+                elif path.exists():
+                    path.unlink()
+            raise
 
     def _build_diff(self, *, path: Path, old_content: str, new_content: str) -> str:
         return "".join(

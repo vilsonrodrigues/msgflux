@@ -200,3 +200,69 @@ async def test_apply_patch_rejects_update_hunk_without_context(tmp_path):
 
     with pytest.raises(ValueError, match="must include context or removed lines"):
         await ApplyPatch().acall(patch)
+
+
+@pytest.mark.asyncio
+async def test_apply_patch_rolls_back_when_later_write_fails(tmp_path):
+    file_path = tmp_path / "example.txt"
+    blocking_parent = tmp_path / "not_a_directory"
+    blocking_parent.write_text("blocks child creation\n", encoding="utf-8")
+    file_path.write_text("hello world\n", encoding="utf-8")
+    _read_file(file_path)
+    patch = f"""*** Begin Patch
+*** Update File: {file_path}
+@@
+-hello world
++goodbye world
+*** Add File: {blocking_parent / "child.txt"}
++created
+*** End Patch"""
+
+    with execution_context(permission_manager=PermissionManager(default_mode="bypass")):
+        with pytest.raises(FileExistsError):
+            await ApplyPatch().acall(patch)
+
+    assert file_path.read_text(encoding="utf-8") == "hello world\n"
+    assert blocking_parent.read_text(encoding="utf-8") == "blocks child creation\n"
+
+
+@pytest.mark.asyncio
+async def test_parallel_apply_patch_revalidates_same_file_after_approval(tmp_path):
+    file_path = tmp_path / "example.txt"
+    file_path.write_text("hello world\n", encoding="utf-8")
+    _read_file(file_path)
+    manager = PermissionManager(default_mode="ask_user")
+    first_patch = f"""*** Begin Patch
+*** Update File: {file_path}
+@@
+-hello world
++first writer
+*** End Patch"""
+    second_patch = f"""*** Begin Patch
+*** Update File: {file_path}
+@@
+-hello world
++second writer
+*** End Patch"""
+
+    async def wait_for_pending_count(count: int) -> None:
+        while len(manager.list_pending()) < count:
+            await asyncio.sleep(0)
+
+    with execution_context(permission_manager=manager):
+        first = asyncio.create_task(ApplyPatch().acall(first_patch))
+        second = asyncio.create_task(ApplyPatch().acall(second_patch))
+        await wait_for_pending_count(2)
+        for request in manager.list_pending():
+            manager.approve(request.request_id)
+        results = await asyncio.gather(first, second, return_exceptions=True)
+
+    successes = [result for result in results if isinstance(result, str)]
+    failures = [result for result in results if isinstance(result, ValueError)]
+    assert successes == ["Patch applied to 1 file(s)."]
+    assert len(failures) == 1
+    assert "changed after the patch was proposed" in str(failures[0])
+    assert file_path.read_text(encoding="utf-8") in {
+        "first writer\n",
+        "second writer\n",
+    }
