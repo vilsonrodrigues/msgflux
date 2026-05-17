@@ -141,6 +141,7 @@ __all__ = [
     "Retriever",
     "SQLiteCheckpointStore",
     "SQLiteAgentInboxStore",
+    "Sandbox",
     "Signature",
     "Spans",
     "StreamEvent",
@@ -305,6 +306,7 @@ _LAZY_IMPORTS = {
     "set_envs": ("msgflux.envs", "set_envs"),
     "SQLiteCheckpointStore": ("msgflux.data.stores", "SQLiteCheckpointStore"),
     "SQLiteAgentInboxStore": ("msgflux.agent_inbox", "SQLiteAgentInboxStore"),
+    "Sandbox": ("msgflux.sandbox", "Sandbox"),
     "Store": ("msgflux.data.stores", "Store"),
     "tool_config": ("msgflux.tools.config", "tool_config"),
 }

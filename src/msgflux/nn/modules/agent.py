@@ -71,6 +71,7 @@ from msgflux.runtime.events import (
     emit_user_message_injected,
 )
 from msgflux.runtime.permissions import PermissionManager, PermissionPolicy
+from msgflux.sandbox import BaseSandbox, ptc_context
 from msgflux.tools.definitions import ToolDefinitions
 from msgflux.utils.chat import ChatBlock, response_format_from_msgspec_struct
 from msgflux.utils.common import has_format_placeholder, is_jinja_template
@@ -99,6 +100,8 @@ _UNSET = object()
 _DEFAULT_AGENT_ANNOTATIONS = {"task": str, "return": str}
 ToolFilterValue = Union[str, List[str]]
 ToolFilter = Dict[str, ToolFilterValue]
+PTCToolFilterValue = Union[str, List[str]]
+PTCToolFilter = Dict[str, PTCToolFilterValue]
 
 
 def _prepare_agent_guard_input(model_execution_params):
@@ -165,6 +168,7 @@ class Agent(Module, metaclass=AutoParams):
         typed_parser: Optional[str] = None,
         response_mode: Optional[str] = None,
         tools: Optional[List[Callable]] = None,
+        code_interpreter: Optional[BaseSandbox] = None,
         mcp_servers: Optional[List[Mapping[str, Any]]] = None,
         signature: Optional[Union[str, Signature]] = None,
         description: Optional[str] = None,
@@ -415,6 +419,7 @@ class Agent(Module, metaclass=AutoParams):
 
         self._set_response_mode(response_mode)
         self._set_templates(templates)
+        self._set_code_interpreter(code_interpreter)
         self._set_tools(tools, mcp_servers)
 
         if signature is not None:
@@ -743,6 +748,8 @@ class Agent(Module, metaclass=AutoParams):
         if tool_filter is not None and tool_schemas:
             tool_schemas = self._apply_tool_filter(tool_schemas, tool_filter)
 
+        self._prepare_code_interpreter_schema(tool_schemas)
+
         tool_choice = self._resolve_tool_choice(tool_choice, tool_schemas)
 
         if not tool_schemas:
@@ -1019,7 +1026,11 @@ class Agent(Module, metaclass=AutoParams):
                     continue
 
                 tool_results = self._process_tool_call(
-                    flow_result.tool_calls, message, messages, vars
+                    flow_result.tool_calls,
+                    message,
+                    messages,
+                    vars,
+                    tool_filter=tool_filter,
                 )
                 completed_tool_turns += 1
 
@@ -1096,7 +1107,11 @@ class Agent(Module, metaclass=AutoParams):
                     continue
 
                 tool_results = await self._aprocess_tool_call(
-                    flow_result.tool_calls, message, messages, vars
+                    flow_result.tool_calls,
+                    message,
+                    messages,
+                    vars,
+                    tool_filter=tool_filter,
                 )
                 completed_tool_turns += 1
 
@@ -1170,7 +1185,11 @@ class Agent(Module, metaclass=AutoParams):
 
                 tool_callings = raw_response.get_calls()
                 tool_results = self._process_tool_call(
-                    tool_callings, message, messages, vars
+                    tool_callings,
+                    message,
+                    messages,
+                    vars,
+                    tool_filter=tool_filter,
                 )
                 completed_tool_turns += 1
 
@@ -1247,7 +1266,11 @@ class Agent(Module, metaclass=AutoParams):
 
                 tool_callings = raw_response.get_calls()
                 tool_results = await self._aprocess_tool_call(
-                    tool_callings, message, messages, vars
+                    tool_callings,
+                    message,
+                    messages,
+                    vars,
+                    tool_filter=tool_filter,
                 )
                 completed_tool_turns += 1
 
@@ -1283,6 +1306,8 @@ class Agent(Module, metaclass=AutoParams):
         message: Union[str, Mapping[str, Any], Message],
         messages: Union[ChatMessages, List[Mapping[str, Any]]],
         vars: Mapping[str, Any],
+        *,
+        tool_filter: Optional[ToolFilter] = None,
     ) -> ToolResponses:
         if self.config.get("verbose", False):
             for call in tool_callings:
@@ -1323,12 +1348,14 @@ class Agent(Module, metaclass=AutoParams):
                     ),
                 )
             )
-        tool_results = self.tool_library(
-            tool_callings=tool_callings,
-            message=message,
-            messages=messages,
-            vars=vars,
-        )
+        ptc_tool_names = self._resolve_ptc_tool_names(tool_filter=tool_filter)
+        with ptc_context(ptc_tool_names):
+            tool_results = self.tool_library(
+                tool_callings=tool_callings,
+                message=message,
+                messages=messages,
+                vars=vars,
+            )
         if self.config.get("verbose", False):
             repr_str = f"[{self.name}][tool_responses]"
             if tool_results.return_directly:
@@ -1346,6 +1373,8 @@ class Agent(Module, metaclass=AutoParams):
         message: Union[str, Mapping[str, Any], Message],
         messages: Union[ChatMessages, List[Mapping[str, Any]]],
         vars: Mapping[str, Any],
+        *,
+        tool_filter: Optional[ToolFilter] = None,
     ) -> ToolResponses:
         """Async version of _process_tool_call."""
         if self.config.get("verbose", False):
@@ -1387,12 +1416,14 @@ class Agent(Module, metaclass=AutoParams):
                     ),
                 )
             )
-        tool_results = await self.tool_library.acall(
-            tool_callings=tool_callings,
-            message=message,
-            messages=messages,
-            vars=vars,
-        )
+        ptc_tool_names = self._resolve_ptc_tool_names(tool_filter=tool_filter)
+        with ptc_context(ptc_tool_names):
+            tool_results = await self.tool_library.acall(
+                tool_callings=tool_callings,
+                message=message,
+                messages=messages,
+                vars=vars,
+            )
         if self.config.get("verbose", False):
             repr_str = f"[{self.name}][tool_responses]"
             if tool_results.return_directly:
@@ -2098,6 +2129,110 @@ class Agent(Module, metaclass=AutoParams):
 
     # --- Tool Filtering ---
 
+    def _is_code_interpreter_ptc_enabled(self) -> bool:
+        return bool(
+            self.code_interpreter is not None
+            and self.config.get("code_interpreter", {}).get("ptc", False)
+        )
+
+    def _prepare_code_interpreter_schema(
+        self,
+        tool_schemas: List[Dict[str, Any]],
+    ) -> None:
+        if not self._is_code_interpreter_ptc_enabled() or not tool_schemas:
+            return
+        code_interpreter = self.code_interpreter
+        if code_interpreter is None:
+            return
+        schema_by_name = {
+            schema.get("function", {}).get("name"): schema
+            for schema in tool_schemas
+            if schema.get("function", {}).get("name")
+        }
+        interpreter_schema = schema_by_name.get(code_interpreter.name)
+        if interpreter_schema is None:
+            return
+        ptc_tool_names = self._resolve_ptc_tool_names_from_visible_names(
+            set(schema_by_name)
+        )
+        ptc_tool_schemas = [
+            schema_by_name[name]
+            for name in sorted(ptc_tool_names)
+            if name in schema_by_name
+        ]
+        interpreter_schema["function"]["description"] = (
+            code_interpreter.render_description(tool_schemas=ptc_tool_schemas)
+        )
+
+    def _resolve_ptc_tool_names(
+        self,
+        *,
+        tool_filter: Optional[ToolFilter],
+    ) -> frozenset[str]:
+        if not self._is_code_interpreter_ptc_enabled():
+            return frozenset()
+        tool_schemas = self.tool_library.get_tool_json_schemas()
+        if tool_filter is not None and tool_schemas:
+            tool_schemas = self._apply_tool_filter(tool_schemas, tool_filter)
+        visible_tool_names = {
+            schema.get("function", {}).get("name")
+            for schema in tool_schemas
+            if schema.get("function", {}).get("name")
+        }
+        return frozenset(
+            self._resolve_ptc_tool_names_from_visible_names(visible_tool_names)
+        )
+
+    def _resolve_ptc_tool_names_from_visible_names(
+        self,
+        visible_tool_names: set[str],
+    ) -> set[str]:
+        code_interpreter = self.code_interpreter
+        if code_interpreter is None:
+            return set()
+        available_names = set(self.tool_library.get_tool_names())
+        available_names.discard(code_interpreter.name)
+        visible_tool_names.discard(code_interpreter.name)
+        available_names &= visible_tool_names
+
+        ptc_filter = self.config.get("code_interpreter", {}).get(
+            "ptc_tools",
+            {"allow": []},
+        )
+        if ptc_filter == "*":
+            ptc_filter = {"allow": "*"}
+        if not isinstance(ptc_filter, dict):
+            raise ValueError(
+                "`config['code_interpreter']['ptc_tools']` must be a dict or '*'."
+            )
+
+        allowed = self._normalize_ptc_filter_values(ptc_filter.get("allow", []))
+        blocked = self._normalize_ptc_filter_values(ptc_filter.get("block", []))
+        if "*" in allowed:
+            resolved = set(available_names)
+        else:
+            resolved = available_names & allowed
+        if "*" in blocked:
+            return set()
+        return resolved - blocked
+
+    def _normalize_ptc_filter_values(self, values: object) -> set[str]:
+        if values is None:
+            return set()
+        if values == "*":
+            return {"*"}
+        if isinstance(values, str):
+            if not values:
+                raise ValueError("PTC tool filter values must be non-empty strings.")
+            return {values}
+        if isinstance(values, list):
+            if any(not isinstance(value, str) or not value for value in values):
+                raise ValueError("PTC tool filter lists must contain strings.")
+            return set(values)
+        raise ValueError(
+            "PTC tool filter values must be '*', a string, a list of strings, or None."
+        )
+
     def _apply_tool_filter(
         self,
         tool_schemas: List[Dict[str, Any]],
@@ -2767,10 +2902,43 @@ class Agent(Module, metaclass=AutoParams):
         tools: Optional[List[Callable]] = None,
         mcp_servers: Optional[List[Mapping[str, Any]]] = None,
     ):
+        all_tools = list(tools or [])
+        if (
+            self._is_code_interpreter_ptc_enabled()
+            and self.code_interpreter is not None
+        ):
+            if not self.code_interpreter.capabilities.programmatic_tool_calls:
+                raise ValueError(
+                    "`config['code_interpreter']['ptc']` requires a code "
+                    "interpreter with programmatic tool call support."
+                )
+            all_tools.append(self.code_interpreter)
         self.tool_library = ToolLibrary(
-            self.get_module_name(), tools or [], mcp_servers=mcp_servers
+            self.get_module_name(), all_tools, mcp_servers=mcp_servers
         )
         self.tool_library.set_agent_inbox(self.agent_inbox)
+        if self.code_interpreter is not None:
+            self.code_interpreter.set_tools(
+                {
+                    name: tool
+                    for name, tool in self.tool_library.library.items()
+                    if name != self.code_interpreter.name
+                }
+            )
+
+    def _set_code_interpreter(
+        self,
+        code_interpreter: Optional[BaseSandbox] = None,
+    ) -> None:
+        if code_interpreter is not None and not isinstance(
+            code_interpreter,
+            BaseSandbox,
+        ):
+            raise TypeError(
+                "`code_interpreter` must be a Sandbox instance or None, "
+                f"given `{type(code_interpreter)}`"
+            )
+        self.code_interpreter = code_interpreter
 
     def _set_generation_schema(
         self, generation_schema: Optional[msgspec.Struct] = None
@@ -2927,6 +3095,7 @@ class Agent(Module, metaclass=AutoParams):
             "include_date",
             "reasoning_in_response",
             "max_tool_turns",
+            "code_interpreter",
         }
 
         if config is None:
