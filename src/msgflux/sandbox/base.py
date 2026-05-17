@@ -134,6 +134,7 @@ class LocalPythonSandbox(BaseSandbox):
         )
         previous_tools = self._globals.get("tools")
         previous_vars = self._globals.get("vars")
+        previous_result = self._globals.pop("result", None)
         self._globals["tools"] = namespace
         self._globals["vars"] = dict(self._vars)
         try:
@@ -148,6 +149,8 @@ class LocalPythonSandbox(BaseSandbox):
                 self._globals.pop("vars", None)
             else:
                 self._globals["vars"] = previous_vars
+            if "result" not in self._globals and previous_result is not None:
+                self._globals["result"] = previous_result
         return "" if result is None else str(result)
 
     async def acall(self, code: str) -> str:
@@ -160,6 +163,7 @@ class LocalPythonSandbox(BaseSandbox):
         )
         previous_tools = self._globals.get("tools")
         previous_vars = self._globals.get("vars")
+        previous_result = self._globals.pop("result", None)
         self._globals["tools"] = namespace
         self._globals["vars"] = dict(self._vars)
         try:
@@ -174,6 +178,8 @@ class LocalPythonSandbox(BaseSandbox):
                 self._globals.pop("vars", None)
             else:
                 self._globals["vars"] = previous_vars
+            if "result" not in self._globals and previous_result is not None:
+                self._globals["result"] = previous_result
         if inspect.isawaitable(result):
             result = await result
         return "" if result is None else str(result)

@@ -40,6 +40,14 @@ def test_python_sandbox_persists_variables_between_calls():
     assert result == "42"
 
 
+def test_python_sandbox_does_not_return_stale_result():
+    sandbox = Sandbox.python("local")
+
+    assert sandbox("result = 42") == "42"
+    assert sandbox("counter = 43") == ""
+    assert sandbox("result = counter") == "43"
+
+
 def test_python_sandbox_exposes_runtime_vars_without_persisting_namespace():
     sandbox = Sandbox.python("local")
     sandbox.set_vars({"ticket": {"id": "MSGFLUX-42"}})
