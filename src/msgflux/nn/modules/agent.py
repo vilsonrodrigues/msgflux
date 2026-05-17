@@ -2201,12 +2201,10 @@ class Agent(Module, metaclass=AutoParams):
 
         lines = [
             "<system_note>",
-            "<runtime_context>",
             (
-                f'<code_interpreter name="{self.code_interpreter.name}" '
-                f'vars_namespace="vars">'
+                f'<runtime_context code_interpreter="{self.code_interpreter.name}" '
+                'vars_namespace="vars">'
             ),
-            "<vars>",
         ]
         for summary in summaries:
             attrs = [
@@ -2216,11 +2214,10 @@ class Agent(Module, metaclass=AutoParams):
             size = summary.get("size")
             if size is not None:
                 attrs.append(f'size="{escape(size, quote=True)}"')
-            lines.append(f"<var {' '.join(attrs)} />")
+                attrs.append(f'unit="{escape(summary["unit"], quote=True)}"')
+            lines.append(f"<var {' '.join(attrs)}/>")
         lines.extend(
             [
-                "</vars>",
-                "</code_interpreter>",
                 "</runtime_context>",
                 "</system_note>",
             ]
@@ -2258,8 +2255,17 @@ class Agent(Module, metaclass=AutoParams):
                 size = None
             if size is not None:
                 summary["size"] = str(size)
+                summary["unit"] = self._code_interpreter_var_size_unit(value)
             summaries.append(summary)
         return summaries
+
+    @staticmethod
+    def _code_interpreter_var_size_unit(value: Any) -> str:
+        if isinstance(value, str):
+            return "chars"
+        if isinstance(value, (bytes, bytearray, memoryview)):
+            return "bytes"
+        return "items"
 
     def _prepare_code_interpreter_schema(
         self,

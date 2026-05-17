@@ -132,9 +132,11 @@ def test_code_interpreter_vars_notice_is_added_to_model_messages():
     )
     contents = [message["content"] for message in params.messages]
 
-    assert any("<runtime_context>" in content for content in contents)
+    assert any("<runtime_context " in content for content in contents)
     assert any('name="tickets"' in content for content in contents)
     assert any('type="list"' in content for content in contents)
+    assert any('size="1"' in content for content in contents)
+    assert any('unit="items"' in content for content in contents)
     assert any('name="threshold"' in content for content in contents)
 
 
@@ -167,8 +169,27 @@ def test_code_interpreter_vars_notice_is_logged_in_verbose(capsys):
 
     output = capsys.readouterr().out
     assert "[agent][runtime_context]" in output
-    assert "<runtime_context>" in output
+    assert "<runtime_context " in output
     assert 'name="ticket"' in output
+    assert 'unit="chars"' in output
+
+
+def test_code_interpreter_vars_notice_is_not_repeated_for_same_vars(capsys):
+    agent = Agent(
+        name="agent",
+        model=MockModel(),
+        code_interpreter=Sandbox.python("local"),
+        config={"verbose": True},
+    )
+    messages = [{"role": "user", "content": "<task>hello</task>"}]
+
+    agent._prepare_model_execution(messages=messages, vars={"ticket": "MSG-1"})
+    first_output = capsys.readouterr().out
+    agent._prepare_model_execution(messages=messages, vars={"ticket": "MSG-1"})
+    second_output = capsys.readouterr().out
+
+    assert "[agent][runtime_context]" in first_output
+    assert "[agent][runtime_context]" not in second_output
 
 
 @pytest.mark.asyncio
