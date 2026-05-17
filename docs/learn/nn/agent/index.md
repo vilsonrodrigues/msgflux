@@ -33,6 +33,7 @@ An `Agent` combines a language model with instructions and tools to accomplish t
 | [Execution Control](execution-control.md) | Scopes, checkpointing, inbox messages, and control signals |
 | [Tool Approvals](tool-approvals.md) | Async approval flow for sensitive tools and subagent tool calls |
 | [Event Streaming](event-streaming.md) | Runtime events for tools, tasks, checkpoints, and inbox updates |
+| [Code Interpreter](code-interpreter.md) | Sandboxed Python execution and programmatic tool calls |
 | [Vars](vars.md) | Unified execution variable space |
 | [Tools](tools.md) | Tool calling, configuration, MCP, agent-as-tool |
 | [Background Tasks](background-tasks.md) | Async tool dispatch, task polling, progress, and notifications |

@@ -173,6 +173,7 @@ nav:
         - learn/nn/agent/execution-control.md
         - learn/nn/agent/tool-approvals.md
         - learn/nn/agent/event-streaming.md
+        - learn/nn/agent/code-interpreter.md
         - learn/nn/agent/vars.md
         - learn/nn/agent/tools.md
         - learn/nn/agent/background-tasks.md
