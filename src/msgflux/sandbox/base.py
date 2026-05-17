@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+from ast import PyCF_ALLOW_TOP_LEVEL_AWAIT
 from dataclasses import dataclass, field
 from types import SimpleNamespace
 from typing import Any, Callable, Mapping
@@ -167,7 +168,15 @@ class LocalPythonSandbox(BaseSandbox):
         self._globals["tools"] = namespace
         self._globals["vars"] = dict(self._vars)
         try:
-            exec(code, self._globals, self._globals)  # noqa: S102
+            compiled = compile(
+                code,
+                "<msgflux-python-interpreter>",
+                "exec",
+                flags=PyCF_ALLOW_TOP_LEVEL_AWAIT,
+            )
+            execution_result = eval(compiled, self._globals, self._globals)  # noqa: S307
+            if inspect.isawaitable(execution_result):
+                await execution_result
             result = self._globals.get("result")
         finally:
             if previous_tools is None:

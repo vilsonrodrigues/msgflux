@@ -170,6 +170,38 @@ async def test_code_interpreter_can_call_allowed_ptc_tool():
 
 
 @pytest.mark.asyncio
+async def test_code_interpreter_supports_top_level_await_for_ptc_tools():
+    agent = Agent(
+        name="agent",
+        model=MockModel(),
+        tools=[search],
+        code_interpreter=Sandbox.python("local"),
+        config={"code_interpreter": {"ptc": True, "ptc_tools": {"allow": "*"}}},
+    )
+
+    with ptc_context({"search"}):
+        responses = await agent.tool_library.acall(
+            [
+                (
+                    "call_1",
+                    "python_interpreter",
+                    {
+                        "code": (
+                            "ticket = await tools.search(query='msgflux')\n"
+                            "result = f'ptc:{ticket}'"
+                        )
+                    },
+                )
+            ]
+        )
+
+    response = responses.get_by_name("python_interpreter")
+    assert response is not None
+    assert response.error is None
+    assert response.result == "ptc:found:msgflux"
+
+
+@pytest.mark.asyncio
 async def test_code_interpreter_rejects_blocked_ptc_tool():
     agent = Agent(
         name="agent",

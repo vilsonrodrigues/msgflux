@@ -26,7 +26,8 @@ When `ptc=True`, the sandbox is registered as a tool named
 call explicitly allowed msgFlux tools through the `tools` namespace:
 
 ```python
-result = tools.lookup_ticket(ticket_id="MSGFLUX-42")
+ticket = await tools.lookup_ticket(ticket_id="MSGFLUX-42")
+result = f"Ticket context: {ticket}"
 ```
 
 ## Programmatic Tool Calls

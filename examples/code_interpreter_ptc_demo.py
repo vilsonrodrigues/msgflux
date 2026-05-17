@@ -61,7 +61,8 @@ def lookup_ticket(ticket_id: str) -> str:
 
 def build_agent() -> nn.Agent:
     code = """
-result = tools.lookup_ticket(ticket_id=vars["ticket_id"])
+ticket = await tools.lookup_ticket(ticket_id=vars["ticket_id"])
+result = f"{ticket}; inspected_by=python_interpreter"
 """.strip()
     model = ScriptedModel(
         [
