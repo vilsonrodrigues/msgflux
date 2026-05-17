@@ -2225,7 +2225,14 @@ class Agent(Module, metaclass=AutoParams):
                 "</system_note>",
             ]
         )
-        return {"role": "user", "content": "\n".join(lines)}
+        content = "\n".join(lines)
+        if update_seen and self.config.get("verbose", False):
+            cprint(
+                f"[{self.name}][runtime_context]\n{content}",
+                bc="b",
+                ls="b",
+            )
+        return {"role": "user", "content": content}
 
     def _summarize_code_interpreter_vars(
         self,

@@ -151,6 +151,26 @@ def test_code_interpreter_vars_are_not_notified_when_disabled():
     assert all("<runtime_context>" not in message["content"] for message in params.messages)
 
 
+def test_code_interpreter_vars_notice_is_logged_in_verbose(capsys):
+    agent = Agent(
+        name="agent",
+        model=MockModel(),
+        code_interpreter=Sandbox.python("local"),
+        config={"verbose": True},
+    )
+
+    agent.inspect_model_execution_params("hello", vars={"ticket": "MSG-1"})
+    assert capsys.readouterr().out == ""
+
+    messages = [{"role": "user", "content": "<task>hello</task>"}]
+    agent._prepare_model_execution(messages=messages, vars={"ticket": "MSG-1"})
+
+    output = capsys.readouterr().out
+    assert "[agent][runtime_context]" in output
+    assert "<runtime_context>" in output
+    assert 'name="ticket"' in output
+
+
 @pytest.mark.asyncio
 async def test_code_interpreter_empty_result_still_adds_tool_message():
     agent = Agent(
