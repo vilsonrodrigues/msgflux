@@ -1,4 +1,6 @@
 from datetime import datetime, timezone
+from hashlib import sha256
+from html import escape
 from inspect import cleandoc
 from typing import (
     TYPE_CHECKING,
@@ -420,6 +422,7 @@ class Agent(Module, metaclass=AutoParams):
         self._set_response_mode(response_mode)
         self._set_templates(templates)
         self._set_code_interpreter(code_interpreter)
+        self._code_interpreter_vars_notices: set[Tuple[Optional[str], str, str]] = set()
         self._set_tools(tools, mcp_servers)
 
         if signature is not None:
@@ -677,7 +680,7 @@ class Agent(Module, metaclass=AutoParams):
         tool_filter: Optional[ToolFilter] = None,
         session_id: Optional[str] = None,  # noqa: ARG002
         run_id: Optional[str] = None,  # noqa: ARG002
-        scope: Optional[ExecutionScope] = None,  # noqa: ARG002
+        scope: Optional[ExecutionScope] = None,
     ) -> Union[ModelResponse, ModelStreamResponse]:
         self._raise_if_background_task_stopped()
         model_execution_params = self._prepare_model_execution(
@@ -686,6 +689,7 @@ class Agent(Module, metaclass=AutoParams):
             model_preference=model_preference,
             vars=vars,
             tool_filter=tool_filter,
+            scope=scope,
         )
         if self.config.get("verbose", False):
             cprint(f"[{self.name}][call_model]", bc="br1", ls="b")
@@ -704,7 +708,7 @@ class Agent(Module, metaclass=AutoParams):
         tool_filter: Optional[ToolFilter] = None,
         session_id: Optional[str] = None,  # noqa: ARG002
         run_id: Optional[str] = None,  # noqa: ARG002
-        scope: Optional[ExecutionScope] = None,  # noqa: ARG002
+        scope: Optional[ExecutionScope] = None,
     ) -> Union[ModelResponse, ModelStreamResponse]:
         self._raise_if_background_task_stopped()
         model_execution_params = self._prepare_model_execution(
@@ -713,6 +717,7 @@ class Agent(Module, metaclass=AutoParams):
             model_preference=model_preference,
             vars=vars,
             tool_filter=tool_filter,
+            scope=scope,
         )
         if self.config.get("verbose", False):
             cprint(f"[{self.name}][call_model]", bc="br1", ls="b")
@@ -733,13 +738,21 @@ class Agent(Module, metaclass=AutoParams):
         drain_notifications: bool = True,
         session_id: Optional[str] = None,  # noqa: ARG002
         run_id: Optional[str] = None,  # noqa: ARG002
-        scope: Optional[ExecutionScope] = None,  # noqa: ARG002
+        scope: Optional[ExecutionScope] = None,
     ) -> Mapping[str, Any]:
+        self._prepare_code_interpreter_vars(vars)
         system_prompt = self.get_system_prompt(vars)
         model_messages = self._build_model_messages(
             messages,
             drain_notifications=drain_notifications,
         )
+        runtime_note = self._build_code_interpreter_vars_note(
+            vars,
+            scope=scope,
+            update_seen=drain_notifications,
+        )
+        if runtime_note is not None:
+            model_messages.append(runtime_note)
 
         tool_schemas = self.tool_library.get_tool_json_schemas()
 
@@ -2134,6 +2147,98 @@ class Agent(Module, metaclass=AutoParams):
             self.code_interpreter is not None
             and self.config.get("code_interpreter", {}).get("ptc", False)
         )
+
+    def _prepare_code_interpreter_vars(self, vars: Mapping[str, Any]) -> None:
+        if self.code_interpreter is None:
+            return
+        config = self.config.get("code_interpreter", {})
+        if not config.get("inject_vars", True):
+            self.code_interpreter.set_vars({})
+            return
+        self.code_interpreter.set_vars(vars or {})
+
+    def _build_code_interpreter_vars_note(
+        self,
+        vars: Mapping[str, Any],
+        *,
+        scope: Optional[ExecutionScope],
+        update_seen: bool,
+    ) -> Optional[Mapping[str, str]]:
+        if self.code_interpreter is None or not vars:
+            return None
+        config = self.config.get("code_interpreter", {})
+        if not config.get("inject_vars", True) or not config.get("notify_vars", True):
+            return None
+
+        summaries = self._summarize_code_interpreter_vars(vars)
+        if not summaries:
+            return None
+
+        digest = sha256(repr(summaries).encode("utf-8")).hexdigest()
+        notice_key = (
+            scope.session_id if scope is not None else None,
+            scope.namespace if scope is not None else self.get_module_name(),
+            digest,
+        )
+        if update_seen and notice_key in self._code_interpreter_vars_notices:
+            return None
+        if update_seen:
+            self._code_interpreter_vars_notices.add(notice_key)
+
+        lines = [
+            "<system_note>",
+            "<runtime_context>",
+            (
+                f'<code_interpreter name="{self.code_interpreter.name}" '
+                f'vars_namespace="vars">'
+            ),
+            "<vars>",
+        ]
+        for summary in summaries:
+            attrs = [
+                f'name="{escape(summary["name"], quote=True)}"',
+                f'type="{escape(summary["type"], quote=True)}"',
+            ]
+            size = summary.get("size")
+            if size is not None:
+                attrs.append(f'size="{escape(size, quote=True)}"')
+            lines.append(f"<var {' '.join(attrs)} />")
+        lines.extend(
+            [
+                "</vars>",
+                "</code_interpreter>",
+                "</runtime_context>",
+                "</system_note>",
+            ]
+        )
+        return {"role": "user", "content": "\n".join(lines)}
+
+    def _summarize_code_interpreter_vars(
+        self,
+        vars: Mapping[str, Any],
+    ) -> List[Dict[str, str]]:
+        max_vars = self.config.get("code_interpreter", {}).get("notify_vars_max", 20)
+        if not isinstance(max_vars, int) or max_vars < 0:
+            raise ValueError(
+                "`config['code_interpreter']['notify_vars_max']` must be a "
+                "non-negative integer."
+            )
+
+        summaries: List[Dict[str, str]] = []
+        for name in sorted(vars)[:max_vars]:
+            value = vars[name]
+            summary = {
+                "name": str(name),
+                "type": type(value).__name__,
+            }
+            try:
+                size = len(value)
+            except TypeError:
+                size = None
+            if size is not None:
+                summary["size"] = str(size)
+            summaries.append(summary)
+        return summaries
 
     def _prepare_code_interpreter_schema(
         self,

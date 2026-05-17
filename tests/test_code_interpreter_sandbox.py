@@ -40,6 +40,16 @@ def test_python_sandbox_persists_variables_between_calls():
     assert result == "42"
 
 
+def test_python_sandbox_exposes_runtime_vars_without_persisting_namespace():
+    sandbox = Sandbox.python("local")
+    sandbox.set_vars({"ticket": {"id": "MSGFLUX-42"}})
+
+    result = sandbox("result = vars['ticket']['id']")
+
+    assert result == "MSGFLUX-42"
+    assert "vars" not in sandbox._globals
+
+
 def test_ptc_context_scopes_allowed_tool_names():
     assert get_ptc_allowed_tool_names() == frozenset()
 
@@ -90,6 +100,38 @@ def test_code_interpreter_description_uses_filtered_ptc_tools():
 
     assert "tools.search" in description
     assert "tools.send_user_message" not in description
+
+
+def test_code_interpreter_vars_notice_is_added_to_model_messages():
+    agent = Agent(
+        name="agent",
+        model=MockModel(),
+        code_interpreter=Sandbox.python("local"),
+    )
+
+    params = agent.inspect_model_execution_params(
+        "hello",
+        vars={"tickets": [{"id": "MSGFLUX-42"}], "threshold": 0.7},
+    )
+    contents = [message["content"] for message in params.messages]
+
+    assert any("<runtime_context>" in content for content in contents)
+    assert any('name="tickets"' in content for content in contents)
+    assert any('type="list"' in content for content in contents)
+    assert any('name="threshold"' in content for content in contents)
+
+
+def test_code_interpreter_vars_are_not_notified_when_disabled():
+    agent = Agent(
+        name="agent",
+        model=MockModel(),
+        code_interpreter=Sandbox.python("local"),
+        config={"code_interpreter": {"notify_vars": False}},
+    )
+
+    params = agent.inspect_model_execution_params("hello", vars={"ticket": "MSG-1"})
+
+    assert all("<runtime_context>" not in message["content"] for message in params.messages)
 
 
 @pytest.mark.asyncio

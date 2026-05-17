@@ -47,9 +47,13 @@ class BaseSandbox:
 
     def __init__(self) -> None:
         self._tools: dict[str, Callable[..., Any]] = {}
+        self._vars: dict[str, Any] = {}
 
     def set_tools(self, tools: Mapping[str, Callable[..., Any]]) -> None:
         self._tools = dict(tools)
+
+    def set_vars(self, values: Mapping[str, Any]) -> None:
+        self._vars = dict(values)
 
     def _get_allowed_tools(self) -> dict[str, Callable[..., Any]]:
         allowed_tool_names = get_ptc_allowed_tool_names()
@@ -129,13 +133,21 @@ class LocalPythonSandbox(BaseSandbox):
             }
         )
         previous_tools = self._globals.get("tools")
+        previous_vars = self._globals.get("vars")
         self._globals["tools"] = namespace
-        exec(code, self._globals, self._globals)  # noqa: S102
-        result = self._globals.get("result")
-        if previous_tools is None:
-            self._globals.pop("tools", None)
-        else:
-            self._globals["tools"] = previous_tools
+        self._globals["vars"] = dict(self._vars)
+        try:
+            exec(code, self._globals, self._globals)  # noqa: S102
+            result = self._globals.get("result")
+        finally:
+            if previous_tools is None:
+                self._globals.pop("tools", None)
+            else:
+                self._globals["tools"] = previous_tools
+            if previous_vars is None:
+                self._globals.pop("vars", None)
+            else:
+                self._globals["vars"] = previous_vars
         return "" if result is None else str(result)
 
     async def acall(self, code: str) -> str:
@@ -147,13 +159,21 @@ class LocalPythonSandbox(BaseSandbox):
             }
         )
         previous_tools = self._globals.get("tools")
+        previous_vars = self._globals.get("vars")
         self._globals["tools"] = namespace
-        exec(code, self._globals, self._globals)  # noqa: S102
-        result = self._globals.get("result")
-        if previous_tools is None:
-            self._globals.pop("tools", None)
-        else:
-            self._globals["tools"] = previous_tools
+        self._globals["vars"] = dict(self._vars)
+        try:
+            exec(code, self._globals, self._globals)  # noqa: S102
+            result = self._globals.get("result")
+        finally:
+            if previous_tools is None:
+                self._globals.pop("tools", None)
+            else:
+                self._globals["tools"] = previous_tools
+            if previous_vars is None:
+                self._globals.pop("vars", None)
+            else:
+                self._globals["vars"] = previous_vars
         if inspect.isawaitable(result):
             result = await result
         return "" if result is None else str(result)
