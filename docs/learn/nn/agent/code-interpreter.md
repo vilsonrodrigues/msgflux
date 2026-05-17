@@ -21,6 +21,13 @@ agent = nn.Agent(
 )
 ```
 
+Monty is available as an optional dependency for future provider-backed
+sandboxes:
+
+```bash
+pip install msgflux[monty]
+```
+
 When `ptc=True`, the sandbox is registered as a tool named
 `python_interpreter`. The model can call it with Python code, and that code can
 call explicitly allowed msgFlux tools through the `tools` namespace:
@@ -120,6 +127,10 @@ Use file, shell, or workspace tools for host operations. The code interpreter is
 for lightweight computation and controlled programmatic calls, not for direct
 workspace mutation.
 
+`print(...)` output is captured and returned in the tool result. If the code
+also sets a `result` variable, stdout is returned first and `result` is appended
+after it.
+
 ## Runnable Example
 
 The repository includes an offline example that uses a scripted model:
@@ -132,4 +143,12 @@ With a different ticket id:
 
 ```bash
 uv run python examples/code_interpreter_ptc_demo.py --ticket-id MSGFLUX-99
+```
+
+A real OpenAI-backed example demonstrates a `llm_query` PTC tool. The tool
+receives a task and a context slice from interpreter code, injects that context
+into a focused worker agent through `vars`, and returns the worker answer:
+
+```bash
+uv run python examples/code_interpreter_llm_query_real.py
 ```

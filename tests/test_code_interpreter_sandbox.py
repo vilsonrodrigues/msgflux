@@ -1,6 +1,7 @@
 import pytest
 
 from msgflux.nn.modules.agent import Agent
+from msgflux.models.tool_call_agg import ToolCallAggregator
 from msgflux.sandbox import Sandbox, get_ptc_allowed_tool_names, ptc_context
 
 
@@ -46,6 +47,14 @@ def test_python_sandbox_does_not_return_stale_result():
     assert sandbox("result = 42") == "42"
     assert sandbox("counter = 43") == ""
     assert sandbox("result = counter") == "43"
+
+
+def test_python_sandbox_returns_stdout_and_result():
+    sandbox = Sandbox.python("local")
+
+    result = sandbox("print('chunk:0:120')\nresult = 'done'")
+
+    assert result == "chunk:0:120\ndone"
 
 
 def test_python_sandbox_exposes_runtime_vars_without_persisting_namespace():
@@ -140,6 +149,39 @@ def test_code_interpreter_vars_are_not_notified_when_disabled():
     params = agent.inspect_model_execution_params("hello", vars={"ticket": "MSG-1"})
 
     assert all("<runtime_context>" not in message["content"] for message in params.messages)
+
+
+@pytest.mark.asyncio
+async def test_code_interpreter_empty_result_still_adds_tool_message():
+    agent = Agent(
+        name="agent",
+        model=MockModel(),
+        code_interpreter=Sandbox.python("local"),
+        config={"code_interpreter": {"ptc": True, "ptc_tools": {"allow": "*"}}},
+    )
+
+    responses = await agent.tool_library.acall(
+        [
+            (
+                "call_1",
+                "python_interpreter",
+                {"code": "counter = 1"},
+            )
+        ]
+    )
+    raw_response = ToolCallAggregator()
+    raw_response.process(0, "call_1", "python_interpreter", '{"code":"counter = 1"}')
+    id_results = {
+        call.id: call.error if call.error is not None else call.result
+        for call in responses.tool_calls
+    }
+    raw_response.insert_results(id_results)
+
+    messages = raw_response.get_messages()
+
+    assert len(messages) == 2
+    assert messages[1]["role"] == "tool"
+    assert messages[1]["content"] == ""
 
 
 @pytest.mark.asyncio

@@ -830,7 +830,7 @@ class Agent(Module, metaclass=AutoParams):
         tool_filter: Optional[ToolFilter] = None,
         session_id: Optional[str] = None,  # noqa: ARG002
         run_id: Optional[str] = None,  # noqa: ARG002
-        scope: Optional[ExecutionScope] = None,  # noqa: ARG002
+        scope: Optional[ExecutionScope] = None,
     ) -> Union[str, Mapping[str, Any], Message, ModelStreamResponse]:
         if isinstance(model_response, ModelStreamResponse):
             wait_for_event(model_response._response_type_event)
@@ -854,6 +854,7 @@ class Agent(Module, metaclass=AutoParams):
                 vars,
                 model_preference,
                 tool_filter,
+                scope,
             )
         elif is_subclass_of(self.generation_schema, ToolFlowControl):
             model_response, messages = self._process_tool_flow_control_response(
@@ -912,7 +913,7 @@ class Agent(Module, metaclass=AutoParams):
         tool_filter: Optional[ToolFilter] = None,
         session_id: Optional[str] = None,  # noqa: ARG002
         run_id: Optional[str] = None,  # noqa: ARG002
-        scope: Optional[ExecutionScope] = None,  # noqa: ARG002
+        scope: Optional[ExecutionScope] = None,
     ) -> Union[str, Mapping[str, Any], Message, ModelStreamResponse]:
         if isinstance(model_response, ModelStreamResponse):
             await await_for_event(model_response._response_type_event)
@@ -936,6 +937,7 @@ class Agent(Module, metaclass=AutoParams):
                 vars,
                 model_preference,
                 tool_filter,
+                scope,
             )
         elif is_subclass_of(self.generation_schema, ToolFlowControl):
             (
@@ -997,6 +999,7 @@ class Agent(Module, metaclass=AutoParams):
         vars: Mapping[str, Any],
         model_preference: Optional[str] = None,
         tool_filter: Optional[ToolFilter] = None,
+        scope: Optional[ExecutionScope] = None,
     ) -> Tuple[
         Union[str, Mapping[str, Any], ModelStreamResponse],
         Union[ChatMessages, List[Mapping[str, Any]]],
@@ -1035,6 +1038,7 @@ class Agent(Module, metaclass=AutoParams):
                         model_preference=model_preference,
                         vars=vars,
                         tool_filter=tool_filter,
+                        scope=scope,
                     )
                     continue
 
@@ -1066,6 +1070,7 @@ class Agent(Module, metaclass=AutoParams):
                 model_preference=model_preference,
                 vars=vars,
                 tool_filter=tool_filter,
+                scope=scope,
             )
 
     async def _aprocess_tool_flow_control_response(
@@ -1076,6 +1081,7 @@ class Agent(Module, metaclass=AutoParams):
         vars: Mapping[str, Any],
         model_preference: Optional[str] = None,
         tool_filter: Optional[ToolFilter] = None,
+        scope: Optional[ExecutionScope] = None,
     ) -> Tuple[
         Union[str, Mapping[str, Any], ModelStreamResponse],
         Union[ChatMessages, List[Mapping[str, Any]]],
@@ -1116,6 +1122,7 @@ class Agent(Module, metaclass=AutoParams):
                         model_preference=model_preference,
                         vars=vars,
                         tool_filter=tool_filter,
+                        scope=scope,
                     )
                     continue
 
@@ -1149,6 +1156,7 @@ class Agent(Module, metaclass=AutoParams):
                 model_preference=model_preference,
                 vars=vars,
                 tool_filter=tool_filter,
+                scope=scope,
             )
 
     def _process_tool_call_response(
@@ -1159,6 +1167,7 @@ class Agent(Module, metaclass=AutoParams):
         vars: Mapping[str, Any],
         model_preference: Optional[str] = None,
         tool_filter: Optional[ToolFilter] = None,
+        scope: Optional[ExecutionScope] = None,
     ) -> Tuple[
         Union[str, Mapping[str, Any], ModelStreamResponse],
         Union[ChatMessages, List[Mapping[str, Any]]],
@@ -1185,6 +1194,7 @@ class Agent(Module, metaclass=AutoParams):
                         model_preference=model_preference,
                         vars=vars,
                         tool_filter=tool_filter,
+                        scope=scope,
                     )
                     continue
 
@@ -1214,7 +1224,7 @@ class Agent(Module, metaclass=AutoParams):
                     return tool_responses, messages
 
                 id_results = {
-                    call.id: call.result or call.error
+                    call.id: call.error if call.error is not None else call.result
                     for call in tool_results.tool_calls
                 }
                 raw_response.insert_results(id_results)
@@ -1230,6 +1240,7 @@ class Agent(Module, metaclass=AutoParams):
                 model_preference=model_preference,
                 vars=vars,
                 tool_filter=tool_filter,
+                scope=scope,
             )
 
     async def _aprocess_tool_call_response(
@@ -1240,6 +1251,7 @@ class Agent(Module, metaclass=AutoParams):
         vars: Mapping[str, Any],
         model_preference: Optional[str] = None,
         tool_filter: Optional[ToolFilter] = None,
+        scope: Optional[ExecutionScope] = None,
     ) -> Tuple[
         Union[str, Mapping[str, Any], ModelStreamResponse],
         Union[ChatMessages, List[Mapping[str, Any]]],
@@ -1266,6 +1278,7 @@ class Agent(Module, metaclass=AutoParams):
                         model_preference=model_preference,
                         vars=vars,
                         tool_filter=tool_filter,
+                        scope=scope,
                     )
                     continue
 
@@ -1295,7 +1308,7 @@ class Agent(Module, metaclass=AutoParams):
                     return tool_responses, messages
 
                 id_results = {
-                    call.id: call.result or call.error
+                    call.id: call.error if call.error is not None else call.result
                     for call in tool_results.tool_calls
                 }
                 raw_response.insert_results(id_results)
@@ -1311,6 +1324,7 @@ class Agent(Module, metaclass=AutoParams):
                 model_preference=model_preference,
                 vars=vars,
                 tool_filter=tool_filter,
+                scope=scope,
             )
 
     def _process_tool_call(

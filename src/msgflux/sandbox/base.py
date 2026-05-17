@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import inspect
 from ast import PyCF_ALLOW_TOP_LEVEL_AWAIT
+from contextlib import redirect_stdout
 from dataclasses import dataclass, field
+from io import StringIO
 from types import SimpleNamespace
 from typing import Any, Callable, Mapping
 
@@ -138,8 +140,10 @@ class LocalPythonSandbox(BaseSandbox):
         previous_result = self._globals.pop("result", None)
         self._globals["tools"] = namespace
         self._globals["vars"] = dict(self._vars)
+        stdout = StringIO()
         try:
-            exec(code, self._globals, self._globals)  # noqa: S102
+            with redirect_stdout(stdout):
+                exec(code, self._globals, self._globals)  # noqa: S102
             result = self._globals.get("result")
         finally:
             if previous_tools is None:
@@ -152,7 +156,7 @@ class LocalPythonSandbox(BaseSandbox):
                 self._globals["vars"] = previous_vars
             if "result" not in self._globals and previous_result is not None:
                 self._globals["result"] = previous_result
-        return "" if result is None else str(result)
+        return _format_execution_output(stdout.getvalue(), result)
 
     async def acall(self, code: str) -> str:
         allowed_tools = self._get_allowed_tools()
@@ -167,6 +171,7 @@ class LocalPythonSandbox(BaseSandbox):
         previous_result = self._globals.pop("result", None)
         self._globals["tools"] = namespace
         self._globals["vars"] = dict(self._vars)
+        stdout = StringIO()
         try:
             compiled = compile(
                 code,
@@ -174,9 +179,10 @@ class LocalPythonSandbox(BaseSandbox):
                 "exec",
                 flags=PyCF_ALLOW_TOP_LEVEL_AWAIT,
             )
-            execution_result = eval(compiled, self._globals, self._globals)  # noqa: S307
-            if inspect.isawaitable(execution_result):
-                await execution_result
+            with redirect_stdout(stdout):
+                execution_result = eval(compiled, self._globals, self._globals)  # noqa: S307
+                if inspect.isawaitable(execution_result):
+                    await execution_result
             result = self._globals.get("result")
         finally:
             if previous_tools is None:
@@ -191,7 +197,17 @@ class LocalPythonSandbox(BaseSandbox):
                 self._globals["result"] = previous_result
         if inspect.isawaitable(result):
             result = await result
-        return "" if result is None else str(result)
+        return _format_execution_output(stdout.getvalue(), result)
+
+
+def _format_execution_output(stdout: str, result: Any) -> str:
+    stdout = stdout.rstrip()
+    if result is None:
+        return stdout
+    result_text = str(result)
+    if not stdout:
+        return result_text
+    return f"{stdout}\n{result_text}"
 
 
 def _make_sync_tool_proxy(tool: Callable[..., Any]):
