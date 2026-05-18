@@ -156,6 +156,19 @@ result = await tools.llm_query(
 )
 ```
 
+For debug output, prefer `print(...)` instead of retaining large slices in
+interpreter globals. When possible, pass the bounded read directly to another
+tool:
+
+```python
+print(artifacts.read("commands", offset=0, limit=300))
+answer = await tools.llm_query(
+    task="Find the deployment command and explain it.",
+    context=artifacts.read("commands", offset=0, limit=4000),
+)
+result = answer
+```
+
 The async methods are also available:
 
 ```python
@@ -248,7 +261,8 @@ With a specific file:
 uv run python examples/code_interpreter_artifacts_demo.py --artifact-path README.md
 ```
 
-A real OpenAI-backed version uses the same local sandbox and artifact mounting:
+A real OpenAI-backed version uses the same local sandbox, artifact mounting, and
+an `llm_query` PTC tool that receives a bounded artifact slice:
 
 ```bash
 uv run python examples/code_interpreter_artifacts_openai.py

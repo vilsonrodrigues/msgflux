@@ -20,14 +20,40 @@ namespace identifies which module or agent writes runtime state.
 Artifacts are mounted into the code interpreter as lazy file references.
 Use artifacts.info(name) to inspect metadata.
 Use artifacts.read(name, offset=0, limit=...) to read bounded slices.
-Do not load whole large files into vars unless explicitly necessary.
+llm_query asks a focused worker agent about a bounded context slice.
+For debug, print the slice or metadata instead of retaining large text in vars.
+Do not load whole large files into variables unless explicitly necessary.
 """
+
+
+def build_llm_query(model_name: str):
+    query_agent = nn.Agent(
+        name="artifact_llm_query_worker",
+        model=mf.Model.chat_completion(model_name),
+        instructions=(
+            "Answer only from <context>. If the answer is absent, say "
+            "'not found in context'. Keep the answer concise."
+        ),
+        templates={
+            "task": (
+                "Question:\n{{ task }}\n\n"
+                "<context>\n{{ context }}\n</context>"
+            )
+        },
+    )
+
+    async def llm_query(task: str, context: str) -> str:
+        """Ask a focused LLM question about a supplied context slice."""
+        return await query_agent.acall(task={"task": task}, vars={"context": context})
+
+    return llm_query
 
 
 def build_agent(model_name: str) -> nn.Agent:
     return nn.Agent(
         name="openai_artifact_reader",
         model=mf.Model.chat_completion(model_name),
+        tools=[build_llm_query(model_name)],
         code_interpreter=mf.Sandbox.python("local"),
         config={
             "verbose": True,
@@ -35,7 +61,7 @@ def build_agent(model_name: str) -> nn.Agent:
             "code_interpreter": {
                 "ptc": True,
                 "artifacts": True,
-                "ptc_tools": {"allow": "*"},
+                "ptc_tools": {"allow": ["llm_query"]},
             },
         },
         instructions=(
@@ -45,11 +71,15 @@ def build_agent(model_name: str) -> nn.Agent:
             "read the size with info['size']. artifacts.read requires keyword "
             "arguments: artifacts.read('runtime_notes', offset=0, limit=800), "
             "and returns a str. The interpreter only returns stdout and the "
-            "result variable; bare expressions are not returned. Set result to "
-            "a concise string containing the size and a summary. Do not call "
-            "read with positional offset/limit. Do not call decode(). Do not "
-            "use attribute access on the info dict. Do not answer without "
-            "calling python_interpreter first."
+            "result variable; bare expressions are not returned. For debug, "
+            "prefer print(...) over storing large text in variables. Pass the "
+            "bounded artifact slice directly into await tools.llm_query(..., "
+            "context=artifacts.read(...)) instead of assigning the slice to a "
+            "long-lived variable. Set result to a concise string containing the "
+            "size and llm_query answer. Do not call read with positional "
+            "offset/limit. Do not call decode(). Do not use attribute access on "
+            "the info dict. Do not answer without calling python_interpreter "
+            "first."
         ),
     )
 
@@ -60,12 +90,19 @@ async def run_with_artifact(model_name: str, artifact_path: Path) -> None:
         (
             "Read the uploaded runtime_notes artifact with the local sandbox. "
             "Report the size, mention that bounded artifact reads were used, "
-            "and summarize the notes. Use this exact Python pattern inside "
+            "and use llm_query to answer how session_id, run_id, namespace and "
+            "artifacts relate to durable execution. Use this exact Python "
+            "pattern inside "
             "python_interpreter:\n"
             "info = artifacts.info('runtime_notes')\n"
-            "chunk = artifacts.read('runtime_notes', offset=0, limit=800)\n"
             "print(f\"artifact=runtime_notes size={info['size']} {info['unit']}\")\n"
-            "result = f\"size={info['size']} {info['unit']}\\n{chunk}\""
+            "print(artifacts.read('runtime_notes', offset=0, limit=300))\n"
+            "answer = await tools.llm_query(\n"
+            "    task='How do session_id, run_id, namespace and artifacts relate "
+            "to durable execution?',\n"
+            "    context=artifacts.read('runtime_notes', offset=0, limit=800),\n"
+            ")\n"
+            "result = f\"size={info['size']} {info['unit']}\\n{answer}\""
         ),
         artifacts={"runtime_notes": artifact_path},
     )
