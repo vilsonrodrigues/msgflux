@@ -9,6 +9,7 @@ from types import SimpleNamespace
 from typing import Any, Callable, Mapping
 
 import msgflux.nn.functional as F
+from msgflux.sandbox.artifacts import ArtifactNamespace, ArtifactRef
 from msgflux.sandbox.context import get_ptc_allowed_tool_names
 
 
@@ -51,12 +52,16 @@ class BaseSandbox:
     def __init__(self) -> None:
         self._tools: dict[str, Callable[..., Any]] = {}
         self._vars: dict[str, Any] = {}
+        self._artifacts: dict[str, ArtifactRef] = {}
 
     def set_tools(self, tools: Mapping[str, Callable[..., Any]]) -> None:
         self._tools = dict(tools)
 
     def set_vars(self, values: Mapping[str, Any]) -> None:
         self._vars = dict(values)
+
+    def set_artifacts(self, artifacts: Mapping[str, ArtifactRef]) -> None:
+        self._artifacts = dict(artifacts)
 
     def _get_allowed_tools(self) -> dict[str, Callable[..., Any]]:
         allowed_tool_names = get_ptc_allowed_tool_names()
@@ -137,9 +142,11 @@ class LocalPythonSandbox(BaseSandbox):
         )
         previous_tools = self._globals.get("tools")
         previous_vars = self._globals.get("vars")
+        previous_artifacts = self._globals.get("artifacts")
         previous_result = self._globals.pop("result", None)
         self._globals["tools"] = namespace
         self._globals["vars"] = dict(self._vars)
+        self._globals["artifacts"] = ArtifactNamespace(self._artifacts)
         stdout = StringIO()
         try:
             with redirect_stdout(stdout):
@@ -154,6 +161,10 @@ class LocalPythonSandbox(BaseSandbox):
                 self._globals.pop("vars", None)
             else:
                 self._globals["vars"] = previous_vars
+            if previous_artifacts is None:
+                self._globals.pop("artifacts", None)
+            else:
+                self._globals["artifacts"] = previous_artifacts
             if "result" not in self._globals and previous_result is not None:
                 self._globals["result"] = previous_result
         return _format_execution_output(stdout.getvalue(), result)
@@ -168,9 +179,11 @@ class LocalPythonSandbox(BaseSandbox):
         )
         previous_tools = self._globals.get("tools")
         previous_vars = self._globals.get("vars")
+        previous_artifacts = self._globals.get("artifacts")
         previous_result = self._globals.pop("result", None)
         self._globals["tools"] = namespace
         self._globals["vars"] = dict(self._vars)
+        self._globals["artifacts"] = ArtifactNamespace(self._artifacts)
         stdout = StringIO()
         try:
             compiled = compile(
@@ -193,6 +206,10 @@ class LocalPythonSandbox(BaseSandbox):
                 self._globals.pop("vars", None)
             else:
                 self._globals["vars"] = previous_vars
+            if previous_artifacts is None:
+                self._globals.pop("artifacts", None)
+            else:
+                self._globals["artifacts"] = previous_artifacts
             if "result" not in self._globals and previous_result is not None:
                 self._globals["result"] = previous_result
         if inspect.isawaitable(result):

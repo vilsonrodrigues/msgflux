@@ -113,6 +113,80 @@ config={
 Set `inject_vars=False` to prevent runtime vars from reaching the interpreter.
 Set `notify_vars=False` to inject vars without adding the runtime note.
 
+## Runtime Artifacts
+
+Use `artifacts` when the agent needs access to large local files without putting
+the file content directly in the model context or in interpreter `vars`.
+
+```python
+response = await agent.acall(
+    "Search the mounted command log and summarize the relevant entries.",
+    artifacts={
+        "commands": "data/commands.txt",
+        "readme": "README.md",
+    },
+)
+```
+
+Artifacts are mounted by logical name. Inside the code interpreter they are
+available through the `artifacts` namespace:
+
+```python
+print(artifacts.list())
+print(artifacts.info("commands"))
+
+chunk = artifacts.read("commands", offset=0, limit=4000)
+result = await tools.llm_query(
+    task="Find the deployment command and explain it.",
+    task_context=chunk,
+)
+```
+
+The async methods are also available:
+
+```python
+chunk = await artifacts.aread("commands", offset=4000, limit=4000)
+matches = await artifacts.asearch("commands", "deploy", limit=5)
+```
+
+Available methods:
+
+| Method | Purpose |
+|--------|---------|
+| `artifacts.list()` | Return mounted artifact names |
+| `artifacts.info(name)` | Return name, filename, byte size and unit |
+| `artifacts.read(name, offset=0, limit=4000)` | Read a byte-bounded text slice |
+| `artifacts.aread(name, offset=0, limit=4000)` | Async version of `read` |
+| `artifacts.search(name, query, limit=10)` | Search text and return offsets/previews |
+| `artifacts.asearch(name, query, limit=10)` | Async version of `search` |
+| `artifacts.help()` | Return a short usage hint |
+
+`limit` is required for reads and is measured in bytes. This is intentional:
+the model must choose bounded slices instead of loading an entire large file into
+the REPL memory. The default maximum read size is 12,000 bytes per call.
+
+When artifacts are mounted, the agent sends a compact system note with names,
+filenames and byte sizes:
+
+```xml
+<system_note>
+<artifacts code_interpreter="python_interpreter" namespace="artifacts">
+<artifact name="commands" filename="commands.txt" size="13211" unit="bytes"/>
+</artifacts>
+</system_note>
+```
+
+The note is emitted once per session/namespace for the same artifact set. If the
+mounted artifacts change, the agent emits a new note.
+
+Limitations in this version:
+
+- Artifact contents are not copied into interpreter memory unless the model
+  explicitly assigns a read result to a variable.
+- Artifact contents are not persisted in the checkpointer.
+- Resume requires passing the same `artifacts` mapping again.
+- Artifact writes and URL loading are intentionally not part of v1.
+
 ## Capabilities And Limits
 
 `Sandbox.python("local")` is intentionally narrow:
@@ -120,6 +194,8 @@ Set `notify_vars=False` to inject vars without adding the runtime note.
 - It persists Python globals between interpreter calls.
 - It exposes allowed msgFlux tools through `tools.<name>(...)`.
 - It exposes runtime values through `vars["name"]`.
+- It exposes mounted files through `artifacts.read(...)` when `artifacts` are
+  passed to the agent call.
 - It does not provide direct network access.
 - It does not provide direct host filesystem access.
 

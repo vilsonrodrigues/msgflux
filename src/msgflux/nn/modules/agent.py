@@ -73,7 +73,7 @@ from msgflux.runtime.events import (
     emit_user_message_injected,
 )
 from msgflux.runtime.permissions import PermissionManager, PermissionPolicy
-from msgflux.sandbox import BaseSandbox, ptc_context
+from msgflux.sandbox import ArtifactRef, BaseSandbox, normalize_artifacts, ptc_context
 from msgflux.tools.definitions import ToolDefinitions
 from msgflux.utils.chat import ChatBlock, response_format_from_msgspec_struct
 from msgflux.utils.common import has_format_placeholder, is_jinja_template
@@ -96,6 +96,7 @@ _RESERVED_KWARGS = {
     "tool_filter",
     "scope",
     "tool_call_id",
+    "artifacts",
 }
 
 _UNSET = object()
@@ -423,6 +424,9 @@ class Agent(Module, metaclass=AutoParams):
         self._set_templates(templates)
         self._set_code_interpreter(code_interpreter)
         self._code_interpreter_vars_notices: set[Tuple[Optional[str], str, str]] = set()
+        self._code_interpreter_artifacts_notices: set[
+            Tuple[Optional[str], str, str]
+        ] = set()
         self._set_tools(tools, mcp_servers)
 
         if signature is not None:
@@ -678,6 +682,7 @@ class Agent(Module, metaclass=AutoParams):
         prefilling: Optional[str] = None,
         model_preference: Optional[str] = None,
         tool_filter: Optional[ToolFilter] = None,
+        artifacts: Optional[Mapping[str, ArtifactRef]] = None,
         session_id: Optional[str] = None,  # noqa: ARG002
         run_id: Optional[str] = None,  # noqa: ARG002
         scope: Optional[ExecutionScope] = None,
@@ -689,6 +694,7 @@ class Agent(Module, metaclass=AutoParams):
             model_preference=model_preference,
             vars=vars,
             tool_filter=tool_filter,
+            artifacts=artifacts,
             scope=scope,
         )
         if self.config.get("verbose", False):
@@ -706,6 +712,7 @@ class Agent(Module, metaclass=AutoParams):
         prefilling: Optional[str] = None,
         model_preference: Optional[str] = None,
         tool_filter: Optional[ToolFilter] = None,
+        artifacts: Optional[Mapping[str, ArtifactRef]] = None,
         session_id: Optional[str] = None,  # noqa: ARG002
         run_id: Optional[str] = None,  # noqa: ARG002
         scope: Optional[ExecutionScope] = None,
@@ -717,6 +724,7 @@ class Agent(Module, metaclass=AutoParams):
             model_preference=model_preference,
             vars=vars,
             tool_filter=tool_filter,
+            artifacts=artifacts,
             scope=scope,
         )
         if self.config.get("verbose", False):
@@ -735,12 +743,14 @@ class Agent(Module, metaclass=AutoParams):
         prefilling: Optional[str] = None,
         model_preference: Optional[str] = None,
         tool_filter: Optional[ToolFilter] = None,
+        artifacts: Optional[Mapping[str, ArtifactRef]] = None,
         drain_notifications: bool = True,
         session_id: Optional[str] = None,  # noqa: ARG002
         run_id: Optional[str] = None,  # noqa: ARG002
         scope: Optional[ExecutionScope] = None,
     ) -> Mapping[str, Any]:
         self._prepare_code_interpreter_vars(vars)
+        self._prepare_code_interpreter_artifacts(artifacts or {})
         system_prompt = self.get_system_prompt(vars)
         model_messages = self._build_model_messages(
             messages,
@@ -753,6 +763,13 @@ class Agent(Module, metaclass=AutoParams):
         )
         if runtime_note is not None:
             model_messages.append(runtime_note)
+        artifacts_note = self._build_code_interpreter_artifacts_note(
+            artifacts or {},
+            scope=scope,
+            update_seen=drain_notifications,
+        )
+        if artifacts_note is not None:
+            model_messages.append(artifacts_note)
 
         tool_schemas = self.tool_library.get_tool_json_schemas()
 
@@ -828,6 +845,7 @@ class Agent(Module, metaclass=AutoParams):
         vars: Mapping[str, Any],
         model_preference: Optional[str] = None,
         tool_filter: Optional[ToolFilter] = None,
+        artifacts: Optional[Mapping[str, ArtifactRef]] = None,
         session_id: Optional[str] = None,  # noqa: ARG002
         run_id: Optional[str] = None,  # noqa: ARG002
         scope: Optional[ExecutionScope] = None,
@@ -854,6 +872,7 @@ class Agent(Module, metaclass=AutoParams):
                 vars,
                 model_preference,
                 tool_filter,
+                artifacts,
                 scope,
             )
         elif is_subclass_of(self.generation_schema, ToolFlowControl):
@@ -864,6 +883,8 @@ class Agent(Module, metaclass=AutoParams):
                 vars,
                 model_preference,
                 tool_filter,
+                artifacts,
+                scope,
             )
 
         if isinstance(model_response, (ModelResponse, ModelStreamResponse)):
@@ -911,6 +932,7 @@ class Agent(Module, metaclass=AutoParams):
         vars: Mapping[str, Any],
         model_preference: Optional[str] = None,
         tool_filter: Optional[ToolFilter] = None,
+        artifacts: Optional[Mapping[str, ArtifactRef]] = None,
         session_id: Optional[str] = None,  # noqa: ARG002
         run_id: Optional[str] = None,  # noqa: ARG002
         scope: Optional[ExecutionScope] = None,
@@ -937,6 +959,7 @@ class Agent(Module, metaclass=AutoParams):
                 vars,
                 model_preference,
                 tool_filter,
+                artifacts,
                 scope,
             )
         elif is_subclass_of(self.generation_schema, ToolFlowControl):
@@ -950,6 +973,8 @@ class Agent(Module, metaclass=AutoParams):
                 vars,
                 model_preference,
                 tool_filter,
+                artifacts,
+                scope,
             )
 
         if isinstance(model_response, (ModelResponse, ModelStreamResponse)):
@@ -999,6 +1024,7 @@ class Agent(Module, metaclass=AutoParams):
         vars: Mapping[str, Any],
         model_preference: Optional[str] = None,
         tool_filter: Optional[ToolFilter] = None,
+        artifacts: Optional[Mapping[str, ArtifactRef]] = None,
         scope: Optional[ExecutionScope] = None,
     ) -> Tuple[
         Union[str, Mapping[str, Any], ModelStreamResponse],
@@ -1038,6 +1064,7 @@ class Agent(Module, metaclass=AutoParams):
                         model_preference=model_preference,
                         vars=vars,
                         tool_filter=tool_filter,
+                        artifacts=artifacts,
                         scope=scope,
                     )
                     continue
@@ -1070,6 +1097,7 @@ class Agent(Module, metaclass=AutoParams):
                 model_preference=model_preference,
                 vars=vars,
                 tool_filter=tool_filter,
+                artifacts=artifacts,
                 scope=scope,
             )
 
@@ -1081,6 +1109,7 @@ class Agent(Module, metaclass=AutoParams):
         vars: Mapping[str, Any],
         model_preference: Optional[str] = None,
         tool_filter: Optional[ToolFilter] = None,
+        artifacts: Optional[Mapping[str, ArtifactRef]] = None,
         scope: Optional[ExecutionScope] = None,
     ) -> Tuple[
         Union[str, Mapping[str, Any], ModelStreamResponse],
@@ -1122,6 +1151,7 @@ class Agent(Module, metaclass=AutoParams):
                         model_preference=model_preference,
                         vars=vars,
                         tool_filter=tool_filter,
+                        artifacts=artifacts,
                         scope=scope,
                     )
                     continue
@@ -1156,6 +1186,7 @@ class Agent(Module, metaclass=AutoParams):
                 model_preference=model_preference,
                 vars=vars,
                 tool_filter=tool_filter,
+                artifacts=artifacts,
                 scope=scope,
             )
 
@@ -1167,6 +1198,7 @@ class Agent(Module, metaclass=AutoParams):
         vars: Mapping[str, Any],
         model_preference: Optional[str] = None,
         tool_filter: Optional[ToolFilter] = None,
+        artifacts: Optional[Mapping[str, ArtifactRef]] = None,
         scope: Optional[ExecutionScope] = None,
     ) -> Tuple[
         Union[str, Mapping[str, Any], ModelStreamResponse],
@@ -1194,6 +1226,7 @@ class Agent(Module, metaclass=AutoParams):
                         model_preference=model_preference,
                         vars=vars,
                         tool_filter=tool_filter,
+                        artifacts=artifacts,
                         scope=scope,
                     )
                     continue
@@ -1240,6 +1273,7 @@ class Agent(Module, metaclass=AutoParams):
                 model_preference=model_preference,
                 vars=vars,
                 tool_filter=tool_filter,
+                artifacts=artifacts,
                 scope=scope,
             )
 
@@ -1251,6 +1285,7 @@ class Agent(Module, metaclass=AutoParams):
         vars: Mapping[str, Any],
         model_preference: Optional[str] = None,
         tool_filter: Optional[ToolFilter] = None,
+        artifacts: Optional[Mapping[str, ArtifactRef]] = None,
         scope: Optional[ExecutionScope] = None,
     ) -> Tuple[
         Union[str, Mapping[str, Any], ModelStreamResponse],
@@ -1278,6 +1313,7 @@ class Agent(Module, metaclass=AutoParams):
                         model_preference=model_preference,
                         vars=vars,
                         tool_filter=tool_filter,
+                        artifacts=artifacts,
                         scope=scope,
                     )
                     continue
@@ -1324,6 +1360,7 @@ class Agent(Module, metaclass=AutoParams):
                 model_preference=model_preference,
                 vars=vars,
                 tool_filter=tool_filter,
+                artifacts=artifacts,
                 scope=scope,
             )
 
@@ -1520,6 +1557,7 @@ class Agent(Module, metaclass=AutoParams):
         # Extract reserved kwargs
         task = kwargs.pop("task", _UNSET)
         vars = kwargs.pop("vars", {})
+        artifacts = kwargs.pop("artifacts", None)
         messages = kwargs.pop("messages", None)
         model_preference = kwargs.pop("model_preference", None)
         tool_filter = kwargs.pop("tool_filter", None)
@@ -1652,6 +1690,7 @@ class Agent(Module, metaclass=AutoParams):
             "model_preference": model_preference,
             "tool_filter": tool_filter,
             "vars": vars,
+            "artifacts": normalize_artifacts(artifacts),
             "scope": effective_scope,
         }
 
@@ -1668,6 +1707,7 @@ class Agent(Module, metaclass=AutoParams):
         # Extract reserved kwargs
         task = kwargs.pop("task", _UNSET)
         vars = kwargs.pop("vars", {})
+        artifacts = kwargs.pop("artifacts", None)
         messages = kwargs.pop("messages", None)
         model_preference = kwargs.pop("model_preference", None)
         tool_filter = kwargs.pop("tool_filter", None)
@@ -1800,6 +1840,7 @@ class Agent(Module, metaclass=AutoParams):
             "model_preference": model_preference,
             "tool_filter": tool_filter,
             "vars": vars,
+            "artifacts": normalize_artifacts(artifacts),
             "scope": effective_scope,
         }
 
@@ -2170,6 +2211,64 @@ class Agent(Module, metaclass=AutoParams):
             self.code_interpreter.set_vars({})
             return
         self.code_interpreter.set_vars(vars or {})
+
+    def _prepare_code_interpreter_artifacts(
+        self,
+        artifacts: Mapping[str, ArtifactRef],
+    ) -> None:
+        if self.code_interpreter is None:
+            return
+        self.code_interpreter.set_artifacts(artifacts)
+
+    def _build_code_interpreter_artifacts_note(
+        self,
+        artifacts: Mapping[str, ArtifactRef],
+        *,
+        scope: Optional[ExecutionScope],
+        update_seen: bool,
+    ) -> Optional[Mapping[str, str]]:
+        if self.code_interpreter is None or not artifacts:
+            return None
+
+        summaries = [
+            (artifact.name, artifact.filename, artifact.size, artifact.unit)
+            for artifact in sorted(artifacts.values(), key=lambda item: item.name)
+        ]
+        digest = sha256(repr(summaries).encode("utf-8")).hexdigest()
+        notice_key = (
+            scope.session_id if scope is not None else None,
+            scope.namespace if scope is not None else self.get_module_name(),
+            digest,
+        )
+        if update_seen and notice_key in self._code_interpreter_artifacts_notices:
+            return None
+        if update_seen:
+            self._code_interpreter_artifacts_notices.add(notice_key)
+
+        lines = [
+            "<system_note>",
+            (
+                f'<artifacts code_interpreter="{self.code_interpreter.name}" '
+                'namespace="artifacts">'
+            ),
+        ]
+        for artifact in sorted(artifacts.values(), key=lambda item: item.name):
+            lines.append(
+                '<artifact '
+                f'name="{escape(artifact.name, quote=True)}" '
+                f'filename="{escape(artifact.filename, quote=True)}" '
+                f'size="{artifact.size}" '
+                f'unit="{artifact.unit}"/>'
+            )
+        lines.extend(["</artifacts>", "</system_note>"])
+        content = "\n".join(lines)
+        if update_seen and self.config.get("verbose", False):
+            cprint(
+                f"[{self.name}][artifacts]\n{content}",
+                bc="b",
+                ls="b",
+            )
+        return {"role": "user", "content": content}
 
     def _build_code_interpreter_vars_note(
         self,
