@@ -28,6 +28,38 @@ sandboxes:
 pip install msgflux[monty]
 ```
 
+Use it by selecting the Monty provider:
+
+```python
+agent = nn.Agent(
+    name="support_agent",
+    model=mf.Model.chat_completion("openai/gpt-4.1-mini"),
+    tools=[lookup_ticket],
+    code_interpreter=mf.Sandbox.python("monty"),
+    config={
+        "code_interpreter": {
+            "ptc": True,
+            "artifacts": True,
+            "ptc_tools": {"allow": ["lookup_ticket"]},
+        }
+    },
+)
+```
+
+The local Python sandbox exposes programmatic tools as `tools.<name>(...)`.
+Monty currently exposes them as dictionary entries because Monty does not accept
+arbitrary Python namespace objects:
+
+```python
+ticket = await tools["lookup_ticket"](ticket_id="MSGFLUX-42")
+```
+
+The same applies to artifacts in Monty:
+
+```python
+chunk = await artifacts["read"]("commands", offset=0, limit=4000)
+```
+
 When `ptc=True`, the sandbox is registered as a tool named
 `python_interpreter`. The model can call it with Python code, and that code can
 call explicitly allowed msgFlux tools through the `tools` namespace:
@@ -229,6 +261,12 @@ Limitations in this version:
 Use file, shell, or workspace tools for host operations. The code interpreter is
 for lightweight computation and controlled programmatic calls, not for direct
 workspace mutation.
+
+`Sandbox.python("monty")` uses the same msgFlux tool name
+(`python_interpreter`) and keeps REPL state, but runs through Monty's Python
+subset. Unsupported Python syntax or stdlib modules may fail. In Monty, injected
+tools and artifacts are dictionary callables (`tools["name"](...)`,
+`artifacts["read"](...)`) instead of attribute access.
 
 `print(...)` output is captured and returned in the tool result. If the code
 also sets a `result` variable, stdout is returned first and `result` is appended

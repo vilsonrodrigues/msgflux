@@ -110,6 +110,44 @@ def test_python_sandbox_exposes_artifacts_without_persisting_namespace(tmp_path)
     assert "artifacts" not in sandbox._globals
 
 
+def test_monty_sandbox_executes_python_when_available():
+    pytest.importorskip("pydantic_monty")
+    sandbox = Sandbox.python("monty")
+    sandbox.set_vars({"ticket": "MSGFLUX-42"})
+    result = sandbox("print('debug')\nresult = vars['ticket']")
+
+    assert result == "debug\nMSGFLUX-42"
+
+
+@pytest.mark.asyncio
+async def test_monty_sandbox_can_call_allowed_ptc_tool_when_available():
+    pytest.importorskip("pydantic_monty")
+    sandbox = Sandbox.python("monty")
+    sandbox.set_tools({"search": search})
+
+    with ptc_context({"search"}):
+        result = await sandbox.acall(
+            "result = await tools['search'](query='msgflux')"
+        )
+
+    assert result == "found:msgflux"
+
+
+@pytest.mark.asyncio
+async def test_monty_sandbox_exposes_artifacts_when_available(tmp_path):
+    pytest.importorskip("pydantic_monty")
+    artifact_path = tmp_path / "README.md"
+    artifact_path.write_text("msgFlux runtime artifacts", encoding="utf-8")
+    sandbox = Sandbox.python("monty")
+    sandbox.set_artifacts(normalize_artifacts({"readme": artifact_path}))
+
+    result = await sandbox.acall(
+        "result = await artifacts['read']('readme', offset=8, limit=7)"
+    )
+
+    assert result == "runtime"
+
+
 def test_ptc_context_scopes_allowed_tool_names():
     assert get_ptc_allowed_tool_names() == frozenset()
 
