@@ -117,6 +117,20 @@ Set `notify_vars=False` to inject vars without adding the runtime note.
 
 Use `artifacts` when the agent needs access to large local files without putting
 the file content directly in the model context or in interpreter `vars`.
+Artifacts require the code interpreter to be exposed as a PTC tool and must be
+enabled explicitly:
+
+```python
+config={
+    "code_interpreter": {
+        "ptc": True,
+        "artifacts": True,
+    }
+}
+```
+
+If `artifacts` is passed to `forward`/`acall` without this config, msgFlux raises
+an error before calling the model.
 
 ```python
 response = await agent.acall(
@@ -219,6 +233,31 @@ With a different ticket id:
 
 ```bash
 uv run python examples/code_interpreter_ptc_demo.py --ticket-id MSGFLUX-99
+```
+
+The artifacts example mounts a local file into the local Python sandbox through
+the agent call:
+
+```bash
+uv run python examples/code_interpreter_artifacts_demo.py
+```
+
+With a specific file:
+
+```bash
+uv run python examples/code_interpreter_artifacts_demo.py --artifact-path README.md
+```
+
+A real OpenAI-backed version uses the same local sandbox and artifact mounting:
+
+```bash
+uv run python examples/code_interpreter_artifacts_openai.py
+```
+
+With a specific file:
+
+```bash
+uv run python examples/code_interpreter_artifacts_openai.py --artifact-path README.md
 ```
 
 A real OpenAI-backed example demonstrates a `llm_query` PTC tool. The tool

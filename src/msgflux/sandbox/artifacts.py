@@ -120,15 +120,15 @@ class ArtifactNamespace:
                 if not data:
                     break
                 text = data.decode(encoding, errors="replace")
-                index = text.find(query)
-                if index >= 0:
-                    matches.append(
-                        {
-                            "name": artifact.name,
-                            "offset": offset + len(text[:index].encode(encoding)),
-                            "preview": _compact_preview(text, index, len(query)),
-                        }
-                    )
+                _append_text_matches(
+                    matches,
+                    artifact=artifact,
+                    text=text,
+                    query=query,
+                    base_offset=offset,
+                    limit=limit,
+                    encoding=encoding,
+                )
                 offset += len(data)
         return matches
 
@@ -160,15 +160,15 @@ class ArtifactNamespace:
                 if not data:
                     break
                 text = data.decode(encoding, errors="replace")
-                index = text.find(query)
-                if index >= 0:
-                    matches.append(
-                        {
-                            "name": artifact.name,
-                            "offset": offset + len(text[:index].encode(encoding)),
-                            "preview": _compact_preview(text, index, len(query)),
-                        }
-                    )
+                _append_text_matches(
+                    matches,
+                    artifact=artifact,
+                    text=text,
+                    query=query,
+                    base_offset=offset,
+                    limit=limit,
+                    encoding=encoding,
+                )
                 offset += len(data)
         return matches
 
@@ -227,3 +227,28 @@ def _compact_preview(text: str, index: int, query_length: int) -> str:
     prefix = "..." if start > 0 else ""
     suffix = "..." if end < len(text) else ""
     return prefix + text[start:end].replace("\n", "\\n") + suffix
+
+
+def _append_text_matches(
+    matches: list[dict[str, str | int]],
+    *,
+    artifact: ArtifactRef,
+    text: str,
+    query: str,
+    base_offset: int,
+    limit: int,
+    encoding: str,
+) -> None:
+    start = 0
+    while len(matches) < limit:
+        index = text.find(query, start)
+        if index < 0:
+            return
+        matches.append(
+            {
+                "name": artifact.name,
+                "offset": base_offset + len(text[:index].encode(encoding)),
+                "preview": _compact_preview(text, index, len(query)),
+            }
+        )
+        start = index + len(query)

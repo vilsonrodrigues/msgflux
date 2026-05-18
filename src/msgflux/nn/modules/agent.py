@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 from hashlib import sha256
 from html import escape
 from inspect import cleandoc
+from pathlib import Path
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -1690,7 +1691,7 @@ class Agent(Module, metaclass=AutoParams):
             "model_preference": model_preference,
             "tool_filter": tool_filter,
             "vars": vars,
-            "artifacts": normalize_artifacts(artifacts),
+            "artifacts": self._normalize_artifacts_input(artifacts),
             "scope": effective_scope,
         }
 
@@ -1840,7 +1841,7 @@ class Agent(Module, metaclass=AutoParams):
             "model_preference": model_preference,
             "tool_filter": tool_filter,
             "vars": vars,
-            "artifacts": normalize_artifacts(artifacts),
+            "artifacts": self._normalize_artifacts_input(artifacts),
             "scope": effective_scope,
         }
 
@@ -2203,6 +2204,26 @@ class Agent(Module, metaclass=AutoParams):
             and self.config.get("code_interpreter", {}).get("ptc", False)
         )
 
+    def _is_code_interpreter_artifacts_enabled(self) -> bool:
+        return bool(
+            self._is_code_interpreter_ptc_enabled()
+            and self.config.get("code_interpreter", {}).get("artifacts", False)
+        )
+
+    def _normalize_artifacts_input(
+        self,
+        artifacts: (
+            Mapping[str, str | Path] | list[str | Path] | tuple[str | Path, ...] | None
+        ),
+    ) -> dict[str, ArtifactRef]:
+        normalized = normalize_artifacts(artifacts)
+        if normalized and not self._is_code_interpreter_artifacts_enabled():
+            raise ValueError(
+                "`artifacts` requires `code_interpreter=Sandbox.python(...)` and "
+                "`config={'code_interpreter': {'ptc': True, 'artifacts': True}}`."
+            )
+        return normalized
+
     def _prepare_code_interpreter_vars(self, vars: Mapping[str, Any]) -> None:
         if self.code_interpreter is None:
             return
@@ -2227,7 +2248,7 @@ class Agent(Module, metaclass=AutoParams):
         scope: Optional[ExecutionScope],
         update_seen: bool,
     ) -> Optional[Mapping[str, str]]:
-        if self.code_interpreter is None or not artifacts:
+        if not self._is_code_interpreter_artifacts_enabled() or not artifacts:
             return None
 
         summaries = [

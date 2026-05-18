@@ -75,26 +75,27 @@ def test_python_sandbox_exposes_runtime_vars_without_persisting_namespace():
 
 def test_artifact_namespace_reads_with_offset_and_limit(tmp_path):
     artifact_path = tmp_path / "commands.txt"
-    artifact_path.write_text("alpha\nbeta\ngamma\n", encoding="utf-8")
+    artifact_path.write_text("alpha\nbeta\ngamma\ngamma\n", encoding="utf-8")
     artifacts = normalize_artifacts({"commands": artifact_path})
     namespace = ArtifactNamespace(artifacts)
 
     assert namespace.list() == ["commands"]
     assert namespace.info("commands")["size"] == artifact_path.stat().st_size
     assert namespace.read("commands", offset=6, limit=4) == "beta"
-    assert namespace.search("commands", "gamma")[0]["offset"] == 11
+    matches = namespace.search("commands", "gamma")
+    assert [match["offset"] for match in matches] == [11, 17]
 
 
 @pytest.mark.asyncio
 async def test_artifact_namespace_async_reads_with_offset_and_limit(tmp_path):
     artifact_path = tmp_path / "commands.txt"
-    artifact_path.write_text("alpha\nbeta\ngamma\n", encoding="utf-8")
+    artifact_path.write_text("alpha\nbeta\ngamma\ngamma\n", encoding="utf-8")
     artifacts = normalize_artifacts({"commands": artifact_path})
     namespace = ArtifactNamespace(artifacts)
 
     assert await namespace.aread("commands", offset=6, limit=4) == "beta"
     matches = await namespace.asearch("commands", "gamma")
-    assert matches[0]["offset"] == 11
+    assert [match["offset"] for match in matches] == [11, 17]
 
 
 def test_python_sandbox_exposes_artifacts_without_persisting_namespace(tmp_path):
@@ -241,6 +242,7 @@ def test_code_interpreter_artifacts_notice_is_added_to_model_messages(tmp_path):
         name="agent",
         model=MockModel(),
         code_interpreter=Sandbox.python("local"),
+        config={"code_interpreter": {"ptc": True, "artifacts": True}},
     )
 
     params = agent.inspect_model_execution_params(
@@ -255,6 +257,23 @@ def test_code_interpreter_artifacts_notice_is_added_to_model_messages(tmp_path):
     assert any('unit="bytes"' in content for content in contents)
 
 
+def test_code_interpreter_artifacts_requires_config(tmp_path):
+    artifact_path = tmp_path / "commands.txt"
+    artifact_path.write_text("echo hello", encoding="utf-8")
+    agent = Agent(
+        name="agent",
+        model=MockModel(),
+        code_interpreter=Sandbox.python("local"),
+        config={"code_interpreter": {"ptc": True}},
+    )
+
+    with pytest.raises(ValueError, match="artifacts"):
+        agent.inspect_model_execution_params(
+            "hello",
+            artifacts={"commands": artifact_path},
+        )
+
+
 def test_code_interpreter_artifacts_notice_is_not_repeated(tmp_path, capsys):
     artifact_path = tmp_path / "commands.txt"
     artifact_path.write_text("echo hello", encoding="utf-8")
@@ -263,7 +282,10 @@ def test_code_interpreter_artifacts_notice_is_not_repeated(tmp_path, capsys):
         name="agent",
         model=MockModel(),
         code_interpreter=Sandbox.python("local"),
-        config={"verbose": True},
+        config={
+            "verbose": True,
+            "code_interpreter": {"ptc": True, "artifacts": True},
+        },
     )
     messages = [{"role": "user", "content": "<task>hello</task>"}]
 
