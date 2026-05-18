@@ -2413,7 +2413,10 @@ class Agent(Module, metaclass=AutoParams):
             if name in schema_by_name
         ]
         interpreter_schema["function"]["description"] = (
-            code_interpreter.render_description(tool_schemas=ptc_tool_schemas)
+            code_interpreter.render_description(
+                tool_schemas=ptc_tool_schemas,
+                artifacts_enabled=self._is_code_interpreter_artifacts_enabled(),
+            )
         )
 
     def _resolve_ptc_tool_names(

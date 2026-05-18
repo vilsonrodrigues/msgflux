@@ -46,6 +46,7 @@ class BaseSandbox:
     name = "sandbox"
     display_name = "Sandbox"
     description = "Execute code in a sandbox."
+    usage_guidance = ""
     annotations = {"code": str, "return": str}
     capabilities = SandboxCapabilities(language="unknown")
 
@@ -75,8 +76,17 @@ class BaseSandbox:
         self,
         *,
         tool_schemas: list[dict[str, Any]] | None = None,
+        artifacts_enabled: bool = False,
     ) -> str:
         sections = [self.description.strip()]
+        if artifacts_enabled:
+            sections.append(
+                "Mounted artifacts are available through the `artifacts` namespace. "
+                "Use `artifacts.info(name)` for metadata and "
+                "`artifacts.read(name, offset=0, limit=...)` for bounded text reads. "
+                "`artifacts.read` returns a str and requires keyword arguments for "
+                "offset and limit."
+            )
         limitations = self.capabilities.limitations
         if limitations:
             sections.append(
@@ -111,8 +121,17 @@ class LocalPythonSandbox(BaseSandbox):
     name = "python_interpreter"
     display_name = "Python Interpreter"
     description = (
-        "Execute Python code in an isolated interpreter. Use `tools.<name>(...)` "
-        "to call programmatic tools that are explicitly available."
+        "Execute Python code in an isolated interpreter. Assign final output to "
+        "`result`; use `print(...)` for debug output. Use `await "
+        "tools.<name>(...)` to call programmatic tools that are explicitly "
+        "available."
+    )
+    usage_guidance = (
+        "Use `python_interpreter` for bounded runtime computation and controlled "
+        "programmatic tool calls. The interpreter returns captured stdout plus "
+        "the value assigned to `result`; bare expressions are not returned. Use "
+        "`print(...)` for debug output. Prefer passing large context slices "
+        "directly to another tool instead of retaining them in interpreter globals."
     )
     capabilities = SandboxCapabilities(
         language="python",

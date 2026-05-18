@@ -132,6 +132,13 @@ def test_agent_registers_code_interpreter_when_ptc_enabled():
     assert "search" in agent.tool_library.get_tool_names()
 
 
+def test_code_interpreter_exposes_usage_guidance_property():
+    sandbox = Sandbox.python("local")
+
+    assert "result" in sandbox.usage_guidance
+    assert "print(...)" in sandbox.usage_guidance
+
+
 def test_code_interpreter_description_uses_filtered_ptc_tools():
     agent = Agent(
         name="agent",
@@ -160,6 +167,39 @@ def test_code_interpreter_description_uses_filtered_ptc_tools():
 
     assert "tools.search" in description
     assert "tools.send_user_message" not in description
+    assert "artifacts.read" not in description
+
+
+def test_code_interpreter_description_mentions_artifacts_when_enabled():
+    agent = Agent(
+        name="agent",
+        model=MockModel(),
+        tools=[search],
+        code_interpreter=Sandbox.python("local"),
+        config={
+            "code_interpreter": {
+                "ptc": True,
+                "artifacts": True,
+                "ptc_tools": {"allow": "*"},
+            }
+        },
+    )
+
+    params = agent.inspect_model_execution_params(
+        "hello",
+        tool_filter={"allow": ["python_interpreter", "search"]},
+    )
+    schemas = params.tool_definitions.schemas
+    interpreter_schema = next(
+        schema
+        for schema in schemas
+        if schema["function"]["name"] == "python_interpreter"
+    )
+    description = interpreter_schema["function"]["description"]
+
+    assert "artifacts.info" in description
+    assert "artifacts.read" in description
+    assert "keyword arguments" in description
 
 
 def test_code_interpreter_vars_notice_is_added_to_model_messages():
