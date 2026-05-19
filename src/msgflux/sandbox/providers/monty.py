@@ -34,7 +34,7 @@ class MontySandbox(BaseSandbox):
         "to `result`; bare expressions are not returned by msgFlux. Use "
         "`print(...)` for debug output. Monty receives injected async tools and "
         "artifacts as dictionaries, so call `await tools['name'](...)` and "
-        "`artifacts['read'](...)`."
+        "`await artifacts['read'](...)`."
     )
     capabilities = SandboxCapabilities(
         language="python",
@@ -50,8 +50,8 @@ class MontySandbox(BaseSandbox):
             "No direct host filesystem access is provided by the sandbox.",
             "Injected programmatic tools are available as `await tools['name'](...)`, "
             "not as attribute access.",
-            "Mounted artifacts are available as `artifacts['read'](...)` and "
-            "`artifacts['info'](...)`, not as attribute access.",
+            "Mounted artifacts are available as `await artifacts['read'](...)` "
+            "and `await artifacts['info'](...)`, not as attribute access.",
         ),
     )
 
@@ -74,9 +74,9 @@ class MontySandbox(BaseSandbox):
         return (
             description
             + "\n\nMounted artifacts are available through the `artifacts` "
-            "dictionary. Use `artifacts['info'](name)` for metadata and "
-            "`artifacts['read'](name, offset=0, limit=...)` for bounded text "
-            "reads. `artifacts['read']` returns a str and requires keyword "
+            "dictionary. Use `await artifacts['info'](name)` for metadata and "
+            "`await artifacts['read'](name, offset=0, limit=...)` for bounded "
+            "text reads. `artifacts['read']` returns a str and requires keyword "
             "arguments for offset and limit."
         )
 
@@ -156,8 +156,8 @@ class MontySandbox(BaseSandbox):
         namespace = ArtifactNamespace(self._artifacts)
         if async_mode:
             return {
-                "artifacts_list": namespace.list,
-                "artifacts_info": namespace.info,
+                "artifacts_list": namespace.alist,
+                "artifacts_info": namespace.ainfo,
                 "artifacts_read": namespace.aread,
                 "artifacts_search": namespace.asearch,
             }

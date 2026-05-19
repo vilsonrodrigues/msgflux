@@ -56,7 +56,7 @@ ticket = await tools["lookup_ticket"](ticket_id="MSGFLUX-42")
 The same applies to artifacts:
 
 ```python
-chunk = artifacts["read"]("commands", offset=0, limit=4000)
+chunk = await artifacts["read"]("commands", offset=0, limit=4000)
 ```
 
 When `ptc=True`, the sandbox is registered as a tool named
@@ -177,10 +177,10 @@ Artifacts are mounted by logical name. Inside the code interpreter they are
 available through the `artifacts` namespace:
 
 ```python
-print(artifacts["list"]())
-print(artifacts["info"]("commands"))
+print(await artifacts["list"]())
+print(await artifacts["info"]("commands"))
 
-chunk = artifacts["read"]("commands", offset=0, limit=4000)
+chunk = await artifacts["read"]("commands", offset=0, limit=4000)
 result = await tools["llm_query"](
     task="Find the deployment command and explain it.",
     task_context=chunk,
@@ -192,32 +192,30 @@ interpreter globals. When possible, pass the bounded read directly to another
 tool:
 
 ```python
-print(artifacts["read"]("commands", offset=0, limit=300))
+print(await artifacts["read"]("commands", offset=0, limit=300))
 answer = await tools["llm_query"](
     task="Find the deployment command and explain it.",
-    context=artifacts["read"]("commands", offset=0, limit=4000),
+    context=await artifacts["read"]("commands", offset=0, limit=4000),
 )
 result = answer
 ```
 
-The async methods are also available:
+Artifacts are async-first inside the REPL:
 
 ```python
-chunk = await artifacts["aread"]("commands", offset=4000, limit=4000)
-matches = await artifacts["asearch"]("commands", "deploy", limit=5)
+chunk = await artifacts["read"]("commands", offset=4000, limit=4000)
+matches = await artifacts["search"]("commands", "deploy", limit=5)
 ```
 
 Available methods:
 
 | Method | Purpose |
 |--------|---------|
-| `artifacts["list"]()` | Return mounted artifact names |
-| `artifacts["info"](name)` | Return name, filename, byte size and unit |
-| `artifacts["read"](name, offset=0, limit=4000)` | Read a byte-bounded text slice |
-| `artifacts["aread"](name, offset=0, limit=4000)` | Async version of `read` |
-| `artifacts["search"](name, query, limit=10)` | Search text and return offsets/previews |
-| `artifacts["asearch"](name, query, limit=10)` | Async version of `search` |
-| `artifacts["help"]()` | Return a short usage hint |
+| `await artifacts["list"]()` | Return mounted artifact names |
+| `await artifacts["info"](name)` | Return name, filename, byte size and unit |
+| `await artifacts["read"](name, offset=0, limit=4000)` | Read a byte-bounded text slice |
+| `await artifacts["search"](name, query, limit=10)` | Search text and return offsets/previews |
+| `await artifacts["help"]()` | Return a short usage hint |
 
 `limit` is required for reads and is measured in bytes. This is intentional:
 the model must choose bounded slices instead of loading an entire large file into
@@ -253,8 +251,8 @@ Limitations in this version:
 - It exposes allowed msgFlux tools as async callables through
   `await tools["name"](...)`.
 - It exposes runtime values through `vars["name"]`.
-- It exposes mounted files through `artifacts["read"](...)` when `artifacts` are
-  passed to the agent call.
+- It exposes mounted files through `await artifacts["read"](...)` when
+  `artifacts` are passed to the agent call.
 - It does not provide direct network access.
 - It does not provide direct host filesystem access.
 
@@ -265,8 +263,8 @@ workspace mutation.
 `Sandbox.python("monty")` uses the same msgFlux tool name
 (`python_interpreter`) and keeps REPL state, but runs through Monty's Python
 subset. Unsupported Python syntax or stdlib modules may fail. Use dict-style
-namespaces (`await tools["name"](...)`, `artifacts["read"](...)`) for code that
-works across sandbox providers.
+namespaces (`await tools["name"](...)`, `await artifacts["read"](...)`) for code
+that works across sandbox providers.
 
 `print(...)` output is captured and returned in the tool result. If the code
 also sets a `result` variable, stdout is returned first and `result` is appended

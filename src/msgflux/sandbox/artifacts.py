@@ -33,13 +33,11 @@ class ArtifactNamespace:
 
     def __getitem__(self, name: str):
         helpers = {
-            "list": self.list,
-            "info": self.info,
-            "read": self.read,
-            "aread": self.aread,
-            "search": self.search,
-            "asearch": self.asearch,
-            "help": self.help,
+            "list": self.alist,
+            "info": self.ainfo,
+            "read": self.aread,
+            "search": self.asearch,
+            "help": self.ahelp,
         }
         helper = helpers.get(name)
         if helper is None:
@@ -54,6 +52,12 @@ class ArtifactNamespace:
             "size": artifact.size,
             "unit": artifact.unit,
         }
+
+    async def alist(self) -> list[str]:
+        return self.list()
+
+    async def ainfo(self, name: str) -> dict[str, str | int]:
+        return self.info(name)
 
     def read(
         self,
@@ -190,10 +194,13 @@ class ArtifactNamespace:
     def help(self) -> str:
         return (
             "Use artifacts to inspect mounted files without loading them all into "
-            'memory. Prefer artifacts["read"](name, offset=0, limit=4000) and '
-            'pass chunks directly to tools. Use artifacts["info"](name) to '
+            'memory. Prefer await artifacts["read"](name, offset=0, limit=4000) '
+            'and pass chunks directly to tools. Use await artifacts["info"](name) to '
             "check byte size."
         )
+
+    async def ahelp(self) -> str:
+        return self.help()
 
     def _get(self, name: str) -> ArtifactRef:
         artifact = self._artifacts.get(name)

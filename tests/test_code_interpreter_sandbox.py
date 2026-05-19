@@ -81,10 +81,8 @@ def test_artifact_namespace_reads_with_offset_and_limit(tmp_path):
 
     assert namespace.list() == ["commands"]
     assert namespace.info("commands")["size"] == artifact_path.stat().st_size
-    assert namespace["list"]() == ["commands"]
-    assert namespace["info"]("commands")["unit"] == "bytes"
+    assert namespace.info("commands")["unit"] == "bytes"
     assert namespace.read("commands", offset=6, limit=4) == "beta"
-    assert namespace["read"]("commands", offset=6, limit=4) == "beta"
     matches = namespace.search("commands", "gamma")
     assert [match["offset"] for match in matches] == [11, 17]
 
@@ -96,18 +94,37 @@ async def test_artifact_namespace_async_reads_with_offset_and_limit(tmp_path):
     artifacts = normalize_artifacts({"commands": artifact_path})
     namespace = ArtifactNamespace(artifacts)
 
+    assert await namespace["list"]() == ["commands"]
+    assert (await namespace["info"]("commands"))["unit"] == "bytes"
     assert await namespace.aread("commands", offset=6, limit=4) == "beta"
+    assert await namespace["read"]("commands", offset=6, limit=4) == "beta"
     matches = await namespace.asearch("commands", "gamma")
     assert [match["offset"] for match in matches] == [11, 17]
 
 
-def test_python_sandbox_exposes_artifacts_without_persisting_namespace(tmp_path):
+def test_python_sandbox_sync_artifacts_namespace_requires_await(tmp_path):
     artifact_path = tmp_path / "README.md"
     artifact_path.write_text("msgFlux runtime artifacts", encoding="utf-8")
     sandbox = Sandbox.python("local")
     sandbox.set_artifacts(normalize_artifacts({"readme": artifact_path}))
 
-    result = sandbox("result = artifacts['read']('readme', offset=8, limit=7)")
+    with pytest.raises(RuntimeError, match="Artifacts are async-first"):
+        sandbox("result = artifacts['read']('readme', offset=8, limit=7)")
+    assert "artifacts" not in sandbox._globals
+
+
+@pytest.mark.asyncio
+async def test_python_sandbox_exposes_async_artifacts_without_persisting_namespace(
+    tmp_path,
+):
+    artifact_path = tmp_path / "README.md"
+    artifact_path.write_text("msgFlux runtime artifacts", encoding="utf-8")
+    sandbox = Sandbox.python("local")
+    sandbox.set_artifacts(normalize_artifacts({"readme": artifact_path}))
+
+    result = await sandbox.acall(
+        "result = await artifacts['read']('readme', offset=8, limit=7)"
+    )
 
     assert result == "runtime"
     assert "artifacts" not in sandbox._globals
@@ -211,7 +228,7 @@ def test_code_interpreter_description_uses_filtered_ptc_tools():
     assert 'await tools["search"]' in description
     assert 'tools["search"].acall' not in description
     assert 'tools["send_user_message"]' not in description
-    assert 'artifacts["read"]' not in description
+    assert 'await artifacts["read"]' not in description
 
 
 def test_code_interpreter_description_mentions_artifacts_when_enabled():
@@ -241,8 +258,8 @@ def test_code_interpreter_description_mentions_artifacts_when_enabled():
     )
     description = interpreter_schema["function"]["description"]
 
-    assert 'artifacts["info"]' in description
-    assert 'artifacts["read"]' in description
+    assert 'await artifacts["info"]' in description
+    assert 'await artifacts["read"]' in description
     assert "keyword arguments" in description
 
 

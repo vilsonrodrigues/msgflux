@@ -18,8 +18,8 @@ session_id identifies the durable conversation scope.
 run_id identifies the resumable execution attempt inside the session.
 namespace identifies which module or agent writes runtime state.
 Artifacts are mounted into the code interpreter as lazy file references.
-Use artifacts["info"](name) to inspect metadata.
-Use artifacts["read"](name, offset=0, limit=...) to read bounded slices.
+Use await artifacts["info"](name) to inspect metadata.
+Use await artifacts["read"](name, offset=0, limit=...) to read bounded slices.
 llm_query asks a focused worker agent about a bounded context slice.
 For debug, print the slice or metadata instead of retaining large text in vars.
 Do not load whole large files into variables unless explicitly necessary.
@@ -67,14 +67,14 @@ def build_agent(model_name: str) -> nn.Agent:
         instructions=(
             "You have a local Python code interpreter tool. A file is mounted "
             "as artifact 'runtime_notes'. Use python_interpreter to inspect it. "
-            "Inside Python, artifacts[\"info\"]('runtime_notes') returns a dict, "
-            "so read the size with info['size']. artifacts[\"read\"] requires "
-            "keyword arguments: artifacts[\"read\"]('runtime_notes', offset=0, "
-            "limit=800), and returns a str. The interpreter only returns stdout "
-            "and the result variable; bare expressions are not returned. For "
-            "debug, prefer print(...) over storing large text in variables. Pass "
-            "the bounded artifact slice directly into "
-            'await tools["llm_query"](..., context=artifacts["read"](...)) '
+            "Inside Python, await artifacts[\"info\"]('runtime_notes') returns a "
+            "dict, so read the size with info['size']. artifacts[\"read\"] "
+            "requires keyword arguments: await artifacts[\"read\"]('runtime_notes', "
+            "offset=0, limit=800), and returns a str. The interpreter only returns "
+            "stdout and the result variable; bare expressions are not returned. "
+            "For debug, prefer print(...) over storing large text in variables. "
+            "Pass the bounded artifact slice directly into "
+            'await tools["llm_query"](..., context=await artifacts["read"](...)) '
             "instead of assigning the slice to a long-lived variable. Set result "
             "to a concise string containing the size and llm_query answer. Do "
             "not call read with positional offset/limit. Do not call decode(). "
@@ -94,13 +94,15 @@ async def run_with_artifact(model_name: str, artifact_path: Path) -> None:
             "artifacts relate to durable execution. Use this exact Python "
             "pattern inside "
             "python_interpreter:\n"
-            "info = artifacts['info']('runtime_notes')\n"
+            "info = await artifacts['info']('runtime_notes')\n"
             "print(f\"artifact=runtime_notes size={info['size']} {info['unit']}\")\n"
-            "print(artifacts['read']('runtime_notes', offset=0, limit=300))\n"
+            "print(await artifacts['read']('runtime_notes', offset=0, limit=300))\n"
             "answer = await tools['llm_query'](\n"
             "    task='How do session_id, run_id, namespace and artifacts relate "
             "to durable execution?',\n"
-            "    context=artifacts['read']('runtime_notes', offset=0, limit=800),\n"
+            "    context=await artifacts['read'](\n"
+            "        'runtime_notes', offset=0, limit=800\n"
+            "    ),\n"
             ")\n"
             "result = f\"size={info['size']} {info['unit']}\\n{answer}\""
         ),

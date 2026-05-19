@@ -59,8 +59,8 @@ class ArtifactReaderModel:
         if not self._called_tool:
             self._called_tool = True
             code = """
-info = artifacts["info"]("runtime_notes")
-chunk = artifacts["read"]("runtime_notes", offset=0, limit=500)
+info = await artifacts["info"]("runtime_notes")
+chunk = await artifacts["read"]("runtime_notes", offset=0, limit=500)
 print(f"artifact={info['name']} size={info['size']} {info['unit']}")
 result = chunk
 """.strip()

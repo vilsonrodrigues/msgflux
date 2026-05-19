@@ -97,10 +97,10 @@ class BaseSandbox:
         if artifacts_enabled:
             sections.append(
                 "Mounted artifacts are available through the `artifacts` namespace. "
-                'Use `artifacts["info"](name)` for metadata and '
-                '`artifacts["read"](name, offset=0, limit=...)` for bounded text '
-                'reads. `artifacts["read"]` returns a str and requires keyword '
-                "arguments for offset and limit."
+                'Use `await artifacts["info"](name)` for metadata and '
+                '`await artifacts["read"](name, offset=0, limit=...)` for bounded '
+                'text reads. `artifacts["read"]` returns a str and requires '
+                "keyword arguments for offset and limit."
             )
         limitations = self.capabilities.limitations
         if limitations:
@@ -147,7 +147,7 @@ class LocalPythonSandbox(BaseSandbox):
         "`print(...)` for debug output. Prefer passing large context slices "
         "directly to another tool instead of retaining them in interpreter globals. "
         'Use dict-style namespaces such as `await tools["search"](...)` and '
-        '`artifacts["read"](...)` for portability across sandbox providers. '
+        '`await artifacts["read"](...)` for portability across sandbox providers. '
         "Use `asyncio.gather(...)` for parallel programmatic tool calls."
     )
     capabilities = SandboxCapabilities(
@@ -177,7 +177,7 @@ class LocalPythonSandbox(BaseSandbox):
         previous_result = self._globals.pop("result", None)
         self._globals["tools"] = namespace
         self._globals["vars"] = dict(self._vars)
-        self._globals["artifacts"] = ArtifactNamespace(self._artifacts)
+        self._globals["artifacts"] = _SyncArtifactNamespaceUnavailable()
         stdout = StringIO()
         try:
             with redirect_stdout(stdout):
@@ -208,13 +208,14 @@ class LocalPythonSandbox(BaseSandbox):
                 for name, tool in allowed_tools.items()
             }
         )
+        artifacts = ArtifactNamespace(self._artifacts)
         previous_tools = self._globals.get("tools")
         previous_vars = self._globals.get("vars")
         previous_artifacts = self._globals.get("artifacts")
         previous_result = self._globals.pop("result", None)
         self._globals["tools"] = namespace
         self._globals["vars"] = dict(self._vars)
-        self._globals["artifacts"] = ArtifactNamespace(self._artifacts)
+        self._globals["artifacts"] = artifacts
         stdout = StringIO()
         try:
             compiled = compile(
@@ -268,6 +269,20 @@ def _make_async_tool_callable(tool: Callable[..., Any]):
         return result
 
     return _call
+
+
+class _SyncArtifactNamespaceUnavailable:
+    def __getitem__(self, name: str):
+        raise RuntimeError(
+            "Artifacts are async-first inside the code interpreter. Use "
+            '`await artifacts["name"](...)` through `python_interpreter.acall`.'
+        )
+
+    def __getattr__(self, name: str):
+        raise RuntimeError(
+            "Artifacts are async-first inside the code interpreter. Use "
+            '`await artifacts["name"](...)` through `python_interpreter.acall`.'
+        )
 
 
 def sandbox_metadata(sandbox: BaseSandbox) -> SimpleNamespace:
