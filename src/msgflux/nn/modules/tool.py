@@ -652,6 +652,16 @@ class ToolLibrary(Module, metaclass=AutoParams):
         else:
             raise ValueError(f"The tool name `{tool_name}` is not in tool library")
 
+    def pop_tool(self, tool_name: str) -> Tool:
+        """Remove and return a normalized tool from the library."""
+        if tool_name not in self.library.keys():
+            raise ValueError(f"The tool name `{tool_name}` is not in tool library")
+        tool = self.library.pop(tool_name)
+        self.tool_configs.pop(tool_name, None)
+        self._loaded_on_demand_tool_names.discard(tool_name)
+        self._sync_on_demand_runtime_tools()
+        return tool
+
     def clear(self):
         self.library.clear()
         self.tool_configs.clear()

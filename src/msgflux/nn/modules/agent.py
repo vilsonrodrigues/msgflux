@@ -2404,14 +2404,7 @@ class Agent(Module, metaclass=AutoParams):
         interpreter_schema = schema_by_name.get(code_interpreter.name)
         if interpreter_schema is None:
             return
-        ptc_tool_names = self._resolve_ptc_tool_names_from_visible_names(
-            set(schema_by_name)
-        )
-        ptc_tool_schemas = [
-            schema_by_name[name]
-            for name in sorted(ptc_tool_names)
-            if name in schema_by_name
-        ]
+        ptc_tool_schemas = code_interpreter.get_tool_json_schemas()
         interpreter_schema["function"]["description"] = (
             code_interpreter.render_description(
                 tool_schemas=ptc_tool_schemas,
@@ -2426,29 +2419,31 @@ class Agent(Module, metaclass=AutoParams):
     ) -> frozenset[str]:
         if not self._is_code_interpreter_ptc_enabled():
             return frozenset()
-        tool_schemas = self.tool_library.get_tool_json_schemas()
-        if tool_filter is not None and tool_schemas:
-            tool_schemas = self._apply_tool_filter(tool_schemas, tool_filter)
-        visible_tool_names = {
-            schema.get("function", {}).get("name")
-            for schema in tool_schemas
-            if schema.get("function", {}).get("name")
-        }
-        return frozenset(
-            self._resolve_ptc_tool_names_from_visible_names(visible_tool_names)
-        )
+        if tool_filter is not None:
+            tool_schemas = self.tool_library.get_tool_json_schemas()
+            filtered_schemas = self._apply_tool_filter(tool_schemas, tool_filter)
+            filtered_names = {
+                schema.get("function", {}).get("name")
+                for schema in filtered_schemas
+                if schema.get("function", {}).get("name")
+            }
+            if (
+                self.code_interpreter is None
+                or self.code_interpreter.name not in filtered_names
+            ):
+                return frozenset()
+        if self.code_interpreter is None:
+            return frozenset()
+        return frozenset(self.code_interpreter.get_tool_names())
 
-    def _resolve_ptc_tool_names_from_visible_names(
+    def _resolve_ptc_tool_names_from_available_names(
         self,
-        visible_tool_names: set[str],
+        available_names: set[str],
     ) -> set[str]:
         code_interpreter = self.code_interpreter
         if code_interpreter is None:
             return set()
-        available_names = set(self.tool_library.get_tool_names())
         available_names.discard(code_interpreter.name)
-        visible_tool_names.discard(code_interpreter.name)
-        available_names &= visible_tool_names
 
         ptc_filter = self.config.get("code_interpreter", {}).get(
             "ptc_tools",
@@ -3157,7 +3152,12 @@ class Agent(Module, metaclass=AutoParams):
         tools: Optional[List[Callable]] = None,
         mcp_servers: Optional[List[Mapping[str, Any]]] = None,
     ):
-        all_tools = list(tools or [])
+        self.tool_library = ToolLibrary(
+            self.get_module_name(),
+            list(tools or []),
+            mcp_servers=mcp_servers,
+        )
+        self.tool_library.set_agent_inbox(self.agent_inbox)
         if (
             self._is_code_interpreter_ptc_enabled()
             and self.code_interpreter is not None
@@ -3167,19 +3167,20 @@ class Agent(Module, metaclass=AutoParams):
                     "`config['code_interpreter']['ptc']` requires a code "
                     "interpreter with programmatic tool call support."
                 )
-            all_tools.append(self.code_interpreter)
-        self.tool_library = ToolLibrary(
-            self.get_module_name(), all_tools, mcp_servers=mcp_servers
-        )
-        self.tool_library.set_agent_inbox(self.agent_inbox)
-        if self.code_interpreter is not None:
+            available_names = set(self.tool_library.get_tool_names())
+            available_names -= self.tool_library._runtime_tool_names
+            ptc_tool_names = self._resolve_ptc_tool_names_from_available_names(
+                available_names
+            )
             self.code_interpreter.set_tools(
                 {
-                    name: tool
-                    for name, tool in self.tool_library.library.items()
-                    if name != self.code_interpreter.name
+                    name: self.tool_library.pop_tool(name)
+                    for name in sorted(ptc_tool_names)
                 }
             )
+            self.tool_library.add(self.code_interpreter)
+        elif self.code_interpreter is not None:
+            self.code_interpreter.set_tools({})
 
     def _set_code_interpreter(
         self,

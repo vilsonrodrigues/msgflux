@@ -8,7 +8,6 @@ from io import StringIO
 from types import SimpleNamespace
 from typing import Any, Callable, Mapping
 
-import msgflux.nn.functional as F
 from msgflux.sandbox.artifacts import ArtifactNamespace, ArtifactRef
 from msgflux.sandbox.context import get_ptc_allowed_tool_names
 
@@ -64,6 +63,16 @@ class BaseSandbox:
     def set_tools(self, tools: Mapping[str, Callable[..., Any]]) -> None:
         self._tools = dict(tools)
 
+    def get_tool_names(self) -> list[str]:
+        return sorted(self._tools)
+
+    def get_tool_json_schemas(self) -> list[dict[str, Any]]:
+        schemas = []
+        for tool in self._tools.values():
+            if hasattr(tool, "get_json_schema"):
+                schemas.append(tool.get_json_schema())
+        return schemas
+
     def set_vars(self, values: Mapping[str, Any]) -> None:
         self._vars = dict(values)
 
@@ -83,6 +92,7 @@ class BaseSandbox:
         *,
         tool_schemas: list[dict[str, Any]] | None = None,
         artifacts_enabled: bool = False,
+        include_async_tool_methods: bool = True,
     ) -> str:
         sections = [self.description.strip()]
         if artifacts_enabled:
@@ -106,7 +116,13 @@ class BaseSandbox:
                 name = function.get("name")
                 description = function.get("description") or "No description."
                 if name:
-                    tool_lines.append(f'- tools["{name}"](...): {description}')
+                    if include_async_tool_methods:
+                        tool_lines.append(
+                            f'- tools["{name}"](...), '
+                            f'await tools["{name}"].acall(...): {description}'
+                        )
+                    else:
+                        tool_lines.append(f'- tools["{name}"](...): {description}')
             if tool_lines:
                 sections.append(
                     "Programmatic tools available inside this sandbox:\n"
@@ -129,8 +145,8 @@ class LocalPythonSandbox(BaseSandbox):
     description = (
         "Execute Python code in an isolated interpreter. Assign final output to "
         "`result`; use `print(...)` for debug output. Use `await "
-        'tools["<name>"](...)` to call programmatic tools that are explicitly '
-        "available."
+        'tools["<name>"].acall(...)` to call async programmatic tools that are '
+        "explicitly available."
     )
     usage_guidance = (
         "Use `python_interpreter` for bounded runtime computation and controlled "
@@ -139,7 +155,8 @@ class LocalPythonSandbox(BaseSandbox):
         "`print(...)` for debug output. Prefer passing large context slices "
         "directly to another tool instead of retaining them in interpreter globals. "
         'Use dict-style namespaces such as `tools["search"](...)` and '
-        '`artifacts["read"](...)` for portability across sandbox providers.'
+        '`artifacts["read"](...)` for portability across sandbox providers. '
+        'Use `await tools["search"].acall(...)` for async programmatic calls.'
     )
     capabilities = SandboxCapabilities(
         language="python",
@@ -161,12 +178,7 @@ class LocalPythonSandbox(BaseSandbox):
 
     def __call__(self, code: str) -> str:
         allowed_tools = self._get_allowed_tools()
-        namespace = ToolNamespace(
-            {
-                name: _make_sync_tool_proxy(tool)
-                for name, tool in allowed_tools.items()
-            }
-        )
+        namespace = ToolNamespace(allowed_tools)
         previous_tools = self._globals.get("tools")
         previous_vars = self._globals.get("vars")
         previous_artifacts = self._globals.get("artifacts")
@@ -198,12 +210,7 @@ class LocalPythonSandbox(BaseSandbox):
 
     async def acall(self, code: str) -> str:
         allowed_tools = self._get_allowed_tools()
-        namespace = ToolNamespace(
-            {
-                name: _make_async_tool_proxy(tool)
-                for name, tool in allowed_tools.items()
-            }
-        )
+        namespace = ToolNamespace(allowed_tools)
         previous_tools = self._globals.get("tools")
         previous_vars = self._globals.get("vars")
         previous_artifacts = self._globals.get("artifacts")
@@ -252,29 +259,6 @@ def _format_execution_output(stdout: str, result: Any) -> str:
     if not stdout:
         return result_text
     return f"{stdout}\n{result_text}"
-
-
-def _make_sync_tool_proxy(tool: Callable[..., Any]):
-    def _call(**kwargs: Any) -> Any:
-        if hasattr(tool, "acall"):
-            return F.wait_for(tool.acall, **kwargs)
-        if inspect.iscoroutinefunction(tool):
-            return F.wait_for(tool, **kwargs)
-        return tool(**kwargs)
-
-    return _call
-
-
-def _make_async_tool_proxy(tool: Callable[..., Any]):
-    async def _call(**kwargs: Any) -> Any:
-        if hasattr(tool, "acall"):
-            return await tool.acall(**kwargs)
-        if inspect.iscoroutinefunction(tool):
-            return await tool(**kwargs)
-        return tool(**kwargs)
-
-    return _call
-
 
 def sandbox_metadata(sandbox: BaseSandbox) -> SimpleNamespace:
     return SimpleNamespace(

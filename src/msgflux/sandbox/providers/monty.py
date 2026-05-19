@@ -69,6 +69,7 @@ class MontySandbox(BaseSandbox):
         description = super().render_description(
             tool_schemas=tool_schemas,
             artifacts_enabled=False,
+            include_async_tool_methods=False,
         )
         if not artifacts_enabled:
             return description

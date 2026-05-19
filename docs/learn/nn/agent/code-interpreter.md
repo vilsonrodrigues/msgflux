@@ -50,7 +50,7 @@ Use dict-style namespace access inside every sandbox. This is the portable form
 for both the local interpreter and Monty:
 
 ```python
-ticket = await tools["lookup_ticket"](ticket_id="MSGFLUX-42")
+ticket = tools["lookup_ticket"](ticket_id="MSGFLUX-42")
 ```
 
 The same applies to artifacts:
@@ -64,7 +64,7 @@ When `ptc=True`, the sandbox is registered as a tool named
 call explicitly allowed msgFlux tools through the `tools` namespace:
 
 ```python
-ticket = await tools["lookup_ticket"](ticket_id="MSGFLUX-42")
+ticket = await tools["lookup_ticket"].acall(ticket_id="MSGFLUX-42")
 result = f"Ticket context: {ticket}"
 ```
 
@@ -181,7 +181,7 @@ print(artifacts["list"]())
 print(artifacts["info"]("commands"))
 
 chunk = artifacts["read"]("commands", offset=0, limit=4000)
-result = await tools["llm_query"](
+result = await tools["llm_query"].acall(
     task="Find the deployment command and explain it.",
     task_context=chunk,
 )
@@ -193,7 +193,7 @@ tool:
 
 ```python
 print(artifacts["read"]("commands", offset=0, limit=300))
-answer = await tools["llm_query"](
+answer = await tools["llm_query"].acall(
     task="Find the deployment command and explain it.",
     context=artifacts["read"]("commands", offset=0, limit=4000),
 )
@@ -250,7 +250,8 @@ Limitations in this version:
 `Sandbox.python("local")` is intentionally narrow:
 
 - It persists Python globals between interpreter calls.
-- It exposes allowed msgFlux tools through `tools["name"](...)`.
+- It exposes allowed msgFlux tools through `tools["name"](...)` and
+  `await tools["name"].acall(...)`.
 - It exposes runtime values through `vars["name"]`.
 - It exposes mounted files through `artifacts["read"](...)` when `artifacts` are
   passed to the agent call.
@@ -265,7 +266,8 @@ workspace mutation.
 (`python_interpreter`) and keeps REPL state, but runs through Monty's Python
 subset. Unsupported Python syntax or stdlib modules may fail. Use dict-style
 namespaces (`tools["name"](...)`, `artifacts["read"](...)`) for code that works
-across sandbox providers.
+across sandbox providers. The local interpreter exposes full `nn.Tool` objects,
+so async calls can use `await tools["name"].acall(...)`.
 
 `print(...)` output is captured and returned in the tool result. If the code
 also sets a `result` variable, stdout is returned first and `result` is appended
