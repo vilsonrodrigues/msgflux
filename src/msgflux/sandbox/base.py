@@ -36,6 +36,12 @@ class ToolNamespace:
             raise AttributeError(f"Tool `{name}` is not available.")
         return tool
 
+    def __getitem__(self, name: str):
+        tool = self._tools.get(name)
+        if tool is None:
+            raise KeyError(f"Tool `{name}` is not available.")
+        return tool
+
     def available(self) -> list[str]:
         return sorted(self._tools)
 
@@ -82,10 +88,10 @@ class BaseSandbox:
         if artifacts_enabled:
             sections.append(
                 "Mounted artifacts are available through the `artifacts` namespace. "
-                "Use `artifacts.info(name)` for metadata and "
-                "`artifacts.read(name, offset=0, limit=...)` for bounded text reads. "
-                "`artifacts.read` returns a str and requires keyword arguments for "
-                "offset and limit."
+                'Use `artifacts["info"](name)` for metadata and '
+                '`artifacts["read"](name, offset=0, limit=...)` for bounded text '
+                'reads. `artifacts["read"]` returns a str and requires keyword '
+                "arguments for offset and limit."
             )
         limitations = self.capabilities.limitations
         if limitations:
@@ -100,7 +106,7 @@ class BaseSandbox:
                 name = function.get("name")
                 description = function.get("description") or "No description."
                 if name:
-                    tool_lines.append(f"- tools.{name}(...): {description}")
+                    tool_lines.append(f'- tools["{name}"](...): {description}')
             if tool_lines:
                 sections.append(
                     "Programmatic tools available inside this sandbox:\n"
@@ -123,7 +129,7 @@ class LocalPythonSandbox(BaseSandbox):
     description = (
         "Execute Python code in an isolated interpreter. Assign final output to "
         "`result`; use `print(...)` for debug output. Use `await "
-        "tools.<name>(...)` to call programmatic tools that are explicitly "
+        'tools["<name>"](...)` to call programmatic tools that are explicitly '
         "available."
     )
     usage_guidance = (
@@ -131,7 +137,9 @@ class LocalPythonSandbox(BaseSandbox):
         "programmatic tool calls. The interpreter returns captured stdout plus "
         "the value assigned to `result`; bare expressions are not returned. Use "
         "`print(...)` for debug output. Prefer passing large context slices "
-        "directly to another tool instead of retaining them in interpreter globals."
+        "directly to another tool instead of retaining them in interpreter globals. "
+        'Use dict-style namespaces such as `tools["search"](...)` and '
+        '`artifacts["read"](...)` for portability across sandbox providers.'
     )
     capabilities = SandboxCapabilities(
         language="python",

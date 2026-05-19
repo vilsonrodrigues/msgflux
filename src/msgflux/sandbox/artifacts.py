@@ -31,6 +31,21 @@ class ArtifactNamespace:
     def list(self) -> list[str]:
         return sorted(self._artifacts)
 
+    def __getitem__(self, name: str):
+        helpers = {
+            "list": self.list,
+            "info": self.info,
+            "read": self.read,
+            "aread": self.aread,
+            "search": self.search,
+            "asearch": self.asearch,
+            "help": self.help,
+        }
+        helper = helpers.get(name)
+        if helper is None:
+            raise KeyError(f"Artifact helper `{name}` is not available.")
+        return helper
+
     def info(self, name: str) -> dict[str, str | int]:
         artifact = self._get(name)
         return {
@@ -175,8 +190,9 @@ class ArtifactNamespace:
     def help(self) -> str:
         return (
             "Use artifacts to inspect mounted files without loading them all into "
-            "memory. Prefer artifacts.read(name, offset=0, limit=4000) and pass "
-            "chunks directly to tools. Use artifacts.info(name) to check byte size."
+            'memory. Prefer artifacts["read"](name, offset=0, limit=4000) and '
+            'pass chunks directly to tools. Use artifacts["info"](name) to '
+            "check byte size."
         )
 
     def _get(self, name: str) -> ArtifactRef:

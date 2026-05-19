@@ -59,8 +59,8 @@ class ArtifactReaderModel:
         if not self._called_tool:
             self._called_tool = True
             code = """
-info = artifacts.info("runtime_notes")
-chunk = artifacts.read("runtime_notes", offset=0, limit=500)
+info = artifacts["info"]("runtime_notes")
+chunk = artifacts["read"]("runtime_notes", offset=0, limit=500)
 print(f"artifact={info['name']} size={info['size']} {info['unit']}")
 result = chunk
 """.strip()
@@ -108,7 +108,8 @@ def build_agent() -> nn.Agent:
         },
         instructions=(
             "Use python_interpreter to inspect mounted artifacts through the "
-            "artifacts namespace. Always use bounded reads with limit."
+            "artifacts namespace using dict-style access. Always use bounded "
+            "reads with limit."
         ),
     )
 

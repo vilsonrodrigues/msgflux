@@ -81,7 +81,10 @@ def test_artifact_namespace_reads_with_offset_and_limit(tmp_path):
 
     assert namespace.list() == ["commands"]
     assert namespace.info("commands")["size"] == artifact_path.stat().st_size
+    assert namespace["list"]() == ["commands"]
+    assert namespace["info"]("commands")["unit"] == "bytes"
     assert namespace.read("commands", offset=6, limit=4) == "beta"
+    assert namespace["read"]("commands", offset=6, limit=4) == "beta"
     matches = namespace.search("commands", "gamma")
     assert [match["offset"] for match in matches] == [11, 17]
 
@@ -104,7 +107,7 @@ def test_python_sandbox_exposes_artifacts_without_persisting_namespace(tmp_path)
     sandbox = Sandbox.python("local")
     sandbox.set_artifacts(normalize_artifacts({"readme": artifact_path}))
 
-    result = sandbox("result = artifacts.read('readme', offset=8, limit=7)")
+    result = sandbox("result = artifacts['read']('readme', offset=8, limit=7)")
 
     assert result == "runtime"
     assert "artifacts" not in sandbox._globals
@@ -203,9 +206,9 @@ def test_code_interpreter_description_uses_filtered_ptc_tools():
     )
     description = interpreter_schema["function"]["description"]
 
-    assert "tools.search" in description
-    assert "tools.send_user_message" not in description
-    assert "artifacts.read" not in description
+    assert 'tools["search"]' in description
+    assert 'tools["send_user_message"]' not in description
+    assert 'artifacts["read"]' not in description
 
 
 def test_code_interpreter_description_mentions_artifacts_when_enabled():
@@ -235,8 +238,8 @@ def test_code_interpreter_description_mentions_artifacts_when_enabled():
     )
     description = interpreter_schema["function"]["description"]
 
-    assert "artifacts.info" in description
-    assert "artifacts.read" in description
+    assert 'artifacts["info"]' in description
+    assert 'artifacts["read"]' in description
     assert "keyword arguments" in description
 
 
@@ -425,7 +428,7 @@ async def test_code_interpreter_can_call_allowed_ptc_tool():
                 (
                     "call_1",
                     "python_interpreter",
-                    {"code": "result = tools.search(query='msgflux')"},
+                    {"code": "result = tools['search'](query='msgflux')"},
                 )
             ]
         )
@@ -454,7 +457,7 @@ async def test_code_interpreter_supports_top_level_await_for_ptc_tools():
                     "python_interpreter",
                     {
                         "code": (
-                            "ticket = await tools.search(query='msgflux')\n"
+                            "ticket = await tools['search'](query='msgflux')\n"
                             "result = f'ptc:{ticket}'"
                         )
                     },
@@ -484,7 +487,7 @@ async def test_code_interpreter_rejects_blocked_ptc_tool():
                 (
                     "call_1",
                     "python_interpreter",
-                    {"code": "result = tools.search(query='msgflux')"},
+                    {"code": "result = tools['search'](query='msgflux')"},
                 )
             ]
         )
