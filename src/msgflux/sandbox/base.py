@@ -254,6 +254,31 @@ class LocalPythonSandbox(BaseSandbox):
         return _format_execution_output(stdout.getvalue(), result)
 
 
+class BaseShellSandbox(BaseSandbox):
+    """Base shell sandbox exposed as a msgFlux tool."""
+
+    name = "shell"
+    display_name = "Shell"
+    description = "Execute a shell command in a sandboxed environment."
+    usage_guidance = (
+        "Use `shell` for command-line inspection and text processing inside the "
+        "sandbox filesystem. Prefer bounded commands that print concise output."
+    )
+    annotations = {"command": str, "return": str}
+    capabilities = SandboxCapabilities(
+        language="shell",
+        filesystem=True,
+        persistence=True,
+        limitations=("Provider-specific command support may differ from system bash.",),
+    )
+
+    def __call__(self, command: str) -> str:
+        raise NotImplementedError
+
+    async def acall(self, command: str) -> str:
+        raise NotImplementedError
+
+
 def _format_execution_output(stdout: str, result: Any) -> str:
     stdout = stdout.rstrip()
     if result is None:

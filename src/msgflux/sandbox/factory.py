@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from msgflux.sandbox.base import BaseSandbox, LocalPythonSandbox
+from typing import Any
+
+from msgflux.sandbox.base import BaseSandbox, BaseShellSandbox, LocalPythonSandbox
 
 
 class Sandbox:
@@ -19,8 +21,10 @@ class Sandbox:
         return Sandbox.code(f"python/{provider}")
 
     @staticmethod
-    def shell(provider: str = "local") -> BaseSandbox:
-        return Sandbox.code(f"shell/{provider}")
+    def shell(provider: str = "just-bash", **kwargs: Any) -> BaseShellSandbox:
+        if provider in {"just-bash", "local"}:
+            return _load_just_bash_sandbox(**kwargs)
+        raise ValueError(f"Unknown shell sandbox: {provider}")
 
 
 def _load_monty_sandbox() -> BaseSandbox:
@@ -31,3 +35,16 @@ def _load_monty_sandbox() -> BaseSandbox:
             "`python/monty` sandbox requires the optional Monty provider."
         ) from exc
     return MontySandbox()
+
+
+def _load_just_bash_sandbox(**kwargs: Any) -> BaseShellSandbox:
+    try:
+        from msgflux.sandbox.providers.just_bash import (  # noqa: PLC0415
+            JustBashSandbox,
+        )
+    except ImportError as exc:
+        raise ImportError(
+            "`shell/just-bash` sandbox requires the optional shell provider. "
+            "Install it with `msgflux[shell]`."
+        ) from exc
+    return JustBashSandbox(**kwargs)

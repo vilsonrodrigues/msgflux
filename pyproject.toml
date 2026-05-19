@@ -88,6 +88,9 @@ httpx = [
 monty = [
     "pydantic-monty>=0.0.9",
 ]
+shell = [
+    "just-bash>=0.1.16 ; python_version >= '3.11'",
+]
 plot = [
     "code2mermaid>=0.3.0",
     "mermaid-py>=0.8.0",
