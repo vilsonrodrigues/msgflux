@@ -74,7 +74,7 @@ def build_agent(model_name: str) -> nn.Agent:
             "and the result variable; bare expressions are not returned. For "
             "debug, prefer print(...) over storing large text in variables. Pass "
             "the bounded artifact slice directly into "
-            'await tools["llm_query"].acall(..., context=artifacts["read"](...)) '
+            'await tools["llm_query"](..., context=artifacts["read"](...)) '
             "instead of assigning the slice to a long-lived variable. Set result "
             "to a concise string containing the size and llm_query answer. Do "
             "not call read with positional offset/limit. Do not call decode(). "
@@ -97,7 +97,7 @@ async def run_with_artifact(model_name: str, artifact_path: Path) -> None:
             "info = artifacts['info']('runtime_notes')\n"
             "print(f\"artifact=runtime_notes size={info['size']} {info['unit']}\")\n"
             "print(artifacts['read']('runtime_notes', offset=0, limit=300))\n"
-            "answer = await tools['llm_query'].acall(\n"
+            "answer = await tools['llm_query'](\n"
             "    task='How do session_id, run_id, namespace and artifacts relate "
             "to durable execution?',\n"
             "    context=artifacts['read']('runtime_notes', offset=0, limit=800),\n"

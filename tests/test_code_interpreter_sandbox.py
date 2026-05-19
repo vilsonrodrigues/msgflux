@@ -208,8 +208,8 @@ def test_code_interpreter_description_uses_filtered_ptc_tools():
     )
     description = interpreter_schema["function"]["description"]
 
-    assert 'tools["search"]' in description
-    assert 'tools["search"].acall' in description
+    assert 'await tools["search"]' in description
+    assert 'tools["search"].acall' not in description
     assert 'tools["send_user_message"]' not in description
     assert 'artifacts["read"]' not in description
 
@@ -460,7 +460,7 @@ async def test_code_interpreter_supports_top_level_await_for_ptc_tools():
                     "python_interpreter",
                     {
                         "code": (
-                            "ticket = await tools['search'].acall(query='msgflux')\n"
+                            "ticket = await tools['search'](query='msgflux')\n"
                             "result = f'ptc:{ticket}'"
                         )
                     },

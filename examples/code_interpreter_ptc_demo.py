@@ -61,7 +61,7 @@ def lookup_ticket(ticket_id: str) -> str:
 
 def build_agent() -> nn.Agent:
     code = """
-ticket = await tools["lookup_ticket"].acall(ticket_id=vars["ticket_id"])
+ticket = await tools["lookup_ticket"](ticket_id=vars["ticket_id"])
 result = f"{ticket}; inspected_by=python_interpreter"
 """.strip()
     model = ScriptedModel(
@@ -90,7 +90,7 @@ result = f"{ticket}; inspected_by=python_interpreter"
         instructions=(
             "Use the Python interpreter for lightweight runtime analysis. "
             "Use programmatic tools through the tools namespace with dict-style "
-            'access, for example await tools["lookup_ticket"].acall(...).'
+            'access, for example await tools["lookup_ticket"](...).'
         ),
     )
 

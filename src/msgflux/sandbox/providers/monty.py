@@ -25,16 +25,15 @@ class MontySandbox(BaseSandbox):
     display_name = "Python Interpreter"
     description = (
         "Execute Python code in a Monty sandboxed interpreter. Assign final output "
-        "to `result`; use `print(...)` for debug output. Use `await "
-        "tools['name'](...)` to call programmatic tools that are explicitly "
-        "available."
+        "to `result`; use `print(...)` for debug output. Programmatic tools are "
+        "async callables; always call them with `await tools['name'](...)`."
     )
     usage_guidance = (
         "Use `python_interpreter` for bounded runtime computation in a Monty "
         "sandbox. The interpreter returns captured stdout plus the value assigned "
         "to `result`; bare expressions are not returned by msgFlux. Use "
-        "`print(...)` for debug output. Monty receives injected tools and "
-        "artifacts as dictionaries, so call `tools['name'](...)` and "
+        "`print(...)` for debug output. Monty receives injected async tools and "
+        "artifacts as dictionaries, so call `await tools['name'](...)` and "
         "`artifacts['read'](...)`."
     )
     capabilities = SandboxCapabilities(
@@ -49,7 +48,7 @@ class MontySandbox(BaseSandbox):
             "stdlib modules may fail.",
             "No direct network access is provided by the sandbox.",
             "No direct host filesystem access is provided by the sandbox.",
-            "Injected programmatic tools are available as `tools['name'](...)`, "
+            "Injected programmatic tools are available as `await tools['name'](...)`, "
             "not as attribute access.",
             "Mounted artifacts are available as `artifacts['read'](...)` and "
             "`artifacts['info'](...)`, not as attribute access.",
@@ -69,7 +68,6 @@ class MontySandbox(BaseSandbox):
         description = super().render_description(
             tool_schemas=tool_schemas,
             artifacts_enabled=False,
-            include_async_tool_methods=False,
         )
         if not artifacts_enabled:
             return description
