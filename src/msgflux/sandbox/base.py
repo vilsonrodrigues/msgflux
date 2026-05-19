@@ -169,6 +169,11 @@ class LocalPythonSandbox(BaseSandbox):
         self._globals: dict[str, Any] = {}
 
     def __call__(self, code: str) -> str:
+        if self._tools:
+            raise RuntimeError(
+                "Programmatic tool calls in `python_interpreter` are async-first. "
+                "Use `python_interpreter.acall` instead of sync execution."
+            )
         allowed_tools = self._get_allowed_tools()
         namespace = ToolNamespace(allowed_tools)
         previous_tools = self._globals.get("tools")

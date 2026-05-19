@@ -113,6 +113,14 @@ def test_python_sandbox_sync_artifacts_namespace_requires_await(tmp_path):
     assert "artifacts" not in sandbox._globals
 
 
+def test_python_sandbox_sync_ptc_tools_require_async_execution():
+    sandbox = Sandbox.python("local")
+    sandbox.set_tools({"search": search})
+
+    with pytest.raises(RuntimeError, match="async-first"):
+        sandbox("result = tools['search'](query='msgflux')")
+
+
 @pytest.mark.asyncio
 async def test_python_sandbox_exposes_async_artifacts_without_persisting_namespace(
     tmp_path,
@@ -448,7 +456,11 @@ async def test_code_interpreter_can_call_allowed_ptc_tool():
                 (
                     "call_1",
                     "python_interpreter",
-                    {"code": "result = tools['search'](query='msgflux')"},
+                    {
+                        "code": (
+                            "result = await tools['search'](query='msgflux')"
+                        )
+                    },
                 )
             ]
         )
