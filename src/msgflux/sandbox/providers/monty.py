@@ -10,17 +10,19 @@ from msgflux.sandbox.base import (
     _format_execution_output,
 )
 from msgflux.sandbox.context import get_ptc_allowed_tool_names
+from msgflux.sandbox.registry import register_sandbox
 
 try:
     from pydantic_monty import CollectString, MontyRepl
-except ImportError as exc:  # pragma: no cover - exercised by factory import path.
-    raise ImportError(
-        "`Sandbox.python('monty')` requires the optional dependency "
-        "`pydantic-monty`. Install it with `msgflux[monty]`."
-    ) from exc
+except ImportError:  # pragma: no cover - exercised by factory import path.
+    CollectString = None  # type: ignore[assignment]
+    MontyRepl = None  # type: ignore[assignment]
 
 
+@register_sandbox
 class MontySandbox(BaseSandbox):
+    sandbox_type = "python"
+    provider = "monty"
     name = "python_interpreter"
     display_name = "Python Interpreter"
     description = (
@@ -57,6 +59,11 @@ class MontySandbox(BaseSandbox):
 
     def __init__(self) -> None:
         super().__init__()
+        if MontyRepl is None:
+            raise ImportError(
+                "`Sandbox.python('monty')` requires the optional dependency "
+                "`pydantic-monty`. Install it with `msgflux[monty]`."
+            )
         self._repl = MontyRepl()
 
     def render_description(

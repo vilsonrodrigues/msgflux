@@ -26,6 +26,28 @@ def test_shell_factory_creates_just_bash_when_available():
     assert shell.capabilities.filesystem is True
 
 
+def test_sandbox_registry_lists_registered_providers():
+    providers = Sandbox.providers()
+
+    assert "python" in providers
+    assert "local" in providers["python"]
+    assert "shell" in providers
+    assert "just-bash" in providers["shell"]
+
+
+def test_sandbox_code_factory_parses_type_and_provider_when_available():
+    pytest.importorskip("just_bash")
+
+    shell = Sandbox.code("shell/just-bash")
+
+    assert isinstance(shell, BaseShellSandbox)
+
+
+def test_sandbox_factory_rejects_unknown_provider():
+    with pytest.raises(ValueError, match="Provider `unknown`"):
+        Sandbox.shell("unknown")
+
+
 @pytest.mark.asyncio
 async def test_just_bash_shell_executes_commands_when_available():
     pytest.importorskip("just_bash")

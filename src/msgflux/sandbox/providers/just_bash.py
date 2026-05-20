@@ -6,6 +6,7 @@ from typing import Literal, Mapping
 
 import msgflux.nn.functional as F
 from msgflux.sandbox.base import BaseShellSandbox, SandboxCapabilities
+from msgflux.sandbox.registry import register_sandbox
 
 try:
     from just_bash import Bash
@@ -18,14 +19,22 @@ try:
         OverlayFsOptions,
     )
     from just_bash.types import ExecResult, NetworkConfig
-except ImportError as exc:  # pragma: no cover - exercised by factory import path.
-    raise ImportError(
-        "`Sandbox.shell('just-bash')` requires the optional dependency "
-        "`just-bash`. Install it with `msgflux[shell]`."
-    ) from exc
+except ImportError:  # pragma: no cover - exercised by factory import path.
+    Bash = None  # type: ignore[assignment]
+    ExecResult = None  # type: ignore[assignment]
+    InMemoryFs = None  # type: ignore[assignment]
+    MountableFs = None  # type: ignore[assignment]
+    MountableFsOptions = None  # type: ignore[assignment]
+    MountConfig = None  # type: ignore[assignment]
+    NetworkConfig = None  # type: ignore[assignment]
+    OverlayFs = None  # type: ignore[assignment]
+    OverlayFsOptions = None  # type: ignore[assignment]
 
 
+@register_sandbox
 class JustBashSandbox(BaseShellSandbox):
+    sandbox_type = "shell"
+    provider = "just-bash"
     name = "shell"
     display_name = "Shell"
     description = (
@@ -51,6 +60,11 @@ class JustBashSandbox(BaseShellSandbox):
         network: bool | NetworkConfig | None = None,
     ) -> None:
         super().__init__()
+        if Bash is None:
+            raise ImportError(
+                "`Sandbox.shell('just-bash')` requires the optional dependency "
+                "`just-bash`. Install it with `msgflux[shell]`."
+            )
         self.cwd = _normalize_virtual_path(cwd)
         self.env = dict(env or {})
         self.files = _build_initial_files(files=files, mounts=mounts)
@@ -98,6 +112,11 @@ class JustBashSandbox(BaseShellSandbox):
     @property
     def fs(self):
         return self._bash.fs
+
+
+@register_sandbox
+class LocalShellSandbox(JustBashSandbox):
+    provider = "local"
 
 
 def _normalize_network(

@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from msgflux.sandbox.base import BaseSandbox, BaseShellSandbox, LocalPythonSandbox
+from msgflux.sandbox.base import BaseSandbox, BaseShellSandbox
+from msgflux.sandbox.registry import sandbox_registry
 
 
 class Sandbox:
@@ -10,41 +11,50 @@ class Sandbox:
 
     @staticmethod
     def code(identifier: str = "python/local") -> BaseSandbox:
-        if identifier in {"python", "python/local"}:
-            return LocalPythonSandbox()
-        if identifier == "python/monty":
-            return _load_monty_sandbox()
-        raise ValueError(f"Unknown code sandbox: {identifier}")
+        sandbox_type, provider = Sandbox._sandbox_path_parser(identifier)
+        return Sandbox._create_sandbox(sandbox_type, provider)
 
     @staticmethod
     def python(provider: str = "local") -> BaseSandbox:
-        return Sandbox.code(f"python/{provider}")
+        return Sandbox._create_sandbox("python", provider)
 
     @staticmethod
     def shell(provider: str = "just-bash", **kwargs: Any) -> BaseShellSandbox:
-        if provider in {"just-bash", "local"}:
-            return _load_just_bash_sandbox(**kwargs)
-        raise ValueError(f"Unknown shell sandbox: {provider}")
+        sandbox = Sandbox._create_sandbox("shell", provider, **kwargs)
+        if not isinstance(sandbox, BaseShellSandbox):
+            raise TypeError(f"Sandbox `shell/{provider}` is not a shell sandbox.")
+        return sandbox
 
+    @staticmethod
+    def providers() -> dict[str, list[str]]:
+        return {k: list(v.keys()) for k, v in sandbox_registry.items()}
 
-def _load_monty_sandbox() -> BaseSandbox:
-    try:
-        from msgflux.sandbox.providers.monty import MontySandbox  # noqa: PLC0415
-    except ImportError as exc:
-        raise ImportError(
-            "`python/monty` sandbox requires the optional Monty provider."
-        ) from exc
-    return MontySandbox()
+    @staticmethod
+    def sandbox_types() -> list[str]:
+        return list(sandbox_registry.keys())
 
+    @staticmethod
+    def _sandbox_path_parser(identifier: str) -> tuple[str, str]:
+        if "/" not in identifier:
+            return identifier, "local"
+        sandbox_type, provider = identifier.split("/", 1)
+        return sandbox_type, provider
 
-def _load_just_bash_sandbox(**kwargs: Any) -> BaseShellSandbox:
-    try:
-        from msgflux.sandbox.providers.just_bash import (  # noqa: PLC0415
-            JustBashSandbox,
-        )
-    except ImportError as exc:
-        raise ImportError(
-            "`shell/just-bash` sandbox requires the optional shell provider. "
-            "Install it with `msgflux[shell]`."
-        ) from exc
-    return JustBashSandbox(**kwargs)
+    @staticmethod
+    def _get_sandbox_class(sandbox_type: str, provider: str) -> type[BaseSandbox]:
+        if sandbox_type not in sandbox_registry:
+            raise ValueError(f"Sandbox type `{sandbox_type}` is not supported")
+        if provider not in sandbox_registry[sandbox_type]:
+            raise ValueError(
+                f"Provider `{provider}` not registered for sandbox `{sandbox_type}`"
+            )
+        return sandbox_registry[sandbox_type][provider]
+
+    @staticmethod
+    def _create_sandbox(
+        sandbox_type: str,
+        provider: str,
+        **kwargs: Any,
+    ) -> BaseSandbox:
+        sandbox_cls = Sandbox._get_sandbox_class(sandbox_type, provider)
+        return sandbox_cls(**kwargs)

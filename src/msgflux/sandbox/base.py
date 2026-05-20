@@ -133,6 +133,8 @@ class BaseSandbox:
 
 
 class LocalPythonSandbox(BaseSandbox):
+    sandbox_type = "python"
+    provider = "local"
     name = "python_interpreter"
     display_name = "Python Interpreter"
     description = (
