@@ -504,6 +504,33 @@ async def test_code_interpreter_supports_top_level_await_for_ptc_tools():
 
 
 @pytest.mark.asyncio
+async def test_code_interpreter_accepts_single_mapping_for_ptc_tool():
+    agent = Agent(
+        name="agent",
+        model=MockModel(),
+        tools=[search],
+        code_interpreter=Sandbox.python("local"),
+        config={"code_interpreter": {"ptc": True, "ptc_tools": {"allow": "*"}}},
+    )
+
+    with ptc_context({"search"}):
+        responses = await agent.tool_library.acall(
+            [
+                (
+                    "call_1",
+                    "python_interpreter",
+                    {"code": "result = await tools['search']({'query': 'msgflux'})"},
+                )
+            ]
+        )
+
+    response = responses.get_by_name("python_interpreter")
+    assert response is not None
+    assert response.error is None
+    assert response.result == "found:msgflux"
+
+
+@pytest.mark.asyncio
 async def test_code_interpreter_rejects_blocked_ptc_tool():
     agent = Agent(
         name="agent",
