@@ -2,7 +2,21 @@ from __future__ import annotations
 
 from typing import Any, Mapping
 
+import msgspec
+
 from msgflux.runtime.interactions import AskUserManager
+
+
+class AskUserOption(msgspec.Struct):
+    label: str
+    description: str
+
+
+class AskUserQuestion(msgspec.Struct, kw_only=True):
+    question: str
+    header: str
+    options: list[AskUserOption]
+    multi_select: bool = False
 
 
 class AskUser:
@@ -29,8 +43,8 @@ class AskUser:
 
     def __call__(
         self,
-        questions: list[dict[str, Any]],
-        metadata: dict[str, Any] | None = None,
+        questions: list[AskUserQuestion],
+        metadata: dict[str, str] | None = None,
     ) -> dict[str, Any]:
         """Ask the user questions.
 
@@ -44,11 +58,11 @@ class AskUser:
 
     async def acall(
         self,
-        questions: list[dict[str, Any]],
-        metadata: dict[str, Any] | None = None,
+        questions: list[AskUserQuestion],
+        metadata: dict[str, str] | None = None,
     ) -> dict[str, Any]:
         answer = await self.manager.request(
-            questions,
+            [msgspec.to_builtins(question) for question in questions],
             tool_name=self.name,
             metadata=metadata,
             timeout=self.timeout,
