@@ -292,7 +292,8 @@ def _format_execution_output(stdout: str, result: Any) -> str:
 
 
 def _make_async_tool_callable(tool: Callable[..., Any]):
-    async def _call(**kwargs: Any) -> Any:
+    async def _call(*args: Any, **kwargs: Any) -> Any:
+        kwargs = _normalize_ptc_tool_kwargs(args, kwargs)
         if hasattr(tool, "acall"):
             return await tool.acall(**kwargs)
         result = tool(**kwargs)
@@ -301,6 +302,20 @@ def _make_async_tool_callable(tool: Callable[..., Any]):
         return result
 
     return _call
+
+
+def _normalize_ptc_tool_kwargs(
+    args: tuple[Any, ...],
+    kwargs: dict[str, Any],
+) -> dict[str, Any]:
+    if not args:
+        return kwargs
+    if len(args) == 1 and isinstance(args[0], Mapping) and not kwargs:
+        return dict(args[0])
+    raise TypeError(
+        "Programmatic tools accept keyword arguments. A single positional "
+        "mapping is also accepted as a compatibility fallback."
+    )
 
 
 class _SyncArtifactNamespaceUnavailable:

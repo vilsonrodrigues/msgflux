@@ -8,6 +8,7 @@ from msgflux.sandbox.base import (
     BaseSandbox,
     SandboxCapabilities,
     _format_execution_output,
+    _normalize_ptc_tool_kwargs,
 )
 from msgflux.sandbox.context import get_ptc_allowed_tool_names
 from msgflux.sandbox.registry import register_sandbox
@@ -204,7 +205,8 @@ def _make_monty_sync_tool_proxy(tool: Callable[..., Any]):
 
 
 def _make_monty_async_tool_proxy(tool: Callable[..., Any]):
-    async def _call(**kwargs: Any) -> Any:
+    async def _call(*args: Any, **kwargs: Any) -> Any:
+        kwargs = _normalize_ptc_tool_kwargs(args, kwargs)
         if hasattr(tool, "acall"):
             return await tool.acall(**kwargs)
         return tool(**kwargs)
