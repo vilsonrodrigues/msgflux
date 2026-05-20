@@ -9,7 +9,17 @@ from datetime import datetime, timezone
 from functools import partial
 from importlib import import_module
 from threading import Lock
-from typing import Any, Callable, Dict, Iterator, List, Mapping, Optional, Tuple
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Iterator,
+    List,
+    Mapping,
+    Optional,
+    Tuple,
+    get_type_hints,
+)
 from uuid import uuid4
 
 import msgspec
@@ -45,6 +55,7 @@ from msgflux.runtime.events import (
     emit_tool_result,
     emit_tool_started,
 )
+from msgflux.runtime.file_reads import file_read_tracker_context, get_file_read_tracker
 from msgflux.runtime.permissions import PermissionManager, PermissionRuntimeError
 from msgflux.tasks import TaskActivityRecorder, TaskHandle, TaskStore
 from msgflux.telemetry.span import (
@@ -148,6 +159,7 @@ def _current_runtime_context_kwargs() -> Dict[str, Any]:
         "task_handle": context.get("task_handle"),
         "task_activity_recorder": context.get("task_activity_recorder"),
         "permission_manager": context.get("permission_manager"),
+        "file_read_tracker": get_file_read_tracker(),
     }
 
 
@@ -161,16 +173,34 @@ def _call_with_runtime_context(
     runtime_context: Mapping[str, Any],
     fn: Callable[[], Any],
 ) -> Any:
-    with execution_context(**runtime_context):
-        return fn()
+    file_read_tracker = runtime_context.get("file_read_tracker")
+    context = {
+        key: value
+        for key, value in runtime_context.items()
+        if key != "file_read_tracker"
+    }
+    with execution_context(**context):
+        if file_read_tracker is None:
+            return fn()
+        with file_read_tracker_context(file_read_tracker):
+            return fn()
 
 
 async def _acall_with_runtime_context(
     runtime_context: Mapping[str, Any],
     fn: Callable[[], Any],
 ) -> Any:
-    with execution_context(**runtime_context):
-        return await fn()
+    file_read_tracker = runtime_context.get("file_read_tracker")
+    context = {
+        key: value
+        for key, value in runtime_context.items()
+        if key != "file_read_tracker"
+    }
+    with execution_context(**context):
+        if file_read_tracker is None:
+            return await fn()
+        with file_read_tracker_context(file_read_tracker):
+            return await fn()
 
 
 class _RuntimeContextCall:
@@ -500,11 +530,18 @@ def _convert_module_to_nn_tool(impl: Callable) -> Tool:  # noqa: C901
         display_name = getattr(impl, "display_name", None)
 
         # Now extract annotations (after instantiation for classes)
+        annotation_source = (
+            impl
+            if inspect.isfunction(impl) or inspect.iscoroutinefunction(impl)
+            else impl.__call__
+        )
         annotations = (
             getattr(impl, "annotations", None)
             or getattr(impl, "__annotations__", None)
-            or getattr(impl.__call__, "__annotations__", None)
+            or getattr(annotation_source, "__annotations__", None)
         )
+        if getattr(impl, "annotations", None) is None:
+            annotations = _resolve_type_hints(annotation_source, annotations)
         if annotations is None:
             if fn_has_parameters(impl.__call__):
                 raise NotImplementedError(
@@ -524,7 +561,7 @@ def _convert_module_to_nn_tool(impl: Callable) -> Tool:  # noqa: C901
                 "is necessary to implement a docstring"
             )
 
-        annotations = impl.__annotations__
+        annotations = _resolve_type_hints(impl, impl.__annotations__)
 
         if annotations is None:
             if fn_has_parameters(impl):
@@ -577,6 +614,16 @@ def _convert_module_to_nn_tool(impl: Callable) -> Tool:  # noqa: C901
         impl=impl,
         display_name=display_name,
     )
+
+
+def _resolve_type_hints(
+    fn: Callable[..., Any],
+    fallback: Optional[Dict[str, Any]],
+) -> Optional[Dict[str, Any]]:
+    try:
+        return get_type_hints(fn)
+    except Exception:
+        return fallback
 
 
 class ToolLibrary(Module, metaclass=AutoParams):

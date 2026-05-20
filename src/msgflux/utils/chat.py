@@ -1,6 +1,7 @@
 import copy
 import inspect
 import re
+import types
 from typing import (
     Any,
     Dict,
@@ -416,7 +417,7 @@ def hint_to_schema(type_hint) -> dict:  # noqa: C901
         return {"enum": list(get_args(type_hint))}
 
     # Union (includes Optional)
-    if origin is Union:
+    if origin in (Union, types.UnionType):
         args = get_args(type_hint)
         has_none = any(a is type(None) for a in args)
         non_none_args = [a for a in args if a is not type(None)]
