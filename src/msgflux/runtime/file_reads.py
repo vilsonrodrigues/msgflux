@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
+from typing import Iterator
 
 from msgflux.context import get_execution_scope
 
@@ -66,6 +68,15 @@ def get_file_read_tracker() -> FileReadTracker:
         tracker = FileReadTracker()
         _FILE_READ_TRACKER.set(tracker)
     return tracker
+
+
+@contextmanager
+def file_read_tracker_context(tracker: FileReadTracker) -> Iterator[None]:
+    token = _FILE_READ_TRACKER.set(tracker)
+    try:
+        yield
+    finally:
+        _FILE_READ_TRACKER.reset(token)
 
 
 def hash_text(text: str) -> str:
