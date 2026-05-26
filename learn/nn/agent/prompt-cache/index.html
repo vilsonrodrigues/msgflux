@@ -12,13 +12,13 @@
         <meta name="author" content="Vilson Rodrigues">
       
       
-        <link rel="canonical" href="https://msgflux.com/learn/nn/module/module-dict/">
+        <link rel="canonical" href="https://msgflux.com/learn/nn/agent/prompt-cache/">
       
       
-        <link rel="prev" href="../composing/">
+        <link rel="prev" href="../streaming/">
       
       
-        <link rel="next" href="../module-list/">
+        <link rel="next" href="../reasoning/">
       
       
         
@@ -29,7 +29,7 @@
     
     
       
-        <title>ModuleDict - msgFlux</title>
+        <title>Prompt Cache Warmup - msgFlux</title>
       
     
     
@@ -88,7 +88,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#moduledict" class="md-skip">
+        <a href="#prompt-cache-warmup" class="md-skip">
           Skip to content
         </a>
       
@@ -121,7 +121,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              ModuleDict
+              Prompt Cache Warmup
             
           </span>
         </div>
@@ -1347,8 +1347,6 @@
                 
   
   
-    
-  
   
   
     
@@ -1379,15 +1377,15 @@
       
     
     
-    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_7_1" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_7_1" >
         
           
           <div class="md-nav__link md-nav__container">
-            <a href="../" class="md-nav__link ">
+            <a href="../../module/" class="md-nav__link ">
               
   
   
@@ -1411,7 +1409,7 @@
             
           </div>
         
-        <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_2_7_1_label" aria-expanded="true">
+        <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_2_7_1_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_2_7_1">
             <span class="md-nav__icon md-icon"></span>
             
@@ -1431,7 +1429,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../core-concepts/" class="md-nav__link">
+      <a href="../../module/core-concepts/" class="md-nav__link">
         
   
   
@@ -1459,7 +1457,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../forward-and-async/" class="md-nav__link">
+      <a href="../../module/forward-and-async/" class="md-nav__link">
         
   
   
@@ -1487,7 +1485,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../composing/" class="md-nav__link">
+      <a href="../../module/composing/" class="md-nav__link">
         
   
   
@@ -1512,37 +1510,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    ModuleDict
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../../module/module-dict/" class="md-nav__link">
         
   
   
@@ -1558,48 +1529,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#overview" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        ✦₊⁺ Overview
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#1-example" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        1. Example
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -1612,7 +1541,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../module-list/" class="md-nav__link">
+      <a href="../../module/module-list/" class="md-nav__link">
         
   
   
@@ -1640,7 +1569,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../sequential/" class="md-nav__link">
+      <a href="../../module/sequential/" class="md-nav__link">
         
   
   
@@ -1668,7 +1597,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../visualization/" class="md-nav__link">
+      <a href="../../module/visualization/" class="md-nav__link">
         
   
   
@@ -1729,6 +1658,8 @@
                 
   
   
+    
+  
   
   
     
@@ -1777,15 +1708,15 @@
       
     
     
-    <li class="md-nav__item md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_7_3" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_7_3" checked>
         
           
           <div class="md-nav__link md-nav__container">
-            <a href="../../agent/" class="md-nav__link ">
+            <a href="../" class="md-nav__link ">
               
   
   
@@ -1809,7 +1740,7 @@
             
           </div>
         
-        <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_2_7_3_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_2_7_3_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_2_7_3">
             <span class="md-nav__icon md-icon"></span>
             
@@ -1829,7 +1760,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../agent/quickstart/" class="md-nav__link">
+      <a href="../quickstart/" class="md-nav__link">
         
   
   
@@ -1857,7 +1788,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../agent/async/" class="md-nav__link">
+      <a href="../async/" class="md-nav__link">
         
   
   
@@ -1885,7 +1816,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../agent/streaming/" class="md-nav__link">
+      <a href="../streaming/" class="md-nav__link">
         
   
   
@@ -1910,10 +1841,37 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../../agent/prompt-cache/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Prompt Cache Warmup
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -1929,6 +1887,136 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#basic-usage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Basic Usage
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#async-usage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Async Usage
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#fire-and-forget" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fire And Forget
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-is-sent" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What Is Sent
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#runtime-vars" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Runtime Vars
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tool-filtering" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tool Filtering
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#model-gateway" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Model Gateway
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#provider-token-limit" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Provider Token Limit
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reading-cache-usage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reading Cache Usage
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#practical-guidance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Practical Guidance
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -1941,7 +2029,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../agent/reasoning/" class="md-nav__link">
+      <a href="../reasoning/" class="md-nav__link">
         
   
   
@@ -1969,7 +2057,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../agent/debug/" class="md-nav__link">
+      <a href="../debug/" class="md-nav__link">
         
   
   
@@ -1997,7 +2085,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../agent/system-prompt/" class="md-nav__link">
+      <a href="../system-prompt/" class="md-nav__link">
         
   
   
@@ -2025,7 +2113,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../agent/generation-schemas/" class="md-nav__link">
+      <a href="../generation-schemas/" class="md-nav__link">
         
   
   
@@ -2053,7 +2141,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../agent/task-and-context/" class="md-nav__link">
+      <a href="../task-and-context/" class="md-nav__link">
         
   
   
@@ -2081,7 +2169,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../agent/vars/" class="md-nav__link">
+      <a href="../vars/" class="md-nav__link">
         
   
   
@@ -2109,7 +2197,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../agent/tools/" class="md-nav__link">
+      <a href="../tools/" class="md-nav__link">
         
   
   
@@ -2137,7 +2225,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../agent/skills/" class="md-nav__link">
+      <a href="../skills/" class="md-nav__link">
         
   
   
@@ -2165,7 +2253,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../agent/signatures/" class="md-nav__link">
+      <a href="../signatures/" class="md-nav__link">
         
   
   
@@ -2193,7 +2281,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../agent/hooks/" class="md-nav__link">
+      <a href="../hooks/" class="md-nav__link">
         
   
   
@@ -2221,7 +2309,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../agent/model-gateway/" class="md-nav__link">
+      <a href="../model-gateway/" class="md-nav__link">
         
   
   
@@ -2249,7 +2337,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../agent/prefilling/" class="md-nav__link">
+      <a href="../prefilling/" class="md-nav__link">
         
   
   
@@ -4454,10 +4542,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#overview" class="md-nav__link">
+  <a href="#basic-usage" class="md-nav__link">
     <span class="md-ellipsis">
       
-        ✦₊⁺ Overview
+        Basic Usage
       
     </span>
   </a>
@@ -4465,10 +4553,98 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#1-example" class="md-nav__link">
+  <a href="#async-usage" class="md-nav__link">
     <span class="md-ellipsis">
       
-        1. Example
+        Async Usage
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#fire-and-forget" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fire And Forget
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-is-sent" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What Is Sent
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#runtime-vars" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Runtime Vars
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tool-filtering" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tool Filtering
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#model-gateway" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Model Gateway
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#provider-token-limit" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Provider Token Limit
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reading-cache-usage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reading Cache Usage
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#practical-guidance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Practical Guidance
       
     </span>
   </a>
@@ -4532,7 +4708,7 @@
     
     
       <li class="md-path__item">
-        <a href="../" class="md-path__link">
+        <a href="../../module/" class="md-path__link">
           
   <span class="md-ellipsis">
     ⟢ Modules
@@ -4556,7 +4732,7 @@
         <a href="../" class="md-path__link">
           
   <span class="md-ellipsis">
-    Module
+    Agent
   </span>
 
         </a>
@@ -4578,7 +4754,7 @@
   
 
 
-<h1 id="moduledict">ModuleDict</h1><link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css">
+<h1 id="prompt-cache-warmup">Prompt Cache Warmup</h1><link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css">
 <style>
 .copy-markdown-button {
     background: transparent;
@@ -4598,65 +4774,165 @@
 .copy-markdown-button:active { transform: translateY(1px); }
 #copy-icon { transition: opacity 0.1s ease; }
 </style>
-<div class="copy-markdown-container" data-markdown="# ModuleDict
+<div class="copy-markdown-container" data-markdown="# Prompt Cache Warmup
 
-## ✦₊⁺ Overview
+Prompt warmup sends the agent&#x27;s stable prompt prefix to the model provider before the first real task. Providers with prompt caching can prefill the system prompt and tool schemas, so the next request with the same prefix can start faster or report cached input tokens.
 
-Holds submodules in a dictionary.
+Use warmup when your agent has a large static system prompt, many tools, or loaded skills. It is not a replacement for response caching: no task message is sent, no checkpoint is written, and no conversation history is updated.
 
-`nn.ModuleDict` can be indexed like a regular Python dictionary, but modules it contains are properly registered, and will be visible by all Module methods.
-
-`nn.ModuleDict` is an **ordered** dictionary that respects:
-
-- the order of insertion, and
-- in `update()`, the order of the merged `OrderedDict`, `dict` (started from Python 3.6) or another `nn.ModuleDict` (the argument to `update()`).
-
-## 1. **Example**
+## Basic Usage
 
 ```python
-import random
+# pip install msgflux[openai]
+import msgflux as mf
 import msgflux.nn as nn
 
-class ExpertSales(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.register_buffer(&quot;response&quot;, &quot;Hi, let&#x27;s talk?&quot;)
 
-    def forward(self, msg: str):
-        return msg + self.response
+def lookup_ticket(ticket_id: str) -&gt; str:
+    return f&quot;{ticket_id}: open&quot;
 
-class ExpertSupport(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.register_buffer(&quot;response&quot;, &quot;Hi, call 190&quot;)
 
-    def forward(self, msg: str):
-        return msg + self.response
+class SupportAgent(nn.Agent):
+    model = mf.Model.chat_completion(&quot;openai/gpt-4.1-mini&quot;)
+    system_message = &quot;&quot;&quot;
+    You are a support agent.
+    Follow the escalation policy and use tools when needed.
+    &quot;&quot;&quot;
+    tools = [lookup_ticket]
 
-def draw_choice(choices: list[str]) -&gt; str:
-    return random.choice(choices)
 
-class Router(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.choices = nn.ModuleDict({
-            &quot;sales&quot;: ExpertSales(),
-            &quot;support&quot;: ExpertSupport()
-        })
+agent = SupportAgent()
 
-    def forward(self, msg: str) -&gt; str:
-        choice = draw_choice(list(self.choices.keys()))
-        msg = self.choices[choice](msg)
-        return msg
+# Sends only the rendered system prompt and tool schemas.
+agent.warmup_system_prompt()
 
-router = Router()
-
-# Sub-modules are tracked in state_dict
-print(router.state_dict())
-# {&#x27;choices.sales.response&#x27;: &quot;Hi, let&#x27;s talk?&quot;, &#x27;choices.support.response&#x27;: &#x27;Hi, call 190&#x27;}
-
-router(&quot;I need help with my tv.&quot;)
+response = agent(&quot;Check ticket MSGFLUX-42&quot;)
+print(response)
 ```
+
+## Async Usage
+
+```python
+agent = SupportAgent()
+
+await agent.awarmup_system_prompt()
+response = await agent.acall(&quot;Check ticket MSGFLUX-42&quot;)
+```
+
+## Fire And Forget
+
+Warmup can run in the background while the process continues initializing:
+
+```python
+agent = SupportAgent()
+
+agent.warmup_system_prompt(background=True)
+
+# Continue booting your CLI, server, or worker.
+```
+
+For async applications:
+
+```python
+await agent.awarmup_system_prompt(background=True)
+```
+
+Background warmup does not return the provider response. Errors are logged by the background task runner.
+
+## What Is Sent
+
+Warmup intentionally bypasses runtime state. It sends:
+
+- The rendered `system_prompt`
+- Tool schemas from the agent&#x27;s `ToolLibrary`
+- The provider&#x27;s configured warmup token limit
+
+It does not send:
+
+- User task messages
+- Chat history
+- Checkpointer state
+- Agent inbox notifications
+- Typed parsers or generation schemas
+- Response templates
+
+This keeps warmup focused on the stable prefix that providers can cache.
+
+## Runtime Vars
+
+If the system prompt uses runtime variables, pass the same `vars` you expect to use for the real request:
+
+```python
+agent.warmup_system_prompt(vars={&quot;tenant&quot;: &quot;acme&quot;})
+
+response = agent(
+    &quot;Summarize the ticket&quot;,
+    vars={&quot;tenant&quot;: &quot;acme&quot;},
+)
+```
+
+Cache hits depend on the provider seeing the same prompt prefix. If the rendered system prompt changes between warmup and the real call, the provider may miss the cache.
+
+## Tool Filtering
+
+Warmup accepts the same `tool_filter` shape used by agent execution:
+
+```python
+agent.warmup_system_prompt(tool_filter={&quot;allow&quot;: [&quot;lookup_ticket&quot;]})
+```
+
+Use this when the real request will also restrict tools. A different tool schema list changes the prompt prefix and can reduce cache hits.
+
+## Model Gateway
+
+When the agent uses a `ModelGateway`, warmup routes through the gateway and accepts `model_preference`:
+
+```python
+agent.warmup_system_prompt(model_preference=&quot;fast&quot;)
+```
+
+The selected model must support `warmup_system_prompt`.
+
+## Provider Token Limit
+
+OpenAI-compatible chat providers default to one generated token for warmup. This keeps the request cheap while still forcing the provider to process the prompt.
+
+Override it on the model if a provider needs a different minimum:
+
+```python
+model = mf.Model.chat_completion(
+    &quot;openai/gpt-4.1-mini&quot;,
+    warmup_max_tokens=1,
+)
+```
+
+OpenAI Chat Completions and Groq reject zero completion tokens, so `0` is not a portable warmup value.
+
+## Reading Cache Usage
+
+The provider response is returned in foreground mode:
+
+```python
+raw_response = agent.warmup_system_prompt()
+print(raw_response.usage)
+```
+
+OpenAI reports prompt cache hits in usage metadata:
+
+- Chat Completions: `usage.prompt_tokens_details.cached_tokens`
+- Responses API: `usage.input_tokens_details.cached_tokens`
+
+msgflux currently implements this warmup path for chat completions.
+
+## Practical Guidance
+
+- Keep the warmup prefix stable.
+- Put large static instructions, tools, and skills before dynamic user content.
+- Warmup is most useful above the provider&#x27;s prompt-cache threshold.
+- Do not expect warmup to persist conversation state.
+- Use foreground warmup during tests so failures are visible.
+- Use background warmup during app startup when failures should not block serving.
+
 ">
   <button class="copy-markdown-button" onclick="copyMarkdownToClipboard(this)">
     <i id="copy-icon" class="ph ph-clipboard" style="font-size:16px;"></i>
@@ -4725,58 +5001,119 @@ router(&quot;I need help with my tv.&quot;)
     window.copyMarkdownToClipboard = copyMarkdownToClipboard;
 }());
 </script>
-<h2 id="overview">✦₊⁺ Overview</h2>
-<p>Holds submodules in a dictionary.</p>
-<p><code>nn.ModuleDict</code> can be indexed like a regular Python dictionary, but modules it contains are properly registered, and will be visible by all Module methods.</p>
-<p><code>nn.ModuleDict</code> is an <strong>ordered</strong> dictionary that respects:</p>
-<ul>
-<li>the order of insertion, and</li>
-<li>in <code>update()</code>, the order of the merged <code>OrderedDict</code>, <code>dict</code> (started from Python 3.6) or another <code>nn.ModuleDict</code> (the argument to <code>update()</code>).</li>
-</ul>
-<h2 id="1-example">1. <strong>Example</strong></h2>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">random</span>
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">nn</span>
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="k">class</span><span class="w"> </span><span class="nc">ExpertSales</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
-</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
-</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">register_buffer</span><span class="p">(</span><span class="s2">&quot;response&quot;</span><span class="p">,</span> <span class="s2">&quot;Hi, let&#39;s talk?&quot;</span><span class="p">)</span>
+<p>Prompt warmup sends the agent's stable prompt prefix to the model provider before the first real task. Providers with prompt caching can prefill the system prompt and tool schemas, so the next request with the same prefix can start faster or report cached input tokens.</p>
+<p>Use warmup when your agent has a large static system prompt, many tools, or loaded skills. It is not a replacement for response caching: no task message is sent, no checkpoint is written, and no conversation history is updated.</p>
+<h2 id="basic-usage">Basic Usage</h2>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="c1"># pip install msgflux[openai]</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mf</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="kn">import</span><span class="w"> </span><span class="nn">msgflux.nn</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">nn</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="k">def</span><span class="w"> </span><span class="nf">lookup_ticket</span><span class="p">(</span><span class="n">ticket_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">ticket_id</span><span class="si">}</span><span class="s2">: open&quot;</span>
 </span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>
-</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">msg</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
-</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>        <span class="k">return</span> <span class="n">msg</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">response</span>
-</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>
-</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="k">class</span><span class="w"> </span><span class="nc">ExpertSupport</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
-</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
-</span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">register_buffer</span><span class="p">(</span><span class="s2">&quot;response&quot;</span><span class="p">,</span> <span class="s2">&quot;Hi, call 190&quot;</span><span class="p">)</span>
-</span><span id="__span-0-16"><a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>
-</span><span id="__span-0-17"><a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">msg</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
-</span><span id="__span-0-18"><a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>        <span class="k">return</span> <span class="n">msg</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">response</span>
-</span><span id="__span-0-19"><a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>
-</span><span id="__span-0-20"><a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a><span class="k">def</span><span class="w"> </span><span class="nf">draw_choice</span><span class="p">(</span><span class="n">choices</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
-</span><span id="__span-0-21"><a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>    <span class="k">return</span> <span class="n">random</span><span class="o">.</span><span class="n">choice</span><span class="p">(</span><span class="n">choices</span><span class="p">)</span>
-</span><span id="__span-0-22"><a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a>
-</span><span id="__span-0-23"><a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a><span class="k">class</span><span class="w"> </span><span class="nc">Router</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
-</span><span id="__span-0-24"><a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-</span><span id="__span-0-25"><a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a>        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
-</span><span id="__span-0-26"><a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">choices</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">ModuleDict</span><span class="p">({</span>
-</span><span id="__span-0-27"><a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a>            <span class="s2">&quot;sales&quot;</span><span class="p">:</span> <span class="n">ExpertSales</span><span class="p">(),</span>
-</span><span id="__span-0-28"><a id="__codelineno-0-28" name="__codelineno-0-28" href="#__codelineno-0-28"></a>            <span class="s2">&quot;support&quot;</span><span class="p">:</span> <span class="n">ExpertSupport</span><span class="p">()</span>
-</span><span id="__span-0-29"><a id="__codelineno-0-29" name="__codelineno-0-29" href="#__codelineno-0-29"></a>        <span class="p">})</span>
-</span><span id="__span-0-30"><a id="__codelineno-0-30" name="__codelineno-0-30" href="#__codelineno-0-30"></a>
-</span><span id="__span-0-31"><a id="__codelineno-0-31" name="__codelineno-0-31" href="#__codelineno-0-31"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">msg</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
-</span><span id="__span-0-32"><a id="__codelineno-0-32" name="__codelineno-0-32" href="#__codelineno-0-32"></a>        <span class="n">choice</span> <span class="o">=</span> <span class="n">draw_choice</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">choices</span><span class="o">.</span><span class="n">keys</span><span class="p">()))</span>
-</span><span id="__span-0-33"><a id="__codelineno-0-33" name="__codelineno-0-33" href="#__codelineno-0-33"></a>        <span class="n">msg</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">choices</span><span class="p">[</span><span class="n">choice</span><span class="p">](</span><span class="n">msg</span><span class="p">)</span>
-</span><span id="__span-0-34"><a id="__codelineno-0-34" name="__codelineno-0-34" href="#__codelineno-0-34"></a>        <span class="k">return</span> <span class="n">msg</span>
-</span><span id="__span-0-35"><a id="__codelineno-0-35" name="__codelineno-0-35" href="#__codelineno-0-35"></a>
-</span><span id="__span-0-36"><a id="__codelineno-0-36" name="__codelineno-0-36" href="#__codelineno-0-36"></a><span class="n">router</span> <span class="o">=</span> <span class="n">Router</span><span class="p">()</span>
-</span><span id="__span-0-37"><a id="__codelineno-0-37" name="__codelineno-0-37" href="#__codelineno-0-37"></a>
-</span><span id="__span-0-38"><a id="__codelineno-0-38" name="__codelineno-0-38" href="#__codelineno-0-38"></a><span class="c1"># Sub-modules are tracked in state_dict</span>
-</span><span id="__span-0-39"><a id="__codelineno-0-39" name="__codelineno-0-39" href="#__codelineno-0-39"></a><span class="nb">print</span><span class="p">(</span><span class="n">router</span><span class="o">.</span><span class="n">state_dict</span><span class="p">())</span>
-</span><span id="__span-0-40"><a id="__codelineno-0-40" name="__codelineno-0-40" href="#__codelineno-0-40"></a><span class="c1"># {&#39;choices.sales.response&#39;: &quot;Hi, let&#39;s talk?&quot;, &#39;choices.support.response&#39;: &#39;Hi, call 190&#39;}</span>
-</span><span id="__span-0-41"><a id="__codelineno-0-41" name="__codelineno-0-41" href="#__codelineno-0-41"></a>
-</span><span id="__span-0-42"><a id="__codelineno-0-42" name="__codelineno-0-42" href="#__codelineno-0-42"></a><span class="n">router</span><span class="p">(</span><span class="s2">&quot;I need help with my tv.&quot;</span><span class="p">)</span>
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="k">class</span><span class="w"> </span><span class="nc">SupportAgent</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Agent</span><span class="p">):</span>
+</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>    <span class="n">model</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">chat_completion</span><span class="p">(</span><span class="s2">&quot;openai/gpt-4.1-mini&quot;</span><span class="p">)</span>
+</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>    <span class="n">system_message</span> <span class="o">=</span> <span class="s2">&quot;&quot;&quot;</span>
+</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="s2">    You are a support agent.</span>
+</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="s2">    Follow the escalation policy and use tools when needed.</span>
+</span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="s2">    &quot;&quot;&quot;</span>
+</span><span id="__span-0-16"><a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>    <span class="n">tools</span> <span class="o">=</span> <span class="p">[</span><span class="n">lookup_ticket</span><span class="p">]</span>
+</span><span id="__span-0-17"><a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>
+</span><span id="__span-0-18"><a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>
+</span><span id="__span-0-19"><a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a><span class="n">agent</span> <span class="o">=</span> <span class="n">SupportAgent</span><span class="p">()</span>
+</span><span id="__span-0-20"><a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>
+</span><span id="__span-0-21"><a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a><span class="c1"># Sends only the rendered system prompt and tool schemas.</span>
+</span><span id="__span-0-22"><a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a><span class="n">agent</span><span class="o">.</span><span class="n">warmup_system_prompt</span><span class="p">()</span>
+</span><span id="__span-0-23"><a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a>
+</span><span id="__span-0-24"><a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a><span class="n">response</span> <span class="o">=</span> <span class="n">agent</span><span class="p">(</span><span class="s2">&quot;Check ticket MSGFLUX-42&quot;</span><span class="p">)</span>
+</span><span id="__span-0-25"><a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a><span class="nb">print</span><span class="p">(</span><span class="n">response</span><span class="p">)</span>
 </span></code></pre></div>
+<h2 id="async-usage">Async Usage</h2>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">agent</span> <span class="o">=</span> <span class="n">SupportAgent</span><span class="p">()</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="k">await</span> <span class="n">agent</span><span class="o">.</span><span class="n">awarmup_system_prompt</span><span class="p">()</span>
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="n">response</span> <span class="o">=</span> <span class="k">await</span> <span class="n">agent</span><span class="o">.</span><span class="n">acall</span><span class="p">(</span><span class="s2">&quot;Check ticket MSGFLUX-42&quot;</span><span class="p">)</span>
+</span></code></pre></div>
+<h2 id="fire-and-forget">Fire And Forget</h2>
+<p>Warmup can run in the background while the process continues initializing:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">agent</span> <span class="o">=</span> <span class="n">SupportAgent</span><span class="p">()</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="n">agent</span><span class="o">.</span><span class="n">warmup_system_prompt</span><span class="p">(</span><span class="n">background</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="c1"># Continue booting your CLI, server, or worker.</span>
+</span></code></pre></div>
+<p>For async applications:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="k">await</span> <span class="n">agent</span><span class="o">.</span><span class="n">awarmup_system_prompt</span><span class="p">(</span><span class="n">background</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</span></code></pre></div>
+<p>Background warmup does not return the provider response. Errors are logged by the background task runner.</p>
+<h2 id="what-is-sent">What Is Sent</h2>
+<p>Warmup intentionally bypasses runtime state. It sends:</p>
+<ul>
+<li>The rendered <code>system_prompt</code></li>
+<li>Tool schemas from the agent's <code>ToolLibrary</code></li>
+<li>The provider's configured warmup token limit</li>
+</ul>
+<p>It does not send:</p>
+<ul>
+<li>User task messages</li>
+<li>Chat history</li>
+<li>Checkpointer state</li>
+<li>Agent inbox notifications</li>
+<li>Typed parsers or generation schemas</li>
+<li>Response templates</li>
+</ul>
+<p>This keeps warmup focused on the stable prefix that providers can cache.</p>
+<h2 id="runtime-vars">Runtime Vars</h2>
+<p>If the system prompt uses runtime variables, pass the same <code>vars</code> you expect to use for the real request:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">agent</span><span class="o">.</span><span class="n">warmup_system_prompt</span><span class="p">(</span><span class="nb">vars</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;tenant&quot;</span><span class="p">:</span> <span class="s2">&quot;acme&quot;</span><span class="p">})</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="n">response</span> <span class="o">=</span> <span class="n">agent</span><span class="p">(</span>
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>    <span class="s2">&quot;Summarize the ticket&quot;</span><span class="p">,</span>
+</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>    <span class="nb">vars</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;tenant&quot;</span><span class="p">:</span> <span class="s2">&quot;acme&quot;</span><span class="p">},</span>
+</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="p">)</span>
+</span></code></pre></div>
+<p>Cache hits depend on the provider seeing the same prompt prefix. If the rendered system prompt changes between warmup and the real call, the provider may miss the cache.</p>
+<h2 id="tool-filtering">Tool Filtering</h2>
+<p>Warmup accepts the same <code>tool_filter</code> shape used by agent execution:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">agent</span><span class="o">.</span><span class="n">warmup_system_prompt</span><span class="p">(</span><span class="n">tool_filter</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;allow&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;lookup_ticket&quot;</span><span class="p">]})</span>
+</span></code></pre></div>
+<p>Use this when the real request will also restrict tools. A different tool schema list changes the prompt prefix and can reduce cache hits.</p>
+<h2 id="model-gateway">Model Gateway</h2>
+<p>When the agent uses a <code>ModelGateway</code>, warmup routes through the gateway and accepts <code>model_preference</code>:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="n">agent</span><span class="o">.</span><span class="n">warmup_system_prompt</span><span class="p">(</span><span class="n">model_preference</span><span class="o">=</span><span class="s2">&quot;fast&quot;</span><span class="p">)</span>
+</span></code></pre></div>
+<p>The selected model must support <code>warmup_system_prompt</code>.</p>
+<h2 id="provider-token-limit">Provider Token Limit</h2>
+<p>OpenAI-compatible chat providers default to one generated token for warmup. This keeps the request cheap while still forcing the provider to process the prompt.</p>
+<p>Override it on the model if a provider needs a different minimum:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="n">model</span> <span class="o">=</span> <span class="n">mf</span><span class="o">.</span><span class="n">Model</span><span class="o">.</span><span class="n">chat_completion</span><span class="p">(</span>
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>    <span class="s2">&quot;openai/gpt-4.1-mini&quot;</span><span class="p">,</span>
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>    <span class="n">warmup_max_tokens</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="p">)</span>
+</span></code></pre></div>
+<p>OpenAI Chat Completions and Groq reject zero completion tokens, so <code>0</code> is not a portable warmup value.</p>
+<h2 id="reading-cache-usage">Reading Cache Usage</h2>
+<p>The provider response is returned in foreground mode:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="n">raw_response</span> <span class="o">=</span> <span class="n">agent</span><span class="o">.</span><span class="n">warmup_system_prompt</span><span class="p">()</span>
+</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="nb">print</span><span class="p">(</span><span class="n">raw_response</span><span class="o">.</span><span class="n">usage</span><span class="p">)</span>
+</span></code></pre></div>
+<p>OpenAI reports prompt cache hits in usage metadata:</p>
+<ul>
+<li>Chat Completions: <code>usage.prompt_tokens_details.cached_tokens</code></li>
+<li>Responses API: <code>usage.input_tokens_details.cached_tokens</code></li>
+</ul>
+<p>msgflux currently implements this warmup path for chat completions.</p>
+<h2 id="practical-guidance">Practical Guidance</h2>
+<ul>
+<li>Keep the warmup prefix stable.</li>
+<li>Put large static instructions, tools, and skills before dynamic user content.</li>
+<li>Warmup is most useful above the provider's prompt-cache threshold.</li>
+<li>Do not expect warmup to persist conversation state.</li>
+<li>Use foreground warmup during tests so failures are visible.</li>
+<li>Use background warmup during app startup when failures should not block serving.</li>
+</ul>
 
 
 
@@ -4814,7 +5151,7 @@ router(&quot;I need help with my tv.&quot;)
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../composing/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Composing Modules">
+          <a href="../streaming/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Streaming">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
@@ -4824,20 +5161,20 @@ router(&quot;I need help with my tv.&quot;)
                 Previous
               </span>
               <div class="md-ellipsis">
-                Composing Modules
+                Streaming
               </div>
             </div>
           </a>
         
         
           
-          <a href="../module-list/" class="md-footer__link md-footer__link--next" aria-label="Next: ModuleList">
+          <a href="../reasoning/" class="md-footer__link md-footer__link--next" aria-label="Next: Reasoning">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                ModuleList
+                Reasoning
               </div>
             </div>
             <div class="md-footer__button md-icon">
