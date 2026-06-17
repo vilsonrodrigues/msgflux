@@ -68,6 +68,34 @@ Examples:
 This separation matters because several executions can belong to the same
 session at once.
 
+## Default Identity
+
+Runtime identity should be explicit in durable production paths, but the
+runtime still needs stable fallback values for local use, tests, and components
+that are created before an agent binds a concrete scope.
+
+The fallback identifiers are:
+
+```text
+session_id = default_session_id
+namespace = default_namespace
+run_id = default_run_id
+```
+
+These values are sentinel defaults, not recommended durable IDs. A host that
+needs recovery after process restart should provide a stable `session_id` and
+`run_id` before dispatching work.
+
+Most agent executions do not keep `default_namespace` for long. When an
+`Agent` prepares execution, it overrides the effective namespace with the
+agent's module name. The default namespace mainly covers runtime primitives
+such as an unbound `AgentInbox`.
+
+`default_run_id` is only a fallback for components that require a run-scoped
+storage key before a real run exists. Agent checkpoint resume still depends on
+an explicit `run_id`; using a fresh or default run id starts a separate
+execution instead of resuming an older one.
+
 ## Resume Rule
 
 The runtime should not expose a public `checkpoint_action` or `resume=True`

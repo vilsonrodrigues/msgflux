@@ -69,6 +69,22 @@ That means it is responsible for:
 - deciding what is delivered together in the next injection
 - exposing a single batch to `Agent`
 
+## Scope Binding
+
+An inbox can be created before it is attached to an agent or execution scope.
+In that unbound state it uses explicit fallback identifiers:
+
+```text
+namespace = default_namespace
+session_id = default_session_id
+run_id = default_run_id
+```
+
+When an inbox is owned by an agent, the agent binds it to the effective
+execution scope before model execution. In practice, that means the namespace
+usually becomes the agent module name, while `session_id` and `run_id` come
+from the active `ExecutionScope` or inherited runtime context.
+
 ## Delivery Model
 
 `Agent` remains the only component that injects notifications into model input.

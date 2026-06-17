@@ -34,9 +34,26 @@ result = agent("Investigate this ticket.", scope=scope)
 ```
 
 - `session_id`: identifies the conversation, user session, or chat thread.
+- `namespace`: identifies the component that owns runtime state. For agents,
+  msgFlux uses the agent module name as the effective namespace.
 - `run_id`: identifies the current resumable execution inside that session.
 
-If no scope is passed, msgFlux still runs with a default session.
+If no scope is passed, msgFlux still runs with default runtime identifiers:
+
+```text
+session_id = default_session_id
+namespace = default_namespace
+run_id = default_run_id
+```
+
+These defaults are fallbacks, not durable production identifiers. If you need
+recovery after a process restart, provide stable IDs from your host or
+supervisor.
+
+Resolution prefers explicit values, then existing message state, then inherited
+runtime context, and only then falls back to defaults. Omit an ID when you want
+msgFlux to resolve it from the current context; pass an ID when you want to
+force a specific execution identity.
 
 ## Checkpointing
 
@@ -82,6 +99,10 @@ Resume behavior:
 
 On resume, the new task input is ignored and the saved messages/vars continue
 from the checkpointed state. Use a new `run_id` when you want a fresh execution.
+
+For background subagents, the task id is used as the subagent `run_id`. Reusing
+that task id resumes or continues the same subagent. Creating a new task id
+starts a separate subagent within the same session.
 
 ## Persisting The Inbox
 
