@@ -13,8 +13,9 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any, Mapping
 
-DEFAULT_SESSION_ID = "default"
-DEFAULT_NAMESPACE = "default"
+DEFAULT_SESSION_ID = "default_session_id"
+DEFAULT_NAMESPACE = "default_namespace"
+DEFAULT_RUN_ID = "default_run_id"
 
 
 @dataclass(frozen=True)

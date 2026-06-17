@@ -52,6 +52,7 @@ from msgflux.nn.modules.tool import ToolLibrary, ToolResponses
 from msgflux.nn.parameter import Parameter
 from msgflux.runtime.agent_inbox import AgentInbox, AgentNotification
 from msgflux.runtime.context import (
+    DEFAULT_SESSION_ID,
     ExecutionScope,
     execution_context,
     get_execution_context,
@@ -2483,7 +2484,7 @@ class Agent(Module, metaclass=AutoParams):
         if not turns:
             return
 
-        session_id = messages.session_id or "default"
+        session_id = messages.session_id or DEFAULT_SESSION_ID
         run_id = turns[-1]["turn_id"]
         state = self._build_checkpoint_state(messages, vars, status=status)
         checkpointer.save_state(self.get_module_name(), session_id, run_id, state)
@@ -2502,7 +2503,7 @@ class Agent(Module, metaclass=AutoParams):
         if not turns:
             return
 
-        session_id = messages.session_id or "default"
+        session_id = messages.session_id or DEFAULT_SESSION_ID
         run_id = turns[-1]["turn_id"]
         state = self._build_checkpoint_state(messages, vars, status=status)
         if hasattr(checkpointer, "asave_state"):

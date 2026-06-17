@@ -39,6 +39,7 @@ from msgflux.runtime.agent_inbox import (
     ToolNotificationHandle,
 )
 from msgflux.runtime.context import (
+    DEFAULT_SESSION_ID,
     ExecutionScope,
     execution_context,
     get_execution_context,
@@ -1493,7 +1494,9 @@ class ToolLibrary(Module, metaclass=AutoParams):
                     "messages": restored_messages,
                     "scope": ExecutionScope(
                         session_id=(
-                            session_id if isinstance(session_id, str) else "default"
+                            session_id
+                            if isinstance(session_id, str)
+                            else DEFAULT_SESSION_ID
                         ),
                         namespace=checkpoint_namespace,
                         run_id=run_id,
@@ -1586,7 +1589,9 @@ class ToolLibrary(Module, metaclass=AutoParams):
             )
         if task_kind == "agent":
             runner_params["scope"] = ExecutionScope(
-                session_id=session_id if isinstance(session_id, str) else "default",
+                session_id=(
+                    session_id if isinstance(session_id, str) else DEFAULT_SESSION_ID
+                ),
                 namespace=tool_name,
                 run_id=task.task_id,
                 parent_run_id=(

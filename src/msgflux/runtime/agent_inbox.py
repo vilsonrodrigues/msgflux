@@ -14,7 +14,12 @@ from uuid import uuid4
 from xml.sax.saxutils import escape
 
 from msgflux.data.stores.registry import register_store
-from msgflux.runtime.context import ExecutionScope
+from msgflux.runtime.context import (
+    DEFAULT_NAMESPACE,
+    DEFAULT_RUN_ID,
+    DEFAULT_SESSION_ID,
+    ExecutionScope,
+)
 from msgflux.utils.console import cprint
 
 # --- Module Utilities ---
@@ -422,9 +427,9 @@ class AgentInbox:
         self.verbose = verbose
         self.owner = owner
         self.store = store
-        self.namespace = namespace or owner or "default"
-        self.session_id = session_id or "default"
-        self.run_id = run_id or "default"
+        self.namespace = namespace or owner or DEFAULT_NAMESPACE
+        self.session_id = session_id or DEFAULT_SESSION_ID
+        self.run_id = run_id or DEFAULT_RUN_ID
 
     # --- Scope Binding ---
 
@@ -455,7 +460,7 @@ class AgentInbox:
         return self.bind(
             namespace=namespace or scope.namespace,
             session_id=scope.session_id,
-            run_id=scope.run_id or "default",
+            run_id=scope.run_id or DEFAULT_RUN_ID,
         )
 
     def fork(

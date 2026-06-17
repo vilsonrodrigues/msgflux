@@ -1,5 +1,7 @@
 from msgflux.chat_messages import ChatMessages
 from msgflux.runtime.context import (
+    DEFAULT_NAMESPACE,
+    DEFAULT_SESSION_ID,
     ExecutionScope,
     execution_context,
     get_execution_scope,
@@ -10,8 +12,8 @@ from msgflux.runtime.context import (
 def test_default_execution_scope_is_available():
     scope = get_execution_scope()
 
-    assert scope.session_id == "default"
-    assert scope.namespace == "default"
+    assert scope.session_id == DEFAULT_SESSION_ID
+    assert scope.namespace == DEFAULT_NAMESPACE
 
 
 def test_execution_context_accepts_scope_and_explicit_overrides():
