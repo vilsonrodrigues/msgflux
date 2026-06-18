@@ -5,7 +5,7 @@ from typing import Any, Callable, Dict, List, Optional, Union
 from msgflux.core.dotdict import dotdict
 
 
-def tool_config(
+def tool_config(  # noqa: C901
     *,
     display_name: Optional[str] = None,
     usage_guidance: Optional[str] = None,
@@ -13,6 +13,7 @@ def tool_config(
     call_as_response: Optional[bool] = False,
     spawn: Optional[bool] = False,
     background: Optional[bool] = False,
+    allow_background: Optional[bool] = False,
     disable_input: Optional[bool] = False,
     inject_task: Optional[bool] = False,
     inject_notification: Optional[bool] = False,
@@ -57,6 +58,11 @@ def tool_config(
             If True, the tool runs in the background and returns a `task_id`
             immediately. The result can be retrieved later via `task_status`
             and `task_output`.
+        allow_background:
+            If True, the model can choose whether to run the tool in the
+            background by setting the reserved `run_in_background` tool
+            argument. When false or null, the tool runs normally. Manual
+            callers may omit the argument, which is treated as false.
         disable_input:
             If True, removes public input parameters from the tool schema. The model
             will call the tool with no explicit arguments, and any arguments supplied
@@ -111,6 +117,9 @@ def tool_config(
            `background=True` is not compatible with `return_direct=True`,
            `call_as_response=True`, `spawn=True`, and `handoff=True`.
         ValueError:
+           `allow_background=True` is not compatible with `return_direct=True`,
+           `call_as_response=True`, `spawn=True`, and `handoff=True`.
+        ValueError:
            `inject_task=True` requires `background=True`.
         ValueError:
            `inject_vars=True` is not compatible with `call_as_response=True`.
@@ -163,6 +172,15 @@ def tool_config(
                 " `call_as_response=True`, `spawn=True`, and `handoff=True`."
             )
 
+        if allow_background and (
+            _return_direct or call_as_response or spawn or handoff
+        ):
+            raise ValueError(
+                "`allow_background=True` is not compatible with "
+                "`return_direct=True`, `call_as_response=True`, `spawn=True`, "
+                "and `handoff=True`."
+            )
+
         if inject_task and not background:
             raise ValueError("`inject_task=True` requires `background=True`.")
 
@@ -176,6 +194,7 @@ def tool_config(
                 {
                     "spawn": spawn,
                     "background": background,
+                    "allow_background": allow_background,
                     "display_name": display_name,
                     "usage_guidance": usage_guidance,
                     "call_as_response": call_as_response,

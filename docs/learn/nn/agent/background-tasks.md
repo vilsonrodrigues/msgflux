@@ -5,6 +5,8 @@ Background tasks let a tool start work now and return the final result later.
 The current design is intentionally small:
 
 - `background=True` dispatches the tool and returns a `task_id`
+- `allow_background=True` lets the model choose background execution per call
+  through the reserved `run_in_background` tool argument
 - `task_status(task_id)` returns task state and progress
 - `task_wait(task_id)` blocks until the task completes, fails, or times out
 - `task_output(task_id)` returns the final output
@@ -84,6 +86,28 @@ When the task completes, `task_wait` returns the same payload as
 the timeout is reached first, it returns a timeout payload with the current
 task status and progress.
 
+## Example 1C: Letting The Model Choose Background Execution
+
+Use `allow_background=True` when a tool is useful both inline and in the
+background. msgFlux exposes a reserved boolean argument named
+`run_in_background` to the model.
+
+```python
+@mf.tool_config(allow_background=True)
+def search_archive(query: str) -> list[str]:
+    """Search the archive."""
+    return expensive_archive_search(query)
+```
+
+If the model calls the tool with `run_in_background=true`, msgFlux strips that
+argument before calling the Python function and dispatches the work as a
+background task. If the model sets it to `false` or `null`, the tool runs
+normally and returns its result inline. Manual callers may also omit the
+argument, which is treated the same as `false`.
+
+`background=True` still means the developer has forced every call to run in the
+background. Use `allow_background=True` only when the model should decide.
+
 ## Example 1D: Stopping A Background Task
 
 `task_stop(task_id)` requests a cooperative stop.
@@ -97,7 +121,7 @@ If the task has not started yet, msgFlux may stop it immediately. If it is
 already running, the stop is observed at the next cooperative checkpoint. For
 background subagents, that means before the next provider call.
 
-## Example 1C: Reading Subagent Activity
+## Example 1E: Reading Subagent Activity
 
 `task_activity(task_id)` returns a compact list of activity entries, but only
 for background subagent tasks.

@@ -126,6 +126,9 @@ def _is_agent_tool_impl(impl: Any) -> bool:
     return isinstance(impl, agent_type)
 
 
+_RUNTIME_BACKGROUND_PARAM = "run_in_background"
+
+
 class Tool(Module):
     """Tool is Module type that provide a json schema to tools."""
 
@@ -422,6 +425,8 @@ def _convert_module_to_nn_tool(impl: Callable) -> Tool:  # noqa: C901
 
     tool_config["tool_kind"] = "agent" if _is_agent_tool_impl(impl) else "tool"
 
+    annotations = dict(annotations)
+
     if tool_config.get("handoff", False) or tool_config.get("disable_input", False):
         annotations = {}  # pass only the model state
     else:
@@ -437,11 +442,22 @@ def _convert_module_to_nn_tool(impl: Callable) -> Tool:  # noqa: C901
             annotations.pop("notification", None)
         if _uses_library_injection(tool_config):
             annotations.pop("tool_library", None)
+        if (
+            tool_config.get("allow_background", False)
+            and not tool_config.get("background", False)
+        ):
+            annotations[_RUNTIME_BACKGROUND_PARAM] = Optional[bool]
 
     if tool_config.get("spawn"):
         doc = "This tool will not generate a return. \n" + doc
     if tool_config.get("background"):
         doc = "This tool runs in the background and returns a task id. \n" + doc
+    elif tool_config.get("allow_background", False):
+        doc = (
+            "This tool can run in the background when "
+            f"`{_RUNTIME_BACKGROUND_PARAM}=true`; otherwise it runs normally. \n"
+            + doc
+        )
 
     return LocalTool(
         name=name,
@@ -709,9 +725,12 @@ class ToolLibrary(Module, metaclass=AutoParams):
 
     def _apply_tool_registration_effects(self, tool_name: str) -> None:
         config = self.tool_configs.get(tool_name, {})
-        if config.get("background", False):
+        can_run_background = config.get("background", False) or config.get(
+            "allow_background", False
+        )
+        if can_run_background:
             self._ensure_task_runtime_tools()
-        if config.get("background", False) and config.get("tool_kind") == "agent":
+        if can_run_background and config.get("tool_kind") == "agent":
             self._ensure_agent_task_runtime_tools()
         if config.get("on_demand", False):
             self._ensure_on_demand_runtime_tools()
@@ -1296,6 +1315,19 @@ class ToolLibrary(Module, metaclass=AutoParams):
 
         return call_params
 
+    def _should_dispatch_background(
+        self,
+        *,
+        config: Mapping[str, Any],
+        call_params: Dict[str, Any],
+    ) -> bool:
+        if config.get("background", False):
+            call_params.pop(_RUNTIME_BACKGROUND_PARAM, None)
+            return True
+        if not config.get("allow_background", False):
+            return False
+        return call_params.pop(_RUNTIME_BACKGROUND_PARAM, False) is True
+
     @staticmethod
     def _coerce_tool_params(tool_name: str, tool_params: Any) -> Dict[str, Any]:
         if tool_params is None:
@@ -1325,6 +1357,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
             "scope",
             "tool_library",
             "tool_call_id",
+            _RUNTIME_BACKGROUND_PARAM,
         ):
             parameters.pop(key, None)
         return parameters
@@ -1770,7 +1803,10 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 )
                 continue
 
-            if config.get("background", False):
+            if self._should_dispatch_background(
+                config=config,
+                call_params=call_params,
+            ):
                 return_directly = False
                 tool_calls.append(
                     self._dispatch_background_tool(
@@ -1908,7 +1944,10 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 )
                 continue
 
-            if config.get("background", False):
+            if self._should_dispatch_background(
+                config=config,
+                call_params=call_params,
+            ):
                 return_directly = False
                 tool_calls.append(
                     self._dispatch_background_tool(

@@ -121,6 +121,90 @@ def test_background_tool_schema_excludes_task_handle():
     assert "task" not in props
 
 
+def test_allow_background_tool_schema_includes_runtime_choice():
+    @mf.tool_config(allow_background=True)
+    def maybe_slow(query: str) -> str:
+        """Run a query either inline or in the background."""
+        return query
+
+    library = ToolLibrary(name="lib", tools=[maybe_slow])
+    schema = next(
+        item
+        for item in library.get_tool_json_schemas()
+        if item["function"]["name"] == "maybe_slow"
+    )
+    props = schema["function"]["parameters"].get("properties", {})
+
+    assert "query" in props
+    assert "run_in_background" in props
+    assert props["run_in_background"]["anyOf"] == [
+        {"type": "boolean"},
+        {"type": "null"},
+    ]
+
+
+def test_allow_background_runs_inline_by_default_and_strips_runtime_param():
+    calls = []
+
+    @mf.tool_config(allow_background=True)
+    def maybe_slow(query: str) -> str:
+        """Run a query either inline or in the background."""
+        calls.append(query)
+        return f"inline:{query}"
+
+    library = ToolLibrary(name="lib", tools=[maybe_slow])
+
+    default_result = library([("call_1", "maybe_slow", {"query": "a"})])
+    explicit_inline = library(
+        [
+            (
+                "call_2",
+                "maybe_slow",
+                {"query": "b", "run_in_background": False},
+            )
+        ]
+    )
+
+    assert default_result.tool_calls[0].result == "inline:a"
+    assert explicit_inline.tool_calls[0].result == "inline:b"
+    assert explicit_inline.tool_calls[0].parameters == {"query": "b"}
+    assert calls == ["a", "b"]
+
+
+def test_allow_background_dispatches_when_model_requests_background():
+    @mf.tool_config(allow_background=True)
+    def maybe_slow(query: str) -> str:
+        """Run a query either inline or in the background."""
+        return f"background:{query}"
+
+    library = ToolLibrary(name="lib", tools=[maybe_slow])
+    dispatch = library(
+        [
+            (
+                "call_1",
+                "maybe_slow",
+                {"query": "a", "run_in_background": True},
+            )
+        ]
+    )
+
+    assert "task_id='" in dispatch.tool_calls[0].result
+    assert dispatch.tool_calls[0].parameters == {"query": "a"}
+    task_id = dispatch.tool_calls[0].result.split("task_id='")[1].split("'")[0]
+
+    _wait_until(
+        lambda: (
+            library([("call_2", "task_status", {"task_id": task_id})])
+            .tool_calls[0]
+            .result["status"]
+            == "completed"
+        )
+    )
+    output = library([("call_3", "task_output", {"task_id": task_id})])
+
+    assert output.tool_calls[0].result == "background:a"
+
+
 def test_inject_library_schema_excludes_tool_library_handle():
     @mf.tool_config(inject_library=True)
     def register_tool(tool_library, name: str) -> str:

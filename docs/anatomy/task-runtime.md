@@ -208,9 +208,20 @@ The first implementation can stay close to the current tool config model.
 Recommended additions:
 
 - `background=True`
+- `allow_background=True`
 - `inject_task=True`
 - `inject_notification=True`
 - `inject_library=True`
+
+`background=True` means the developer has chosen background execution for every
+call. The model never receives a choice parameter for that tool.
+
+`allow_background=True` means the model can choose per call. The runtime adds a
+reserved boolean argument named `run_in_background` to the tool schema. When the
+model sets it to `true`, `ToolLibrary` removes that argument from the call
+payload and dispatches the tool through the background task runtime. When the
+argument is `false` or `null`, the tool runs normally. Manual callers may also
+omit the argument, which is treated the same as `false`.
 
 The important detail is that `inject_task=True` should inject a `TaskHandle`,
 not the store and not the full `ToolLibrary`.
