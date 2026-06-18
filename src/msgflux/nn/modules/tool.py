@@ -485,13 +485,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
         self.register_buffer("mcp_clients", {})
         self.task_store = InMemoryTaskStore()
         self.agent_inbox = AgentInbox(owner=f"{name}_tool_library")
-        self._runtime_tool_names = {
-            "task_status",
-            "task_list",
-            "task_output",
-            "task_wait",
-            "task_stop",
-        }
+        self._runtime_tool_names: set[str] = set()
         self._task_runtime_enabled = False
         self._agent_task_runtime_enabled = False
         self._on_demand_runtime_enabled = False
@@ -543,15 +537,6 @@ class ToolLibrary(Module, metaclass=AutoParams):
         self._on_demand_runtime_enabled = False
         self._loaded_on_demand_tool_names.clear()
         self._runtime_tool_names.clear()
-        self._runtime_tool_names.update(
-            {
-                "task_status",
-                "task_list",
-                "task_output",
-                "task_wait",
-                "task_stop",
-            }
-        )
         self.background_dispatcher.clear()
         self.task_runtime_tools.reset()
 

@@ -26,29 +26,45 @@ class TaskRuntimeTools:
         self._base_enabled = False
         self._agent_enabled = False
 
+    def _register_runtime_tool(
+        self,
+        *,
+        name: str,
+        description: str,
+        annotations: Dict[str, Any],
+        impl: Callable,
+    ) -> None:
+        self._runtime_tool_names.add(name)
+        self._register_tool(
+            name=name,
+            description=description,
+            annotations=annotations,
+            impl=impl,
+        )
+
     def ensure_base_tools(self) -> None:
         if self._base_enabled:
             return
         self._base_enabled = True
-        self._register_tool(
+        self._register_runtime_tool(
             name="task_status",
             description="Get the current status of a background task by task_id.",
             annotations={"task_id": str},
             impl=self.task_status,
         )
-        self._register_tool(
+        self._register_runtime_tool(
             name="task_list",
             description="List background tasks registered in the current tool library.",
             annotations={"status": Optional[str]},
             impl=self.task_list,
         )
-        self._register_tool(
+        self._register_runtime_tool(
             name="task_output",
             description="Get the final output of a background task by task_id.",
             annotations={"task_id": str},
             impl=self.task_output,
         )
-        self._register_tool(
+        self._register_runtime_tool(
             name="task_wait",
             description=(
                 "Wait for a background task to finish. "
@@ -57,7 +73,7 @@ class TaskRuntimeTools:
             annotations={"task_id": str, "timeout": Optional[float]},
             impl=self.task_wait,
         )
-        self._register_tool(
+        self._register_runtime_tool(
             name="task_stop",
             description=(
                 "Request a cooperative stop for a background task. "
@@ -71,15 +87,13 @@ class TaskRuntimeTools:
         if self._agent_enabled:
             return
         self._agent_enabled = True
-        self._runtime_tool_names.add("task_activity")
-        self._register_tool(
+        self._register_runtime_tool(
             name="task_activity",
             description="List compact activity entries for a background agent task.",
             annotations={"task_id": str, "limit": Optional[int]},
             impl=self.task_activity,
         )
-        self._runtime_tool_names.add("task_message")
-        self._register_tool(
+        self._register_runtime_tool(
             name="task_message",
             description=(
                 "Send a message to a background agent task. "
