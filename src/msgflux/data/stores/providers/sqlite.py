@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Mapping
 
 from msgflux.data.stores.base import CheckpointStore
 from msgflux.data.stores.registry import register_store
+from msgflux.data.stores.types import CheckpointStoreType
 
 _UPSERT_STATE = """\
 INSERT INTO checkpoints
@@ -67,9 +68,11 @@ CREATE INDEX IF NOT EXISTS idx_events_run
 """
 
 
-@register_store("checkpoint", "sqlite")
-class SQLiteCheckpointStore(CheckpointStore):
+@register_store()
+class SQLiteCheckpointStore(CheckpointStore, CheckpointStoreType):
     """SQLite-backed checkpoint store."""
+
+    provider = "sqlite"
 
     def __init__(self, path: str = ".msgflux/checkpoints.sqlite3") -> None:
         self.path = path

@@ -4,10 +4,13 @@ from msgflux.data.stores.providers import (
     SQLiteCheckpointStore,
 )
 from msgflux.data.stores.store import Store
+from msgflux.data.stores.types import AgentInboxStoreType, CheckpointStoreType
 
 __all__ = [
+    "AgentInboxStoreType",
     "AsyncCheckpointStore",
     "CheckpointStore",
+    "CheckpointStoreType",
     "InMemoryCheckpointStore",
     "SQLiteCheckpointStore",
     "Store",

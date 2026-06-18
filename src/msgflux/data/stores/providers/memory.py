@@ -7,11 +7,14 @@ from typing import Any, Dict, List, Mapping
 
 from msgflux.data.stores.base import CheckpointStore
 from msgflux.data.stores.registry import register_store
+from msgflux.data.stores.types import CheckpointStoreType
 
 
-@register_store("checkpoint", "in_memory")
-class InMemoryCheckpointStore(CheckpointStore):
+@register_store()
+class InMemoryCheckpointStore(CheckpointStore, CheckpointStoreType):
     """In-memory checkpoint store for tests and local prototyping."""
+
+    provider = "in_memory"
 
     def __init__(self) -> None:
         self._data: Dict[str, Dict[str, Dict[str, Dict[str, Any]]]] = {}

@@ -13,6 +13,7 @@ from uuid import uuid4
 from xml.sax.saxutils import escape
 
 from msgflux.data.stores.registry import register_store
+from msgflux.data.stores.types import AgentInboxStoreType
 from msgflux.runtime.context import (
     DEFAULT_NAMESPACE,
     DEFAULT_RUN_ID,
@@ -40,7 +41,7 @@ class AgentNotification:
         return asdict(self)
 
 
-class AgentInboxStore(ABC):
+class AgentInboxStore(ABC, AgentInboxStoreType):
     """Persistent storage boundary for pending agent inbox notifications."""
 
     @abstractmethod
@@ -74,9 +75,11 @@ class AgentInboxStore(ABC):
         raise NotImplementedError
 
 
-@register_store("agent_inbox", "in_memory")
+@register_store()
 class InMemoryAgentInboxStore(AgentInboxStore):
     """In-memory inbox store for tests and local prototyping."""
+
+    provider = "in_memory"
 
     def __init__(self) -> None:
         self._data: Dict[str, Dict[str, Dict[str, Dict[str, Any]]]] = {}
@@ -186,9 +189,11 @@ ON CONFLICT(namespace, session_id, run_id) DO UPDATE SET
 """
 
 
-@register_store("agent_inbox", "sqlite")
+@register_store()
 class SQLiteAgentInboxStore(AgentInboxStore):
     """SQLite-backed inbox store."""
+
+    provider = "sqlite"
 
     def __init__(self, path: str = ".msgflux/agent-inboxes.sqlite3") -> None:
         self.path = path
