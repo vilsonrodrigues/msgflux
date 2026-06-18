@@ -6,7 +6,6 @@ import time
 from abc import ABC, abstractmethod
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
 from pathlib import Path
 from threading import RLock
 from typing import Any, Dict, Iterable, List, Mapping
@@ -21,13 +20,7 @@ from msgflux.runtime.context import (
     ExecutionScope,
 )
 from msgflux.utils.console import cprint
-
-# --- Module Utilities ---
-
-
-def _utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat()
-
+from msgflux.utils.time import utc_now_isoformat
 
 # --- Notification Model ---
 
@@ -41,7 +34,7 @@ class AgentNotification:
     hint: str | None = None
     metadata: Dict[str, Any] = field(default_factory=dict)
     dedupe_key: str | None = None
-    created_at: str = field(default_factory=_utc_now)
+    created_at: str = field(default_factory=utc_now_isoformat)
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -305,7 +298,7 @@ class AgentControlMessage:
     reason: str | None = None
     metadata: Dict[str, Any] = field(default_factory=dict)
     control_id: str = field(default_factory=lambda: uuid4().hex[:8])
-    created_at: str = field(default_factory=_utc_now)
+    created_at: str = field(default_factory=utc_now_isoformat)
 
     def to_notification(self) -> AgentNotification:
         metadata = deepcopy(self.metadata)
@@ -366,7 +359,7 @@ class ToolNotificationHandle:
                 hint=hint,
                 metadata=payload,
                 dedupe_key=dedupe_key,
-                created_at=_utc_now(),
+                created_at=utc_now_isoformat(),
             )
         )
 
@@ -715,7 +708,7 @@ class AgentInbox:
 
         created_at = payload.get("created_at")
         if not isinstance(created_at, str) or not created_at:
-            created_at = _utc_now()
+            created_at = utc_now_isoformat()
 
         return AgentNotification(
             notification_id=notification_id,
