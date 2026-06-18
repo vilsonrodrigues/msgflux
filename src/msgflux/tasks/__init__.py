@@ -1,13 +1,21 @@
 from msgflux.tasks.activity import TaskActivityRecorder
+from msgflux.tasks.dataclasses import TaskActivity, TaskProgress, TaskRecord
 from msgflux.tasks.handle import TaskHandle
-from msgflux.tasks.models import TaskActivity, TaskProgress, TaskRecord
+from msgflux.tasks.providers.in_memory import InMemoryTaskStore
+from msgflux.tasks.registry import register_task_store, task_store_registry
 from msgflux.tasks.store import TaskStore
+from msgflux.tasks.types import InMemoryTaskStoreType, RelationalDBTaskStoreType
 
 __all__ = [
+    "InMemoryTaskStore",
+    "InMemoryTaskStoreType",
+    "RelationalDBTaskStoreType",
     "TaskActivity",
     "TaskActivityRecorder",
     "TaskHandle",
     "TaskProgress",
     "TaskRecord",
     "TaskStore",
+    "register_task_store",
+    "task_store_registry",
 ]

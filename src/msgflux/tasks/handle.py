@@ -8,7 +8,7 @@ from msgflux.runtime.agent_inbox import (
     AgentNotification,
     ToolNotificationHandle,
 )
-from msgflux.tasks.models import TaskRecord
+from msgflux.tasks.dataclasses import TaskRecord
 
 if TYPE_CHECKING:
     from msgflux.tasks.store import TaskStore

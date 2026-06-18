@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Mapping
 
-from msgflux.tasks.models import TaskActivity
+from msgflux.tasks.dataclasses import TaskActivity
 
 if TYPE_CHECKING:
     from msgflux.tasks.store import TaskStore

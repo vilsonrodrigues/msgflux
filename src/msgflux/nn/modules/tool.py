@@ -28,7 +28,7 @@ from msgflux.runtime.agent_inbox import (
 from msgflux.runtime.background import BackgroundTaskDispatcher
 from msgflux.runtime.context import get_execution_context
 from msgflux.runtime.task_tools import TaskRuntimeTools
-from msgflux.tasks import TaskHandle, TaskStore
+from msgflux.tasks import InMemoryTaskStore, TaskHandle
 from msgflux.telemetry.span import (
     aset_tool_attributes,
     set_tool_attributes,
@@ -483,7 +483,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
         self.library = ModuleDict()
         self.register_buffer("tool_configs", {})
         self.register_buffer("mcp_clients", {})
-        self.task_store = TaskStore()
+        self.task_store = InMemoryTaskStore()
         self.agent_inbox = AgentInbox(owner=f"{name}_tool_library")
         self._runtime_tool_names = {
             "task_status",
