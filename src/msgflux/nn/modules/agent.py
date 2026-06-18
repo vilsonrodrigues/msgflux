@@ -1,4 +1,3 @@
-from datetime import datetime, timezone
 from inspect import cleandoc
 from typing import (
     TYPE_CHECKING,
@@ -64,6 +63,7 @@ from msgflux.utils.chat import ChatBlock, response_format_from_msgspec_struct
 from msgflux.utils.common import has_format_placeholder, is_jinja_template
 from msgflux.utils.console import cprint
 from msgflux.utils.msgspec import StructFactory, is_optional_field, msgspec_dumps
+from msgflux.utils.time import utc_current_date, utc_now_isoformat
 from msgflux.utils.validation import is_subclass_of
 from msgflux.utils.xml import apply_xml_tags
 
@@ -2529,7 +2529,7 @@ class Agent(Module, metaclass=AutoParams):
             "vars": dict(vars) if vars else {},
             "metadata": {
                 "namespace": self.get_module_name(),
-                "saved_at": datetime.now(timezone.utc).isoformat(),
+                "saved_at": utc_now_isoformat(),
             },
         }
 
@@ -3188,9 +3188,7 @@ class Agent(Module, metaclass=AutoParams):
         )
 
         if self.config.get("include_date", False):
-            now = datetime.now(tz=timezone.utc)
-            # Format: "Monday, December 09, 2025"
-            template_inputs.current_date = now.strftime("%A, %B %d, %Y")
+            template_inputs.current_date = utc_current_date()
 
         system_prompt = self._format_template(
             template_inputs, self.system_prompt_template

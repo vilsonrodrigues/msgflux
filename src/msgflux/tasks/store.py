@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
 from threading import RLock
 from typing import Any, Dict, List, Mapping
 from uuid import uuid4
@@ -13,13 +12,7 @@ from msgflux.runtime.agent_inbox import (
     AgentNotification,
     ToolNotificationHandle,
 )
-
-# --- Module Utilities ---
-
-
-def _utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat()
-
+from msgflux.utils.time import utc_now_isoformat
 
 # --- Task Models ---
 
@@ -82,7 +75,7 @@ class TaskStore:
         task_id: str | None = None,
         metadata: Dict[str, Any] | None = None,
     ) -> TaskRecord:
-        now = _utc_now()
+        now = utc_now_isoformat()
         task = TaskRecord(
             task_id=task_id or uuid4().hex[:8],
             tool_name=tool_name,
@@ -148,7 +141,7 @@ class TaskStore:
                 task_id=task_id,
                 kind=kind,
                 summary=summary,
-                created_at=_utc_now(),
+                created_at=utc_now_isoformat(),
                 metadata=deepcopy(dict(metadata or {})),
             )
             self._activities.setdefault(task_id, []).append(activity)
@@ -168,7 +161,7 @@ class TaskStore:
             if task is None:
                 return None
             task.status = "running"
-            task.updated_at = _utc_now()
+            task.updated_at = utc_now_isoformat()
             if stage is not None:
                 task.progress.stage = stage
             if message is not None:
@@ -204,7 +197,7 @@ class TaskStore:
                 return None
             if task.status == "queued":
                 task.status = "running"
-            task.updated_at = _utc_now()
+            task.updated_at = utc_now_isoformat()
             if stage is not None:
                 task.progress.stage = stage
             if message is not None:
@@ -239,7 +232,7 @@ class TaskStore:
             task = self._tasks.get(task_id)
             if task is None:
                 return None
-            now = _utc_now()
+            now = utc_now_isoformat()
             task.status = "completed"
             task.updated_at = now
             task.completed_at = now
@@ -263,7 +256,7 @@ class TaskStore:
             task = self._tasks.get(task_id)
             if task is None:
                 return None
-            now = _utc_now()
+            now = utc_now_isoformat()
             task.status = "failed"
             task.updated_at = now
             task.completed_at = now
@@ -284,7 +277,7 @@ class TaskStore:
             task = self._tasks.get(task_id)
             if task is None:
                 return None
-            now = _utc_now()
+            now = utc_now_isoformat()
             task.status = "stopped"
             task.updated_at = now
             task.completed_at = now
@@ -307,7 +300,7 @@ class TaskStore:
             task = self._tasks.get(task_id)
             if task is None:
                 return None
-            now = _utc_now()
+            now = utc_now_isoformat()
             task.status = "paused"
             task.updated_at = now
             task.metadata["stop_requested"] = False
@@ -329,7 +322,7 @@ class TaskStore:
             task = self._tasks.get(task_id)
             if task is None:
                 return None
-            task.updated_at = _utc_now()
+            task.updated_at = utc_now_isoformat()
             task.metadata["stop_requested"] = True
             self._activities.setdefault(task_id, []).append(
                 TaskActivity(
@@ -348,7 +341,7 @@ class TaskStore:
             if task is None:
                 return None
             task.metadata["stop_requested"] = False
-            task.updated_at = _utc_now()
+            task.updated_at = utc_now_isoformat()
             return deepcopy(task)
 
     def requeue(self, task_id: str) -> TaskRecord | None:
@@ -356,7 +349,7 @@ class TaskStore:
             task = self._tasks.get(task_id)
             if task is None:
                 return None
-            now = _utc_now()
+            now = utc_now_isoformat()
             task.status = "queued"
             task.updated_at = now
             task.completed_at = None
