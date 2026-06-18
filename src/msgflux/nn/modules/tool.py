@@ -1,12 +1,8 @@
 import asyncio
 import inspect
 from copy import deepcopy
-from dataclasses import asdict, dataclass, field
 from functools import partial
-from importlib import import_module
 from typing import Any, Callable, Dict, Iterator, List, Mapping, Optional, Tuple
-
-import msgspec
 
 import msgflux.nn.functional as F
 from msgflux.auto import AutoParams
@@ -33,84 +29,24 @@ from msgflux.telemetry.span import (
     aset_tool_attributes,
     set_tool_attributes,
 )
+from msgflux.tools.handles import ToolLibraryHandle
+from msgflux.tools.helpers import (
+    RUNTIME_BACKGROUND_PARAM as _RUNTIME_BACKGROUND_PARAM,
+)
+from msgflux.tools.helpers import (
+    is_agent_tool_impl as _is_agent_tool_impl,
+)
+from msgflux.tools.helpers import (
+    should_copy_injected_messages as _should_copy_injected_messages,
+)
+from msgflux.tools.helpers import (
+    uses_library_injection as _uses_library_injection,
+)
+from msgflux.tools.responses import ToolCall, ToolResponses
 from msgflux.utils.chat import generate_tool_json_schema
 from msgflux.utils.inspect import fn_has_parameters, get_fn_param_defaults
 from msgflux.utils.msgspec import restore_transport_value
 from msgflux.utils.tenacity import apply_retry, default_tool_retry
-
-
-def _should_copy_injected_messages(tool: Callable, config: Mapping[str, Any]) -> bool:
-    if not config.get("inject_messages", False):
-        return False
-
-    agent_type = import_module("msgflux.nn.modules.agent").Agent
-    return isinstance(getattr(tool, "impl", tool), agent_type)
-
-
-@dataclass
-class ToolCall:
-    """Represents the execution of a single tool call."""
-
-    id: str
-    name: str
-    parameters: Dict[str, Any] = field(default_factory=dict)
-    result: Optional[Any] = None
-    error: Optional[str] = None
-
-
-@dataclass
-class ToolResponses:
-    """Represents the execution of tool calls."""
-
-    return_directly: bool
-    tool_calls: List[ToolCall] = field(default_factory=list)
-
-    def to_dict(self) -> Dict[str, Any]:
-        return asdict(self)
-
-    def to_json(self) -> bytes:
-        """Returns a encoded-JSON."""
-        return msgspec.json.encode(self.to_dict())
-
-    def get_by_id(self, tool_id: str) -> Optional[ToolCall]:
-        """Retrieve a tool_call by tool id."""
-        return next((r for r in self.tool_calls if r.id == tool_id), None)
-
-    def get_by_name(self, tool_name: str) -> Optional[ToolCall]:
-        """Retrieve a tool_call by tool name."""
-        return next((r for r in self.tool_calls if r.name == tool_name), None)
-
-
-class ToolLibraryHandle:
-    """Controlled handle exposed to runtime-aware tools."""
-
-    def __init__(self, library: "ToolLibrary"):
-        self._library = library
-
-    def add(self, tool: Callable) -> str:
-        self._library.add(tool)
-        return getattr(tool, "name", None) or getattr(tool, "__name__", None)
-
-    def remove(self, tool_name: str) -> str:
-        if tool_name in self._library._runtime_tool_names:
-            raise ValueError(f"The runtime tool `{tool_name}` cannot be removed.")
-        self._library.remove(tool_name)
-        return tool_name
-
-    def list_tools(self) -> List[str]:
-        return self._library.get_tool_names()
-
-
-def _uses_library_injection(config: Mapping[str, Any]) -> bool:
-    return config.get("inject_library", False)
-
-
-def _is_agent_tool_impl(impl: Any) -> bool:
-    agent_type = import_module("msgflux.nn.modules.agent").Agent
-    return isinstance(impl, agent_type)
-
-
-_RUNTIME_BACKGROUND_PARAM = "run_in_background"
 
 
 class Tool(Module):
