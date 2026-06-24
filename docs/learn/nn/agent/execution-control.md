@@ -7,14 +7,14 @@ The core pieces are:
 
 | Piece | Purpose |
 |-------|---------|
-| `ExecutionScope` | Identifies the active execution with `session_id`, `run_id`, and `namespace`. |
+| `ExecutionScope` | Identifies the active execution with `thread_id`, `run_id`, and `namespace`. |
 | `checkpointer` | Persists the agent snapshot so a run can resume. |
 | `AgentInbox` | Holds pending messages, notifications, and control signals for the agent loop. |
 | `AgentInboxStore` | Optional persistence boundary for the inbox. Without one, the inbox is in memory. |
 
 ## Execution Scope
 
-Use `ExecutionScope` when you need stable cross-session identity.
+Use `ExecutionScope` when you need stable runtime identity.
 
 ```python
 import msgflux as mf
@@ -26,33 +26,41 @@ agent = nn.Agent(
 )
 
 scope = mf.ExecutionScope(
-    session_id="customer_42",
+    thread_id="customer_42",
     run_id="ticket_9001",
 )
 
 result = agent("Investigate this ticket.", scope=scope)
 ```
 
-- `session_id`: identifies the conversation, user session, or chat thread.
+- `thread_id`: identifies the conversation thread. In a chat UI, this is the
+  conversation id. In a workflow, it is the root workflow id. Every execution
+  that should share history and durable context should keep the same
+  `thread_id`.
 - `namespace`: identifies the component that owns runtime state. For agents,
   msgFlux uses the agent module name as the effective namespace.
-- `run_id`: identifies the current resumable execution inside that session.
+- `run_id`: identifies one resumable execution inside that thread. For a root
+  agent this usually means one turn, command, or workflow step. For a
+  background subagent, it is the task id. Reusing the same `run_id` means "try
+  to resume this execution"; using a new `run_id` means "start new work in the
+  same conversation".
 
-If no scope is passed, msgFlux still runs with default runtime identifiers:
+If no scope is passed, msgFlux generates runtime identifiers:
 
 ```text
-session_id = default_session_id
+thread_id = generated thd_<uuid>
 namespace = default_namespace
-run_id = default_run_id
+run_id = generated run_<uuid>
 ```
 
-These defaults are fallbacks, not durable production identifiers. If you need
-recovery after a process restart, provide stable IDs from your host or
-supervisor.
+These generated IDs are convenient local fallbacks. They are correct for
+one-off calls, but they are not enough for recovery after a process restart. If
+you need durability, provide the same `thread_id` and `run_id` again when
+re-dispatching the work.
 
 Resolution prefers explicit values, then existing message state, then inherited
-runtime context, and only then falls back to defaults. Omit an ID when you want
-msgFlux to resolve it from the current context; pass an ID when you want to
+runtime context, and only then generates a fallback. Omit an ID when you want
+msgFlux to inherit it from the current context; pass an ID when you want to
 force a specific execution identity.
 
 ## Checkpointing
@@ -73,7 +81,7 @@ agent = nn.Agent(
 )
 
 scope = mf.ExecutionScope(
-    session_id="customer_42",
+    thread_id="customer_42",
     run_id="ticket_9001",
 )
 
@@ -86,7 +94,7 @@ Available checkpoint stores:
 - `mf.Store.checkpoint("sqlite", path=".msgflux/checkpoints.sqlite3")`
 
 When you call an agent with a `scope.run_id`, msgFlux first checks whether a
-checkpoint already exists for `(namespace, session_id, run_id)`.
+checkpoint already exists for `(namespace, thread_id, run_id)`.
 
 Resume behavior:
 
@@ -98,11 +106,65 @@ Resume behavior:
 - `stopped`: not resumed.
 
 On resume, the new task input is ignored and the saved messages/vars continue
-from the checkpointed state. Use a new `run_id` when you want a fresh execution.
+from the checkpointed state. This is intentional: the retry is restoring the
+same execution, not adding a new user message. Use the same `thread_id` with a
+new `run_id` when you want to continue the conversation with fresh input.
 
 For background subagents, the task id is used as the subagent `run_id`. Reusing
 that task id resumes or continues the same subagent. Creating a new task id
-starts a separate subagent within the same session.
+starts a separate subagent within the same thread.
+
+## Background Tasks And `task_message`
+
+When a tool is allowed to run in the background, msgFlux creates a task record
+and returns a task id to the model. The task record lives in the task store and
+tracks lifecycle state such as queued, running, paused, completed, failed, and
+stopped.
+
+For normal background tools, the task id is mostly an operational handle:
+
+- `task_status(task_id=...)` reads lifecycle and progress.
+- `task_output(task_id=...)` reads the final result once available.
+- `task_wait(task_id=...)` waits for completion.
+- `task_stop(task_id=...)` requests interruption.
+
+Some background tools also support messages after dispatch. The built-in
+`AgentTool` does this for subagents. In that case, `task_message` is the way
+for the root model to send another message to the same running or resumable
+task:
+
+```python
+task_message(
+    task_id="ab12cd34",
+    message="The user clarified that the payment already cleared.",
+)
+```
+
+The task metadata records enough routing information to reconstruct the call:
+
+- which tool owns the task
+- which child agent or tool target was selected
+- the checkpoint namespace for that child execution
+- the parent/root run lineage
+- the `thread_id` shared with the root conversation
+- the task id used as the child `run_id`
+
+For an agent task, `task_message` re-dispatches the same tool with the saved
+routing parameters and a scope like:
+
+```text
+thread_id = original root thread
+run_id = task_id
+parent_run_id = root run that launched the task
+root_run_id = root run of the whole execution tree
+```
+
+That means the child agent can recover through the normal checkpoint rule:
+same `(namespace, thread_id, run_id)` resumes a non-terminal checkpoint. If the
+child had completed and you want a new independent subagent conversation, call
+the `agent` tool again so a new task id/run id is created. If you want to keep
+talking to the same subagent task, use `task_message` with the existing
+`task_id`.
 
 ## Persisting The Inbox
 
@@ -158,7 +220,7 @@ agent = nn.Agent(
 )
 
 scope = mf.ExecutionScope(
-    session_id="customer_42",
+    thread_id="customer_42",
     run_id="ticket_9001",
 )
 
@@ -171,7 +233,7 @@ stored under:
 
 ```python
 namespace = "support_agent"
-session_id = "customer_42"
+thread_id = "customer_42"
 run_id = "ticket_9001"
 ```
 
@@ -193,7 +255,7 @@ agent drains the inbox before each provider call and after tool calls, before
 the next provider call.
 
 ```python
-scope = mf.ExecutionScope(session_id="customer_42", run_id="ticket_9001")
+scope = mf.ExecutionScope(thread_id="customer_42", run_id="ticket_9001")
 
 # In one thread/task:
 agent("Work on the ticket until finished.", scope=scope)
@@ -219,7 +281,7 @@ store = mf.Store.agent_inbox("sqlite", path=".msgflux/inbox.sqlite3")
 external_inbox = mf.AgentInbox(
     store=store,
     namespace="support_agent",
-    session_id="customer_42",
+    thread_id="customer_42",
     run_id="ticket_9001",
 )
 

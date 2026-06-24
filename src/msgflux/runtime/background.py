@@ -7,15 +7,15 @@ from typing import Any, Callable, Dict, Mapping
 from uuid import uuid4
 
 from msgflux._private.executor import Executor
-from msgflux.chat_messages import ChatMessages
 from msgflux.exceptions import TaskPauseRequestedError, TaskStopRequestedError
 from msgflux.logger import logger
 from msgflux.runtime.agent_inbox import AgentInbox, AgentNotification
 from msgflux.runtime.context import (
-    DEFAULT_SESSION_ID,
     ExecutionScope,
     execution_context,
     get_execution_context,
+    new_run_id,
+    new_thread_id,
 )
 from msgflux.tasks import TaskActivityRecorder, TaskHandle
 
@@ -30,12 +30,16 @@ class BackgroundTaskDispatcher:
         self._task_futures_lock = Lock()
         self._task_inboxes: Dict[str, AgentInbox] = {}
         self._task_inboxes_lock = Lock()
+        self._task_checkpoint_stores: Dict[str, Any] = {}
+        self._task_checkpoint_stores_lock = Lock()
 
     def clear(self) -> None:
         with self._task_futures_lock:
             self._task_futures.clear()
         with self._task_inboxes_lock:
             self._task_inboxes.clear()
+        with self._task_checkpoint_stores_lock:
+            self._task_checkpoint_stores.clear()
 
     def register_task_future(self, task_id: str, future: Any) -> None:
         with self._task_futures_lock:
@@ -58,6 +62,49 @@ class BackgroundTaskDispatcher:
     def get_task_inbox(self, task_id: str) -> AgentInbox | None:
         with self._task_inboxes_lock:
             return self._task_inboxes.get(task_id)
+
+    def register_task_checkpoint_store(
+        self,
+        task_id: str,
+        checkpoint_store: Any,
+    ) -> None:
+        if checkpoint_store is None:
+            return
+        with self._task_checkpoint_stores_lock:
+            self._task_checkpoint_stores[task_id] = checkpoint_store
+
+    def get_task_checkpoint_store(self, task_id: str) -> Any | None:
+        with self._task_checkpoint_stores_lock:
+            return self._task_checkpoint_stores.get(task_id)
+
+    def _get_task_resume_params(
+        self,
+        *,
+        tool: Any,
+        call_params: Mapping[str, Any],
+    ) -> Dict[str, Any]:
+        impl = getattr(tool, "impl", None)
+        param_names = getattr(impl, "task_resume_params", ())
+        if not param_names:
+            return {}
+        return {name: call_params[name] for name in param_names if name in call_params}
+
+    def _get_checkpoint_namespace(
+        self,
+        *,
+        tool_name: str,
+        tool: Any,
+        task_resume_params: Mapping[str, Any],
+    ) -> str:
+        impl = getattr(tool, "impl", None)
+        namespace_param = getattr(impl, "task_checkpoint_namespace_param", None)
+        if isinstance(namespace_param, str):
+            value = task_resume_params.get(namespace_param)
+            if isinstance(value, str) and value:
+                return value
+        if hasattr(getattr(tool, "impl", None), "get_module_name"):
+            return tool.impl.get_module_name()
+        return tool_name
 
     def run_tool(
         self,
@@ -131,31 +178,30 @@ class BackgroundTaskDispatcher:
         if tool_name not in self.library.library:
             raise ValueError(f"The tool `{tool_name}` is no longer available.")
         tool = self.library.library[tool_name]
-        checkpoint_namespace = (
-            tool.impl.get_module_name()
-            if hasattr(tool, "impl") and hasattr(tool.impl, "get_module_name")
-            else tool.get_module_name()
-        )
-
-        checkpoint_store = get_execution_context().get("checkpoint_store")
-        session_id = task.metadata.get("checkpoint_session_id") or task.metadata.get(
-            "session_id"
-        )
-        run_id = task.metadata.get("checkpoint_run_id") or task.task_id
-        restored_messages = ChatMessages()
-        restored_vars: Dict[str, Any] = {}
-        restored_model_preference = None
-
-        if checkpoint_store is not None and isinstance(session_id, str) and session_id:
-            state = checkpoint_store.load_state(
-                checkpoint_namespace,
-                session_id,
-                run_id,
+        checkpoint_namespace = task.metadata.get("checkpoint_namespace")
+        if checkpoint_namespace is None:
+            checkpoint_namespace = (
+                tool.impl.get_module_name()
+                if hasattr(tool, "impl") and hasattr(tool.impl, "get_module_name")
+                else tool.get_module_name()
             )
-            if state is not None:
-                restored_messages._hydrate_state(state.get("messages", {}))
-                restored_vars = state.get("vars", {}) or {}
-                restored_model_preference = state.get("model_preference")
+
+        checkpoint_store = (
+            get_execution_context().get("checkpoint_store")
+            or self.get_task_checkpoint_store(task.task_id)
+        )
+        thread_id = task.metadata.get("checkpoint_thread_id")
+        if not isinstance(thread_id, str) or not thread_id:
+            thread_id = new_thread_id()
+        run_id = task.metadata.get("checkpoint_run_id") or task.task_id
+        if task.status == "completed":
+            run_id = new_run_id()
+            updated_task = self.library.task_store.update_metadata(
+                task.task_id,
+                {"checkpoint_run_id": run_id},
+            )
+            if updated_task is not None:
+                task = updated_task
 
         root_inbox = (
             get_execution_context().get("agent_inbox") or self.library.agent_inbox
@@ -165,8 +211,8 @@ class BackgroundTaskDispatcher:
             task_inbox = root_inbox.fork(
                 owner=f"{tool_name}:{task.task_id}",
                 namespace=checkpoint_namespace,
-                session_id=(
-                    session_id if isinstance(session_id, str) and session_id else None
+                thread_id=(
+                    thread_id if isinstance(thread_id, str) and thread_id else None
                 ),
                 run_id=run_id,
             )
@@ -177,12 +223,16 @@ class BackgroundTaskDispatcher:
             task.task_id,
             kind="message",
             summary=f"Root message: {self.library._truncate_activity_text(message)}",
-            metadata={"direction": "root_to_task", "resume": True},
+            metadata={
+                "direction": "root_to_task",
+                "resume": True,
+                "run_id": run_id,
+            },
         )
 
         execution_scope = {
-            "session_id": session_id
-            if isinstance(session_id, str) and session_id
+            "thread_id": thread_id
+            if isinstance(thread_id, str) and thread_id
             else None,
             "run_id": run_id,
             "parent_run_id": task.metadata.get("parent_run_id"),
@@ -205,22 +255,15 @@ class BackgroundTaskDispatcher:
                 ),
                 tool_name=tool_name,
                 call_params={
-                    "messages": restored_messages,
+                    **dict(task.metadata.get("task_resume_params") or {}),
+                    "message": message,
                     "scope": ExecutionScope(
-                        session_id=(
-                            session_id
-                            if isinstance(session_id, str)
-                            else DEFAULT_SESSION_ID
-                        ),
+                        thread_id=thread_id,
                         namespace=checkpoint_namespace,
                         run_id=run_id,
                         parent_run_id=task.metadata.get("parent_run_id"),
                         root_run_id=task.metadata.get("root_run_id"),
                     ),
-                    "model_preference": restored_model_preference,
-                    "vars": restored_vars,
-                    "tool_call_id": f"task_message_{task.task_id}",
-                    "task": message,
                 },
                 execution_scope=execution_scope,
                 agent_inbox=root_inbox,
@@ -253,47 +296,67 @@ class BackgroundTaskDispatcher:
         config: Mapping[str, Any],
     ) -> Any:
         task_kind = config.get("tool_kind", "tool")
+        task_resume_params = self._get_task_resume_params(
+            tool=tool,
+            call_params=call_params,
+        )
+        impl = getattr(tool, "impl", None)
+        is_agent_task = task_kind == "agent" or bool(
+            getattr(impl, "supports_task_message", False)
+        )
+        checkpoint_namespace = self._get_checkpoint_namespace(
+            tool_name=tool_name,
+            tool=tool,
+            task_resume_params=task_resume_params,
+        )
         context = get_execution_context()
-        session_id = context.get("session_id")
+        thread_id = context.get("thread_id")
+        if not isinstance(thread_id, str) or not thread_id:
+            thread_id = new_thread_id()
         parent_run_id = context.get("run_id")
         root_run_id = context.get("root_run_id")
         checkpoint_store = context.get("checkpoint_store")
         root_agent_inbox = context.get("agent_inbox") or self.library.agent_inbox
         task_id = uuid4().hex[:8]
         task_inbox = None
-        if task_kind == "agent":
+        if is_agent_task:
             task_inbox = root_agent_inbox.fork(
-                owner=f"{tool_name}:{task_id}",
-                namespace=tool_name,
-                session_id=session_id if isinstance(session_id, str) else None,
+                owner=f"{checkpoint_namespace}:{task_id}",
+                namespace=checkpoint_namespace,
+                thread_id=thread_id if isinstance(thread_id, str) else None,
                 run_id=task_id,
             )
             self.register_task_inbox(task_id, task_inbox)
+            self.register_task_checkpoint_store(task_id, checkpoint_store)
         task = self.library.task_store.create(
             task_id=task_id,
             tool_name=tool_name,
             metadata={
                 "tool_call_id": tool_id,
-                "task_kind": task_kind,
-                "session_id": session_id,
+                "task_kind": "agent" if is_agent_task else task_kind,
+                "checkpoint_namespace": checkpoint_namespace
+                if is_agent_task
+                else None,
+                "task_resume_params": task_resume_params,
+                "thread_id": thread_id,
                 "parent_run_id": parent_run_id,
                 "root_run_id": root_run_id,
-                "checkpoint_session_id": session_id,
-                "checkpoint_run_id": task_id if task_kind == "agent" else None,
-                "supports_activity": task_kind == "agent",
-                "supports_message": task_kind == "agent",
+                "checkpoint_thread_id": thread_id,
+                "checkpoint_run_id": task_id if is_agent_task else None,
+                "supports_activity": is_agent_task,
+                "supports_message": is_agent_task,
                 "stop_requested": False,
             },
         )
         runner_params = dict(call_params)
-        if config.get("inject_task", False) and task_kind != "agent":
+        if config.get("inject_task", False) and not is_agent_task:
             runner_params["task"] = TaskHandle(
                 task.task_id,
                 self.library.task_store,
                 tool_name=tool_name,
                 agent_inbox=root_agent_inbox,
             )
-        if config.get("inject_notification", False) and task_kind != "agent":
+        if config.get("inject_notification", False) and not is_agent_task:
             runner_params["notification"] = self.library._build_notification_handle(
                 tool_name=tool_name,
                 ref=task.task_id,
@@ -301,10 +364,8 @@ class BackgroundTaskDispatcher:
             )
         if task_kind == "agent":
             runner_params["scope"] = ExecutionScope(
-                session_id=(
-                    session_id if isinstance(session_id, str) else DEFAULT_SESSION_ID
-                ),
-                namespace=tool_name,
+                thread_id=thread_id,
+                namespace=checkpoint_namespace,
                 run_id=task.task_id,
                 parent_run_id=(
                     parent_run_id
@@ -319,8 +380,8 @@ class BackgroundTaskDispatcher:
             )
         runner_params["tool_call_id"] = tool_id
         execution_scope = {
-            "session_id": session_id
-            if isinstance(session_id, str) and session_id
+            "thread_id": thread_id
+            if isinstance(thread_id, str) and thread_id
             else None,
             "run_id": task.task_id,
             "parent_run_id": (

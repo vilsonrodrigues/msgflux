@@ -38,7 +38,7 @@ Use this section when you need to answer questions like:
 - [Task Runtime](task-runtime.md): the background-task contract for task state,
   progress reporting, and notification delivery.
 - [Checkpoints And Replay](checkpoints-and-replay.md): the planned durability
-  contract for `session_id`, `run_id`, subagent recovery, and parallel worker
+  contract for `thread_id`, `run_id`, subagent recovery, and parallel worker
   replay.
 - [Agent Inbox](agent-inbox.md): the notification primitive for runtime
   signals delivered to the model.

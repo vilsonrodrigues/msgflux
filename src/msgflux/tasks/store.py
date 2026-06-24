@@ -1,7 +1,7 @@
 from typing import Any
 
 from msgflux.tasks.registry import task_store_registry
-from msgflux.tasks.types import InMemoryTaskStoreType
+from msgflux.tasks.types import InMemoryTaskStoreType, SQLiteTaskStoreType
 
 
 class TaskStore:
@@ -44,3 +44,11 @@ class TaskStore:
         **kwargs: Any,
     ) -> InMemoryTaskStoreType:
         return cls._create_task_store("in_memory", provider, **kwargs)
+
+    @classmethod
+    def sqlite(
+        cls,
+        provider: str = "default",
+        **kwargs: Any,
+    ) -> SQLiteTaskStoreType:
+        return cls._create_task_store("sqlite", provider, **kwargs)

@@ -17,5 +17,7 @@ def uses_library_injection(config: Mapping[str, Any]) -> bool:
 
 
 def is_agent_tool_impl(impl: Any) -> bool:
+    if getattr(impl, "is_agent_tool", False):
+        return True
     agent_type = import_module("msgflux.nn.modules.agent").Agent
     return isinstance(impl, agent_type)

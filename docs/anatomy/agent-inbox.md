@@ -76,14 +76,20 @@ In that unbound state it uses explicit fallback identifiers:
 
 ```text
 namespace = default_namespace
-session_id = default_session_id
-run_id = default_run_id
+thread_id = generated thd_<uuid>
+run_id = generated run_<uuid>
 ```
 
 When an inbox is owned by an agent, the agent binds it to the effective
 execution scope before model execution. In practice, that means the namespace
-usually becomes the agent module name, while `session_id` and `run_id` come
+usually becomes the agent module name, while `thread_id` and `run_id` come
 from the active `ExecutionScope` or inherited runtime context.
+
+`thread_id` is the conversation identity. It should stay stable while the root
+agent and its child tasks are working on the same user conversation or workflow.
+`run_id` is narrower: it identifies one resumable execution inside that
+conversation. The root agent and each background subagent may share a
+`thread_id`, but they should have different `run_id` values.
 
 ## Delivery Model
 
@@ -210,7 +216,7 @@ format without changing producers or persistence.
 
 `AgentInbox` should be propagated through `execution_context`, alongside:
 
-- `session_id`
+- `thread_id`
 - `run_id`
 - `parent_run_id`
 - `root_run_id`
@@ -223,7 +229,7 @@ Example direction:
 
 ```python
 with execution_context(
-    session_id=...,
+    thread_id=...,
     run_id=...,
     checkpoint_store=...,
     agent_inbox=inbox,
@@ -248,6 +254,12 @@ The important rule is:
 
 - producers publish structured notifications
 - producers do not build synthetic messages
+
+`task_message` uses this same identity model. When the root sends a message to
+a background agent task, the dispatcher uses the task metadata to recover the
+child agent namespace and run id, then delivers the message under the same
+`thread_id`. The child agent can then continue from its checkpointed execution
+state while the root receives task notifications through the inbox.
 
 ## Coalescing
 

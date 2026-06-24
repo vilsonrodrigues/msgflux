@@ -2,7 +2,7 @@
 
 This module owns the shared ContextVars used by components that need execution
 identity and inherited runtime configuration. The first durable features mainly
-use `session_id`, `run_id`, and `namespace`, but the extra fields are already
+use `thread_id`, `run_id`, and `namespace`, but the extra fields are already
 present so nested runtimes can propagate lineage consistently later.
 """
 
@@ -12,17 +12,24 @@ import contextvars
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any, Mapping
+from uuid import uuid4
 
-DEFAULT_SESSION_ID = "default_session_id"
 DEFAULT_NAMESPACE = "default_namespace"
-DEFAULT_RUN_ID = "default_run_id"
+
+
+def new_thread_id() -> str:
+    return f"thd_{uuid4().hex}"
+
+
+def new_run_id() -> str:
+    return f"run_{uuid4().hex}"
 
 
 @dataclass(frozen=True)
 class ExecutionScope:
     """Durable execution identity propagated through runtime components."""
 
-    session_id: str = DEFAULT_SESSION_ID
+    thread_id: str | None = None
     namespace: str = DEFAULT_NAMESPACE
     run_id: str | None = None
     parent_run_id: str | None = None
@@ -31,7 +38,7 @@ class ExecutionScope:
     def with_overrides(
         self,
         *,
-        session_id: str | None = None,
+        thread_id: str | None = None,
         namespace: str | None = None,
         run_id: str | None = None,
         parent_run_id: str | None = None,
@@ -39,7 +46,7 @@ class ExecutionScope:
     ) -> ExecutionScope:
         resolved_run_id = run_id if run_id is not None else self.run_id
         return ExecutionScope(
-            session_id=session_id if session_id is not None else self.session_id,
+            thread_id=thread_id if thread_id is not None else self.thread_id,
             namespace=namespace if namespace is not None else self.namespace,
             run_id=resolved_run_id,
             parent_run_id=(
@@ -54,7 +61,7 @@ class ExecutionScope:
 
     def to_dict(self) -> dict[str, str | None]:
         return {
-            "session_id": self.session_id,
+            "thread_id": self.thread_id,
             "namespace": self.namespace,
             "run_id": self.run_id,
             "parent_run_id": self.parent_run_id,
@@ -66,9 +73,9 @@ _CURRENT_SCOPE: contextvars.ContextVar[ExecutionScope | None] = contextvars.Cont
     "msgflux_execution_scope",
     default=None,
 )
-_CURRENT_SESSION_ID: contextvars.ContextVar[str | None] = contextvars.ContextVar(
-    "msgflux_session_id",
-    default=DEFAULT_SESSION_ID,
+_CURRENT_THREAD_ID: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "msgflux_thread_id",
+    default=None,
 )
 _CURRENT_NAMESPACE: contextvars.ContextVar[str | None] = contextvars.ContextVar(
     "msgflux_namespace",
@@ -90,6 +97,10 @@ _CURRENT_CHECKPOINT_STORE: contextvars.ContextVar[Any] = contextvars.ContextVar(
     "msgflux_checkpoint_store",
     default=None,
 )
+_CURRENT_TASK_STORE: contextvars.ContextVar[Any] = contextvars.ContextVar(
+    "msgflux_task_store",
+    default=None,
+)
 _CURRENT_AGENT_INBOX: contextvars.ContextVar[Any] = contextvars.ContextVar(
     "msgflux_agent_inbox",
     default=None,
@@ -108,12 +119,13 @@ _CURRENT_TASK_ACTIVITY_RECORDER: contextvars.ContextVar[Any] = contextvars.Conte
 def execution_context(
     *,
     scope: ExecutionScope | None = None,
-    session_id: str | None = None,
+    thread_id: str | None = None,
     namespace: str | None = None,
     run_id: str | None = None,
     parent_run_id: str | None = None,
     root_run_id: str | None = None,
     checkpoint_store: Any = None,
+    task_store: Any = None,
     agent_inbox: Any = None,
     task_handle: Any = None,
     task_activity_recorder: Any = None,
@@ -121,8 +133,8 @@ def execution_context(
     """Set execution identity for the enclosed scope.
 
     Resolution rules intentionally favor explicit inputs and otherwise inherit
-    from the current context. When no session exists yet, the stable default
-    session is used so components can always rely on an active session id.
+    from the current context. Call boundaries that require durable identities
+    should materialize missing thread/run ids explicitly.
     """
     if scope is not None and not isinstance(scope, ExecutionScope):
         raise TypeError(
@@ -132,15 +144,12 @@ def execution_context(
     current_scope = get_execution_scope()
     base_scope = scope or current_scope
 
-    current_session_id = _CURRENT_SESSION_ID.get()
-    resolved_session_id = (
-        session_id
-        if session_id is not None
-        else base_scope.session_id or current_session_id
+    current_thread_id = _CURRENT_THREAD_ID.get()
+    resolved_thread_id = (
+        thread_id
+        if thread_id is not None
+        else base_scope.thread_id or current_thread_id
     )
-    if resolved_session_id is None:
-        resolved_session_id = DEFAULT_SESSION_ID
-
     current_namespace = _CURRENT_NAMESPACE.get()
     resolved_namespace = (
         namespace
@@ -171,7 +180,7 @@ def execution_context(
         resolved_root_run_id = resolved_run_id
 
     resolved_scope = ExecutionScope(
-        session_id=resolved_session_id,
+        thread_id=resolved_thread_id,
         namespace=resolved_namespace,
         run_id=resolved_run_id,
         parent_run_id=resolved_parent_run_id,
@@ -182,6 +191,8 @@ def execution_context(
     resolved_checkpoint_store = (
         checkpoint_store if checkpoint_store is not None else current_checkpoint_store
     )
+    current_task_store = _CURRENT_TASK_STORE.get()
+    resolved_task_store = task_store if task_store is not None else current_task_store
     current_agent_inbox = _CURRENT_AGENT_INBOX.get()
     resolved_agent_inbox = (
         agent_inbox if agent_inbox is not None else current_agent_inbox
@@ -198,12 +209,13 @@ def execution_context(
     )
 
     scope_token = _CURRENT_SCOPE.set(resolved_scope)
-    session_token = _CURRENT_SESSION_ID.set(resolved_scope.session_id)
+    thread_token = _CURRENT_THREAD_ID.set(resolved_scope.thread_id)
     namespace_token = _CURRENT_NAMESPACE.set(resolved_scope.namespace)
     run_token = _CURRENT_RUN_ID.set(resolved_scope.run_id)
     parent_run_token = _CURRENT_PARENT_RUN_ID.set(resolved_scope.parent_run_id)
     root_run_token = _CURRENT_ROOT_RUN_ID.set(resolved_scope.root_run_id)
     checkpoint_token = _CURRENT_CHECKPOINT_STORE.set(resolved_checkpoint_store)
+    task_store_token = _CURRENT_TASK_STORE.set(resolved_task_store)
     inbox_token = _CURRENT_AGENT_INBOX.set(resolved_agent_inbox)
     task_handle_token = _CURRENT_TASK_HANDLE.set(resolved_task_handle)
     activity_token = _CURRENT_TASK_ACTIVITY_RECORDER.set(
@@ -213,25 +225,26 @@ def execution_context(
         yield resolved_scope
     finally:
         _CURRENT_SCOPE.reset(scope_token)
-        _CURRENT_SESSION_ID.reset(session_token)
+        _CURRENT_THREAD_ID.reset(thread_token)
         _CURRENT_NAMESPACE.reset(namespace_token)
         _CURRENT_RUN_ID.reset(run_token)
         _CURRENT_PARENT_RUN_ID.reset(parent_run_token)
         _CURRENT_ROOT_RUN_ID.reset(root_run_token)
         _CURRENT_CHECKPOINT_STORE.reset(checkpoint_token)
+        _CURRENT_TASK_STORE.reset(task_store_token)
         _CURRENT_AGENT_INBOX.reset(inbox_token)
         _CURRENT_TASK_HANDLE.reset(task_handle_token)
         _CURRENT_TASK_ACTIVITY_RECORDER.reset(activity_token)
 
 
 @contextmanager
-def session_context(
+def thread_context(
     *,
-    session_id: str | None = None,
+    thread_id: str | None = None,
     namespace: str | None = None,
 ):
-    """Compatibility helper for callers that only care about session scope."""
-    with execution_context(session_id=session_id, namespace=namespace):
+    """Compatibility helper for callers that only care about thread scope."""
+    with execution_context(thread_id=thread_id, namespace=namespace):
         yield
 
 
@@ -245,27 +258,28 @@ def get_execution_context() -> Mapping[str, Any | None]:
     scope = get_execution_scope()
     return {
         "scope": scope,
-        "session_id": scope.session_id,
+        "thread_id": scope.thread_id,
         "namespace": scope.namespace,
         "run_id": scope.run_id,
         "parent_run_id": scope.parent_run_id,
         "root_run_id": scope.root_run_id,
         "checkpoint_store": _CURRENT_CHECKPOINT_STORE.get(),
+        "task_store": _CURRENT_TASK_STORE.get(),
         "agent_inbox": _CURRENT_AGENT_INBOX.get(),
         "task_handle": _CURRENT_TASK_HANDLE.get(),
         "task_activity_recorder": _CURRENT_TASK_ACTIVITY_RECORDER.get(),
     }
 
 
-def get_session_context() -> Mapping[str, str | None]:
-    """Return the current session-scoped context."""
+def get_thread_context() -> Mapping[str, str | None]:
+    """Return the current thread-scoped context."""
     scope = get_execution_scope()
     return {
-        "session_id": scope.session_id,
+        "thread_id": scope.thread_id,
         "namespace": scope.namespace,
     }
 
 
-def get_session_id() -> str:
-    """Return the active execution session id."""
-    return get_execution_scope().session_id
+def get_thread_id() -> str | None:
+    """Return the active execution thread id."""
+    return get_execution_scope().thread_id

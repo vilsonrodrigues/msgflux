@@ -47,7 +47,7 @@ def test_agent_saves_completed_checkpoint():
     agent.generator.forward = Mock(return_value=_text_response("42"))
 
     scope = ExecutionScope(
-        session_id="user_42", namespace="test_agent", run_id="run_math"
+        thread_id="user_42", namespace="test_agent", run_id="run_math"
     )
     result = agent("What is 6*7?", scope=scope)
 
@@ -55,7 +55,7 @@ def test_agent_saves_completed_checkpoint():
     state = store.load_state("test_agent", "user_42", "run_math")
     assert state is not None
     assert state["status"] == "completed"
-    assert state["messages"]["session_id"] == "user_42"
+    assert state["messages"]["thread_id"] == "user_42"
 
 
 def test_agent_accepts_execution_scope_for_checkpoint_identity():
@@ -63,7 +63,7 @@ def test_agent_accepts_execution_scope_for_checkpoint_identity():
     agent = _make_agent(checkpointer=store)
     agent.generator.forward = Mock(return_value=_text_response("scoped"))
 
-    scope = ExecutionScope(session_id="user_42", namespace="outer", run_id="run_scope")
+    scope = ExecutionScope(thread_id="user_42", namespace="outer", run_id="run_scope")
     result = agent("Use the scoped identity", scope=scope)
 
     assert result == "scoped"
@@ -77,7 +77,7 @@ def test_agent_resumes_exact_run_id():
     store = InMemoryCheckpointStore()
     agent = _make_agent(checkpointer=store)
 
-    chat = ChatMessages(session_id="user_42", namespace="test_agent")
+    chat = ChatMessages(thread_id="user_42", namespace="test_agent")
     chat.begin_turn(inputs="What is 2+2?", turn_id="run_resume")
     chat.add_user("What is 2+2?")
     store.save_state(
@@ -95,7 +95,7 @@ def test_agent_resumes_exact_run_id():
     result = agent(
         "this input should be ignored on resume",
         scope=ExecutionScope(
-            session_id="user_42",
+            thread_id="user_42",
             namespace="test_agent",
             run_id="run_resume",
         ),
@@ -116,7 +116,7 @@ def test_agent_resumes_failed_run_id():
     store = InMemoryCheckpointStore()
     agent = _make_agent(checkpointer=store)
 
-    chat = ChatMessages(session_id="user_42", namespace="test_agent")
+    chat = ChatMessages(thread_id="user_42", namespace="test_agent")
     chat.begin_turn(inputs="Call flaky backend", turn_id="run_failed")
     chat.add_user("Call flaky backend")
     store.save_state(
@@ -134,7 +134,7 @@ def test_agent_resumes_failed_run_id():
     result = agent(
         "this retry input should be ignored on resume",
         scope=ExecutionScope(
-            session_id="user_42",
+            thread_id="user_42",
             namespace="test_agent",
             run_id="run_failed",
         ),

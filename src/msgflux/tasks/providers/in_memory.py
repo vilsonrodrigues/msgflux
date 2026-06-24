@@ -103,6 +103,19 @@ class InMemoryTaskStore(InMemoryTaskStoreType):
             self._activities.setdefault(task_id, []).append(activity)
             return deepcopy(activity)
 
+    def update_metadata(
+        self,
+        task_id: str,
+        metadata: Mapping[str, Any],
+    ) -> TaskRecord | None:
+        with self._lock:
+            task = self._tasks.get(task_id)
+            if task is None:
+                return None
+            task.metadata.update(deepcopy(dict(metadata)))
+            task.updated_at = utc_now_isoformat()
+            return deepcopy(task)
+
     # --- State Transitions ---
 
     def set_running(

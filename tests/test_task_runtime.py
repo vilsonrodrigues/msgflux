@@ -697,7 +697,7 @@ def test_agent_control_pause_saves_checkpoint_before_model_call():
     model = _mock_model()
     agent = Agent(name="Assistant", model=model, checkpointer=store)
     agent.set_agent_inbox(inbox)
-    scope = mf.ExecutionScope(session_id="user_42", run_id="run_pause")
+    scope = mf.ExecutionScope(thread_id="user_42", run_id="run_pause")
 
     inbox.pause(reason="wait for user input")
 
@@ -731,11 +731,11 @@ def test_agent_consumes_persisted_incoming_user_message_for_scope():
     inbox = mf.AgentInbox(store=store)
     model = _mock_model()
     agent = Agent(name="Assistant", model=model, agent_inbox=inbox)
-    scope = mf.ExecutionScope(session_id="user_42", run_id="run_42")
+    scope = mf.ExecutionScope(thread_id="user_42", run_id="run_42")
     external_inbox = mf.AgentInbox(
         store=store,
         namespace="Assistant",
-        session_id="user_42",
+        thread_id="user_42",
         run_id="run_42",
     )
 
@@ -931,7 +931,7 @@ def test_background_agent_inherits_context_and_checkpoint_run_id():
     library = ToolLibrary(name="lib", tools=[worker])
 
     with execution_context(
-        session_id="user_42",
+        thread_id="user_42",
         namespace="root_agent",
         run_id="run_root",
         root_run_id="run_root",
@@ -954,10 +954,10 @@ def test_background_agent_inherits_context_and_checkpoint_run_id():
     task_state = (
         library([("call_4", "task_status", {"task_id": task_id})]).tool_calls[0].result
     )
-    assert task_state["metadata"]["session_id"] == "user_42"
+    assert task_state["metadata"]["thread_id"] == "user_42"
     assert task_state["metadata"]["parent_run_id"] == "run_root"
     assert task_state["metadata"]["root_run_id"] == "run_root"
-    assert task_state["metadata"]["checkpoint_session_id"] == "user_42"
+    assert task_state["metadata"]["checkpoint_thread_id"] == "user_42"
     assert task_state["metadata"]["checkpoint_run_id"] == task_id
 
 
@@ -1099,7 +1099,7 @@ def test_task_message_resumes_completed_background_agent():
 
     library = ToolLibrary(name="lib", tools=[worker])
     with execution_context(
-        session_id="user_42",
+        thread_id="user_42",
         namespace="root_agent",
         run_id="run_root",
         root_run_id="run_root",
@@ -1147,6 +1147,17 @@ def test_task_message_resumes_completed_background_agent():
         )
 
         assert output == "resumed pass"
+        task_state = (
+            library([("call_6", "task_status", {"task_id": task_id})])
+            .tool_calls[0]
+            .result
+        )
+        resumed_run_id = task_state["metadata"]["checkpoint_run_id"]
+        assert resumed_run_id != task_id
+        assert store.load_state("worker", "user_42", task_id)["status"] == "completed"
+        assert store.load_state("worker", "user_42", resumed_run_id)[
+            "status"
+        ] == "completed"
 
 
 def test_task_message_resume_clears_previous_stop_reason():
@@ -1171,7 +1182,7 @@ def test_task_message_resume_clears_previous_stop_reason():
 
     library = ToolLibrary(name="lib", tools=[worker])
     with execution_context(
-        session_id="user_42",
+        thread_id="user_42",
         namespace="root_agent",
         run_id="run_root",
         root_run_id="run_root",

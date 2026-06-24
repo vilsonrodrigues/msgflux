@@ -28,14 +28,14 @@ The core decision is to make execution identity explicit and stable.
 The durability model should use four concepts:
 
 - `namespace`: which component owns the checkpoint
-- `session_id`: stable conversation or workflow identity
+- `thread_id`: stable conversation or workflow identity
 - `run_id`: stable identity for one resumable execution
 - `attempt`: retry counter for observability and policy
 
 Only the first three belong to the checkpoint key.
 
 ```text
-checkpoint key = (namespace, session_id, run_id)
+checkpoint key = (namespace, thread_id, run_id)
 ```
 
 `attempt` stays in metadata and events. It should not be part of the key.
@@ -46,17 +46,21 @@ That keeps replay simple:
 - loading the checkpoint uses the same key every time
 - the event log still shows which attempt produced each transition
 
-## Why `session_id` And `run_id` Are Different
+## Why `thread_id` And `run_id` Are Different
 
-`session_id` is the stable parent identity.
+`thread_id` is the stable conversation identity.
 
 Examples:
 
 - one user conversation
 - one root workflow execution
-- one root agent session
+- one root agent thread
 
-`run_id` is the identity of a specific resumable execution inside that session.
+All runs that should see the same long-lived conversation context belong under
+the same `thread_id`. Starting a new `thread_id` means starting a separate
+conversation or workflow lineage.
+
+`run_id` is the identity of a specific resumable execution inside that thread.
 
 Examples:
 
@@ -66,7 +70,9 @@ Examples:
 - one worker inside a parallel step
 
 This separation matters because several executions can belong to the same
-session at once.
+thread at once. For example, a root agent run can launch multiple background
+subagents. They all share the root `thread_id`, but each subagent gets its own
+`run_id` so it can checkpoint and resume independently.
 
 ## Default Identity
 
@@ -74,27 +80,26 @@ Runtime identity should be explicit in durable production paths, but the
 runtime still needs stable fallback values for local use, tests, and components
 that are created before an agent binds a concrete scope.
 
-The fallback identifiers are:
+The generated fallback identifiers are:
 
 ```text
-session_id = default_session_id
+thread_id = generated thd_<uuid>
 namespace = default_namespace
-run_id = default_run_id
+run_id = generated run_<uuid>
 ```
 
-These values are sentinel defaults, not recommended durable IDs. A host that
-needs recovery after process restart should provide a stable `session_id` and
-`run_id` before dispatching work.
+These values are convenient local fallbacks, not recommended durable IDs. A
+host that needs recovery after process restart should provide a stable
+`thread_id` and `run_id` before dispatching work.
 
 Most agent executions do not keep `default_namespace` for long. When an
 `Agent` prepares execution, it overrides the effective namespace with the
 agent's module name. The default namespace mainly covers runtime primitives
 such as an unbound `AgentInbox`.
 
-`default_run_id` is only a fallback for components that require a run-scoped
-storage key before a real run exists. Agent checkpoint resume still depends on
-an explicit `run_id`; using a fresh or default run id starts a separate
-execution instead of resuming an older one.
+Agent checkpoint resume still depends on receiving the same `thread_id` and
+`run_id`; using a fresh generated run id starts a separate execution instead of
+resuming an older one.
 
 ## Resume Rule
 
@@ -103,15 +108,24 @@ flag as the main decision point.
 
 The decision should come from the checkpoint store itself:
 
-- if no checkpoint exists for `(namespace, session_id, run_id)`, start fresh
+- if no checkpoint exists for `(namespace, thread_id, run_id)`, start fresh
 - if a non-terminal checkpoint exists, resume from it
 - if a terminal checkpoint exists, do not resume it automatically
 
 This keeps the caller API smaller and avoids ambiguous booleans.
 
 In practice, the supervisor or host only needs to re-dispatch the same logical
-unit of work with the same `session_id` and `run_id`. The module decides
+unit of work with the same `thread_id` and `run_id`. The module decides
 whether that becomes a fresh execution or a resume by looking at the store.
+
+The practical rule is:
+
+- failure recovery: keep the same `thread_id` and `run_id`
+- next message in the same conversation: keep `thread_id`, use a new `run_id`
+- new conversation: use a new `thread_id`
+
+That prevents completed runs from being accidentally reused while still making
+crash recovery deterministic.
 
 ## Checkpoint Store Boundary
 
@@ -182,13 +196,13 @@ Status should stay small and execution-oriented:
 The exact set can evolve, but the model should stay about checkpoint semantics,
 not task queue semantics.
 
-## `ChatMessages` And Session Persistence
+## `ChatMessages` And Thread Persistence
 
 `ChatMessages` is the natural snapshot container for durable agents.
 
 It should carry:
 
-- `session_id`
+- `thread_id`
 - turn records
 - message history
 - serialized assistant/tool history
@@ -213,7 +227,7 @@ The context should be entered at orchestration boundaries such as:
 
 Recommended context fields:
 
-- `session_id`
+- `thread_id`
 - `run_id`
 - `parent_run_id`
 - `root_run_id`
@@ -233,7 +247,7 @@ the caller override identity explicitly.
 
 ## Root Agent
 
-The root agent should run under a stable `session_id`.
+The root agent should run under a stable `thread_id`.
 
 Its `run_id` should identify the current logical turn or execution.
 
@@ -241,20 +255,20 @@ Example:
 
 ```text
 namespace = agent:research_root
-session_id = user_42
+thread_id = user_42
 run_id = run_f13a2b
 ```
 
 If the process crashes and the host re-dispatches that same run:
 
-- same `session_id`
+- same `thread_id`
 - same `run_id`
 
 the agent checks the store and resumes from the last saved boundary.
 
 ## Background Subagent
 
-A background subagent should inherit the parent's `session_id`.
+A background subagent should inherit the parent's `thread_id`.
 
 Its `run_id` should be the `task_id`.
 
@@ -262,7 +276,7 @@ Example:
 
 ```text
 namespace = agent:research_worker
-session_id = user_42
+thread_id = user_42
 run_id = task_ab12cd34
 parent_run_id = run_f13a2b
 root_run_id = run_f13a2b
@@ -270,11 +284,11 @@ root_run_id = run_f13a2b
 
 This keeps two things true at once:
 
-- the worker belongs to the same session as the root
+- the worker belongs to the same thread as the root
 - the worker is resumable by its own task identity
 
 If the process collapses and the task is re-dispatched, the worker enters with
-the same `(namespace, session_id, run_id)` and resumes automatically if a
+the same `(namespace, thread_id, run_id)` and resumes automatically if a
 checkpoint exists.
 
 ## When A Subagent Needs More Input
@@ -290,7 +304,7 @@ as:
     "kind": "needs_input",
     "question": "Should I preserve compatibility with the legacy parser?",
     "checkpoint": {
-        "session_id": "user_42",
+        "thread_id": "user_42",
         "run_id": "task_ab12cd34",
     },
 }
@@ -302,15 +316,30 @@ That keeps the responsibilities clean:
 - the root decides whether to continue it
 - continuation uses the same checkpoint identity
 
+For runtime-managed background agents, the root usually does not need to build
+that continuation call by hand. It can call `task_message(task_id=..., message=...)`.
+The task store metadata points back to the tool, selected child agent, thread,
+checkpoint namespace, and child run id. The dispatcher reconstructs the tool
+call and passes the new message while preserving:
+
+- the same `thread_id`
+- the task id as child `run_id`
+- the original parent/root lineage
+- the same checkpoint store
+
+This makes `task_message` a routing operation, not a second task lookup API.
+The resumed child still relies on the checkpoint store to decide whether it is
+recovering an interrupted run or starting from the current task state.
+
 ## Inline And Nested Inline
 
 `Inline` should use the same durability key:
 
 ```text
-(namespace, session_id, run_id)
+(namespace, thread_id, run_id)
 ```
 
-A child inline should inherit the parent's `session_id` by default.
+A child inline should inherit the parent's `thread_id` by default.
 
 It should get its own `run_id`, while also recording:
 
@@ -321,11 +350,11 @@ Example:
 
 ```text
 parent inline:
-  session_id = user_42
+  thread_id = user_42
   run_id = run_parent
 
 child inline:
-  session_id = user_42
+  thread_id = user_42
   run_id = run_child
   parent_run_id = run_parent
   root_run_id = run_parent
@@ -435,7 +464,7 @@ stores, not own provider selection themselves.
 
 The durability model should stay simple:
 
-- use `(namespace, session_id, run_id)` as the checkpoint identity
+- use `(namespace, thread_id, run_id)` as the checkpoint identity
 - keep `attempt` out of the key
 - derive resume from the presence of a checkpoint, not from a public boolean
 - keep `TaskStore` and `CheckpointStore` separate

@@ -128,13 +128,13 @@ def test_agent_inbox_persists_notifications_with_memory_store():
     writer = AgentInbox(
         store=store,
         namespace="assistant",
-        session_id="user_1",
+        thread_id="user_1",
         run_id="run_1",
     )
     reader = AgentInbox(
         store=store,
         namespace="assistant",
-        session_id="user_1",
+        thread_id="user_1",
         run_id="run_1",
     )
 
@@ -169,7 +169,7 @@ def test_agent_inbox_persists_notifications_with_sqlite_store(tmp_path):
     writer = AgentInbox(
         store=store,
         namespace="assistant",
-        session_id="user_1",
+        thread_id="user_1",
         run_id="run_1",
     )
 
@@ -180,7 +180,7 @@ def test_agent_inbox_persists_notifications_with_sqlite_store(tmp_path):
     reader = AgentInbox(
         store=reopened,
         namespace="assistant",
-        session_id="user_1",
+        thread_id="user_1",
         run_id="run_1",
     )
     notification = reader.drain()[0]

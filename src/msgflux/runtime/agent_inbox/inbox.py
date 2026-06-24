@@ -13,9 +13,9 @@ from msgflux.runtime.agent_inbox.dataclasses import (
 )
 from msgflux.runtime.context import (
     DEFAULT_NAMESPACE,
-    DEFAULT_RUN_ID,
-    DEFAULT_SESSION_ID,
     ExecutionScope,
+    new_run_id,
+    new_thread_id,
 )
 from msgflux.utils.console import cprint
 from msgflux.utils.time import utc_now_isoformat
@@ -31,7 +31,7 @@ class AgentInbox:
         owner: str | None = None,
         store: AgentInboxStore | None = None,
         namespace: str | None = None,
-        session_id: str | None = None,
+        thread_id: str | None = None,
         run_id: str | None = None,
     ):
         self._lock = RLock()
@@ -40,8 +40,8 @@ class AgentInbox:
         self.owner = owner
         self.store = store
         self.namespace = namespace or owner or DEFAULT_NAMESPACE
-        self.session_id = session_id or DEFAULT_SESSION_ID
-        self.run_id = run_id or DEFAULT_RUN_ID
+        self.thread_id = thread_id or new_thread_id()
+        self.run_id = run_id or new_run_id()
 
     # --- Scope Binding ---
 
@@ -49,14 +49,14 @@ class AgentInbox:
         self,
         *,
         namespace: str | None = None,
-        session_id: str | None = None,
+        thread_id: str | None = None,
         run_id: str | None = None,
     ) -> AgentInbox:
         with self._lock:
             if namespace:
                 self.namespace = namespace
-            if session_id:
-                self.session_id = session_id
+            if thread_id:
+                self.thread_id = thread_id
             if run_id:
                 self.run_id = run_id
         return self
@@ -71,8 +71,8 @@ class AgentInbox:
             raise TypeError(f"`scope` must be an ExecutionScope, given `{type(scope)}`")
         return self.bind(
             namespace=namespace or scope.namespace,
-            session_id=scope.session_id,
-            run_id=scope.run_id or DEFAULT_RUN_ID,
+            thread_id=scope.thread_id,
+            run_id=scope.run_id or new_run_id(),
         )
 
     def fork(
@@ -80,7 +80,7 @@ class AgentInbox:
         *,
         owner: str | None = None,
         namespace: str | None = None,
-        session_id: str | None = None,
+        thread_id: str | None = None,
         run_id: str | None = None,
     ) -> AgentInbox:
         return AgentInbox(
@@ -88,7 +88,7 @@ class AgentInbox:
             owner=owner or self.owner,
             store=self.store,
             namespace=namespace or self.namespace,
-            session_id=session_id or self.session_id,
+            thread_id=thread_id or self.thread_id,
             run_id=run_id or self.run_id,
         )
 
@@ -347,7 +347,7 @@ class AgentInbox:
             self._normalize(notification)
             for notification in self.store.load_notifications(
                 self.namespace,
-                self.session_id,
+                self.thread_id,
                 self.run_id,
             )
         ]
@@ -362,7 +362,7 @@ class AgentInbox:
             return
         self.store.save_notifications(
             self.namespace,
-            self.session_id,
+            self.thread_id,
             self.run_id,
             [notification.to_dict() for notification in normalized],
         )

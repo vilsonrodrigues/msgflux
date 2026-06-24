@@ -10,9 +10,9 @@ from msgflux.core.examples import Example
 from msgflux.data.types import Audio, File, Image, MediaType, Video
 from msgflux.runtime.context import (
     _CURRENT_NAMESPACE,
-    _CURRENT_SESSION_ID,
-    get_session_context,
-    session_context,
+    _CURRENT_THREAD_ID,
+    get_thread_context,
+    thread_context,
 )
 from msgflux.utils.msgspec import msgspec_dumps
 
@@ -21,7 +21,7 @@ class ChatMessages:
     """Container for chat history with optional turn tracking.
 
     The class behaves like a mutable list of normalized chat items while also
-    carrying `session_id`, turn metadata, and state serialization helpers used
+    carrying `thread_id`, turn metadata, and state serialization helpers used
     by durable agents.
     """
 
@@ -29,7 +29,7 @@ class ChatMessages:
         self,
         items: Iterable[Mapping[str, Any]] | None = None,
         *,
-        session_id: str | None = None,
+        thread_id: str | None = None,
         namespace: str | None = None,
     ):
         self._items: List[dict[str, Any]] = []
@@ -37,8 +37,8 @@ class ChatMessages:
         self.reasoning_content: str | None = None
         self.reasoning_text: str | None = None
         self.response_id: str | None = None
-        self.session_id: str | None = (
-            session_id if session_id is not None else _CURRENT_SESSION_ID.get()
+        self.thread_id: str | None = (
+            thread_id if thread_id is not None else _CURRENT_THREAD_ID.get()
         )
         self.namespace: str | None = (
             namespace if namespace is not None else _CURRENT_NAMESPACE.get()
@@ -78,7 +78,7 @@ class ChatMessages:
             "ChatMessages("
             f"size={len(self._items)}, "
             f"turns={len(self._turns)}, "
-            f"session_id={self.session_id!r}, "
+            f"thread_id={self.thread_id!r}, "
             f"namespace={self.namespace!r}, "
             f"preview={preview})"
         )
@@ -125,7 +125,7 @@ class ChatMessages:
     def copy(self) -> ChatMessages:
         copied = ChatMessages(
             self._items,
-            session_id=self.session_id,
+            thread_id=self.thread_id,
             namespace=self.namespace,
         )
         copied.metadata = deepcopy(self.metadata)
@@ -136,25 +136,25 @@ class ChatMessages:
         copied._active_turn_index = self._active_turn_index
         return copied
 
-    session_context = staticmethod(session_context)
-    get_session_context = staticmethod(get_session_context)
+    thread_context = staticmethod(thread_context)
+    get_thread_context = staticmethod(get_thread_context)
 
-    def configure_session(
+    def configure_thread(
         self,
         *,
-        session_id: str | None = None,
+        thread_id: str | None = None,
         namespace: str | None = None,
     ) -> None:
-        resolved_session_id = (
-            session_id
-            if session_id is not None
+        resolved_thread_id = (
+            thread_id
+            if thread_id is not None
             else (
-                self.session_id
-                if self.session_id is not None
-                else _CURRENT_SESSION_ID.get()
+                self.thread_id
+                if self.thread_id is not None
+                else _CURRENT_THREAD_ID.get()
             )
         )
-        self.session_id = resolved_session_id
+        self.thread_id = resolved_thread_id
         if namespace is not None:
             self.namespace = namespace
         elif self.namespace is None:
@@ -166,7 +166,7 @@ class ChatMessages:
         inputs: Any = None,
         context_inputs: Any = None,
         vars: Mapping[str, Any] | None = None,  # noqa: A002
-        session_id: str | None = None,
+        thread_id: str | None = None,
         namespace: str | None = None,
         turn_id: str | None = None,
         metadata: Mapping[str, Any] | None = None,
@@ -174,7 +174,7 @@ class ChatMessages:
         if self._active_turn_index is not None:
             self.end_turn(status="interrupted")
 
-        self.configure_session(session_id=session_id, namespace=namespace)
+        self.configure_thread(thread_id=thread_id, namespace=namespace)
 
         turn_index = len(self._turns)
         turn_identifier = (
@@ -185,7 +185,7 @@ class ChatMessages:
         turn_record = {
             "turn_id": turn_identifier,
             "index": turn_index,
-            "session_id": self.session_id,
+            "thread_id": self.thread_id,
             "namespace": self.namespace,
             "started_at": self._utcnow_iso(),
             "ended_at": None,
@@ -209,7 +209,7 @@ class ChatMessages:
                 "event": "turn_start",
                 "turn_id": turn_identifier,
                 "turn_index": turn_index,
-                "session_id": self.session_id,
+                "thread_id": self.thread_id,
                 "namespace": self.namespace,
                 "timestamp": turn_record["started_at"],
             }
@@ -243,7 +243,7 @@ class ChatMessages:
                 "event": "turn_end",
                 "turn_id": turn_record["turn_id"],
                 "turn_index": turn_record["index"],
-                "session_id": self.session_id,
+                "thread_id": self.thread_id,
                 "namespace": turn_record["namespace"],
                 "timestamp": turn_record["ended_at"],
                 "status": status,
@@ -281,7 +281,7 @@ class ChatMessages:
 
         if upto_turn < 0:
             forked = ChatMessages(
-                session_id=self.session_id,
+                thread_id=self.thread_id,
                 namespace=self.namespace,
             )
             forked.metadata = deepcopy(self.metadata)
@@ -300,7 +300,7 @@ class ChatMessages:
 
         forked = ChatMessages(
             self._items[: end_item_index + 1],
-            session_id=self.session_id,
+            thread_id=self.thread_id,
             namespace=self.namespace,
         )
         forked.metadata = deepcopy(self.metadata)
@@ -719,7 +719,7 @@ class ChatMessages:
             "reasoning_content": self.reasoning_content,
             "reasoning_text": self.reasoning_text,
             "response_id": self.response_id,
-            "session_id": self.session_id,
+            "thread_id": self.thread_id,
             "namespace": self.namespace,
             "turns": self._safe_copy(self._turns),
             "active_turn_index": self._active_turn_index,
@@ -751,9 +751,9 @@ class ChatMessages:
         response_id = state.get("response_id")
         self.response_id = response_id if isinstance(response_id, str) else None
 
-        persisted_session_id = state.get("session_id")
-        if isinstance(persisted_session_id, str) and persisted_session_id:
-            self.session_id = persisted_session_id
+        persisted_thread_id = state.get("thread_id")
+        if isinstance(persisted_thread_id, str) and persisted_thread_id:
+            self.thread_id = persisted_thread_id
 
         persisted_namespace = state.get("namespace")
         if isinstance(persisted_namespace, str) and persisted_namespace:

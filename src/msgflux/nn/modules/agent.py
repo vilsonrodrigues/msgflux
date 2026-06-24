@@ -12,7 +12,6 @@ from typing import (
     Union,
     cast,
 )
-from uuid import uuid4
 
 import msgspec
 
@@ -51,12 +50,14 @@ from msgflux.nn.modules.tool import ToolLibrary, ToolResponses
 from msgflux.nn.parameter import Parameter
 from msgflux.runtime.agent_inbox import AgentInbox, AgentNotification
 from msgflux.runtime.context import (
-    DEFAULT_SESSION_ID,
     ExecutionScope,
     execution_context,
     get_execution_context,
+    new_run_id,
+    new_thread_id,
 )
 from msgflux.runtime.skills import AgentSkillManager, SkillsConfig
+from msgflux.tasks import InMemoryTaskStore, SQLiteTaskStore
 from msgflux.tools.builtin import ActivateSkill, SkillSearch
 from msgflux.tools.definitions import ToolDefinitions
 from msgflux.utils.chat import ChatBlock, response_format_from_msgspec_struct
@@ -519,7 +520,10 @@ class Agent(Module, metaclass=AutoParams):
         inputs = resumed or self._prepare_inputs(message, **kwargs)
 
         effective_checkpointer = self._get_effective_checkpointer()
+        effective_task_store = self._get_effective_task_store(effective_checkpointer)
         effective_inbox = self._get_effective_agent_inbox()
+        if effective_task_store is not None:
+            self.tool_library.set_task_store(effective_task_store)
         if effective_inbox is not None:
             effective_inbox.bind_scope(
                 inputs.get("scope"),
@@ -528,6 +532,7 @@ class Agent(Module, metaclass=AutoParams):
         with execution_context(
             scope=inputs.get("scope"),
             checkpoint_store=effective_checkpointer,
+            task_store=effective_task_store,
             agent_inbox=effective_inbox,
         ):
             try:
@@ -567,7 +572,10 @@ class Agent(Module, metaclass=AutoParams):
         inputs = resumed or await self._aprepare_inputs(message, **kwargs)
 
         effective_checkpointer = self._get_effective_checkpointer()
+        effective_task_store = self._get_effective_task_store(effective_checkpointer)
         effective_inbox = self._get_effective_agent_inbox()
+        if effective_task_store is not None:
+            self.tool_library.set_task_store(effective_task_store)
         if effective_inbox is not None:
             effective_inbox.bind_scope(
                 inputs.get("scope"),
@@ -576,6 +584,7 @@ class Agent(Module, metaclass=AutoParams):
         with execution_context(
             scope=inputs.get("scope"),
             checkpoint_store=effective_checkpointer,
+            task_store=effective_task_store,
             agent_inbox=effective_inbox,
         ):
             try:
@@ -618,7 +627,7 @@ class Agent(Module, metaclass=AutoParams):
         prefilling: Optional[str] = None,
         model_preference: Optional[str] = None,
         tool_filter: Optional[ToolFilter] = None,
-        session_id: Optional[str] = None,  # noqa: ARG002
+        thread_id: Optional[str] = None,  # noqa: ARG002
         run_id: Optional[str] = None,  # noqa: ARG002
         scope: Optional[ExecutionScope] = None,  # noqa: ARG002
     ) -> Union[ModelResponse, ModelStreamResponse]:
@@ -641,7 +650,7 @@ class Agent(Module, metaclass=AutoParams):
         prefilling: Optional[str] = None,
         model_preference: Optional[str] = None,
         tool_filter: Optional[ToolFilter] = None,
-        session_id: Optional[str] = None,  # noqa: ARG002
+        thread_id: Optional[str] = None,  # noqa: ARG002
         run_id: Optional[str] = None,  # noqa: ARG002
         scope: Optional[ExecutionScope] = None,  # noqa: ARG002
     ) -> Union[ModelResponse, ModelStreamResponse]:
@@ -768,7 +777,7 @@ class Agent(Module, metaclass=AutoParams):
         model_preference: Optional[str] = None,
         tool_filter: Optional[ToolFilter] = None,
         drain_notifications: bool = True,
-        session_id: Optional[str] = None,  # noqa: ARG002
+        thread_id: Optional[str] = None,  # noqa: ARG002
         run_id: Optional[str] = None,  # noqa: ARG002
         scope: Optional[ExecutionScope] = None,  # noqa: ARG002
     ) -> Mapping[str, Any]:
@@ -855,7 +864,7 @@ class Agent(Module, metaclass=AutoParams):
         vars: Mapping[str, Any],
         model_preference: Optional[str] = None,
         tool_filter: Optional[ToolFilter] = None,
-        session_id: Optional[str] = None,  # noqa: ARG002
+        thread_id: Optional[str] = None,  # noqa: ARG002
         run_id: Optional[str] = None,  # noqa: ARG002
         scope: Optional[ExecutionScope] = None,  # noqa: ARG002
     ) -> Union[str, Mapping[str, Any], Message, ModelStreamResponse]:
@@ -925,7 +934,7 @@ class Agent(Module, metaclass=AutoParams):
         vars: Mapping[str, Any],
         model_preference: Optional[str] = None,
         tool_filter: Optional[ToolFilter] = None,
-        session_id: Optional[str] = None,  # noqa: ARG002
+        thread_id: Optional[str] = None,  # noqa: ARG002
         run_id: Optional[str] = None,  # noqa: ARG002
         scope: Optional[ExecutionScope] = None,  # noqa: ARG002
     ) -> Union[str, Mapping[str, Any], Message, ModelStreamResponse]:
@@ -1480,14 +1489,12 @@ class Agent(Module, metaclass=AutoParams):
         if validation_inputs is not None:
             self._validate_inputs(validation_inputs)
 
-        effective_checkpointer = self._get_effective_checkpointer()
-        should_use_chat_messages = (
-            effective_checkpointer is not None
-            or isinstance(messages, ChatMessages)
-            or scope is not None
-        )
-        if should_use_chat_messages:
-            messages = self._coerce_chat_messages(messages)
+        (
+            messages,
+            effective_scope,
+            effective_thread_id,
+            effective_run_id,
+        ) = self._prepare_messages_scope(messages=messages, scope=scope)
 
         content = self._render_task(message, task=task, vars=vars, **kwargs)
 
@@ -1501,23 +1508,9 @@ class Agent(Module, metaclass=AutoParams):
                 "  - agent(param1=..., param2=...)"
             )
 
-        effective_session_id = self._resolve_session_id(
-            messages=messages,
-            session_id=scope.session_id if scope is not None else None,
-        )
-        effective_run_id = self._resolve_run_id(
-            messages=messages,
-            run_id=scope.run_id if scope is not None else None,
-        )
-        effective_scope = (scope or get_execution_context()["scope"]).with_overrides(
-            session_id=effective_session_id,
-            namespace=self.get_module_name(),
-            run_id=effective_run_id,
-        )
-
         if isinstance(messages, ChatMessages):
-            messages.configure_session(
-                session_id=effective_session_id,
+            messages.configure_thread(
+                thread_id=effective_thread_id,
                 namespace=self.get_module_name(),
             )
             if start_turn:
@@ -1632,14 +1625,12 @@ class Agent(Module, metaclass=AutoParams):
         if validation_inputs is not None:
             self._validate_inputs(validation_inputs)
 
-        effective_checkpointer = self._get_effective_checkpointer()
-        should_use_chat_messages = (
-            effective_checkpointer is not None
-            or isinstance(messages, ChatMessages)
-            or scope is not None
-        )
-        if should_use_chat_messages:
-            messages = self._coerce_chat_messages(messages)
+        (
+            messages,
+            effective_scope,
+            effective_thread_id,
+            effective_run_id,
+        ) = self._prepare_messages_scope(messages=messages, scope=scope)
 
         content = await self._arender_task(message, task=task, vars=vars, **kwargs)
 
@@ -1653,23 +1644,9 @@ class Agent(Module, metaclass=AutoParams):
                 "  - agent(param1=..., param2=...)"
             )
 
-        effective_session_id = self._resolve_session_id(
-            messages=messages,
-            session_id=scope.session_id if scope is not None else None,
-        )
-        effective_run_id = self._resolve_run_id(
-            messages=messages,
-            run_id=scope.run_id if scope is not None else None,
-        )
-        effective_scope = (scope or get_execution_context()["scope"]).with_overrides(
-            session_id=effective_session_id,
-            namespace=self.get_module_name(),
-            run_id=effective_run_id,
-        )
-
         if isinstance(messages, ChatMessages):
-            messages.configure_session(
-                session_id=effective_session_id,
+            messages.configure_thread(
+                thread_id=effective_thread_id,
                 namespace=self.get_module_name(),
             )
             if start_turn:
@@ -2208,6 +2185,26 @@ class Agent(Module, metaclass=AutoParams):
             return checkpointer
         return get_execution_context().get("checkpoint_store")
 
+    def _build_task_store_for_checkpointer(self, checkpointer: Any):
+        if checkpointer is None:
+            return None
+
+        provider = getattr(checkpointer, "provider", None)
+        if provider == "in_memory":
+            return InMemoryTaskStore()
+        if provider == "sqlite":
+            path = getattr(checkpointer, "path", None)
+            if isinstance(path, str) and path:
+                return SQLiteTaskStore(path=path)
+            return SQLiteTaskStore()
+        return None
+
+    def _get_effective_task_store(self, checkpointer: Any = None):
+        inherited = get_execution_context().get("task_store")
+        if inherited is not None:
+            return inherited
+        return self._build_task_store_for_checkpointer(checkpointer)
+
     def _get_effective_agent_inbox(self):
         inherited = get_execution_context().get("agent_inbox")
         if inherited is not None:
@@ -2325,22 +2322,57 @@ class Agent(Module, metaclass=AutoParams):
         for notification_message in notification_messages:
             self._persist_notification_message(messages, notification_message)
 
-    # --- Session And Run Resolution ---
+    # --- Thread And Run Resolution ---
 
-    def _resolve_session_id(
+    def _prepare_messages_scope(
         self,
         *,
         messages: Optional[Union[ChatMessages, List[Mapping[str, Any]]]],
-        session_id: Optional[str],
+        scope: Optional[ExecutionScope],
+    ) -> Tuple[
+        Optional[Union[ChatMessages, List[Mapping[str, Any]]]],
+        ExecutionScope,
+        str,
+        str,
+    ]:
+        effective_checkpointer = self._get_effective_checkpointer()
+        should_use_chat_messages = (
+            effective_checkpointer is not None
+            or isinstance(messages, ChatMessages)
+            or scope is not None
+        )
+        if should_use_chat_messages:
+            messages = self._coerce_chat_messages(messages)
+
+        effective_thread_id = self._resolve_thread_id(
+            messages=messages,
+            thread_id=scope.thread_id if scope is not None else None,
+        )
+        effective_run_id = self._resolve_run_id(
+            messages=messages,
+            run_id=scope.run_id if scope is not None else None,
+        )
+        effective_scope = (scope or get_execution_context()["scope"]).with_overrides(
+            thread_id=effective_thread_id,
+            namespace=self.get_module_name(),
+            run_id=effective_run_id,
+        )
+        return messages, effective_scope, effective_thread_id, effective_run_id
+
+    def _resolve_thread_id(
+        self,
+        *,
+        messages: Optional[Union[ChatMessages, List[Mapping[str, Any]]]],
+        thread_id: Optional[str],
     ) -> str:
-        if isinstance(session_id, str) and session_id:
-            return session_id
-        if isinstance(messages, ChatMessages) and messages.session_id:
-            return messages.session_id
-        inherited = get_execution_context().get("session_id")
+        if isinstance(thread_id, str) and thread_id:
+            return thread_id
+        if isinstance(messages, ChatMessages) and messages.thread_id:
+            return messages.thread_id
+        inherited = get_execution_context().get("thread_id")
         if isinstance(inherited, str) and inherited:
             return inherited
-        return f"sess_{uuid4().hex}"
+        return new_thread_id()
 
     def _resolve_run_id(
         self,
@@ -2357,7 +2389,7 @@ class Agent(Module, metaclass=AutoParams):
         inherited = get_execution_context().get("run_id")
         if isinstance(inherited, str) and inherited:
             return inherited
-        return f"run_{uuid4().hex[:8]}"
+        return new_run_id()
 
     # --- Chat Turn Tracking ---
 
@@ -2484,10 +2516,10 @@ class Agent(Module, metaclass=AutoParams):
         if not turns:
             return
 
-        session_id = messages.session_id or DEFAULT_SESSION_ID
+        thread_id = messages.thread_id or new_thread_id()
         run_id = turns[-1]["turn_id"]
         state = self._build_checkpoint_state(messages, vars, status=status)
-        checkpointer.save_state(self.get_module_name(), session_id, run_id, state)
+        checkpointer.save_state(self.get_module_name(), thread_id, run_id, state)
 
     async def _acheckpoint_save(
         self,
@@ -2503,18 +2535,18 @@ class Agent(Module, metaclass=AutoParams):
         if not turns:
             return
 
-        session_id = messages.session_id or DEFAULT_SESSION_ID
+        thread_id = messages.thread_id or new_thread_id()
         run_id = turns[-1]["turn_id"]
         state = self._build_checkpoint_state(messages, vars, status=status)
         if hasattr(checkpointer, "asave_state"):
             await checkpointer.asave_state(
                 self.get_module_name(),
-                session_id,
+                thread_id,
                 run_id,
                 state,
             )
         else:
-            checkpointer.save_state(self.get_module_name(), session_id, run_id, state)
+            checkpointer.save_state(self.get_module_name(), thread_id, run_id, state)
 
     def _build_checkpoint_state(
         self,
@@ -2562,13 +2594,13 @@ class Agent(Module, metaclass=AutoParams):
         if not isinstance(run_id, str) or not run_id:
             return None
 
-        effective_session_id = self._resolve_session_id(
+        effective_thread_id = self._resolve_thread_id(
             messages=messages_kwarg,
-            session_id=scope.session_id if scope is not None else None,
+            thread_id=scope.thread_id if scope is not None else None,
         )
         state = checkpointer.load_state(
             self.get_module_name(),
-            effective_session_id,
+            effective_thread_id,
             run_id,
         )
         if state is None:
@@ -2579,7 +2611,7 @@ class Agent(Module, metaclass=AutoParams):
         restored = ChatMessages()
         restored._hydrate_state(state.get("messages", {}))
         effective_scope = (scope or get_execution_context()["scope"]).with_overrides(
-            session_id=effective_session_id,
+            thread_id=effective_thread_id,
             namespace=self.get_module_name(),
             run_id=run_id,
         )
@@ -2603,20 +2635,20 @@ class Agent(Module, metaclass=AutoParams):
         if not isinstance(run_id, str) or not run_id:
             return None
 
-        effective_session_id = self._resolve_session_id(
+        effective_thread_id = self._resolve_thread_id(
             messages=messages_kwarg,
-            session_id=scope.session_id if scope is not None else None,
+            thread_id=scope.thread_id if scope is not None else None,
         )
         if hasattr(checkpointer, "aload_state"):
             state = await checkpointer.aload_state(
                 self.get_module_name(),
-                effective_session_id,
+                effective_thread_id,
                 run_id,
             )
         else:
             state = checkpointer.load_state(
                 self.get_module_name(),
-                effective_session_id,
+                effective_thread_id,
                 run_id,
             )
 
@@ -2628,7 +2660,7 @@ class Agent(Module, metaclass=AutoParams):
         restored = ChatMessages()
         restored._hydrate_state(state.get("messages", {}))
         effective_scope = (scope or get_execution_context()["scope"]).with_overrides(
-            session_id=effective_session_id,
+            thread_id=effective_thread_id,
             namespace=self.get_module_name(),
             run_id=run_id,
         )
@@ -2686,7 +2718,9 @@ class Agent(Module, metaclass=AutoParams):
             if self.agent_skill_manager.has_searchable_skills():
                 tools.append(SkillSearch(self.agent_skill_manager))
         self.tool_library = ToolLibrary(
-            self.get_module_name(), tools, mcp_servers=mcp_servers
+            self.get_module_name(),
+            tools,
+            mcp_servers=mcp_servers,
         )
         self.tool_library.set_agent_inbox(self.agent_inbox)
 

@@ -13,7 +13,7 @@ class AgentInboxStore(ABC, AgentInboxStoreType):
     def load_notifications(
         self,
         namespace: str,
-        session_id: str,
+        thread_id: str,
         run_id: str,
     ) -> List[Mapping[str, object]]:
         raise NotImplementedError
@@ -22,7 +22,7 @@ class AgentInboxStore(ABC, AgentInboxStoreType):
     def save_notifications(
         self,
         namespace: str,
-        session_id: str,
+        thread_id: str,
         run_id: str,
         notifications: Iterable[Mapping[str, object]],
     ) -> None:
@@ -32,7 +32,7 @@ class AgentInboxStore(ABC, AgentInboxStoreType):
     def clear(
         self,
         namespace: str | None = None,
-        session_id: str | None = None,
+        thread_id: str | None = None,
         run_id: str | None = None,
         *,
         older_than: float | None = None,

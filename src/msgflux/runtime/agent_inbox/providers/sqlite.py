@@ -13,23 +13,23 @@ from msgflux.runtime.agent_inbox.base import AgentInboxStore
 _CREATE_INBOX_TABLES = """\
 CREATE TABLE IF NOT EXISTS agent_inboxes (
     namespace      TEXT NOT NULL,
-    session_id     TEXT NOT NULL,
+    thread_id     TEXT NOT NULL,
     run_id         TEXT NOT NULL,
     notifications  TEXT NOT NULL,
     created_at     REAL NOT NULL,
     updated_at     REAL NOT NULL,
-    PRIMARY KEY (namespace, session_id, run_id)
+    PRIMARY KEY (namespace, thread_id, run_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_agent_inboxes_session
-    ON agent_inboxes(namespace, session_id, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_agent_inboxes_thread
+    ON agent_inboxes(namespace, thread_id, updated_at DESC);
 """
 
 _UPSERT_INBOX = """\
 INSERT INTO agent_inboxes
-    (namespace, session_id, run_id, notifications, created_at, updated_at)
+    (namespace, thread_id, run_id, notifications, created_at, updated_at)
 VALUES (?, ?, ?, ?, ?, ?)
-ON CONFLICT(namespace, session_id, run_id) DO UPDATE SET
+ON CONFLICT(namespace, thread_id, run_id) DO UPDATE SET
     notifications = excluded.notifications,
     updated_at = excluded.updated_at
 """
@@ -64,16 +64,16 @@ class SQLiteAgentInboxStore(AgentInboxStore):
     def load_notifications(
         self,
         namespace: str,
-        session_id: str,
+        thread_id: str,
         run_id: str,
     ) -> List[Mapping[str, Any]]:
         with self._lock:
             row = self._conn.execute(
                 """
                 SELECT notifications FROM agent_inboxes
-                WHERE namespace=? AND session_id=? AND run_id=?
+                WHERE namespace=? AND thread_id=? AND run_id=?
                 """,
-                (namespace, session_id, run_id),
+                (namespace, thread_id, run_id),
             ).fetchone()
         if row is None:
             return []
@@ -82,7 +82,7 @@ class SQLiteAgentInboxStore(AgentInboxStore):
     def save_notifications(
         self,
         namespace: str,
-        session_id: str,
+        thread_id: str,
         run_id: str,
         notifications: Iterable[Mapping[str, Any]],
     ) -> None:
@@ -91,15 +91,15 @@ class SQLiteAgentInboxStore(AgentInboxStore):
             created_at = self._conn.execute(
                 """
                 SELECT created_at FROM agent_inboxes
-                WHERE namespace=? AND session_id=? AND run_id=?
+                WHERE namespace=? AND thread_id=? AND run_id=?
                 """,
-                (namespace, session_id, run_id),
+                (namespace, thread_id, run_id),
             ).fetchone()
             self._conn.execute(
                 _UPSERT_INBOX,
                 (
                     namespace,
-                    session_id,
+                    thread_id,
                     run_id,
                     self._serialize(notifications),
                     created_at[0] if created_at else now,
@@ -111,7 +111,7 @@ class SQLiteAgentInboxStore(AgentInboxStore):
     def clear(
         self,
         namespace: str | None = None,
-        session_id: str | None = None,
+        thread_id: str | None = None,
         run_id: str | None = None,
         *,
         older_than: float | None = None,
@@ -121,9 +121,9 @@ class SQLiteAgentInboxStore(AgentInboxStore):
         if namespace is not None:
             query += " AND namespace=?"
             params.append(namespace)
-        if session_id is not None:
-            query += " AND session_id=?"
-            params.append(session_id)
+        if thread_id is not None:
+            query += " AND thread_id=?"
+            params.append(thread_id)
         if run_id is not None:
             query += " AND run_id=?"
             params.append(run_id)

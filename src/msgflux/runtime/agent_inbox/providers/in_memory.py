@@ -22,19 +22,19 @@ class InMemoryAgentInboxStore(AgentInboxStore):
     def _get_run(
         self,
         namespace: str,
-        session_id: str,
+        thread_id: str,
         run_id: str,
     ) -> Dict[str, Any] | None:
-        return self._data.get(namespace, {}).get(session_id, {}).get(run_id)
+        return self._data.get(namespace, {}).get(thread_id, {}).get(run_id)
 
     def load_notifications(
         self,
         namespace: str,
-        session_id: str,
+        thread_id: str,
         run_id: str,
     ) -> List[Mapping[str, Any]]:
         with self._lock:
-            run = self._get_run(namespace, session_id, run_id)
+            run = self._get_run(namespace, thread_id, run_id)
             if run is None:
                 return []
             return deepcopy(run["notifications"])
@@ -42,16 +42,16 @@ class InMemoryAgentInboxStore(AgentInboxStore):
     def save_notifications(
         self,
         namespace: str,
-        session_id: str,
+        thread_id: str,
         run_id: str,
         notifications: Iterable[Mapping[str, Any]],
     ) -> None:
         with self._lock:
             ns = self._data.setdefault(namespace, {})
-            session = ns.setdefault(session_id, {})
-            existing = session.get(run_id)
+            thread = ns.setdefault(thread_id, {})
+            existing = thread.get(run_id)
             created_at = existing["created_at"] if existing else time.time()
-            session[run_id] = {
+            thread[run_id] = {
                 "notifications": deepcopy([dict(n) for n in notifications]),
                 "created_at": created_at,
                 "updated_at": time.time(),
@@ -60,7 +60,7 @@ class InMemoryAgentInboxStore(AgentInboxStore):
     def clear(
         self,
         namespace: str | None = None,
-        session_id: str | None = None,
+        thread_id: str | None = None,
         run_id: str | None = None,
         *,
         older_than: float | None = None,
@@ -75,23 +75,23 @@ class InMemoryAgentInboxStore(AgentInboxStore):
                 ns_data = self._data.get(ns)
                 if ns_data is None:
                     continue
-                sessions = (
-                    [session_id] if session_id is not None else list(ns_data.keys())
+                threads = (
+                    [thread_id] if thread_id is not None else list(ns_data.keys())
                 )
-                for sid in sessions:
-                    session = ns_data.get(sid)
-                    if session is None:
+                for sid in threads:
+                    thread = ns_data.get(sid)
+                    if thread is None:
                         continue
-                    run_ids = [run_id] if run_id is not None else list(session.keys())
+                    run_ids = [run_id] if run_id is not None else list(thread.keys())
                     for rid in run_ids:
-                        run = session.get(rid)
+                        run = thread.get(rid)
                         if run is None:
                             continue
                         if cutoff is not None and run["updated_at"] >= cutoff:
                             continue
-                        del session[rid]
+                        del thread[rid]
                         removed += 1
-                    if not session:
+                    if not thread:
                         del ns_data[sid]
                 if not ns_data:
                     del self._data[ns]

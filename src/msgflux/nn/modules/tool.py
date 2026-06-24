@@ -399,6 +399,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
         name: str,
         tools: List[Callable],
         mcp_servers: Optional[List[Dict[str, Any]]] = None,
+        task_store: Any | None = None,
     ):
         """Initialize the ToolLibrary.
 
@@ -420,7 +421,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
         self.library = ModuleDict()
         self.register_buffer("tool_configs", {})
         self.register_buffer("mcp_clients", {})
-        self.task_store = InMemoryTaskStore()
+        self.task_store = task_store or InMemoryTaskStore()
         self.agent_inbox = AgentInbox(owner=f"{name}_tool_library")
         self._runtime_tool_names: set[str] = set()
         self._task_runtime_enabled = False
@@ -636,6 +637,15 @@ class ToolLibrary(Module, metaclass=AutoParams):
 
     def set_agent_inbox(self, agent_inbox: AgentInbox) -> None:
         self.agent_inbox = agent_inbox
+
+    def set_task_store(self, task_store: Any) -> None:
+        if task_store is not None:
+            self.task_store = task_store
+
+    def _sync_task_store_from_context(self) -> None:
+        task_store = get_execution_context().get("task_store")
+        if task_store is not None:
+            self.set_task_store(task_store)
 
     # --- Tool Visibility Helpers ---
 
@@ -1017,6 +1027,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
         if vars is None:
             vars = {}
 
+        self._sync_task_store_from_context()
         activity_recorder = get_execution_context().get("task_activity_recorder")
         prepared_calls = []
         call_metadata = []
@@ -1158,6 +1169,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
         if vars is None:
             vars = {}
 
+        self._sync_task_store_from_context()
         activity_recorder = get_execution_context().get("task_activity_recorder")
         prepared_calls = []
         call_metadata = []
