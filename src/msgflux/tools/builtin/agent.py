@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Dict, List, Sequence
+from typing import TYPE_CHECKING, Any, Dict, List, Sequence
 
 from msgflux.runtime.context import (
     ExecutionScope,
@@ -36,6 +36,11 @@ class AgentTool:
             agent_name = self._get_agent_name(agent)
             if agent_name in self.agents:
                 raise ValueError(f"Duplicate agent name `{agent_name}`.")
+            if self._get_agent_config_value(agent, "on_demand", False):
+                raise ValueError(
+                    "`AgentTool` cannot expose on-demand agents. "
+                    f"Agent `{agent_name}` has `tool_config.on_demand=True`."
+                )
             self.agents[agent_name] = agent
 
         self.description = self._build_description()
@@ -104,16 +109,25 @@ class AgentTool:
         for agent_name, agent in sorted(self.agents.items()):
             guidance = getattr(agent, "usage_guidance", None)
             if guidance is None:
-                config = getattr(agent, "tool_config", None)
-                if isinstance(config, dict):
-                    guidance = config.get("usage_guidance")
-                elif config is not None:
-                    guidance = getattr(config, "usage_guidance", None)
+                guidance = self._get_agent_config_value(agent, "usage_guidance")
             if isinstance(guidance, str) and guidance.strip():
                 guidance_lines.append(f"- {agent_name}: {' '.join(guidance.split())}")
         if not guidance_lines:
             return None
         return "Agent-specific guidance:\n" + "\n".join(guidance_lines)
+
+    @staticmethod
+    def _get_agent_config_value(
+        agent: Agent,
+        key: str,
+        default: Any = None,
+    ) -> Any:
+        config = getattr(agent, "tool_config", None)
+        if isinstance(config, dict):
+            return config.get(key, default)
+        if config is not None:
+            return getattr(config, key, default)
+        return default
 
     @staticmethod
     def _get_agent_name(agent: Agent) -> str:

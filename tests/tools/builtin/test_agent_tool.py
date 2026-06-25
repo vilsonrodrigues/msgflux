@@ -90,6 +90,22 @@ def test_agent_tool_rejects_unknown_agent_name():
     assert "reviewer" in response.tool_calls[0].error
 
 
+def test_agent_tool_rejects_on_demand_agents():
+    reviewer = mf.tool_config(on_demand=True)(
+        Agent(name="reviewer", model=_mock_model("reviewed"))
+    )
+
+    try:
+        AgentTool([reviewer])
+    except ValueError as exc:
+        error = str(exc)
+    else:
+        raise AssertionError("AgentTool should reject on-demand agents.")
+
+    assert "cannot expose on-demand agents" in error
+    assert "reviewer" in error
+
+
 def test_agent_tool_background_run_uses_task_id_as_child_run_id():
     store = InMemoryCheckpointStore()
     reviewer = Agent(name="reviewer", model=_mock_model("reviewed"))
