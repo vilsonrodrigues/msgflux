@@ -307,14 +307,13 @@ Control messages interrupt execution at safe provider boundaries.
 ```python
 agent.agent_inbox.pause(reason="Wait for user approval.")
 agent.agent_inbox.stop(reason="Operator stopped the run.")
-agent.agent_inbox.cancel(reason="User cancelled the request.")
 ```
 
 Behavior:
 
 - `pause` raises `TaskPauseRequestedError` and checkpoints the run as `paused`
   when a checkpointer is configured.
-- `stop` and `cancel` raise `TaskStopRequestedError` and checkpoint the run as
+- `stop` raises `TaskStopRequestedError` and checkpoints the run as
   `stopped` when a checkpointer is configured.
 - Unknown control commands remain normal notifications and are shown to the
   model as `system_note`.

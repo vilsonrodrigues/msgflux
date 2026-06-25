@@ -627,8 +627,6 @@ class Agent(Module, metaclass=AutoParams):
         prefilling: Optional[str] = None,
         model_preference: Optional[str] = None,
         tool_filter: Optional[ToolFilter] = None,
-        thread_id: Optional[str] = None,  # noqa: ARG002
-        run_id: Optional[str] = None,  # noqa: ARG002
         scope: Optional[ExecutionScope] = None,  # noqa: ARG002
     ) -> Union[ModelResponse, ModelStreamResponse]:
         self._raise_if_background_task_stopped()
@@ -650,8 +648,6 @@ class Agent(Module, metaclass=AutoParams):
         prefilling: Optional[str] = None,
         model_preference: Optional[str] = None,
         tool_filter: Optional[ToolFilter] = None,
-        thread_id: Optional[str] = None,  # noqa: ARG002
-        run_id: Optional[str] = None,  # noqa: ARG002
         scope: Optional[ExecutionScope] = None,  # noqa: ARG002
     ) -> Union[ModelResponse, ModelStreamResponse]:
         self._raise_if_background_task_stopped()
@@ -777,8 +773,6 @@ class Agent(Module, metaclass=AutoParams):
         model_preference: Optional[str] = None,
         tool_filter: Optional[ToolFilter] = None,
         drain_notifications: bool = True,
-        thread_id: Optional[str] = None,  # noqa: ARG002
-        run_id: Optional[str] = None,  # noqa: ARG002
         scope: Optional[ExecutionScope] = None,  # noqa: ARG002
     ) -> Mapping[str, Any]:
         model_messages = self._build_model_messages(
@@ -864,8 +858,6 @@ class Agent(Module, metaclass=AutoParams):
         vars: Mapping[str, Any],
         model_preference: Optional[str] = None,
         tool_filter: Optional[ToolFilter] = None,
-        thread_id: Optional[str] = None,  # noqa: ARG002
-        run_id: Optional[str] = None,  # noqa: ARG002
         scope: Optional[ExecutionScope] = None,  # noqa: ARG002
     ) -> Union[str, Mapping[str, Any], Message, ModelStreamResponse]:
         if isinstance(model_response, ModelStreamResponse):
@@ -934,8 +926,6 @@ class Agent(Module, metaclass=AutoParams):
         vars: Mapping[str, Any],
         model_preference: Optional[str] = None,
         tool_filter: Optional[ToolFilter] = None,
-        thread_id: Optional[str] = None,  # noqa: ARG002
-        run_id: Optional[str] = None,  # noqa: ARG002
         scope: Optional[ExecutionScope] = None,  # noqa: ARG002
     ) -> Union[str, Mapping[str, Any], Message, ModelStreamResponse]:
         if isinstance(model_response, ModelStreamResponse):
@@ -2243,7 +2233,7 @@ class Agent(Module, metaclass=AutoParams):
             task_handle = get_execution_context().get("task_handle")
             task_id = getattr(task_handle, "task_id", None)
 
-            if command in {"stop", "cancel"}:
+            if command == "stop":
                 raise TaskStopRequestedError(
                     task_id or get_execution_context().get("run_id") or "unknown",
                     str(reason) if reason else None,
