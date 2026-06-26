@@ -478,10 +478,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
     @property
     def background_dispatcher(self) -> BackgroundTaskDispatcher:
         if self._background_dispatcher is None:
-            self._background_dispatcher = BackgroundTaskDispatcher(
-                self.handle,
-                tool_call_factory=ToolCall,
-            )
+            self._background_dispatcher = BackgroundTaskDispatcher(self.handle)
         return self._background_dispatcher
 
     @property

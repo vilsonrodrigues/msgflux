@@ -3,7 +3,7 @@ from __future__ import annotations
 from concurrent.futures import CancelledError as FutureCancelledError
 from functools import partial
 from threading import Lock
-from typing import Any, Callable, Dict, Mapping
+from typing import Any, Dict, Mapping
 from uuid import uuid4
 
 from msgflux._private.executor import Executor
@@ -18,14 +18,14 @@ from msgflux.runtime.context import (
     new_thread_id,
 )
 from msgflux.tasks import TaskActivityRecorder, TaskHandle
+from msgflux.tools.responses import ToolCall
 
 
 class BackgroundTaskDispatcher:
     """Dispatches tools into the task runtime and tracks live executions."""
 
-    def __init__(self, library: Any, *, tool_call_factory: Callable[..., Any]):
-        self.library = library
-        self._tool_call_factory = tool_call_factory
+    def __init__(self, library_handle: Any):
+        self.library_handle = library_handle
         self._task_futures: Dict[str, Any] = {}
         self._task_futures_lock = Lock()
         self._task_inboxes: Dict[str, AgentInbox] = {}
@@ -175,7 +175,7 @@ class BackgroundTaskDispatcher:
 
     def resume_agent_task(self, *, task: Any, message: str) -> str:
         tool_name = task.tool_name
-        tool = self.library.get_tool(tool_name)
+        tool = self.library_handle.get_tool(tool_name)
         checkpoint_namespace = task.metadata.get("checkpoint_namespace")
         if checkpoint_namespace is None:
             checkpoint_namespace = (
@@ -194,7 +194,7 @@ class BackgroundTaskDispatcher:
         run_id = task.metadata.get("checkpoint_run_id") or task.task_id
         if task.status == "completed":
             run_id = new_run_id()
-            updated_task = self.library.task_store.update_metadata(
+            updated_task = self.library_handle.task_store.update_metadata(
                 task.task_id,
                 {"checkpoint_run_id": run_id},
             )
@@ -202,7 +202,8 @@ class BackgroundTaskDispatcher:
                 task = updated_task
 
         root_inbox = (
-            get_execution_context().get("agent_inbox") or self.library.agent_inbox
+            get_execution_context().get("agent_inbox")
+            or self.library_handle.agent_inbox
         )
         task_inbox = self.get_task_inbox(task.task_id)
         if task_inbox is None:
@@ -216,13 +217,13 @@ class BackgroundTaskDispatcher:
             )
             self.register_task_inbox(task.task_id, task_inbox)
 
-        self.library.task_store.requeue(task.task_id)
-        self.library.task_store.add_activity(
+        self.library_handle.task_store.requeue(task.task_id)
+        self.library_handle.task_store.add_activity(
             task.task_id,
             kind="message",
             summary=(
                 "Root message: "
-                f"{self.library.task_runtime_tools.truncate_activity_text(message)}"
+                f"{self.library_handle.task_runtime_tools.truncate_activity_text(message)}"
             ),
             metadata={
                 "direction": "root_to_task",
@@ -241,7 +242,7 @@ class BackgroundTaskDispatcher:
             "checkpoint_store": checkpoint_store,
             "agent_inbox": task_inbox,
             "task_activity_recorder": TaskActivityRecorder(
-                task.task_id, self.library.task_store
+                task.task_id, self.library_handle.task_store
             ),
         }
         future = Executor.get_instance().submit(
@@ -250,7 +251,7 @@ class BackgroundTaskDispatcher:
                 tool=tool,
                 task_handle=TaskHandle(
                     task.task_id,
-                    self.library.task_store,
+                    self.library_handle.task_store,
                     tool_name=tool_name,
                     agent_inbox=root_inbox,
                 ),
@@ -317,7 +318,9 @@ class BackgroundTaskDispatcher:
         parent_run_id = context.get("run_id")
         root_run_id = context.get("root_run_id")
         checkpoint_store = context.get("checkpoint_store")
-        root_agent_inbox = context.get("agent_inbox") or self.library.agent_inbox
+        root_agent_inbox = (
+            context.get("agent_inbox") or self.library_handle.agent_inbox
+        )
         task_id = uuid4().hex[:8]
         task_inbox = None
         if is_agent_task:
@@ -329,7 +332,7 @@ class BackgroundTaskDispatcher:
             )
             self.register_task_inbox(task_id, task_inbox)
             self.register_task_checkpoint_store(task_id, checkpoint_store)
-        task = self.library.task_store.create(
+        task = self.library_handle.task_store.create(
             task_id=task_id,
             tool_name=tool_name,
             metadata={
@@ -353,16 +356,17 @@ class BackgroundTaskDispatcher:
         if config.get("inject_task", False) and not is_agent_task:
             runner_params["task"] = TaskHandle(
                 task.task_id,
-                self.library.task_store,
+                self.library_handle.task_store,
                 tool_name=tool_name,
                 agent_inbox=root_agent_inbox,
             )
         if config.get("inject_notification", False) and not is_agent_task:
-            runner_params["notification"] = self.library.build_notification_handle(
+            notification = self.library_handle.build_notification_handle(
                 tool_name=tool_name,
                 ref=task.task_id,
                 agent_inbox=root_agent_inbox,
             )
+            runner_params["notification"] = notification
         if task_kind == "agent":
             runner_params["scope"] = ExecutionScope(
                 thread_id=thread_id,
@@ -397,12 +401,12 @@ class BackgroundTaskDispatcher:
             "agent_inbox": task_inbox or root_agent_inbox,
             "task_handle": TaskHandle(
                 task.task_id,
-                self.library.task_store,
+                self.library_handle.task_store,
                 tool_name=tool_name,
                 agent_inbox=root_agent_inbox,
             ),
             "task_activity_recorder": TaskActivityRecorder(
-                task.task_id, self.library.task_store
+                task.task_id, self.library_handle.task_store
             ),
         }
         future = Executor.get_instance().submit(
@@ -411,7 +415,7 @@ class BackgroundTaskDispatcher:
                 tool=tool,
                 task_handle=TaskHandle(
                     task.task_id,
-                    self.library.task_store,
+                    self.library_handle.task_store,
                     tool_name=tool_name,
                     agent_inbox=root_agent_inbox,
                 ),
@@ -424,11 +428,13 @@ class BackgroundTaskDispatcher:
         self.register_task_future(task.task_id, future)
         future.add_done_callback(partial(self.cleanup_task_future, task.task_id))
         future.add_done_callback(self.log_task_failure)
-        return self._tool_call_factory(
+        return ToolCall(
             id=tool_id,
             name=tool_name,
-            parameters=self.library.build_call_parameters_for_response(call_params),
-            result=self.library.task_runtime_tools.build_background_dispatch_result(
+            parameters=self.library_handle.build_call_parameters_for_response(
+                call_params
+            ),
+            result=self.library_handle.task_runtime_tools.build_background_dispatch_result(
                 task_id=task.task_id,
                 tool_name=tool_name,
                 task_kind=task_kind,
@@ -444,7 +450,7 @@ class BackgroundTaskDispatcher:
         hint: str,
         agent_inbox: AgentInbox | None = None,
     ) -> AgentNotification | None:
-        inbox = agent_inbox or self.library.agent_inbox
+        inbox = agent_inbox or self.library_handle.agent_inbox
         if inbox is None:
             return None
         return inbox.publish(
