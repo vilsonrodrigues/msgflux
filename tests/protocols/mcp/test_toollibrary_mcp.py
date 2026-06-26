@@ -300,7 +300,7 @@ class TestToolLibraryMCPIntegration:
         ]
         assert result["matches"] == ["fs__read_file"]
         assert result["loaded"] == ["fs__read_file"]
-        assert "tool_search" in loaded_schema_names
+        assert "tool_search" not in loaded_schema_names
         assert "fs__read_file" in loaded_schema_names
 
     def test_mcp_servers_none(self):

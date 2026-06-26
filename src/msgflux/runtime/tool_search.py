@@ -19,14 +19,9 @@ class ToolSearchRuntime:
         self._register_tool = register_tool
         self._runtime_tool_names = runtime_tool_names
         self._enabled = False
-        self._loaded_tool_names: set[str] = set()
 
     def reset(self) -> None:
         self._enabled = False
-        self._loaded_tool_names.clear()
-
-    def discard_loaded_tool(self, tool_name: str) -> None:
-        self._loaded_tool_names.discard(tool_name)
 
     def ensure_tool(self) -> None:
         if self._enabled:
@@ -57,24 +52,22 @@ class ToolSearchRuntime:
         self.library.tool_configs.pop(self.TOOL_NAME, None)
 
     def get_on_demand_tool_names(self) -> List[str]:
-        return [
-            tool_name
-            for tool_name, config in self.library.tool_configs.items()
-            if config.get("on_demand", False)
-        ]
+        return list(self.library.on_demand_tools.keys())
 
     def is_tool_exposed(self, tool_name: str) -> bool:
-        config = self.library.tool_configs.get(tool_name, {})
-        if not config.get("on_demand", False):
-            return True
-        return tool_name in self._loaded_tool_names
+        return tool_name not in self.library.on_demand_tools
 
     def load_tools(self, tool_names: List[str]) -> List[str]:
         newly_loaded = []
         for tool_name in tool_names:
-            if tool_name not in self._loaded_tool_names:
-                self._loaded_tool_names.add(tool_name)
-                newly_loaded.append(tool_name)
+            metadata = self.library.on_demand_tools.pop(tool_name, None)
+            if metadata is None:
+                continue
+            metadata.tool_config["on_demand"] = False
+            self.library.tool_configs.pop(tool_name, None)
+            self.library.add(metadata)
+            newly_loaded.append(tool_name)
+        self.sync()
         return newly_loaded
 
     def tool_search(
@@ -148,11 +141,9 @@ class ToolSearchRuntime:
 
         matches = []
         for tool_name in self.get_on_demand_tool_names():
-            if tool_name not in self.library.library:
-                continue
-            tool = self.library.library[tool_name]
+            tool = self.library.on_demand_tools[tool_name]
             name_parts = tool_name.lower().replace("__", " ").replace("_", " ")
-            description = (tool.get_module_description() or "").lower()
+            description = (tool.description or "").lower()
             score = 0
             if query_lower == tool_name.lower():
                 score += 100

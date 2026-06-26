@@ -35,15 +35,13 @@ from msgflux.tools.helpers import (
     RUNTIME_BACKGROUND_PARAM as _RUNTIME_BACKGROUND_PARAM,
 )
 from msgflux.tools.helpers import (
-    is_agent_tool_impl as _is_agent_tool_impl,
-)
-from msgflux.tools.helpers import (
     should_copy_injected_messages as _should_copy_injected_messages,
 )
 from msgflux.tools.helpers import (
     uses_library_injection as _uses_library_injection,
 )
 from msgflux.tools.responses import ToolCall, ToolResponses
+from msgflux.tools.types import ToolMetadata
 from msgflux.utils.chat import generate_tool_json_schema
 from msgflux.utils.inspect import fn_has_parameters, get_fn_param_defaults
 from msgflux.utils.msgspec import restore_transport_value
@@ -249,8 +247,8 @@ class LocalTool(Tool):
         return await loop.run_in_executor(None, lambda: self.impl(*args, **kwargs))
 
 
-def _convert_module_to_nn_tool(impl: Callable) -> Tool:  # noqa: C901
-    """Convert a callable in nn.Tool."""
+def _inspect_tool_metadata(impl: Callable) -> ToolMetadata:  # noqa: C901
+    """Extract normalized metadata from a callable tool."""
     tool_config = dotdict(deepcopy(getattr(impl, "tool_config", dotdict())))
 
     name_overridden = tool_config.pop("name_overridden", None)
@@ -344,7 +342,7 @@ def _convert_module_to_nn_tool(impl: Callable) -> Tool:  # noqa: C901
     if tool_config.get("handoff", False):
         name = "transfer_to_" + name
 
-    tool_config["tool_kind"] = "agent" if _is_agent_tool_impl(impl) else "tool"
+    tool_config["tool_kind"] = getattr(impl, "tool_kind", None) or "tool"
 
     annotations = dict(annotations)
 
@@ -380,7 +378,7 @@ def _convert_module_to_nn_tool(impl: Callable) -> Tool:  # noqa: C901
             + doc
         )
 
-    return LocalTool(
+    return ToolMetadata(
         name=name,
         description=doc,
         annotations=annotations,
@@ -388,6 +386,36 @@ def _convert_module_to_nn_tool(impl: Callable) -> Tool:  # noqa: C901
         impl=impl,
         display_name=display_name or name,
         usage_guidance=usage_guidance,
+    )
+
+
+def _convert_metadata_to_local_tool(metadata: ToolMetadata) -> LocalTool:
+    return LocalTool(
+        name=metadata.name,
+        description=metadata.description,
+        annotations=metadata.annotations,
+        tool_config=metadata.tool_config,
+        impl=metadata.impl,
+        display_name=metadata.display_name,
+        usage_guidance=metadata.usage_guidance,
+    )
+
+
+def _convert_module_to_nn_tool(impl: Callable) -> Tool:
+    """Convert a callable in nn.Tool."""
+    return _convert_metadata_to_local_tool(_inspect_tool_metadata(impl))
+
+
+def _metadata_from_tool(tool: Tool) -> ToolMetadata:
+    return ToolMetadata(
+        name=tool.name,
+        description=tool.get_module_description() or "",
+        annotations=tool.get_module_annotations(),
+        tool_config=getattr(tool, "tool_config", {}),
+        impl=getattr(tool, "impl", tool),
+        display_name=getattr(tool, "display_name", None) or tool.name,
+        usage_guidance=getattr(tool, "usage_guidance", None),
+        source_tool=tool,
     )
 
 
@@ -420,10 +448,12 @@ class ToolLibrary(Module, metaclass=AutoParams):
         self.set_name(f"{name}_tool_library")
         self.library = ModuleDict()
         self.register_buffer("tool_configs", {})
+        self.register_buffer("on_demand_tools", {})
         self.register_buffer("mcp_clients", {})
         self.task_store = task_store or InMemoryTaskStore()
         self.agent_inbox = AgentInbox(owner=f"{name}_tool_library")
         self._runtime_tool_names: set[str] = set()
+        self._bucket_tool_names_by_capture_kind: Dict[str, str] = {}
         self._task_runtime_enabled = False
         self._agent_task_runtime_enabled = False
         self.background_dispatcher = BackgroundTaskDispatcher(
@@ -445,24 +475,55 @@ class ToolLibrary(Module, metaclass=AutoParams):
         if mcp_servers:
             self._initialize_mcp_clients(mcp_servers)
 
-    def add(self, tool: Callable):
+    def add(self, tool: Callable) -> str:
         """Add a local tool in library."""
-        name = getattr(tool, "name", None) or getattr(tool, "__name__", None)
-        if name in self.library.keys():
-            raise ValueError(f"The tool name `{name}` is already in tool library")
-        if not isinstance(tool, Tool):
-            tool = _convert_module_to_nn_tool(tool)
+        if isinstance(tool, ToolMetadata):
+            metadata = tool
+        elif isinstance(tool, Tool):
+            metadata = _metadata_from_tool(tool)
+        else:
+            metadata = _inspect_tool_metadata(tool)
 
-        # Store tool config (may be empty dict for local tools)
-        self.tool_configs[tool.name] = getattr(tool, "tool_config", {})
-        self.library.update({tool.name: tool})
-        self._apply_tool_registration_effects(tool.name)
+        if metadata.name in self.library.keys():
+            raise ValueError(
+                f"The tool name `{metadata.name}` is already in tool library"
+            )
+        if metadata.name in self.on_demand_tools:
+            raise ValueError(
+                f"The tool name `{metadata.name}` is already in on-demand tools"
+            )
+
+        # On-demand tools are searchable but not callable until tool_search promotes
+        # them back through this same registration path.
+        if metadata.tool_config.get("on_demand", False):
+            self.on_demand_tools[metadata.name] = metadata
+            self.tool_configs[metadata.name] = metadata.tool_config
+            self._sync_on_demand_runtime_tools()
+            return metadata.name
+
+        # Buckets expose one public tool while absorbing tools of a matching kind.
+        bucket_name = self._find_bucket_for_metadata(metadata)
+        if bucket_name is not None:
+            self._add_tool_to_bucket(bucket_name, metadata)
+            return metadata.name
+
+        # Normal tools become directly callable and visible according to their config.
+        self._register_tool_metadata(metadata)
+        return metadata.name
 
     def remove(self, tool_name: str):
         if tool_name in self.library.keys():
             self.library.pop(tool_name)
             self.tool_configs.pop(tool_name, None)
-            self.tool_search_runtime.discard_loaded_tool(tool_name)
+            for capture_kind, bucket_name in list(
+                self._bucket_tool_names_by_capture_kind.items()
+            ):
+                if bucket_name == tool_name:
+                    self._bucket_tool_names_by_capture_kind.pop(capture_kind, None)
+            self._sync_on_demand_runtime_tools()
+        elif tool_name in self.on_demand_tools:
+            self.on_demand_tools.pop(tool_name, None)
+            self.tool_configs.pop(tool_name, None)
             self._sync_on_demand_runtime_tools()
         else:
             raise ValueError(f"The tool name `{tool_name}` is not in tool library")
@@ -470,6 +531,8 @@ class ToolLibrary(Module, metaclass=AutoParams):
     def clear(self):
         self.library.clear()
         self.tool_configs.clear()
+        self.on_demand_tools.clear()
+        self._bucket_tool_names_by_capture_kind.clear()
         for mcp_data in self.mcp_clients.values():
             F.wait_for(mcp_data["client"].disconnect)
         self.mcp_clients.clear()
@@ -479,6 +542,111 @@ class ToolLibrary(Module, metaclass=AutoParams):
         self.background_dispatcher.clear()
         self.task_runtime_tools.reset()
         self.tool_search_runtime.reset()
+
+    def _register_tool_metadata(self, metadata: ToolMetadata) -> Tool:
+        if metadata.tool_config.get("tool_kind") == "bucket":
+            capture_kind = getattr(metadata.impl, "capture_kind", None)
+            if not isinstance(capture_kind, str) or not capture_kind:
+                raise ValueError(
+                    f"The bucket tool `{metadata.name}` must define capture_kind."
+                )
+            existing = self._bucket_tool_names_by_capture_kind.get(capture_kind)
+            if existing is not None and existing != metadata.name:
+                raise ValueError(
+                    f"The bucket capture kind `{capture_kind}` is already handled by "
+                    f"`{existing}`."
+                )
+            self._validate_existing_tools_for_bucket(metadata.name, capture_kind)
+
+        tool = (
+            metadata.source_tool
+            if isinstance(metadata.source_tool, Tool)
+            else _convert_metadata_to_local_tool(metadata)
+        )
+        self.tool_configs[tool.name] = getattr(tool, "tool_config", {})
+        self.library.update({tool.name: tool})
+        self._apply_tool_registration_effects(tool.name)
+        self._register_bucket_if_needed(tool.name, tool)
+        return tool
+
+    def _register_bucket_if_needed(self, tool_name: str, tool: Tool) -> None:
+        config = self.tool_configs.get(tool_name, {})
+        if config.get("tool_kind") != "bucket":
+            return
+        impl = getattr(tool, "impl", None)
+        capture_kind = getattr(impl, "capture_kind", None)
+        if not isinstance(capture_kind, str) or not capture_kind:
+            raise ValueError(f"The bucket tool `{tool_name}` must define capture_kind.")
+        self._bucket_tool_names_by_capture_kind[capture_kind] = tool_name
+        self._capture_existing_tools_for_bucket(tool_name, capture_kind)
+
+    def _find_bucket_for_metadata(self, metadata: ToolMetadata) -> Optional[str]:
+        tool_kind = metadata.tool_config.get("tool_kind", "tool")
+        if tool_kind == "bucket":
+            return None
+        return self._bucket_tool_names_by_capture_kind.get(tool_kind)
+
+    def _add_tool_to_bucket(self, bucket_name: str, metadata: ToolMetadata) -> None:
+        self._validate_bucket_capture(bucket_name, metadata)
+        bucket_tool = self.library[bucket_name]
+        bucket_impl = getattr(bucket_tool, "impl", None)
+        if bucket_impl is None or not hasattr(bucket_impl, "add"):
+            raise ValueError(f"The bucket tool `{bucket_name}` cannot capture tools.")
+        bucket_impl.add(metadata)
+        self._refresh_bucket_tool(bucket_name)
+
+    @staticmethod
+    def _validate_bucket_capture(bucket_name: str, metadata: ToolMetadata) -> None:
+        if metadata.tool_config.get("background", False) or metadata.tool_config.get(
+            "allow_background", False
+        ):
+            raise ValueError(
+                "Bucket-captured tools cannot use `background=True` or "
+                f"`allow_background=True`. Tool `{metadata.name}` would be captured "
+                f"by bucket `{bucket_name}`."
+            )
+
+    def _refresh_bucket_tool(self, bucket_name: str) -> None:
+        bucket_tool = self.library[bucket_name]
+        bucket_impl = getattr(bucket_tool, "impl", None)
+        if bucket_impl is None:
+            return
+        description = getattr(bucket_impl, "description", None)
+        if isinstance(description, str):
+            bucket_tool.set_description(description)
+        bucket_tool.register_buffer(
+            "usage_guidance",
+            getattr(bucket_impl, "usage_guidance", None),
+        )
+
+    def _capture_existing_tools_for_bucket(
+        self,
+        bucket_name: str,
+        capture_kind: str,
+    ) -> None:
+        for tool_name, tool in list(self.library.items()):
+            if tool_name == bucket_name or tool_name in self._runtime_tool_names:
+                continue
+            config = self.tool_configs.get(tool_name, {})
+            if config.get("tool_kind") != capture_kind:
+                continue
+            metadata = _metadata_from_tool(tool)
+            self.library.pop(tool_name)
+            self.tool_configs.pop(tool_name, None)
+            self._add_tool_to_bucket(bucket_name, metadata)
+
+    def _validate_existing_tools_for_bucket(
+        self,
+        bucket_name: str,
+        capture_kind: str,
+    ) -> None:
+        for tool_name, tool in self.library.items():
+            if tool_name == bucket_name or tool_name in self._runtime_tool_names:
+                continue
+            config = self.tool_configs.get(tool_name, {})
+            if config.get("tool_kind") != capture_kind:
+                continue
+            self._validate_bucket_capture(bucket_name, _metadata_from_tool(tool))
 
     def _initialize_mcp_clients(self, mcp_servers: List[Dict[str, Any]]):
         """Initialize MCP clients from server configurations."""
@@ -545,10 +713,16 @@ class ToolLibrary(Module, metaclass=AutoParams):
                         config=tool_config,
                     )
 
-                    # Add to library (will have name like "namespace__tool_name")
-                    self.library.update({mcp_tool.name: mcp_tool})
-                    self.tool_configs[mcp_tool.name] = mcp_tool.tool_config
-                    self._apply_tool_registration_effects(mcp_tool.name)
+                    if mcp_tool.tool_config.get("on_demand", False):
+                        metadata = _metadata_from_tool(mcp_tool)
+                        self.on_demand_tools[mcp_tool.name] = metadata
+                        self.tool_configs[mcp_tool.name] = mcp_tool.tool_config
+                        self._sync_on_demand_runtime_tools()
+                    else:
+                        # Add to library (will have name like "namespace__tool_name")
+                        self.library.update({mcp_tool.name: mcp_tool})
+                        self.tool_configs[mcp_tool.name] = mcp_tool.tool_config
+                        self._apply_tool_registration_effects(mcp_tool.name)
 
                 self.mcp_clients[namespace] = {
                     "client": client,
@@ -572,7 +746,9 @@ class ToolLibrary(Module, metaclass=AutoParams):
 
     def get_tool_names(self) -> List[str]:
         """Get names of all tools."""
-        return list(self.library.keys())
+        return list(self.library.keys()) + [
+            name for name in self.on_demand_tools if name not in self.library
+        ]
 
     def get_tool_display_names(self) -> Dict[str, str]:
         """Return human-readable display names keyed by registered tool name."""
@@ -657,7 +833,12 @@ class ToolLibrary(Module, metaclass=AutoParams):
         if can_run_background:
             self.task_runtime_tools.ensure_base_tools()
             self._task_runtime_enabled = True
-        if can_run_background and config.get("tool_kind") == "agent":
+        tool = self.library.get(tool_name)
+        impl = getattr(tool, "impl", None) if tool is not None else None
+        supports_task_message = bool(getattr(impl, "supports_task_message", False))
+        if can_run_background and (
+            config.get("tool_kind") == "agent" or supports_task_message
+        ):
             self.task_runtime_tools.ensure_agent_tools()
             self._agent_task_runtime_enabled = True
         if config.get("on_demand", False):

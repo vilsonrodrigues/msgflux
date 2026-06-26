@@ -13,8 +13,7 @@ class ToolLibraryHandle:
         self._library = library
 
     def add(self, tool: Callable) -> str:
-        self._library.add(tool)
-        return getattr(tool, "name", None) or getattr(tool, "__name__", None)
+        return self._library.add(tool)
 
     def remove(self, tool_name: str) -> str:
         if tool_name in self._library._runtime_tool_names:

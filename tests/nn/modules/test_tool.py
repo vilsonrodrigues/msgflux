@@ -768,7 +768,7 @@ class TestToolLibrary:
 
         assert result["matches"] == ["remote_lookup"]
         assert result["loaded"] == ["remote_lookup"]
-        assert "tool_search" in schema_names
+        assert "tool_search" not in schema_names
         assert "remote_lookup" in schema_names
 
     def test_tool_search_select_supports_exact_names(self):
@@ -829,6 +829,26 @@ class TestToolLibrary:
         assert "tool_search" in add_result
         assert "tool_search" in schema_names
         assert "remote_lookup" not in schema_names
+
+    def test_inject_library_add_returns_normalized_tool_name(self):
+        """Test that ToolLibraryHandle.add returns the registered tool name."""
+
+        @mf.tool_config(name_override="remote_lookup")
+        def lookup(query: str) -> str:
+            """Look up external information."""
+            return query
+
+        @mf.tool_config(inject_library=True)
+        def enable_lookup(tool_library) -> str:
+            """Register a tool."""
+            return tool_library.add(lookup)
+
+        library = ToolLibrary(name="lib", tools=[enable_lookup])
+
+        result = library([("call_1", "enable_lookup", {})]).tool_calls[0].result
+
+        assert result == "remote_lookup"
+        assert "remote_lookup" in library.get_tool_names()
 
     def test_tool_library_forward_basic(self):
         """Test ToolLibrary forward execution."""

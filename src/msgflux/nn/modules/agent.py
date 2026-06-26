@@ -134,6 +134,10 @@ class Agent(Module, metaclass=AutoParams):
         "tool_responses",
     ]
 
+    @property
+    def tool_kind(self) -> str:
+        return "agent"
+
     def __init__(  # noqa: C901
         self,
         name: str,
