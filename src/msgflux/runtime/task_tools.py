@@ -11,9 +11,9 @@ class TaskRuntimeTools:
 
     def __init__(
         self,
-        library: Any,
+        library_handle: Any,
     ):
-        self.library = library
+        self.library_handle = library_handle
         self._base_enabled = False
         self._agent_enabled = False
 
@@ -29,7 +29,7 @@ class TaskRuntimeTools:
         annotations: Dict[str, Any],
         impl: Callable,
     ) -> None:
-        self.library.add_runtime_tool(
+        self.library_handle.add_runtime_tool(
             name=name,
             description=description,
             annotations=annotations,
@@ -99,12 +99,12 @@ class TaskRuntimeTools:
         )
 
     def task_status(self, task_id: str) -> Dict[str, Any]:
-        task = self.library.task_store.get(task_id)
+        task = self.library_handle.task_store.get(task_id)
         if task is None:
             return {"task_id": task_id, "status": "not_found"}
         payload = task.to_dict()
         payload.update(self.build_task_timing_fields(task))
-        last_activity = self.library.task_store.get_last_activity(task_id)
+        last_activity = self.library_handle.task_store.get_last_activity(task_id)
         if last_activity is not None:
             payload["last_activity_summary"] = self.format_task_activity_entry(
                 last_activity
@@ -113,10 +113,12 @@ class TaskRuntimeTools:
 
     def task_list(self, status: str | None = None) -> list[Dict[str, Any]]:
         tasks = []
-        for task in self.library.task_store.list(status=status):
+        for task in self.library_handle.task_store.list(status=status):
             payload = task.to_dict()
             payload.update(self.build_task_timing_fields(task))
-            last_activity = self.library.task_store.get_last_activity(task.task_id)
+            last_activity = self.library_handle.task_store.get_last_activity(
+                task.task_id
+            )
             if last_activity is not None:
                 payload["last_activity_summary"] = self.format_task_activity_entry(
                     last_activity
@@ -125,7 +127,7 @@ class TaskRuntimeTools:
         return tasks
 
     def task_output(self, task_id: str) -> Any:
-        task = self.library.task_store.get(task_id)
+        task = self.library_handle.task_store.get(task_id)
         return self.build_task_result(task_id=task_id, task=task)
 
     def task_activity(
@@ -138,7 +140,7 @@ class TaskRuntimeTools:
                 raise TypeError(f"`limit` must be int or None, given `{type(limit)}`")
             if limit <= 0:
                 raise ValueError("`limit` must be greater than 0.")
-        task = self.library.task_store.get(task_id)
+        task = self.library_handle.task_store.get(task_id)
         if task is None:
             return {"task_id": task_id, "status": "not_found"}
         if task.metadata.get("task_kind") != "agent":
@@ -147,7 +149,7 @@ class TaskRuntimeTools:
                 "status": "unsupported",
                 "error": "task_activity is only available for background agent tasks.",
             }
-        activity = self.library.task_store.list_activity(task_id, limit=limit)
+        activity = self.library_handle.task_store.list_activity(task_id, limit=limit)
         return [self.format_task_activity_entry(item) for item in activity]
 
     def task_wait(self, task_id: str, timeout: float | None = None) -> Any:  # noqa: C901
@@ -159,28 +161,28 @@ class TaskRuntimeTools:
             if timeout < 0:
                 raise ValueError("`timeout` must be greater than or equal to 0.")
 
-        task = self.library.task_store.get(task_id)
+        task = self.library_handle.task_store.get(task_id)
         if task is None:
             return {"task_id": task_id, "status": "not_found"}
         if task.status in {"completed", "failed", "stopped"}:
             return self.build_task_result(task_id=task_id, task=task)
 
-        future = self.library.get_task_future(task_id)
+        future = self.library_handle.get_task_future(task_id)
         if future is not None:
             try:
                 future.result(timeout=timeout)
             except FutureTimeoutError:
-                task = self.library.task_store.get(task_id)
+                task = self.library_handle.task_store.get(task_id)
                 return self.build_task_timeout_result(task_id=task_id, task=task)
             except Exception:
-                task = self.library.task_store.get(task_id)
+                task = self.library_handle.task_store.get(task_id)
                 return self.build_task_result(task_id=task_id, task=task)
-            task = self.library.task_store.get(task_id)
+            task = self.library_handle.task_store.get(task_id)
             return self.build_task_result(task_id=task_id, task=task)
 
         deadline = None if timeout is None else time.monotonic() + float(timeout)
         while True:
-            task = self.library.task_store.get(task_id)
+            task = self.library_handle.task_store.get(task_id)
             if task is None or task.status in {"completed", "failed", "stopped"}:
                 return self.build_task_result(task_id=task_id, task=task)
             if deadline is not None and time.monotonic() >= deadline:
@@ -188,7 +190,7 @@ class TaskRuntimeTools:
             time.sleep(0.05)
 
     def task_stop(self, task_id: str) -> Dict[str, Any]:
-        task = self.library.task_store.get(task_id)
+        task = self.library_handle.task_store.get(task_id)
         if task is None:
             return {"task_id": task_id, "status": "not_found"}
 
@@ -199,10 +201,10 @@ class TaskRuntimeTools:
                 "message": "Task already reached a terminal state.",
             }
 
-        self.library.task_store.request_stop(task_id)
-        future = self.library.get_task_future(task_id)
+        self.library_handle.task_store.request_stop(task_id)
+        future = self.library_handle.get_task_future(task_id)
         if future is not None and future.cancel():
-            stopped = self.library.task_store.stop(
+            stopped = self.library_handle.task_store.stop(
                 task_id,
                 reason="Task was cancelled before it started running.",
             )
@@ -222,7 +224,7 @@ class TaskRuntimeTools:
         }
 
     def task_message(self, task_id: str, message: str) -> Dict[str, Any]:
-        task = self.library.task_store.get(task_id)
+        task = self.library_handle.task_store.get(task_id)
         if task is None:
             return {"task_id": task_id, "status": "not_found"}
         if task.metadata.get("task_kind") != "agent":
@@ -234,7 +236,7 @@ class TaskRuntimeTools:
         if not isinstance(message, str) or not message.strip():
             raise ValueError("`message` must be a non-empty string.")
 
-        task_inbox = self.library.get_task_inbox(task_id)
+        task_inbox = self.library_handle.get_task_inbox(task_id)
         if task.status == "running" and task_inbox is not None:
             task_inbox.publish(
                 {
@@ -245,7 +247,7 @@ class TaskRuntimeTools:
                     "metadata": {"direction": "root_to_task"},
                 }
             )
-            self.library.task_store.add_activity(
+            self.library_handle.task_store.add_activity(
                 task_id,
                 kind="message",
                 summary=f"Root message: {self.truncate_activity_text(message)}",
@@ -257,7 +259,7 @@ class TaskRuntimeTools:
                 "message": "Message delivered to the running background agent.",
             }
 
-        resumed = self.library.resume_background_agent_task(
+        resumed = self.library_handle.resume_background_agent_task(
             task=task, message=message.strip()
         )
         return {
