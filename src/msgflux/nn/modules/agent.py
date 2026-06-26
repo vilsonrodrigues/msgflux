@@ -57,7 +57,6 @@ from msgflux.runtime.context import (
     new_thread_id,
 )
 from msgflux.runtime.skills import AgentSkillManager, SkillsConfig
-from msgflux.tasks import InMemoryTaskStore, SQLiteTaskStore
 from msgflux.tools.builtin import ActivateSkill, SkillSearch
 from msgflux.tools.definitions import ToolDefinitions
 from msgflux.utils.chat import ChatBlock, response_format_from_msgspec_struct
@@ -524,7 +523,7 @@ class Agent(Module, metaclass=AutoParams):
         inputs = resumed or self._prepare_inputs(message, **kwargs)
 
         effective_checkpointer = self._get_effective_checkpointer()
-        effective_task_store = self._get_effective_task_store(effective_checkpointer)
+        effective_task_store = self._get_effective_task_store()
         effective_inbox = self._get_effective_agent_inbox()
         if effective_task_store is not None:
             self.tool_library.set_task_store(effective_task_store)
@@ -576,7 +575,7 @@ class Agent(Module, metaclass=AutoParams):
         inputs = resumed or await self._aprepare_inputs(message, **kwargs)
 
         effective_checkpointer = self._get_effective_checkpointer()
-        effective_task_store = self._get_effective_task_store(effective_checkpointer)
+        effective_task_store = self._get_effective_task_store()
         effective_inbox = self._get_effective_agent_inbox()
         if effective_task_store is not None:
             self.tool_library.set_task_store(effective_task_store)
@@ -2179,25 +2178,8 @@ class Agent(Module, metaclass=AutoParams):
             return checkpointer
         return get_execution_context().get("checkpoint_store")
 
-    def _build_task_store_for_checkpointer(self, checkpointer: Any):
-        if checkpointer is None:
-            return None
-
-        provider = getattr(checkpointer, "provider", None)
-        if provider == "in_memory":
-            return InMemoryTaskStore()
-        if provider == "sqlite":
-            path = getattr(checkpointer, "path", None)
-            if isinstance(path, str) and path:
-                return SQLiteTaskStore(path=path)
-            return SQLiteTaskStore()
-        return None
-
-    def _get_effective_task_store(self, checkpointer: Any = None):
-        inherited = get_execution_context().get("task_store")
-        if inherited is not None:
-            return inherited
-        return self._build_task_store_for_checkpointer(checkpointer)
+    def _get_effective_task_store(self):
+        return get_execution_context().get("task_store")
 
     def _get_effective_agent_inbox(self):
         inherited = get_execution_context().get("agent_inbox")
