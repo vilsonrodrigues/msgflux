@@ -24,12 +24,7 @@ class TaskRuntimeTools(TaskRuntimeContext):
 
     def _add_runtime_tool(self, tool: type[TaskRuntimeTool]) -> None:
         instance = tool(self)
-        self.library_handle.add_runtime_tool(
-            name=instance.name,
-            description=instance.description,
-            annotations=instance.annotations,
-            impl=instance,
-        )
+        self.library_handle.add_runtime_tool(instance.to_metadata())
 
     def ensure_base_tools(self) -> None:
         if self._base_enabled:

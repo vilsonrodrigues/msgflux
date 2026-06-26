@@ -5,6 +5,12 @@ from concurrent.futures import TimeoutError as FutureTimeoutError
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
+from msgflux.core.registry import Registry
+from msgflux.tools.types import ToolMetadata
+
+BASE_TASK_TOOLS = Registry()
+AGENT_TASK_TOOLS = Registry()
+
 
 class TaskRuntimeTool:
     """Base object for task runtime tools registered through ToolLibraryHandle."""
@@ -16,7 +22,17 @@ class TaskRuntimeTool:
     def __init__(self, runtime: TaskRuntimeContext):
         self.runtime = runtime
 
+    def to_metadata(self) -> ToolMetadata:
+        return ToolMetadata(
+            name=self.name,
+            description=self.description,
+            annotations=self.annotations,
+            tool_config={},
+            impl=self,
+        )
 
+
+@BASE_TASK_TOOLS
 class TaskStatusTool(TaskRuntimeTool):
     name = "task_status"
     description = "Get the current status of a background task by task_id."
@@ -38,6 +54,7 @@ class TaskStatusTool(TaskRuntimeTool):
         return payload
 
 
+@BASE_TASK_TOOLS
 class TaskListTool(TaskRuntimeTool):
     name = "task_list"
     description = "List background tasks registered in the current tool library."
@@ -59,6 +76,7 @@ class TaskListTool(TaskRuntimeTool):
         return tasks
 
 
+@BASE_TASK_TOOLS
 class TaskOutputTool(TaskRuntimeTool):
     name = "task_output"
     description = "Get the final output of a background task by task_id."
@@ -69,6 +87,7 @@ class TaskOutputTool(TaskRuntimeTool):
         return self.runtime.build_task_result(task_id=task_id, task=task)
 
 
+@BASE_TASK_TOOLS
 class TaskWaitTool(TaskRuntimeTool):
     name = "task_wait"
     description = (
@@ -121,6 +140,7 @@ class TaskWaitTool(TaskRuntimeTool):
             time.sleep(0.05)
 
 
+@BASE_TASK_TOOLS
 class TaskStopTool(TaskRuntimeTool):
     name = "task_stop"
     description = (
@@ -164,6 +184,7 @@ class TaskStopTool(TaskRuntimeTool):
         }
 
 
+@AGENT_TASK_TOOLS
 class TaskActivityTool(TaskRuntimeTool):
     name = "task_activity"
     description = "List compact activity entries for a background agent task."
@@ -191,6 +212,7 @@ class TaskActivityTool(TaskRuntimeTool):
         return [self.runtime.format_task_activity_entry(item) for item in activity]
 
 
+@AGENT_TASK_TOOLS
 class TaskMessageTool(TaskRuntimeTool):
     name = "task_message"
     description = (
@@ -245,19 +267,6 @@ class TaskMessageTool(TaskRuntimeTool):
             "status": "resumed",
             "message": resumed,
         }
-
-
-BASE_TASK_TOOLS = (
-    TaskStatusTool,
-    TaskListTool,
-    TaskOutputTool,
-    TaskWaitTool,
-    TaskStopTool,
-)
-AGENT_TASK_TOOLS = (
-    TaskActivityTool,
-    TaskMessageTool,
-)
 
 
 class TaskRuntimeContext:

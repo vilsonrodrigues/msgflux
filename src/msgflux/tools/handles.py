@@ -9,6 +9,7 @@ from msgflux.tools.helpers import RUNTIME_BACKGROUND_PARAM as _RUNTIME_BACKGROUN
 if TYPE_CHECKING:
     from msgflux.nn.modules.tool import ToolLibrary
     from msgflux.runtime.agent_inbox import AgentInbox
+    from msgflux.tools.types import ToolMetadata
 
 
 class ToolLibraryHandle:
@@ -20,34 +21,28 @@ class ToolLibraryHandle:
     def add(self, tool: Callable) -> str:
         return self._library.add(tool)
 
-    def add_runtime_tool(
-        self,
-        *,
-        name: str,
-        description: str,
-        annotations: dict[str, Any],
-        impl: Callable,
-    ) -> None:
+    def add_runtime_tool(self, metadata: ToolMetadata) -> None:
         from msgflux.nn.modules.tool import LocalTool  # noqa: PLC0415
 
+        name = metadata.name
+        if name in self._library.library and name not in self.runtime_tool_names:
+            raise ValueError(
+                f"The runtime tool `{name}` conflicts with an existing tool."
+            )
         self.runtime_tool_names.add(name)
         tool = LocalTool(
             name=name,
-            description=description,
-            annotations=annotations,
-            tool_config={},
-            impl=impl,
+            description=metadata.description,
+            annotations=metadata.annotations,
+            tool_config=metadata.tool_config,
+            impl=metadata.impl,
         )
         if name in self._library.library and self._library.tool_configs.get(name):
             raise ValueError(
                 f"The runtime tool `{name}` conflicts with an existing tool."
             )
-        if name in self._library.library and name not in self.runtime_tool_names:
-            raise ValueError(
-                f"The runtime tool `{name}` conflicts with an existing tool."
-            )
         self._library.library.update({name: tool})
-        self._library.tool_configs[name] = {}
+        self._library.tool_configs[name] = metadata.tool_config
 
     def remove(self, tool_name: str) -> str:
         if tool_name in self.runtime_tool_names:
