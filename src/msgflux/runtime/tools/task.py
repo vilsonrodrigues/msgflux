@@ -22,6 +22,9 @@ class TaskRuntimeTool:
     def __init__(self, runtime: TaskRuntimeContext):
         self.runtime = runtime
 
+    async def acall(self, *args: Any, **kwargs: Any) -> Any:
+        return self(*args, **kwargs)
+
     def to_metadata(self) -> ToolMetadata:
         return ToolMetadata(
             name=self.name,
@@ -36,7 +39,7 @@ class TaskRuntimeTool:
 class TaskStatusTool(TaskRuntimeTool):
     name = "task_status"
     description = "Get the current status of a background task by task_id."
-    annotations = {"task_id": str}
+    annotations = {"task_id": str, "return": str}
 
     def __call__(self, task_id: str) -> Dict[str, Any]:
         task = self.runtime.library_handle.task_store.get(task_id)
@@ -58,7 +61,7 @@ class TaskStatusTool(TaskRuntimeTool):
 class TaskListTool(TaskRuntimeTool):
     name = "task_list"
     description = "List background tasks registered in the current tool library."
-    annotations = {"status": Optional[str]}
+    annotations = {"status": Optional[str], "return": str}
 
     def __call__(self, status: str | None = None) -> list[Dict[str, Any]]:
         tasks = []
@@ -80,7 +83,7 @@ class TaskListTool(TaskRuntimeTool):
 class TaskOutputTool(TaskRuntimeTool):
     name = "task_output"
     description = "Get the final output of a background task by task_id."
-    annotations = {"task_id": str}
+    annotations = {"task_id": str, "return": str}
 
     def __call__(self, task_id: str) -> Any:
         task = self.runtime.library_handle.task_store.get(task_id)
@@ -94,7 +97,7 @@ class TaskWaitTool(TaskRuntimeTool):
         "Wait for a background task to finish. "
         "Returns the final output, failed payload, or a timeout status."
     )
-    annotations = {"task_id": str, "timeout": Optional[float]}
+    annotations = {"task_id": str, "timeout": Optional[float], "return": str}
 
     def __call__(self, task_id: str, timeout: float | None = None) -> Any:  # noqa: C901
         if timeout is not None:
@@ -147,7 +150,7 @@ class TaskStopTool(TaskRuntimeTool):
         "Request a cooperative stop for a background task. "
         "Stops immediately only if the task has not started yet."
     )
-    annotations = {"task_id": str}
+    annotations = {"task_id": str, "return": str}
 
     def __call__(self, task_id: str) -> Dict[str, Any]:
         task = self.runtime.library_handle.task_store.get(task_id)
@@ -188,7 +191,7 @@ class TaskStopTool(TaskRuntimeTool):
 class TaskActivityTool(TaskRuntimeTool):
     name = "task_activity"
     description = "List compact activity entries for a background agent task."
-    annotations = {"task_id": str, "limit": Optional[int]}
+    annotations = {"task_id": str, "limit": Optional[int], "return": str}
 
     def __call__(self, task_id: str, limit: int | None = 10) -> Any:
         if limit is not None:
@@ -220,7 +223,7 @@ class TaskMessageTool(TaskRuntimeTool):
         "If it is still running, deliver the message to its inbox. "
         "If it already stopped, resume the task from its checkpoint."
     )
-    annotations = {"task_id": str, "message": str}
+    annotations = {"task_id": str, "message": str, "return": str}
 
     def __call__(self, task_id: str, message: str) -> Dict[str, Any]:
         task = self.runtime.library_handle.task_store.get(task_id)
