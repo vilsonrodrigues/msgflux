@@ -123,6 +123,20 @@ def test_agent_inbox_separates_incoming_user_message_from_system_notifications()
     assert "<system_note>" not in rendered[1]["content"]
 
 
+def test_agent_inbox_clear_user_messages_preserves_system_notifications():
+    inbox = AgentInbox()
+
+    inbox.user_message("Please adjust the answer.")
+    inbox.publish({"source": "task", "status": "completed"})
+
+    assert inbox.clear_user_messages() == 1
+    notifications = inbox.peek()
+
+    assert len(notifications) == 1
+    assert notifications[0].source == "task"
+    assert inbox.clear_user_messages() == 0
+
+
 def test_agent_inbox_persists_notifications_with_memory_store():
     store = InMemoryAgentInboxStore()
     writer = AgentInbox(
@@ -148,6 +162,31 @@ def test_agent_inbox_persists_notifications_with_memory_store():
     drained = reader.drain()
     assert len(drained) == 1
     assert writer.peek() == []
+
+
+def test_agent_inbox_clear_user_messages_updates_store():
+    store = InMemoryAgentInboxStore()
+    writer = AgentInbox(
+        store=store,
+        namespace="assistant",
+        thread_id="user_1",
+        run_id="run_1",
+    )
+    reader = AgentInbox(
+        store=store,
+        namespace="assistant",
+        thread_id="user_1",
+        run_id="run_1",
+    )
+
+    writer.user_message("Continue with the new constraint.")
+    writer.publish({"source": "task", "status": "completed"})
+
+    assert reader.clear_user_messages() == 1
+    notifications = writer.peek()
+
+    assert len(notifications) == 1
+    assert notifications[0].source == "task"
 
 
 def test_store_factory_creates_agent_inbox_stores(tmp_path):

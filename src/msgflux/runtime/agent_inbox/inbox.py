@@ -206,6 +206,20 @@ class AgentInbox:
             ]
             self._save_notifications_locked(notifications)
 
+    def clear_user_messages(self) -> int:
+        """Remove pending incoming user messages while preserving runtime signals."""
+        with self._lock:
+            notifications = self._load_notifications_locked()
+            kept = [
+                notification
+                for notification in notifications
+                if notification.source != "incoming_user_message"
+            ]
+            removed = len(notifications) - len(kept)
+            if removed:
+                self._save_notifications_locked(kept)
+            return removed
+
     # --- Rendering ---
 
     def render(
