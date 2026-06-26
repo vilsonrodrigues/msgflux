@@ -211,7 +211,7 @@ Recommended additions:
 - `allow_background=True`
 - `inject_task=True`
 - `inject_notification=True`
-- `inject_library=True`
+- `inject_handle=True`
 
 `background=True` means the developer has chosen background execution for every
 call. The model never receives a choice parameter for that tool.
@@ -226,7 +226,7 @@ omit the argument, which is treated the same as `false`.
 The important detail is that `inject_task=True` should inject a `TaskHandle`,
 not the store and not the full `ToolLibrary`.
 
-`inject_library=True` injects a controlled `tool_library` handle. The handle
+`inject_handle=True` injects a controlled `handle`. The handle
 can add, remove, and list tools without exposing the whole `ToolLibrary`
 object.
 

@@ -26,3 +26,10 @@ class ToolBucket:
 
     def add(self, tool: ToolMetadata) -> None:
         raise NotImplementedError
+
+
+class ToolLibraryOperator:
+    """Base class for runtime tools that operate through ToolLibraryHandle."""
+
+    tool_kind = "runtime"
+    inject_handle = True

@@ -500,6 +500,27 @@ class TestToolLibrary:
         assert "tool1" in library.library
         assert "tool2" in library.library
 
+    def test_tool_library_runtime_helpers_are_lazy(self):
+        """Test runtime helper objects are created only when needed."""
+
+        def tool1(x: int) -> int:
+            """Tool 1."""
+            return x
+
+        library = ToolLibrary(name="my_lib", tools=[tool1])
+
+        assert library._handle is None
+        assert library._background_dispatcher is None
+        assert library._task_runtime_tools is None
+        assert library._task_store is None
+        assert library._agent_inbox is None
+
+        library.get_tool_json_schemas()
+
+        assert library._handle is None
+        assert library._background_dispatcher is None
+        assert library._task_runtime_tools is None
+
     def test_tool_library_add_tool(self):
         """Test adding a tool to library."""
 
@@ -750,8 +771,8 @@ class TestToolLibrary:
         assert "tool_search" in names
         assert [schema["function"]["name"] for schema in schemas] == ["tool_search"]
 
-    def test_tool_search_loads_matching_on_demand_tools(self):
-        """Test that tool_search exposes matching on-demand tools."""
+    def test_tool_search_returns_matching_on_demand_tools_without_loading(self):
+        """Test that keyword search describes matches without exposing them."""
 
         @mf.tool_config(on_demand=True)
         def remote_lookup(query: str) -> str:
@@ -761,15 +782,16 @@ class TestToolLibrary:
         library = ToolLibrary(name="lib", tools=[remote_lookup])
 
         result = library(
-            [("call_1", "tool_search", {"query": "remote lookup"})]
+            [("call_1", "tool_search", {"query": "remote lookup", "description": True})]
         ).tool_calls[0].result
         schemas = library.get_tool_json_schemas()
         schema_names = [schema["function"]["name"] for schema in schemas]
 
         assert result["matches"] == ["remote_lookup"]
-        assert result["loaded"] == ["remote_lookup"]
-        assert "tool_search" not in schema_names
-        assert "remote_lookup" in schema_names
+        assert result["loaded"] == []
+        assert result["descriptions"][0]["name"] == "remote_lookup"
+        assert "tool_search" in schema_names
+        assert "remote_lookup" not in schema_names
 
     def test_tool_search_select_supports_exact_names(self):
         """Test that tool_search supports select:name syntax."""
@@ -804,19 +826,19 @@ class TestToolLibrary:
 
         assert "tool_search" not in library.get_tool_names()
 
-    def test_inject_library_can_add_on_demand_tool(self):
-        """Test that inject_library can register on-demand tools."""
+    def test_inject_handle_can_add_on_demand_tool(self):
+        """Test that inject_handle can register on-demand tools."""
 
         @mf.tool_config(on_demand=True)
         def remote_lookup(query: str) -> str:
             """Look up external information."""
             return query
 
-        @mf.tool_config(inject_library=True)
-        def enable_remote_lookup(tool_library) -> list[str]:
+        @mf.tool_config(inject_handle=True)
+        def enable_remote_lookup(handle) -> list[str]:
             """Register an on-demand tool."""
-            tool_library.add(remote_lookup)
-            return tool_library.list_tools()
+            handle.add(remote_lookup)
+            return handle.list_tools()
 
         library = ToolLibrary(name="lib", tools=[enable_remote_lookup])
 
@@ -830,7 +852,7 @@ class TestToolLibrary:
         assert "tool_search" in schema_names
         assert "remote_lookup" not in schema_names
 
-    def test_inject_library_add_returns_normalized_tool_name(self):
+    def test_inject_handle_add_returns_normalized_tool_name(self):
         """Test that ToolLibraryHandle.add returns the registered tool name."""
 
         @mf.tool_config(name_override="remote_lookup")
@@ -838,10 +860,10 @@ class TestToolLibrary:
             """Look up external information."""
             return query
 
-        @mf.tool_config(inject_library=True)
-        def enable_lookup(tool_library) -> str:
+        @mf.tool_config(inject_handle=True)
+        def enable_lookup(handle) -> str:
             """Register a tool."""
-            return tool_library.add(lookup)
+            return handle.add(lookup)
 
         library = ToolLibrary(name="lib", tools=[enable_lookup])
 
@@ -1091,6 +1113,24 @@ class TestToolLibrary:
         result = library(tool_callings, message=message)
 
         assert result.tool_calls[0].result == "5-value"
+
+    def test_tool_library_tool_library_parameter_is_not_injected(self):
+        """Test tool_library is a normal parameter, not a runtime alias."""
+
+        def echo_tool_library(tool_library: str) -> str:
+            """Echo the provided value."""
+            return tool_library
+
+        library = ToolLibrary(name="lib", tools=[echo_tool_library])
+        schemas = library.get_tool_json_schemas()
+        props = schemas[0]["function"]["parameters"].get("properties", {})
+        result = library(
+            [("call_1", "echo_tool_library", {"tool_library": "explicit"})]
+        )
+
+        assert "tool_library" in props
+        assert result.tool_calls[0].parameters == {"tool_library": "explicit"}
+        assert result.tool_calls[0].result == "explicit"
 
     def test_tool_library_with_disable_input_ignores_model_params(self):
         """Test ToolLibrary ignores model-supplied params when input is disabled."""

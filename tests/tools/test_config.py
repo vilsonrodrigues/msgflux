@@ -66,7 +66,7 @@ class TestToolConfig:
         assert config.disable_input is False
         assert config.inject_task is False
         assert config.inject_notification is False
-        assert config.inject_library is False
+        assert config.inject_handle is False
         assert config.on_demand is False
         assert config.inject_vars is False
         assert config.inject_message is False
@@ -175,14 +175,14 @@ class TestToolConfig:
 
         assert sample_function.tool_config.inject_vars is True
 
-    def test_tool_config_inject_library_true(self):
-        """Test that inject_library=True is stored correctly."""
+    def test_tool_config_inject_handle_true(self):
+        """Test that inject_handle=True is stored correctly."""
 
-        @tool_config(inject_library=True)
+        @tool_config(inject_handle=True)
         def sample_function():
             pass
 
-        assert sample_function.tool_config.inject_library is True
+        assert sample_function.tool_config.inject_handle is True
 
     def test_tool_config_on_demand_true(self):
         """Test that on_demand=True is stored correctly."""

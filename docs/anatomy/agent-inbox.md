@@ -248,7 +248,7 @@ Current and planned producers include:
 - task progress updates
 - checkpoint restore/replay signals
 - context budget warnings
-- tool registry changes after `inject_library`
+- tool registry changes after `inject_handle`
 
 The important rule is:
 

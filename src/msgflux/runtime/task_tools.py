@@ -12,13 +12,8 @@ class TaskRuntimeTools:
     def __init__(
         self,
         library: Any,
-        *,
-        register_tool: Callable[..., None],
-        runtime_tool_names: set[str],
     ):
         self.library = library
-        self._register_tool = register_tool
-        self._runtime_tool_names = runtime_tool_names
         self._base_enabled = False
         self._agent_enabled = False
 
@@ -26,7 +21,7 @@ class TaskRuntimeTools:
         self._base_enabled = False
         self._agent_enabled = False
 
-    def _register_runtime_tool(
+    def _add_runtime_tool(
         self,
         *,
         name: str,
@@ -34,8 +29,7 @@ class TaskRuntimeTools:
         annotations: Dict[str, Any],
         impl: Callable,
     ) -> None:
-        self._runtime_tool_names.add(name)
-        self._register_tool(
+        self.library.add_runtime_tool(
             name=name,
             description=description,
             annotations=annotations,
@@ -46,25 +40,25 @@ class TaskRuntimeTools:
         if self._base_enabled:
             return
         self._base_enabled = True
-        self._register_runtime_tool(
+        self._add_runtime_tool(
             name="task_status",
             description="Get the current status of a background task by task_id.",
             annotations={"task_id": str},
             impl=self.task_status,
         )
-        self._register_runtime_tool(
+        self._add_runtime_tool(
             name="task_list",
             description="List background tasks registered in the current tool library.",
             annotations={"status": Optional[str]},
             impl=self.task_list,
         )
-        self._register_runtime_tool(
+        self._add_runtime_tool(
             name="task_output",
             description="Get the final output of a background task by task_id.",
             annotations={"task_id": str},
             impl=self.task_output,
         )
-        self._register_runtime_tool(
+        self._add_runtime_tool(
             name="task_wait",
             description=(
                 "Wait for a background task to finish. "
@@ -73,7 +67,7 @@ class TaskRuntimeTools:
             annotations={"task_id": str, "timeout": Optional[float]},
             impl=self.task_wait,
         )
-        self._register_runtime_tool(
+        self._add_runtime_tool(
             name="task_stop",
             description=(
                 "Request a cooperative stop for a background task. "
@@ -87,13 +81,13 @@ class TaskRuntimeTools:
         if self._agent_enabled:
             return
         self._agent_enabled = True
-        self._register_runtime_tool(
+        self._add_runtime_tool(
             name="task_activity",
             description="List compact activity entries for a background agent task.",
             annotations={"task_id": str, "limit": Optional[int]},
             impl=self.task_activity,
         )
-        self._register_runtime_tool(
+        self._add_runtime_tool(
             name="task_message",
             description=(
                 "Send a message to a background agent task. "
@@ -171,7 +165,7 @@ class TaskRuntimeTools:
         if task.status in {"completed", "failed", "stopped"}:
             return self.build_task_result(task_id=task_id, task=task)
 
-        future = self.library._get_task_future(task_id)
+        future = self.library.get_task_future(task_id)
         if future is not None:
             try:
                 future.result(timeout=timeout)
@@ -206,7 +200,7 @@ class TaskRuntimeTools:
             }
 
         self.library.task_store.request_stop(task_id)
-        future = self.library._get_task_future(task_id)
+        future = self.library.get_task_future(task_id)
         if future is not None and future.cancel():
             stopped = self.library.task_store.stop(
                 task_id,
@@ -240,7 +234,7 @@ class TaskRuntimeTools:
         if not isinstance(message, str) or not message.strip():
             raise ValueError("`message` must be a non-empty string.")
 
-        task_inbox = self.library._get_task_inbox(task_id)
+        task_inbox = self.library.get_task_inbox(task_id)
         if task.status == "running" and task_inbox is not None:
             task_inbox.publish(
                 {
@@ -263,7 +257,7 @@ class TaskRuntimeTools:
                 "message": "Message delivered to the running background agent.",
             }
 
-        resumed = self.library._resume_background_agent_task(
+        resumed = self.library.resume_background_agent_task(
             task=task, message=message.strip()
         )
         return {

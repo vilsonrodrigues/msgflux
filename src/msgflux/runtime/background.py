@@ -175,9 +175,7 @@ class BackgroundTaskDispatcher:
 
     def resume_agent_task(self, *, task: Any, message: str) -> str:
         tool_name = task.tool_name
-        if tool_name not in self.library.library:
-            raise ValueError(f"The tool `{tool_name}` is no longer available.")
-        tool = self.library.library[tool_name]
+        tool = self.library.get_tool(tool_name)
         checkpoint_namespace = task.metadata.get("checkpoint_namespace")
         if checkpoint_namespace is None:
             checkpoint_namespace = (
@@ -222,7 +220,10 @@ class BackgroundTaskDispatcher:
         self.library.task_store.add_activity(
             task.task_id,
             kind="message",
-            summary=f"Root message: {self.library._truncate_activity_text(message)}",
+            summary=(
+                "Root message: "
+                f"{self.library.task_runtime_tools.truncate_activity_text(message)}"
+            ),
             metadata={
                 "direction": "root_to_task",
                 "resume": True,
@@ -357,7 +358,7 @@ class BackgroundTaskDispatcher:
                 agent_inbox=root_agent_inbox,
             )
         if config.get("inject_notification", False) and not is_agent_task:
-            runner_params["notification"] = self.library._build_notification_handle(
+            runner_params["notification"] = self.library.build_notification_handle(
                 tool_name=tool_name,
                 ref=task.task_id,
                 agent_inbox=root_agent_inbox,
@@ -426,8 +427,8 @@ class BackgroundTaskDispatcher:
         return self._tool_call_factory(
             id=tool_id,
             name=tool_name,
-            parameters=self.library._build_call_parameters_for_response(call_params),
-            result=self.library._build_background_dispatch_result(
+            parameters=self.library.build_call_parameters_for_response(call_params),
+            result=self.library.task_runtime_tools.build_background_dispatch_result(
                 task_id=task.task_id,
                 tool_name=tool_name,
                 task_kind=task_kind,

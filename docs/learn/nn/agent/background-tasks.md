@@ -15,7 +15,7 @@ The current design is intentionally small:
 - completed and failed tasks can also be delivered back to the agent as a
   passive notification
 - `inject_notification=True` lets a tool publish agent-visible status updates
-- `inject_library=True` lets a tool add or remove tools dynamically
+- `inject_handle=True` lets a tool add or remove tools dynamically
 - `task_activity(task_id)` and `task_message(task_id, message)` are only
   exposed when the library contains a background subagent
 
@@ -294,15 +294,15 @@ For background tools, the injected `notification` handle is automatically bound
 to the current `task_id`, so the agent sees a normal notification block with
 `ref: <task_id>`.
 
-## Example 4: Dynamic Tool Mutation With `inject_library`
+## Example 4: Dynamic Tool Mutation With `inject_handle`
 
-`inject_library=True` exposes a small `tool_library` handle to the tool.
+`inject_handle=True` exposes a small `handle` to the tool.
 
 The current handle supports:
 
-- `tool_library.add(tool)`
-- `tool_library.remove(tool_name)`
-- `tool_library.list_tools()`
+- `handle.add(tool)`
+- `handle.remove(tool_name)`
+- `handle.list_tools()`
 
 ```python
 import msgflux as mf
@@ -313,18 +313,18 @@ def multiply(x: int) -> int:
     return x * 2
 
 
-@mf.tool_config(inject_library=True)
-def enable_multiplier(tool_library) -> list[str]:
+@mf.tool_config(inject_handle=True)
+def enable_multiplier(handle) -> list[str]:
     """Register the multiply tool."""
-    tool_library.add(multiply)
-    return tool_library.list_tools()
+    handle.add(multiply)
+    return handle.list_tools()
 
 
-@mf.tool_config(inject_library=True)
-def disable_tool(tool_library, name: str) -> list[str]:
+@mf.tool_config(inject_handle=True)
+def disable_tool(handle, name: str) -> list[str]:
     """Remove a tool by name."""
-    tool_library.remove(name)
-    return tool_library.list_tools()
+    handle.remove(name)
+    return handle.list_tools()
 ```
 
 If the injected tool adds a new background tool, the task tools are registered

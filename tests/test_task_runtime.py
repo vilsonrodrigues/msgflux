@@ -205,9 +205,9 @@ def test_allow_background_dispatches_when_model_requests_background():
     assert output.tool_calls[0].result == "background:a"
 
 
-def test_inject_library_schema_excludes_tool_library_handle():
-    @mf.tool_config(inject_library=True)
-    def register_tool(tool_library, name: str) -> str:
+def test_inject_handle_schema_excludes_handle():
+    @mf.tool_config(inject_handle=True)
+    def register_tool(handle, name: str) -> str:
         """Register a tool by name."""
         return name
 
@@ -220,7 +220,19 @@ def test_inject_library_schema_excludes_tool_library_handle():
     props = schema["function"]["parameters"].get("properties", {})
 
     assert "name" in props
-    assert "tool_library" not in props
+    assert "handle" not in props
+
+
+def test_inject_handle_response_parameters_exclude_handle():
+    @mf.tool_config(inject_handle=True)
+    def register_tool(handle, name: str) -> str:
+        """Register a tool by name."""
+        return name
+
+    library = ToolLibrary(name="lib", tools=[register_tool])
+    result = library([("call_1", "register_tool", {"name": "lookup"})])
+
+    assert result.tool_calls[0].parameters == {"name": "lookup"}
 
 
 def test_inject_notification_schema_excludes_notification_handle():
@@ -241,22 +253,22 @@ def test_inject_notification_schema_excludes_notification_handle():
     assert "notification" not in props
 
 
-def test_inject_library_can_add_and_remove_tools():
+def test_inject_handle_can_add_and_remove_tools():
     def multiply(x: int) -> int:
         """Multiply a number by two."""
         return x * 2
 
-    @mf.tool_config(inject_library=True)
-    def add_multiplier(tool_library) -> list[str]:
+    @mf.tool_config(inject_handle=True)
+    def add_multiplier(handle) -> list[str]:
         """Register the multiply tool."""
-        tool_library.add(multiply)
-        return tool_library.list_tools()
+        handle.add(multiply)
+        return handle.list_tools()
 
-    @mf.tool_config(inject_library=True)
-    def remove_tool(tool_library, name: str) -> list[str]:
+    @mf.tool_config(inject_handle=True)
+    def remove_tool(handle, name: str) -> list[str]:
         """Remove a tool by name."""
-        tool_library.remove(name)
-        return tool_library.list_tools()
+        handle.remove(name)
+        return handle.list_tools()
 
     library = ToolLibrary(name="lib", tools=[add_multiplier, remove_tool])
 
@@ -271,18 +283,18 @@ def test_inject_library_can_add_and_remove_tools():
     assert "multiply" not in library.get_tool_names()
 
 
-def test_inject_library_can_add_background_tool_with_task_tools():
+def test_inject_handle_can_add_background_tool_with_task_tools():
     @mf.tool_config(background=True, inject_task=True)
     def background_multiplier(value: int, task) -> int:
         """Multiply a number by two in the background."""
         task.update_progress(stage="work", message="Running", current=1, total=1)
         return value * 2
 
-    @mf.tool_config(inject_library=True)
-    def add_background_multiplier(tool_library) -> list[str]:
+    @mf.tool_config(inject_handle=True)
+    def add_background_multiplier(handle) -> list[str]:
         """Register a background tool."""
-        tool_library.add(background_multiplier)
-        return tool_library.list_tools()
+        handle.add(background_multiplier)
+        return handle.list_tools()
 
     library = ToolLibrary(name="lib", tools=[add_background_multiplier])
 
@@ -503,8 +515,8 @@ def test_cancelled_background_future_is_not_logged_as_error():
     future = Mock()
     future.result.side_effect = FutureCancelledError()
 
-    with patch("msgflux.nn.modules.tool.logger.error") as mock_error:
-        library._log_background_task_failure(future)
+    with patch("msgflux.runtime.background.logger.error") as mock_error:
+        library.background_dispatcher.log_task_failure(future)
 
     mock_error.assert_not_called()
 
@@ -980,15 +992,15 @@ def test_background_agent_dispatch_mentions_task_message_and_activity():
     assert "task_stop" in library.get_tool_names()
 
 
-def test_inject_library_can_add_background_agent_with_agent_task_tools():
+def test_inject_handle_can_add_background_agent_with_agent_task_tools():
     worker = Agent(name="worker", model=_mock_model("done"))
     worker.tool_config = {"background": True}
 
-    @mf.tool_config(inject_library=True)
-    def add_worker(tool_library) -> list[str]:
+    @mf.tool_config(inject_handle=True)
+    def add_worker(handle) -> list[str]:
         """Register a background agent."""
-        tool_library.add(worker)
-        return tool_library.list_tools()
+        handle.add(worker)
+        return handle.list_tools()
 
     library = ToolLibrary(name="lib", tools=[add_worker])
 

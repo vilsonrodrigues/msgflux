@@ -118,15 +118,24 @@ The contract is intentionally small:
   `tool_search`
 - if at least one on-demand tool exists, `ToolLibrary` injects `tool_search`
 - `tool_search` can search both local and MCP-backed on-demand tools
-- matching tools are promoted by calling `ToolLibrary.add(...)` again without
-  the `on_demand` flag
+- keyword searches return matching tool names, and `description=True` includes
+  tool metadata
+- `select:tool_name` promotes matching tools by calling `ToolLibrary.add(...)`
+  again without the `on_demand` flag
 
 This is useful when a session can register a large number of tools but should
 keep the active tool context small.
 
-`inject_library=True` is the natural companion feature here: a tool can add a
+`inject_handle=True` is the natural companion feature here: a tool can add a
 new on-demand tool at runtime, and `ToolLibrary` will expose `tool_search`
 automatically if needed.
+
+`tool_search` itself is a builtin tool, not a method implemented inside
+`ToolLibrary`. Runtime-aware tools inherit `ToolLibraryOperator`, receive a
+`ToolLibraryHandle`, and use that handle to search, describe, select, or add
+tools. This keeps `ToolLibrary` focused on registration, removal, schema
+exposure, and execution, while operational behavior lives in builtin/runtime
+components.
 
 ## Tool Buckets
 
@@ -175,8 +184,8 @@ schema stays as `agent(name, message)`, while `ToolLibrary` injects the current
 `messages` and `vars` arguments before dispatching to the selected subagent.
 
 On-demand tools use the same path. An on-demand agent first lives in
-`on_demand_tools`; when `tool_search` promotes it, `ToolLibrary.add(...)` runs
-again and the agent is captured by `AgentTool`.
+`on_demand_tools`; when `tool_search` receives `select:agent_name`,
+`ToolLibrary.add(...)` runs again and the agent is captured by `AgentTool`.
 
 ## Typed Restoration
 
