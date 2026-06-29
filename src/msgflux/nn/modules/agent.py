@@ -520,6 +520,8 @@ class Agent(Module, metaclass=AutoParams):
             kwargs.get("messages"),
             scope=requested_scope,
         )
+        if resumed is not None:
+            resumed["vars"] = kwargs.get("vars", {})
         inputs = resumed or self._prepare_inputs(message, **kwargs)
 
         effective_checkpointer = self._get_effective_checkpointer()
@@ -572,6 +574,8 @@ class Agent(Module, metaclass=AutoParams):
             kwargs.get("messages"),
             scope=requested_scope,
         )
+        if resumed is not None:
+            resumed["vars"] = kwargs.get("vars", {})
         inputs = resumed or await self._aprepare_inputs(message, **kwargs)
 
         effective_checkpointer = self._get_effective_checkpointer()
@@ -1488,6 +1492,15 @@ class Agent(Module, metaclass=AutoParams):
             effective_thread_id,
             effective_run_id,
         ) = self._prepare_messages_scope(messages=messages, scope=scope)
+        # A brand-new run in an existing thread continues from the latest
+        # checkpointed messages, but keeps vars from the current call.
+        messages, vars, model_preference = self._continue_thread_from_checkpoint(
+            messages=messages,
+            vars=vars,
+            model_preference=model_preference,
+            thread_id=effective_thread_id,
+            run_id=effective_run_id,
+        )
 
         content = self._render_task(message, task=task, vars=vars, **kwargs)
 
@@ -1624,6 +1637,15 @@ class Agent(Module, metaclass=AutoParams):
             effective_thread_id,
             effective_run_id,
         ) = self._prepare_messages_scope(messages=messages, scope=scope)
+        # A brand-new run in an existing thread continues from the latest
+        # checkpointed messages, but keeps vars from the current call.
+        messages, vars, model_preference = await self._acontinue_thread_from_checkpoint(
+            messages=messages,
+            vars=vars,
+            model_preference=model_preference,
+            thread_id=effective_thread_id,
+            run_id=effective_run_id,
+        )
 
         content = await self._arender_task(message, task=task, vars=vars, **kwargs)
 
@@ -2481,7 +2503,7 @@ class Agent(Module, metaclass=AutoParams):
     def _checkpoint_save(
         self,
         messages: Union[ChatMessages, List[Mapping[str, Any]], None],
-        vars: Mapping[str, Any],
+        _vars: Mapping[str, Any],
         status: str = "running",
     ) -> None:
         checkpointer = self._get_effective_checkpointer()
@@ -2494,13 +2516,13 @@ class Agent(Module, metaclass=AutoParams):
 
         thread_id = messages.thread_id or new_thread_id()
         run_id = turns[-1]["turn_id"]
-        state = self._build_checkpoint_state(messages, vars, status=status)
+        state = self._build_checkpoint_state(messages, status=status)
         checkpointer.save_state(self.get_module_name(), thread_id, run_id, state)
 
     async def _acheckpoint_save(
         self,
         messages: Union[ChatMessages, List[Mapping[str, Any]], None],
-        vars: Mapping[str, Any],
+        _vars: Mapping[str, Any],
         status: str = "running",
     ) -> None:
         checkpointer = self._get_effective_checkpointer()
@@ -2513,7 +2535,7 @@ class Agent(Module, metaclass=AutoParams):
 
         thread_id = messages.thread_id or new_thread_id()
         run_id = turns[-1]["turn_id"]
-        state = self._build_checkpoint_state(messages, vars, status=status)
+        state = self._build_checkpoint_state(messages, status=status)
         if hasattr(checkpointer, "asave_state"):
             await checkpointer.asave_state(
                 self.get_module_name(),
@@ -2527,14 +2549,12 @@ class Agent(Module, metaclass=AutoParams):
     def _build_checkpoint_state(
         self,
         messages: ChatMessages,
-        vars: Mapping[str, Any],
         *,
         status: str,
     ) -> Mapping[str, Any]:
         return {
             "status": status,
             "messages": messages._to_state(),
-            "vars": dict(vars) if vars else {},
             "metadata": {
                 "namespace": self.get_module_name(),
                 "saved_at": utc_now_isoformat(),
@@ -2556,6 +2576,89 @@ class Agent(Module, metaclass=AutoParams):
         await self._acheckpoint_save(messages, vars, status="failed")
 
     # --- Checkpoint Resume ---
+
+    def _continue_thread_from_checkpoint(
+        self,
+        *,
+        messages: Optional[Union[ChatMessages, List[Mapping[str, Any]]]],
+        vars: Mapping[str, Any],
+        model_preference: Optional[Union[str, List[str]]],
+        thread_id: str,
+        run_id: str,
+    ) -> Tuple[
+        Optional[Union[ChatMessages, List[Mapping[str, Any]]]],
+        Mapping[str, Any],
+        Optional[Union[str, List[str]]],
+    ]:
+        checkpointer = self._get_effective_checkpointer()
+        if checkpointer is None or not isinstance(messages, ChatMessages):
+            return messages, vars, model_preference
+        if messages:
+            return messages, vars, model_preference
+
+        namespace = self.get_module_name()
+        if checkpointer.load_state(namespace, thread_id, run_id) is not None:
+            return messages, vars, model_preference
+
+        latest = checkpointer.load_latest_run(namespace, thread_id)
+        if latest is None:
+            return messages, vars, model_preference
+
+        restored = ChatMessages()
+        restored._hydrate_state(latest.get("messages", {}))
+        restored.configure_thread(thread_id=thread_id, namespace=namespace)
+
+        restored_model_preference = (
+            model_preference
+            if model_preference is not None
+            else latest.get("model_preference")
+        )
+        return restored, vars, restored_model_preference
+
+    async def _acontinue_thread_from_checkpoint(
+        self,
+        *,
+        messages: Optional[Union[ChatMessages, List[Mapping[str, Any]]]],
+        vars: Mapping[str, Any],
+        model_preference: Optional[Union[str, List[str]]],
+        thread_id: str,
+        run_id: str,
+    ) -> Tuple[
+        Optional[Union[ChatMessages, List[Mapping[str, Any]]]],
+        Mapping[str, Any],
+        Optional[Union[str, List[str]]],
+    ]:
+        checkpointer = self._get_effective_checkpointer()
+        if checkpointer is None or not isinstance(messages, ChatMessages):
+            return messages, vars, model_preference
+        if messages:
+            return messages, vars, model_preference
+
+        namespace = self.get_module_name()
+        if hasattr(checkpointer, "aload_state"):
+            current = await checkpointer.aload_state(namespace, thread_id, run_id)
+        else:
+            current = checkpointer.load_state(namespace, thread_id, run_id)
+        if current is not None:
+            return messages, vars, model_preference
+
+        if hasattr(checkpointer, "aload_latest_run"):
+            latest = await checkpointer.aload_latest_run(namespace, thread_id)
+        else:
+            latest = checkpointer.load_latest_run(namespace, thread_id)
+        if latest is None:
+            return messages, vars, model_preference
+
+        restored = ChatMessages()
+        restored._hydrate_state(latest.get("messages", {}))
+        restored.configure_thread(thread_id=thread_id, namespace=namespace)
+
+        restored_model_preference = (
+            model_preference
+            if model_preference is not None
+            else latest.get("model_preference")
+        )
+        return restored, vars, restored_model_preference
 
     def _try_resume_from_checkpoint(
         self,
@@ -2582,7 +2685,11 @@ class Agent(Module, metaclass=AutoParams):
         if state is None:
             return None
         if state.get("status") in {"completed", "stopped"}:
-            return None
+            raise ValueError(
+                f"Run `{run_id}` already reached terminal status "
+                f"`{state.get('status')}`. Use a new run_id to continue thread "
+                f"`{effective_thread_id}`."
+            )
 
         restored = ChatMessages()
         restored._hydrate_state(state.get("messages", {}))
@@ -2593,7 +2700,6 @@ class Agent(Module, metaclass=AutoParams):
         )
         return {
             "messages": restored,
-            "vars": state.get("vars", {}),
             "model_preference": state.get("model_preference"),
             "scope": effective_scope,
         }
@@ -2631,7 +2737,11 @@ class Agent(Module, metaclass=AutoParams):
         if state is None:
             return None
         if state.get("status") in {"completed", "stopped"}:
-            return None
+            raise ValueError(
+                f"Run `{run_id}` already reached terminal status "
+                f"`{state.get('status')}`. Use a new run_id to continue thread "
+                f"`{effective_thread_id}`."
+            )
 
         restored = ChatMessages()
         restored._hydrate_state(state.get("messages", {}))
@@ -2642,7 +2752,6 @@ class Agent(Module, metaclass=AutoParams):
         )
         return {
             "messages": restored,
-            "vars": state.get("vars", {}),
             "model_preference": state.get("model_preference"),
             "scope": effective_scope,
         }
