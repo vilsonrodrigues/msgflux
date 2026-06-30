@@ -92,6 +92,33 @@ class CheckpointStore(ABC):
             return None
         return self.load_state(namespace, thread_id, runs[0]["run_id"])
 
+    def fork_run(
+        self,
+        namespace: str,
+        source_thread_id: str,
+        source_run_id: str,
+        *,
+        target_thread_id: str,
+        target_run_id: str,
+        status: str | None = None,
+    ) -> Mapping[str, Any]:
+        state = self.load_state(namespace, source_thread_id, source_run_id)
+        if state is None:
+            raise ValueError(
+                f"Checkpoint run `{source_run_id}` not found in thread "
+                f"`{source_thread_id}`."
+            )
+        forked = dict(state)
+        if status is not None:
+            forked["status"] = status
+        self.save_state(namespace, target_thread_id, target_run_id, forked)
+        loaded = self.load_state(namespace, target_thread_id, target_run_id)
+        if loaded is None:
+            raise ValueError(
+                f"Forked checkpoint `{target_run_id}` could not be loaded."
+            )
+        return loaded
+
     def find_incomplete_runs(
         self,
         namespace: str,

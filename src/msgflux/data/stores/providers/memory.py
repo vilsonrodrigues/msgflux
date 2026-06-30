@@ -1,5 +1,25 @@
+# Checkpoints are split into small run records and immutable message items.
+# A run belongs to `(namespace, thread_id, run_id)` and stores the non-message
+# state plus the ChatMessages container metadata and an ordered list of item
+# references. The message items themselves are stored once per thread by a
+# content hash, so continuing a conversation with a new run_id only writes a new
+# run record that points at the existing items. Loading reverses that shape and
+# returns the public state with `messages.items` restored. Forking to another
+# thread copies only the referenced items needed by the fork; deleting a run
+# removes message items when no remaining run in that thread references them.
+#
+# In memory this is represented by two nested dictionaries:
+# `_data[namespace][thread_id][run_id]` keeps the normalized run state and
+# events, while `_message_items[namespace][thread_id][item_ref]` keeps each
+# frozen ChatMessages item payload. The normalized run state replaces
+# `messages.items` with `_messages = {"state": <messages without items>,
+# "item_refs": [...]}`. `item_refs` preserves ordering and may contain repeated
+# refs if the conversation intentionally contains repeated identical items.
+
 from __future__ import annotations
 
+import hashlib
+import json
 import time
 from copy import deepcopy
 from threading import RLock
@@ -18,6 +38,7 @@ class InMemoryCheckpointStore(CheckpointStore, CheckpointStoreType):
 
     def __init__(self) -> None:
         self._data: Dict[str, Dict[str, Dict[str, Dict[str, Any]]]] = {}
+        self._message_items: Dict[str, Dict[str, Dict[str, Mapping[str, Any]]]] = {}
         self._lock = RLock()
 
     def _get_run(
@@ -36,6 +57,106 @@ class InMemoryCheckpointStore(CheckpointStore, CheckpointStoreType):
             thread[run_id] = run
         return run
 
+    def _normalize_state(
+        self,
+        namespace: str,
+        thread_id: str,
+        state: Mapping[str, Any],
+    ) -> Dict[str, Any]:
+        normalized = deepcopy(dict(state))
+        messages = normalized.pop("messages", None)
+        if not isinstance(messages, Mapping):
+            return normalized
+
+        items = messages.get("items")
+        if not isinstance(items, list):
+            return normalized
+
+        item_store = self._message_items.setdefault(namespace, {}).setdefault(
+            thread_id, {}
+        )
+        item_refs = []
+        for item in items:
+            item_ref = self._item_ref(item)
+            item_store.setdefault(item_ref, deepcopy(item))
+            item_refs.append(item_ref)
+
+        message_state = deepcopy(dict(messages))
+        message_state.pop("items", None)
+        normalized["_messages"] = {
+            "state": message_state,
+            "item_refs": item_refs,
+        }
+        return normalized
+
+    def _denormalize_state(
+        self,
+        namespace: str,
+        thread_id: str,
+        state: Mapping[str, Any],
+    ) -> Dict[str, Any]:
+        restored = deepcopy(dict(state))
+        normalized_messages = restored.pop("_messages", None)
+        if not isinstance(normalized_messages, Mapping):
+            return restored
+
+        message_state = normalized_messages.get("state")
+        item_refs = normalized_messages.get("item_refs")
+        if not isinstance(message_state, Mapping) or not isinstance(item_refs, list):
+            return restored
+
+        item_store = self._message_items.get(namespace, {}).get(thread_id, {})
+        messages = deepcopy(dict(message_state))
+        messages["items"] = []
+        for item_ref in item_refs:
+            if not isinstance(item_ref, str) or item_ref not in item_store:
+                raise ValueError(
+                    "Checkpoint message item is missing or corrupted: "
+                    f"{namespace}/{thread_id}/{item_ref!r}"
+                )
+            messages["items"].append(deepcopy(item_store[item_ref]))
+        restored["messages"] = messages
+        return restored
+
+    @staticmethod
+    def _item_ref(item: Any) -> str:
+        payload = json.dumps(item, ensure_ascii=False, sort_keys=True, default=str)
+        return "item_" + hashlib.sha256(payload.encode("utf-8")).hexdigest()[:32]
+
+    def _collect_live_item_refs(self, namespace: str, thread_id: str) -> set[str]:
+        live: set[str] = set()
+        thread = self._data.get(namespace, {}).get(thread_id, {})
+        for run in thread.values():
+            live.update(self._collect_refs_from_state(run.get("state", {})))
+        return live
+
+    @staticmethod
+    def _collect_refs_from_state(state: Any) -> set[str]:
+        if not isinstance(state, Mapping):
+            return set()
+        messages = state.get("_messages")
+        if not isinstance(messages, Mapping):
+            return set()
+        item_refs = messages.get("item_refs")
+        if not isinstance(item_refs, list):
+            return set()
+        return {item_ref for item_ref in item_refs if isinstance(item_ref, str)}
+
+    def _cleanup_orphaned_items(self, namespace: str, thread_id: str) -> None:
+        item_store = self._message_items.get(namespace, {}).get(thread_id)
+        if item_store is None:
+            return
+        live = self._collect_live_item_refs(namespace, thread_id)
+        for item_ref in list(item_store):
+            if item_ref not in live:
+                del item_store[item_ref]
+        if not item_store:
+            ns_items = self._message_items.get(namespace)
+            if ns_items is not None:
+                ns_items.pop(thread_id, None)
+                if not ns_items:
+                    self._message_items.pop(namespace, None)
+
     def save_state(
         self,
         namespace: str,
@@ -45,7 +166,7 @@ class InMemoryCheckpointStore(CheckpointStore, CheckpointStoreType):
     ) -> None:
         with self._lock:
             run = self._ensure_run(namespace, thread_id, run_id)
-            run["state"] = deepcopy(dict(state))
+            run["state"] = self._normalize_state(namespace, thread_id, state)
             run["updated_at"] = time.time()
 
     def load_state(
@@ -58,7 +179,7 @@ class InMemoryCheckpointStore(CheckpointStore, CheckpointStoreType):
             run = self._get_run(namespace, thread_id, run_id)
             if run is None:
                 return None
-            return deepcopy(run["state"])
+            return self._denormalize_state(namespace, thread_id, run["state"])
 
     def append_event(
         self,
@@ -83,6 +204,44 @@ class InMemoryCheckpointStore(CheckpointStore, CheckpointStoreType):
                 return []
             return deepcopy(run["events"])
 
+    def fork_run(
+        self,
+        namespace: str,
+        source_thread_id: str,
+        source_run_id: str,
+        *,
+        target_thread_id: str,
+        target_run_id: str,
+        status: str | None = None,
+    ) -> Mapping[str, Any]:
+        with self._lock:
+            source = self._get_run(namespace, source_thread_id, source_run_id)
+            if source is None:
+                raise ValueError(
+                    f"Checkpoint run `{source_run_id}` not found in thread "
+                    f"`{source_thread_id}`."
+                )
+            target = self._ensure_run(namespace, target_thread_id, target_run_id)
+            target["state"] = deepcopy(source["state"])
+            if status is not None:
+                target["state"]["status"] = status
+            target["updated_at"] = time.time()
+
+            source_items = self._message_items.get(namespace, {}).get(
+                source_thread_id, {}
+            )
+            target_items = self._message_items.setdefault(namespace, {}).setdefault(
+                target_thread_id, {}
+            )
+            for item_ref in self._collect_refs_from_state(target["state"]):
+                if item_ref not in source_items:
+                    raise ValueError(
+                        "Checkpoint message item is missing or corrupted: "
+                        f"{namespace}/{source_thread_id}/{item_ref!r}"
+                    )
+                target_items.setdefault(item_ref, deepcopy(source_items[item_ref]))
+            return self._denormalize_state(namespace, target_thread_id, target["state"])
+
     def save_with_event(
         self,
         namespace: str,
@@ -93,7 +252,7 @@ class InMemoryCheckpointStore(CheckpointStore, CheckpointStoreType):
     ) -> None:
         with self._lock:
             run = self._ensure_run(namespace, thread_id, run_id)
-            run["state"] = deepcopy(dict(state))
+            run["state"] = self._normalize_state(namespace, thread_id, state)
             run["updated_at"] = time.time()
             run["events"].append(deepcopy(dict(event)))
 
@@ -134,6 +293,7 @@ class InMemoryCheckpointStore(CheckpointStore, CheckpointStoreType):
             thread_runs = self._data.get(namespace, {}).get(thread_id, {})
             if run_id in thread_runs:
                 del thread_runs[run_id]
+                self._cleanup_orphaned_items(namespace, thread_id)
                 return True
             return False
 
@@ -169,6 +329,7 @@ class InMemoryCheckpointStore(CheckpointStore, CheckpointStoreType):
                     for rid in to_delete:
                         del thread[rid]
                         removed += 1
+                    self._cleanup_orphaned_items(ns, sid)
                     if not thread:
                         del ns_data[sid]
                 if not ns_data:
