@@ -1,4 +1,5 @@
 import pytest
+import msgspec
 
 from msgflux.data.stores import InMemoryCheckpointStore, SQLiteCheckpointStore
 from msgflux.data.stores import Store
@@ -67,9 +68,11 @@ def test_in_memory_checkpoint_store_normalizes_messages():
             "item_refs": [store._item_ref(messages["items"][0])],
         },
     }
-    assert store._message_items["agent:test"]["session_1"][
+    encoded_item = store._message_items["agent:test"]["session_1"][
         store._item_ref(messages["items"][0])
-    ] == {
+    ]
+    assert isinstance(encoded_item, bytes)
+    assert msgspec.msgpack.decode(encoded_item) == {
         "role": "user",
         "content": "hello",
     }

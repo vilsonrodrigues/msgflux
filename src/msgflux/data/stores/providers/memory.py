@@ -11,7 +11,8 @@
 # In memory this is represented by two nested dictionaries:
 # `_data[namespace][thread_id][run_id]` keeps the normalized run state and
 # events, while `_message_items[namespace][thread_id][item_ref]` keeps each
-# frozen ChatMessages item payload. The normalized run state replaces
+# frozen ChatMessages item payload encoded as msgpack bytes. The normalized run
+# state replaces
 # `messages.items` with `_messages = {"state": <messages without items>,
 # "item_refs": [...]}`. `item_refs` preserves ordering and may contain repeated
 # refs if the conversation intentionally contains repeated identical items.
@@ -24,6 +25,8 @@ import time
 from copy import deepcopy
 from threading import RLock
 from typing import Any, Dict, List, Mapping
+
+import msgspec
 
 from msgflux.data.stores.base import CheckpointStore
 from msgflux.data.stores.registry import register_store
@@ -38,7 +41,7 @@ class InMemoryCheckpointStore(CheckpointStore, CheckpointStoreType):
 
     def __init__(self) -> None:
         self._data: Dict[str, Dict[str, Dict[str, Dict[str, Any]]]] = {}
-        self._message_items: Dict[str, Dict[str, Dict[str, Mapping[str, Any]]]] = {}
+        self._message_items: Dict[str, Dict[str, Dict[str, bytes]]] = {}
         self._lock = RLock()
 
     def _get_run(
@@ -78,7 +81,7 @@ class InMemoryCheckpointStore(CheckpointStore, CheckpointStoreType):
         item_refs = []
         for item in items:
             item_ref = self._item_ref(item)
-            item_store.setdefault(item_ref, deepcopy(item))
+            item_store.setdefault(item_ref, msgspec.msgpack.encode(item))
             item_refs.append(item_ref)
 
         message_state = deepcopy(dict(messages))
@@ -114,7 +117,7 @@ class InMemoryCheckpointStore(CheckpointStore, CheckpointStoreType):
                     "Checkpoint message item is missing or corrupted: "
                     f"{namespace}/{thread_id}/{item_ref!r}"
                 )
-            messages["items"].append(deepcopy(item_store[item_ref]))
+            messages["items"].append(msgspec.msgpack.decode(item_store[item_ref]))
         restored["messages"] = messages
         return restored
 
@@ -239,7 +242,7 @@ class InMemoryCheckpointStore(CheckpointStore, CheckpointStoreType):
                         "Checkpoint message item is missing or corrupted: "
                         f"{namespace}/{source_thread_id}/{item_ref!r}"
                     )
-                target_items.setdefault(item_ref, deepcopy(source_items[item_ref]))
+                target_items.setdefault(item_ref, source_items[item_ref])
             return self._denormalize_state(namespace, target_thread_id, target["state"])
 
     def save_with_event(
