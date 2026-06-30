@@ -11,7 +11,7 @@ The current design is intentionally small:
 - `task_wait(task_id)` blocks until the task completes, fails, or times out
 - `task_output(task_id)` returns the final output
 - `task_list()` lists tasks visible in the current `ToolLibrary`
-- `task_stop(task_id)` requests a cooperative stop
+- `task_interrupt(task_id)` requests a cooperative interrupt
 - completed and failed tasks can also be delivered back to the agent as a
   passive notification
 - `inject_notification=True` lets a tool publish agent-visible status updates
@@ -58,7 +58,7 @@ agent = nn.Agent(
 dispatch = agent.tool_library([("call_1", "long_sum", {"a": 20, "b": 22})])
 print(dispatch.tool_calls[0].result)
 # The `long_sum` tool is running in the background with task_id='...'
-# Use that task_id with `task_status`, `task_stop`, `task_wait`, or `task_output`
+# Use that task_id with `task_status`, `task_interrupt`, `task_wait`, or `task_output`
 
 tasks = agent.tool_library([("call_2", "task_list", {})])
 task_id = tasks.tool_calls[0].result[0]["task_id"]
@@ -110,15 +110,15 @@ background. Use `allow_background=True` only when the model should decide.
 
 ## Example 1D: Stopping A Background Task
 
-`task_stop(task_id)` requests a cooperative stop.
+`task_interrupt(task_id)` requests a cooperative interrupt.
 
 ```python
-stop_result = agent.tool_library([("call_6", "task_stop", {"task_id": task_id})])
-print(stop_result.tool_calls[0].result)
+interrupt_result = agent.tool_library([("call_6", "task_interrupt", {"task_id": task_id})])
+print(interrupt_result.tool_calls[0].result)
 ```
 
-If the task has not started yet, msgFlux may stop it immediately. If it is
-already running, the stop is observed at the next cooperative checkpoint. For
+If the task has not started yet, msgFlux may interrupt it immediately. If it is
+already running, the interrupt is observed at the next cooperative checkpoint. For
 background subagents, that means before the next provider call.
 
 ## Example 1E: Reading Subagent Activity
@@ -263,7 +263,7 @@ print(message_result.tool_calls[0].result)
 ```
 
 If the subagent is still running, the message is delivered into its local
-inbox and will be consumed on the next provider boundary. If it already stopped
+inbox and will be consumed on the next provider boundary. If it already interrupted
 but has a checkpoint, msgFlux resumes it with the same `task_id`.
 
 ## Example 3C: Status Updates With `inject_notification`

@@ -114,7 +114,7 @@ Background tasks should support both delivery paths from the start.
 The active path is explicit polling through tools:
 
 - `task_status(task_id)` returns rich state
-- `task_stop(task_id)` requests a cooperative stop
+- `task_interrupt(task_id)` requests a cooperative interrupt
 - `task_wait(task_id)` blocks until the task reaches a terminal state or times out
 - `task_output(task_id)` returns only the final output
 - `task_list(...)` returns tasks visible in the current scope
@@ -141,7 +141,7 @@ The initial status machine should stay small:
 ```text
 queued -> running -> completed
 queued -> running -> failed
-queued -> running -> stopped
+queued -> running -> interrupted
 ```
 
 The first implementation does not need retries, child tasks, or checkpoint
@@ -244,7 +244,7 @@ subagent.
 These tools solve different problems.
 
 - `task_status` is for orchestration and polling logic
-- `task_stop` is for cooperative interruption
+- `task_interrupt` is for cooperative interruption
 - `task_wait` is for synchronous orchestration when the caller wants to pause
 - `task_output` is for consuming the final payload
 - `task_activity` is for compact recent activity from a background subagent
@@ -257,9 +257,9 @@ When it is available, `task_activity` fills the gap between `task_status` and
 `task_output`. It gives the model a compact view of what happened inside a
 background subagent without dumping raw tool outputs into the prompt.
 
-`task_stop` should be treated as cooperative by default. It can stop a task
+`task_interrupt` should be treated as cooperative by default. It can interrupt a task
 immediately only when the background future has not started yet. Otherwise the
-task observes the stop request at the next checkpoint.
+task observes the interrupt request at the next checkpoint.
 
 ## Notification Policy
 

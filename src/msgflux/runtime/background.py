@@ -7,7 +7,7 @@ from typing import Any, Dict, Mapping
 from uuid import uuid4
 
 from msgflux._private.executor import Executor
-from msgflux.exceptions import TaskPauseRequestedError, TaskStopRequestedError
+from msgflux.exceptions import TaskInterruptRequestedError, TaskPauseRequestedError
 from msgflux.logger import logger
 from msgflux.runtime.agent_inbox import AgentInbox, AgentNotification
 from msgflux.runtime.context import (
@@ -121,15 +121,15 @@ class BackgroundTaskDispatcher:
             task_handle.set_running()
             try:
                 result = tool(**call_params)
-            except TaskStopRequestedError as exc:
-                task_handle.stop(reason=str(exc))
+            except TaskInterruptRequestedError as exc:
+                task_handle.interrupt(reason=str(exc))
                 self.publish_task_notification(
                     task_id=task_handle.task_id,
                     tool_name=tool_name,
-                    status="stopped",
+                    status="interrupted",
                     hint=(
                         f"Use task_status(task_id='{task_handle.task_id}') "
-                        "if you need stop details."
+                        "if you need interrupt details."
                     ),
                     agent_inbox=agent_inbox,
                 )
@@ -192,7 +192,7 @@ class BackgroundTaskDispatcher:
         if not isinstance(thread_id, str) or not thread_id:
             thread_id = new_thread_id()
         run_id = task.metadata.get("checkpoint_run_id") or task.task_id
-        if task.status == "completed":
+        if task.status in {"completed", "interrupted"}:
             run_id = new_run_id()
             updated_task = self.library_handle.task_store.update_metadata(
                 task.task_id,
@@ -281,7 +281,7 @@ class BackgroundTaskDispatcher:
             future.result()
         except FutureCancelledError:
             return
-        except TaskStopRequestedError:
+        except TaskInterruptRequestedError:
             return
         except TaskPauseRequestedError:
             return
@@ -349,7 +349,7 @@ class BackgroundTaskDispatcher:
                 "checkpoint_run_id": task_id if is_agent_task else None,
                 "supports_activity": is_agent_task,
                 "supports_message": is_agent_task,
-                "stop_requested": False,
+                "interrupt_requested": False,
             },
         )
         runner_params = dict(call_params)

@@ -11,7 +11,7 @@ import pytest
 from msgflux.chat_messages import ChatMessages
 from msgflux.runtime.context import execution_context
 from msgflux.data.stores import InMemoryCheckpointStore
-from msgflux.exceptions import TaskPauseRequestedError, TaskStopRequestedError
+from msgflux.exceptions import TaskPauseRequestedError, TaskInterruptRequestedError
 from msgflux.models.tool_call_agg import ToolCallAggregator
 from msgflux.models.response import ModelResponse
 from msgflux.nn import Agent
@@ -301,7 +301,7 @@ def test_inject_handle_can_add_background_tool_with_task_tools():
     add_result = library([("call_1", "add_background_multiplier", {})])
     assert "background_multiplier" in add_result.tool_calls[0].result
     assert "task_status" in add_result.tool_calls[0].result
-    assert "task_stop" in add_result.tool_calls[0].result
+    assert "task_interrupt" in add_result.tool_calls[0].result
     assert "task_wait" in add_result.tool_calls[0].result
     assert "task_output" in add_result.tool_calls[0].result
 
@@ -339,7 +339,7 @@ def test_background_task_reports_progress_and_output():
 
     dispatch = library([("call_1", "long_job", {"value": 21})])
     assert "task_status" in library.get_tool_names()
-    assert "task_stop" in library.get_tool_names()
+    assert "task_interrupt" in library.get_tool_names()
     assert "task_wait" in library.get_tool_names()
     assert "task_output" in library.get_tool_names()
     assert started.wait(timeout=1.0)
@@ -388,7 +388,7 @@ def test_task_wait_returns_final_output():
 
     dispatch = library([("call_1", "long_job", {"value": 21})])
     assert "task_wait" in library.get_tool_names()
-    assert "task_stop" in library.get_tool_names()
+    assert "task_interrupt" in library.get_tool_names()
     task_id = library([("call_2", "task_list", {})]).tool_calls[0].result[0]["task_id"]
     assert f"task_id='{task_id}'" in dispatch.tool_calls[0].result
     assert "`task_wait`" in dispatch.tool_calls[0].result
@@ -463,7 +463,7 @@ def test_task_wait_returns_failed_payload():
     assert "boom" in payload["error"]
 
 
-def test_task_stop_stops_background_agent_at_next_checkpoint():
+def test_task_interrupt_interrupts_background_agent_at_next_checkpoint():
     slow_tool_started = threading.Event()
     release_tool = threading.Event()
 
@@ -487,10 +487,10 @@ def test_task_stop_stops_background_agent_at_next_checkpoint():
     task_id = dispatch.tool_calls[0].result.split("task_id='")[1].split("'")[0]
 
     assert slow_tool_started.wait(timeout=1.0)
-    stop_result = (
-        library([("call_2", "task_stop", {"task_id": task_id})]).tool_calls[0].result
+    interrupt_result = (
+        library([("call_2", "task_interrupt", {"task_id": task_id})]).tool_calls[0].result
     )
-    assert stop_result["status"] == "stop_requested"
+    assert interrupt_result["status"] == "interrupt_requested"
 
     release_tool.set()
     _wait_until(
@@ -498,16 +498,16 @@ def test_task_stop_stops_background_agent_at_next_checkpoint():
             library([("call_3", "task_status", {"task_id": task_id})])
             .tool_calls[0]
             .result["status"]
-            == "stopped"
+            == "interrupted"
         )
     )
 
     status = (
         library([("call_4", "task_status", {"task_id": task_id})]).tool_calls[0].result
     )
-    assert status["status"] == "stopped"
+    assert status["status"] == "interrupted"
     assert status["metadata"]["supports_activity"] is True
-    assert status["last_activity_summary"] == "Status: Task stopped."
+    assert status["last_activity_summary"] == "Status: Task interrupted."
 
 
 def test_cancelled_background_future_is_not_logged_as_error():
@@ -689,15 +689,15 @@ def test_inspect_model_execution_params_does_not_consume_notifications():
     assert notification_messages == []
 
 
-def test_agent_control_stop_interrupts_before_model_call():
+def test_agent_control_interrupts_before_model_call():
     inbox = mf.AgentInbox()
     model = _mock_model()
     agent = Agent(name="Assistant", model=model)
     agent.set_agent_inbox(inbox)
 
-    inbox.stop(reason="operator requested stop")
+    inbox.interrupt(reason="operator requested interrupt")
 
-    with pytest.raises(TaskStopRequestedError, match="operator requested stop"):
+    with pytest.raises(TaskInterruptRequestedError, match="operator requested interrupt"):
         agent("Continue.")
 
     assert not model.called
@@ -984,12 +984,12 @@ def test_background_agent_dispatch_mentions_task_message_and_activity():
 
     assert "`task_activity`" in result
     assert "`task_message`" in result
-    assert "`task_stop`" in result
+    assert "`task_interrupt`" in result
     assert "`task_wait`" in result
     assert "`task_output`" in result
     assert "task_message" in library.get_tool_names()
     assert "task_activity" in library.get_tool_names()
-    assert "task_stop" in library.get_tool_names()
+    assert "task_interrupt" in library.get_tool_names()
 
 
 def test_inject_handle_can_add_background_agent_with_agent_task_tools():
@@ -1008,7 +1008,7 @@ def test_inject_handle_can_add_background_agent_with_agent_task_tools():
 
     assert "worker" in add_result
     assert "task_status" in add_result
-    assert "task_stop" in add_result
+    assert "task_interrupt" in add_result
     assert "task_wait" in add_result
     assert "task_output" in add_result
     assert "task_activity" in add_result
@@ -1027,7 +1027,7 @@ def test_background_tool_dispatch_does_not_mention_task_activity():
     result = dispatch.tool_calls[0].result
 
     assert "`task_status`" in result
-    assert "`task_stop`" in result
+    assert "`task_interrupt`" in result
     assert "`task_wait`" in result
     assert "`task_output`" in result
     assert "`task_activity`" not in result
@@ -1172,7 +1172,7 @@ def test_task_message_resumes_completed_background_agent():
         ] == "completed"
 
 
-def test_task_message_resume_clears_previous_stop_reason():
+def test_task_message_resume_clears_previous_interrupt_reason():
     slow_tool_started = threading.Event()
     release_tool = threading.Event()
 
@@ -1204,12 +1204,12 @@ def test_task_message_resume_clears_previous_stop_reason():
         task_id = dispatch.tool_calls[0].result.split("task_id='")[1].split("'")[0]
 
         assert slow_tool_started.wait(timeout=1.0)
-        stop_result = (
-            library([("call_2", "task_stop", {"task_id": task_id})])
+        interrupt_result = (
+            library([("call_2", "task_interrupt", {"task_id": task_id})])
             .tool_calls[0]
             .result
         )
-        assert stop_result["status"] == "stop_requested"
+        assert interrupt_result["status"] == "interrupt_requested"
 
         release_tool.set()
         _wait_until(
@@ -1217,16 +1217,16 @@ def test_task_message_resume_clears_previous_stop_reason():
                 library([("call_3", "task_status", {"task_id": task_id})])
                 .tool_calls[0]
                 .result["status"]
-                == "stopped"
+                == "interrupted"
             )
         )
 
-        stopped_state = (
+        interrupted_state = (
             library([("call_4", "task_status", {"task_id": task_id})])
             .tool_calls[0]
             .result
         )
-        assert "stop_reason" in stopped_state["metadata"]
+        assert "interrupt_reason" in interrupted_state["metadata"]
 
         message_result = (
             library(
@@ -1257,7 +1257,7 @@ def test_task_message_resume_clears_previous_stop_reason():
             .tool_calls[0]
             .result
         )
-        assert "stop_reason" not in resumed_state["metadata"]
+        assert "interrupt_reason" not in resumed_state["metadata"]
 
     state = store.load_state("worker", "user_42", task_id)
     assert state is not None

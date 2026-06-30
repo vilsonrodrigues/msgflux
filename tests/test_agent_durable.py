@@ -3,10 +3,12 @@ from unittest.mock import Mock
 import pytest
 
 from msgflux.chat_messages import ChatMessages
-from msgflux.runtime.context import ExecutionScope
 from msgflux.data.stores import InMemoryCheckpointStore
+from msgflux.exceptions import TaskInterruptRequestedError
+from msgflux.models.tool_call_agg import ToolCallAggregator
 from msgflux.models.response import ModelResponse
 from msgflux.nn.modules.agent import Agent
+from msgflux.runtime.context import ExecutionScope
 
 
 def _mock_model():
@@ -22,6 +24,17 @@ def _text_response(text="Hello!"):
     response.reasoning = None
     response.metadata = {"model": "test"}
     response.consume.return_value = text
+    return response
+
+
+def _tool_call_response():
+    tool_calls = ToolCallAggregator()
+    tool_calls.process(0, "call_lookup", "lookup", '{"query":"status"}')
+    response = Mock(spec=ModelResponse)
+    response.response_type = "tool_call"
+    response.data = tool_calls
+    response.reasoning = None
+    response.metadata = {"model": "test"}
     return response
 
 
@@ -149,6 +162,48 @@ def test_agent_resumes_failed_run_id():
     restored._hydrate_state(state["messages"])
     assert restored.to_chatml()[0]["content"] == "Call flaky backend"
     assert restored.to_chatml()[-1]["content"] == "recovered"
+
+
+def test_agent_interrupt_closes_active_tool_calls_in_checkpoint():
+    store = InMemoryCheckpointStore()
+    agent = _make_agent(checkpointer=store)
+
+    def lookup(query: str) -> str:
+        raise TaskInterruptRequestedError("task_1", f"user pressed interrupt: {query}")
+
+    agent.tool_library.add(lookup)
+    agent.generator.forward = Mock(return_value=_tool_call_response())
+
+    with pytest.raises(TaskInterruptRequestedError):
+        agent(
+            "Check status",
+            scope=ExecutionScope(
+                thread_id="user_42",
+                namespace="test_agent",
+                run_id="run_interrupt",
+            ),
+        )
+
+    state = store.load_state("test_agent", "user_42", "run_interrupt")
+    assert state is not None
+    assert state["status"] == "interrupted"
+
+    restored = ChatMessages()
+    restored._hydrate_state(state["messages"])
+    chatml = restored.to_chatml()
+    assert any(
+        item.get("role") == "assistant"
+        and item.get("tool_calls", [{}])[0].get("id") == "call_lookup"
+        for item in chatml
+    )
+    interrupted_outputs = [
+        item
+        for item in chatml
+        if item.get("role") == "tool" and item.get("tool_call_id") == "call_lookup"
+    ]
+    assert len(interrupted_outputs) == 1
+    assert "interrupted" in interrupted_outputs[0]["content"]
+    assert restored.turns[-1]["status"] == "interrupted"
 
 
 def test_agent_continues_latest_thread_with_new_run_id():

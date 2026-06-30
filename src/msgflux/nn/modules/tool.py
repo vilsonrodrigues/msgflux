@@ -7,7 +7,7 @@ from typing import Any, Callable, Dict, Iterator, List, Mapping, Optional, Tuple
 import msgflux.nn.functional as F
 from msgflux.auto import AutoParams
 from msgflux.core.dotdict import dotdict
-from msgflux.exceptions import TaskError
+from msgflux.exceptions import TaskError, TaskInterruptRequestedError
 from msgflux.logger import logger
 from msgflux.nn.modules.container import ModuleDict
 from msgflux.nn.modules.module import Module
@@ -1126,6 +1126,11 @@ class ToolLibrary(Module, metaclass=AutoParams):
         if prepared_calls:
             results = F.scatter_gather(prepared_calls)
             for meta, result in zip(call_metadata, results):
+                if (
+                    isinstance(result, TaskError)
+                    and isinstance(result.exception, TaskInterruptRequestedError)
+                ):
+                    raise result.exception
                 parameters = self.handle.build_call_parameters_for_response(
                     meta.params
                 )
@@ -1270,6 +1275,11 @@ class ToolLibrary(Module, metaclass=AutoParams):
         if prepared_calls:
             results = await F.ascatter_gather(prepared_calls)
             for meta, result in zip(call_metadata, results):
+                if (
+                    isinstance(result, TaskError)
+                    and isinstance(result.exception, TaskInterruptRequestedError)
+                ):
+                    raise result.exception
                 parameters = self.handle.build_call_parameters_for_response(
                     meta.params
                 )

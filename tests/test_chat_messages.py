@@ -71,3 +71,27 @@ def test_disabled_chat_message_is_persisted_but_not_rendered():
     assert restored.to_items()[0]["disabled"] is True
     assert restored.to_items()[0]["metadata"]["disabled_reason"] == "compacted"
     assert [item["content"] for item in restored.to_chatml()] == ["current context"]
+
+
+def test_chat_messages_close_interrupted_tool_calls():
+    chat = ChatMessages(thread_id="thread_1", namespace="agent:test")
+    chat.append(
+        {
+            "type": "function_call",
+            "call_id": "call_1",
+            "name": "lookup",
+            "arguments": "{}",
+        }
+    )
+
+    closed = chat.close_interrupted_tool_calls(reason="user pressed interrupt")
+    closed_again = chat.close_interrupted_tool_calls(reason="user pressed interrupt")
+
+    items = chat.to_items()
+    assert closed == 1
+    assert closed_again == 0
+    assert items[-1]["type"] == "function_call_output"
+    assert items[-1]["call_id"] == "call_1"
+    assert items[-1]["status"] == "interrupted"
+    assert items[-1]["output"]["status"] == "interrupted"
+    assert items[-1]["output"]["details"] == "user pressed interrupt"

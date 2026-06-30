@@ -499,6 +499,49 @@ class ChatMessages:
     def add_tool(self, call_id: str, content: Any) -> None:
         self.append({"role": "tool", "tool_call_id": call_id, "content": content})
 
+    def close_interrupted_tool_calls(
+        self,
+        *,
+        reason: str | None = None,
+    ) -> int:
+        open_call_ids: list[str] = []
+        closed_call_ids: set[str] = set()
+        for item in self._items:
+            if item.get("type") == "function_call":
+                call_id = item.get("call_id") or item.get("id")
+                if isinstance(call_id, str) and call_id:
+                    open_call_ids.append(call_id)
+                continue
+            if item.get("type") == "function_call_output":
+                call_id = item.get("call_id")
+                if isinstance(call_id, str) and call_id:
+                    closed_call_ids.add(call_id)
+
+        missing_call_ids = [
+            call_id for call_id in open_call_ids if call_id not in closed_call_ids
+        ]
+        for call_id in missing_call_ids:
+            self.append(
+                {
+                    "type": "function_call_output",
+                    "call_id": call_id,
+                    "output": self._interrupted_tool_call_output(reason),
+                    "status": "interrupted",
+                }
+            )
+        return len(missing_call_ids)
+
+    @staticmethod
+    def _interrupted_tool_call_output(reason: str | None = None) -> dict[str, str]:
+        output = {
+            "status": "interrupted",
+            "reason": "user_requested_stop",
+            "message": "Tool call interrupted by user interrupt request.",
+        }
+        if reason:
+            output["details"] = reason
+        return output
+
     def add_reasoning(self, reasoning_content: str, role: str = "assistant") -> None:
         if not isinstance(reasoning_content, str):
             reasoning_content = str(reasoning_content)

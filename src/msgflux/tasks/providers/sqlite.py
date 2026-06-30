@@ -408,25 +408,30 @@ class SQLiteTaskStore(SQLiteTaskStoreType):
             ),
         )
 
-    def stop(self, task_id: str, *, reason: str | None = None) -> TaskRecord | None:
+    def interrupt(
+        self,
+        task_id: str,
+        *,
+        reason: str | None = None,
+    ) -> TaskRecord | None:
         task = self.get(task_id)
         if task is None:
             return None
         now = utc_now_isoformat()
-        task.status = "stopped"
+        task.status = "interrupted"
         task.updated_at = now
         task.completed_at = now
-        task.metadata["stop_requested"] = False
+        task.metadata["interrupt_requested"] = False
         if reason:
-            task.metadata["stop_reason"] = reason
+            task.metadata["interrupt_reason"] = reason
         return self._update_task(
             task,
             activity=TaskActivity(
                 task_id=task_id,
                 kind="status",
-                summary="Task stopped.",
+                summary="Task interrupted.",
                 created_at=now,
-                metadata={"status": "stopped", "reason": reason},
+                metadata={"status": "interrupted", "reason": reason},
             ),
         )
 
@@ -437,7 +442,7 @@ class SQLiteTaskStore(SQLiteTaskStoreType):
         now = utc_now_isoformat()
         task.status = "paused"
         task.updated_at = now
-        task.metadata["stop_requested"] = False
+        task.metadata["interrupt_requested"] = False
         if reason:
             task.metadata["pause_reason"] = reason
         return self._update_task(
@@ -451,28 +456,28 @@ class SQLiteTaskStore(SQLiteTaskStoreType):
             ),
         )
 
-    def request_stop(self, task_id: str) -> TaskRecord | None:
+    def request_interrupt(self, task_id: str) -> TaskRecord | None:
         task = self.get(task_id)
         if task is None:
             return None
         task.updated_at = utc_now_isoformat()
-        task.metadata["stop_requested"] = True
+        task.metadata["interrupt_requested"] = True
         return self._update_task(
             task,
             activity=TaskActivity(
                 task_id=task_id,
                 kind="status",
-                summary="Stop requested.",
+                summary="Interrupt requested.",
                 created_at=task.updated_at,
                 metadata={"status": task.status},
             ),
         )
 
-    def clear_stop_request(self, task_id: str) -> TaskRecord | None:
+    def clear_interrupt_request(self, task_id: str) -> TaskRecord | None:
         task = self.get(task_id)
         if task is None:
             return None
-        task.metadata["stop_requested"] = False
+        task.metadata["interrupt_requested"] = False
         task.updated_at = utc_now_isoformat()
         return self._update_task(task, activity=None)
 
@@ -486,8 +491,8 @@ class SQLiteTaskStore(SQLiteTaskStoreType):
         task.completed_at = None
         task.result = None
         task.error = None
-        task.metadata["stop_requested"] = False
-        task.metadata.pop("stop_reason", None)
+        task.metadata["interrupt_requested"] = False
+        task.metadata.pop("interrupt_reason", None)
         task.metadata.pop("pause_reason", None)
         return self._update_task(
             task,

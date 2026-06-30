@@ -111,7 +111,7 @@ class TaskWaitTool(TaskRuntimeTool):
         task = self.runtime.library_handle.task_store.get(task_id)
         if task is None:
             return {"task_id": task_id, "status": "not_found"}
-        if task.status in {"completed", "failed", "stopped"}:
+        if task.status in {"completed", "failed", "interrupted"}:
             return self.runtime.build_task_result(task_id=task_id, task=task)
 
         future = self.runtime.library_handle.get_task_future(task_id)
@@ -133,7 +133,7 @@ class TaskWaitTool(TaskRuntimeTool):
         deadline = None if timeout is None else time.monotonic() + float(timeout)
         while True:
             task = self.runtime.library_handle.task_store.get(task_id)
-            if task is None or task.status in {"completed", "failed", "stopped"}:
+            if task is None or task.status in {"completed", "failed", "interrupted"}:
                 return self.runtime.build_task_result(task_id=task_id, task=task)
             if deadline is not None and time.monotonic() >= deadline:
                 return self.runtime.build_task_timeout_result(
@@ -144,11 +144,11 @@ class TaskWaitTool(TaskRuntimeTool):
 
 
 @BASE_TASK_TOOLS
-class TaskStopTool(TaskRuntimeTool):
-    name = "task_stop"
+class TaskInterruptTool(TaskRuntimeTool):
+    name = "task_interrupt"
     description = (
-        "Request a cooperative stop for a background task. "
-        "Stops immediately only if the task has not started yet."
+        "Request a cooperative interrupt for a background task. "
+        "Interrupts immediately only if the task has not started yet."
     )
     annotations = {"task_id": str, "return": str}
 
@@ -157,32 +157,35 @@ class TaskStopTool(TaskRuntimeTool):
         if task is None:
             return {"task_id": task_id, "status": "not_found"}
 
-        if task.status in {"completed", "failed", "stopped"}:
+        if task.status in {"completed", "failed", "interrupted"}:
             return {
                 "task_id": task_id,
                 "status": task.status,
                 "message": "Task already reached a terminal state.",
             }
 
-        self.runtime.library_handle.task_store.request_stop(task_id)
+        self.runtime.library_handle.task_store.request_interrupt(task_id)
         future = self.runtime.library_handle.get_task_future(task_id)
         if future is not None and future.cancel():
-            stopped = self.runtime.library_handle.task_store.stop(
+            interrupted = self.runtime.library_handle.task_store.interrupt(
                 task_id,
                 reason="Task was cancelled before it started running.",
             )
             return {
                 "task_id": task_id,
-                "status": "stopped",
-                "message": "Task stopped before execution started.",
-                "task_status": stopped.status if stopped is not None else "stopped",
+                "status": "interrupted",
+                "message": "Task interrupted before execution started.",
+                "task_status": (
+                    interrupted.status if interrupted is not None else "interrupted"
+                ),
             }
 
         return {
             "task_id": task_id,
-            "status": "stop_requested",
+            "status": "interrupt_requested",
             "message": (
-                "Stop requested. The task will stop at the next cooperative checkpoint."
+                "Interrupt requested. The task will interrupt at the next "
+                "cooperative checkpoint."
             ),
         }
 
@@ -221,7 +224,7 @@ class TaskMessageTool(TaskRuntimeTool):
     description = (
         "Send a message to a background agent task. "
         "If it is still running, deliver the message to its inbox. "
-        "If it already stopped, resume the task from its checkpoint."
+        "If it already interrupted, resume the task from its checkpoint."
     )
     annotations = {"task_id": str, "message": str, "return": str}
 
@@ -285,11 +288,11 @@ class TaskRuntimeContext:
             return task.result
         if task.status == "failed":
             return {"task_id": task_id, "status": task.status, "error": task.error}
-        if task.status == "stopped":
+        if task.status == "interrupted":
             return {
                 "task_id": task_id,
                 "status": task.status,
-                "reason": task.metadata.get("stop_reason"),
+                "reason": task.metadata.get("interrupt_reason"),
             }
         return {
             "task_id": task_id,
@@ -308,8 +311,8 @@ class TaskRuntimeContext:
             "task_status": task.status,
         }
         if task.status not in {"completed", "failed"}:
-            if task.status == "stopped":
-                payload["reason"] = task.metadata.get("stop_reason")
+            if task.status == "interrupted":
+                payload["reason"] = task.metadata.get("interrupt_reason")
                 return payload
             payload["progress"] = task.progress.to_dict()
         elif task.status == "failed":
@@ -348,7 +351,7 @@ class TaskRuntimeContext:
         tool_name: str,
         task_kind: str,
     ) -> str:
-        actions = ["`task_status`", "`task_stop`", "`task_wait`", "`task_output`"]
+        actions = ["`task_status`", "`task_interrupt`", "`task_wait`", "`task_output`"]
         if task_kind == "agent":
             actions.insert(1, "`task_activity`")
             actions.insert(2, "`task_message`")

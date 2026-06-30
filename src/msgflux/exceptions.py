@@ -34,12 +34,12 @@ class _GuardInterrupt(Exception):  # noqa: N818
         self.response = response
 
 
-class TaskStopRequestedError(Exception):
-    """Raised when a cooperative background task receives a stop request."""
+class TaskInterruptRequestedError(Exception):
+    """Raised when a cooperative background task receives an interrupt request."""
 
     def __init__(self, task_id: str, message: Optional[str] = None):
         self.task_id = task_id
-        super().__init__(message or f"Task `{task_id}` stop requested.")
+        super().__init__(message or f"Task `{task_id}` interrupt requested.")
 
 
 class TaskPauseRequestedError(Exception):

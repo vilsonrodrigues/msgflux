@@ -146,8 +146,8 @@ class AgentInbox:
             ).to_notification()
         )
 
-    def stop(self, *, reason: str | None = None) -> AgentNotification:
-        return self.control("stop", reason=reason)
+    def interrupt(self, *, reason: str | None = None) -> AgentNotification:
+        return self.control("interrupt", reason=reason)
 
     def pause(self, *, reason: str | None = None) -> AgentNotification:
         return self.control("pause", reason=reason)

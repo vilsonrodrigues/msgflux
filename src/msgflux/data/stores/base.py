@@ -3,7 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Any, List, Mapping
 
-_TERMINAL_STATUSES = frozenset({"completed", "failed", "stopped"})
+_TERMINAL_STATUSES = frozenset({"completed", "failed", "interrupted"})
 
 
 class CheckpointStore(ABC):

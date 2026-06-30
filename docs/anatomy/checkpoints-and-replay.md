@@ -191,7 +191,7 @@ Status should stay small and execution-oriented:
 - `running`
 - `completed`
 - `failed`
-- `stopped`
+- `interrupted`
 
 The exact set can evolve, but the model should stay about checkpoint semantics,
 not task queue semantics.

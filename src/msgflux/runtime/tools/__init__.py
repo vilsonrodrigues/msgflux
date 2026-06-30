@@ -2,13 +2,13 @@ from msgflux.runtime.tools.task import (
     AGENT_TASK_TOOLS,
     BASE_TASK_TOOLS,
     TaskActivityTool,
+    TaskInterruptTool,
     TaskListTool,
     TaskMessageTool,
     TaskOutputTool,
     TaskRuntimeContext,
     TaskRuntimeTool,
     TaskStatusTool,
-    TaskStopTool,
     TaskWaitTool,
 )
 
@@ -22,6 +22,6 @@ __all__ = [
     "TaskRuntimeContext",
     "TaskRuntimeTool",
     "TaskStatusTool",
-    "TaskStopTool",
+    "TaskInterruptTool",
     "TaskWaitTool",
 ]

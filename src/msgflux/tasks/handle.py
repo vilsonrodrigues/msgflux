@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Dict
 
-from msgflux.exceptions import TaskPauseRequestedError, TaskStopRequestedError
+from msgflux.exceptions import TaskInterruptRequestedError, TaskPauseRequestedError
 from msgflux.runtime.agent_inbox import (
     AgentInbox,
     AgentNotification,
@@ -71,21 +71,21 @@ class TaskHandle:
     def fail(self, error: Any) -> TaskRecord | None:
         return self._store.fail(self.task_id, error)
 
-    def stop(self, *, reason: str | None = None) -> TaskRecord | None:
-        return self._store.stop(self.task_id, reason=reason)
+    def interrupt(self, *, reason: str | None = None) -> TaskRecord | None:
+        return self._store.interrupt(self.task_id, reason=reason)
 
     def pause(self, *, reason: str | None = None) -> TaskRecord | None:
         return self._store.pause(self.task_id, reason=reason)
 
-    def is_stop_requested(self) -> bool:
+    def is_interrupt_requested(self) -> bool:
         task = self._store.get(self.task_id)
         if task is None:
             return False
-        return bool(task.metadata.get("stop_requested"))
+        return bool(task.metadata.get("interrupt_requested"))
 
-    def raise_if_stopped(self) -> None:
-        if self.is_stop_requested():
-            raise TaskStopRequestedError(self.task_id)
+    def raise_if_interrupted(self) -> None:
+        if self.is_interrupt_requested():
+            raise TaskInterruptRequestedError(self.task_id)
 
     def raise_if_paused(self) -> None:
         task = self._store.get(self.task_id)

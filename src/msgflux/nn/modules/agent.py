@@ -28,8 +28,8 @@ from msgflux.dsl.signature import (
 )
 from msgflux.dsl.typed_parsers.registry import typed_parser_registry
 from msgflux.exceptions import (
+    TaskInterruptRequestedError,
     TaskPauseRequestedError,
-    TaskStopRequestedError,
     _GuardInterrupt,
 )
 from msgflux.generation.control_flow import ToolFlowControl
@@ -547,9 +547,13 @@ class Agent(Module, metaclass=AutoParams):
                 )
             except _GuardInterrupt as e:
                 return self._define_response_mode(e.response, message)
-            except TaskStopRequestedError:
+            except TaskInterruptRequestedError as exc:
+                self._close_interrupted_tool_calls(
+                    inputs.get("messages"),
+                    reason=str(exc),
+                )
                 self._checkpoint_save(
-                    inputs.get("messages"), inputs.get("vars", {}), status="stopped"
+                    inputs.get("messages"), inputs.get("vars", {}), status="interrupted"
                 )
                 raise
             except TaskPauseRequestedError:
@@ -560,7 +564,21 @@ class Agent(Module, metaclass=AutoParams):
             except Exception:
                 self._checkpoint_save_on_error(inputs)
                 raise
-            response = self._process_model_response(message, model_response, **inputs)
+            try:
+                response = self._process_model_response(
+                    message,
+                    model_response,
+                    **inputs,
+                )
+            except TaskInterruptRequestedError as exc:
+                self._close_interrupted_tool_calls(
+                    inputs.get("messages"),
+                    reason=str(exc),
+                )
+                self._checkpoint_save(
+                    inputs.get("messages"), inputs.get("vars", {}), status="interrupted"
+                )
+                raise
             return response
 
     async def aforward(
@@ -601,11 +619,15 @@ class Agent(Module, metaclass=AutoParams):
                 )
             except _GuardInterrupt as e:
                 return self._define_response_mode(e.response, message)
-            except TaskStopRequestedError:
+            except TaskInterruptRequestedError as exc:
+                self._close_interrupted_tool_calls(
+                    inputs.get("messages"),
+                    reason=str(exc),
+                )
                 await self._acheckpoint_save(
                     inputs.get("messages"),
                     inputs.get("vars", {}),
-                    status="stopped",
+                    status="interrupted",
                 )
                 raise
             except TaskPauseRequestedError:
@@ -618,11 +640,23 @@ class Agent(Module, metaclass=AutoParams):
             except Exception:
                 await self._acheckpoint_save_on_error(inputs)
                 raise
-            response = await self._aprocess_model_response(
-                message,
-                model_response,
-                **inputs,
-            )
+            try:
+                response = await self._aprocess_model_response(
+                    message,
+                    model_response,
+                    **inputs,
+                )
+            except TaskInterruptRequestedError as exc:
+                self._close_interrupted_tool_calls(
+                    inputs.get("messages"),
+                    reason=str(exc),
+                )
+                await self._acheckpoint_save(
+                    inputs.get("messages"),
+                    inputs.get("vars", {}),
+                    status="interrupted",
+                )
+                raise
             return response
 
     # --- Model Execution ---
@@ -636,7 +670,7 @@ class Agent(Module, metaclass=AutoParams):
         tool_filter: Optional[ToolFilter] = None,
         scope: Optional[ExecutionScope] = None,  # noqa: ARG002
     ) -> Union[ModelResponse, ModelStreamResponse]:
-        self._raise_if_background_task_stopped()
+        self._raise_if_background_task_interrupted()
         model_execution_params = self._prepare_model_execution(
             messages=messages,
             prefilling=prefilling,
@@ -657,7 +691,7 @@ class Agent(Module, metaclass=AutoParams):
         tool_filter: Optional[ToolFilter] = None,
         scope: Optional[ExecutionScope] = None,  # noqa: ARG002
     ) -> Union[ModelResponse, ModelStreamResponse]:
-        self._raise_if_background_task_stopped()
+        self._raise_if_background_task_interrupted()
         model_execution_params = self._prepare_model_execution(
             messages=messages,
             prefilling=prefilling,
@@ -1198,9 +1232,17 @@ class Agent(Module, metaclass=AutoParams):
                         cprint(repr_str, bc="br2", ls="b")
 
                 tool_callings = raw_response.get_calls()
-                tool_results = self._process_tool_call(
-                    tool_callings, message, messages, vars
-                )
+                try:
+                    tool_results = self._process_tool_call(
+                        tool_callings, message, messages, vars
+                    )
+                except TaskInterruptRequestedError as exc:
+                    self._append_interrupted_tool_response_messages(
+                        messages,
+                        raw_response,
+                        reason=str(exc),
+                    )
+                    raise
                 completed_tool_turns += 1
 
                 if tool_results.return_directly:
@@ -1275,9 +1317,17 @@ class Agent(Module, metaclass=AutoParams):
                         cprint(repr_str, bc="br2", ls="b")
 
                 tool_callings = raw_response.get_calls()
-                tool_results = await self._aprocess_tool_call(
-                    tool_callings, message, messages, vars
-                )
+                try:
+                    tool_results = await self._aprocess_tool_call(
+                        tool_callings, message, messages, vars
+                    )
+                except TaskInterruptRequestedError as exc:
+                    self._append_interrupted_tool_response_messages(
+                        messages,
+                        raw_response,
+                        reason=str(exc),
+                    )
+                    raise
                 completed_tool_turns += 1
 
                 if tool_results.return_directly:
@@ -2213,18 +2263,18 @@ class Agent(Module, metaclass=AutoParams):
         self.agent_inbox = agent_inbox
         self.tool_library.set_agent_inbox(agent_inbox)
 
-    def _raise_if_background_task_stopped(self) -> None:
+    def _raise_if_background_task_interrupted(self) -> None:
         task_handle = get_execution_context().get("task_handle")
         if task_handle is None:
             return
-        if task_handle.is_stop_requested():
+        if task_handle.is_interrupt_requested():
             if self.config.get("verbose", False):
                 cprint(
-                    f"[{self.name}][task_stop] task_id={task_handle.task_id}",
+                    f"[{self.name}][task_interrupt] task_id={task_handle.task_id}",
                     bc="b",
                     ls="b",
                 )
-            raise TaskStopRequestedError(task_handle.task_id)
+            raise TaskInterruptRequestedError(task_handle.task_id)
 
     def _handle_control_notifications(
         self,
@@ -2241,8 +2291,8 @@ class Agent(Module, metaclass=AutoParams):
             task_handle = get_execution_context().get("task_handle")
             task_id = getattr(task_handle, "task_id", None)
 
-            if command == "stop":
-                raise TaskStopRequestedError(
+            if command == "interrupt":
+                raise TaskInterruptRequestedError(
                     task_id or get_execution_context().get("run_id") or "unknown",
                     str(reason) if reason else None,
                 )
@@ -2498,6 +2548,49 @@ class Agent(Module, metaclass=AutoParams):
             status=status,
         )
 
+    def _close_interrupted_tool_calls(
+        self,
+        messages: Union[ChatMessages, List[Mapping[str, Any]], None],
+        *,
+        reason: str | None = None,
+    ) -> None:
+        if not isinstance(messages, ChatMessages):
+            return
+        messages.close_interrupted_tool_calls(reason=reason)
+        if messages.get_active_turn() is not None:
+            messages.end_turn(
+                assistant_output=None,
+                response_type="interrupted",
+                response_metadata={"reason": reason} if reason else None,
+                status="interrupted",
+            )
+
+    def _append_interrupted_tool_response_messages(
+        self,
+        messages: Union[ChatMessages, List[Mapping[str, Any]]],
+        raw_response: Any,
+        *,
+        reason: str | None = None,
+    ) -> None:
+        if not hasattr(raw_response, "get_calls") or not hasattr(
+            raw_response,
+            "insert_results",
+        ):
+            self._close_interrupted_tool_calls(messages, reason=reason)
+            return
+
+        interrupted_output = ChatMessages._interrupted_tool_call_output(reason)
+        raw_response.insert_results(
+            {
+                call_id: interrupted_output
+                for call_id, _tool_name, _parameters in raw_response.get_calls()
+                if isinstance(call_id, str) and call_id
+            }
+        )
+        tool_response_messages = raw_response.get_messages()
+        messages.extend(tool_response_messages)
+        self._close_interrupted_tool_calls(messages, reason=reason)
+
     # --- Checkpoint Persistence ---
 
     def _checkpoint_save(
@@ -2684,7 +2777,7 @@ class Agent(Module, metaclass=AutoParams):
         )
         if state is None:
             return None
-        if state.get("status") in {"completed", "stopped"}:
+        if state.get("status") in {"completed", "interrupted"}:
             raise ValueError(
                 f"Run `{run_id}` already reached terminal status "
                 f"`{state.get('status')}`. Use a new run_id to continue thread "
@@ -2736,7 +2829,7 @@ class Agent(Module, metaclass=AutoParams):
 
         if state is None:
             return None
-        if state.get("status") in {"completed", "stopped"}:
+        if state.get("status") in {"completed", "interrupted"}:
             raise ValueError(
                 f"Run `{run_id}` already reached terminal status "
                 f"`{state.get('status')}`. Use a new run_id to continue thread "

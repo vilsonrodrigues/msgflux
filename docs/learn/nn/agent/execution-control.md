@@ -65,7 +65,7 @@ force a specific execution identity.
 
 ## Checkpointing
 
-Use a checkpointer when a run should resume after pause, stop, process restart,
+Use a checkpointer when a run should resume after pause, interrupt, process restart,
 or tool-driven continuation.
 
 ```python
@@ -103,7 +103,7 @@ Resume behavior:
 - `failed`: resumed from the saved snapshot. This is the primary recovery path
   after a provider, tool, process, or infrastructure failure.
 - `completed`: not resumed.
-- `stopped`: not resumed.
+- `interrupted`: not resumed.
 
 On resume, the new task input is ignored and the saved messages/vars continue
 from the checkpointed state. This is intentional: the retry is restoring the
@@ -119,14 +119,14 @@ starts a separate subagent within the same thread.
 When a tool is allowed to run in the background, msgFlux creates a task record
 and returns a task id to the model. The task record lives in the task store and
 tracks lifecycle state such as queued, running, paused, completed, failed, and
-stopped.
+interrupted.
 
 For normal background tools, the task id is mostly an operational handle:
 
 - `task_status(task_id=...)` reads lifecycle and progress.
 - `task_output(task_id=...)` reads the final result once available.
 - `task_wait(task_id=...)` waits for completion.
-- `task_stop(task_id=...)` requests interruption.
+- `task_interrupt(task_id=...)` requests interruption.
 
 Some background tools also support messages after dispatch. The built-in
 `AgentTool` does this for subagents. In that case, `task_message` is the way
@@ -306,15 +306,15 @@ Control messages interrupt execution at safe provider boundaries.
 
 ```python
 agent.agent_inbox.pause(reason="Wait for user approval.")
-agent.agent_inbox.stop(reason="Operator stopped the run.")
+agent.agent_inbox.interrupt(reason="Operator interrupted the run.")
 ```
 
 Behavior:
 
 - `pause` raises `TaskPauseRequestedError` and checkpoints the run as `paused`
   when a checkpointer is configured.
-- `stop` raises `TaskStopRequestedError` and checkpoints the run as
-  `stopped` when a checkpointer is configured.
+- `interrupt` raises `TaskInterruptRequestedError` and checkpoints the run as
+  `interrupted` when a checkpointer is configured.
 - Unknown control commands remain normal notifications and are shown to the
   model as `system_note`.
 
