@@ -69,12 +69,14 @@ class BaseStreamResponse(CoreResponse):
         self._queue_loop = None
         self._pending_chunks = deque()
         self._queue_lock = threading.Lock()
+        self._content_closed = False
 
         # Reasoning queue
         self._reasoning_queue = None
         self._reasoning_queue_loop = None
         self._reasoning_pending_chunks = deque()
         self._reasoning_queue_lock = threading.Lock()
+        self._reasoning_closed = False
 
         self.metadata = None
         self.response_type = None
@@ -91,8 +93,12 @@ class BaseStreamResponse(CoreResponse):
         loop_attr: str,
         pending_attr: str,
         lock_attr: str,
+        closed_attr: str,
     ) -> None:
         with getattr(self, lock_attr):
+            if getattr(self, closed_attr):
+                return
+            setattr(self, closed_attr, True)
             queue = getattr(self, queue_attr)
             loop = getattr(self, loop_attr)
             pending = getattr(self, pending_attr)
@@ -104,17 +110,29 @@ class BaseStreamResponse(CoreResponse):
 
     def _fail_stream(self, error: Exception) -> None:
         self.set_error(error)
+        self._close_stream_queues()
+
+    def _close_stream_queues(self) -> None:
+        self.finish_reasoning()
+        self._finish_content()
+
+    def _finish_content(self) -> None:
         self._finish_queue_with_none(
             queue_attr="_queue",
             loop_attr="_queue_loop",
             pending_attr="_pending_chunks",
             lock_attr="_queue_lock",
+            closed_attr="_content_closed",
         )
+
+    def finish_reasoning(self) -> None:
+        """Close the reasoning stream without finalizing the content stream."""
         self._finish_queue_with_none(
             queue_attr="_reasoning_queue",
             loop_attr="_reasoning_queue_loop",
             pending_attr="_reasoning_pending_chunks",
             lock_attr="_reasoning_queue_lock",
+            closed_attr="_reasoning_closed",
         )
 
     def _accumulate_data(self, data: Any) -> None:
@@ -182,8 +200,9 @@ class BaseStreamResponse(CoreResponse):
             self.set_error(error)
         if status is None:
             status = "failed" if self.error is not None else "completed"
-        self.add_reasoning(None)
-        self.add(None)
+        if not self.first_chunk_event.is_set():
+            self.first_chunk_event.set()
+        self._close_stream_queues()
         self._run_finalizers(status=status)
 
     def _build_final_state(
@@ -234,6 +253,8 @@ class BaseStreamResponse(CoreResponse):
             raise
 
         with self._queue_lock:
+            if self._content_closed:
+                raise RuntimeError("Cannot add content chunk to a closed stream.")
             queue = self._queue
             loop = self._queue_loop
             if queue is None or loop is None or loop.is_closed():
@@ -249,6 +270,8 @@ class BaseStreamResponse(CoreResponse):
         if not self.first_chunk_event.is_set():
             self.first_chunk_event.set()
         with self._reasoning_queue_lock:
+            if self._reasoning_closed:
+                raise RuntimeError("Cannot add reasoning chunk to a closed stream.")
             queue = self._reasoning_queue
             loop = self._reasoning_queue_loop
             if queue is None or loop is None or loop.is_closed():

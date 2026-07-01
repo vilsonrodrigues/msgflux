@@ -1,3 +1,5 @@
+import pytest
+
 from msgflux.chat_messages import ChatMessages
 from msgflux.exceptions import AbortRequestedError
 from msgflux.models.response import ModelStreamResponse
@@ -67,6 +69,48 @@ def test_model_stream_response_finalizer_runs_once():
     assert final_states[0].response_type == "text_generation"
     assert final_states[0].output == "hello"
     assert list(stream._pending_chunks) == ["hello", None]
+
+
+def test_model_stream_response_finish_closes_without_public_add():
+    stream = ModelStreamResponse(mode="sync")
+    stream.set_response_type("text_generation")
+    stream.add("hello")
+    stream.add = lambda data: (_ for _ in ()).throw(AssertionError(data))
+
+    stream.finish()
+
+    assert stream.data == "hello"
+    assert list(stream._pending_chunks) == ["hello", None]
+    assert list(stream._reasoning_pending_chunks) == [None]
+
+
+def test_model_stream_response_can_finish_reasoning_before_content():
+    stream = ModelStreamResponse(mode="sync")
+    stream.add_reasoning("thinking")
+
+    stream.finish_reasoning()
+    stream.add("answer")
+    stream.finish()
+
+    assert stream.reasoning is None
+    assert stream.data == "answer"
+    assert list(stream._reasoning_pending_chunks) == ["thinking", None]
+    assert list(stream._pending_chunks) == ["answer", None]
+
+
+def test_model_stream_response_rejects_chunks_after_channel_close():
+    stream = ModelStreamResponse(mode="sync")
+    stream.add_reasoning("thinking")
+    stream.finish_reasoning()
+
+    with pytest.raises(RuntimeError, match="closed stream"):
+        stream.add_reasoning("late thinking")
+
+    stream.add("answer")
+    stream.finish()
+
+    with pytest.raises(RuntimeError, match="closed stream"):
+        stream.add("late answer")
 
 
 def test_model_stream_response_finalizer_added_after_finish_runs_once():
