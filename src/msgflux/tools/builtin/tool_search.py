@@ -9,6 +9,7 @@ class ToolSearchTool(ToolLibraryOperator):
     """Search and activate registered on-demand tools."""
 
     name = "tool_search"
+    display_name = "Tool Search"
     description = (
         "Search registered on-demand tools by keyword. Use `select:tool_a,tool_b` "
         "to activate exact tools. Set `description=true` to include tool details."
