@@ -63,6 +63,34 @@ runtime context, and only then generates a fallback. Omit an ID when you want
 msgFlux to inherit it from the current context; pass an ID when you want to
 force a specific execution identity.
 
+## Abort Signal
+
+`AbortSignal` is local runtime cancellation for the currently active process.
+It is useful for UI and CLI controls such as pressing `Esc` while a model is
+generating. It is carried by `ExecutionScope` and exposed through
+`get_execution_context().get("abort_signal")`; it is not sent to providers as a
+request body field and is not stored in checkpoints.
+
+```python
+abort_signal = mf.AbortSignal()
+scope = mf.ExecutionScope(
+    thread_id="customer_42",
+    run_id="ticket_9001",
+    abort_signal=abort_signal,
+)
+
+# From another UI/CLI control path:
+abort_signal.abort("User pressed Esc.")
+```
+
+Providers observe the signal before output starts. After the first model token
+or tool call is produced, that model response is treated as committed; abort is
+then observed only at the next safe runtime boundary, such as before executing
+tools or before a later model call. When an abort reaches `Agent`, msgFlux
+converts it into the durable interrupt semantics: open tool calls are closed
+with synthetic interrupted outputs, and the checkpoint/task status becomes
+`interrupted`.
+
 ## Checkpointing
 
 Use a checkpointer when a run should resume after pause, interrupt, process restart,

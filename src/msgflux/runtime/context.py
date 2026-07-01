@@ -14,6 +14,8 @@ from dataclasses import dataclass
 from typing import Any, Mapping
 from uuid import uuid4
 
+from msgflux.runtime.abort import AbortSignal
+
 DEFAULT_NAMESPACE = "default_namespace"
 
 
@@ -34,6 +36,7 @@ class ExecutionScope:
     run_id: str | None = None
     parent_run_id: str | None = None
     root_run_id: str | None = None
+    abort_signal: AbortSignal | None = None
 
     def with_overrides(
         self,
@@ -43,6 +46,7 @@ class ExecutionScope:
         run_id: str | None = None,
         parent_run_id: str | None = None,
         root_run_id: str | None = None,
+        abort_signal: AbortSignal | None = None,
     ) -> ExecutionScope:
         resolved_run_id = run_id if run_id is not None else self.run_id
         return ExecutionScope(
@@ -56,6 +60,9 @@ class ExecutionScope:
                 root_run_id
                 if root_run_id is not None
                 else self.root_run_id or resolved_run_id
+            ),
+            abort_signal=(
+                abort_signal if abort_signal is not None else self.abort_signal
             ),
         )
 
@@ -113,6 +120,12 @@ _CURRENT_TASK_ACTIVITY_RECORDER: contextvars.ContextVar[Any] = contextvars.Conte
     "msgflux_task_activity_recorder",
     default=None,
 )
+_CURRENT_ABORT_SIGNAL: contextvars.ContextVar[AbortSignal | None] = (
+    contextvars.ContextVar(
+        "msgflux_abort_signal",
+        default=None,
+    )
+)
 
 
 @contextmanager
@@ -129,6 +142,7 @@ def execution_context(
     agent_inbox: Any = None,
     task_handle: Any = None,
     task_activity_recorder: Any = None,
+    abort_signal: AbortSignal | None = None,
 ):
     """Set execution identity for the enclosed scope.
 
@@ -179,12 +193,20 @@ def execution_context(
     else:
         resolved_root_run_id = resolved_run_id
 
+    current_abort_signal = _CURRENT_ABORT_SIGNAL.get()
+    resolved_abort_signal = (
+        abort_signal
+        if abort_signal is not None
+        else base_scope.abort_signal or current_abort_signal
+    )
+
     resolved_scope = ExecutionScope(
         thread_id=resolved_thread_id,
         namespace=resolved_namespace,
         run_id=resolved_run_id,
         parent_run_id=resolved_parent_run_id,
         root_run_id=resolved_root_run_id,
+        abort_signal=resolved_abort_signal,
     )
 
     current_checkpoint_store = _CURRENT_CHECKPOINT_STORE.get()
@@ -221,6 +243,7 @@ def execution_context(
     activity_token = _CURRENT_TASK_ACTIVITY_RECORDER.set(
         resolved_task_activity_recorder
     )
+    abort_token = _CURRENT_ABORT_SIGNAL.set(resolved_abort_signal)
     try:
         yield resolved_scope
     finally:
@@ -235,6 +258,7 @@ def execution_context(
         _CURRENT_AGENT_INBOX.reset(inbox_token)
         _CURRENT_TASK_HANDLE.reset(task_handle_token)
         _CURRENT_TASK_ACTIVITY_RECORDER.reset(activity_token)
+        _CURRENT_ABORT_SIGNAL.reset(abort_token)
 
 
 @contextmanager
@@ -268,6 +292,7 @@ def get_execution_context() -> Mapping[str, Any | None]:
         "agent_inbox": _CURRENT_AGENT_INBOX.get(),
         "task_handle": _CURRENT_TASK_HANDLE.get(),
         "task_activity_recorder": _CURRENT_TASK_ACTIVITY_RECORDER.get(),
+        "abort_signal": _CURRENT_ABORT_SIGNAL.get(),
     }
 
 

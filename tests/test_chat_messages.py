@@ -1,8 +1,12 @@
 from msgflux.chat_messages import ChatMessages
+from msgflux.exceptions import AbortRequestedError
+from msgflux.models.response import ModelStreamResponse
+from msgflux.runtime import AbortSignal
 from msgflux.runtime.context import (
     DEFAULT_NAMESPACE,
     ExecutionScope,
     execution_context,
+    get_execution_context,
     get_execution_scope,
     thread_context,
 )
@@ -29,6 +33,69 @@ def test_execution_context_accepts_scope_and_explicit_overrides():
     assert scope.namespace == "agent"
     assert scope.run_id == "run_1"
     assert scope.root_run_id == "run_1"
+
+
+def test_execution_context_exposes_abort_signal():
+    abort_signal = AbortSignal()
+    scope = ExecutionScope(
+        thread_id="thread_1",
+        namespace="root",
+        run_id="run_1",
+        abort_signal=abort_signal,
+    )
+
+    with execution_context(scope=scope):
+        context = get_execution_context()
+
+    assert context["abort_signal"] is abort_signal
+    assert context["scope"].abort_signal is abort_signal
+    assert "abort_signal" not in scope.to_dict()
+
+
+def test_model_stream_response_finalizer_runs_once():
+    stream = ModelStreamResponse(mode="sync")
+    final_states = []
+
+    stream.add_finalizer(final_states.append)
+    stream.set_response_type("text_generation")
+    stream.add("hello")
+    stream.finish()
+    stream.finish()
+
+    assert len(final_states) == 1
+    assert final_states[0].status == "completed"
+    assert final_states[0].response_type == "text_generation"
+    assert final_states[0].output == "hello"
+    assert list(stream._pending_chunks) == ["hello", None]
+
+
+def test_model_stream_response_finalizer_added_after_finish_runs_once():
+    stream = ModelStreamResponse(mode="sync")
+    stream.set_response_type("text_generation")
+    stream.add("done")
+    stream.finish()
+    final_states = []
+
+    stream.add_finalizer(final_states.append)
+
+    assert len(final_states) == 1
+    assert final_states[0].status == "completed"
+    assert final_states[0].output == "done"
+
+
+def test_model_stream_response_finish_with_abort_sets_interrupted_state():
+    stream = ModelStreamResponse(mode="sync")
+    final_states = []
+    stream.add_finalizer(final_states.append)
+
+    stream.finish(
+        error=AbortRequestedError("user pressed esc"),
+        status="interrupted",
+    )
+
+    assert len(final_states) == 1
+    assert final_states[0].status == "interrupted"
+    assert isinstance(final_states[0].error, AbortRequestedError)
 
 
 def test_chat_messages_inherit_thread_context():

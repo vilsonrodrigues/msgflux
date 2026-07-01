@@ -4,10 +4,11 @@ import pytest
 
 from msgflux.chat_messages import ChatMessages
 from msgflux.data.stores import InMemoryCheckpointStore
-from msgflux.exceptions import TaskInterruptRequestedError
+from msgflux.exceptions import AbortRequestedError, TaskInterruptRequestedError
+from msgflux.models.response import ModelResponse, ModelStreamResponse
 from msgflux.models.tool_call_agg import ToolCallAggregator
-from msgflux.models.response import ModelResponse
 from msgflux.nn.modules.agent import Agent
+from msgflux.runtime import AbortSignal
 from msgflux.runtime.context import ExecutionScope
 
 
@@ -47,11 +48,12 @@ def _make_agent(checkpointer=None, **kwargs):
     )
 
 
-def test_agent_rejects_checkpointer_with_stream():
+def test_agent_accepts_checkpointer_with_stream():
     store = InMemoryCheckpointStore()
 
-    with pytest.raises(ValueError, match="checkpointer"):
-        _make_agent(checkpointer=store, config={"stream": True})
+    agent = _make_agent(checkpointer=store, config={"stream": True})
+
+    assert agent.checkpointer is store
 
 
 def test_agent_saves_completed_checkpoint():
@@ -204,6 +206,128 @@ def test_agent_interrupt_closes_active_tool_calls_in_checkpoint():
     assert len(interrupted_outputs) == 1
     assert "interrupted" in interrupted_outputs[0]["content"]
     assert restored.turns[-1]["status"] == "interrupted"
+
+
+def test_agent_abort_signal_saves_interrupted_checkpoint():
+    store = InMemoryCheckpointStore()
+    agent = _make_agent(checkpointer=store)
+    agent.generator.forward = Mock(side_effect=AbortRequestedError("user pressed esc"))
+    abort_signal = AbortSignal()
+    abort_signal.abort("user pressed esc")
+
+    with pytest.raises(TaskInterruptRequestedError, match="user pressed esc"):
+        agent(
+            "Check status",
+            scope=ExecutionScope(
+                thread_id="user_42",
+                namespace="test_agent",
+                run_id="run_abort",
+                abort_signal=abort_signal,
+            ),
+        )
+
+    state = store.load_state("test_agent", "user_42", "run_abort")
+    assert state is not None
+    assert state["status"] == "interrupted"
+
+    restored = ChatMessages()
+    restored._hydrate_state(state["messages"])
+    assert restored.turns[-1]["status"] == "interrupted"
+
+
+def test_agent_stream_checkpoint_completes_when_stream_finishes():
+    store = InMemoryCheckpointStore()
+    agent = _make_agent(checkpointer=store, config={"stream": True})
+    stream_response = ModelStreamResponse(mode="sync")
+    stream_response.set_response_type("text_generation")
+    stream_response.reasoning = "stream reasoning"
+    agent.generator.forward = Mock(return_value=stream_response)
+
+    result = agent(
+        "Stream status",
+        scope=ExecutionScope(
+            thread_id="user_42",
+            namespace="test_agent",
+            run_id="run_stream",
+        ),
+    )
+
+    assert result is stream_response
+    streaming_state = store.load_state("test_agent", "user_42", "run_stream")
+    assert streaming_state is not None
+    assert streaming_state["status"] == "streaming"
+
+    stream_response.add("hello")
+    stream_response.add(" world")
+    stream_response.finish()
+
+    completed_state = store.load_state("test_agent", "user_42", "run_stream")
+    assert completed_state is not None
+    assert completed_state["status"] == "completed"
+
+    restored = ChatMessages()
+    restored._hydrate_state(completed_state["messages"])
+    chatml = restored.to_chatml()
+    assert chatml[-1]["content"] == "hello world"
+    assert restored.turns[-1]["status"] == "completed"
+    assert restored.turns[-1]["assistant_output"] == "hello world"
+
+
+def test_agent_stream_checkpoint_preserves_partial_output_on_failure():
+    store = InMemoryCheckpointStore()
+    agent = _make_agent(checkpointer=store, config={"stream": True})
+    stream_response = ModelStreamResponse(mode="sync")
+    stream_response.set_response_type("text_generation")
+    agent.generator.forward = Mock(return_value=stream_response)
+
+    result = agent(
+        "Stream status",
+        scope=ExecutionScope(
+            thread_id="user_42",
+            namespace="test_agent",
+            run_id="run_stream_failed",
+        ),
+    )
+
+    assert result is stream_response
+    stream_response.add("partial")
+    stream_response.finish(error=RuntimeError("stream disconnected"), status="failed")
+
+    state = store.load_state("test_agent", "user_42", "run_stream_failed")
+    assert state is not None
+    assert state["status"] == "failed"
+
+    restored = ChatMessages()
+    restored._hydrate_state(state["messages"])
+    chatml = restored.to_chatml()
+    assert chatml[-1]["content"] == "partial"
+    assert restored.turns[-1]["status"] == "failed"
+    assert restored.turns[-1]["assistant_output"] == "partial"
+
+
+def test_agent_stream_checkpoint_marks_pre_output_abort_interrupted():
+    store = InMemoryCheckpointStore()
+    agent = _make_agent(checkpointer=store, config={"stream": True})
+    stream_response = ModelStreamResponse(mode="sync")
+    stream_response.finish(
+        error=AbortRequestedError("user pressed esc"),
+        status="interrupted",
+    )
+    agent.generator.forward = Mock(return_value=stream_response)
+
+    with pytest.raises(TaskInterruptRequestedError, match="user pressed esc"):
+        agent(
+            "Stream status",
+            scope=ExecutionScope(
+                thread_id="user_42",
+                namespace="test_agent",
+                run_id="run_stream_abort",
+            ),
+        )
+
+    state = store.load_state("test_agent", "user_42", "run_stream_abort")
+    assert state is not None
+    assert state["status"] == "interrupted"
 
 
 def test_agent_continues_latest_thread_with_new_run_id():

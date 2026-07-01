@@ -1,7 +1,18 @@
 import asyncio
 import threading
 from collections import deque
+from dataclasses import dataclass
 from typing import Any, AsyncGenerator, Literal, Optional, Union
+
+
+@dataclass(frozen=True)
+class StreamFinalState:
+    status: Literal["completed", "failed", "interrupted"]
+    response_type: str | None
+    output: Any
+    reasoning: str | None
+    metadata: Any
+    error: Exception | None
 
 
 class CoreResponse:
@@ -68,6 +79,10 @@ class BaseStreamResponse(CoreResponse):
         self.metadata = None
         self.response_type = None
         self.error = None
+        self._finalizers = []
+        self._finalized = False
+        self._final_status = None
+        self._finalizer_lock = threading.Lock()
 
     def _finish_queue_with_none(
         self,
@@ -140,6 +155,72 @@ class BaseStreamResponse(CoreResponse):
             self.first_chunk_event.set()
         if not self._response_type_event.is_set():
             self._response_type_event.set()
+
+    def add_finalizer(self, finalizer) -> None:
+        final_state = None
+        with self._finalizer_lock:
+            if self._finalized:
+                final_state = self._build_final_state()
+            else:
+                self._finalizers.append(finalizer)
+        if final_state is not None:
+            finalizer(final_state)
+
+    def _is_finalized(self) -> bool:
+        with self._finalizer_lock:
+            return self._finalized
+
+    def finish(
+        self,
+        *,
+        error: Exception | None = None,
+        status: Literal["completed", "failed", "interrupted"] | None = None,
+    ) -> None:
+        if self._is_finalized():
+            return
+        if error is not None:
+            self.set_error(error)
+        if status is None:
+            status = "failed" if self.error is not None else "completed"
+        self.add_reasoning(None)
+        self.add(None)
+        self._run_finalizers(status=status)
+
+    def _build_final_state(
+        self,
+        *,
+        status: Literal["completed", "failed", "interrupted"] | None = None,
+    ) -> StreamFinalState:
+        resolved_status = status
+        if resolved_status is None:
+            resolved_status = self._final_status
+        if resolved_status is None:
+            resolved_status = "failed" if self.error is not None else "completed"
+        return StreamFinalState(
+            status=resolved_status,
+            response_type=self.response_type,
+            output=self.data,
+            reasoning=self.reasoning,
+            metadata=self.metadata,
+            error=self.error,
+        )
+
+    def _run_finalizers(
+        self,
+        *,
+        status: Literal["completed", "failed", "interrupted"],
+    ) -> None:
+        with self._finalizer_lock:
+            if self._finalized:
+                return
+            self._finalized = True
+            self._final_status = status
+            finalizers = list(self._finalizers)
+            self._finalizers.clear()
+            final_state = self._build_final_state(status=status)
+
+        for finalizer in finalizers:
+            finalizer(final_state)
 
     def add(self, data: Any):
         """Add data to the content stream queue in a thread-safe way."""

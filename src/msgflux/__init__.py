@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     from msgflux.models import Model
     from msgflux.models.gateway import ModelGateway
     from msgflux.runtime import (
+        AbortSignal,
         AgentControlMessage,
         AgentInbox,
         AgentInboxStore,
@@ -58,6 +59,7 @@ __all__ = [
     "AgentInboxStore",
     "AgentControlMessage",
     "AgentNotification",
+    "AbortSignal",
     "ChatMessages",
     "ChatBlock",
     "ChatML",
@@ -109,6 +111,7 @@ _LAZY_IMPORTS = {
     "AgentInboxStore": ("msgflux.runtime", "AgentInboxStore"),
     "AgentControlMessage": ("msgflux.runtime", "AgentControlMessage"),
     "AgentNotification": ("msgflux.runtime", "AgentNotification"),
+    "AbortSignal": ("msgflux.runtime", "AbortSignal"),
     "InMemoryAgentInboxStore": ("msgflux.runtime", "InMemoryAgentInboxStore"),
     "ChatMessages": ("msgflux.chat_messages", "ChatMessages"),
     "ExecutionScope": ("msgflux.runtime", "ExecutionScope"),

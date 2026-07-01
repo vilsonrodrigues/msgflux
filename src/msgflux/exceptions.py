@@ -34,6 +34,13 @@ class _GuardInterrupt(Exception):  # noqa: N818
         self.response = response
 
 
+class AbortRequestedError(Exception):
+    """Raised when a local runtime abort signal is observed."""
+
+    def __init__(self, message: Optional[str] = None):
+        super().__init__(message or "Execution abort requested.")
+
+
 class TaskInterruptRequestedError(Exception):
     """Raised when a cooperative background task receives an interrupt request."""
 

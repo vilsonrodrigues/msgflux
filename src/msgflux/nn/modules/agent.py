@@ -28,6 +28,7 @@ from msgflux.dsl.signature import (
 )
 from msgflux.dsl.typed_parsers.registry import typed_parser_registry
 from msgflux.exceptions import (
+    AbortRequestedError,
     TaskInterruptRequestedError,
     TaskPauseRequestedError,
     _GuardInterrupt,
@@ -392,9 +393,6 @@ class Agent(Module, metaclass=AutoParams):
             if typed_parser is not None:
                 raise ValueError("`typed_parser` is not `stream=True` compatible")
 
-            if checkpointer is not None:
-                raise ValueError("`checkpointer` is not `stream=True` compatible")
-
         self._set_context_cache(context_cache)
         self._set_message_fields(message_fields)
         self._set_model(model)
@@ -547,15 +545,9 @@ class Agent(Module, metaclass=AutoParams):
                 )
             except _GuardInterrupt as e:
                 return self._define_response_mode(e.response, message)
-            except TaskInterruptRequestedError as exc:
-                self._close_interrupted_tool_calls(
-                    inputs.get("messages"),
-                    reason=str(exc),
-                )
-                self._checkpoint_save(
-                    inputs.get("messages"), inputs.get("vars", {}), status="interrupted"
-                )
-                raise
+            except (AbortRequestedError, TaskInterruptRequestedError) as exc:
+                self._checkpoint_interrupted(inputs, exc)
+                self._raise_interrupted_from_abort(inputs, exc)
             except TaskPauseRequestedError:
                 self._checkpoint_save(
                     inputs.get("messages"), inputs.get("vars", {}), status="paused"
@@ -570,15 +562,9 @@ class Agent(Module, metaclass=AutoParams):
                     model_response,
                     **inputs,
                 )
-            except TaskInterruptRequestedError as exc:
-                self._close_interrupted_tool_calls(
-                    inputs.get("messages"),
-                    reason=str(exc),
-                )
-                self._checkpoint_save(
-                    inputs.get("messages"), inputs.get("vars", {}), status="interrupted"
-                )
-                raise
+            except (AbortRequestedError, TaskInterruptRequestedError) as exc:
+                self._checkpoint_interrupted(inputs, exc)
+                self._raise_interrupted_from_abort(inputs, exc)
             return response
 
     async def aforward(
@@ -619,17 +605,9 @@ class Agent(Module, metaclass=AutoParams):
                 )
             except _GuardInterrupt as e:
                 return self._define_response_mode(e.response, message)
-            except TaskInterruptRequestedError as exc:
-                self._close_interrupted_tool_calls(
-                    inputs.get("messages"),
-                    reason=str(exc),
-                )
-                await self._acheckpoint_save(
-                    inputs.get("messages"),
-                    inputs.get("vars", {}),
-                    status="interrupted",
-                )
-                raise
+            except (AbortRequestedError, TaskInterruptRequestedError) as exc:
+                await self._acheckpoint_interrupted(inputs, exc)
+                self._raise_interrupted_from_abort(inputs, exc)
             except TaskPauseRequestedError:
                 await self._acheckpoint_save(
                     inputs.get("messages"),
@@ -646,17 +624,9 @@ class Agent(Module, metaclass=AutoParams):
                     model_response,
                     **inputs,
                 )
-            except TaskInterruptRequestedError as exc:
-                self._close_interrupted_tool_calls(
-                    inputs.get("messages"),
-                    reason=str(exc),
-                )
-                await self._acheckpoint_save(
-                    inputs.get("messages"),
-                    inputs.get("vars", {}),
-                    status="interrupted",
-                )
-                raise
+            except (AbortRequestedError, TaskInterruptRequestedError) as exc:
+                await self._acheckpoint_interrupted(inputs, exc)
+                self._raise_interrupted_from_abort(inputs, exc)
             return response
 
     # --- Model Execution ---
@@ -885,9 +855,7 @@ class Agent(Module, metaclass=AutoParams):
 
         error = getattr(model_response, "error", None)
         if error is not None:
-            raise RuntimeError(
-                f"Model stream failed before producing a response: {error}"
-            ) from error
+            raise error
 
         raise RuntimeError("Model stream ended before producing a response type.")
 
@@ -904,6 +872,21 @@ class Agent(Module, metaclass=AutoParams):
         if isinstance(model_response, ModelStreamResponse):
             wait_for_event(model_response._response_type_event)
             self._ensure_stream_response_ready(model_response)
+            if model_response.response_type != "tool_call":
+                self._checkpoint_save(messages, vars, status="streaming")
+                self._attach_stream_checkpoint_finalizer(
+                    model_response,
+                    messages,
+                    vars,
+                )
+                return self._prepare_response(
+                    model_response,
+                    model_response.response_type,
+                    messages,
+                    message,
+                    vars,
+                    model_response.reasoning,
+                )
 
         if "tool_call" in model_response.response_type:
             model_response, messages = self._process_tool_call_response(
@@ -972,6 +955,21 @@ class Agent(Module, metaclass=AutoParams):
         if isinstance(model_response, ModelStreamResponse):
             await await_for_event(model_response._response_type_event)
             self._ensure_stream_response_ready(model_response)
+            if model_response.response_type != "tool_call":
+                await self._acheckpoint_save(messages, vars, status="streaming")
+                self._attach_stream_checkpoint_finalizer(
+                    model_response,
+                    messages,
+                    vars,
+                )
+                return self._prepare_response(
+                    model_response,
+                    model_response.response_type,
+                    messages,
+                    message,
+                    vars,
+                    model_response.reasoning,
+                )
 
         if "tool_call" in model_response.response_type:
             model_response, messages = await self._aprocess_tool_call_response(
@@ -2548,6 +2546,60 @@ class Agent(Module, metaclass=AutoParams):
             status=status,
         )
 
+    def _attach_stream_checkpoint_finalizer(
+        self,
+        model_response: ModelStreamResponse,
+        messages: Union[ChatMessages, List[Mapping[str, Any]]],
+        vars: Mapping[str, Any],
+    ) -> None:
+        if not isinstance(messages, ChatMessages):
+            return
+
+        stream_messages = messages.copy()
+
+        def finalize_stream(final_state) -> None:
+            response_type = final_state.response_type or "text_generation"
+            if final_state.status == "completed":
+                if final_state.output is not None:
+                    stream_messages.add_assistant_response(
+                        final_state.output,
+                        reasoning_content=final_state.reasoning,
+                    )
+                self._finalize_chat_turn(
+                    stream_messages,
+                    final_state.output,
+                    response_type,
+                    final_state.metadata,
+                )
+                self._checkpoint_save(stream_messages, vars, status="completed")
+                return
+
+            reason = str(final_state.error) if final_state.error is not None else None
+            if final_state.status == "interrupted":
+                self._close_interrupted_tool_calls(stream_messages, reason=reason)
+                self._checkpoint_save(stream_messages, vars, status="interrupted")
+                return
+
+            if final_state.output is not None:
+                stream_messages.add_assistant_response(
+                    final_state.output,
+                    reasoning_content=final_state.reasoning,
+                )
+            if stream_messages.get_active_turn() is not None:
+                stream_messages.end_turn(
+                    assistant_output=final_state.output,
+                    response_type=response_type,
+                    response_metadata=(
+                        {"error": reason}
+                        if reason is not None
+                        else final_state.metadata
+                    ),
+                    status="failed",
+                )
+            self._checkpoint_save(stream_messages, vars, status="failed")
+
+        model_response.add_finalizer(finalize_stream)
+
     def _close_interrupted_tool_calls(
         self,
         messages: Union[ChatMessages, List[Mapping[str, Any]], None],
@@ -2638,6 +2690,49 @@ class Agent(Module, metaclass=AutoParams):
             )
         else:
             checkpointer.save_state(self.get_module_name(), thread_id, run_id, state)
+
+    def _checkpoint_interrupted(
+        self,
+        inputs: Mapping[str, Any],
+        exc: BaseException,
+    ) -> None:
+        self._close_interrupted_tool_calls(
+            inputs.get("messages"),
+            reason=str(exc),
+        )
+        self._checkpoint_save(
+            inputs.get("messages"),
+            inputs.get("vars", {}),
+            status="interrupted",
+        )
+
+    async def _acheckpoint_interrupted(
+        self,
+        inputs: Mapping[str, Any],
+        exc: BaseException,
+    ) -> None:
+        self._close_interrupted_tool_calls(
+            inputs.get("messages"),
+            reason=str(exc),
+        )
+        await self._acheckpoint_save(
+            inputs.get("messages"),
+            inputs.get("vars", {}),
+            status="interrupted",
+        )
+
+    @staticmethod
+    def _raise_interrupted_from_abort(
+        inputs: Mapping[str, Any],
+        exc: BaseException,
+    ) -> None:
+        if isinstance(exc, AbortRequestedError):
+            scope = inputs.get("scope")
+            raise TaskInterruptRequestedError(
+                scope.run_id if scope is not None else "unknown",
+                str(exc),
+            ) from exc
+        raise exc
 
     def _build_checkpoint_state(
         self,

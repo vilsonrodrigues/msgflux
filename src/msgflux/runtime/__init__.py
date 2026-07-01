@@ -1,3 +1,4 @@
+from msgflux.runtime.abort import AbortSignal
 from msgflux.runtime.agent_inbox import (
     AgentControlMessage,
     AgentInbox,
@@ -37,6 +38,7 @@ __all__ = [
     "AgentNotification",
     "AgentSkill",
     "AgentSkillManager",
+    "AbortSignal",
     "ExecutionScope",
     "InMemoryAgentInboxStore",
     "SQLiteAgentInboxStore",
