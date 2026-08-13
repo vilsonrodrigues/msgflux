@@ -4,6 +4,8 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
+from msgflux.chat_messages import ChatMessages
+
 
 class TestVLLMProviderImport:
     """Test VLLM provider import and initialization."""
@@ -67,6 +69,34 @@ class TestVLLMChatCompletion:
         assert model.model_id == "llama-3"
         assert model.provider == "vllm"
         assert model.model_type == "chat_completion"
+
+    def test_responses_mode_uses_clear_text_reasoning_codec(self, mock_openai_client):
+        pytest.importorskip("openai")
+
+        from msgflux.models.providers.vllm import VLLMChatCompletion
+
+        model = VLLMChatCompletion(model_id="deepseek-r1", api_mode="responses")
+
+        assert model.reasoning_codec.name == "responses_reasoning_text"
+
+    def test_chat_mode_does_not_replay_parsed_reasoning(self, mock_openai_client):
+        pytest.importorskip("openai")
+
+        from msgflux.models.providers.vllm import VLLMChatCompletion
+
+        model = VLLMChatCompletion(model_id="deepseek-r1")
+        messages = ChatMessages()
+        messages.add_reasoning("private chain")
+        messages.add_assistant("answer")
+
+        params = model._build_generation_params(
+            messages,
+            system_prompt=None,
+            prefilling=None,
+            tool_definitions=None,
+        )
+
+        assert params["messages"] == [{"role": "assistant", "content": "answer"}]
 
     def test_chat_completion_with_parameters(self, mock_openai_client):
         """Test VLLMChatCompletion with custom parameters."""

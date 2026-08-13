@@ -14,7 +14,7 @@ import msgflux as mf
 from msgflux import nn
 from msgflux.nn.hooks import Guard
 
-chat_model = mf.Model.chat_completion("openai/gpt-4.1-mini")
+chat_model = mf.Model.chat_completion("openai/gpt-5.6-luna", reasoning_effort="none")
 moderation_model = mf.Model.moderation("openai/omni-moderation-latest")
 
 BLOCKED_MESSAGE = "This message cannot be processed."

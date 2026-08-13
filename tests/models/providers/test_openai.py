@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, Mock, patch
 import msgspec
 import pytest
 
+from msgflux.chat_messages import ChatMessages
 from msgflux.exceptions import AbortRequestedError
 from msgflux.generation.reasoning.react import ReAct
 from msgflux.runtime import AbortSignal
@@ -78,6 +79,493 @@ class TestOpenAIChatCompletion:
         assert model.model_id == "gpt-4"
         assert model.provider == "openai"
         assert model.model_type == "chat_completion"
+        assert model.api_mode == "responses"
+        assert model.reasoning_codec.name == "openai_responses"
+
+    def test_openai_is_a_concrete_compatible_provider(self, mock_openai_client):
+        pytest.importorskip("openai")
+
+        from msgflux.models.providers.openai import (
+            OpenAIChatCompletion,
+            OpenAICompatibleChatCompletion,
+        )
+
+        assert issubclass(OpenAIChatCompletion, OpenAICompatibleChatCompletion)
+        assert OpenAIChatCompletion is not OpenAICompatibleChatCompletion
+
+    def test_chat_completion_rejects_unsupported_api_mode(self, mock_openai_client):
+        pytest.importorskip("openai")
+
+        from msgflux.models.providers.openai import OpenAIChatCompletion
+
+        with pytest.raises(ValueError, match="does not support"):
+            OpenAIChatCompletion(model_id="gpt-4", api_mode="messages")
+
+    @pytest.mark.parametrize(
+        "effort", ["none", "low", "medium", "high", "xhigh", "max"]
+    )
+    def test_gpt_5_6_reasoning_efforts_are_forwarded(self, mock_openai_client, effort):
+        pytest.importorskip("openai")
+
+        from msgflux.models.providers.openai import OpenAIChatCompletion
+
+        model = OpenAIChatCompletion(model_id="gpt-5.6-luna", reasoning_effort=effort)
+
+        params = model._adapt_responses_params(
+            {**model.sampling_run_params, "model": model.model_id, "input": []}
+        )
+
+        assert params["reasoning"] == {"effort": effort, "summary": "auto"}
+
+    def test_responses_reasoning_state_without_text_replays_empty_summary(
+        self, mock_openai_client
+    ):
+        pytest.importorskip("openai")
+
+        from msgflux.models.providers.openai import OpenAIChatCompletion
+
+        model = OpenAIChatCompletion(model_id="gpt-5.6-luna")
+        history = ChatMessages(
+            [
+                {
+                    "type": "reasoning",
+                    "role": "assistant",
+                    "provider_state": {
+                        "provider": "openai",
+                        "api_mode": "responses",
+                        "codec": "openai_responses",
+                        "data": {
+                            "id": "rs_1",
+                            "type": "reasoning",
+                            "encrypted_content": "opaque",
+                        },
+                    },
+                }
+            ]
+        )
+
+        params = model._build_generation_params(
+            history,
+            system_prompt=None,
+            prefilling=None,
+            tool_definitions=None,
+        )
+
+        assert params["input"] == [
+            {
+                "id": "rs_1",
+                "type": "reasoning",
+                "encrypted_content": "opaque",
+                "summary": [],
+            }
+        ]
+
+    def test_responses_structured_tool_flow_prefers_commentary_phase(
+        self, mock_openai_client
+    ):
+        pytest.importorskip("openai")
+
+        from msgflux.models.providers.openai import OpenAIChatCompletion
+
+        model = OpenAIChatCompletion(model_id="gpt-5.6-luna")
+        commentary = '{"thought":"call tool","actions":null,"final_answer":null}'
+        final_answer = '{"thought":"","actions":null,"final_answer":"premature"}'
+        output = SimpleNamespace(
+            id="resp_phases",
+            status="completed",
+            incomplete_details=None,
+            usage=None,
+            output=[
+                {
+                    "type": "message",
+                    "phase": "commentary",
+                    "content": [{"type": "output_text", "text": commentary}],
+                },
+                {
+                    "type": "message",
+                    "phase": "final_answer",
+                    "content": [{"type": "output_text", "text": final_answer}],
+                },
+            ],
+        )
+
+        response = model._process_responses_model_output(
+            output,
+            generation_schema=ReAct,
+            transport_generation_schema={"decoder_schema": None},
+        )
+
+        assert response.data == {
+            "thought": "call tool",
+            "actions": None,
+            "final_answer": None,
+        }
+        assert [item["phase"] for item in response.history_items] == [
+            "commentary",
+            "final_answer",
+        ]
+        replay = ChatMessages(response.history_items).to_responses_input()
+        assert [item["phase"] for item in replay] == [
+            "commentary",
+            "final_answer",
+        ]
+
+    def test_responses_mode_converts_frontend_and_preserves_reasoning_state(
+        self, mock_openai_client
+    ):
+        pytest.importorskip("openai")
+
+        from msgflux.models.providers.openai import OpenAIChatCompletion
+
+        mock_client, _ = mock_openai_client
+        reasoning_item = {
+            "type": "reasoning",
+            "id": "rs_1",
+            "encrypted_content": "opaque",
+            "summary": [{"type": "summary_text", "text": "Checked inventory."}],
+        }
+        mock_client.return_value.responses.create.return_value = SimpleNamespace(
+            id="resp_1",
+            status="completed",
+            incomplete_details=None,
+            usage={"input_tokens": 8, "output_tokens": 4, "total_tokens": 12},
+            output=[
+                reasoning_item,
+                {
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [{"type": "output_text", "text": "In stock."}],
+                },
+            ],
+        )
+        model = OpenAIChatCompletion(
+            model_id="gpt-5",
+            api_mode="responses",
+            max_tokens=256,
+            reasoning_effort="medium",
+            verbosity="low",
+        )
+
+        response = model("Is SKU-1842 available?", system_prompt="Be concise.")
+
+        call_kwargs = mock_client.return_value.responses.create.call_args.kwargs
+        assert call_kwargs["input"] == [
+            {"role": "system", "content": "Be concise."},
+            {"role": "user", "content": "Is SKU-1842 available?"},
+        ]
+        assert call_kwargs["max_output_tokens"] == 256
+        assert call_kwargs["reasoning"] == {"effort": "medium", "summary": "auto"}
+        assert call_kwargs["include"] == ["reasoning.encrypted_content"]
+        assert call_kwargs["text"] == {"verbosity": "low"}
+        assert "messages" not in call_kwargs
+        assert response.consume() == "In stock."
+        assert response.reasoning is None
+        assert response.reasoning_summary == "Checked inventory."
+        assert response.consume_reasoning_summary() == "Checked inventory."
+        assert response.metadata.response_id == "resp_1"
+        assert response.history_items == [
+            {
+                "type": "reasoning",
+                "role": "assistant",
+                "summary": "Checked inventory.",
+                "provider_state": {
+                    "provider": "openai",
+                    "api_mode": "responses",
+                    "codec": "openai_responses",
+                    "data": {
+                        "type": "reasoning",
+                        "id": "rs_1",
+                        "encrypted_content": "opaque",
+                    },
+                },
+            },
+            {
+                "type": "message",
+                "role": "assistant",
+                "content": [{"type": "output_text", "text": "In stock."}],
+                "provider_state": {
+                    "provider": "openai",
+                    "api_mode": "responses",
+                    "data": {},
+                },
+            },
+        ]
+        assert ChatMessages(response.history_items).to_responses_input() == [
+            reasoning_item,
+            {
+                "type": "message",
+                "role": "assistant",
+                "content": [{"type": "output_text", "text": "In stock."}],
+            },
+        ]
+
+    @pytest.mark.parametrize("parameter,value", [("stop", ["END"]), ("audio", {})])
+    def test_responses_mode_rejects_parameters_without_equivalent(
+        self, mock_openai_client, parameter, value
+    ):
+        pytest.importorskip("openai")
+
+        from msgflux.models.providers.openai import OpenAIChatCompletion
+
+        with pytest.raises(ValueError, match=parameter):
+            OpenAIChatCompletion(
+                model_id="gpt-5",
+                api_mode="responses",
+                **{parameter: value},
+            )
+
+    def test_responses_mode_converts_tools_and_structured_output(
+        self, mock_openai_client
+    ):
+        pytest.importorskip("openai")
+
+        from msgflux.models.providers.openai import OpenAIChatCompletion
+
+        class Availability(msgspec.Struct):
+            available: bool
+
+        mock_client, _ = mock_openai_client
+        mock_client.return_value.responses.create.return_value = SimpleNamespace(
+            id="resp_2",
+            status="completed",
+            incomplete_details=None,
+            usage=None,
+            output=[
+                {
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [{"type": "output_text", "text": '{"available":true}'}],
+                }
+            ],
+        )
+        model = OpenAIChatCompletion(model_id="gpt-5", api_mode="responses")
+        tools = ToolDefinitions(
+            schemas=[
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "lookup_inventory",
+                        "description": "Look up a SKU.",
+                        "parameters": {"type": "object", "properties": {}},
+                        "strict": True,
+                    },
+                }
+            ],
+            choice="lookup_inventory",
+        )
+
+        response = model(
+            "Check SKU-1842",
+            generation_schema=Availability,
+            tool_definitions=tools,
+        )
+
+        call_kwargs = mock_client.return_value.responses.create.call_args.kwargs
+        assert call_kwargs["tools"] == [
+            {
+                "type": "function",
+                "name": "lookup_inventory",
+                "description": "Look up a SKU.",
+                "parameters": {"type": "object", "properties": {}},
+                "strict": True,
+            }
+        ]
+        assert call_kwargs["tool_choice"] == {
+            "type": "function",
+            "name": "lookup_inventory",
+        }
+        assert call_kwargs["text"]["format"]["type"] == "json_schema"
+        assert "json_schema" not in call_kwargs["text"]["format"]
+        assert response.consume() == {"available": True}
+
+    def test_responses_stream_accumulates_summary_text_and_tool_call(
+        self, mock_openai_client
+    ):
+        pytest.importorskip("openai")
+
+        from msgflux.models.providers.openai import OpenAIChatCompletion
+        from msgflux.models.response import ModelStreamResponse
+
+        mock_client, _ = mock_openai_client
+        reasoning_item = {
+            "type": "reasoning",
+            "id": "rs_1",
+            "encrypted_content": "opaque",
+            "summary": [{"type": "summary_text", "text": "Need inventory."}],
+        }
+        mock_client.return_value.responses.create.return_value = iter(
+            [
+                {
+                    "type": "response.reasoning_summary_text.delta",
+                    "delta": "Need inventory.",
+                },
+                {
+                    "type": "response.output_item.done",
+                    "output_index": 0,
+                    "item": reasoning_item,
+                },
+                {
+                    "type": "response.output_item.added",
+                    "output_index": 1,
+                    "item": {
+                        "type": "function_call",
+                        "id": "fc_1",
+                        "status": "in_progress",
+                        "call_id": "call_1",
+                        "name": "lookup_inventory",
+                        "arguments": "",
+                    },
+                },
+                {
+                    "type": "response.function_call_arguments.delta",
+                    "output_index": 1,
+                    "delta": '{"sku":"1842"}',
+                },
+                {
+                    "type": "response.output_item.done",
+                    "output_index": 1,
+                    "item": {
+                        "type": "function_call",
+                        "id": "fc_1",
+                        "status": "completed",
+                        "call_id": "call_1",
+                        "name": "lookup_inventory",
+                        "arguments": '{"sku":"1842"}',
+                    },
+                },
+                {
+                    "type": "response.completed",
+                    "response": {
+                        "id": "resp_3",
+                        "status": "completed",
+                        "usage": {"total_tokens": 20},
+                    },
+                },
+            ]
+        )
+        model = OpenAIChatCompletion(model_id="gpt-5", api_mode="responses")
+        stream_response = ModelStreamResponse()
+
+        model._stream_responses_generate(
+            input=[{"role": "user", "content": "Check SKU-1842"}],
+            model="gpt-5",
+            stream=True,
+            stream_response=stream_response,
+        )
+
+        assert stream_response.response_type == "tool_call"
+        assert stream_response.reasoning is None
+        assert stream_response.reasoning_summary == "Need inventory."
+        assert stream_response.data.get_calls() == [
+            ("call_1", "lookup_inventory", {"sku": "1842"})
+        ]
+        assert stream_response.metadata.response_id == "resp_3"
+        assert stream_response.chat_accumulator.snapshot()[0] == {
+            "type": "reasoning",
+            "role": "assistant",
+            "summary": "Need inventory.",
+            "provider_state": {
+                "provider": "openai",
+                "api_mode": "responses",
+                "codec": "openai_responses",
+                "data": {
+                    "type": "reasoning",
+                    "id": "rs_1",
+                    "encrypted_content": "opaque",
+                },
+            },
+        }
+        function_call = stream_response.chat_accumulator.snapshot()[1]
+        assert function_call["provider_state"] == {
+            "provider": "openai",
+            "api_mode": "responses",
+            "data": {
+                "type": "function_call",
+                "id": "fc_1",
+                "status": "completed",
+                "call_id": "call_1",
+                "name": "lookup_inventory",
+                "arguments": '{"sku":"1842"}',
+            },
+        }
+        assert ChatMessages([function_call]).to_responses_input(
+            provider="openai",
+            api_mode="responses",
+            reasoning_codec=model.reasoning_codec,
+        ) == [
+            {
+                "type": "function_call",
+                "id": "fc_1",
+                "status": "completed",
+                "call_id": "call_1",
+                "name": "lookup_inventory",
+                "arguments": '{"sku":"1842"}',
+            }
+        ]
+
+    def test_responses_stream_preserves_message_phase_and_native_identity(
+        self, mock_openai_client
+    ):
+        pytest.importorskip("openai")
+
+        from msgflux.models.providers.openai import OpenAIChatCompletion
+        from msgflux.models.response import ModelStreamResponse
+
+        mock_client, _ = mock_openai_client
+        final_message = {
+            "type": "message",
+            "id": "msg_1",
+            "status": "completed",
+            "role": "assistant",
+            "phase": "final_answer",
+            "content": [{"type": "output_text", "text": "Done."}],
+        }
+        mock_client.return_value.responses.create.return_value = iter(
+            [
+                {
+                    "type": "response.output_item.added",
+                    "output_index": 0,
+                    "item": {
+                        **final_message,
+                        "status": "in_progress",
+                        "content": [],
+                    },
+                },
+                {
+                    "type": "response.output_text.delta",
+                    "output_index": 0,
+                    "delta": "Done.",
+                },
+                {
+                    "type": "response.output_item.done",
+                    "output_index": 0,
+                    "item": final_message,
+                },
+                {
+                    "type": "response.completed",
+                    "response": {"id": "resp_1", "status": "completed"},
+                },
+            ]
+        )
+        model = OpenAIChatCompletion(model_id="gpt-5.6-luna")
+        stream_response = ModelStreamResponse()
+
+        model._stream_responses_generate(
+            input=[{"role": "user", "content": "Finish"}],
+            model="gpt-5.6-luna",
+            stream=True,
+            stream_response=stream_response,
+        )
+
+        assert stream_response.data == "Done."
+        items = stream_response.chat_accumulator.snapshot()
+        assert len(items) == 1
+        assert items[0]["phase"] == "final_answer"
+        assert items[0]["provider_state"]["data"] == {
+            "id": "msg_1",
+            "status": "completed",
+        }
+        assert ChatMessages(items).to_responses_input() == [final_message]
 
     def test_chat_completion_with_parameters(self, mock_openai_client):
         """Test OpenAIChatCompletion with custom parameters."""
@@ -200,6 +688,7 @@ class TestOpenAIChatCompletion:
         )
         model = OpenAIChatCompletion(
             model_id="gpt-4",
+            api_mode="chat_completions",
             extra_body={"enable_citations": True, "enable_entities": True},
         )
         model("Hello")
@@ -209,6 +698,47 @@ class TestOpenAIChatCompletion:
             "enable_citations": True,
             "enable_entities": True,
         }
+
+    def test_tool_call_reasoning_is_kept_in_history_when_not_returned(
+        self, mock_openai_client
+    ):
+        pytest.importorskip("openai")
+
+        from msgflux.models.providers.openai import OpenAIChatCompletion
+
+        mock_client, _ = mock_openai_client
+        mock_client.return_value.chat.completions.create.return_value = SimpleNamespace(
+            usage=None,
+            choices=[
+                SimpleNamespace(
+                    finish_reason="stop",
+                    message=SimpleNamespace(
+                        content="done",
+                        reasoning_content="private reasoning",
+                        tool_calls=None,
+                        audio=None,
+                        annotations=None,
+                    ),
+                )
+            ],
+        )
+        model = OpenAIChatCompletion(
+            model_id="gpt-4",
+            api_mode="chat_completions",
+            return_reasoning=False,
+            reasoning_in_tool_call=True,
+        )
+
+        response = model("Hello")
+
+        assert response.reasoning is None
+        assert response.history_items == [
+            {
+                "type": "reasoning",
+                "role": "assistant",
+                "text": "private reasoning",
+            }
+        ]
 
     def test_chat_completion_forwards_extra_body_kwargs(self, mock_openai_client):
         """Test direct provider kwargs are forwarded through extra_body."""
@@ -233,6 +763,7 @@ class TestOpenAIChatCompletion:
         )
         model = OpenAIChatCompletion(
             model_id="gpt-4",
+            api_mode="chat_completions",
             enable_entities=True,
             enable_citations=True,
         )
@@ -267,6 +798,7 @@ class TestOpenAIChatCompletion:
         )
         model = OpenAIChatCompletion(
             model_id="gpt-4",
+            api_mode="chat_completions",
             extra_body={"enable_citations": True, "country": "BR"},
         )
         model(
@@ -380,7 +912,7 @@ class TestOpenAIChatCompletion:
                 )
             ],
         )
-        model = OpenAIChatCompletion(model_id="gpt-4")
+        model = OpenAIChatCompletion(model_id="gpt-4", api_mode="chat_completions")
         model("Hello", logprobs=True, top_logprobs=2)
 
         call_kwargs = mock_client.return_value.chat.completions.create.call_args.kwargs
@@ -411,7 +943,7 @@ class TestOpenAIChatCompletion:
                 ],
             )
         )
-        model = OpenAIChatCompletion(model_id="gpt-4")
+        model = OpenAIChatCompletion(model_id="gpt-4", api_mode="chat_completions")
         await model.acall("Hello", logprobs=True, top_logprobs=2)
 
         call_kwargs = (
@@ -446,6 +978,7 @@ class TestOpenAIChatCompletion:
         )
         model = OpenAIChatCompletion(
             model_id="gpt-4",
+            api_mode="chat_completions",
             extra_body={"enable_citations": True},
         )
         await model.acall("Hello", enable_entities=True)
@@ -504,7 +1037,7 @@ class TestOpenAIChatCompletion:
         create = AsyncMock(return_value=empty_stream())
         mock_async_client.return_value.chat.completions.create = create
 
-        model = OpenAIChatCompletion(model_id="gpt-4")
+        model = OpenAIChatCompletion(model_id="gpt-4", api_mode="chat_completions")
 
         await model.acall(
             messages=[{"role": "user", "content": "Check order 123"}],
@@ -553,7 +1086,7 @@ class TestOpenAIChatCompletion:
             )
         )
 
-        model = OpenAIChatCompletion(model_id="gpt-4")
+        model = OpenAIChatCompletion(model_id="gpt-4", api_mode="chat_completions")
         stream_response = await model.acall(
             messages=[{"role": "user", "content": "Check order 123"}],
             stream=True,
@@ -621,12 +1154,24 @@ class TestOpenAIChatCompletion:
                 usage=None,
             )
             yield SimpleNamespace(
-                choices=[],
+                # OpenRouter includes usage on a final chunk that can still
+                # contain a choice, so usage cannot live in an ``elif`` branch.
+                choices=[
+                    SimpleNamespace(
+                        delta=SimpleNamespace(
+                            content=None,
+                            tool_calls=None,
+                            annotations=None,
+                        ),
+                        finish_reason=None,
+                    )
+                ],
                 usage=SimpleNamespace(
                     to_dict=lambda: {
                         "prompt_tokens": 3,
                         "completion_tokens": 2,
                         "total_tokens": 5,
+                        "prompt_tokens_details": {"cached_tokens": 2},
                     }
                 ),
             )
@@ -635,7 +1180,7 @@ class TestOpenAIChatCompletion:
             return_value=text_stream()
         )
 
-        model = OpenAIChatCompletion(model_id="gpt-4")
+        model = OpenAIChatCompletion(model_id="gpt-4", api_mode="chat_completions")
         response = await model.acall(
             messages=[{"role": "user", "content": "Say hello"}],
             stream=True,
@@ -649,6 +1194,10 @@ class TestOpenAIChatCompletion:
         assert response.response_type == "text_generation"
         assert response.data == "Hello world"
         assert response.metadata.usage["total_tokens"] == 5
+        assert response.metadata.usage["input_tokens"] == 3
+        assert response.metadata.usage["output_tokens"] == 2
+        assert response.metadata.usage["input_tokens_details"]["cached_tokens"] == 2
+        assert response.metadata.usage["raw"]["prompt_tokens"] == 3
 
     def test_prepare_generate_kwargs_lowers_dict_schema(self, mock_openai_client):
         """Test OpenAI transport schema lowering for dict-based structured outputs."""
@@ -684,7 +1233,7 @@ class TestOpenAIChatCompletion:
 
         from msgflux.models.providers.openai import OpenAIChatCompletion
 
-        model = OpenAIChatCompletion(model_id="gpt-4")
+        model = OpenAIChatCompletion(model_id="gpt-4", api_mode="chat_completions")
         params = model._build_generation_params(
             messages=[{"role": "user", "content": "What's the weather?"}],
             system_prompt=None,
@@ -720,7 +1269,7 @@ class TestOpenAIChatCompletion:
 
         from msgflux.models.providers.openai import OpenAIChatCompletion
 
-        model = OpenAIChatCompletion(model_id="gpt-4")
+        model = OpenAIChatCompletion(model_id="gpt-4", api_mode="chat_completions")
         history = [{"role": "user", "content": "Hello"}]
 
         params = model._build_generation_params(
@@ -756,7 +1305,7 @@ class TestOpenAIChatCompletion:
             ],
         )
 
-        model = OpenAIChatCompletion(model_id="gpt-4")
+        model = OpenAIChatCompletion(model_id="gpt-4", api_mode="chat_completions")
         history = [{"role": "user", "content": "Hello"}]
 
         response = model(messages=history, prefilling="Start here")
@@ -789,7 +1338,7 @@ class TestOpenAIChatCompletion:
             )
         )
 
-        model = OpenAIChatCompletion(model_id="gpt-4")
+        model = OpenAIChatCompletion(model_id="gpt-4", api_mode="chat_completions")
         history = [{"role": "user", "content": "Hello"}]
 
         response = await model.acall(messages=history, prefilling="Start here")

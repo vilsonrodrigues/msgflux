@@ -5,10 +5,11 @@ from msgflux.models.httpx import HTTPXModelClient
 from msgflux.models.profiles import get_model_profile
 from msgflux.models.providers.jinaai import JinaAITextReranker
 from msgflux.models.providers.openai import (
-    OpenAIChatCompletion,
+    OpenAICompatibleChatCompletion,
     OpenAISpeechToText,
     OpenAITextEmbedder,
 )
+from msgflux.models.reasoning import TextResponsesReasoningCodec
 from msgflux.models.registry import register_model
 from msgflux.models.response import ModelResponse
 from msgflux.models.types import TextClassifierModel
@@ -41,8 +42,11 @@ class _BaseVLLM:
 
 
 @register_model
-class VLLMChatCompletion(_BaseVLLM, OpenAIChatCompletion):
+class VLLMChatCompletion(_BaseVLLM, OpenAICompatibleChatCompletion):
     """vLLM Chat Completion."""
+
+    supported_api_modes = ("chat_completions", "responses")
+    reasoning_codecs = {"responses": TextResponsesReasoningCodec()}
 
     def _adapt_params(self, params: Dict[str, Any]) -> Dict[str, Any]:
         response_format = params.pop("response_format", None)

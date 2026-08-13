@@ -1,7 +1,8 @@
 from os import getenv
 from typing import Any, Dict
 
-from msgflux.models.providers.openai import OpenAIChatCompletion
+from msgflux.models.providers.openai import OpenAICompatibleChatCompletion
+from msgflux.models.reasoning import OpenRouterReasoningCodec
 from msgflux.models.registry import register_model
 
 
@@ -28,15 +29,18 @@ class _BaseOpenRouter:
 
 
 @register_model
-class OpenRouterChatCompletion(_BaseOpenRouter, OpenAIChatCompletion):
+class OpenRouterChatCompletion(_BaseOpenRouter, OpenAICompatibleChatCompletion):
     """OpenRouter Chat Completion."""
+
+    default_reasoning_codec = OpenRouterReasoningCodec()
+    supports_reasoning_max_tokens = True
 
     def _adapt_params(self, params: Dict[str, Any]) -> Dict[str, Any]:
         extra_body = dict(params.get("extra_body") or {})
         plugins = []
 
-        if params["tool_choice"] is None:
-            if params["tools"] is not None:
+        if params.get("tool_choice") is None:
+            if params.get("tools") is not None:
                 params["tool_choice"] = "auto"
             else:
                 params["tool_choice"] = "none"

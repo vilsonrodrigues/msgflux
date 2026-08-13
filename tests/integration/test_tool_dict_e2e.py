@@ -9,8 +9,12 @@ from msgflux.generation.reasoning import ReAct
 mf.load_dotenv()
 
 
-model = mf.Model.chat_completion("openai/gpt-4.1-mini")
-react_model = mf.Model.chat_completion("openai/gpt-4.1-nano", max_tokens=300)
+model = mf.Model.chat_completion("openai/gpt-5.6-luna", reasoning_effort="low")
+react_model = mf.Model.chat_completion(
+    "openai/gpt-5.6-luna",
+    max_tokens=300,
+    reasoning_effort="none",
+)
 
 
 # ── Tool with dict[str, str] parameter ───────────────────────────────────────

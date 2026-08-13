@@ -41,7 +41,11 @@ def store_todos(todos: list[TodoItem]) -> dict:
 
 
 class TodoAgent(nn.Agent):
-    model = mf.Model.chat_completion("openai/gpt-4.1-mini", max_tokens=300)
+    model = mf.Model.chat_completion(
+        "openai/gpt-5.6-luna",
+        max_tokens=300,
+        reasoning_effort="low",
+    )
     system_message = "You are a TODO extraction assistant."
     instructions = (
         "Extract TODO items from the user message and call store_todos exactly once. "
