@@ -683,21 +683,19 @@ If either condition is missing, validation is silently skipped.
 
 ### Building Examples from ChatMessages
 
-`ChatMessages` can preserve turn metadata and convert completed turns into
-`mf.Example` objects. This is useful when you want to keep the original
-conversation shape while producing supervised examples for msgFlux examples or
-prompt optimizers such as DSPy.
+`ChatMessages` can split completed interaction trajectories into `mf.Example`
+objects. It does not need to know a signature's input and output field names,
+so the same saved trajectory works across provider APIs and future formats.
 
 Each completed turn becomes one example:
 
-- `begin_turn(inputs=...)` records the signature inputs.
-- `add_user(...)`, `add_assistant_response(...)`, and related message helpers
-  preserve the chat history for future turns.
+- `begin_turn(...)` adds a `start` event to the interaction timeline.
+- Message, reasoning, tool-call, and tool-result items preserve the trajectory.
 - Tool traces can be replayed with `function_call` and `function_call_output`
   items when you are building examples from a saved run.
-- `end_turn(assistant_output=...)` records the label for that turn.
-- `to_examples(...)` returns examples with the previous conversation in
-  `inputs[history_key]` and the target output in `labels[output_key]`.
+- `end_turn()` adds a `complete` event.
+- `to_examples()` splits each completed trajectory at its first assistant item.
+  The two sides are returned under the fixed `trajectory` key.
 
 ```python
 import msgflux as mf
@@ -707,13 +705,7 @@ messages = mf.ChatMessages(
     namespace="support_triage",
 )
 
-messages.begin_turn(
-    inputs={
-        "ticket": "Checkout fails when paying by card",
-        "customer_tier": "enterprise",
-    },
-    vars={"tone": "concise"},
-)
+messages.begin_turn(turn_id="triage_1")
 messages.add_user("Ticket: Checkout fails when paying by card. Tier: enterprise.")
 messages.append(
     {
@@ -737,50 +729,25 @@ messages.add_assistant_response(
     "This is a high-priority payments issue.",
     reasoning_content="Payment failures block revenue and affect an enterprise account.",
 )
-messages.end_turn(
-    assistant_output={
-        "category": "payments",
-        "priority": "high",
-        "reply": "I escalated this to payments support.",
-    },
-    response_type="signature",
-)
+messages.end_turn()
 
-messages.begin_turn(
-    inputs={
-        "ticket": "Can I export invoices as CSV?",
-        "customer_tier": "starter",
-    },
-)
+messages.begin_turn(turn_id="triage_2")
 messages.add_user("Ticket: Can I export invoices as CSV? Tier: starter.")
 messages.add_assistant_response("This is a product how-to question.")
-messages.end_turn(
-    assistant_output={
-        "category": "product_help",
-        "priority": "normal",
-        "reply": "Use Billing > Invoices > Export CSV.",
-    },
-    response_type="signature",
-)
+messages.end_turn()
 
-examples = messages.to_examples(
-    history_key="conversation",
-    output_key="triage",
-)
+examples = messages.to_examples()
 
 first = examples[0]
-print(first.inputs["ticket"])
-print(first.labels["triage"]["priority"])
-print(first.reasoning)
+print(first.inputs["trajectory"])
+print(first.labels["trajectory"])
 
 second = examples[1]
-print(second.inputs["conversation"])
-print(second.labels["triage"]["reply"])
+print(second.inputs["trajectory"])
+print(second.labels["trajectory"])
 ```
 
-The first example has an empty `conversation` because no previous turn exists.
-The second example includes the first turn as ChatML history, including the
-simulated tool call and tool output, so optimizers can learn from both the
-current signature inputs and the conversation context that led to the expected
-output. Pass `include_history=False` when only the raw signature inputs should
-be exported.
+The first side contains the user-side trajectory. The label side starts at the
+first assistant-owned item and retains reasoning and tool activity in their
+original order. No copy of `vars`, named signature inputs, assistant output, or
+provider response type is created solely for example generation.

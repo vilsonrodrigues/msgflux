@@ -86,11 +86,11 @@ execution scope before model execution. In practice, that means the namespace
 usually becomes the agent module name, while `thread_id` and `run_id` come
 from the active `ExecutionScope` or inherited runtime context.
 
-`thread_id` is the conversation identity. It should stay stable while the root
-agent and its child tasks are working on the same user conversation or workflow.
+`thread_id` is the conversation identity for the agent that owns the inbox.
 `run_id` is narrower: it identifies one resumable execution inside that
-conversation. The root agent and each background subagent may share a
-`thread_id`, but they should have different `run_id` values.
+conversation. A background subagent uses its own `thread_id` and `run_id`;
+`parent_run_id` and `root_run_id` preserve its relationship with the root
+execution.
 
 ## Delivery Model
 
@@ -169,14 +169,13 @@ Example:
 source: task
 ref: abcd1234
 status: completed
-hint: use task_output(task_id='abcd1234')
+tool: long_sum
 </notification>
 <notification>
 source: context_budget
 ref: run_1
 status: warning
 usage_percent: 92
-hint: be concise and avoid repeating prior context
 </notification>
 </system_note>
 ```
@@ -258,10 +257,10 @@ The important rule is:
 - producers do not build synthetic messages
 
 `task_message` uses this same identity model. When the root sends a message to
-a background agent task, the dispatcher uses the task metadata to recover the
-child agent namespace and run id, then delivers the message under the same
-`thread_id`. The child agent can then continue from its checkpointed execution
-state while the root receives task notifications through the inbox.
+a background agent task, the dispatcher uses task metadata to recover the child
+agent namespace, `thread_id`, and `run_id`. The child can then continue from its
+own checkpointed execution state while the root receives task notifications
+through the root inbox.
 
 ## Coalescing
 
@@ -327,15 +326,3 @@ The planned separation is:
 
 That separation keeps the future event system broad without forcing the model
 to see every internal event directly.
-
-## Current Direction
-
-The current direction is:
-
-- introduce `AgentNotification`
-- introduce `AgentInbox`
-- propagate the inbox through `execution_context`
-- inject notifications from `_prepare_model_execution()`
-- let runtime producers publish structured notifications directly
-- keep rendering centralized in one place
-- persist notifications in history by default

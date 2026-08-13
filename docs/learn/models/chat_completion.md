@@ -17,6 +17,12 @@ The `chat_completion` model is the most versatile model type for natural languag
 
     See [Dependency Management](../../dependency-management.md) for the complete provider matrix.
 
+    Ollama's default native `/api/chat` mode uses the HTTP extra instead:
+
+    ```bash
+    uv add msgflux[httpx]
+    ```
+
 ## ✦₊⁺ Overview
 
 --8<-- "docs/_includes/init_chat_completion_model.md"
@@ -56,7 +62,7 @@ Chat completion models are stateless - they don't maintain conversation history 
         top_p=0.9,                     # Nucleus sampling (alternative to temperature)
         stop=["\n\n"],                 # Stop sequences (up to 4)
         # --- Reasoning ---
-        reasoning_effort="medium",     # "minimal", "low", "medium", "high"
+        reasoning_effort="medium",     # Values depend on the selected model
         enable_thinking=True,          # Enable extended model reasoning
         return_reasoning=True,         # Include reasoning content in response
         reasoning_max_tokens=4096,     # OpenRouter only: max tokens reserved for reasoning/thinking
@@ -75,6 +81,7 @@ Chat completion models are stateless - they don't maintain conversation history 
         extra_body={},                 # Provider-specific OpenAI-compatible extensions
         prompt_cache_retention="24h",  # OpenAI only: "in_memory" or "24h"
         # --- Infrastructure ---
+        api_mode="chat_completions",   # Wire protocol used by the provider
         base_url="https://api.openai.com/v1",  # Override provider API endpoint
         context_length=128000,         # Override maximum context window
         enable_cache=True,             # Cache identical API responses in-process
@@ -108,6 +115,131 @@ response = model(
     enable_citations=True,
 )
 ```
+
+### 1.2 **API Mode**
+
+`api_mode` names the wire protocol, independently of the provider. Most compatible
+providers default to `"chat_completions"`. The concrete OpenAI provider defaults
+to `"responses"`, following OpenAI's current recommendation for reasoning,
+tool-calling, and multi-turn workflows. Groq and vLLM also support Responses
+behind the same `Model.chat_completion` frontend:
+
+```python
+import msgflux as mf
+
+chat_model = mf.Model.chat_completion(
+    "openrouter/openai/gpt-oss-120b", api_mode="chat_completions"
+)
+
+responses_model = mf.Model.chat_completion(
+    "groq/openai/gpt-oss-20b",
+    api_mode="responses",
+    reasoning_effort="low",
+)
+
+# The call interface does not change.
+response = responses_model(
+    "Is SKU-1842 available?",
+    system_prompt="Answer in one sentence.",
+)
+print(response.consume())
+```
+
+To use an OpenAI feature that remains specific to Chat Completions, select it
+explicitly:
+
+```python
+audio_model = mf.Model.chat_completion(
+    "openai/gpt-audio",
+    api_mode="chat_completions",
+    modalities=["text", "audio"],
+    audio={"voice": "alloy", "format": "mp3"},
+)
+```
+
+Keeping this identity explicit prevents provider-only state from being replayed
+through an incompatible protocol. Anthropic Messages or Google Interactions can
+later add their own modes without changing the canonical `ChatMessages` history.
+
+For `api_mode="responses"`, msgFlux converts parameters at the Model boundary:
+
+| Chat-completion frontend | Responses request |
+|---|---|
+| `messages` / `ChatMessages` | `input` items |
+| `system_prompt` | leading system input |
+| `max_tokens` | `max_output_tokens` |
+| `reasoning_effort` | `reasoning.effort` |
+| `verbosity` | `text.verbosity` |
+| `generation_schema` | `text.format` |
+| function tools and named `tool_choice` | flattened Responses function tools |
+| `web_search_options` | a hosted `web_search` tool |
+
+Reasoning text or summaries stay canonical in history. Native item identity,
+status, encrypted content, or signatures are stored sparsely under
+`provider_state` and replayed only when `provider`, `api_mode`, and codec match.
+This lets OpenAI replay its opaque reasoning item while Groq and vLLM rebuild a
+clear-text `reasoning_text` item without storing a second copy of the text.
+Parameters without a Responses equivalent (`stop`, output `modalities`, and
+`audio`) fail at initialization instead of being silently discarded.
+
+OpenAI requests an automatic summary and, with `reasoning_in_tool_call=True`,
+encrypted reasoning content. Groq and vLLM do not receive these OpenAI-only
+fields. Groq returns reasoning in `output[].content[].reasoning_text`; vLLM does
+the same when its server is started with a supported reasoning parser.
+
+GPT-5.6 accepts `reasoning_effort` values `"none"`, `"low"`, `"medium"`,
+`"high"`, `"xhigh"`, and `"max"`. A reasoning item may contain only opaque
+state and no textual summary; msgFlux replays that item with `summary=[]`, as
+required by the GPT-5.6 Responses contract. When GPT-5.6 returns separate
+`commentary` and `final_answer` message phases, ordinary generations select the
+final-answer phase while `ToolFlowControl` selects commentary as the actionable
+trajectory. Both native messages remain in `ChatMessages`, including their
+`phase`, so subsequent manual-history requests can replay every Responses output
+item without synthesizing or duplicating the selected answer.
+
+Ollama defaults to its native `api_mode="ollama_chat"`, sent directly to
+`/api/chat` with `httpx`. This mode supports Ollama's `thinking` history,
+native tools, images, structured `format`, and streaming. Select
+`api_mode="chat_completions"` to retain the OpenAI-compatible `/v1` transport:
+
+```python
+import msgflux as mf
+
+native = mf.Model.chat_completion(
+    "ollama/qwen3:0.6b",
+    enable_thinking=True,
+)
+compatible = mf.Model.chat_completion(
+    "ollama/qwen3:0.6b",
+    api_mode="chat_completions",
+)
+```
+
+For vLLM, configure the server-side parser for the served model, then select the
+Responses transport in msgFlux:
+
+```bash
+vllm serve deepseek-ai/DeepSeek-R1-Distill-Qwen-7B \
+  --reasoning-parser deepseek_r1
+```
+
+```python
+import msgflux as mf
+
+model = mf.Model.chat_completion(
+    "vllm/deepseek-ai/DeepSeek-R1-Distill-Qwen-7B",
+    api_mode="responses",
+)
+
+response = model("What is 19 × 23?")
+print(response.consume_reasoning())
+print(response.consume())
+```
+
+See the provider references for the exact server/model capabilities:
+[Groq Responses reasoning](https://console.groq.com/docs/responses-api#reasoning),
+[Groq Chat reasoning](https://console.groq.com/docs/reasoning#accessing-reasoning-content),
+and [vLLM reasoning outputs](https://docs.vllm.ai/en/stable/features/reasoning_outputs/).
 
 ## 2. **System Prompt**
 
@@ -247,7 +379,7 @@ Changing any of these creates a new cache entry.
 
 ### 3.2 **Prompt Cache Warmup**
 
-Some providers cache long prompt prefixes server-side. For agent-level warmup, use `Agent.warmup_system_prompt()`. It sends the rendered system prompt and tool schemas without task messages, chat history, or checkpointer state.
+Some providers cache long prompt prefixes server-side. For agent-level warmup, use `Agent.warmup_system_prompt()`. It sends the rendered system prompt and tool schemas without task messages, chat history, or checkpoint state.
 
 See [Agent — Prompt Cache Warmup](../nn/agent/prompt-cache.md) for the recommended usage.
 
@@ -1033,11 +1165,11 @@ msgFlux exposes five parameters that control reasoning behaviour at model initia
 
 | Parameter | Description | Default |
 |---|---|---|
-| `reasoning_effort` | How much reasoning to do. One of `"minimal"`, `"low"`, `"medium"`, `"high"`. | — |
+| `reasoning_effort` | How much reasoning to do. Values are model-dependent; GPT-5.6 accepts `"none"`, `"low"`, `"medium"`, `"high"`, `"xhigh"`, and `"max"`. | — |
 | `reasoning_max_tokens` | OpenRouter-only hard cap (in tokens) for the internal thinking budget. Maps to `extra_body.reasoning.max_tokens` and cannot be combined with `reasoning_effort`. | — |
-| `return_reasoning` | Store the reasoning trace in `response.reasoning`. When `False`, reasoning is discarded even if the provider returns it. | `True` |
+| `return_reasoning` | Expose the reasoning trace in `response.reasoning`. When `False`, it may still be retained in provider-neutral history when `reasoning_in_tool_call=True`. | `True` |
 | `enable_thinking` | Activate extended model reasoning. | `False` |
-| `reasoning_in_tool_call` | Preserve reasoning context across tool calls so the model keeps its chain of thought intact. When enabled, the `ToolCallAggregator` embeds the reasoning in `<think>` tags inside the assistant message history, allowing the model to see its previous reasoning when processing tool results. | `False` |
+| `reasoning_in_tool_call` | Preserve reasoning context across tool calls. The selected provider codec reconstructs the API-native reasoning fields when history is sent back; msgFlux does not inject `<think>` tags implicitly. | `True` |
 
 ???+ example "Initialization"
 
@@ -1053,12 +1185,14 @@ msgFlux exposes five parameters that control reasoning behaviour at model initia
 
 ### 12.2 **Response Anatomy**
 
-When a reasoning model responds, the response object has two independent data paths:
+When a reasoning model responds, the response object keeps the answer, explicit
+reasoning, and a provider-generated summary separate:
 
 ```
 ModelResponse
 ├── .data          ← final answer (str, dict, ToolCallAggregator)
 ├── .reasoning     ← chain of thought (str or None)
+├── .reasoning_summary ← summary of reasoning (str or None)
 ├── .has_reasoning ← True if reasoning is present (bool)
 ├── .response_type ← "text_generation", "structured", "tool_call"
 └── .metadata      ← usage stats, annotations, etc.
@@ -1071,19 +1205,34 @@ The key methods on a non-streaming response:
 | `response.consume()` | `str`, `dict`, or `ToolCallAggregator` | The final answer, always in its natural type. |
 | `response.consume_reasoning()` | `str` or `None` | The full reasoning trace, or `None` if the model didn't reason. |
 | `response.reasoning` | `str` or `None` | Same as `consume_reasoning()` — direct attribute access. |
+| `response.consume_reasoning_summary()` | `str` or `None` | A provider-generated reasoning summary. It is not presented as chain-of-thought. |
+| `response.reasoning_summary` | `str` or `None` | Same as `consume_reasoning_summary()` — direct attribute access. |
 | `response.has_reasoning` | `bool` | `True` when `reasoning is not None`. Useful for conditional logic without inspecting the string. |
 
 ### 12.3 **Provider Behaviour**
 
 Not all reasoning providers behave the same way:
 
-| Provider | Exposes trace via `return_reasoning` | Reasoning tokens in metadata | Notes |
+| Provider / protocol | Exposes trace via `return_reasoning` | Multi-turn reasoning replay | Notes |
 |---|---|---|---|
-| **Groq** (`groq/openai/gpt-oss-*`) | Yes — `response.reasoning` | Yes | Reasoning returned as raw text in API response |
-| **OpenAI** (`openai/gpt-5.x`) | No — reasoning is fully internal | Yes | Only token counts available via `response.metadata` |
-| **Anthropic** (via `enable_thinking`) | Yes — `response.reasoning` | Yes | Uses `enable_thinking=True` instead of `reasoning_effort` |
+| **Groq Chat Completions** | Yes — `response.reasoning` | No | Groq documents extraction, but not a Chat field for returning reasoning on the next turn |
+| **Groq Responses** | Yes — `response.reasoning` | Yes | Clear-text `reasoning_text` item is reconstructed for the same provider and protocol |
+| **vLLM Chat Completions** | Yes, with a reasoning parser | No | The documented multi-turn Chat example replays assistant content only |
+| **vLLM Responses** | Yes, with a reasoning parser | Yes | Clear-text Responses item is reconstructed for the same server protocol |
+| **Ollama OpenAI-compatible Chat** | Model/version-dependent | No | Select `api_mode="chat_completions"`; that compatibility contract does not document historical `thinking` messages |
+| **Ollama native `/api/chat`** | Yes — `response.reasoning` from `message.thinking` | Yes | This is msgFlux's default Ollama mode; thinking, content, and tool calls are accumulated and replayed together |
+| **Ollama Responses** (upstream; not yet exposed by msgFlux) | Reasoning summaries | Not established | Available since Ollama 0.13.3, but documented as non-stateful without `previous_response_id` or `conversation` |
+| **OpenAI Chat Completions** | Usually no text trace | No | Availability depends on the selected model |
+| **OpenAI Responses** | Yes — `response.reasoning_summary` | Yes | The summary remains distinct from CoT; opaque reasoning items are preserved separately for replay |
+| **OpenRouter Chat Completions** | Model-dependent | Yes | Ordered `reasoning_details` are round-tripped by its provider codec |
+| **Anthropic** (via `enable_thinking`) | Yes — `response.reasoning` | Provider-dependent | Uses `enable_thinking=True` instead of `reasoning_effort` |
 
-All providers that inherit from `OpenAIChatCompletion` (Groq, vLLM, Ollama, OpenRouter, Together, SambaNova, Cerebras) share the same reasoning extraction logic. When the provider returns a reasoning field, it is automatically separated from the content and placed in `response.reasoning`.
+OpenAI-compatible providers inherit their transport implementation from
+`OpenAICompatibleChatCompletion`, but each provider can declare its own
+`ReasoningCodec`. The codec extracts the provider response and reconstructs
+provider-native history fields. For example, OpenRouter declares a codec that
+round-trips ordered `reasoning_details`, while OpenAI declares its own default
+independently. The Agent only stores the canonical interaction items.
 
 ### 12.4 **Reasoning Effort**
 
@@ -1195,7 +1344,7 @@ Providers that keep reasoning internal (like OpenAI) still report how many token
 
     # But token counts are available
     usage = response.metadata.usage
-    print(f"Reasoning tokens used: {usage['completion_tokens_details']['reasoning_tokens']}")
+    print(f"Reasoning tokens used: {usage.output_tokens_details.reasoning_tokens}")
     # Reasoning tokens used: 64
     ```
 
@@ -1445,22 +1594,47 @@ For content streams, `next_chunk()` is also available when you want pull-based d
 
 ### 12.8 **Reasoning Across Tool Calls**
 
-When a reasoning model uses tools it normally loses its chain of thought between calls. `reasoning_in_tool_call=True` preserves the reasoning context so the model can continue thinking coherently after each tool result.
+Reasoning replay across tool calls is protocol-dependent.
+`reasoning_in_tool_call=True` asks the selected provider codec to preserve the
+native state when that API defines a replay contract. msgFlux does not invent a
+wire representation or inject `<think>` tags for providers that do not define
+one.
 
-Internally, when this flag is enabled, the `ToolCallAggregator` embeds the reasoning in `<think>` tags inside the assistant message that gets appended to the conversation history:
+For example, a Responses trajectory keeps reasoning, function calls, and tool
+outputs as separate canonical items:
 
 ```
 # Message history with reasoning_in_tool_call=True:
 [
     {"role": "user", "content": "What is (14 + 28) × 3 − 7?"},
-    {"role": "assistant", "content": "<think>I need to break this into steps...</think>",
-     "tool_calls": [{"function": {"name": "calculate", "arguments": {"expression": "14 + 28"}}}]},
-    {"role": "tool", "tool_call_id": "call_1", "content": "42"},
-    # Model sees its previous reasoning and can continue the chain
+    {"type": "reasoning", "role": "assistant", "text": "I need to break this into steps..."},
+    {"type": "function_call", "call_id": "call_1", "name": "calculate",
+     "arguments": "{\"expression\":\"14 + 28\"}"},
+    {"type": "function_call_output", "call_id": "call_1", "output": "42"},
 ]
 ```
 
-This is separate from the response-level `reasoning` field. The `ToolCallAggregator` keeps its own copy of the reasoning for message formatting, while `response.reasoning` on the final `ModelResponse` reflects the reasoning from the last model call in the loop.
+OpenAI Responses reattaches opaque state; Groq and vLLM Responses reconstruct
+`reasoning_text`; OpenRouter reconstructs `reasoning_details`. Groq and vLLM
+Chat Completions remain extract-only until those APIs document how reasoning
+must be returned on a later request. `response.reasoning` still exposes the
+trace from the current model call independently of replay.
+
+Ollama's default native mode follows its `/api/chat` trajectory: msgFlux appends
+the returned assistant thinking and tool calls before the tool results and sends
+them back together. The optional OpenAI-compatible mode remains extract-only
+because `/v1/chat/completions` does not document `thinking` as historical input.
+
+Ollama also documents `/v1/responses` starting in version 0.13.3. It supports
+streaming, tools, and reasoning summaries, but the same page calls the endpoint
+non-stateful and excludes `previous_response_id` and `conversation`. Until its
+manual-input reasoning-item contract is established and tested, msgFlux does
+not claim multi-turn reasoning replay through Ollama Responses.
+
+See Ollama's [native tool-calling trajectory](https://docs.ollama.com/capabilities/tool-calling),
+[thinking fields](https://docs.ollama.com/capabilities/thinking), and
+[OpenAI-compatible endpoint matrix](https://docs.ollama.com/api/openai-compatibility)
+for the three distinct contracts.
 
 ???+ example
 
@@ -1557,8 +1731,8 @@ Reasoning lives on two response base classes in `msgflux._private.response`:
 
 | Class | Used when | Reasoning storage |
 |---|---|---|
-| `BaseResponse` | Non-streaming (`stream=False`) | `self.reasoning: str \| None` — set once by the provider after the full API response arrives. `has_reasoning` is a `@property` that checks `self.reasoning is not None`. |
-| `BaseStreamResponse` | Streaming (`stream=True`) | `self.reasoning: str \| None` — accumulated by the provider as chunks arrive. `has_reasoning` is a mutable `bool` flag, flipped to `True` on the first non-None reasoning chunk via `add_reasoning()`. |
+| `BaseResponse` | Non-streaming (`stream=False`) | `reasoning` stores explicit reasoning text; `reasoning_summary` stores a provider-generated summary. |
+| `BaseStreamResponse` | Streaming (`stream=True`) | The same values are accumulated through independent reasoning and reasoning-summary channels. |
 
 Both classes inherit from `CoreResponse`, which provides `set_metadata()` and `set_response_type()`.
 
@@ -1567,7 +1741,7 @@ Both classes inherit from `CoreResponse`, which provides `set_metadata()` and `s
 ```
 model("prompt")
   │
-  ├── OpenAIChatCompletion._generate()
+  ├── OpenAICompatibleChatCompletion._generate()
   │     └── client.chat.completions.create(**params)
   │           └── API response
   │
@@ -1578,14 +1752,18 @@ model("prompt")
         └── response.set_response_type("text_generation")
 ```
 
-The `_extract_reasoning()` method checks for provider-specific reasoning fields in the API response (e.g., `message.reasoning_content` for Groq/OpenAI-compatible providers). If `return_reasoning=False`, it skips extraction entirely.
+The Model delegates extraction to its `reasoning_codec`. `return_reasoning`
+controls whether the text is exposed through `response.reasoning`; extraction
+can still populate canonical history when reasoning must survive a tool call.
+For OpenAI Responses, summaries are exposed through
+`response.reasoning_summary` instead, while `response.reasoning` remains `None`.
 
 #### Provider flow (streaming)
 
 ```
 model("prompt", stream=True)
   │
-  ├── OpenAIChatCompletion._stream_generate()  # runs in background thread
+  ├── OpenAICompatibleChatCompletion._stream_generate()  # background thread
   │     └── for chunk in client.chat.completions.create(stream=True):
   │           ├── reasoning_chunk? → stream_response.add_reasoning(chunk)
   │           │                      ├── has_reasoning = True (first time)
@@ -1608,14 +1786,39 @@ model("prompt", stream=True)
 
 `finish_reasoning()` lets a consumer observe the end of the reasoning channel
 before the content channel is done. `finish()` signals end-of-stream to any
-remaining `next_chunk()`, `consume()`, and `consume_reasoning()` consumers by
-closing still-open queues. `consume()` is implemented as a convenience async
+remaining `next_chunk()`, `consume()`, `consume_reasoning()`, and
+`consume_reasoning_summary()` consumers by closing still-open queues. `consume()` is implemented as a convenience async
 generator over repeated `next_chunk()` calls. `finish()` also records the final
 stream status (`completed`, `failed`, or `interrupted`) and runs registered
 finalizers, which durable runtimes use to checkpoint streamed output after the
-consumer finishes reading it. The safety net `_response_type_event.set()` in
+consumer finishes reading it. The same finalizer updates the caller's
+`ChatMessages` object, so its turn and assistant output agree with the durable
+snapshot after completion. SQLite checkpoint operations are serialized around a
+cross-thread connection because synchronous model streams finish in a background
+worker. The safety net `_response_type_event.set()` in
 the `finally` block ensures the event is always fired, even if the stream errors
 out or the model returns no content chunks (e.g., a pure tool call response).
+
+`reasoning_summary_event` supports summary-specific discovery. It is set on the
+first summary chunk, or when the summary channel closes without producing one.
+After waiting for it, inspect `has_reasoning_summary`: `True` means
+`consume_reasoning_summary()` can yield summary chunks; `False` means the stream
+completed that channel without a summary.
+
+At the same time, `ChatStreamAccumulator` builds a provider-neutral ordered
+snapshot from reasoning, content, and tool-call deltas. Stream finalizers expose
+that snapshot as `StreamFinalState.items`. Durable agents append those items
+once at the terminal stream boundary, avoiding a second copy assembled from
+the aggregate output and reasoning strings.
+
+Normalized reasoning uses `text` and `summary`. Exact provider-only data is
+kept under `provider_state`. New state records identify the `provider`,
+`api_mode`, and reasoning `codec`; opaque data is replayed only when that
+identity matches. For example, OpenRouter `reasoning_details` remains ordered
+and unchanged instead of being flattened into text or replayed to another API.
+This distinction is also public: `text` feeds `response.reasoning`, whereas
+`summary` feeds `response.reasoning_summary`; a summary is never injected as a
+`<think>` trace.
 
 #### Agent integration
 
@@ -1635,7 +1838,7 @@ The Agent reads `model_response.reasoning` to pass it downstream. If the Agent's
 
 ## 13. **Token Logprobs**
 
-`logprobs` and `top_logprobs` are forwarded for `openai/...` chat completion models. Providers that inherit from `OpenAIChatCompletion` but are not OpenAI do not receive these fields.
+`logprobs` and `top_logprobs` are forwarded for `openai/...` chat completion models. OpenAI declares this capability on its concrete provider class; other subclasses of `OpenAICompatibleChatCompletion` do not receive the initialization fields unless they declare equivalent support.
 
 Use `logprobs=True` to request token log probabilities. Set `top_logprobs` to the number of alternative tokens you want returned for each generated token.
 
@@ -1664,7 +1867,7 @@ The returned payload is exposed in `response.metadata.logprobs` and follows Open
 
 ## 14. **OpenAI Prompt Caching**
 
-`prompt_cache_retention` is an OpenAI-only initialization parameter. msgFlux forwards it only for `openai/...` chat completion models. OpenAI-compatible providers that inherit from `OpenAIChatCompletion` do not use it.
+`prompt_cache_retention` is an OpenAI-only initialization parameter. msgFlux forwards it only for `openai/...` chat completion models. Other providers that inherit from `OpenAICompatibleChatCompletion` do not use it.
 
 Use it when you want OpenAI to keep cached prefixes in memory or retain them for longer:
 
@@ -1689,7 +1892,23 @@ Use it when you want OpenAI to keep cached prefixes in memory or retain them for
 
 ## 15. **Response Metadata**
 
-All responses include metadata with usage information:
+Chat completion providers expose the same canonical usage shape regardless of
+whether their native API calls tokens `prompt`/`completion`, `input`/`output`,
+or uses another convention:
+
+| Field | Description |
+|---|---|
+| `input_tokens` | Tokens consumed by the request input. |
+| `output_tokens` | Tokens generated by the model. |
+| `total_tokens` | Provider total, or input plus output when omitted. |
+| `input_tokens_details.cached_tokens` | Input tokens read from a provider cache. A value greater than zero confirms a cache hit. |
+| `input_tokens_details.cache_write_tokens` | Input tokens written to a provider cache. |
+| `output_tokens_details.reasoning_tokens` | Output tokens used for reasoning. |
+| `cost` | Provider-reported request cost when available. |
+| `raw` | Deep copy of the complete provider-native usage payload. |
+
+The detail objects also normalize audio, video, and prediction-token counters.
+Missing optional counters are `0`; unavailable provider cost is `None`.
 
 ???+ example
 
@@ -1700,28 +1919,45 @@ All responses include metadata with usage information:
 
     response = model(messages=[{"role": "user", "content": "Hello"}])
 
-    # Access metadata
-    print(response.metadata)
-    # {
-    #     'usage': {
-    #         'completion_tokens': 9,
-    #         'prompt_tokens': 19,
-    #         'total_tokens': 28
-    #     }
-    # }
+    usage = response.metadata.usage
+    print(usage.input_tokens)
+    print(usage.output_tokens)
+    print(usage.total_tokens)
+
+    # Provider-specific fields remain available for diagnostics.
+    print(usage.raw)
 
     # Calculate cost using profile
     from msgflux.models.profiles import get_model_profile
 
     profile = get_model_profile("gpt-4.1-mini", provider_id="openai")
     if profile:
-        usage = response.metadata.usage
         cost = profile.cost.calculate(
-            input_tokens=usage.prompt_tokens,
-            output_tokens=usage.completion_tokens
+            input_tokens=usage.input_tokens,
+            output_tokens=usage.output_tokens,
+            cached_tokens=usage.input_tokens_details.cached_tokens,
         )
         print(f"Request cost: ${cost:.4f}")
     ```
+
+The same structure is populated after streaming finishes:
+
+```python
+import asyncio
+
+
+async def main():
+    stream = await model.acall("Summarize the report.", stream=True)
+
+    # Consume the stream before reading terminal usage metadata.
+    async for chunk in stream.consume():
+        print(chunk, end="")
+
+    print(stream.metadata.usage.input_tokens_details.cached_tokens)
+
+
+asyncio.run(main())
+```
 
 ## 16. **Error Handling**
 
@@ -1813,7 +2049,11 @@ Every initialized model exposes a `.profile` property that returns this metadata
 
 ## 18. **Adding a Custom Provider**
 
-If the service you want to use exposes an **OpenAI-compatible API**, you can add it as a provider by subclassing `OpenAIChatCompletion`. The process has two stages depending on how compatible the endpoint is.
+If the service you want to use exposes an **OpenAI-compatible API**, add it by
+subclassing `OpenAICompatibleChatCompletion`. `OpenAIChatCompletion` is the
+concrete OpenAI provider and should not be used as the base for another
+provider. The process has three stages depending on how compatible the endpoint
+is.
 
 ### 18.1 **Stage 1 — URL and API key only**
 
@@ -1823,7 +2063,7 @@ When the target API is fully OpenAI-compatible and only requires a different bas
 
     ```python
     from os import getenv
-    from msgflux.models.providers.openai import OpenAIChatCompletion
+    from msgflux.models.providers.openai import OpenAICompatibleChatCompletion
     from msgflux.models.registry import register_model
 
 
@@ -1843,7 +2083,10 @@ When the target API is fully OpenAI-compatible and only requires a different bas
 
 
     @register_model
-    class MyProviderChatCompletion(_BaseMyProvider, OpenAIChatCompletion):
+    class MyProviderChatCompletion(
+        _BaseMyProvider,
+        OpenAICompatibleChatCompletion,
+    ):
         """MyProvider Chat Completion."""
     ```
 
@@ -1873,7 +2116,7 @@ The built-in OpenRouter provider is a real-world example:
     from os import getenv
     from typing import Any, Dict
 
-    from msgflux.models.providers.openai import OpenAIChatCompletion
+    from msgflux.models.providers.openai import OpenAICompatibleChatCompletion
     from msgflux.models.registry import register_model
 
 
@@ -1891,7 +2134,10 @@ The built-in OpenRouter provider is a real-world example:
 
 
     @register_model
-    class MyProviderChatCompletion(_BaseMyProvider, OpenAIChatCompletion):
+    class MyProviderChatCompletion(
+        _BaseMyProvider,
+        OpenAICompatibleChatCompletion,
+    ):
         """MyProvider Chat Completion."""
 
         def _adapt_params(self, params: Dict[str, Any]) -> Dict[str, Any]:
@@ -1937,7 +2183,53 @@ Common adaptations inside `_adapt_params`:
 | Provider requires extra headers | Add keys to `params["extra_headers"]` |
 | Provider accepts non-standard extensions | Add keys to `params["extra_body"]` |
 
-### 18.3 **Stage 3 — Using a different client**
+### 18.3 **Declaring a reasoning codec**
+
+The compatible base uses `OpenAICompatibleReasoningCodec`, which reads common
+parsed-text fields but is extract-only by default. There is no universal Chat
+Completions field for replaying reasoning. A provider with a documented
+convention declares that behavior in its codec:
+
+```python
+from msgflux.models.providers.openai import OpenAICompatibleChatCompletion
+from msgflux.models.reasoning import OpenAICompatibleReasoningCodec
+from msgflux.models.registry import register_model
+
+
+class MyProviderReasoningCodec(OpenAICompatibleReasoningCodec):
+    name = "myprovider_reasoning_v1"
+    text_fields = ("reasoning_text",)
+    history_text_field = "reasoning_text"
+
+    def encode_chat_message(self, items, *, provider, api_mode):
+        # Only implement this when the provider documents Chat replay.
+        del provider, api_mode
+        text = "".join(filter(None, (self._item_text(item) for item in items)))
+        return {"reasoning_text": text} if text else {}
+
+
+@register_model
+class MyProviderChatCompletion(
+    _BaseMyProvider,
+    OpenAICompatibleChatCompletion,
+):
+    default_reasoning_codec = MyProviderReasoningCodec()
+```
+
+The codec runs inside the Model for normal responses, streaming deltas, and
+history conversion. Override `encode_chat_message()` only when the provider
+documents Chat replay. For Responses, override `encode_responses_item()`. If an
+API returns opaque blocks, IDs, or signatures, `extract_state()` keeps those
+values under `provider_state`; reconstruction only occurs for a matching
+`provider`, `api_mode`, and codec name. OpenRouter's
+`OpenRouterReasoningCodec` and the Groq/vLLM clear-text Responses codec are
+built-in examples of both patterns.
+
+You can also pass a `ReasoningCodec` instance through `reasoning_codec=` when
+constructing a model. Declaring `default_reasoning_codec` on the provider is
+preferred when the wire convention is stable for every model on that API.
+
+### 18.4 **Stage 3 — Using a different client**
 
 The two previous stages assume the service is reached through the `openai` Python package. If you want to use a completely different HTTP client or SDK — one that is **not** the `openai` package but still exposes a compatible interface — override `_initialize` instead.
 
@@ -1959,7 +2251,7 @@ The response object returned by `.chat.completions.create()` must be OpenAI-comp
     from os import getenv
 
     from msgflux.models.cache import ResponseCache
-    from msgflux.models.providers.openai import OpenAIChatCompletion
+    from msgflux.models.providers.openai import OpenAICompatibleChatCompletion
     from msgflux.models.registry import register_model
     from msgflux.utils.tenacity import apply_retry, default_model_retry
 
@@ -2006,7 +2298,10 @@ The response object returned by `.chat.completions.create()` must be OpenAI-comp
 
 
     @register_model
-    class MyProviderChatCompletion(_BaseMyProvider, OpenAIChatCompletion):
+    class MyProviderChatCompletion(
+        _BaseMyProvider,
+        OpenAICompatibleChatCompletion,
+    ):
         """MyProvider Chat Completion using a custom SDK."""
     ```
 

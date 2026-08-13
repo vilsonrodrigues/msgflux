@@ -224,14 +224,14 @@ The task metadata records enough routing information to reconstruct the call:
 - which child agent or tool target was selected
 - the checkpoint namespace for that child execution
 - the parent/root run lineage
-- the `thread_id` shared with the root conversation
+- the child `thread_id` used for that subagent conversation
 - the task id used as the child `run_id`
 
 For an agent task, `task_message` re-dispatches the same tool with the saved
 routing parameters and a scope like:
 
 ```text
-thread_id = original root thread
+thread_id = original child thread
 run_id = task_id
 parent_run_id = root run that launched the task
 root_run_id = root run of the whole execution tree
@@ -315,7 +315,6 @@ source: task
 ref: abcd1234
 status: completed
 tool: long_sum
-hint: Use task_output(task_id='abcd1234') if you need the result.
 </notification>
 </system_note>
 ```
@@ -452,7 +451,6 @@ are registered automatically in the same library.
 
 - [Tools](index.md)
 - [Tool Config](config.md#runtime-injection-options)
-- [Task Runtime](../../../../anatomy/task-runtime.md)
 
 ## Example Scripts
 

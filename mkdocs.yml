@@ -122,6 +122,12 @@ markdown_extensions:
 nav:
   - Home: 
     - index.md
+  - Anatomy:
+    - anatomy/agent-inbox.md
+    - anatomy/agent.md
+    - anatomy/checkpoints-and-replay.md
+    - anatomy/index.md
+    - anatomy/tool-library.md
   - Learn:
     - ✧ Models:
       - learn/models/model.md

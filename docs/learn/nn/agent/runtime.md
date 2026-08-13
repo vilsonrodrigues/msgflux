@@ -9,7 +9,7 @@ The core pieces are:
 |-------|---------|
 | `ExecutionScope` | Identifies the active execution with `thread_id`, `run_id`, and `namespace`. |
 | `AbortSignal` | Carries local cancellation requests to the active runtime before safe interruption points. |
-| `checkpointer` | Persists the agent snapshot so a run can resume. |
+| `CheckpointStore` | Persists the agent snapshot so a run can resume. |
 | `TaskStore` | Persists background task records, activity, outputs, and routing metadata. |
 | `AgentInbox` | Holds pending messages, notifications, and control signals for the agent loop. |
 | `AgentInboxStore` | Optional persistence boundary for the inbox. Without one, the inbox is in memory. |
@@ -23,25 +23,28 @@ import msgflux as mf
 import msgflux.nn as nn
 
 agent = nn.Agent(
-    name="support_agent",
+    name="incident_analyst",
     model=mf.Model.chat_completion("openai/gpt-4.1-mini"),
 )
 
 scope = mf.ExecutionScope(
-    thread_id="customer_42",
-    run_id="ticket_9001",
+    thread_id="warehouse_incident_42",
+    run_id="initial_analysis",
 )
 
-result = agent("Investigate this ticket.", scope=scope)
-```
+incident_log = """
+09:02 - Scanner A stopped sending inventory updates.
+09:07 - Orders continued to reserve stock from the last known snapshot.
+09:18 - Operations restarted Scanner A; queued updates began arriving.
+09:23 - Two orders were found with overlapping reservations for SKU-1842.
+09:31 - New reservations were paused for SKU-1842.
+"""
 
-You can also bind the same scope as ambient runtime context. This is useful
-when nested calls should inherit the same thread/run identity without passing
-`scope=...` through every call:
-
-```python
-with mf.execution_context(scope=scope):
-    result = agent("Investigate this ticket.")
+result = agent(
+    "Identify the likely failure sequence, customer impact, and next actions "
+    f"from this incident log:\n{incident_log}",
+    scope=scope,
+)
 ```
 
 - `thread_id`: identifies the conversation thread. In a chat UI, this is the
@@ -54,7 +57,8 @@ with mf.execution_context(scope=scope):
   agent this usually means one turn, command, or workflow step. For a
   background subagent, it is the task id. Reusing the same `run_id` means "try
   to resume this execution"; using a new `run_id` means "start new work in the
-  same conversation".
+  same conversation". A subagent uses its own `thread_id`; parent/root lineage
+  is carried separately by `parent_run_id` and `root_run_id`.
 
 If no scope is passed, msgFlux generates runtime identifiers:
 
@@ -74,94 +78,99 @@ runtime context, and only then generates a fallback. Omit an ID when you want
 msgFlux to inherit it from the current context; pass an ID when you want to
 force a specific execution identity.
 
-Runtime resources can be attached to the same context. For example, this makes
-the checkpointer available to any agent call made inside the block:
-
-```python
-checkpointer = mf.Store.checkpoint(
-    "sqlite",
-    path=".msgflux/checkpoints.sqlite3",
-)
-
-with mf.execution_context(scope=scope, checkpoint_store=checkpointer):
-    result = agent("Investigate this ticket.")
-```
-
-`ExecutionScope` carries identity. Runtime resources such as `checkpoint_store`,
-`task_store`, and `agent_inbox` are passed to `execution_context(...)` or to the
-agent/runtime objects that own them. When an agent runs inside this context, it
-reads the active scope for `thread_id`, `run_id`, and `namespace`, then reads
-the active `checkpoint_store` from the same runtime context. The checkpointer is
-therefore applied to the scoped execution without being stored inside the
-`ExecutionScope` object itself.
-
-## Abort Signal
-
-`AbortSignal` is local runtime cancellation for the currently active process.
-It is useful for UI and CLI controls such as pressing `Esc` while a model is
-generating. It is carried by `ExecutionScope` and exposed through
-`get_execution_context().get("abort_signal")`.
-
-```python
-abort_signal = mf.AbortSignal()
-scope = mf.ExecutionScope(
-    thread_id="customer_42",
-    run_id="ticket_9001",
-    abort_signal=abort_signal,
-)
-
-# From another UI/CLI control path:
-abort_signal.abort("User pressed Esc.")
-```
-
-Providers observe the signal before output starts. After the first model token
-or tool call is produced, that model response is treated as committed; abort is
-then observed only at the next safe runtime boundary, such as before executing
-tools or before a later model call. When an abort reaches `Agent`, msgFlux
-converts it into the durable interrupt semantics: open tool calls are closed
-with synthetic interrupted outputs, and the checkpoint/task status becomes
-`interrupted`.
-
 ## Checkpointing
 
-Use a checkpointer when a run should resume after pause, interrupt, process restart,
-or tool-driven continuation.
+Use a checkpoint store when a run should resume after a pause, interruption,
+process restart, or tool-driven continuation. `ExecutionScope` provides the
+checkpoint identity; `CheckpointStore` persists the execution state associated
+with that identity.
+
+You can bind the store directly to the agent:
 
 ```python
-checkpointer = mf.Store.checkpoint(
+import msgflux as mf
+import msgflux.nn as nn
+
+checkpoint_store = mf.Store.checkpoint(
     "sqlite",
     path=".msgflux/checkpoints.sqlite3",
 )
 
 agent = nn.Agent(
-    name="support_agent",
+    name="incident_analyst",
     model=mf.Model.chat_completion("openai/gpt-4.1-mini"),
-    checkpointer=checkpointer,
+    checkpoint_store=checkpoint_store,
 )
 
 scope = mf.ExecutionScope(
-    thread_id="customer_42",
-    run_id="ticket_9001",
+    thread_id="warehouse_incident_42",
+    run_id="initial_analysis",
 )
 
-agent("Investigate this ticket.", scope=scope)
+incident_log = """
+09:02 - Scanner A stopped sending inventory updates.
+09:07 - Orders continued to reserve stock from the last known snapshot.
+09:18 - Operations restarted Scanner A; queued updates began arriving.
+09:23 - Two orders were found with overlapping reservations for SKU-1842.
+09:31 - New reservations were paused for SKU-1842.
+"""
+
+result = agent(
+    "Identify the likely failure sequence, customer impact, and next actions "
+    f"from this incident log:\n{incident_log}",
+    scope=scope,
+)
 ```
 
-If you do not want to attach the checkpointer to the agent instance, provide it
-through runtime context together with the execution scope:
+Alternatively, provide the same store through `execution_context(...)`. The
+task and identity values remain the same; the context supplies the scope to the
+agent call:
 
 ```python
+import msgflux as mf
+import msgflux.nn as nn
+
+checkpoint_store = mf.Store.checkpoint(
+    "sqlite",
+    path=".msgflux/checkpoints.sqlite3",
+)
+
 agent = nn.Agent(
-    name="support_agent",
+    name="incident_analyst",
     model=mf.Model.chat_completion("openai/gpt-4.1-mini"),
 )
 
-with mf.execution_context(scope=scope, checkpoint_store=checkpointer):
-    agent("Investigate this ticket.")
+scope = mf.ExecutionScope(
+    thread_id="warehouse_incident_42",
+    run_id="initial_analysis",
+)
+
+incident_log = """
+09:02 - Scanner A stopped sending inventory updates.
+09:07 - Orders continued to reserve stock from the last known snapshot.
+09:18 - Operations restarted Scanner A; queued updates began arriving.
+09:23 - Two orders were found with overlapping reservations for SKU-1842.
+09:31 - New reservations were paused for SKU-1842.
+"""
+
+with mf.execution_context(scope=scope, checkpoint_store=checkpoint_store):
+    result = agent(
+        "Identify the likely failure sequence, customer impact, and next actions "
+        f"from this incident log:\n{incident_log}"
+    )
 ```
 
+`ExecutionScope` carries identity; it does not store runtime resources. The
+context manager propagates both the scope and resources such as
+`checkpoint_store`, `task_store`, and `agent_inbox` to nested runtime calls.
+
+`Agent(checkpoint_store=...)` and
+`execution_context(checkpoint_store=...)` accept the same `CheckpointStore`
+abstraction. If both are provided, the store bound directly to the agent takes
+precedence over the store inherited from the execution context.
+
 Inside the call, the agent resolves the effective scope first. It then uses the
-active checkpointer to load or save state under the effective
+active checkpoint store to load or save state under the effective
 `(namespace, thread_id, run_id)` key.
 
 ??? tip "Available checkpoint stores"
@@ -181,33 +190,57 @@ Resume behavior:
 - `completed`: not resumed.
 - `interrupted`: not resumed.
 
-On resume, the new task input is ignored and the saved messages/vars continue
-from the checkpointed state. This is intentional: the retry is restoring the
-same execution, not adding a new user message. Use the same `thread_id` with a
-new `run_id` when you want to continue the conversation with fresh input.
+On resume, the new task input is ignored and the saved interaction timeline
+continues from the checkpointed state. `vars` is deliberately not part of
+`ChatMessages` or the checkpoint: the current call supplies it as an ordinary
+dictionary. This is intentional—the retry restores the same execution instead
+of adding another user message. Use the same `thread_id` with a new `run_id`
+when you want to continue the conversation with fresh input.
+
+### Interaction timeline
+
+`ChatMessages` persists one provider-neutral timeline. Messages, reasoning,
+tool calls, tool results, and turn lifecycle events are all ordered items in
+that timeline; there is no second copy of turn inputs, assistant output, vars,
+or response type.
+
+Turn events are `start`, `pause`, `resume`, `complete`, `fail`, and
+`interrupt`. The `messages.turns` property is a calculated view of those
+events, not additional persisted state. This means a failed or paused turn can
+resume without duplicating its messages.
+
+Items are active by default, so the common case stores no flag. Compaction can
+retain an item for audit while excluding it from future model input:
+
+```python
+messages.set_item_active(4, active=False)
+```
+
+Only `active=False` is serialized. This lets a compactor deactivate a middle
+section, insert a summary, and retain both ends of the trajectory.
 
 For background subagents, the task id is used as the subagent `run_id`. Reusing
 that task id resumes or continues the same subagent. Creating a new task id
-starts a separate subagent within the same thread.
+starts a separate subagent execution with its own conversation identity.
 
-The checkpointer can also be used directly when you need to inspect or manage
-durable runs outside the agent loop. The lookup key is always
+The checkpoint store can also be used directly when you need to inspect or
+manage durable runs outside the agent loop. The lookup key is always
 `(namespace, thread_id, run_id)`. For an agent, `namespace` is normally the
 agent name:
 
 ```python
-namespace = "support_agent"
-thread_id = "customer_42"
-run_id = "ticket_9001"
+namespace = "incident_analyst"
+thread_id = "warehouse_incident_42"
+run_id = "initial_analysis"
 
-state = checkpointer.load_state(namespace, thread_id, run_id)
+state = checkpoint_store.load_state(namespace, thread_id, run_id)
 print(state["status"] if state else "missing")
 ```
 
 List recent runs for a thread:
 
 ```python
-runs = checkpointer.list_runs(namespace, thread_id, limit=10)
+runs = checkpoint_store.list_runs(namespace, thread_id, limit=10)
 for run in runs:
     print(run["run_id"], run["status"], run["updated_at"])
 ```
@@ -215,26 +248,26 @@ for run in runs:
 Find runs that may still need recovery:
 
 ```python
-incomplete = checkpointer.find_incomplete_runs(namespace, thread_id)
+incomplete = checkpoint_store.find_incomplete_runs(namespace, thread_id)
 ```
 
 Load the newest checkpointed run in a thread. This is useful when the caller
 has a `thread_id` but did not persist the latest `run_id` separately:
 
 ```python
-latest = checkpointer.load_latest_run(namespace, thread_id)
+latest = checkpoint_store.load_latest_run(namespace, thread_id)
 ```
 
 Fork a checkpoint into a new thread/run. This copies the checkpoint state while
 preserving the original run:
 
 ```python
-forked = checkpointer.fork_run(
+forked = checkpoint_store.fork_run(
     namespace,
-    source_thread_id="customer_42",
-    source_run_id="ticket_9001",
-    target_thread_id="customer_42_review",
-    target_run_id="ticket_9001_review",
+    source_thread_id="warehouse_incident_42",
+    source_run_id="initial_analysis",
+    target_thread_id="warehouse_incident_42_review",
+    target_run_id="initial_analysis_review",
     status="paused",
 )
 ```
@@ -242,26 +275,26 @@ forked = checkpointer.fork_run(
 Delete a single run when it is no longer needed:
 
 ```python
-deleted = checkpointer.delete_run(namespace, thread_id, run_id)
+deleted = checkpoint_store.delete_run(namespace, thread_id, run_id)
 ```
 
 Clear a broader set of checkpoints:
 
 ```python
-removed = checkpointer.clear(namespace=namespace, thread_id=thread_id)
+removed = checkpoint_store.clear(namespace=namespace, thread_id=thread_id)
 ```
 
 Stores also expose low-level event methods for append-only audit entries:
 
 ```python
-checkpointer.append_event(
+checkpoint_store.append_event(
     namespace,
     thread_id,
     run_id,
     {"type": "operator_note", "message": "Reviewed by support lead."},
 )
 
-events = checkpointer.load_events(namespace, thread_id, run_id)
+events = checkpoint_store.load_events(namespace, thread_id, run_id)
 ```
 
 ## Agent Inbox
@@ -270,7 +303,7 @@ events = checkpointer.load_events(namespace, thread_id, run_id)
 
 ```python
 agent = nn.Agent(
-    name="support_agent",
+    name="policy_assistant",
     model=mf.Model.chat_completion("openai/gpt-4.1-mini"),
 )
 
@@ -292,7 +325,7 @@ inbox_store = mf.Store.agent_inbox(
 agent_inbox = mf.AgentInbox(store=inbox_store)
 
 agent = nn.Agent(
-    name="support_agent",
+    name="policy_assistant",
     model=mf.Model.chat_completion("openai/gpt-4.1-mini"),
     agent_inbox=agent_inbox,
 )
@@ -302,11 +335,14 @@ You can also provide the inbox through runtime context instead of binding it to
 the agent instance:
 
 ```python
-scope = mf.ExecutionScope(thread_id="customer_42", run_id="ticket_9001")
-agent_inbox.bind_scope(scope, namespace="support_agent")
+scope = mf.ExecutionScope(
+    thread_id="refund_conversation_42",
+    run_id="refund_summary_01",
+)
+agent_inbox.bind_scope(scope, namespace="policy_assistant")
 
 with mf.execution_context(scope=scope, agent_inbox=agent_inbox):
-    agent("Investigate this ticket.")
+    agent("Summarize this policy: Returns are accepted within 30 days.")
 ```
 
 Use a stable `thread_id` for any workflow that expects inbox delivery across
@@ -327,12 +363,12 @@ Bind an inbox to a runtime identity when you want to write to the same pending
 message queue that an agent will drain:
 
 ```python
-scope = mf.ExecutionScope(thread_id="customer_42", run_id="ticket_9001")
+scope = mf.ExecutionScope(thread_id="refund_conversation_42", run_id="refund_summary_01")
 
 agent_inbox = mf.AgentInbox(store=inbox_store)
-agent_inbox.bind_scope(scope, namespace="support_agent")
+agent_inbox.bind_scope(scope, namespace="policy_assistant")
 
-agent("Investigate this ticket.", scope=scope)
+agent("Summarize this policy: Returns are accepted within 30 days.", scope=scope)
 ```
 
 Use `fork(...)` to create another handle over the same store with a different
@@ -395,27 +431,30 @@ the next provider call.
 ```python
 inbox_store = mf.Store.agent_inbox("sqlite", path=".msgflux/inbox.sqlite3")
 agent_inbox = mf.AgentInbox(store=inbox_store)
-scope = mf.ExecutionScope(thread_id="customer_42", run_id="ticket_9001")
-agent_inbox.bind_scope(scope, namespace="support_agent")
+scope = mf.ExecutionScope(thread_id="refund_conversation_42", run_id="refund_summary_01")
+agent_inbox.bind_scope(scope, namespace="policy_assistant")
 
 agent = nn.Agent(
-    name="support_agent",
+    name="policy_assistant",
     model=mf.Model.chat_completion("openai/gpt-4.1-mini"),
     agent_inbox=agent_inbox,
 )
 
 # In one thread/task:
-agent("Work on the ticket until finished.", scope=scope)
+agent(
+    "Draft a two-sentence reply using this policy: Returns are accepted within 30 days.",
+    scope=scope,
+)
 
 # In another thread/task while the agent is still processing:
-agent_inbox.user_message("The user added that the payment already cleared.")
+agent_inbox.user_message("Keep the reply under 50 words.")
 ```
 
 The model receives the message as a synthetic user block:
 
 ```xml
 <incoming_user_message>
-The user added that the payment already cleared.
+Keep the reply under 50 words.
 </incoming_user_message>
 ```
 
@@ -424,11 +463,11 @@ same store and execution key:
 
 ```python
 store = mf.Store.agent_inbox("sqlite", path=".msgflux/inbox.sqlite3")
-scope = mf.ExecutionScope(thread_id="customer_42", run_id="ticket_9001")
+scope = mf.ExecutionScope(thread_id="refund_conversation_42", run_id="refund_summary_01")
 
 external_inbox = mf.AgentInbox(
     store=store,
-    namespace="support_agent",
+    namespace="policy_assistant",
     thread_id=scope.thread_id,
     run_id=scope.run_id,
 )
@@ -444,15 +483,12 @@ removed = external_inbox.clear_user_messages()
 print(f"Removed {removed} pending user message(s).")
 ```
 
-You can also publish directly:
+To attach metadata to a new user message, use the dedicated method:
 
 ```python
-external_inbox.publish(
-    {
-        "source": "incoming_user_message",
-        "hint": "Use a shorter answer.",
-        "metadata": {"origin": "chat-ui"},
-    }
+external_inbox.user_message(
+    "Keep the reply under 50 words.",
+    metadata={"origin": "chat-ui"},
 )
 ```
 
@@ -468,9 +504,9 @@ agent_inbox.interrupt(reason="Operator interrupted the run.")
 Behavior:
 
 - `pause` raises `TaskPauseRequestedError` and checkpoints the run as `paused`
-  when a checkpointer is configured.
+  when a checkpoint store is configured.
 - `interrupt` raises `TaskInterruptRequestedError` and checkpoints the run as
-  `interrupted` when a checkpointer is configured.
+  `interrupted` when a checkpoint store is configured.
 - Unknown control commands remain normal notifications and are shown to the
   model as `system_note`.
 
@@ -489,7 +525,7 @@ agent_inbox.publish(
     {
         "source": "system_note",
         "status": "policy_update",
-        "hint": "Use the enterprise refund policy for this answer.",
+        "metadata": {"policy": "Returns are accepted within 30 days."},
     }
 )
 ```
@@ -501,11 +537,40 @@ The model receives:
 <notification>
 source: system_note
 status: policy_update
-hint: Use the enterprise refund policy for this answer.
+policy: Returns are accepted within 30 days.
 </notification>
 </system_note>
 ```
 
-Use `incoming_user_message` for new user turns. Use `system_note` or another
-system-like source for runtime hints, progress, policy updates, or operator
-notes that should not be treated as a direct user request.
+Use `user_message(...)` for new user turns. Use `system_note` or another
+system-like source for structured progress, policy updates, or operator notes
+that should not be treated as a direct user request.
+
+## Abort Signal
+
+`AbortSignal` is local runtime cancellation for the currently active process.
+It is useful for UI and CLI controls such as pressing `Esc` while a model is
+generating. It is carried by `ExecutionScope` and exposed through
+`get_execution_context().get("abort_signal")`.
+
+```python
+abort_signal = mf.AbortSignal()
+scope = mf.ExecutionScope(
+    thread_id="refund_conversation_42",
+    run_id="refund_summary_01",
+    abort_signal=abort_signal,
+)
+
+# From another UI/CLI control path:
+abort_signal.abort("User pressed Esc.")
+```
+
+Providers observe the signal before output starts. After the first model token
+or tool call is produced, that model response is treated as committed; abort is
+then observed only at the next safe runtime boundary, such as before executing
+tools or before a later model call. When an abort reaches `Agent`, msgFlux
+converts it into the durable interrupt semantics: open tool calls are closed
+with synthetic interrupted outputs, and the checkpoint/task status becomes
+`interrupted`. The canonical timeline retains that status for audit. If the
+timeline is later converted to Responses input, the corresponding
+`function_call_output` uses the protocol's `incomplete` wire status.

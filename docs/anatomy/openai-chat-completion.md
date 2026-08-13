@@ -1,10 +1,14 @@
 # OpenAI Chat Completion
 
 `src/msgflux/models/providers/openai.py` contains several OpenAI-backed model
-classes, but the architectural center of the file is `OpenAIChatCompletion`.
+classes, but the chat architecture is split between
+`OpenAICompatibleChatCompletion` and the concrete `OpenAIChatCompletion`
+provider.
 
-This provider is where msgFlux translates the generic `Agent` contract into the
-OpenAI chat completions API.
+The compatible class owns the shared transport lifecycle. The concrete OpenAI
+class declares OpenAI-only capabilities, supported API modes, and reasoning
+codecs. This is where msgFlux translates the generic `Agent` contract into
+either Chat Completions or Responses wire payloads.
 
 That translation is not a thin pass-through. The provider is responsible for:
 
@@ -27,15 +31,28 @@ Upstream code thinks in terms such as:
 - `prefilling`
 - `tool_definitions`
 
-OpenAI expects:
+The wire API expects either:
 
-- `messages`
-- `response_format`
+- Chat Completions `messages` and `response_format`, or
+- Responses `input` items and `text.format`
 - `tools`
 - `tool_choice`
 - provider-specific payload shapes
 
-`OpenAIChatCompletion` is the adapter between those two worlds.
+`OpenAICompatibleChatCompletion` is the reusable adapter boundary.
+`OpenAIChatCompletion` enables both `api_mode="chat_completions"` and
+`api_mode="responses"` and defaults to Responses. Compatible third-party
+providers inherit only the Chat Completions mode unless they explicitly
+implement another protocol.
+
+GPT-5.6 Responses can return multiple assistant message items distinguished by
+`phase`. The parser selects `final_answer` for normal outputs and `commentary`
+for `ToolFlowControl`, avoiding concatenation of independent structured JSON
+documents. Each native message remains a distinct history item with its `phase`,
+identity, status, and content, so manual replay does not replace it with a
+synthetic assistant message. Streaming builds the same item incrementally.
+Opaque reasoning items without summary text are reconstructed with an explicit
+empty `summary` list before replay.
 
 ## Main Flow
 
@@ -43,7 +60,7 @@ The non-streaming path looks like this:
 
 ```text
 Agent
-  -> OpenAIChatCompletion.__call__(...)
+  -> OpenAICompatibleChatCompletion.__call__(...)
   -> _validate_chat_completion_options(...)
   -> _build_generation_params(...)
   -> _generate(...)
@@ -62,18 +79,21 @@ There are two preparation steps, and they solve different problems.
 
 ### 1. `_build_generation_params(...)`
 
-This method builds the OpenAI request envelope:
+This method dispatches to the envelope builder selected by `api_mode`:
 
-- normalizes `messages`
+- converts canonical `ChatMessages` inside the Model
 - injects `system_prompt`
 - keeps `prefilling`
 - expands `tool_definitions` into native `tools` and `tool_choice` when present
 
-This is still a provider-neutral view of the request shape.
+Chat Completions produces `messages`. Responses produces `input`, flattens
+function definitions, and converts the remaining frontend parameters later in
+`_adapt_responses_params(...)`.
 
 ### 2. `_prepare_generate_kwargs(...)`
 
-This is where schema logic becomes provider-specific.
+This is where schema logic becomes provider-specific while the logical schema
+remains API-neutral.
 
 It decides how msgFlux output contracts should be exposed to OpenAI.
 
@@ -82,7 +102,7 @@ That includes:
 - `typed_parser`
 - canonical `generation_schema`
 - flow-control metadata carried through `ToolDefinitions`
-- the OpenAI `response_format`
+- the OpenAI `response_format`, later mapped to `text.format` for Responses
 - transport normalization metadata
 
 This is the method where logical schema and provider schema stop being the same
@@ -159,8 +179,15 @@ consuming a normalized runtime shape afterward.
 
 ## Response Decoding
 
-Once OpenAI returns a completion, `_process_completion_model_output(...)`
-converts it into a `ModelResponse`.
+For Chat Completions, `_process_completion_model_output(...)` converts the
+choice into a `ModelResponse`. For Responses,
+`_process_responses_model_output(...)` walks ordered output items and converts
+messages, function calls, reasoning summaries, usage, and incomplete status.
+
+The Responses path keeps summaries canonical and stores only provider-only
+reasoning state under an identity containing `provider`, `api_mode`, and codec.
+It reconstructs the complete native reasoning item only when a later Responses
+request uses that same identity.
 
 There are four major result shapes:
 
@@ -242,10 +269,10 @@ fast instead of sending an ambiguous request.
 
 The streaming path is intentionally simpler than the structured-output path.
 
-In streaming mode, the provider:
+In streaming mode, the selected API adapter:
 
 - creates a `ModelStreamResponse`
-- consumes chunks from OpenAI
+- consumes Chat Completions chunks or typed Responses events
 - aggregates text, reasoning, and native tool call deltas
 - sets response metadata as the stream completes
 
@@ -274,8 +301,13 @@ Agent params
               |
               +--> build_provider_response_format(...)
               +--> keep normalize_provider_response(...)
+  -> select api_mode
+       |
+       +--> chat_completions -> messages / response_format
+       |
+       +--> responses -> input / text.format
   -> execute OpenAI request
-  -> process completion output
+  -> process completion or Responses output
        |
        +--> tool_calls -> ToolCallAggregator
        |
@@ -301,7 +333,8 @@ This provider should be read together with:
 The design line is:
 
 - `Agent` assembles the runtime contract
-- `OpenAIChatCompletion` adapts that contract to OpenAI
+- `OpenAICompatibleChatCompletion` owns the common frontend and lifecycle
+- `OpenAIChatCompletion` declares OpenAI modes and codecs
 - the provider returns normalized output back to the runtime contract
 
 ## Why This Shape Matters

@@ -35,8 +35,6 @@ Use this section when you need to answer questions like:
   transport payloads afterward.
 - [ToolFlowControl](tool-flow-control.md): extension point for custom tool loops
   without modifying the default `Agent` flow.
-- [Task Runtime](task-runtime.md): the background-task contract for task state,
-  progress reporting, and notification delivery.
 - [Checkpoints And Replay](checkpoints-and-replay.md): the durability contract
   for `thread_id`, `run_id`, subagent recovery, and parallel worker
   replay.

@@ -70,10 +70,11 @@ Examples:
 - one inline pipeline run
 - one worker inside a parallel step
 
-This separation matters because several executions can belong to the same
-thread at once. For example, a root agent run can launch multiple background
-subagents. They all share the root `thread_id`, but each subagent gets its own
-`run_id` so it can checkpoint and resume independently.
+This separation matters because several executions can run concurrently.
+For example, a root agent can launch multiple background subagents. Each
+subagent has its own checkpoint identity so it can resume independently; the
+parent-child relationship is recorded through `parent_run_id` and
+`root_run_id`, not by reusing the root agent's `thread_id`.
 
 ## Default Identity
 
@@ -190,6 +191,7 @@ updated_at
 Status should stay small and execution-oriented:
 
 - `running`
+- `paused`
 - `completed`
 - `failed`
 - `interrupted`
@@ -199,20 +201,53 @@ not task queue semantics.
 
 ## `ChatMessages` And Thread Persistence
 
-`ChatMessages` is the natural snapshot container for durable agents.
+`ChatMessages` is the snapshot container for durable agents. Its serialized
+state contains the thread identity, container metadata, and one ordered list of
+provider-neutral interaction items.
 
-It should carry:
+The list includes messages, reasoning, tool calls, tool results, and turn
+lifecycle events. A turn begins with `start` and progresses through `pause`,
+`resume`, `complete`, `fail`, or `interrupt`. `ChatMessages.turns` is derived by
+scanning those events; turns are never persisted again as a parallel structure.
 
-- `thread_id`
-- turn records
-- message history
-- serialized assistant/tool history
+The checkpoint deliberately does not persist:
+
+- `vars`, which remains an ordinary dictionary owned by the current call
+- `response_type`, which is transient dispatch state
+- copied turn inputs or assistant output already present in the timeline
 
 That gives the agent a concrete way to:
 
 - save after each tool-loop boundary
 - recover the exact chat state later
 - continue from the last durable boundary instead of rebuilding context
+
+### Active items and compaction
+
+An item is active unless it explicitly contains `active=False`. The default is
+omitted from serialized data. This sparse flag supports compaction strategies
+that deactivate a middle range, insert a summary, and keep the original ends
+for audit or later recomputation.
+
+Checkpoint stores deduplicate immutable item payloads by content. The active
+flag belongs to the ordered occurrence that references a payload, not to the
+payload itself. Two identical messages can therefore share one stored payload
+while one occurrence is active and the other inactive.
+
+### Streaming boundary
+
+Providers emit arbitrary delta shapes, but checkpoints only accept coherent
+timeline items. `ChatStreamAccumulator` builds ordered reasoning, assistant
+message, and tool-call items while deltas are emitted to the caller normally.
+At completion, failure, or interruption, the Agent appends one accumulator
+snapshot and then the matching turn event. It does not persist every token and
+does not rebuild the same response from a second aggregate string.
+
+Reasoning items can carry portable `text` and `summary` plus opaque
+`provider_state`. Opaque state is round-tripped unchanged only to the provider
+that produced it. It may contain encrypted reasoning, reasoning details,
+redacted thinking, or signatures; it can also live on a tool-call item when a
+provider attaches its signature there.
 
 ## Context Propagation
 
@@ -269,15 +304,18 @@ the agent checks the store and resumes from the last saved boundary.
 
 ## Background Subagent
 
-A background subagent should inherit the parent's `thread_id`.
+A background subagent should have its own `thread_id`. Sharing the root
+agent's `thread_id` would mix two independent conversation histories and make
+their checkpoint lifecycles unnecessarily dependent.
 
-Its `run_id` should be the `task_id`.
+Its `run_id` should be the `task_id`. The lineage fields connect the child to
+the execution that launched it.
 
 Example:
 
 ```text
 namespace = agent:research_worker
-thread_id = user_42
+thread_id = worker_ab12cd34
 run_id = task_ab12cd34
 parent_run_id = run_f13a2b
 root_run_id = run_f13a2b
@@ -285,8 +323,9 @@ root_run_id = run_f13a2b
 
 This keeps two things true at once:
 
-- the worker belongs to the same thread as the root
-- the worker is resumable by its own task identity
+- the worker has an isolated conversation and checkpoint namespace
+- the worker is resumable by its own task identity and remains linked to the
+  root through lineage metadata
 
 If the process collapses and the task is re-dispatched, the worker enters with
 the same `(namespace, thread_id, run_id)` and resumes automatically if a
@@ -305,7 +344,7 @@ as:
     "kind": "needs_input",
     "question": "Should I preserve compatibility with the legacy parser?",
     "checkpoint": {
-        "thread_id": "user_42",
+        "thread_id": "worker_ab12cd34",
         "run_id": "task_ab12cd34",
     },
 }
@@ -323,7 +362,7 @@ The task store metadata points back to the tool, selected child agent, thread,
 checkpoint namespace, and child run id. The dispatcher reconstructs the tool
 call and passes the new message while preserving:
 
-- the same `thread_id`
+- the subagent's `thread_id`
 - the task id as child `run_id`
 - the original parent/root lineage
 - the same checkpoint store
