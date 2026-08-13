@@ -1,51 +1,88 @@
 # Tool Search
 
-Tool search keeps rarely used tools out of the model's initial tool list until
-the model explicitly asks to load them.
-
-Mark a tool as on-demand with `tool_config(on_demand=True)`:
+Tool search keeps rarely used tools out of the model's initial callable surface.
+Mark those tools with `defer_loading=True`:
 
 ```python
 import msgflux as mf
 import msgflux.nn as nn
 
-@mf.tool_config(on_demand=True)
+
+@mf.tool_config(defer_loading=True)
 def query_finance_report(company: str) -> str:
     """Query archived finance reports for a company."""
     return f"Finance report for {company}"
 
+
 agent = nn.Agent(
     name="analyst",
-    model=mf.Model.chat_completion("openai/gpt-4.1-mini"),
+    model=mf.Model.chat_completion("openai/gpt-5.4"),
     tools=[query_finance_report],
 )
 ```
 
-When at least one on-demand tool exists, msgFlux exposes a runtime tool named
-`tool_search`. The on-demand tools are searchable but are not included in the
-normal callable tool schemas until selected.
+The name follows the OpenAI and Anthropic convention: the tool remains in the
+logical `ToolCatalog`, but its full callable definition is deferred until the
+model searches for it.
 
-Internally, `tool_search` is a `ToolBucket` with
-`capture={"on_demand": True}`. This keeps the search index and the deferred
-tool metadata together; selecting a tool promotes it back through normal
-library registration.
+## Provider Modes
+
+With OpenAI Responses, msgFlux compiles deferred tools to the hosted protocol:
 
 ```python
-schema_names = [
-    schema["function"]["name"]
-    for schema in agent.tool_library.get_tool_json_schemas()
+[
+    {"type": "tool_search"},
+    {
+        "type": "function",
+        "name": "query_finance_report",
+        "defer_loading": True,
+        # description and parameters omitted here
+    },
 ]
-print(schema_names)
-# ["tool_search"]
 ```
 
-## Search Before Loading
+OpenAI performs the search inside the same Responses request. Its
+`tool_search_call` and `tool_search_output` items are retained in
+`ChatMessages`, followed by the normal function call that msgFlux executes.
 
-A normal search returns matching tool names without loading them:
+Providers without hosted tool search receive the portable fallback. msgFlux
+exposes its local `tool_search` function first, and exposes a selected deferred
+tool on the next model turn.
+
+## Thread-Local Loading
+
+Loaded tools belong to a conversation, not to the shared `ToolLibrary`.
+`ChatMessages.metadata` stores the loaded names under the library's catalog ID:
+
+```python
+from msgflux.chat_messages import ChatMessages
+
+first = ChatMessages(thread_id="analysis-a")
+second = ChatMessages(thread_id="analysis-b")
+
+agent.tool_library(
+    [("call_1", "tool_search", {"select": ["query_finance_report"]})],
+    messages=first,
+)
+
+print(first.get_loaded_tools(agent.tool_library.name))
+# {"query_finance_report"}
+print(second.get_loaded_tools(agent.tool_library.name))
+# set()
+```
+
+The executable catalog is not mutated. This means simultaneous threads can
+share one agent safely while exposing different tool subsets. The state is also
+copied and checkpointed with `ChatMessages`.
+
+## Search And Load Locally
+
+A search returns matching names without loading them:
 
 ```python
 result = agent.tool_library(
-    [("call_1", "tool_search", {"query": "finance report"})]
+    [("call_2", "tool_search", {"query": "finance report"})],
+    messages=first,
 ).tool_calls[0].result
 
 print(result["matches"])
@@ -54,26 +91,7 @@ print(result["loaded"])
 # []
 ```
 
-Set `description=True` when the model needs details before deciding whether to
-activate a tool:
-
-```python
-result = agent.tool_library(
-    [
-        (
-            "call_2",
-            "tool_search",
-            {"query": "finance report", "description": True},
-        )
-    ]
-).tool_calls[0].result
-
-print(result["descriptions"])
-```
-
-## Select Tools
-
-Use `select` to activate exact on-demand tools:
+Use `select` to load exact matches for that thread:
 
 ```python
 result = agent.tool_library(
@@ -83,31 +101,19 @@ result = agent.tool_library(
             "tool_search",
             {"select": ["query_finance_report"]},
         )
-    ]
+    ],
+    messages=first,
 ).tool_calls[0].result
 
 print(result["loaded"])
 # ["query_finance_report"]
 ```
 
-`query="select:query_finance_report"` remains supported for compatibility.
+`query="select:query_finance_report"` remains supported as a compact selection
+syntax. Set `description=True` to include display names, descriptions, usage
+guidance, and tool kinds in search results.
 
-After selection, the tool is promoted into the normal library:
-
-```python
-schema_names = [
-    schema["function"]["name"]
-    for schema in agent.tool_library.get_tool_json_schemas()
-]
-print(schema_names)
-# ["query_finance_report"]
-```
-
-If other on-demand tools remain, `tool_search` stays available. If no on-demand
-tools remain, msgFlux removes `tool_search` from the exposed runtime tools.
-
-## Buckets And AgentTool
-
-On-demand agents work with [Agent Tool](agent-tool.md) as well. When an
-on-demand agent is selected, `ToolLibrary.add(...)` promotes it and the existing
-`AgentTool` bucket captures it as an available `agent(name, message)` target.
+After loading, `ToolCatalog.portable_tools()` includes the selected tool for
+`first`; it continues to include only the local `tool_search` fallback for
+`second`. Local functions, modules, agents, and MCP tools use the same catalog
+and thread-state contract.

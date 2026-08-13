@@ -105,35 +105,35 @@ That means the caller does not need different orchestration logic for:
 
 The library normalizes all of them into a single execution surface.
 
-## On-Demand Tools
+## Deferred Tools
 
 `ToolLibrary` can also keep tools registered without exposing them immediately
 to the model.
 
 The contract is intentionally small:
 
-- `@tool_config(on_demand=True)` keeps the tool out of
-  `get_tool_json_schemas()` and `get_tool_annotations()`
-- on-demand tools are captured by the builtin `tool_search` bucket
-- if at least one on-demand tool exists, `ToolLibrary` registers `tool_search`
-- `tool_search` can search both local and MCP-backed on-demand tools
+- `@tool_config(defer_loading=True)` keeps the tool out of the initial portable
+  callable surface
+- deferred tools are captured by the builtin `tool_search` bucket
+- if at least one deferred tool exists, `ToolLibrary` registers `tool_search`
+- `tool_search` can search both local and MCP-backed deferred tools
 - keyword searches return matching tool names, and `description=True` includes
   tool metadata
-- `select=["tool_name"]` promotes matching tools by calling `ToolLibrary.add(...)`
-  again without the `on_demand` flag
+- `select=["tool_name"]` records matching names in the current
+  `ChatMessages.metadata`
 
 This is useful when a session can register a large number of tools but should
 keep the active tool context small.
 
 An explicitly injected `ToolLibraryHandle` is the natural companion feature
-here: a tool can add a new on-demand tool at runtime, and `ToolLibrary` will
+here: a tool can add a new deferred tool at runtime, and `ToolLibrary` will
 expose `tool_search` automatically if needed.
 
 `tool_search` is both a builtin operator and a `ToolBucket` with
-`capture={"on_demand": True}`. It owns the searchable metadata and promotes a
-selected tool through `ToolLibrary.add(...)` with `on_demand=False`. The library
-only performs normal registration and bucket routing; search behavior remains in
-the builtin tool.
+`capture={"defer_loading": True}`. It owns the searchable metadata, while the
+thread's `ChatMessages` owns which names have been loaded. The shared library is
+never mutated by a selection, so concurrent threads can expose different tool
+subsets safely.
 
 Background task control tools follow the same pattern through `ToolBackground`.
 The `task_status`, `task_wait`, `task_output`, `task_interrupt`,
@@ -165,14 +165,14 @@ class ToolBucket:
 ```
 
 `capture` matches entries in `tool_config`. For example,
-`{"tool_kind": "agent", "on_demand": False}` captures regular agents, while
-`{"on_demand": True}` captures every on-demand tool. Every entry must match.
+`{"tool_kind": "agent", "defer_loading": False}` captures regular agents, while
+`{"defer_loading": True}` captures every deferred tool. Every entry must match.
 `capture["tool_kind"]` can name one kind or several kinds separated by `|`,
 such as `"catalog|orders"`.
 
 Two bucket captures cannot overlap. This makes routing deterministic without a
-priority system. A kind bucket that coexists with on-demand tools should include
-`"on_demand": False`, leaving `{"on_demand": True}` to `tool_search`. The
+priority system. A kind bucket that coexists with deferred tools should include
+`"defer_loading": False`, leaving `{"defer_loading": True}` to `tool_search`. The
 base bucket rejects captured tools that configure `background` or
 `allow_background`; configure those flags on the bucket itself instead.
 
@@ -192,7 +192,7 @@ change capture behavior.
 
 For agents, `nn.Agent` is normalized to `tool_config["tool_kind"]="agent"`.
 `AgentTool` is a bucket with
-`capture={"tool_kind": "agent", "on_demand": False}`, so adding an agent to
+`capture={"tool_kind": "agent", "defer_loading": False}`, so adding an agent to
 a library that already has `AgentTool` updates the single public
 `agent(name, message)` tool instead of exposing the agent as a separate tool.
 
@@ -217,9 +217,9 @@ passes the current `messages`, `vars`, and execution `scope` into the bucket.
 The bucket then forwards those runtime values only when the selected subagent's
 own `tool_config` requests them.
 
-On-demand tools use the same path. An on-demand agent is first captured by
-`tool_search`; when it receives `select=["agent_name"]`, `ToolLibrary.add(...)`
-runs again with `on_demand=False`, and `AgentTool` captures it.
+Deferred agents are captured by `tool_search` and represented as logical tools
+in `ToolCatalog`. Once loaded for a thread, the provider can call the agent by
+its own tool name without promoting it into the shared `AgentTool` bucket.
 
 ## Typed Restoration
 

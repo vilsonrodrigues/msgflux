@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import replace
 from typing import Any, Dict, List, Optional
 
 from msgflux.tools.dataclasses import ToolMetadata
@@ -8,17 +7,18 @@ from msgflux.tools.types import Hidden, ToolBucket, ToolLibraryOperator
 
 
 class ToolSearchTool(ToolBucket, ToolLibraryOperator):
-    """Search and activate registered on-demand tools."""
+    """Search and load deferred tools for the current thread."""
 
     name = "tool_search"
-    capture = {"on_demand": True}
+    tool_config = {"inject_handle": True, "inject_messages": True}
+    capture = {"defer_loading": True}
     expose_captured_names = True
     display_name = "Tool Search"
-    description = """Find on-demand tools. `query` lists; `select` activates.
+    description = """Find deferred tools. `query` lists; `select` loads.
 
     Args:
         query: Keywords used to find tools.
-        select: Exact tool names to activate.
+        select: Exact tool names to load for the current thread.
     """
     usage_guidance = (
         "Search first; activate an exact match with `select` before calling it."
@@ -28,6 +28,7 @@ class ToolSearchTool(ToolBucket, ToolLibraryOperator):
         "select": Optional[List[str]],
         "description": bool,
         "max_results": int,
+        "messages": Hidden,
         "handle": Hidden,
         "return": dict,
     }
@@ -39,6 +40,7 @@ class ToolSearchTool(ToolBucket, ToolLibraryOperator):
         select: List[str] | None = None,
         description: bool = False,
         max_results: int = 5,
+        messages=None,
         handle,
     ) -> Dict[str, Any]:
         query, select = self._normalize_selection(query, select)
@@ -51,21 +53,18 @@ class ToolSearchTool(ToolBucket, ToolLibraryOperator):
         if select is not None:
             matches = self._select(select)
             descriptions = self._describe_matches(matches) if description else []
-            loaded = self._activate(matches, handle)
+            loaded = handle.load_tools(messages, matches)
         else:
             matches = self._search(query or "", max_results)
             descriptions = self._describe_matches(matches) if description else []
             loaded = []
-
-        if not self.tools:
-            handle.remove(self.name)
 
         return {
             "query": query,
             "matches": matches,
             "loaded": loaded,
             "descriptions": descriptions,
-            "total_on_demand_tools": total,
+            "total_deferred_tools": total,
         }
 
     def validate_capture(self, metadata: ToolMetadata) -> None:
@@ -123,22 +122,6 @@ class ToolSearchTool(ToolBucket, ToolLibraryOperator):
             "usage_guidance": metadata.usage_guidance,
             "tool_kind": metadata.tool_config.get("tool_kind", "tool"),
         }
-
-    def _activate(self, tool_names: List[str], handle) -> List[str]:
-        activated = []
-        for tool_name in tool_names:
-            metadata = self.remove(tool_name)
-            promoted = replace(
-                metadata,
-                tool_config={**metadata.tool_config, "on_demand": False},
-            )
-            try:
-                handle.add(promoted)
-            except Exception:
-                self.add(metadata)
-                raise
-            activated.append(tool_name)
-        return activated
 
     @staticmethod
     def _normalize_selection(

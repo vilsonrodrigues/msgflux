@@ -1,6 +1,6 @@
 import msgspec
 
-from msgflux.tools.definitions import ToolDefinitions
+from msgflux.tools.definitions import ToolCatalog
 
 
 class ChatCompletionModel:
@@ -21,7 +21,7 @@ class ChatCompletionModel:
         self,
         *,
         system_prompt: str | None,
-        tool_definitions: ToolDefinitions | None = None,
+        tool_catalog: ToolCatalog | None = None,
     ):
         """Warm provider prompt/tool-schema caches without producing useful output."""
         raise NotImplementedError(
@@ -32,7 +32,7 @@ class ChatCompletionModel:
         self,
         *,
         system_prompt: str | None,
-        tool_definitions: ToolDefinitions | None = None,
+        tool_catalog: ToolCatalog | None = None,
     ):
         """Async prompt warmup counterpart."""
         raise NotImplementedError(

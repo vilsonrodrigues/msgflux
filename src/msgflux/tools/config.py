@@ -33,7 +33,7 @@ def tool_config(
     allow_background: Optional[bool] = False,
     background_capabilities: Optional[Collection[str]] = None,
     disable_input: Optional[bool] = False,
-    on_demand: Optional[bool] = False,
+    defer_loading: Optional[bool] = False,
     inject_message: Optional[bool] = False,
     inject_messages: Optional[bool] = False,
     inject_handle: Optional[bool] = False,
@@ -89,7 +89,7 @@ def tool_config(
             will call the tool with no explicit arguments, and any arguments supplied
             by the model are ignored at runtime. This does not inject any runtime
             context by itself.
-        on_demand:
+        defer_loading:
             If True, keep the tool registered in the library but hide its schema
             from the model until it is loaded through `tool_search`.
         inject_message:
@@ -222,7 +222,7 @@ def tool_config(
                     "call_as_response": call_as_response,
                     "handoff": handoff,
                     "disable_input": disable_input,
-                    "on_demand": on_demand,
+                    "defer_loading": defer_loading,
                     "inject_message": _inject_message,
                     "inject_messages": _inject_messages,
                     "inject_handle": inject_handle,

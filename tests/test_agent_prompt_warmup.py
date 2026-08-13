@@ -46,7 +46,7 @@ def test_agent_warmup_system_prompt_uses_only_system_prompt_and_tools():
     assert len(model.calls) == 1
     call = model.calls[0]
     assert "msgflux" in call["system_prompt"]
-    assert call["tool_definitions"].schemas[0]["function"]["name"] == "lookup_ticket"
+    assert call["tool_catalog"].tools[0].name == "lookup_ticket"
     assert "messages" not in call
     assert "generation_schema" not in call
     assert "typed_parser" not in call
@@ -66,7 +66,7 @@ async def test_agent_async_warmup_system_prompt_applies_tool_filter():
 
     assert result == {"warmed": True}
     assert len(model.calls) == 1
-    assert model.calls[0]["tool_definitions"] is None
+    assert model.calls[0]["tool_catalog"] is None
 
 
 def test_agent_warmup_system_prompt_can_spawn_background(monkeypatch):

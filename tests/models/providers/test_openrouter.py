@@ -176,7 +176,7 @@ class TestOpenRouterChatCompletion:
             messages=messages,
             system_prompt=None,
             prefilling=None,
-            tool_definitions=None,
+            tool_catalog=None,
         )
 
         assert params["messages"] == [

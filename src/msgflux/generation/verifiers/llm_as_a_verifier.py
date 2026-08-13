@@ -1590,7 +1590,7 @@ class LLMAsVerifier:
             "logprobs",
             "messages",
             "stream",
-            "tool_definitions",
+            "tool_catalog",
             "top_logprobs",
             "typed_parser",
         }

@@ -83,6 +83,18 @@ def test_chat_messages_state_roundtrip():
     assert restored.to_chatml()[-1]["content"] == "4"
 
 
+def test_loaded_tools_survive_copy_and_state_roundtrip():
+    chat = ChatMessages(thread_id="thread_1", namespace="agent:test")
+    chat.load_tools("agent_tools", ["lookup", "search"])
+
+    copied = chat.copy()
+    restored = ChatMessages()
+    restored._hydrate_state(chat._to_state())
+
+    assert copied.get_loaded_tools("agent_tools") == {"lookup", "search"}
+    assert restored.get_loaded_tools("agent_tools") == {"lookup", "search"}
+
+
 def test_inactive_chat_message_is_persisted_but_not_rendered():
     chat = ChatMessages(thread_id="thread_1", namespace="agent:test")
     chat.add_user("old context")

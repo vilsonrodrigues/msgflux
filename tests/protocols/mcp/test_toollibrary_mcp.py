@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from msgflux.chat_messages import ChatMessages
 from msgflux.protocols.mcp.types import MCPTool
 
 
@@ -253,10 +254,10 @@ class TestToolLibraryMCPIntegration:
     @patch("msgflux.nn.modules.tool.filter_tools")
     @patch("msgflux.nn.modules.tool.F")
     @patch("msgflux.nn.modules.tool.convert_mcp_schema_to_tool_schema")
-    def test_on_demand_mcp_tools_are_hidden_until_loaded(
+    def test_deferred_mcp_tools_are_hidden_until_loaded(
         self, mock_convert_schema, mock_F, mock_filter_tools, mock_mcp_client
     ):
-        """Test that on-demand MCP tools are exposed only after tool_search."""
+        """Test that deferred MCP tools are exposed only after tool_search."""
         from msgflux.nn.modules.tool import ToolLibrary
 
         mock_client_instance = MagicMock()
@@ -283,10 +284,11 @@ class TestToolLibraryMCPIntegration:
                     "name": "fs",
                     "transport": "stdio",
                     "command": "mcp-server-fs",
-                    "tool_config": {"read_file": {"on_demand": True}},
+                    "tool_config": {"read_file": {"defer_loading": True}},
                 }
             ],
         )
+        messages = ChatMessages(thread_id="mcp-thread")
 
         initial_schema_names = [
             schema["function"]["name"] for schema in library.get_tool_json_schemas()
@@ -294,13 +296,16 @@ class TestToolLibraryMCPIntegration:
         assert initial_schema_names == ["tool_search"]
 
         result = (
-            library([("call_1", "tool_search", {"query": "select:fs__read_file"})])
+            library(
+                [("call_1", "tool_search", {"query": "select:fs__read_file"})],
+                messages=messages,
+            )
             .tool_calls[0]
             .result
         )
 
         loaded_schema_names = [
-            schema["function"]["name"] for schema in library.get_tool_json_schemas()
+            tool.name for tool in library.get_tool_catalog(messages).portable_tools()
         ]
         assert result["matches"] == ["fs__read_file"]
         assert result["loaded"] == ["fs__read_file"]

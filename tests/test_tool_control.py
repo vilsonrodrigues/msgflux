@@ -7,6 +7,7 @@ import pytest
 
 from msgflux.core.message import Message
 from msgflux.nn.modules.agent import Agent
+from msgflux.tools import ToolSpec
 
 
 def search(query: str) -> str:
@@ -30,9 +31,9 @@ class TestToolFilter:
 
         # We'll test the _apply_tool_filter method directly
         self.mock_schemas = [
-            {"function": {"name": "search", "description": "Search tool"}},
-            {"function": {"name": "calculator", "description": "Calculator tool"}},
-            {"function": {"name": "browser", "description": "Browser tool"}},
+            ToolSpec(name="search", description="Search tool"),
+            ToolSpec(name="calculator", description="Calculator tool"),
+            ToolSpec(name="browser", description="Browser tool"),
         ]
 
     def test_allow_filter(self):
@@ -50,7 +51,7 @@ class TestToolFilter:
         )
 
         assert len(result) == 2
-        names = [s["function"]["name"] for s in result]
+        names = [tool.name for tool in result]
         assert "search" in names
         assert "calculator" in names
         assert "browser" not in names
@@ -63,7 +64,7 @@ class TestToolFilter:
 
         result = agent._apply_tool_filter(self.mock_schemas, {"allow": "search"})
 
-        assert [schema["function"]["name"] for schema in result] == ["search"]
+        assert [tool.name for tool in result] == ["search"]
 
     def test_block_filter(self):
         """Test that block filter removes specified tools."""
@@ -74,7 +75,7 @@ class TestToolFilter:
         result = agent._apply_tool_filter(self.mock_schemas, {"block": ["browser"]})
 
         assert len(result) == 2
-        names = [s["function"]["name"] for s in result]
+        names = [tool.name for tool in result]
         assert "search" in names
         assert "calculator" in names
         assert "browser" not in names
@@ -87,7 +88,7 @@ class TestToolFilter:
 
         result = agent._apply_tool_filter(self.mock_schemas, {"block": "browser"})
 
-        names = [s["function"]["name"] for s in result]
+        names = [tool.name for tool in result]
         assert "browser" not in names
         assert "search" in names
         assert "calculator" in names
@@ -159,9 +160,7 @@ class TestToolFilterIntegration:
         return Agent(name="agent", model=mock_model, tools=[search, browser], **kwargs)
 
     def _tool_names(self, params):
-        return [
-            schema["function"]["name"] for schema in params.tool_definitions.schemas
-        ]
+        return [tool.name for tool in params.tool_catalog.tools]
 
     def test_inspect_model_execution_params_accepts_tool_filter(self):
         """tool_filter should work with inspect_model_execution_params."""
@@ -218,7 +217,7 @@ class TestToolFilterIntegration:
         )
 
         assert self._tool_names(params) == ["search"]
-        assert params.tool_definitions.choice == "auto"
+        assert params.tool_catalog.choice == "auto"
 
 
 class TestMaxToolTurnsConfig:

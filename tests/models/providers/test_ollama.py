@@ -62,7 +62,7 @@ def test_native_chat_replays_thinking(mock_native_clients):
         messages,
         system_prompt=None,
         prefilling=None,
-        tool_definitions=None,
+        tool_catalog=None,
     )
     adapted = model._adapt_params(params)
 
@@ -193,7 +193,7 @@ def test_native_chat_normalizes_canonical_tool_loop_history(mock_native_clients)
         ],
         system_prompt=None,
         prefilling=None,
-        tool_definitions=None,
+        tool_catalog=None,
     )
 
     adapted = model._adapt_params(params)
@@ -278,7 +278,7 @@ def test_openai_compatible_chat_does_not_replay_thinking(mock_openai_client):
         messages,
         system_prompt=None,
         prefilling=None,
-        tool_definitions=None,
+        tool_catalog=None,
     )
 
     assert params["messages"] == [

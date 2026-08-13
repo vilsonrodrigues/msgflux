@@ -6,6 +6,7 @@ from unittest.mock import Mock, AsyncMock, patch, MagicMock
 from typing import Optional
 
 from msgflux.core.dotdict import dotdict
+from msgflux.chat_messages import ChatMessages
 from msgflux.nn.modules.agent import Agent
 from msgflux.nn.modules.tool import (
     ToolCall,
@@ -800,10 +801,10 @@ class TestToolLibrary:
         assert len(schemas) == 1
         assert isinstance(schemas[0], dict)
 
-    def test_tool_library_hides_on_demand_tools_from_schemas(self):
-        """Test that on-demand tools are hidden until loaded."""
+    def test_tool_library_hides_deferred_tools_from_schemas(self):
+        """Test that deferred tools are hidden until loaded."""
 
-        @mf.tool_config(on_demand=True)
+        @mf.tool_config(defer_loading=True)
         def remote_lookup(query: str) -> str:
             """Look up external information."""
             return query
@@ -819,7 +820,9 @@ class TestToolLibrary:
         parameters = schemas[0]["function"]["parameters"]
         properties = parameters["properties"]
         assert properties["query"]["description"] == "Keywords used to find tools."
-        assert properties["select"]["description"] == "Exact tool names to activate."
+        assert properties["select"]["description"] == (
+            "Exact tool names to load for the current thread."
+        )
         assert parameters["required"] == [
             "query",
             "select",
@@ -836,14 +839,14 @@ class TestToolLibrary:
     def test_tool_search_is_not_captured_by_tool_search_bucket(self):
         """Test tool_search stays registered even if a search bucket is added."""
 
-        @mf.tool_config(on_demand=True)
+        @mf.tool_config(defer_loading=True)
         def remote_lookup(query: str) -> str:
             """Look up external information."""
             return query
 
         class SearchBucket(ToolBucket):
             name = "search_bucket"
-            capture = {"tool_kind": "bucket", "on_demand": False}
+            capture = {"tool_kind": "bucket", "defer_loading": False}
             description = "Capture search tools."
             annotations = {"query": str, "return": str}
 
@@ -876,7 +879,7 @@ class TestToolLibrary:
             """Group commerce tools."""
 
             name = "commerce"
-            capture = {"tool_kind": "catalog|orders", "on_demand": False}
+            capture = {"tool_kind": "catalog|orders", "defer_loading": False}
             annotations = {"return": str}
 
             def __call__(self) -> str:
@@ -913,7 +916,7 @@ class TestToolLibrary:
             name = "background_jobs"
             capture = {
                 "tool_kind": "background|allow_background",
-                "on_demand": False,
+                "defer_loading": False,
             }
             annotations = {"return": str}
 
@@ -934,7 +937,7 @@ class TestToolLibrary:
             """Capture catalog tools."""
 
             name = "first"
-            capture = {"tool_kind": "catalog|orders", "on_demand": False}
+            capture = {"tool_kind": "catalog|orders", "defer_loading": False}
 
             def __call__(self) -> str:
                 return "first"
@@ -943,7 +946,7 @@ class TestToolLibrary:
             """Capture order tools."""
 
             name = "second"
-            capture = {"tool_kind": "orders|billing", "on_demand": False}
+            capture = {"tool_kind": "orders|billing", "defer_loading": False}
 
             def __call__(self) -> str:
                 return "second"
@@ -1017,14 +1020,14 @@ class TestToolLibrary:
         assert library.library["runtime_echo"].tool_config["inject_handle"] is True
         assert library.library["runtime_echo"].tool_config["tool_kind"] == "diagnostic"
 
-    def test_tool_search_captures_on_demand_operator_tools(self):
-        """Test on-demand operators use the same ToolSearch bucket."""
+    def test_tool_search_captures_deferred_operator_tools(self):
+        """Test deferred operators use the same ToolSearch bucket."""
 
         class DeferredOperator(ToolLibraryOperator):
             name = "deferred_operator"
             description = "List the currently registered tools."
             annotations = {"handle": mf.Hidden, "return": list[str]}
-            tool_config = {"inject_handle": True, "on_demand": True}
+            tool_config = {"inject_handle": True, "defer_loading": True}
 
             def __call__(self, handle) -> list[str]:
                 return handle.list_tools()
@@ -1041,9 +1044,9 @@ class TestToolLibrary:
         assert "deferred_operator" in response.tool_calls[0].result
 
     def test_tool_search_has_default_usage_guidance(self):
-        """Test tool_search exposes default guidance when on-demand tools exist."""
+        """Test tool_search exposes default guidance when deferred tools exist."""
 
-        @mf.tool_config(on_demand=True)
+        @mf.tool_config(defer_loading=True)
         def remote_lookup(query: str) -> str:
             """Look up external information."""
             return query
@@ -1063,10 +1066,10 @@ class TestToolLibrary:
             }
         ]
 
-    def test_tool_search_returns_matching_on_demand_tools_without_loading(self):
+    def test_tool_search_returns_matching_deferred_tools_without_loading(self):
         """Test that keyword search describes matches without exposing them."""
 
-        @mf.tool_config(on_demand=True)
+        @mf.tool_config(defer_loading=True)
         def remote_lookup(query: str) -> str:
             """Look up external information."""
             return query
@@ -1099,12 +1102,12 @@ class TestToolLibrary:
     def test_tool_search_select_supports_explicit_and_legacy_names(self):
         """Test that tool_search supports explicit selection and legacy syntax."""
 
-        @mf.tool_config(on_demand=True)
+        @mf.tool_config(defer_loading=True)
         def read_cloud_file(path: str) -> str:
             """Read a cloud file."""
             return path
 
-        @mf.tool_config(on_demand=True)
+        @mf.tool_config(defer_loading=True)
         def read_legacy_file(path: str) -> str:
             """Read a legacy file."""
             return path
@@ -1130,50 +1133,38 @@ class TestToolLibrary:
         assert legacy_result["matches"] == ["read_legacy_file"]
         assert legacy_result["loaded"] == ["read_legacy_file"]
 
-    def test_tool_search_restores_tool_when_activation_fails(self):
-        """Test failed promotion does not discard an on-demand tool."""
+    def test_tool_search_loading_is_isolated_by_thread(self):
+        """Loading a deferred tool must not change another thread's catalog."""
 
-        class CatalogBucket(ToolBucket):
-            name = "catalog"
-            capture = {"tool_kind": "catalog", "on_demand": False}
-            description = "Catalog operations."
-            annotations = {"query": str, "return": str}
-
-            def __call__(self, query: str) -> str:
-                return query
-
-        bucket = CatalogBucket()
-        bucket.add(
-            ToolMetadata(
-                name="lookup",
-                description="Existing lookup.",
-                annotations={},
-                tool_config={"tool_kind": "catalog", "on_demand": False},
-                impl=lambda query: query,
-            )
-        )
-
-        @mf.tool_config(
-            on_demand=True,
-            tool_kind="catalog",
-            name_override="lookup",
-        )
-        def delayed_lookup(query: str) -> str:
-            """Look up a catalog item later."""
+        @mf.tool_config(defer_loading=True)
+        def lookup(query: str) -> str:
+            """Look up a catalog item."""
             return query
 
-        library = ToolLibrary(name="lib", tools=[bucket, delayed_lookup])
-        response = library([("call_1", "tool_search", {"select": ["lookup"]})])
+        library = ToolLibrary(name="lib", tools=[lookup])
+        first = ChatMessages(thread_id="thread_a")
+        second = ChatMessages(thread_id="thread_b")
 
-        assert "Duplicate tool name `lookup` in bucket." in response.tool_calls[0].error
-        search = library.library["tool_search"].impl
-        assert "lookup" in search.tools
-        assert search.tools["lookup"].tool_config["on_demand"] is True
+        response = library(
+            [("call_1", "tool_search", {"select": ["lookup"]})],
+            messages=first,
+        )
 
-    def test_tool_search_is_removed_when_last_on_demand_tool_is_removed(self):
-        """Test runtime tool cleanup when on-demand tools disappear."""
+        assert response.tool_calls[0].result["loaded"] == ["lookup"]
+        assert first.get_loaded_tools(library.name) == {"lookup"}
+        assert second.get_loaded_tools(library.name) == set()
+        assert [
+            tool.name for tool in library.get_tool_catalog(first).portable_tools()
+        ] == ["lookup"]
+        assert [
+            tool.name for tool in library.get_tool_catalog(second).portable_tools()
+        ] == ["tool_search"]
+        assert "lookup" not in library.library
 
-        @mf.tool_config(on_demand=True)
+    def test_tool_search_is_removed_when_last_deferred_tool_is_removed(self):
+        """Test runtime tool cleanup when deferred tools disappear."""
+
+        @mf.tool_config(defer_loading=True)
         def remote_lookup(query: str) -> str:
             """Look up external information."""
             return query
@@ -1186,10 +1177,10 @@ class TestToolLibrary:
 
         assert "tool_search" not in library.get_tool_names()
 
-    def test_tool_search_cannot_be_removed_while_on_demand_tools_remain(self):
-        """Test Tool Search retains its captured on-demand tools."""
+    def test_tool_search_cannot_be_removed_while_deferred_tools_remain(self):
+        """Test Tool Search retains its captured deferred tools."""
 
-        @mf.tool_config(on_demand=True)
+        @mf.tool_config(defer_loading=True)
         def remote_lookup(query: str) -> str:
             """Look up external information."""
             return query
@@ -1201,10 +1192,10 @@ class TestToolLibrary:
 
         assert "tool_search" in library.library
 
-    def test_injected_handle_can_add_on_demand_tool(self):
-        """Test that injected handle can register on-demand tools."""
+    def test_injected_handle_can_add_deferred_tool(self):
+        """Test that an injected handle can register deferred tools."""
 
-        @mf.tool_config(on_demand=True)
+        @mf.tool_config(defer_loading=True)
         def remote_lookup(query: str) -> str:
             """Look up external information."""
             return query
@@ -1213,7 +1204,7 @@ class TestToolLibrary:
         def enable_remote_lookup(
             handle: mf.Hidden,
         ) -> list[str]:
-            """Register an on-demand tool."""
+            """Register a deferred tool."""
             handle.add(remote_lookup)
             return handle.list_tools()
 

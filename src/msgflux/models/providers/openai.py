@@ -52,7 +52,7 @@ from msgflux.models.types import (
 )
 from msgflux.models.usage import UsageCodec, default_usage_codec
 from msgflux.runtime.context import get_execution_context
-from msgflux.tools.definitions import ToolDefinitions
+from msgflux.tools.definitions import ToolCatalog
 from msgflux.utils.chat import ChatBlock, response_format_from_msgspec_struct
 from msgflux.utils.console import cprint
 from msgflux.utils.encode import encode_data_to_bytes
@@ -148,6 +148,7 @@ class _BaseOpenAI(BaseModel):
 class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
     """Shared implementation for OpenAI-compatible Chat Completions APIs."""
 
+    supports_hosted_tool_search = False
     default_api_mode = "chat_completions"
     supported_api_modes = ("chat_completions",)
     canonical_history_api_modes = ("responses",)
@@ -609,13 +610,13 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
         self,
         *,
         system_prompt: Optional[str],
-        tool_definitions: Optional[ToolDefinitions],
+        tool_catalog: Optional[ToolCatalog],
     ) -> Dict[str, Any]:
         generation_params = self._build_generation_params(
             [],
             system_prompt,
             None,
-            tool_definitions,
+            tool_catalog,
         )
         generation_params["max_tokens"] = self.warmup_max_tokens
         generation_params.pop("prefilling", None)
@@ -631,11 +632,11 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
         self,
         *,
         system_prompt: Optional[str],
-        tool_definitions: Optional[ToolDefinitions] = None,
+        tool_catalog: Optional[ToolCatalog] = None,
     ):
         params = self._build_warmup_params(
             system_prompt=system_prompt,
-            tool_definitions=tool_definitions,
+            tool_catalog=tool_catalog,
         )
         if self.api_mode == "responses":
             return self.client.responses.create(**params)
@@ -645,11 +646,11 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
         self,
         *,
         system_prompt: Optional[str],
-        tool_definitions: Optional[ToolDefinitions] = None,
+        tool_catalog: Optional[ToolCatalog] = None,
     ):
         params = self._build_warmup_params(
             system_prompt=system_prompt,
-            tool_definitions=tool_definitions,
+            tool_catalog=tool_catalog,
         )
         if self.api_mode == "responses":
             return await self.aclient.responses.create(**params)
@@ -892,6 +893,10 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
                 history_items.append(history_item)
                 continue
 
+            if item_type in {"tool_search_call", "tool_search_output"}:
+                history_items.append(self._responses_native_history_item(item))
+                continue
+
             if item_type != "message":
                 history_items.append(self._serialize_openai_value(item))
                 continue
@@ -1021,6 +1026,20 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
         }
         return history_item
 
+    def _responses_native_history_item(self, item: Any) -> dict[str, Any]:
+        """Retain a provider-native Responses item without claiming portability."""
+        serialized = self._serialize_openai_value(item)
+        if not isinstance(serialized, Mapping):
+            serialized = {}
+        return {
+            "type": serialized.get("type"),
+            "provider_state": {
+                "provider": self.provider,
+                "api_mode": self.api_mode,
+                "data": deepcopy(dict(serialized)),
+            },
+        }
+
     def _check_cache(self, **kwargs):
         if self.enable_cache and self._response_cache:
             cache_key = generate_cache_key(**kwargs)
@@ -1044,13 +1063,13 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
         """
         typed_parser = kwargs.pop("typed_parser", None)
         generation_schema = kwargs.pop("generation_schema", None)
-        tool_definitions = kwargs.pop("tool_definitions", None)
+        tool_catalog = kwargs.pop("tool_catalog", None)
         transport_generation_schema = None
 
         if generation_schema is not None and typed_parser is None:
             if issubclass(generation_schema, ToolFlowControl):
                 response_format = generation_schema.build_provider_response_format(
-                    tool_definitions
+                    tool_catalog
                 )
                 if response_format is not None:
                     transport_generation_schema = {
@@ -1058,7 +1077,7 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
                         "normalize": lambda payload: (
                             generation_schema.normalize_provider_response(
                                 payload,
-                                tool_definitions=tool_definitions,
+                                tool_catalog=tool_catalog,
                             )
                         ),
                     }
@@ -1089,7 +1108,7 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
         """Strip internal generation-only args before raw streaming requests."""
         kwargs.pop("typed_parser", None)
         kwargs.pop("generation_schema", None)
-        kwargs.pop("tool_definitions", None)
+        kwargs.pop("tool_catalog", None)
         return kwargs
 
     def _generate(self, **kwargs: Mapping[str, Any]) -> ModelResponse:
@@ -1564,6 +1583,10 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
                     },
                     content=self._response_value(item, "content", []),
                 )
+            elif item_type in {"tool_search_call", "tool_search_output"}:
+                stream_response.chat_accumulator.add_item(
+                    self._responses_native_history_item(item)
+                )
             return
 
         if event_type in {
@@ -1708,7 +1731,7 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
         messages: Union[str, List[Dict[str, Any]], ChatMessages],
         system_prompt: Optional[str],
         prefilling: Optional[str],
-        tool_definitions: Optional[ToolDefinitions],
+        tool_catalog: Optional[ToolCatalog],
         *,
         logprobs: Optional[bool] = None,
         top_logprobs: Optional[int] = None,
@@ -1720,7 +1743,7 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
                 messages,
                 system_prompt,
                 prefilling,
-                tool_definitions,
+                tool_catalog,
                 logprobs=logprobs,
                 top_logprobs=top_logprobs,
                 extra_body=extra_body,
@@ -1740,7 +1763,7 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
         if isinstance(system_prompt, str):
             messages.insert(0, ChatBlock.system(system_prompt))
 
-        tool_choice = tool_definitions.choice if tool_definitions else None
+        tool_choice = tool_catalog.choice if tool_catalog else None
         if isinstance(tool_choice, str):
             if tool_choice not in ["auto", "required", "none"]:
                 tool_choice = {
@@ -1766,8 +1789,8 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
         if merged_extra_body is not None:
             generation_params["extra_body"] = merged_extra_body
 
-        if tool_definitions and tool_definitions.schemas:
-            generation_params["tools"] = tool_definitions.schemas
+        if tool_catalog and tool_catalog.portable_tools():
+            generation_params["tools"] = tool_catalog.portable_schemas()
             generation_params["tool_choice"] = tool_choice
             generation_params["parallel_tool_calls"] = self.parallel_tool_calls
 
@@ -1778,7 +1801,7 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
         messages: Union[str, List[Dict[str, Any]], ChatMessages],
         system_prompt: Optional[str],
         prefilling: Optional[str],
-        tool_definitions: Optional[ToolDefinitions],
+        tool_catalog: Optional[ToolCatalog],
         *,
         logprobs: Optional[bool] = None,
         top_logprobs: Optional[int] = None,
@@ -1822,29 +1845,26 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
         if merged_extra_body is not None:
             generation_params["extra_body"] = merged_extra_body
 
-        if tool_definitions and tool_definitions.schemas:
-            generation_params["tools"] = self._tools_to_responses(
-                tool_definitions.schemas
-            )
+        if tool_catalog and tool_catalog.tools:
+            generation_params["tools"] = self._tools_to_responses(tool_catalog)
             generation_params["tool_choice"] = self._tool_choice_to_responses(
-                tool_definitions.choice
+                tool_catalog.choice
             )
             generation_params["parallel_tool_calls"] = self.parallel_tool_calls
         return generation_params
 
-    @staticmethod
-    def _tools_to_responses(tools: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        converted = []
-        for tool in deepcopy(tools):
-            function = tool.get("function")
-            if tool.get("type") == "function" and isinstance(function, Mapping):
-                converted_function = {"type": "function", **dict(function)}
-                converted_function.setdefault("parameters", None)
-                converted_function.setdefault("strict", False)
-                converted.append(converted_function)
-            else:
-                converted.append(tool)
-        return converted
+    def _tools_to_responses(self, catalog: ToolCatalog) -> List[Dict[str, Any]]:
+        if self.supports_hosted_tool_search and catalog.has_deferred_tools:
+            return [
+                {"type": "tool_search"},
+                *[
+                    tool.to_responses_tool(
+                        native_deferred=not catalog.is_selected(tool)
+                    )
+                    for tool in catalog.tools
+                ],
+            ]
+        return [tool.to_responses_tool() for tool in catalog.portable_tools()]
 
     @staticmethod
     def _tool_choice_to_responses(tool_choice: Any) -> Any:
@@ -1873,7 +1893,7 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
     ) -> Dict[str, Any]:
         params.pop("provider_tools", None)
         params.pop("prefilling", None)
-        params.pop("tool_definitions", None)
+        params.pop("tool_catalog", None)
         logprobs = params.pop("logprobs", None)
         if logprobs is True and params.get("top_logprobs") is None:
             params["top_logprobs"] = 0
@@ -1951,7 +1971,7 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
         top_logprobs: Optional[int] = None,
         stream: Optional[bool] = False,
         generation_schema: Optional[msgspec.Struct] = None,
-        tool_definitions: Optional[ToolDefinitions] = None,
+        tool_catalog: Optional[ToolCatalog] = None,
         typed_parser: Optional[str] = None,
         extra_body: Optional[Dict[str, Any]] = None,
         **extra_body_kwargs: Any,
@@ -1974,7 +1994,7 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
                 Whether generation should be in streaming mode.
             generation_schema:
                 Schema that defines how the output should be structured.
-            tool_definitions:
+            tool_catalog:
                 Optional container with tool schemas, annotations, and
                 tool-choice metadata. This is the single tool-calling entrypoint
                 for the provider.
@@ -2006,14 +2026,14 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
             messages,
             system_prompt,
             prefilling,
-            None if is_flow_control else tool_definitions,
+            None if is_flow_control else tool_catalog,
             logprobs=logprobs,
             top_logprobs=top_logprobs,
             extra_body=extra_body,
             extra_body_kwargs=extra_body_kwargs,
         )
-        if tool_definitions is not None:
-            generation_params["tool_definitions"] = tool_definitions
+        if tool_catalog is not None:
+            generation_params["tool_catalog"] = tool_catalog
 
         if stream is True:
             self._prepare_stream_kwargs(generation_params)
@@ -2051,7 +2071,7 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
         top_logprobs: Optional[int] = None,
         stream: Optional[bool] = False,
         generation_schema: Optional[msgspec.Struct] = None,
-        tool_definitions: Optional[ToolDefinitions] = None,
+        tool_catalog: Optional[ToolCatalog] = None,
         typed_parser: Optional[str] = None,
         extra_body: Optional[Dict[str, Any]] = None,
         **extra_body_kwargs: Any,
@@ -2074,7 +2094,7 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
                 Whether generation should be in streaming mode.
             generation_schema:
                 Schema that defines how the output should be structured.
-            tool_definitions:
+            tool_catalog:
                 Optional container with tool schemas, annotations, and
                 tool-choice metadata. This is the single tool-calling entrypoint
                 for the provider.
@@ -2106,14 +2126,14 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
             messages,
             system_prompt,
             prefilling,
-            None if is_flow_control else tool_definitions,
+            None if is_flow_control else tool_catalog,
             logprobs=logprobs,
             top_logprobs=top_logprobs,
             extra_body=extra_body,
             extra_body_kwargs=extra_body_kwargs,
         )
-        if tool_definitions is not None:
-            generation_params["tool_definitions"] = tool_definitions
+        if tool_catalog is not None:
+            generation_params["tool_catalog"] = tool_catalog
 
         if stream is True:
             self._prepare_stream_kwargs(generation_params)
@@ -2146,6 +2166,7 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
 class OpenAIChatCompletion(OpenAICompatibleChatCompletion):
     """OpenAI Chat Completions provider."""
 
+    supports_hosted_tool_search = True
     provider = "openai"
     default_api_mode = "responses"
     default_reasoning_codec = OpenAIReasoningCodec()

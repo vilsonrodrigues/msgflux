@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 class AgentTool(ToolBucket):
     """Dispatch a message to one of the configured agents."""
 
-    capture = {"tool_kind": "agent", "on_demand": False}
+    capture = {"tool_kind": "agent", "defer_loading": False}
     task_resume_params = ("name",)
     task_checkpoint_namespace_param = "name"
     name = "agent"
@@ -40,7 +40,7 @@ class AgentTool(ToolBucket):
                     description=self._get_agent_description(agent) or "",
                     annotations={},
                     tool_config={
-                        "on_demand": False,
+                        "defer_loading": False,
                         **dict(getattr(agent, "tool_config", {}) or {}),
                         "tool_kind": "agent",
                     },

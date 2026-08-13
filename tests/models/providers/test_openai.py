@@ -14,7 +14,7 @@ from msgflux.exceptions import AbortRequestedError
 from msgflux.generation.reasoning.react import ReAct
 from msgflux.runtime import AbortSignal
 from msgflux.runtime.context import execution_context
-from msgflux.tools.definitions import ToolDefinitions
+from msgflux.tools.definitions import ToolCatalog, ToolSpec
 
 
 class TestOpenAIProviderImport:
@@ -148,7 +148,7 @@ class TestOpenAIChatCompletion:
             history,
             system_prompt=None,
             prefilling=None,
-            tool_definitions=None,
+            tool_catalog=None,
         )
 
         assert params["input"] == [
@@ -380,7 +380,7 @@ class TestOpenAIChatCompletion:
             ],
         )
         model = OpenAIChatCompletion(model_id="gpt-5", api_mode="responses")
-        tools = ToolDefinitions(
+        tools = ToolCatalog.from_function_schemas(
             schemas=[
                 {
                     "type": "function",
@@ -398,7 +398,7 @@ class TestOpenAIChatCompletion:
         response = model(
             "Check SKU-1842",
             generation_schema=Availability,
-            tool_definitions=tools,
+            tool_catalog=tools,
         )
 
         call_kwargs = mock_client.return_value.responses.create.call_args.kwargs
@@ -418,6 +418,95 @@ class TestOpenAIChatCompletion:
         assert call_kwargs["text"]["format"]["type"] == "json_schema"
         assert "json_schema" not in call_kwargs["text"]["format"]
         assert response.consume() == {"available": True}
+
+    def test_responses_mode_compiles_deferred_tools_for_hosted_search(
+        self, mock_openai_client
+    ):
+        pytest.importorskip("openai")
+
+        from msgflux.models.providers.openai import OpenAIChatCompletion
+
+        model = OpenAIChatCompletion(model_id="gpt-5.4", api_mode="responses")
+        catalog = ToolCatalog(
+            tools=[
+                ToolSpec(
+                    name="lookup_inventory",
+                    description="Look up a SKU.",
+                    parameters={"type": "object", "properties": {}},
+                    defer_loading=True,
+                )
+            ],
+            catalog_id="warehouse_tools",
+        )
+
+        params = model._build_generation_params(
+            messages="Check SKU-1842",
+            system_prompt=None,
+            prefilling=None,
+            tool_catalog=catalog,
+        )
+
+        assert params["tools"] == [
+            {"type": "tool_search"},
+            {
+                "type": "function",
+                "name": "lookup_inventory",
+                "description": "Look up a SKU.",
+                "parameters": {"type": "object", "properties": {}},
+                "strict": False,
+                "defer_loading": True,
+            },
+        ]
+
+    def test_responses_mode_preserves_hosted_tool_search_items(
+        self, mock_openai_client
+    ):
+        pytest.importorskip("openai")
+
+        from msgflux.models.providers.openai import OpenAIChatCompletion
+
+        model = OpenAIChatCompletion(model_id="gpt-5.4", api_mode="responses")
+        search_call = {
+            "type": "tool_search_call",
+            "id": "ts_1",
+            "status": "completed",
+            "arguments": {"query": "inventory"},
+        }
+        search_output = {
+            "type": "tool_search_output",
+            "id": "tso_1",
+            "tool_search_call_id": "ts_1",
+            "tools": [{"type": "function", "name": "lookup_inventory"}],
+        }
+        function_call = {
+            "type": "function_call",
+            "id": "fc_1",
+            "call_id": "call_1",
+            "name": "lookup_inventory",
+            "arguments": '{"sku":"1842"}',
+            "status": "completed",
+        }
+
+        response = model._process_responses_model_output(
+            SimpleNamespace(
+                id="resp_search",
+                status="completed",
+                incomplete_details=None,
+                usage=None,
+                output=[search_call, search_output, function_call],
+            )
+        )
+
+        assert [
+            item["provider_state"]["data"] for item in response.history_items[:2]
+        ] == [search_call, search_output]
+        assert ChatMessages(response.history_items).to_responses_input(
+            provider="openai", api_mode="responses"
+        )[:2] == [
+            search_call,
+            search_output,
+        ]
+        assert response.consume().get_calls()[0][1] == "lookup_inventory"
 
     def test_responses_stream_accumulates_summary_text_and_tool_call(
         self, mock_openai_client
@@ -1061,10 +1150,10 @@ class TestOpenAIChatCompletion:
             model("Hello", top_logprobs=2)
 
     @pytest.mark.asyncio
-    async def test_acall_stream_strips_tool_definitions_before_async_client(
+    async def test_acall_stream_strips_tool_catalog_before_async_client(
         self, mock_openai_client
     ):
-        """Streaming async calls should not pass tool_definitions to the OpenAI SDK."""
+        """Streaming async calls should not pass tool_catalog to the OpenAI SDK."""
         pytest.importorskip("openai")
 
         from msgflux.models.providers.openai import OpenAIChatCompletion
@@ -1083,7 +1172,7 @@ class TestOpenAIChatCompletion:
         await model.acall(
             messages=[{"role": "user", "content": "Check order 123"}],
             stream=True,
-            tool_definitions=ToolDefinitions(
+            tool_catalog=ToolCatalog.from_function_schemas(
                 schemas=[
                     {
                         "type": "function",
@@ -1105,7 +1194,7 @@ class TestOpenAIChatCompletion:
 
         create.assert_awaited_once()
         call_kwargs = create.await_args.kwargs
-        assert "tool_definitions" not in call_kwargs
+        assert "tool_catalog" not in call_kwargs
         assert call_kwargs["stream"] is True
         assert call_kwargs["tools"][0]["function"]["name"] == "get_order_status"
         assert call_kwargs["tool_choice"] == "auto"
@@ -1123,7 +1212,7 @@ class TestOpenAIChatCompletion:
         mock_async_client.return_value.chat.completions.create = AsyncMock(
             side_effect=TypeError(
                 "AsyncCompletions.create() got an unexpected keyword argument "
-                "'tool_definitions'"
+                "'tool_catalog'"
             )
         )
 
@@ -1131,7 +1220,7 @@ class TestOpenAIChatCompletion:
         stream_response = await model.acall(
             messages=[{"role": "user", "content": "Check order 123"}],
             stream=True,
-            tool_definitions=ToolDefinitions(
+            tool_catalog=ToolCatalog.from_function_schemas(
                 schemas=[
                     {
                         "type": "function",
@@ -1153,7 +1242,7 @@ class TestOpenAIChatCompletion:
 
         with pytest.raises(
             TypeError,
-            match="unexpected keyword argument 'tool_definitions'",
+            match="unexpected keyword argument 'tool_catalog'",
         ):
             async for _ in stream_response.consume():
                 pass
@@ -1268,8 +1357,8 @@ class TestOpenAIChatCompletion:
             == "array"
         )
 
-    def test_build_generation_params_uses_tool_definitions(self, mock_openai_client):
-        """Test native tool calling is derived from ToolDefinitions."""
+    def test_build_generation_params_uses_tool_catalog(self, mock_openai_client):
+        """Test native tool calling is derived from ToolCatalog."""
         pytest.importorskip("openai")
 
         from msgflux.models.providers.openai import OpenAIChatCompletion
@@ -1279,7 +1368,7 @@ class TestOpenAIChatCompletion:
             messages=[{"role": "user", "content": "What's the weather?"}],
             system_prompt=None,
             prefilling=None,
-            tool_definitions=ToolDefinitions(
+            tool_catalog=ToolCatalog.from_function_schemas(
                 schemas=[
                     {
                         "type": "function",
@@ -1317,7 +1406,7 @@ class TestOpenAIChatCompletion:
             messages=history,
             system_prompt="You are helpful.",
             prefilling=None,
-            tool_definitions=None,
+            tool_catalog=None,
         )
 
         assert history == [{"role": "user", "content": "Hello"}]
@@ -1544,7 +1633,7 @@ class TestOpenAIChatCompletion:
         kwargs = {
             "typed_parser": None,
             "generation_schema": ReAct,
-            "tool_definitions": ToolDefinitions(
+            "tool_catalog": ToolCatalog.from_function_schemas(
                 schemas=[
                     {
                         "type": "function",
@@ -1614,7 +1703,7 @@ class TestOpenAIChatCompletion:
             {
                 "typed_parser": None,
                 "generation_schema": ReAct,
-                "tool_definitions": ToolDefinitions(
+                "tool_catalog": ToolCatalog.from_function_schemas(
                     schemas=[
                         {
                             "type": "function",
@@ -1716,7 +1805,7 @@ class TestOpenAIChatCompletion:
         kwargs = {
             "typed_parser": None,
             "generation_schema": Output,
-            "tool_definitions": ToolDefinitions(schemas=[]),
+            "tool_catalog": ToolCatalog(tools=[]),
         }
 
         model._prepare_generate_kwargs(kwargs)
@@ -1760,7 +1849,7 @@ class TestOpenAIChatCompletion:
             {
                 "typed_parser": None,
                 "generation_schema": Output,
-                "tool_definitions": ToolDefinitions(schemas=[]),
+                "tool_catalog": ToolCatalog(tools=[]),
             }
         )[2]
 

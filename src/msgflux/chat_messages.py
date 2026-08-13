@@ -538,6 +538,35 @@ class ChatMessages:
             raise TypeError(f"`metadata` must be Mapping, given `{type(metadata)}`")
         self.metadata.update(self._safe_copy(dict(metadata)))
 
+    def get_loaded_tools(self, catalog_id: str) -> set[str]:
+        """Return deferred tools loaded for this thread and catalog."""
+        catalogs = self.metadata.get("tool_catalogs")
+        if not isinstance(catalogs, Mapping):
+            return set()
+        state = catalogs.get(catalog_id)
+        if not isinstance(state, Mapping):
+            return set()
+        loaded = state.get("loaded_tools")
+        if not isinstance(loaded, list):
+            return set()
+        return {name for name in loaded if isinstance(name, str) and name}
+
+    def load_tools(self, catalog_id: str, tool_names: Iterable[str]) -> list[str]:
+        """Mark deferred tools as loaded in this thread's durable state."""
+        names = {name for name in tool_names if isinstance(name, str) and name}
+        if not names:
+            return []
+        catalogs = self.metadata.setdefault("tool_catalogs", {})
+        if not isinstance(catalogs, dict):
+            raise TypeError("`metadata['tool_catalogs']` must be a mapping")
+        state = catalogs.setdefault(catalog_id, {})
+        if not isinstance(state, dict):
+            raise TypeError(f"Tool catalog state for `{catalog_id}` must be a mapping")
+        loaded = self.get_loaded_tools(catalog_id)
+        loaded.update(names)
+        state["loaded_tools"] = sorted(loaded)
+        return sorted(names)
+
     def to_items(self) -> List[dict[str, Any]]:
         return deepcopy(self._items)
 
@@ -723,6 +752,13 @@ class ChatMessages:
                 )
                 if converted_reasoning is not None:
                     result.append(converted_reasoning)
+                continue
+
+            if item_type in {"tool_search_call", "tool_search_output"}:
+                if self._provider_state_matches(item, provider, api_mode):
+                    result.append(
+                        self._provider_state_mapping(item, provider, api_mode)
+                    )
                 continue
 
             if item_type == "function_call":
@@ -1157,6 +1193,8 @@ class ChatMessages:
             "message",
             "function_call",
             "function_call_output",
+            "tool_search_call",
+            "tool_search_output",
         }:
             return [normalized]
 

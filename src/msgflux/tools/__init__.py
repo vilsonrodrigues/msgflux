@@ -6,7 +6,7 @@ ToolFlowControl for managing tool execution flow.
 
 from msgflux.generation.control_flow import ToolFlowControl
 from msgflux.tools.dataclasses import ToolMetadata
-from msgflux.tools.definitions import ToolDefinitions
+from msgflux.tools.definitions import ToolCatalog, ToolSpec
 from msgflux.tools.guidance import BUILTIN_TOOL_USAGE_GUIDANCE, apply_tool_guidance
 from msgflux.tools.handles import ToolLibraryHandle
 from msgflux.tools.types import (
@@ -20,7 +20,8 @@ __all__ = [
     "BUILTIN_TOOL_USAGE_GUIDANCE",
     "Hidden",
     "ToolBackground",
-    "ToolDefinitions",
+    "ToolCatalog",
+    "ToolSpec",
     "ToolBucket",
     "ToolFlowControl",
     "ToolLibraryHandle",

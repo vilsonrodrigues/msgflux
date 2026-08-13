@@ -63,7 +63,7 @@ from msgflux.runtime.context import (
 )
 from msgflux.runtime.skills import AgentSkillManager, SkillsConfig
 from msgflux.tools.builtin import ActivateSkillTool, SkillSearchTool
-from msgflux.tools.definitions import ToolDefinitions
+from msgflux.tools.definitions import ToolCatalog, ToolSpec
 from msgflux.utils.chat import ChatBlock, response_format_from_msgspec_struct
 from msgflux.utils.common import has_format_placeholder, is_jinja_template
 from msgflux.utils.console import cprint
@@ -784,7 +784,7 @@ class Agent(Module, metaclass=AutoParams):
         )
         return dotdict(
             system_prompt=model_execution_params.system_prompt,
-            tool_definitions=model_execution_params.tool_definitions,
+            tool_catalog=model_execution_params.tool_catalog,
             **(
                 {"model_preference": model_execution_params.model_preference}
                 if model_preference
@@ -808,38 +808,31 @@ class Agent(Module, metaclass=AutoParams):
             drain_notifications=drain_notifications,
         )
 
-        tool_schemas = self.tool_library.get_tool_json_schemas()
+        tool_catalog = self.tool_library.get_tool_catalog(model_messages)
+        tool_specs = tool_catalog.tools
 
         tool_choice = self.config.get("tool_choice")
 
-        if tool_filter is not None and tool_schemas:
-            tool_schemas = self._apply_tool_filter(tool_schemas, tool_filter)
+        if tool_filter is not None and tool_specs:
+            tool_specs = self._apply_tool_filter(tool_specs, tool_filter)
 
-        tool_choice = self._resolve_tool_choice(tool_choice, tool_schemas)
-        tool_names = {
-            schema["function"]["name"]
-            for schema in tool_schemas or []
-            if schema.get("function", {}).get("name")
-        }
+        tool_catalog = ToolCatalog(
+            tools=tool_specs,
+            choice=self._resolve_tool_choice(tool_choice, tool_specs),
+            catalog_id=tool_catalog.catalog_id,
+            search_tool=tool_catalog.search_tool,
+        )
+        portable_tools = tool_catalog.portable_tools()
+        tool_names = {tool.name for tool in portable_tools}
         system_prompt = self.get_system_prompt(vars, tool_names=tool_names)
 
-        if not tool_schemas:
-            tool_schemas = None
+        tool_catalog = tool_catalog if portable_tools or tool_specs else None
 
-        tool_definitions = None
-
-        if tool_schemas is not None:
-            tool_definitions = ToolDefinitions(
-                schemas=tool_schemas,
-                annotations=self.tool_library.get_tool_annotations() or None,
-                choice=tool_choice,
-            )
-
-        if is_subclass_of(self.generation_schema, ToolFlowControl) and tool_schemas:
+        if is_subclass_of(self.generation_schema, ToolFlowControl) and portable_tools:
             tools_template = self.generation_schema.tools_template
             inputs = {
-                "tool_schemas": tool_definitions.schemas,
-                "tool_choice": tool_definitions.choice,
+                "tool_schemas": tool_catalog.portable_schemas(),
+                "tool_choice": tool_catalog.choice,
             }
             flow_control_tools = self._format_template(inputs, tools_template)
             if system_prompt:
@@ -852,7 +845,7 @@ class Agent(Module, metaclass=AutoParams):
             system_prompt=system_prompt or None,
             prefilling=prefilling,
             stream=self.config.get("stream", False),
-            tool_definitions=tool_definitions,
+            tool_catalog=tool_catalog,
             generation_schema=self.generation_schema,
             typed_parser=self.typed_parser,
         )
@@ -2114,10 +2107,10 @@ class Agent(Module, metaclass=AutoParams):
 
     def _apply_tool_filter(
         self,
-        tool_schemas: List[Dict[str, Any]],
+        tool_specs: List[ToolSpec],
         tool_filter: ToolFilter,
-    ) -> List[Dict[str, Any]]:
-        """Return only the tool schemas allowed by the runtime filter."""
+    ) -> List[ToolSpec]:
+        """Return only the logical tools allowed by the runtime filter."""
         if not isinstance(tool_filter, dict):
             raise ValueError(
                 f"`tool_filter` must be a dict, given `{type(tool_filter)}`"
@@ -2145,22 +2138,14 @@ class Agent(Module, metaclass=AutoParams):
             allowed_tools = self._normalize_tool_filter_values(
                 tool_filter["allow"], key="allow"
             )
-            return [
-                schema
-                for schema in tool_schemas
-                if schema.get("function", {}).get("name") in allowed_tools
-            ]
+            return [tool for tool in tool_specs if tool.name in allowed_tools]
 
         blocked_tools = self._normalize_tool_filter_values(
             tool_filter["block"], key="block"
         )
         if "*" in blocked_tools:
             return []
-        return [
-            schema
-            for schema in tool_schemas
-            if schema.get("function", {}).get("name") not in blocked_tools
-        ]
+        return [tool for tool in tool_specs if tool.name not in blocked_tools]
 
     def _normalize_tool_filter_values(
         self,
@@ -2191,17 +2176,13 @@ class Agent(Module, metaclass=AutoParams):
     def _resolve_tool_choice(
         self,
         tool_choice: Optional[Union[str, Dict[str, Any]]],
-        tool_schemas: Optional[List[Dict[str, Any]]],
+        tool_specs: Optional[List[ToolSpec]],
     ) -> Optional[Union[str, Dict[str, Any]]]:
         """Keep tool_choice aligned with the filtered tool set."""
-        if not tool_schemas:
+        if not tool_specs:
             return None
 
-        tool_names = {
-            schema.get("function", {}).get("name")
-            for schema in tool_schemas
-            if schema.get("function", {}).get("name")
-        }
+        tool_names = {tool.name for tool in tool_specs}
         adjusted_tool_choice = tool_choice
 
         if isinstance(tool_choice, dict):
@@ -2397,6 +2378,7 @@ class Agent(Module, metaclass=AutoParams):
             effective_checkpoint_store is not None
             or isinstance(messages, ChatMessages)
             or scope is not None
+            or self.tool_library.get_tool_catalog().has_deferred_tools
         )
         if should_use_chat_messages:
             messages = self._coerce_chat_messages(messages)
@@ -2535,7 +2517,15 @@ class Agent(Module, metaclass=AutoParams):
         if not isinstance(items, list):
             return set()
         trajectory_items = [
-            item for item in items if item.get("type") in {"reasoning", "function_call"}
+            item
+            for item in items
+            if item.get("type")
+            in {
+                "reasoning",
+                "tool_search_call",
+                "tool_search_output",
+                "function_call",
+            }
         ]
         messages.extend(trajectory_items)
         return {item["type"] for item in trajectory_items}

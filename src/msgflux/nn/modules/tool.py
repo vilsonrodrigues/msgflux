@@ -16,6 +16,7 @@ from typing import (
 
 import msgflux.nn.functional as F
 from msgflux.auto import AutoParams
+from msgflux.chat_messages import ChatMessages
 from msgflux.core.dotdict import dotdict
 from msgflux.exceptions import TaskError, TaskInterruptRequestedError
 from msgflux.logger import logger
@@ -44,6 +45,7 @@ from msgflux.tools.builtin.task_tool import (
 )
 from msgflux.tools.builtin.tool_search import ToolSearchTool
 from msgflux.tools.dataclasses import ToolMetadata
+from msgflux.tools.definitions import ToolCatalog, ToolSpec
 from msgflux.tools.handles import ToolLibraryHandle
 from msgflux.tools.helpers import (
     RUNTIME_BACKGROUND_PARAM,
@@ -273,7 +275,7 @@ class LocalTool(Tool):
 def _inspect_tool_metadata(impl: Callable) -> ToolMetadata:  # noqa: C901
     """Extract normalized metadata from a callable tool."""
     tool_config = dotdict(deepcopy(getattr(impl, "tool_config", dotdict())))
-    tool_config.setdefault("on_demand", False)
+    tool_config.setdefault("defer_loading", False)
 
     name_overridden = tool_config.pop("name_overridden", None)
     configured_display_name = tool_config.get("display_name")
@@ -572,7 +574,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
             metadata = _inspect_tool_metadata(tool)
 
         metadata.tool_config = dotdict(metadata.tool_config)
-        metadata.tool_config.setdefault("on_demand", False)
+        metadata.tool_config.setdefault("defer_loading", False)
 
         if metadata.name in self.library.keys():
             raise ValueError(
@@ -584,9 +586,9 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 metadata.tool_config,
             )
 
-        # On-demand tools are held by the search bucket until explicit activation.
+        # Deferred tools are held by the search bucket. Loading is thread-local.
         if (
-            metadata.tool_config.get("on_demand", False)
+            metadata.tool_config.get("defer_loading", False)
             and ToolSearchTool.name not in self.library
         ):
             self.add(ToolSearchTool())
@@ -727,6 +729,9 @@ class ToolLibrary(Module, metaclass=AutoParams):
         bucket = getattr(bucket_tool, "impl", None)
         if not isinstance(bucket, ToolBucket):
             raise ValueError(f"The bucket tool `{bucket_name}` cannot capture tools.")
+
+        if not isinstance(metadata.source_tool, Tool):
+            metadata.source_tool = _convert_metadata_to_local_tool(metadata)
 
         # Let the bucket validate, retain, and refresh its captured state.
         bucket.add(metadata)
@@ -892,6 +897,98 @@ class ToolLibrary(Module, metaclass=AutoParams):
         """Returns a list of JSON schemas from local and MCP tools."""
         return [tool.get_json_schema() for tool in self.library.values()]
 
+    def get_tool_catalog(self, messages: ChatMessages | None = None) -> ToolCatalog:
+        """Build the logical tool surface for one conversation thread."""
+        loaded = (
+            messages.get_loaded_tools(self.name)
+            if isinstance(messages, ChatMessages)
+            else set()
+        )
+        tools: list[ToolSpec] = []
+        search_tool: ToolSpec | None = None
+
+        for tool_name, tool in self.library.items():
+            if tool_name == ToolSearchTool.name:
+                search_tool = ToolSpec.from_function_schema(
+                    tool.get_json_schema(),
+                    annotations=self._public_annotations(tool),
+                )
+                bucket = getattr(tool, "impl", None)
+                if isinstance(bucket, ToolBucket):
+                    for metadata in bucket.tools.values():
+                        deferred_tool = self._tool_from_metadata(metadata)
+                        tools.append(
+                            ToolSpec.from_function_schema(
+                                deferred_tool.get_json_schema(),
+                                annotations=self._public_annotations(deferred_tool),
+                                defer_loading=True,
+                                loaded=metadata.name in loaded,
+                            )
+                        )
+                continue
+            tools.append(
+                ToolSpec.from_function_schema(
+                    tool.get_json_schema(),
+                    annotations=self._public_annotations(tool),
+                )
+            )
+
+        return ToolCatalog(
+            tools=tools,
+            catalog_id=self.name,
+            search_tool=search_tool,
+        )
+
+    @staticmethod
+    def _public_annotations(tool: Tool) -> Dict[str, Any]:
+        return {
+            name: hint
+            for name, hint in tool.get_module_annotations().items()
+            if name != "return"
+        }
+
+    @staticmethod
+    def _tool_from_metadata(metadata: ToolMetadata) -> Tool:
+        if isinstance(metadata.source_tool, Tool):
+            return metadata.source_tool
+        return _convert_metadata_to_local_tool(metadata)
+
+    def _resolve_tool(self, tool_name: str) -> tuple[Tool, Mapping[str, Any]] | None:
+        if tool_name in self.library:
+            return self.library[tool_name], self.tool_configs.get(tool_name, {})
+        bucket_name = ToolBucket.find_capturing_bucket(
+            tool_name,
+            self.library,
+            self.tool_configs,
+        )
+        if bucket_name is None:
+            return None
+        bucket = getattr(self.library[bucket_name], "impl", None)
+        if not isinstance(bucket, ToolBucket):
+            return None
+        metadata = bucket.tools.get(tool_name)
+        if metadata is None:
+            return None
+        return self._tool_from_metadata(metadata), metadata.tool_config
+
+    def load_tools(
+        self,
+        messages: ChatMessages,
+        tool_names: List[str],
+    ) -> List[str]:
+        if not isinstance(messages, ChatMessages):
+            raise TypeError("Deferred tool loading requires `ChatMessages`.")
+        deferred = {
+            tool.name
+            for tool in self.get_tool_catalog(messages).tools
+            if tool.defer_loading
+        }
+        unknown = set(tool_names) - deferred
+        if unknown:
+            names = ", ".join(sorted(unknown))
+            raise ValueError(f"Deferred tools are not available: {names}")
+        return messages.load_tools(self.name, tool_names)
+
     def get_tool_annotations(self) -> Dict[str, Dict[str, Any]]:
         """Return local tool annotations keyed by tool name."""
         annotations = {}
@@ -993,13 +1090,14 @@ class ToolLibrary(Module, metaclass=AutoParams):
         *,
         activity_recorder: Any,
         tool_name: str,
+        tool: Tool,
+        config: Mapping[str, Any],
         parameters: Mapping[str, Any] | None,
     ) -> None:
-        config = self.tool_configs.get(tool_name, {})
         if (
             activity_recorder is None
             or is_reserved_tool_kind(config)
-            or ToolLibraryOperator.is_operator_tool(self.library.get(tool_name))
+            or ToolLibraryOperator.is_operator_tool(tool)
         ):
             return
         activity_recorder.tool_call(tool_name, parameters)
@@ -1029,6 +1127,8 @@ class ToolLibrary(Module, metaclass=AutoParams):
         self._record_tool_activity(
             activity_recorder=activity_recorder,
             tool_name=tool_name,
+            tool=tool,
+            config=config,
             parameters=response_params,
         )
         return call_params, response_params
@@ -1060,7 +1160,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 Structured object containing all tool call results.
         """
         if messages is None:
-            messages = []
+            messages = ChatMessages()
 
         if vars is None:
             vars = {}
@@ -1072,7 +1172,8 @@ class ToolLibrary(Module, metaclass=AutoParams):
         return_directly = True if tool_callings else False
 
         for tool_id, tool_name, tool_params in tool_callings:
-            if tool_name not in self.library:
+            resolved = self._resolve_tool(tool_name)
+            if resolved is None:
                 tool_calls.append(
                     ToolCall(
                         id=tool_id,
@@ -1084,9 +1185,11 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 return_directly = False
                 continue
 
-            # Get tool
-            tool = self.library[tool_name]
-            config = self.tool_configs.get(tool_name, {})
+            tool, config = resolved
+            if config.get("defer_loading", False) and isinstance(
+                messages, ChatMessages
+            ):
+                messages.load_tools(self.name, [tool_name])
             call_params, response_params = self._prepare_tool_kwargs(
                 tool=tool,
                 tool_name=tool_name,
@@ -1201,7 +1304,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 Structured object containing all tool call results.
         """
         if messages is None:
-            messages = []
+            messages = ChatMessages()
 
         if vars is None:
             vars = {}
@@ -1213,7 +1316,8 @@ class ToolLibrary(Module, metaclass=AutoParams):
         return_directly = True if tool_callings else False
 
         for tool_id, tool_name, tool_params in tool_callings:
-            if tool_name not in self.library:
+            resolved = self._resolve_tool(tool_name)
+            if resolved is None:
                 tool_calls.append(
                     ToolCall(
                         id=tool_id,
@@ -1225,9 +1329,11 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 return_directly = False
                 continue
 
-            # Get tool
-            tool = self.library[tool_name]
-            config = self.tool_configs.get(tool_name, {})
+            tool, config = resolved
+            if config.get("defer_loading", False) and isinstance(
+                messages, ChatMessages
+            ):
+                messages.load_tools(self.name, [tool_name])
             call_params, response_params = self._prepare_tool_kwargs(
                 tool=tool,
                 tool_name=tool_name,

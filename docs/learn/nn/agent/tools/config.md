@@ -2,6 +2,24 @@
 
 The `@mf.tool_config` decorator adds special behaviors to tools.
 
+## defer_loading
+
+Set `defer_loading=True` for tools that should remain searchable without
+occupying the model's initial callable surface. Loading is stored per thread in
+`ChatMessages`, so concurrent conversations sharing an agent do not change one
+another's active tools. See [Tool Search](tool-search.md) for the hosted OpenAI
+Responses path and the portable fallback.
+
+```python
+import msgflux as mf
+
+
+@mf.tool_config(defer_loading=True)
+def search_archive(query: str) -> str:
+    """Search the long-term archive."""
+    return query
+```
+
 ## return_direct
 
 When `return_direct=True`, the tool result is returned directly as the final response instead of going back to the model.
@@ -649,7 +667,7 @@ class CommerceTool(ToolBucket):
     """Group commerce operations."""
 
     name = "commerce"
-    capture = {"tool_kind": "catalog|orders", "on_demand": False}
+    capture = {"tool_kind": "catalog|orders", "defer_loading": False}
     annotations = {"return": str}
 
     def __call__(self) -> str:

@@ -2,6 +2,7 @@ from unittest.mock import Mock
 
 import msgflux as mf
 import pytest
+from msgflux.chat_messages import ChatMessages
 from msgflux.data.stores import InMemoryCheckpointStore
 from msgflux.models.response import ModelResponse
 from msgflux.nn import Agent
@@ -160,9 +161,9 @@ def test_agent_tool_rejects_background_agent_on_initialization():
         AgentTool([reviewer])
 
 
-def test_agent_tool_rejects_on_demand_agent_on_initialization():
+def test_agent_tool_rejects_deferred_agent_on_initialization():
     reviewer = Agent(name="reviewer", model=_mock_model("reviewed"))
-    reviewer.tool_config = {"on_demand": True}
+    reviewer.tool_config = {"defer_loading": True}
 
     with pytest.raises(ValueError, match="does not match this bucket's capture rule"):
         AgentTool([reviewer])
@@ -319,12 +320,13 @@ def test_agent_tool_rejects_unknown_agent_name():
     assert "reviewer" in response.tool_calls[0].error
 
 
-def test_agent_tool_captures_on_demand_agents_after_tool_search():
-    reviewer = mf.tool_config(on_demand=True)(
+def test_agent_tool_captures_deferred_agents_after_tool_search():
+    reviewer = mf.tool_config(defer_loading=True)(
         Agent(name="reviewer", model=_mock_model("reviewed"))
     )
     reviewer.tool_config.usage_guidance = "Use for code review."
     library = ToolLibrary(name="lib", tools=[AgentTool(), reviewer])
+    messages = ChatMessages(thread_id="review-thread")
 
     before_search = library(
         [("call_1", "agent", {"name": "reviewer", "message": "Go"})]
@@ -341,24 +343,28 @@ def test_agent_tool_captures_on_demand_agents_after_tool_search():
                     "tool_search",
                     {"select": ["reviewer"], "description": True},
                 )
-            ]
+            ],
+            messages=messages,
         )
         .tool_calls[0]
         .result
     )
-    schema_names_after = [
-        schema["function"]["name"] for schema in library.get_tool_json_schemas()
+    visible_after = [
+        tool.name for tool in library.get_tool_catalog(messages).portable_tools()
     ]
-    response = library([("call_3", "agent", {"name": "reviewer", "message": "Go"})])
+    response = library(
+        [("call_3", "reviewer", {"message": "Go"})],
+        messages=messages,
+    )
 
     assert before_search.tool_calls[0].result is None
     assert "Agent `reviewer` not found" in before_search.tool_calls[0].error
     assert schema_names_before == ["agent", "tool_search"]
     assert search["loaded"] == ["reviewer"]
     assert search["descriptions"][0]["name"] == "reviewer"
-    assert schema_names_after == ["agent"]
+    assert visible_after == ["agent", "reviewer"]
     assert response.tool_calls[0].result == "reviewed"
-    assert "reviewer: Use for code review." in library.library["agent"].usage_guidance
+    assert "reviewer" not in library.library
 
 
 def test_agent_tool_background_run_uses_task_id_as_child_run_id():

@@ -59,7 +59,7 @@ uses:
 
 ```python
 class AgentTool(ToolBucket):
-    capture = {"tool_kind": "agent", "on_demand": False}
+    capture = {"tool_kind": "agent", "defer_loading": False}
 ```
 
 `ToolBucket` supplies `tool_kind="bucket"`; the library stores that value in
@@ -88,7 +88,7 @@ The generic guidance for `agent` is opt-in through
 
 `capture` can match any tool configuration field. `capture["tool_kind"]` can
 also group multiple kinds with `|`, for example
-`capture = {"tool_kind": "research|review", "on_demand": False}`. Overlapping
+`capture = {"tool_kind": "research|review", "defer_loading": False}`. Overlapping
 captures are rejected, and the base `add()` method rejects duplicate captured
 names and calls the bucket's `refresh()` hook so `AgentTool` can update its
 description and usage guidance.

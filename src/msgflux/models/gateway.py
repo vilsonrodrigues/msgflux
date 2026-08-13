@@ -6,7 +6,7 @@ from msgflux.logger import logger
 from msgflux.models.base import BaseModel
 from msgflux.models.model import Model
 from msgflux.models.response import ModelResponse, ModelStreamResponse
-from msgflux.tools.definitions import ToolDefinitions
+from msgflux.tools.definitions import ToolCatalog
 
 
 class ModelGateway:
@@ -505,7 +505,7 @@ class ModelGateway:
         self,
         *,
         system_prompt: Optional[str],
-        tool_definitions: Optional[ToolDefinitions] = None,
+        tool_catalog: Optional[ToolCatalog] = None,
         model_preference: Optional[str] = None,
     ) -> Any:
         """Warm the first available deployment that supports prompt warmup."""
@@ -513,14 +513,14 @@ class ModelGateway:
             "warmup_system_prompt",
             model_preference=model_preference,
             system_prompt=system_prompt,
-            tool_definitions=tool_definitions,
+            tool_catalog=tool_catalog,
         )
 
     async def awarmup_system_prompt(
         self,
         *,
         system_prompt: Optional[str],
-        tool_definitions: Optional[ToolDefinitions] = None,
+        tool_catalog: Optional[ToolCatalog] = None,
         model_preference: Optional[str] = None,
     ) -> Any:
         """Async prompt warmup for the first available deployment."""
@@ -528,7 +528,7 @@ class ModelGateway:
             "awarmup_system_prompt",
             model_preference=model_preference,
             system_prompt=system_prompt,
-            tool_definitions=tool_definitions,
+            tool_catalog=tool_catalog,
         )
 
     def serialize(self) -> Dict[str, Any]:

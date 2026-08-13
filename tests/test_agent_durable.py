@@ -272,13 +272,32 @@ def test_agent_preserves_responses_function_call_without_duplicate():
     tool_response = _tool_call_response()
     tool_response.history_items = [
         {
+            "type": "tool_search_call",
+            "provider_state": {
+                "provider": "openai",
+                "api_mode": "responses",
+                "data": {"type": "tool_search_call", "id": "ts_lookup"},
+            },
+        },
+        {
+            "type": "tool_search_output",
+            "provider_state": {
+                "provider": "openai",
+                "api_mode": "responses",
+                "data": {
+                    "type": "tool_search_output",
+                    "tool_search_call_id": "ts_lookup",
+                },
+            },
+        },
+        {
             "type": "function_call",
             "id": "fc_lookup",
             "status": "completed",
             "call_id": "call_lookup",
             "name": "lookup",
             "arguments": '{"query":"status"}',
-        }
+        },
     ]
     agent.generator.forward = Mock(
         side_effect=[tool_response, _text_response("All systems operational.")]
@@ -297,10 +316,16 @@ def test_agent_preserves_responses_function_call_without_duplicate():
     restored = ChatMessages()
     restored._hydrate_state(state["messages"])
     calls = [item for item in restored if item.get("type") == "function_call"]
+    searches = [
+        item
+        for item in restored
+        if item.get("type") in {"tool_search_call", "tool_search_output"}
+    ]
     outputs = [item for item in restored if item.get("type") == "function_call_output"]
 
     assert result == "All systems operational."
-    assert calls == [tool_response.history_items[0]]
+    assert searches == tool_response.history_items[:2]
+    assert calls == [tool_response.history_items[2]]
     assert len(outputs) == 1
     assert outputs[0]["call_id"] == "call_lookup"
 

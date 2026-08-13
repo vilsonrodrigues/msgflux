@@ -824,13 +824,19 @@ Generate structured data conforming to a schema:
 
 Models can suggest calling functions (tools) to gather information:
 
+`ToolCatalog` is the provider-neutral contract. It stores logical `ToolSpec`
+objects rather than a provider's wire schemas. The
+`from_function_schemas(...)` constructor is a conversion boundary for callers
+that already have OpenAI-style function definitions; each provider compiles the
+catalog to its own request format internally.
+
 ???+ example
 
     === "Defining Tools"
 
         ```python
         import msgflux as mf
-        from msgflux.tools import ToolDefinitions
+        from msgflux.tools import ToolCatalog
 
         # Define tool schema
         tools = [{
@@ -857,13 +863,13 @@ Models can suggest calling functions (tools) to gather information:
             }
         }]
 
-        tool_definitions = ToolDefinitions(schemas=tools)
+        tool_catalog = ToolCatalog.from_function_schemas(schemas=tools)
 
         model = mf.Model.chat_completion("openai/gpt-4.1-mini")
 
         response = model(
             messages=[{"role": "user", "content": "What's the weather in Paris?"}],
-            tool_definitions=tool_definitions,
+            tool_catalog=tool_catalog,
         )
 
         # Get tool calls
@@ -881,26 +887,32 @@ Models can suggest calling functions (tools) to gather information:
 
         ```python
         import msgflux as mf
-        from msgflux.tools import ToolDefinitions
+        from msgflux.tools import ToolCatalog
 
         model = mf.Model.chat_completion("openai/gpt-4.1-mini")
 
         # Auto - model decides
         response = model(
             messages=[{"role": "user", "content": "What's the weather?"}],
-            tool_definitions=ToolDefinitions(schemas=tools, choice="auto"),
+            tool_catalog=ToolCatalog.from_function_schemas(
+                schemas=tools, choice="auto"
+            ),
         )
 
         # Required - must call at least one tool
         response = model(
             messages=[{"role": "user", "content": "What's the weather?"}],
-            tool_definitions=ToolDefinitions(schemas=tools, choice="required"),
+            tool_catalog=ToolCatalog.from_function_schemas(
+                schemas=tools, choice="required"
+            ),
         )
 
         # Specific function - must call this exact function
         response = model(
             messages=[{"role": "user", "content": "Paris weather"}],
-            tool_definitions=ToolDefinitions(schemas=tools, choice="get_weather"),
+            tool_catalog=ToolCatalog.from_function_schemas(
+                schemas=tools, choice="get_weather"
+            ),
         )
         ```
 
@@ -908,7 +920,7 @@ Models can suggest calling functions (tools) to gather information:
 
         ```python
         import msgflux as mf
-        from msgflux.tools import ToolDefinitions
+        from msgflux.tools import ToolCatalog
 
         def get_weather(location, unit="celsius"):
             """Simulate weather API call."""
@@ -930,14 +942,14 @@ Models can suggest calling functions (tools) to gather information:
             }
         }]
 
-        tool_definitions = ToolDefinitions(schemas=tools)
+        tool_catalog = ToolCatalog.from_function_schemas(schemas=tools)
 
         model = mf.Model.chat_completion("openai/gpt-4.1-mini")
 
         # Initial request
         messages = [{"role": "user", "content": "What's the weather in Paris?"}]
 
-        response = model(messages=messages, tool_definitions=tool_definitions)
+        response = model(messages=messages, tool_catalog=tool_catalog)
         tool_call_agg = response.consume()
 
         # Execute tool calls
@@ -968,13 +980,13 @@ Models can suggest calling functions (tools) to gather information:
 
         ```python
         import msgflux as mf
-        from msgflux.tools import ToolDefinitions
+        from msgflux.tools import ToolCatalog
 
         model = mf.Model.chat_completion("openai/gpt-4.1-mini")
 
         response = model(
             messages=[{"role": "user", "content": "What's the weather in Tokyo?"}],
-            tool_definitions=ToolDefinitions(schemas=tools),
+            tool_catalog=ToolCatalog.from_function_schemas(schemas=tools),
             stream=True
         )
 
@@ -1679,7 +1691,7 @@ for the three distinct contracts.
 
     ```python
     import msgflux as mf
-    from msgflux.tools import ToolDefinitions
+    from msgflux.tools import ToolCatalog
 
     tools = [{
         "type": "function",
@@ -1705,7 +1717,7 @@ for the three distinct contracts.
 
     response = model(
         messages=[{"role": "user", "content": "What is (14 + 28) × 3 − 7?"}],
-        tool_definitions=ToolDefinitions(schemas=tools),
+        tool_catalog=ToolCatalog.from_function_schemas(schemas=tools),
     )
 
     tool_call_agg = response.consume()

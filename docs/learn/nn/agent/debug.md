@@ -69,7 +69,7 @@ msgFlux provides several inspection mechanisms to help you debug and understand 
             "system_prompt": None,
             "prefilling": None,
             "stream": False,
-            "tool_definitions": None,
+            "tool_catalog": None,
             "generation_schema": None,
             "typed_parser": None
         }

@@ -29,7 +29,7 @@ Upstream code thinks in terms such as:
 - `typed_parser`
 - `ToolFlowControl`
 - `prefilling`
-- `tool_definitions`
+- `tool_catalog`
 
 The wire API expects either:
 
@@ -84,7 +84,7 @@ This method dispatches to the envelope builder selected by `api_mode`:
 - converts canonical `ChatMessages` inside the Model
 - injects `system_prompt`
 - keeps `prefilling`
-- expands `tool_definitions` into native `tools` and `tool_choice` when present
+- expands `tool_catalog` into native `tools` and `tool_choice` when present
 
 Chat Completions produces `messages`. Responses produces `input`, flattens
 function definitions, and converts the remaining frontend parameters later in
@@ -101,7 +101,7 @@ That includes:
 
 - `typed_parser`
 - canonical `generation_schema`
-- flow-control metadata carried through `ToolDefinitions`
+- flow-control metadata carried through `ToolCatalog`
 - the OpenAI `response_format`, later mapped to `text.format` for Responses
 - transport normalization metadata
 

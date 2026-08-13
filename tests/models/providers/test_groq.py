@@ -40,7 +40,7 @@ def test_chat_completions_extracts_but_does_not_replay_reasoning(
         messages,
         system_prompt=None,
         prefilling=None,
-        tool_definitions=None,
+        tool_catalog=None,
     )
 
     assert params["messages"] == [

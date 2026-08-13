@@ -6,6 +6,7 @@ from msgflux.runtime.agent_inbox import ToolNotificationHandle
 from msgflux.runtime.context import execution_context, get_execution_context
 
 if TYPE_CHECKING:
+    from msgflux.chat_messages import ChatMessages
     from msgflux.nn.modules.tool import ToolLibrary
     from msgflux.runtime.agent_inbox import AgentInbox
 
@@ -46,6 +47,13 @@ class ToolLibraryHandle:
     def remove(self, tool_name: str) -> str:
         self._library.remove(tool_name)
         return tool_name
+
+    def load_tools(
+        self,
+        messages: ChatMessages,
+        tool_names: List[str],
+    ) -> List[str]:
+        return self._library.load_tools(messages, tool_names)
 
     def get_agent_inbox(self) -> AgentInbox:
         if self._agent_inbox is not None:

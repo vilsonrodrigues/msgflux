@@ -211,7 +211,7 @@ class OllamaChatCompletion(_BaseOllama, OpenAICompatibleChatCompletion):
 
     def _adapt_native_params(self, params: Dict[str, Any]) -> Dict[str, Any]:
         params.pop("provider_tools", None)
-        params.pop("tool_definitions", None)
+        params.pop("tool_catalog", None)
         params.pop("prefilling", None)
         params.pop("stream_options", None)
         params.pop("parallel_tool_calls", None)
@@ -380,25 +380,21 @@ class OllamaChatCompletion(_BaseOllama, OpenAICompatibleChatCompletion):
         self._raise_if_aborted()
         return self._native_to_completion(response.json(), stream=False)
 
-    def warmup_system_prompt(self, *, system_prompt, tool_definitions=None):
+    def warmup_system_prompt(self, *, system_prompt, tool_catalog=None):
         if self.api_mode == "chat_completions":
             return super().warmup_system_prompt(
-                system_prompt=system_prompt, tool_definitions=tool_definitions
+                system_prompt=system_prompt, tool_catalog=tool_catalog
             )
-        params = self._build_generation_params(
-            [], system_prompt, None, tool_definitions
-        )
+        params = self._build_generation_params([], system_prompt, None, tool_catalog)
         params["max_tokens"] = self.warmup_max_tokens
         return self._execute_model(**params)
 
-    async def awarmup_system_prompt(self, *, system_prompt, tool_definitions=None):
+    async def awarmup_system_prompt(self, *, system_prompt, tool_catalog=None):
         if self.api_mode == "chat_completions":
             return await super().awarmup_system_prompt(
-                system_prompt=system_prompt, tool_definitions=tool_definitions
+                system_prompt=system_prompt, tool_catalog=tool_catalog
             )
-        params = self._build_generation_params(
-            [], system_prompt, None, tool_definitions
-        )
+        params = self._build_generation_params([], system_prompt, None, tool_catalog)
         params["max_tokens"] = self.warmup_max_tokens
         return await self._aexecute_model(**params)
 
