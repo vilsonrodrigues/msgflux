@@ -314,6 +314,47 @@ class TestOpenAIChatCompletion:
                 **{parameter: value},
             )
 
+    @pytest.mark.parametrize("store", [False, True])
+    def test_responses_mode_forwards_explicit_store_preference(
+        self, mock_openai_client, store
+    ):
+        pytest.importorskip("openai")
+
+        from msgflux.models.providers.openai import OpenAIChatCompletion
+
+        model = OpenAIChatCompletion(
+            model_id="gpt-5",
+            api_mode="responses",
+            store=store,
+        )
+
+        params = model._adapt_responses_params(
+            {**model.sampling_run_params, "model": model.model_id, "input": []}
+        )
+
+        assert params["store"] is store
+
+    def test_responses_mode_omits_store_when_not_configured(self, mock_openai_client):
+        pytest.importorskip("openai")
+
+        from msgflux.models.providers.openai import OpenAIChatCompletion
+
+        model = OpenAIChatCompletion(model_id="gpt-5", api_mode="responses")
+
+        params = model._adapt_responses_params(
+            {**model.sampling_run_params, "model": model.model_id, "input": []}
+        )
+
+        assert "store" not in params
+
+    def test_store_rejects_non_boolean_value(self, mock_openai_client):
+        pytest.importorskip("openai")
+
+        from msgflux.models.providers.openai import OpenAIChatCompletion
+
+        with pytest.raises(TypeError, match="store"):
+            OpenAIChatCompletion(model_id="gpt-5", store="false")
+
     def test_responses_mode_converts_tools_and_structured_output(
         self, mock_openai_client
     ):

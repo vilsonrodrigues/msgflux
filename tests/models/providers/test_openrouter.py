@@ -70,6 +70,52 @@ class TestOpenRouterChatCompletion:
         assert params["tool_choice"] == "none"
         assert params["extra_body"] == {}
 
+    @pytest.mark.parametrize(
+        ("store", "zdr"),
+        [(False, True), (True, False)],
+    )
+    def test_store_maps_to_openrouter_zdr(self, mock_openai_client, store, zdr):
+        pytest.importorskip("openai")
+
+        from msgflux.models.providers.openrouter import OpenRouterChatCompletion
+
+        model = OpenRouterChatCompletion(
+            model_id="nvidia/test-model",
+            store=store,
+            extra_body={"provider": {"allow_fallbacks": False}},
+        )
+        params = model._adapt_params(
+            {
+                "messages": [{"role": "user", "content": "Hello"}],
+                "model": model.model_id,
+                **model.sampling_run_params,
+            }
+        )
+
+        assert "store" not in params
+        assert params["extra_body"]["provider"] == {
+            "allow_fallbacks": False,
+            "zdr": zdr,
+        }
+
+    def test_openrouter_omits_zdr_when_store_is_not_configured(
+        self, mock_openai_client
+    ):
+        pytest.importorskip("openai")
+
+        from msgflux.models.providers.openrouter import OpenRouterChatCompletion
+
+        model = OpenRouterChatCompletion(model_id="nvidia/test-model")
+        params = model._adapt_params(
+            {
+                "messages": [{"role": "user", "content": "Hello"}],
+                "model": model.model_id,
+                **model.sampling_run_params,
+            }
+        )
+
+        assert "provider" not in params["extra_body"]
+
     def test_responses_api_mode_is_not_inherited_implicitly(self, mock_openai_client):
         pytest.importorskip("openai")
 

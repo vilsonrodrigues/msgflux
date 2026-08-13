@@ -80,6 +80,7 @@ Chat completion models are stateless - they don't maintain conversation history 
         web_search_options={},         # Web search config (OpenAI / OpenRouter only)
         extra_body={},                 # Provider-specific OpenAI-compatible extensions
         prompt_cache_retention="24h",  # OpenAI only: "in_memory" or "24h"
+        store=None,                    # Provider storage preference; None keeps its default
         # --- Infrastructure ---
         api_mode="chat_completions",   # Wire protocol used by the provider
         base_url="https://api.openai.com/v1",  # Override provider API endpoint
@@ -196,6 +197,44 @@ final-answer phase while `ToolFlowControl` selects commentary as the actionable
 trajectory. Both native messages remain in `ChatMessages`, including their
 `phase`, so subsequent manual-history requests can replay every Responses output
 item without synthesizing or duplicating the selected answer.
+
+### 1.3 **Storage and ZDR preference**
+
+`store` is optional and defaults to `None`, so msgFlux does not impose a data
+retention policy when the application does not choose one. Its wire mapping is
+provider-specific:
+
+| msgFlux | OpenAI | OpenRouter |
+|---|---|---|
+| `store=None` | omit `store` | omit `provider.zdr` |
+| `store=False` | `store=false` | `provider.zdr=true` |
+| `store=True` | `store=true` | `provider.zdr=false` |
+
+```python
+import msgflux as mf
+
+openai_model = mf.Model.chat_completion(
+    "openai/gpt-5.6-luna",
+    api_mode="responses",
+    store=False,
+)
+
+openrouter_model = mf.Model.chat_completion(
+    "openrouter/nvidia/nemotron-3.5-lightning:free",
+    store=False,
+)
+```
+
+For OpenAI Responses, omitting `store` uses OpenAI's storage default;
+`store=False` disables application-state storage for that Response. It does not
+by itself activate organization-level Zero Data Retention or remove the
+provider's standard abuse-monitoring retention. OpenAI ZDR must also be enabled
+for the organization or project.
+
+OpenRouter expresses the preference as a routing constraint rather than a
+Response storage flag. `store=False` therefore restricts the request to ZDR
+endpoints through `provider.zdr=true`. `store=True` removes that per-request
+restriction but cannot override a stricter account or guardrail policy.
 
 Ollama defaults to its native `api_mode="ollama_chat"`, sent directly to
 `/api/chat` with `httpx`. This mode supports Ollama's `thinking` history,

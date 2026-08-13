@@ -205,6 +205,7 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
         parallel_tool_calls: Optional[bool] = True,
         modalities: Optional[List[str]] = None,
         audio: Optional[Dict[str, str]] = None,
+        store: Optional[bool] = None,
         verbosity: Optional[str] = None,
         web_search_options: Optional[Dict[str, Any]] = None,
         extra_body: Optional[Dict[str, Any]] = None,
@@ -274,6 +275,10 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
             Can be: ["text"], ["audio"] or ["text", "audio"].
         audio:
             Audio configurations. Define voice and output format.
+        store:
+            Provider storage preference. When omitted, the provider default or
+            account policy applies. OpenAI receives this value directly;
+            OpenRouter maps it to its per-request ZDR routing preference.
         verbosity:
             Constrains the verbosity of the model's response. Lower
             values will result in more concise responses, while higher
@@ -357,6 +362,10 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
         self.cache_size = cache_size
         self.sampling_params = {"base_url": base_url or self._get_base_url()}
         sampling_run_params = {"max_tokens": max_tokens}
+        if store is not None:
+            if not isinstance(store, bool):
+                raise TypeError("`store` must be bool or None")
+            sampling_run_params["store"] = store
         if temperature:
             sampling_run_params["temperature"] = temperature
         if top_p:

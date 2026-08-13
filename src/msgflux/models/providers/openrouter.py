@@ -39,6 +39,12 @@ class OpenRouterChatCompletion(_BaseOpenRouter, OpenAICompatibleChatCompletion):
         extra_body = dict(params.get("extra_body") or {})
         plugins = []
 
+        store = params.pop("store", None)
+        if store is not None:
+            provider_preferences = dict(extra_body.get("provider") or {})
+            provider_preferences["zdr"] = not store
+            extra_body["provider"] = provider_preferences
+
         if params.get("tool_choice") is None:
             if params.get("tools") is not None:
                 params["tool_choice"] = "auto"
