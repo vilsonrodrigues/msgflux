@@ -14,8 +14,8 @@
 # frozen ChatMessages item payload encoded as msgpack bytes. The normalized run
 # state replaces
 # `messages.items` with `_messages = {"state": <messages without items>,
-# "item_refs": [...]}`. `item_refs` preserves ordering and may contain repeated
-# refs if the conversation intentionally contains repeated identical items.
+# "item_entries": [...]}`. Entries preserve ordering and keep the sparse
+# per-occurrence ``active=False`` flag outside the deduplicated item payload.
 
 from __future__ import annotations
 
@@ -78,17 +78,22 @@ class InMemoryCheckpointStore(CheckpointStore, CheckpointStoreType):
         item_store = self._message_items.setdefault(namespace, {}).setdefault(
             thread_id, {}
         )
-        item_refs = []
+        item_entries = []
         for item in items:
-            item_ref = self._item_ref(item)
-            item_store.setdefault(item_ref, msgspec.msgpack.encode(item))
-            item_refs.append(item_ref)
+            payload = deepcopy(item)
+            active = payload.pop("active", None) if isinstance(payload, dict) else None
+            item_ref = self._item_ref(payload)
+            item_store.setdefault(item_ref, msgspec.msgpack.encode(payload))
+            entry = {"item_ref": item_ref}
+            if active is False:
+                entry["active"] = False
+            item_entries.append(entry)
 
         message_state = deepcopy(dict(messages))
         message_state.pop("items", None)
         normalized["_messages"] = {
             "state": message_state,
-            "item_refs": item_refs,
+            "item_entries": item_entries,
         }
         return normalized
 
@@ -104,20 +109,26 @@ class InMemoryCheckpointStore(CheckpointStore, CheckpointStoreType):
             return restored
 
         message_state = normalized_messages.get("state")
-        item_refs = normalized_messages.get("item_refs")
-        if not isinstance(message_state, Mapping) or not isinstance(item_refs, list):
+        item_entries = normalized_messages.get("item_entries")
+        if not isinstance(message_state, Mapping) or not isinstance(item_entries, list):
             return restored
 
         item_store = self._message_items.get(namespace, {}).get(thread_id, {})
         messages = deepcopy(dict(message_state))
         messages["items"] = []
-        for item_ref in item_refs:
+        for entry in item_entries:
+            if not isinstance(entry, Mapping):
+                raise ValueError("Checkpoint message entry is corrupted")
+            item_ref = entry.get("item_ref")
             if not isinstance(item_ref, str) or item_ref not in item_store:
                 raise ValueError(
                     "Checkpoint message item is missing or corrupted: "
                     f"{namespace}/{thread_id}/{item_ref!r}"
                 )
-            messages["items"].append(msgspec.msgpack.decode(item_store[item_ref]))
+            item = msgspec.msgpack.decode(item_store[item_ref])
+            if entry.get("active") is False:
+                item["active"] = False
+            messages["items"].append(item)
         restored["messages"] = messages
         return restored
 
@@ -140,10 +151,14 @@ class InMemoryCheckpointStore(CheckpointStore, CheckpointStoreType):
         messages = state.get("_messages")
         if not isinstance(messages, Mapping):
             return set()
-        item_refs = messages.get("item_refs")
-        if not isinstance(item_refs, list):
+        item_entries = messages.get("item_entries")
+        if not isinstance(item_entries, list):
             return set()
-        return {item_ref for item_ref in item_refs if isinstance(item_ref, str)}
+        return {
+            entry["item_ref"]
+            for entry in item_entries
+            if isinstance(entry, Mapping) and isinstance(entry.get("item_ref"), str)
+        }
 
     def _cleanup_orphaned_items(self, namespace: str, thread_id: str) -> None:
         item_store = self._message_items.get(namespace, {}).get(thread_id)

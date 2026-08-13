@@ -15,8 +15,8 @@
 # payload per content hash. `checkpoint_events` keeps append-only events for a
 # run and is removed by SQLite's FK cascade when the run is deleted. The
 # normalized state stored in `checkpoints.state` replaces `messages.items` with
-# `_messages = {"state": <messages without items>, "item_refs": [...]}`.
-# `item_refs` is an ordered list, not a join table, so rehydration can rebuild
+# `_messages = {"state": <messages without items>, "item_entries": [...]}`.
+# `item_entries` is an ordered list, not a join table, so rehydration can rebuild
 # the exact public message order while item payloads remain deduplicated.
 
 from __future__ import annotations
@@ -25,7 +25,10 @@ import hashlib
 import json
 import sqlite3
 import time
+from copy import deepcopy
+from functools import wraps
 from pathlib import Path
+from threading import RLock
 from typing import Any, Dict, List, Mapping
 
 from msgflux.data.stores.base import CheckpointStore
@@ -110,6 +113,17 @@ CREATE INDEX IF NOT EXISTS idx_events_run
 """
 
 
+def _locked(method):
+    """Serialize operations that share the store's SQLite connection."""
+
+    @wraps(method)
+    def wrapped(self, *args, **kwargs):
+        with self._lock:
+            return method(self, *args, **kwargs)
+
+    return wrapped
+
+
 @register_store()
 class SQLiteCheckpointStore(CheckpointStore, CheckpointStoreType):
     """SQLite-backed checkpoint store."""
@@ -118,8 +132,9 @@ class SQLiteCheckpointStore(CheckpointStore, CheckpointStoreType):
 
     def __init__(self, path: str = ".msgflux/checkpoints.sqlite3") -> None:
         self.path = path
+        self._lock = RLock()
         Path(path).parent.mkdir(parents=True, exist_ok=True)
-        self._conn = sqlite3.connect(path)
+        self._conn = sqlite3.connect(path, check_same_thread=False)
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA foreign_keys=ON")
         self._conn.executescript(_CREATE_TABLES)
@@ -151,17 +166,22 @@ class SQLiteCheckpointStore(CheckpointStore, CheckpointStoreType):
             return normalized
 
         target = executor or self._conn
-        item_refs = []
+        item_entries = []
         for item in items:
-            item_ref = self._item_ref(item)
-            item_refs.append(item_ref)
+            payload = deepcopy(item)
+            active = payload.pop("active", None) if isinstance(payload, dict) else None
+            item_ref = self._item_ref(payload)
+            entry = {"item_ref": item_ref}
+            if active is False:
+                entry["active"] = False
+            item_entries.append(entry)
             target.execute(
                 _UPSERT_MESSAGE_ITEM,
                 (
                     namespace,
                     thread_id,
                     item_ref,
-                    self._serialize(item),
+                    self._serialize(payload),
                     now,
                     now,
                 ),
@@ -171,7 +191,7 @@ class SQLiteCheckpointStore(CheckpointStore, CheckpointStoreType):
         message_state.pop("items", None)
         normalized["_messages"] = {
             "state": message_state,
-            "item_refs": item_refs,
+            "item_entries": item_entries,
         }
         return normalized
 
@@ -188,13 +208,16 @@ class SQLiteCheckpointStore(CheckpointStore, CheckpointStoreType):
             return state
 
         message_state = normalized_messages.get("state")
-        item_refs = normalized_messages.get("item_refs")
-        if not isinstance(message_state, Mapping) or not isinstance(item_refs, list):
+        item_entries = normalized_messages.get("item_entries")
+        if not isinstance(message_state, Mapping) or not isinstance(item_entries, list):
             return state
 
         messages = dict(message_state)
         messages["items"] = []
-        for item_ref in item_refs:
+        for entry in item_entries:
+            if not isinstance(entry, Mapping):
+                raise ValueError("Checkpoint message entry is corrupted")
+            item_ref = entry.get("item_ref")
             if not isinstance(item_ref, str):
                 raise ValueError(
                     "Checkpoint message item is missing or corrupted: "
@@ -210,7 +233,10 @@ class SQLiteCheckpointStore(CheckpointStore, CheckpointStoreType):
                     "Checkpoint message item is missing or corrupted: "
                     f"{namespace}/{thread_id}/{item_ref!r}"
                 )
-            messages["items"].append(self._deserialize(row[0]))
+            item = self._deserialize(row[0])
+            if entry.get("active") is False:
+                item["active"] = False
+            messages["items"].append(item)
         state["messages"] = messages
         return state
 
@@ -237,10 +263,14 @@ class SQLiteCheckpointStore(CheckpointStore, CheckpointStoreType):
         messages = state.get("_messages")
         if not isinstance(messages, Mapping):
             return set()
-        item_refs = messages.get("item_refs")
-        if not isinstance(item_refs, list):
+        item_entries = messages.get("item_entries")
+        if not isinstance(item_entries, list):
             return set()
-        return {item_ref for item_ref in item_refs if isinstance(item_ref, str)}
+        return {
+            entry["item_ref"]
+            for entry in item_entries
+            if isinstance(entry, Mapping) and isinstance(entry.get("item_ref"), str)
+        }
 
     def _cleanup_orphaned_items(self, namespace: str, thread_id: str) -> None:
         live = self._list_live_item_refs(namespace, thread_id)
@@ -335,6 +365,7 @@ class SQLiteCheckpointStore(CheckpointStore, CheckpointStoreType):
             params,
         )
 
+    @_locked
     def save_state(
         self,
         namespace: str,
@@ -352,6 +383,7 @@ class SQLiteCheckpointStore(CheckpointStore, CheckpointStoreType):
         )
         self._conn.commit()
 
+    @_locked
     def load_state(
         self,
         namespace: str,
@@ -366,6 +398,7 @@ class SQLiteCheckpointStore(CheckpointStore, CheckpointStoreType):
             return None
         return self._denormalize_state(namespace, thread_id, row[0])
 
+    @_locked
     def append_event(
         self,
         namespace: str,
@@ -382,6 +415,7 @@ class SQLiteCheckpointStore(CheckpointStore, CheckpointStoreType):
         )
         self._conn.commit()
 
+    @_locked
     def load_events(
         self,
         namespace: str,
@@ -398,6 +432,7 @@ class SQLiteCheckpointStore(CheckpointStore, CheckpointStoreType):
         ).fetchall()
         return [self._deserialize(r[0]) for r in rows if r[0]]
 
+    @_locked
     def fork_run(
         self,
         namespace: str,
@@ -474,6 +509,7 @@ class SQLiteCheckpointStore(CheckpointStore, CheckpointStoreType):
             )
         return loaded
 
+    @_locked
     def save_with_event(
         self,
         namespace: str,
@@ -507,6 +543,7 @@ class SQLiteCheckpointStore(CheckpointStore, CheckpointStoreType):
             self._conn.rollback()
             raise
 
+    @_locked
     def list_runs(
         self,
         namespace: str,
@@ -531,6 +568,7 @@ class SQLiteCheckpointStore(CheckpointStore, CheckpointStoreType):
         rows = self._conn.execute(query, tuple(params)).fetchall()
         return [{"run_id": r[0], "status": r[1], "updated_at": r[2]} for r in rows]
 
+    @_locked
     def delete_run(
         self,
         namespace: str,
@@ -545,6 +583,7 @@ class SQLiteCheckpointStore(CheckpointStore, CheckpointStoreType):
         self._conn.commit()
         return bool(deleted)
 
+    @_locked
     def clear(
         self,
         namespace: str | None = None,
@@ -565,5 +604,6 @@ class SQLiteCheckpointStore(CheckpointStore, CheckpointStoreType):
         self._conn.commit()
         return deleted or 0
 
+    @_locked
     def close(self) -> None:
         self._conn.close()

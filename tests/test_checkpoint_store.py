@@ -1,6 +1,8 @@
 import pytest
 import msgspec
 
+from concurrent.futures import ThreadPoolExecutor
+
 from msgflux.data.stores import InMemoryCheckpointStore, SQLiteCheckpointStore
 from msgflux.data.stores import Store
 
@@ -10,8 +12,7 @@ def _message_state(turn_id: str, content: str = "hello"):
         "items": [{"role": "user", "content": content}],
         "thread_id": "session_1",
         "namespace": "agent:test",
-        "turns": [{"turn_id": turn_id, "status": "completed"}],
-        "active_turn_index": None,
+        "metadata": {"run": turn_id},
     }
 
 
@@ -62,10 +63,9 @@ def test_in_memory_checkpoint_store_normalizes_messages():
             "state": {
                 "thread_id": "session_1",
                 "namespace": "agent:test",
-                "turns": [{"turn_id": "run_1", "status": "completed"}],
-                "active_turn_index": None,
+                "metadata": {"run": "run_1"},
             },
-            "item_refs": [store._item_ref(messages["items"][0])],
+            "item_entries": [{"item_ref": store._item_ref(messages["items"][0])}],
         },
     }
     encoded_item = store._message_items["agent:test"]["session_1"][
@@ -102,6 +102,30 @@ def test_in_memory_checkpoint_store_reuses_thread_items_across_runs():
 
     assert state == {"status": "completed", "messages": second}
     assert len(store._message_items["agent:test"]["session_1"]) == 2
+
+
+def test_in_memory_checkpoint_store_keeps_active_on_item_occurrence():
+    store = InMemoryCheckpointStore()
+    messages = _message_state("run_1")
+    messages["items"] = [
+        {"role": "user", "content": "same", "active": False},
+        {"role": "user", "content": "same"},
+    ]
+
+    store.save_state(
+        "agent:test",
+        "session_1",
+        "run_1",
+        {"status": "completed", "messages": messages},
+    )
+
+    restored = store.load_state("agent:test", "session_1", "run_1")
+    raw = store._data["agent:test"]["session_1"]["run_1"]["state"]
+
+    assert restored["messages"]["items"] == messages["items"]
+    assert len(store._message_items["agent:test"]["session_1"]) == 1
+    assert raw["_messages"]["item_entries"][0]["active"] is False
+    assert "active" not in raw["_messages"]["item_entries"][1]
 
 
 def test_in_memory_checkpoint_store_preserves_forked_items():
@@ -220,6 +244,24 @@ def test_sqlite_checkpoint_store_roundtrip(tmp_path):
     store.close()
 
 
+def test_sqlite_checkpoint_store_can_finalize_from_worker_thread(tmp_path):
+    store = SQLiteCheckpointStore(path=str(tmp_path / "checkpoints.sqlite3"))
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        executor.submit(
+            store.save_state,
+            "agent:test",
+            "session_1",
+            "run_1",
+            {"status": "completed"},
+        ).result()
+
+    assert store.load_state("agent:test", "session_1", "run_1") == {
+        "status": "completed"
+    }
+    store.close()
+
+
 def test_sqlite_checkpoint_store_normalizes_messages(tmp_path):
     path = tmp_path / "checkpoints.sqlite3"
     store = SQLiteCheckpointStore(path=str(path))
@@ -249,6 +291,31 @@ def test_sqlite_checkpoint_store_normalizes_messages(tmp_path):
     assert item_count == 1
     assert len(store._item_ref(messages["items"][0])) == len("item_") + 32
 
+    store.close()
+
+
+def test_sqlite_checkpoint_store_keeps_active_on_item_occurrence(tmp_path):
+    store = SQLiteCheckpointStore(path=str(tmp_path / "checkpoints.sqlite3"))
+    messages = _message_state("run_1")
+    messages["items"] = [
+        {"role": "user", "content": "same", "active": False},
+        {"role": "user", "content": "same"},
+    ]
+
+    store.save_state(
+        "agent:test",
+        "session_1",
+        "run_1",
+        {"status": "completed", "messages": messages},
+    )
+
+    restored = store.load_state("agent:test", "session_1", "run_1")
+    item_count = store._conn.execute(
+        "SELECT COUNT(*) FROM checkpoint_message_items"
+    ).fetchone()[0]
+
+    assert restored["messages"]["items"] == messages["items"]
+    assert item_count == 1
     store.close()
 
 

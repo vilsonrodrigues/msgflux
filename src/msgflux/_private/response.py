@@ -4,6 +4,8 @@ from collections import deque
 from dataclasses import dataclass
 from typing import Any, AsyncGenerator, Literal, Optional, Union
 
+from msgflux.chat_stream_accumulator import ChatStreamAccumulator
+
 
 @dataclass(frozen=True)
 class StreamFinalState:
@@ -11,8 +13,10 @@ class StreamFinalState:
     response_type: str | None
     output: Any
     reasoning: str | None
+    reasoning_summary: str | None
     metadata: Any
     error: Exception | None
+    items: list[dict[str, Any]]
 
 
 class CoreResponse:
@@ -32,12 +36,18 @@ class BaseResponse(CoreResponse):
     def __init__(self):
         self.data = None
         self.reasoning = None
+        self.reasoning_summary = None
+        self.history_items = []
         self.metadata = None
         self.response_type = None
 
     @property
     def has_reasoning(self) -> bool:
         return self.reasoning is not None
+
+    @property
+    def has_reasoning_summary(self) -> bool:
+        return self.reasoning_summary is not None
 
     def add(self, data: Any):
         self.data = data
@@ -48,6 +58,10 @@ class BaseResponse(CoreResponse):
     def consume_reasoning(self) -> Optional[str]:
         return self.reasoning
 
+    def consume_reasoning_summary(self) -> Optional[str]:
+        """Return a provider-generated reasoning summary, when available."""
+        return self.reasoning_summary
+
 
 class BaseStreamResponse(CoreResponse):
     def __init__(self, mode: Literal["sync", "async"] = "sync"):
@@ -57,12 +71,16 @@ class BaseStreamResponse(CoreResponse):
         if mode == "async":
             self.first_chunk_event = asyncio.Event()
             self._response_type_event = asyncio.Event()
+            self.reasoning_summary_event = asyncio.Event()
         else:
             self.first_chunk_event = threading.Event()
             self._response_type_event = threading.Event()
+            self.reasoning_summary_event = threading.Event()
         self.data = None
         self.reasoning = None
+        self.reasoning_summary = None
         self.has_reasoning = False
+        self.has_reasoning_summary = False
 
         # Content queue
         self._queue = None
@@ -78,6 +96,13 @@ class BaseStreamResponse(CoreResponse):
         self._reasoning_queue_lock = threading.Lock()
         self._reasoning_closed = False
 
+        # Reasoning-summary queue
+        self._reasoning_summary_queue = None
+        self._reasoning_summary_queue_loop = None
+        self._reasoning_summary_pending_chunks = deque()
+        self._reasoning_summary_queue_lock = threading.Lock()
+        self._reasoning_summary_closed = False
+
         self.metadata = None
         self.response_type = None
         self.error = None
@@ -85,6 +110,7 @@ class BaseStreamResponse(CoreResponse):
         self._finalized = False
         self._final_status = None
         self._finalizer_lock = threading.Lock()
+        self.chat_accumulator = ChatStreamAccumulator()
 
     def _finish_queue_with_none(
         self,
@@ -114,6 +140,7 @@ class BaseStreamResponse(CoreResponse):
 
     def _close_stream_queues(self) -> None:
         self.finish_reasoning()
+        self.finish_reasoning_summary()
         self._finish_content()
 
     def _finish_content(self) -> None:
@@ -134,6 +161,18 @@ class BaseStreamResponse(CoreResponse):
             lock_attr="_reasoning_queue_lock",
             closed_attr="_reasoning_closed",
         )
+
+    def finish_reasoning_summary(self) -> None:
+        """Close the reasoning-summary stream independently from content."""
+        self._finish_queue_with_none(
+            queue_attr="_reasoning_summary_queue",
+            loop_attr="_reasoning_summary_queue_loop",
+            pending_attr="_reasoning_summary_pending_chunks",
+            lock_attr="_reasoning_summary_queue_lock",
+            closed_attr="_reasoning_summary_closed",
+        )
+        if not self.reasoning_summary_event.is_set():
+            self.reasoning_summary_event.set()
 
     def _accumulate_data(self, data: Any) -> None:
         if data is None:
@@ -220,8 +259,13 @@ class BaseStreamResponse(CoreResponse):
             response_type=self.response_type,
             output=self.data,
             reasoning=self.reasoning,
+            reasoning_summary=self.reasoning_summary,
             metadata=self.metadata,
             error=self.error,
+            items=self.chat_accumulator.snapshot(
+                fallback_output=self.data,
+                fallback_reasoning=self.reasoning,
+            ),
         )
 
     def _run_finalizers(
@@ -241,13 +285,15 @@ class BaseStreamResponse(CoreResponse):
         for finalizer in finalizers:
             finalizer(final_state)
 
-    def add(self, data: Any):
+    def add(self, data: Any, *, accumulate_history: bool = True):
         """Add data to the content stream queue in a thread-safe way."""
         if not self.first_chunk_event.is_set():
             self.first_chunk_event.set()
 
         try:
             self._accumulate_data(data)
+            if accumulate_history and isinstance(data, str):
+                self.chat_accumulator.add_text(data)
         except Exception as e:
             self._fail_stream(e)
             raise
@@ -263,8 +309,19 @@ class BaseStreamResponse(CoreResponse):
 
         loop.call_soon_threadsafe(queue.put_nowait, data)
 
-    def add_reasoning(self, data: Any):
+    def add_reasoning(
+        self,
+        data: Any,
+        *,
+        history_kind: str = "text",
+        item_id: str | None = None,
+    ):
         """Add data to the reasoning stream queue in a thread-safe way."""
+        if data is not None:
+            if history_kind == "summary":
+                self.chat_accumulator.add_reasoning(summary=str(data), item_id=item_id)
+            else:
+                self.chat_accumulator.add_reasoning(str(data), item_id=item_id)
         if data is not None and not self.has_reasoning:
             self.has_reasoning = True
         if not self.first_chunk_event.is_set():
@@ -278,6 +335,27 @@ class BaseStreamResponse(CoreResponse):
                 self._reasoning_pending_chunks.append(data)
                 return
 
+        loop.call_soon_threadsafe(queue.put_nowait, data)
+
+    def add_reasoning_summary(self, data: Any, *, item_id: str | None = None):
+        """Add a summary delta without presenting it as chain-of-thought."""
+        if data is not None:
+            self.chat_accumulator.add_reasoning(summary=str(data), item_id=item_id)
+            self.has_reasoning_summary = True
+            if not self.reasoning_summary_event.is_set():
+                self.reasoning_summary_event.set()
+        if not self.first_chunk_event.is_set():
+            self.first_chunk_event.set()
+        with self._reasoning_summary_queue_lock:
+            if self._reasoning_summary_closed:
+                raise RuntimeError(
+                    "Cannot add reasoning-summary chunk to a closed stream."
+                )
+            queue = self._reasoning_summary_queue
+            loop = self._reasoning_summary_queue_loop
+            if queue is None or loop is None or loop.is_closed():
+                self._reasoning_summary_pending_chunks.append(data)
+                return
         loop.call_soon_threadsafe(queue.put_nowait, data)
 
     def _bind_consumer_queue(self) -> asyncio.Queue:
@@ -311,6 +389,23 @@ class BaseStreamResponse(CoreResponse):
                 )
             return self._reasoning_queue
 
+    def _bind_reasoning_summary_queue(self) -> asyncio.Queue:
+        loop = asyncio.get_running_loop()
+        with self._reasoning_summary_queue_lock:
+            if self._reasoning_summary_queue is None:
+                self._reasoning_summary_queue = asyncio.Queue()
+                self._reasoning_summary_queue_loop = loop
+                while self._reasoning_summary_pending_chunks:
+                    self._reasoning_summary_queue.put_nowait(
+                        self._reasoning_summary_pending_chunks.popleft()
+                    )
+            elif self._reasoning_summary_queue_loop is not loop:
+                raise RuntimeError(
+                    "BaseStreamResponse.consume_reasoning_summary() must run on "
+                    "the same event loop."
+                )
+            return self._reasoning_summary_queue
+
     async def next_chunk(self) -> Optional[Union[bytes, str]]:
         """Return the next content chunk, or None when the stream is complete."""
         queue = self._bind_consumer_queue()
@@ -332,6 +427,17 @@ class BaseStreamResponse(CoreResponse):
     async def consume_reasoning(self) -> AsyncGenerator[str, None]:
         """Async generator that yields reasoning chunks until None is received."""
         queue = self._bind_reasoning_queue()
+        while True:
+            chunk = await queue.get()
+            if chunk is None:
+                if self.error is not None:
+                    raise self.error
+                break
+            yield chunk
+
+    async def consume_reasoning_summary(self) -> AsyncGenerator[str, None]:
+        """Yield reasoning-summary chunks without conflating them with CoT."""
+        queue = self._bind_reasoning_summary_queue()
         while True:
             chunk = await queue.get()
             if chunk is None:

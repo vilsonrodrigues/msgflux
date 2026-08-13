@@ -1,9 +1,10 @@
+from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import Mock
 
 import pytest
 
 from msgflux.chat_messages import ChatMessages
-from msgflux.data.stores import InMemoryCheckpointStore
+from msgflux.data.stores import InMemoryCheckpointStore, SQLiteCheckpointStore
 from msgflux.exceptions import AbortRequestedError, TaskInterruptRequestedError
 from msgflux.models.response import ModelResponse, ModelStreamResponse
 from msgflux.models.tool_call_agg import ToolCallAggregator
@@ -39,26 +40,26 @@ def _tool_call_response():
     return response
 
 
-def _make_agent(checkpointer=None, **kwargs):
+def _make_agent(checkpoint_store=None, **kwargs):
     return Agent(
         name="test_agent",
         model=_mock_model(),
-        checkpointer=checkpointer,
+        checkpoint_store=checkpoint_store,
         **kwargs,
     )
 
 
-def test_agent_accepts_checkpointer_with_stream():
+def test_agent_accepts_checkpoint_store_with_stream():
     store = InMemoryCheckpointStore()
 
-    agent = _make_agent(checkpointer=store, config={"stream": True})
+    agent = _make_agent(checkpoint_store=store, config={"stream": True})
 
-    assert agent.checkpointer is store
+    assert agent.checkpoint_store is store
 
 
 def test_agent_saves_completed_checkpoint():
     store = InMemoryCheckpointStore()
-    agent = _make_agent(checkpointer=store)
+    agent = _make_agent(checkpoint_store=store)
     agent.generator.forward = Mock(return_value=_text_response("42"))
 
     scope = ExecutionScope(
@@ -71,11 +72,18 @@ def test_agent_saves_completed_checkpoint():
     assert state is not None
     assert state["status"] == "completed"
     assert state["messages"]["thread_id"] == "user_42"
+    assert "turns" not in state["messages"]
+    assert "vars" not in state
+    assert [
+        item
+        for item in state["messages"]["items"]
+        if item.get("role") == "assistant" and item.get("content") == "42"
+    ] == [{"type": "message", "role": "assistant", "content": "42"}]
 
 
 def test_agent_accepts_execution_scope_for_checkpoint_identity():
     store = InMemoryCheckpointStore()
-    agent = _make_agent(checkpointer=store)
+    agent = _make_agent(checkpoint_store=store)
     agent.generator.forward = Mock(return_value=_text_response("scoped"))
 
     scope = ExecutionScope(thread_id="user_42", namespace="outer", run_id="run_scope")
@@ -90,10 +98,10 @@ def test_agent_accepts_execution_scope_for_checkpoint_identity():
 
 def test_agent_resumes_exact_run_id():
     store = InMemoryCheckpointStore()
-    agent = _make_agent(checkpointer=store)
+    agent = _make_agent(checkpoint_store=store)
 
     chat = ChatMessages(thread_id="user_42", namespace="test_agent")
-    chat.begin_turn(inputs="What is 2+2?", turn_id="run_resume")
+    chat.begin_turn(turn_id="run_resume")
     chat.add_user("What is 2+2?")
     store.save_state(
         "test_agent",
@@ -128,10 +136,10 @@ def test_agent_resumes_exact_run_id():
 
 def test_agent_resumes_failed_run_id():
     store = InMemoryCheckpointStore()
-    agent = _make_agent(checkpointer=store)
+    agent = _make_agent(checkpoint_store=store)
 
     chat = ChatMessages(thread_id="user_42", namespace="test_agent")
-    chat.begin_turn(inputs="Call flaky backend", turn_id="run_failed")
+    chat.begin_turn(turn_id="run_failed")
     chat.add_user("Call flaky backend")
     store.save_state(
         "test_agent",
@@ -168,7 +176,7 @@ def test_agent_resumes_failed_run_id():
 
 def test_agent_interrupt_closes_active_tool_calls_in_checkpoint():
     store = InMemoryCheckpointStore()
-    agent = _make_agent(checkpointer=store)
+    agent = _make_agent(checkpoint_store=store)
 
     def lookup(query: str) -> str:
         raise TaskInterruptRequestedError("task_1", f"user pressed interrupt: {query}")
@@ -208,9 +216,139 @@ def test_agent_interrupt_closes_active_tool_calls_in_checkpoint():
     assert restored.turns[-1]["status"] == "interrupted"
 
 
+def test_agent_persists_tool_reasoning_once_in_canonical_history():
+    store = InMemoryCheckpointStore()
+    agent = _make_agent(checkpoint_store=store)
+
+    def lookup(query: str) -> str:
+        return f"status for {query}"
+
+    agent.tool_library.add(lookup)
+    tool_response = _tool_call_response()
+    tool_response.reasoning = "Check the current status."
+    tool_response.history_items = [
+        {
+            "type": "reasoning",
+            "role": "assistant",
+            "text": "Check the current status.",
+            "provider_state": {
+                "provider": "openrouter",
+                "data": [{"type": "reasoning.text", "text": "opaque order"}],
+            },
+        }
+    ]
+    agent.generator.forward = Mock(
+        side_effect=[tool_response, _text_response("All systems operational.")]
+    )
+
+    result = agent(
+        "Check status",
+        scope=ExecutionScope(
+            thread_id="user_42",
+            namespace="test_agent",
+            run_id="run_tool_reasoning",
+        ),
+    )
+
+    state = store.load_state("test_agent", "user_42", "run_tool_reasoning")
+    restored = ChatMessages()
+    restored._hydrate_state(state["messages"])
+    reasoning_items = [item for item in restored if item.get("type") == "reasoning"]
+
+    assert result == "All systems operational."
+    assert len(reasoning_items) == 1
+    assert reasoning_items[0]["text"] == "Check the current status."
+    assert all("<think>" not in str(item.get("content", "")) for item in restored)
+
+
+def test_agent_preserves_responses_function_call_without_duplicate():
+    store = InMemoryCheckpointStore()
+    agent = _make_agent(checkpoint_store=store)
+
+    def lookup(query: str) -> str:
+        return f"status for {query}"
+
+    agent.tool_library.add(lookup)
+    tool_response = _tool_call_response()
+    tool_response.history_items = [
+        {
+            "type": "function_call",
+            "id": "fc_lookup",
+            "status": "completed",
+            "call_id": "call_lookup",
+            "name": "lookup",
+            "arguments": '{"query":"status"}',
+        }
+    ]
+    agent.generator.forward = Mock(
+        side_effect=[tool_response, _text_response("All systems operational.")]
+    )
+
+    result = agent(
+        "Check status",
+        scope=ExecutionScope(
+            thread_id="user_42",
+            namespace="test_agent",
+            run_id="run_responses_tool",
+        ),
+    )
+
+    state = store.load_state("test_agent", "user_42", "run_responses_tool")
+    restored = ChatMessages()
+    restored._hydrate_state(state["messages"])
+    calls = [item for item in restored if item.get("type") == "function_call"]
+    outputs = [item for item in restored if item.get("type") == "function_call_output"]
+
+    assert result == "All systems operational."
+    assert calls == [tool_response.history_items[0]]
+    assert len(outputs) == 1
+    assert outputs[0]["call_id"] == "call_lookup"
+
+
+def test_agent_preserves_responses_message_without_synthetic_duplicate():
+    store = InMemoryCheckpointStore()
+    agent = _make_agent(checkpoint_store=store)
+    response = ModelResponse()
+    response.set_response_type("text_generation")
+    response.add("Final answer")
+    response.history_items = [
+        {
+            "type": "message",
+            "role": "assistant",
+            "phase": "final_answer",
+            "content": [{"type": "output_text", "text": "Final answer"}],
+            "provider_state": {
+                "provider": "openai",
+                "api_mode": "responses",
+                "data": {"id": "msg_1", "status": "completed"},
+            },
+        }
+    ]
+    agent.generator.forward = Mock(return_value=response)
+
+    agent(
+        "Answer once",
+        scope=ExecutionScope(
+            thread_id="user_42",
+            namespace="test_agent",
+            run_id="run_message_once",
+        ),
+    )
+
+    state = store.load_state("test_agent", "user_42", "run_message_once")
+    restored = ChatMessages()
+    restored._hydrate_state(state["messages"])
+    assistant_messages = [
+        item
+        for item in restored
+        if item.get("type") == "message" and item.get("role") == "assistant"
+    ]
+    assert assistant_messages == response.history_items
+
+
 def test_agent_abort_signal_saves_interrupted_checkpoint():
     store = InMemoryCheckpointStore()
-    agent = _make_agent(checkpointer=store)
+    agent = _make_agent(checkpoint_store=store)
     agent.generator.forward = Mock(side_effect=AbortRequestedError("user pressed esc"))
     abort_signal = AbortSignal()
     abort_signal.abort("user pressed esc")
@@ -237,7 +375,7 @@ def test_agent_abort_signal_saves_interrupted_checkpoint():
 
 def test_agent_stream_checkpoint_completes_when_stream_finishes():
     store = InMemoryCheckpointStore()
-    agent = _make_agent(checkpointer=store, config={"stream": True})
+    agent = _make_agent(checkpoint_store=store, config={"stream": True})
     stream_response = ModelStreamResponse(mode="sync")
     stream_response.set_response_type("text_generation")
     stream_response.reasoning = "stream reasoning"
@@ -270,12 +408,77 @@ def test_agent_stream_checkpoint_completes_when_stream_finishes():
     chatml = restored.to_chatml()
     assert chatml[-1]["content"] == "hello world"
     assert restored.turns[-1]["status"] == "completed"
-    assert restored.turns[-1]["assistant_output"] == "hello world"
+    assert "assistant_output" not in restored.turns[-1]
+    assert [item["type"] for item in restored if item.get("type") == "reasoning"] == [
+        "reasoning"
+    ]
+    assert (
+        sum(
+            item.get("role") == "assistant" and item.get("content") == "hello world"
+            for item in restored
+        )
+        == 1
+    )
+
+
+def test_agent_stream_updates_the_caller_chat_messages_when_finished():
+    store = InMemoryCheckpointStore()
+    agent = _make_agent(checkpoint_store=store, config={"stream": True})
+    stream_response = ModelStreamResponse(mode="sync")
+    stream_response.set_response_type("text_generation")
+    agent.generator.forward = Mock(return_value=stream_response)
+    messages = ChatMessages(thread_id="user_42", namespace="test_agent")
+
+    result = agent(
+        "Stream status",
+        messages=messages,
+        scope=ExecutionScope(
+            thread_id="user_42",
+            namespace="test_agent",
+            run_id="run_visible_stream",
+        ),
+    )
+    result.add("visible")
+    result.finish()
+
+    assert messages.to_chatml()[-1]["content"] == "visible"
+    assert messages.turns[-1]["status"] == "completed"
+
+
+def test_agent_stream_finalizer_saves_sqlite_checkpoint_from_worker(tmp_path):
+    store = SQLiteCheckpointStore(path=str(tmp_path / "checkpoints.sqlite3"))
+    agent = _make_agent(checkpoint_store=store, config={"stream": True})
+    stream_response = ModelStreamResponse(mode="sync")
+    stream_response.set_response_type("text_generation")
+    agent.generator.forward = Mock(return_value=stream_response)
+
+    result = agent(
+        "Stream to SQLite",
+        scope=ExecutionScope(
+            thread_id="user_42",
+            namespace="test_agent",
+            run_id="run_sqlite_stream",
+        ),
+    )
+
+    def finish_from_worker():
+        result.add("persisted")
+        result.finish()
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        executor.submit(finish_from_worker).result()
+
+    state = store.load_state("test_agent", "user_42", "run_sqlite_stream")
+    assert state["status"] == "completed"
+    restored = ChatMessages()
+    restored._hydrate_state(state["messages"])
+    assert restored.to_chatml()[-1]["content"] == "persisted"
+    store.close()
 
 
 def test_agent_stream_checkpoint_preserves_partial_output_on_failure():
     store = InMemoryCheckpointStore()
-    agent = _make_agent(checkpointer=store, config={"stream": True})
+    agent = _make_agent(checkpoint_store=store, config={"stream": True})
     stream_response = ModelStreamResponse(mode="sync")
     stream_response.set_response_type("text_generation")
     agent.generator.forward = Mock(return_value=stream_response)
@@ -302,12 +505,12 @@ def test_agent_stream_checkpoint_preserves_partial_output_on_failure():
     chatml = restored.to_chatml()
     assert chatml[-1]["content"] == "partial"
     assert restored.turns[-1]["status"] == "failed"
-    assert restored.turns[-1]["assistant_output"] == "partial"
+    assert "assistant_output" not in restored.turns[-1]
 
 
 def test_agent_stream_checkpoint_marks_pre_output_abort_interrupted():
     store = InMemoryCheckpointStore()
-    agent = _make_agent(checkpointer=store, config={"stream": True})
+    agent = _make_agent(checkpoint_store=store, config={"stream": True})
     stream_response = ModelStreamResponse(mode="sync")
     stream_response.finish(
         error=AbortRequestedError("user pressed esc"),
@@ -332,17 +535,13 @@ def test_agent_stream_checkpoint_marks_pre_output_abort_interrupted():
 
 def test_agent_continues_latest_thread_with_new_run_id():
     store = InMemoryCheckpointStore()
-    agent = _make_agent(checkpointer=store)
+    agent = _make_agent(checkpoint_store=store)
 
     chat = ChatMessages(thread_id="user_42", namespace="test_agent")
-    chat.begin_turn(inputs="Open a support ticket", turn_id="run_1")
+    chat.begin_turn(turn_id="run_1")
     chat.add_user("Open a support ticket")
     chat.add_assistant("Ticket opened.")
-    chat.end_turn(
-        assistant_output="Ticket opened.",
-        response_type="text_generation",
-        status="completed",
-    )
+    chat.end_turn()
     store.save_state(
         "test_agent",
         "user_42",
@@ -383,17 +582,13 @@ def test_agent_continues_latest_thread_with_new_run_id():
 
 def test_agent_rejects_completed_run_id_retry():
     store = InMemoryCheckpointStore()
-    agent = _make_agent(checkpointer=store)
+    agent = _make_agent(checkpoint_store=store)
 
     chat = ChatMessages(thread_id="user_42", namespace="test_agent")
-    chat.begin_turn(inputs="Original", turn_id="run_done")
+    chat.begin_turn(turn_id="run_done")
     chat.add_user("Original")
     chat.add_assistant("Done.")
-    chat.end_turn(
-        assistant_output="Done.",
-        response_type="text_generation",
-        status="completed",
-    )
+    chat.end_turn()
     store.save_state(
         "test_agent",
         "user_42",

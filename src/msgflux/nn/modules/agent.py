@@ -167,7 +167,7 @@ class Agent(Module, metaclass=AutoParams):
         signature: Optional[Union[str, Signature]] = None,
         description: Optional[str] = None,
         annotations: Optional[Mapping[str, type]] = None,
-        checkpointer: Optional["CheckpointStore"] = None,
+        checkpoint_store: Optional["CheckpointStore"] = None,
         agent_inbox: Optional[AgentInbox] = None,
     ):
         """Initialize the Agent module.
@@ -315,6 +315,10 @@ class Agent(Module, metaclass=AutoParams):
             The Agent description. It's useful when using an agent-as-tool.
         annotations
             Define the input and output annotations to use the agent-as-a-function.
+        checkpoint_store:
+            Store used to persist and resume agent execution snapshots. A store
+            configured directly on the agent takes precedence over one inherited
+            from `execution_context(...)`.
         """
         if annotations is None:
             annotations = _DEFAULT_AGENT_ANNOTATIONS.copy()
@@ -367,7 +371,7 @@ class Agent(Module, metaclass=AutoParams):
             self.set_annotations(_DEFAULT_AGENT_ANNOTATIONS.copy())
 
         self._set_config(config)
-        self.checkpointer = checkpointer
+        self.checkpoint_store = checkpoint_store
         if agent_inbox is None:
             self.agent_inbox = AgentInbox(
                 verbose=config.get("verbose", False) if config else False,
@@ -527,7 +531,7 @@ class Agent(Module, metaclass=AutoParams):
             resumed["vars"] = kwargs.get("vars", {})
         inputs = resumed or self._prepare_inputs(message, **kwargs)
 
-        effective_checkpointer = self._get_effective_checkpointer()
+        effective_checkpoint_store = self._get_effective_checkpoint_store()
         effective_task_store = self._get_effective_task_store()
         effective_inbox = self._get_effective_agent_inbox()
         if effective_inbox is not None:
@@ -537,7 +541,7 @@ class Agent(Module, metaclass=AutoParams):
             )
         with execution_context(
             scope=inputs.get("scope"),
-            checkpoint_store=effective_checkpointer,
+            checkpoint_store=effective_checkpoint_store,
             task_store=effective_task_store,
             agent_inbox=effective_inbox,
         ):
@@ -552,8 +556,14 @@ class Agent(Module, metaclass=AutoParams):
                 self._checkpoint_interrupted(inputs, exc)
                 self._raise_interrupted_from_abort(inputs, exc)
             except TaskPauseRequestedError:
+                paused_messages = inputs.get("messages")
+                if (
+                    isinstance(paused_messages, ChatMessages)
+                    and paused_messages.get_active_turn() is not None
+                ):
+                    paused_messages.end_turn(event="pause")
                 self._checkpoint_save(
-                    inputs.get("messages"), inputs.get("vars", {}), status="paused"
+                    paused_messages, inputs.get("vars", {}), status="paused"
                 )
                 raise
             except Exception:
@@ -585,7 +595,7 @@ class Agent(Module, metaclass=AutoParams):
             resumed["vars"] = kwargs.get("vars", {})
         inputs = resumed or await self._aprepare_inputs(message, **kwargs)
 
-        effective_checkpointer = self._get_effective_checkpointer()
+        effective_checkpoint_store = self._get_effective_checkpoint_store()
         effective_task_store = self._get_effective_task_store()
         effective_inbox = self._get_effective_agent_inbox()
         if effective_inbox is not None:
@@ -595,7 +605,7 @@ class Agent(Module, metaclass=AutoParams):
             )
         with execution_context(
             scope=inputs.get("scope"),
-            checkpoint_store=effective_checkpointer,
+            checkpoint_store=effective_checkpoint_store,
             task_store=effective_task_store,
             agent_inbox=effective_inbox,
         ):
@@ -610,8 +620,14 @@ class Agent(Module, metaclass=AutoParams):
                 await self._acheckpoint_interrupted(inputs, exc)
                 self._raise_interrupted_from_abort(inputs, exc)
             except TaskPauseRequestedError:
+                paused_messages = inputs.get("messages")
+                if (
+                    isinstance(paused_messages, ChatMessages)
+                    and paused_messages.get_active_turn() is not None
+                ):
+                    paused_messages.end_turn(event="pause")
                 await self._acheckpoint_save(
-                    inputs.get("messages"),
+                    paused_messages,
                     inputs.get("vars", {}),
                     status="paused",
                 )
@@ -684,7 +700,7 @@ class Agent(Module, metaclass=AutoParams):
     ):
         """Warm the provider cache for the rendered system prompt and tools.
 
-        This bypasses task messages, chat history, checkpointers and response
+        This bypasses task messages, chat history, checkpoint stores and response
         parsing. Warmup should only include stable prompt prefixes; dynamic user
         content would reduce cache hits for the real request.
         """
@@ -924,14 +940,12 @@ class Agent(Module, metaclass=AutoParams):
             getattr(model_response, "metadata", None)
             if isinstance(model_response, (ModelResponse, ModelStreamResponse))
             else None,
+            reasoning=reasoning,
+            history_items=getattr(model_response, "history_items", None),
         )
         self._finalize_chat_turn(
             messages,
             raw_response,
-            response_type,
-            getattr(model_response, "metadata", None)
-            if isinstance(model_response, (ModelResponse, ModelStreamResponse))
-            else None,
         )
         self._checkpoint_save(messages, vars, status="completed")
 
@@ -1010,14 +1024,12 @@ class Agent(Module, metaclass=AutoParams):
             getattr(model_response, "metadata", None)
             if isinstance(model_response, (ModelResponse, ModelStreamResponse))
             else None,
+            reasoning=reasoning,
+            history_items=getattr(model_response, "history_items", None),
         )
         self._finalize_chat_turn(
             messages,
             raw_response,
-            response_type,
-            getattr(model_response, "metadata", None)
-            if isinstance(model_response, (ModelResponse, ModelStreamResponse))
-            else None,
         )
         await self._acheckpoint_save(messages, vars, status="completed")
 
@@ -1224,6 +1236,11 @@ class Agent(Module, metaclass=AutoParams):
 
                 raw_response = model_response.data
                 reasoning = model_response.reasoning
+                appended_item_types = self._append_tool_model_history(
+                    messages, model_response
+                )
+                if "reasoning" in appended_item_types:
+                    raw_response.reasoning = None
 
                 if self.config.get("verbose", False):
                     if reasoning:
@@ -1257,7 +1274,7 @@ class Agent(Module, metaclass=AutoParams):
                 }
                 raw_response.insert_results(id_results)
                 tool_responses_message = raw_response.get_messages()
-                messages.extend(tool_responses_message)
+                self._extend_tool_response_history(messages, tool_responses_message)
                 self._drain_inbox_into_messages(messages)
                 self._checkpoint_save(messages, vars)
             else:
@@ -1309,6 +1326,11 @@ class Agent(Module, metaclass=AutoParams):
 
                 raw_response = model_response.data
                 reasoning = model_response.reasoning
+                appended_item_types = self._append_tool_model_history(
+                    messages, model_response
+                )
+                if "reasoning" in appended_item_types:
+                    raw_response.reasoning = None
 
                 if self.config.get("verbose", False):
                     if reasoning:
@@ -1342,7 +1364,7 @@ class Agent(Module, metaclass=AutoParams):
                 }
                 raw_response.insert_results(id_results)
                 tool_responses_message = raw_response.get_messages()
-                messages.extend(tool_responses_message)
+                self._extend_tool_response_history(messages, tool_responses_message)
                 self._drain_inbox_into_messages(messages)
                 await self._acheckpoint_save(messages, vars)
             else:
@@ -1571,12 +1593,7 @@ class Agent(Module, metaclass=AutoParams):
             if start_turn:
                 self._start_chat_turn_if_needed(
                     messages=messages,
-                    content=content,
-                    task=task,
-                    vars=vars,
                     turn_id=effective_run_id,
-                    kwargs=kwargs,
-                    message=message,
                 )
             if content is not None:
                 messages.add_user(content)
@@ -1716,12 +1733,7 @@ class Agent(Module, metaclass=AutoParams):
             if start_turn:
                 self._start_chat_turn_if_needed(
                     messages=messages,
-                    content=content,
-                    task=task,
-                    vars=vars,
                     turn_id=effective_run_id,
-                    kwargs=kwargs,
-                    message=message,
                 )
             if content is not None:
                 messages.add_user(content)
@@ -2243,10 +2255,10 @@ class Agent(Module, metaclass=AutoParams):
 
     # --- Execution Context Resolution ---
 
-    def _get_effective_checkpointer(self):
-        checkpointer = getattr(self, "checkpointer", None)
-        if checkpointer is not None:
-            return checkpointer
+    def _get_effective_checkpoint_store(self):
+        checkpoint_store = getattr(self, "checkpoint_store", None)
+        if checkpoint_store is not None:
+            return checkpoint_store
         return get_execution_context().get("checkpoint_store")
 
     def _get_effective_task_store(self):
@@ -2330,7 +2342,7 @@ class Agent(Module, metaclass=AutoParams):
         messages: Union[ChatMessages, List[Mapping[str, Any]]],
         *,
         drain_notifications: bool = True,
-    ) -> List[Mapping[str, Any]]:
+    ) -> Union[ChatMessages, List[Mapping[str, Any]]]:
         if isinstance(messages, ChatMessages):
             working_messages: Union[ChatMessages, List[Mapping[str, Any]]] = (
                 messages if drain_notifications else messages.copy()
@@ -2342,9 +2354,7 @@ class Agent(Module, metaclass=AutoParams):
             working_messages,
             drain_notifications=drain_notifications,
         )
-        if isinstance(working_messages, ChatMessages):
-            return working_messages.to_chatml()
-        return list(working_messages)
+        return working_messages
 
     def _persist_notification_message(
         self,
@@ -2382,9 +2392,9 @@ class Agent(Module, metaclass=AutoParams):
         str,
         str,
     ]:
-        effective_checkpointer = self._get_effective_checkpointer()
+        effective_checkpoint_store = self._get_effective_checkpoint_store()
         should_use_chat_messages = (
-            effective_checkpointer is not None
+            effective_checkpoint_store is not None
             or isinstance(messages, ChatMessages)
             or scope is not None
         )
@@ -2444,46 +2454,28 @@ class Agent(Module, metaclass=AutoParams):
         self,
         *,
         messages: ChatMessages,
-        content: Optional[Union[str, Mapping[str, Any], List[Mapping[str, Any]]]],  # noqa: ARG002
-        task: Any,
-        vars: Mapping[str, Any],
         turn_id: str,
-        kwargs: Mapping[str, Any],
-        message: Optional[Union[str, Message, Mapping[str, Any]]],
     ) -> None:
         active_turn = messages.get_active_turn()
         if active_turn is not None:
             if active_turn.get("turn_id") == turn_id:
                 return
-            messages.end_turn(status="interrupted")
-
-        raw_task_inputs = task
-        if raw_task_inputs is _UNSET:
-            if isinstance(message, dotdict):
-                raw_task_inputs = self._extract_message_values(self.task, message)
-            else:
-                raw_task_inputs = message
-
-        raw_context_inputs = kwargs.get("task_context")
-        if raw_context_inputs is None and isinstance(message, dotdict):
-            raw_context_inputs = self._extract_message_values(
-                self.task_context, message
-            )
+            messages.end_turn(event="interrupt")
 
         messages.begin_turn(
-            inputs=raw_task_inputs,
-            context_inputs=raw_context_inputs,
-            vars=vars,
             namespace=self.get_module_name(),
             turn_id=turn_id,
         )
 
-    def _append_response_to_chat_messages(
+    def _append_response_to_chat_messages(  # noqa: C901
         self,
         messages: Union[ChatMessages, List[Mapping[str, Any]]],
         raw_response: Union[str, Mapping[str, Any], ModelStreamResponse],
         response_type: str,
         metadata: Optional[Mapping[str, Any]],  # noqa: ARG002
+        *,
+        reasoning: str | None = None,
+        history_items: Optional[List[Mapping[str, Any]]] = None,
     ) -> None:
         if not isinstance(messages, ChatMessages):
             return
@@ -2492,15 +2484,27 @@ class Agent(Module, metaclass=AutoParams):
         if response_type != "text_generation" and "structured" not in response_type:
             return
 
+        if history_items:
+            messages.extend(history_items)
+            if any(item.get("type") == "reasoning" for item in history_items):
+                reasoning = None
+            if any(
+                item.get("type") == "message" and item.get("role") == "assistant"
+                for item in history_items
+            ):
+                return
+
         answer = None
-        reasoning_content = None
+        reasoning_content = reasoning
         if isinstance(raw_response, str):
             answer = raw_response
         elif isinstance(raw_response, Mapping):
             answer = raw_response.get("answer")
             if answer is None and "answer" not in raw_response:
                 answer = raw_response.get("text")
-            reasoning_content = self._extract_reasoning_content(raw_response)
+            reasoning_content = (
+                self._extract_reasoning_content(raw_response) or reasoning_content
+            )
         elif raw_response is not None:
             answer = str(raw_response)
 
@@ -2511,6 +2515,66 @@ class Agent(Module, metaclass=AutoParams):
             )
 
     # --- Response Extraction Helpers ---
+
+    def _append_tool_model_history(
+        self,
+        messages: Union[ChatMessages, List[Mapping[str, Any]]],
+        model_response: Union[ModelResponse, ModelStreamResponse],
+    ) -> set[str]:
+        uses_canonical_history = isinstance(
+            messages, ChatMessages
+        ) or self._model_uses_canonical_history(messages)
+        if not uses_canonical_history:
+            return set()
+        if isinstance(model_response, ModelStreamResponse):
+            items = model_response.chat_accumulator.snapshot(
+                fallback_reasoning=model_response.reasoning
+            )
+        else:
+            items = getattr(model_response, "history_items", [])
+        if not isinstance(items, list):
+            return set()
+        trajectory_items = [
+            item for item in items if item.get("type") in {"reasoning", "function_call"}
+        ]
+        messages.extend(trajectory_items)
+        return {item["type"] for item in trajectory_items}
+
+    def _extend_tool_response_history(
+        self,
+        messages: Union[ChatMessages, List[Mapping[str, Any]]],
+        tool_response_messages: List[Mapping[str, Any]],
+    ) -> None:
+        uses_canonical_history = isinstance(
+            messages, ChatMessages
+        ) or self._model_uses_canonical_history(messages)
+        if not uses_canonical_history:
+            messages.extend(tool_response_messages)
+            return
+
+        existing_call_ids = {
+            item.get("call_id")
+            for item in messages
+            if item.get("type") == "function_call"
+        }
+        normalized = ChatMessages(tool_response_messages).to_items()
+        messages.extend(
+            item
+            for item in normalized
+            if not (
+                item.get("type") == "function_call"
+                and item.get("call_id") in existing_call_ids
+            )
+        )
+
+    def _model_uses_canonical_history(self, messages) -> bool:
+        if not isinstance(messages, list):
+            return False
+        try:
+            model = self.model
+        except AttributeError:
+            return False
+        return bool(getattr(model, "_uses_canonical_history", False))
 
     def _extract_reasoning_content(
         self,
@@ -2526,26 +2590,13 @@ class Agent(Module, metaclass=AutoParams):
         self,
         messages: Union[ChatMessages, List[Mapping[str, Any]]],
         raw_response: Union[str, Mapping[str, Any], ModelStreamResponse],
-        response_type: str,
-        metadata: Optional[Mapping[str, Any]],
     ) -> None:
         if not isinstance(messages, ChatMessages):
             return
 
-        status = "completed"
-        assistant_output: Any = raw_response
         if isinstance(raw_response, ModelStreamResponse):
-            status = "streaming"
-            assistant_output = None
-        elif response_type == "tool_responses":
-            status = "tool_responses"
-
-        messages.end_turn(
-            assistant_output=assistant_output,
-            response_type=response_type,
-            response_metadata=metadata,
-            status=status,
-        )
+            return
+        messages.end_turn(event="complete")
 
     def _attach_stream_checkpoint_finalizer(
         self,
@@ -2559,45 +2610,29 @@ class Agent(Module, metaclass=AutoParams):
         stream_messages = messages.copy()
 
         def finalize_stream(final_state) -> None:
-            response_type = final_state.response_type or "text_generation"
-            if final_state.status == "completed":
-                if final_state.output is not None:
-                    stream_messages.add_assistant_response(
-                        final_state.output,
-                        reasoning_content=final_state.reasoning,
+            stream_messages.extend(final_state.items)
+            try:
+                if final_state.status == "completed":
+                    stream_messages.end_turn(event="complete")
+                    self._checkpoint_save(stream_messages, vars, status="completed")
+                    return
+
+                reason = (
+                    str(final_state.error) if final_state.error is not None else None
+                )
+                if final_state.status == "interrupted":
+                    self._close_interrupted_tool_calls(stream_messages, reason=reason)
+                    self._checkpoint_save(stream_messages, vars, status="interrupted")
+                    return
+
+                if stream_messages.get_active_turn() is not None:
+                    stream_messages.end_turn(
+                        event="fail",
+                        metadata={"error": reason} if reason is not None else None,
                     )
-                self._finalize_chat_turn(
-                    stream_messages,
-                    final_state.output,
-                    response_type,
-                    final_state.metadata,
-                )
-                self._checkpoint_save(stream_messages, vars, status="completed")
-                return
-
-            reason = str(final_state.error) if final_state.error is not None else None
-            if final_state.status == "interrupted":
-                self._close_interrupted_tool_calls(stream_messages, reason=reason)
-                self._checkpoint_save(stream_messages, vars, status="interrupted")
-                return
-
-            if final_state.output is not None:
-                stream_messages.add_assistant_response(
-                    final_state.output,
-                    reasoning_content=final_state.reasoning,
-                )
-            if stream_messages.get_active_turn() is not None:
-                stream_messages.end_turn(
-                    assistant_output=final_state.output,
-                    response_type=response_type,
-                    response_metadata=(
-                        {"error": reason}
-                        if reason is not None
-                        else final_state.metadata
-                    ),
-                    status="failed",
-                )
-            self._checkpoint_save(stream_messages, vars, status="failed")
+                self._checkpoint_save(stream_messages, vars, status="failed")
+            finally:
+                messages._hydrate_state(stream_messages._to_state())
 
         model_response.add_finalizer(finalize_stream)
 
@@ -2612,10 +2647,8 @@ class Agent(Module, metaclass=AutoParams):
         messages.close_interrupted_tool_calls(reason=reason)
         if messages.get_active_turn() is not None:
             messages.end_turn(
-                assistant_output=None,
-                response_type="interrupted",
-                response_metadata={"reason": reason} if reason else None,
-                status="interrupted",
+                event="interrupt",
+                metadata={"reason": reason} if reason else None,
             )
 
     def _append_interrupted_tool_response_messages(
@@ -2641,7 +2674,7 @@ class Agent(Module, metaclass=AutoParams):
             }
         )
         tool_response_messages = raw_response.get_messages()
-        messages.extend(tool_response_messages)
+        self._extend_tool_response_history(messages, tool_response_messages)
         self._close_interrupted_tool_calls(messages, reason=reason)
 
     # --- Checkpoint Persistence ---
@@ -2652,8 +2685,8 @@ class Agent(Module, metaclass=AutoParams):
         _vars: Mapping[str, Any],
         status: str = "running",
     ) -> None:
-        checkpointer = self._get_effective_checkpointer()
-        if checkpointer is None or not isinstance(messages, ChatMessages):
+        checkpoint_store = self._get_effective_checkpoint_store()
+        if checkpoint_store is None or not isinstance(messages, ChatMessages):
             return
 
         turns = messages.turns
@@ -2663,7 +2696,7 @@ class Agent(Module, metaclass=AutoParams):
         thread_id = messages.thread_id or new_thread_id()
         run_id = turns[-1]["turn_id"]
         state = self._build_checkpoint_state(messages, status=status)
-        checkpointer.save_state(self.get_module_name(), thread_id, run_id, state)
+        checkpoint_store.save_state(self.get_module_name(), thread_id, run_id, state)
 
     async def _acheckpoint_save(
         self,
@@ -2671,8 +2704,8 @@ class Agent(Module, metaclass=AutoParams):
         _vars: Mapping[str, Any],
         status: str = "running",
     ) -> None:
-        checkpointer = self._get_effective_checkpointer()
-        if checkpointer is None or not isinstance(messages, ChatMessages):
+        checkpoint_store = self._get_effective_checkpoint_store()
+        if checkpoint_store is None or not isinstance(messages, ChatMessages):
             return
 
         turns = messages.turns
@@ -2682,15 +2715,17 @@ class Agent(Module, metaclass=AutoParams):
         thread_id = messages.thread_id or new_thread_id()
         run_id = turns[-1]["turn_id"]
         state = self._build_checkpoint_state(messages, status=status)
-        if hasattr(checkpointer, "asave_state"):
-            await checkpointer.asave_state(
+        if hasattr(checkpoint_store, "asave_state"):
+            await checkpoint_store.asave_state(
                 self.get_module_name(),
                 thread_id,
                 run_id,
                 state,
             )
         else:
-            checkpointer.save_state(self.get_module_name(), thread_id, run_id, state)
+            checkpoint_store.save_state(
+                self.get_module_name(), thread_id, run_id, state
+            )
 
     def _checkpoint_interrupted(
         self,
@@ -2751,17 +2786,27 @@ class Agent(Module, metaclass=AutoParams):
         }
 
     def _checkpoint_save_on_error(self, inputs: Mapping[str, Any]) -> None:
-        if self._get_effective_checkpointer() is None:
+        if self._get_effective_checkpoint_store() is None:
             return
         messages = inputs.get("messages")
         vars = inputs.get("vars", {})
+        if (
+            isinstance(messages, ChatMessages)
+            and messages.get_active_turn() is not None
+        ):
+            messages.end_turn(event="fail")
         self._checkpoint_save(messages, vars, status="failed")
 
     async def _acheckpoint_save_on_error(self, inputs: Mapping[str, Any]) -> None:
-        if self._get_effective_checkpointer() is None:
+        if self._get_effective_checkpoint_store() is None:
             return
         messages = inputs.get("messages")
         vars = inputs.get("vars", {})
+        if (
+            isinstance(messages, ChatMessages)
+            and messages.get_active_turn() is not None
+        ):
+            messages.end_turn(event="fail")
         await self._acheckpoint_save(messages, vars, status="failed")
 
     # --- Checkpoint Resume ---
@@ -2779,17 +2824,17 @@ class Agent(Module, metaclass=AutoParams):
         Mapping[str, Any],
         Optional[Union[str, List[str]]],
     ]:
-        checkpointer = self._get_effective_checkpointer()
-        if checkpointer is None or not isinstance(messages, ChatMessages):
+        checkpoint_store = self._get_effective_checkpoint_store()
+        if checkpoint_store is None or not isinstance(messages, ChatMessages):
             return messages, vars, model_preference
         if messages:
             return messages, vars, model_preference
 
         namespace = self.get_module_name()
-        if checkpointer.load_state(namespace, thread_id, run_id) is not None:
+        if checkpoint_store.load_state(namespace, thread_id, run_id) is not None:
             return messages, vars, model_preference
 
-        latest = checkpointer.load_latest_run(namespace, thread_id)
+        latest = checkpoint_store.load_latest_run(namespace, thread_id)
         if latest is None:
             return messages, vars, model_preference
 
@@ -2817,24 +2862,24 @@ class Agent(Module, metaclass=AutoParams):
         Mapping[str, Any],
         Optional[Union[str, List[str]]],
     ]:
-        checkpointer = self._get_effective_checkpointer()
-        if checkpointer is None or not isinstance(messages, ChatMessages):
+        checkpoint_store = self._get_effective_checkpoint_store()
+        if checkpoint_store is None or not isinstance(messages, ChatMessages):
             return messages, vars, model_preference
         if messages:
             return messages, vars, model_preference
 
         namespace = self.get_module_name()
-        if hasattr(checkpointer, "aload_state"):
-            current = await checkpointer.aload_state(namespace, thread_id, run_id)
+        if hasattr(checkpoint_store, "aload_state"):
+            current = await checkpoint_store.aload_state(namespace, thread_id, run_id)
         else:
-            current = checkpointer.load_state(namespace, thread_id, run_id)
+            current = checkpoint_store.load_state(namespace, thread_id, run_id)
         if current is not None:
             return messages, vars, model_preference
 
-        if hasattr(checkpointer, "aload_latest_run"):
-            latest = await checkpointer.aload_latest_run(namespace, thread_id)
+        if hasattr(checkpoint_store, "aload_latest_run"):
+            latest = await checkpoint_store.aload_latest_run(namespace, thread_id)
         else:
-            latest = checkpointer.load_latest_run(namespace, thread_id)
+            latest = checkpoint_store.load_latest_run(namespace, thread_id)
         if latest is None:
             return messages, vars, model_preference
 
@@ -2855,8 +2900,8 @@ class Agent(Module, metaclass=AutoParams):
         *,
         scope: Optional[ExecutionScope] = None,
     ) -> Optional[Mapping[str, Any]]:
-        checkpointer = self._get_effective_checkpointer()
-        if checkpointer is None:
+        checkpoint_store = self._get_effective_checkpoint_store()
+        if checkpoint_store is None:
             return None
         run_id = scope.run_id if scope is not None else None
         if not isinstance(run_id, str) or not run_id:
@@ -2866,7 +2911,7 @@ class Agent(Module, metaclass=AutoParams):
             messages=messages_kwarg,
             thread_id=scope.thread_id if scope is not None else None,
         )
-        state = checkpointer.load_state(
+        state = checkpoint_store.load_state(
             self.get_module_name(),
             effective_thread_id,
             run_id,
@@ -2882,6 +2927,8 @@ class Agent(Module, metaclass=AutoParams):
 
         restored = ChatMessages()
         restored._hydrate_state(state.get("messages", {}))
+        if restored.get_active_turn() is None and restored.turns:
+            restored.resume_turn(run_id, metadata={"source": "checkpoint"})
         effective_scope = (scope or get_execution_context()["scope"]).with_overrides(
             thread_id=effective_thread_id,
             namespace=self.get_module_name(),
@@ -2899,8 +2946,8 @@ class Agent(Module, metaclass=AutoParams):
         *,
         scope: Optional[ExecutionScope] = None,
     ) -> Optional[Mapping[str, Any]]:
-        checkpointer = self._get_effective_checkpointer()
-        if checkpointer is None:
+        checkpoint_store = self._get_effective_checkpoint_store()
+        if checkpoint_store is None:
             return None
         run_id = scope.run_id if scope is not None else None
         if not isinstance(run_id, str) or not run_id:
@@ -2910,14 +2957,14 @@ class Agent(Module, metaclass=AutoParams):
             messages=messages_kwarg,
             thread_id=scope.thread_id if scope is not None else None,
         )
-        if hasattr(checkpointer, "aload_state"):
-            state = await checkpointer.aload_state(
+        if hasattr(checkpoint_store, "aload_state"):
+            state = await checkpoint_store.aload_state(
                 self.get_module_name(),
                 effective_thread_id,
                 run_id,
             )
         else:
-            state = checkpointer.load_state(
+            state = checkpoint_store.load_state(
                 self.get_module_name(),
                 effective_thread_id,
                 run_id,
@@ -2934,6 +2981,8 @@ class Agent(Module, metaclass=AutoParams):
 
         restored = ChatMessages()
         restored._hydrate_state(state.get("messages", {}))
+        if restored.get_active_turn() is None and restored.turns:
+            restored.resume_turn(run_id, metadata={"source": "checkpoint"})
         effective_scope = (scope or get_execution_context()["scope"]).with_overrides(
             thread_id=effective_thread_id,
             namespace=self.get_module_name(),

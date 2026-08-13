@@ -13,6 +13,9 @@ class TestModelResponse:
         """Test ModelResponse initialization."""
         response = ModelResponse()
         assert response.data is None
+        assert response.reasoning is None
+        assert response.reasoning_summary is None
+        assert response.has_reasoning_summary is False
         assert response.metadata is None
         assert response.response_type is None
 
@@ -43,6 +46,15 @@ class TestModelResponse:
         response = ModelResponse()
         response.add(None)
         assert response.consume() is None
+
+    def test_model_response_keeps_reasoning_summary_separate(self):
+        response = ModelResponse()
+        response.reasoning = "private reasoning"
+        response.reasoning_summary = "safe summary"
+
+        assert response.consume_reasoning() == "private reasoning"
+        assert response.consume_reasoning_summary() == "safe summary"
+        assert response.has_reasoning_summary is True
 
 
 class TestModelStreamResponse:
@@ -225,6 +237,41 @@ class TestModelStreamResponse:
         assert list(stream._reasoning_pending_chunks) == ["thinking", None]
         assert list(stream._pending_chunks) == ["answer", None]
 
+    @pytest.mark.asyncio
+    async def test_model_stream_response_has_separate_reasoning_summary_channel(self):
+        stream = ModelStreamResponse(mode="async")
+        assert stream.reasoning_summary_event.is_set() is False
+        stream.add_reasoning("private")
+        stream.add_reasoning_summary("safe summary")
+        await stream.reasoning_summary_event.wait()
+        assert stream.reasoning_summary_event.is_set() is True
+        stream.reasoning = "private"
+        stream.reasoning_summary = "safe summary"
+        stream.finish()
+
+        reasoning = [chunk async for chunk in stream.consume_reasoning()]
+        summary = [chunk async for chunk in stream.consume_reasoning_summary()]
+
+        assert reasoning == ["private"]
+        assert summary == ["safe summary"]
+        assert stream.has_reasoning_summary is True
+        assert stream.chat_accumulator.snapshot() == [
+            {
+                "type": "reasoning",
+                "role": "assistant",
+                "text": "private",
+                "summary": "safe summary",
+            }
+        ]
+
+    def test_reasoning_summary_event_completes_when_stream_has_no_summary(self):
+        stream = ModelStreamResponse(mode="sync")
+
+        stream.finish()
+
+        assert stream.reasoning_summary_event.is_set() is True
+        assert stream.has_reasoning_summary is False
+
     def test_model_stream_response_rejects_chunks_after_channel_close(self):
         stream = ModelStreamResponse(mode="sync")
         stream.add_reasoning("thinking")
@@ -265,3 +312,81 @@ class TestModelStreamResponse:
         assert len(final_states) == 1
         assert final_states[0].status == "interrupted"
         assert isinstance(final_states[0].error, AbortRequestedError)
+
+    def test_model_stream_response_builds_ordered_history_items(self):
+        stream = ModelStreamResponse(mode="sync")
+        final_states = []
+        stream.add_finalizer(final_states.append)
+
+        stream.add_reasoning("first ")
+        stream.add_reasoning("step")
+        stream.finish_reasoning()
+        stream.add("final ")
+        stream.add("answer")
+        stream.finish()
+
+        assert final_states[0].items == [
+            {
+                "type": "reasoning",
+                "role": "assistant",
+                "text": "first step",
+            },
+            {
+                "type": "message",
+                "role": "assistant",
+                "content": "final answer",
+            },
+        ]
+
+    def test_model_stream_response_preserves_opaque_reasoning_state(self):
+        stream = ModelStreamResponse(mode="sync")
+        final_states = []
+        stream.add_finalizer(final_states.append)
+        stream.chat_accumulator.add_reasoning(
+            summary="Checked inventory.",
+            provider="openai",
+            provider_state={"type": "reasoning", "encrypted_content": "opaque"},
+        )
+
+        stream.finish()
+
+        assert final_states[0].items[0]["summary"] == "Checked inventory."
+        assert final_states[0].items[0]["provider_state"] == {
+            "provider": "openai",
+            "data": {"type": "reasoning", "encrypted_content": "opaque"},
+        }
+
+    def test_delayed_reasoning_state_merges_by_responses_item_id(self):
+        stream = ModelStreamResponse(mode="sync")
+        final_states = []
+        stream.add_finalizer(final_states.append)
+
+        stream.add_reasoning("Checked inventory.", item_id="rs_1")
+        stream.add("In stock.")
+        stream.chat_accumulator.add_reasoning(
+            provider="groq",
+            api_mode="responses",
+            codec="responses_reasoning_text",
+            provider_state={"type": "reasoning", "id": "rs_1"},
+            item_id="rs_1",
+        )
+        stream.finish()
+
+        assert final_states[0].items == [
+            {
+                "type": "reasoning",
+                "role": "assistant",
+                "text": "Checked inventory.",
+                "provider_state": {
+                    "provider": "groq",
+                    "api_mode": "responses",
+                    "codec": "responses_reasoning_text",
+                    "data": {"type": "reasoning", "id": "rs_1"},
+                },
+            },
+            {
+                "type": "message",
+                "role": "assistant",
+                "content": "In stock.",
+            },
+        ]

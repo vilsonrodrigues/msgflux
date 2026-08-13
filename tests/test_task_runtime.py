@@ -1010,6 +1010,16 @@ def test_inspect_model_execution_params_does_not_consume_notifications():
     assert notification_messages == []
 
 
+def test_agent_keeps_canonical_messages_until_model_boundary():
+    agent = Agent(name="Assistant", model=_mock_model())
+    messages = ChatMessages()
+
+    params = agent.inspect_model_execution_params("Continue.", messages=messages)
+
+    assert isinstance(params["messages"], ChatMessages)
+    assert params["messages"].to_chatml()[-1]["content"] == "<task>Continue.</task>"
+
+
 def test_agent_control_interrupts_before_model_call():
     inbox = mf.AgentInbox(store=mf.InMemoryAgentInboxStore())
     model = _mock_model()
@@ -1030,7 +1040,7 @@ def test_agent_control_pause_saves_checkpoint_before_model_call():
     inbox = mf.AgentInbox(store=mf.InMemoryAgentInboxStore())
     store = InMemoryCheckpointStore()
     model = _mock_model()
-    agent = Agent(name="Assistant", model=model, checkpointer=store)
+    agent = Agent(name="Assistant", model=model, checkpoint_store=store)
     agent.set_agent_inbox(inbox)
     scope = mf.ExecutionScope(thread_id="user_42", run_id="run_pause")
 
