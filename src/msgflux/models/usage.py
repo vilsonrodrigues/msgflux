@@ -44,23 +44,28 @@ class UsageCodec:
 
         input_details = self._first_mapping(raw, self.input_detail_fields)
         output_details = self._first_mapping(raw, self.output_detail_fields)
+        cached_tokens = self._detail_int(
+            raw,
+            input_details,
+            (
+                "cached_tokens",
+                "cache_read_input_tokens",
+                "cached_content_token_count",
+            ),
+        )
 
         return dotdict(
             {
                 "input_tokens": input_tokens or 0,
                 "output_tokens": output_tokens or 0,
                 "total_tokens": total_tokens or 0,
+                "cache_hit_percentage": self._cache_hit_percentage(
+                    input_tokens,
+                    cached_tokens,
+                ),
                 "input_tokens_details": dotdict(
                     {
-                        "cached_tokens": self._detail_int(
-                            raw,
-                            input_details,
-                            (
-                                "cached_tokens",
-                                "cache_read_input_tokens",
-                                "cached_content_token_count",
-                            ),
-                        ),
+                        "cached_tokens": cached_tokens,
                         "cache_write_tokens": self._detail_int(
                             raw,
                             input_details,
@@ -138,6 +143,21 @@ class UsageCodec:
         if value is None:
             value = cls._first_int(raw, fields)
         return value or 0
+
+    @staticmethod
+    def _cache_hit_percentage(
+        input_tokens: int | None,
+        cached_tokens: int,
+    ) -> float | None:
+        """Return the cached share of input tokens as a percentage."""
+        if (
+            input_tokens is None
+            or input_tokens <= 0
+            or cached_tokens < 0
+            or cached_tokens > input_tokens
+        ):
+            return None
+        return cached_tokens / input_tokens * 100
 
 
 default_usage_codec = UsageCodec()

@@ -146,6 +146,19 @@ OpenAI reports prompt cache hits in usage metadata:
 - Chat Completions: `usage.prompt_tokens_details.cached_tokens`
 - Responses API: `usage.input_tokens_details.cached_tokens`
 
+msgFlux normalizes both protocols as
+`response.metadata.usage.cache_hit_percentage`. The value is the percentage of
+input tokens served from cache, so it can be compared consistently across
+providers and API modes:
+
+```python
+usage = response.metadata.usage
+print(f"Cache hit: {usage.cache_hit_percentage:.1f}%")
+```
+
+The value is `None` when the provider does not report a valid input-token
+denominator. A valid request with no cached tokens reports `0.0`.
+
 msgflux currently implements this warmup path for chat completions.
 
 ## Practical Guidance
@@ -156,4 +169,3 @@ msgflux currently implements this warmup path for chat completions.
 - Do not expect warmup to persist conversation state.
 - Use foreground warmup during tests so failures are visible.
 - Use background warmup during app startup when failures should not block serving.
-
