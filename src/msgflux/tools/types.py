@@ -127,10 +127,26 @@ class ToolBucket:
         return self.captures_config(metadata.tool_config)
 
     def validate_capture(self, metadata: ToolMetadata) -> None:
-        if is_background_capable(metadata.tool_config):
+        loop_options = {
+            option
+            for option in (
+                "background",
+                "allow_background",
+                "spawn",
+                "call_as_response",
+                "return_direct",
+                "handoff",
+            )
+            if metadata.tool_config.get(option, False)
+        }
+        if loop_options:
+            formatted_options = ", ".join(
+                f"`{option}=True`" for option in sorted(loop_options)
+            )
             raise ValueError(
-                "Bucket-captured tools cannot use `background=True` or "
-                f"`allow_background=True`. Tool `{metadata.name}` cannot be captured."
+                "Bucket-captured tools cannot define model-loop behavior "
+                f"({formatted_options}). Configure that behavior on the public "
+                f"bucket instead. Tool `{metadata.name}` cannot be captured."
             )
         if not self.captures(metadata):
             raise ValueError(

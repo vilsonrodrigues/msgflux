@@ -173,13 +173,22 @@ such as `"catalog|orders"`.
 Two bucket captures cannot overlap. This makes routing deterministic without a
 priority system. A kind bucket that coexists with deferred tools should include
 `"defer_loading": False`, leaving `{"defer_loading": True}` to `tool_search`. The
-base bucket rejects captured tools that configure `background` or
-`allow_background`; configure those flags on the bucket itself instead.
+base executable bucket rejects captured tools that configure
+`background`, `allow_background`, `spawn`, `call_as_response`,
+`return_direct`, or `handoff`; these model-loop policies belong to the
+public bucket. `ToolSearchTool` overrides this validation because it catalogs
+deferred tools rather than proxy-executing them behind its own call.
 
 `ToolLibrary` routes matching tools to `ToolBucket.add(...)`. The base method
 keeps metadata in `bucket.tools`, rejects duplicate names, and calls
 `bucket.refresh()`. The base refresh hook does nothing; a subclass can rebuild
 derived presentation data such as its description and usage guidance.
+
+Buckets do not call `ToolMetadata.impl` to execute a child. An injected
+`ToolBucketHandle` accepts `handle(tool_name, **arguments)` and
+`handle.acall(...)`, validates membership, resolves the captured `LocalTool` or
+`MCPTool`, and re-enters the library's normal argument preparation and telemetry
+path.
 
 The registration rule is:
 
@@ -211,11 +220,15 @@ The model only sees `agent(...)`. The bucket description and usage guidance are
 refreshed on the wrapping `LocalTool`, so provider schemas and prompt guidance
 reflect the captured agents.
 
-`AgentTool` still receives runtime context as explicitly injected kwargs. The
-public agent parameters stay as `agent(name, message)`, while `ToolLibrary`
-passes the current `messages`, `vars`, and execution `scope` into the bucket.
-The bucket then forwards those runtime values only when the selected subagent's
-own `tool_config` requests them.
+The public parameters stay as `agent(name, message)`. `AgentTool` receives a
+scoped bucket handle carrying the parent call context. When it selects a child,
+`ToolLibrary` reapplies that child's configuration: for example,
+`inject_messages=True` gives the child agent a copy of the parent's history,
+while an agent without that option receives no inherited history. The scoped
+handle itself keeps the original context references; copying happens only while
+preparing a selected agent call. Agent execution namespaces are normalized from
+the agent's canonical module name, so a public tool alias does not change its
+checkpoint identity.
 
 Deferred agents are captured by `tool_search` and represented as logical tools
 in `ToolCatalog`. Once loaded for a thread, the provider can call the agent by

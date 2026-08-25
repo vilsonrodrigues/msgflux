@@ -49,6 +49,13 @@ def _make_agent(checkpoint_store=None, **kwargs):
     )
 
 
+def _without_item_ids(items):
+    return [
+        {key: value for key, value in item.items() if key != "item_id"}
+        for item in items
+    ]
+
+
 def test_agent_accepts_checkpoint_store_with_stream():
     store = InMemoryCheckpointStore()
 
@@ -74,11 +81,164 @@ def test_agent_saves_completed_checkpoint():
     assert state["messages"]["thread_id"] == "user_42"
     assert "turns" not in state["messages"]
     assert "vars" not in state
-    assert [
+    assert _without_item_ids(
+        [
+            item
+            for item in state["messages"]["items"]
+            if item.get("role") == "assistant" and item.get("content") == "42"
+        ]
+    ) == [{"type": "message", "role": "assistant", "content": "42"}]
+
+
+def test_agent_persists_only_minimal_usage_on_each_model_response():
+    store = InMemoryCheckpointStore()
+    agent = _make_agent(checkpoint_store=store)
+
+    def lookup(query: str) -> str:
+        return f"status for {query}"
+
+    agent.tool_library.add(lookup)
+    tool_response = _tool_call_response()
+    tool_response.metadata = {
+        "usage": {
+            "input_tokens": 100,
+            "output_tokens": 20,
+            "total_tokens": 120,
+            "cache_hit_percentage": 80.0,
+            "input_tokens_details": {"cached_tokens": 80},
+            "raw": {"provider_field": "discarded"},
+        }
+    }
+    final_response = _text_response("All systems operational.")
+    final_response.metadata = {
+        "usage": {
+            "input_tokens": 140,
+            "output_tokens": 10,
+            "total_tokens": 150,
+            "cache_hit_percentage": 50.0,
+            "input_tokens_details": {"cached_tokens": 70},
+        }
+    }
+    agent.generator.forward = Mock(side_effect=[tool_response, final_response])
+
+    agent(
+        "Check status",
+        scope=ExecutionScope(
+            thread_id="user_42",
+            namespace="test_agent",
+            run_id="run_usage",
+        ),
+    )
+
+    state = store.load_state("test_agent", "user_42", "run_usage")
+    restored = ChatMessages()
+    restored._hydrate_state(state["messages"])
+    model_outputs = [
+        item
+        for item in restored
+        if item.get("type") in {"function_call", "message"}
+        and isinstance(item.get("metadata", {}).get("usage"), dict)
+    ]
+
+    assert [item["metadata"]["usage"] for item in model_outputs] == [
+        {
+            "input_tokens": 100,
+            "output_tokens": 20,
+            "cached_input_tokens": 80,
+        },
+        {
+            "input_tokens": 140,
+            "output_tokens": 10,
+            "cached_input_tokens": 70,
+        },
+    ]
+    assert all("metadata" not in message for message in restored.to_chatml())
+
+
+def test_agent_persists_model_audit_metadata_from_lm_response():
+    store = InMemoryCheckpointStore()
+    agent = _make_agent(checkpoint_store=store)
+    response = _text_response("Audited")
+    response.metadata = {
+        "model": {
+            "provider": "openai",
+            "model_id": "gpt-5.6-luna",
+            "api_mode": "responses",
+            "reasoning_effort": "medium",
+            "untrusted_provider_field": "discarded",
+        }
+    }
+    agent.generator.forward = Mock(return_value=response)
+
+    agent(
+        "Answer",
+        scope=ExecutionScope(
+            thread_id="user_42",
+            namespace="test_agent",
+            run_id="run_audit",
+        ),
+    )
+
+    state = store.load_state("test_agent", "user_42", "run_audit")
+    assistant = next(
         item
         for item in state["messages"]["items"]
-        if item.get("role") == "assistant" and item.get("content") == "42"
-    ] == [{"type": "message", "role": "assistant", "content": "42"}]
+        if item.get("role") == "assistant" and item.get("content") == "Audited"
+    )
+    assert assistant["metadata"]["model"] == {
+        "provider": "openai",
+        "model_id": "gpt-5.6-luna",
+        "api_mode": "responses",
+        "reasoning_effort": "medium",
+    }
+
+
+def test_agent_persists_tool_call_usage_before_return_direct():
+    store = InMemoryCheckpointStore()
+    agent = _make_agent(checkpoint_store=store)
+
+    def lookup(query: str) -> str:
+        """Look up the current status."""
+        return f"status for {query}"
+
+    lookup.tool_config = {"return_direct": True}
+    agent.tool_library.add(lookup)
+    tool_response = _tool_call_response()
+    tool_response.metadata = {
+        "usage": {
+            "input_tokens": 100,
+            "output_tokens": 20,
+            "total_tokens": 120,
+            "input_tokens_details": {"cached_tokens": 80},
+        }
+    }
+    agent.generator.forward = Mock(return_value=tool_response)
+
+    agent(
+        "Check status",
+        scope=ExecutionScope(
+            thread_id="user_42",
+            namespace="test_agent",
+            run_id="run_return_direct_usage",
+        ),
+    )
+
+    state = store.load_state(
+        "test_agent",
+        "user_42",
+        "run_return_direct_usage",
+    )
+    restored = ChatMessages()
+    restored._hydrate_state(state["messages"])
+    calls = [item for item in restored if item.get("type") == "function_call"]
+
+    assert len(calls) == 1
+    assert calls[0]["call_id"] == "call_lookup"
+    assert calls[0]["metadata"]["usage"] == {
+        "input_tokens": 100,
+        "output_tokens": 20,
+        "cached_input_tokens": 80,
+    }
 
 
 def test_agent_accepts_execution_scope_for_checkpoint_identity():
@@ -324,8 +484,8 @@ def test_agent_preserves_responses_function_call_without_duplicate():
     outputs = [item for item in restored if item.get("type") == "function_call_output"]
 
     assert result == "All systems operational."
-    assert searches == tool_response.history_items[:2]
-    assert calls == [tool_response.history_items[2]]
+    assert _without_item_ids(searches) == tool_response.history_items[:2]
+    assert _without_item_ids(calls) == [tool_response.history_items[2]]
     assert len(outputs) == 1
     assert outputs[0]["call_id"] == "call_lookup"
 
@@ -368,7 +528,7 @@ def test_agent_preserves_responses_message_without_synthetic_duplicate():
         for item in restored
         if item.get("type") == "message" and item.get("role") == "assistant"
     ]
-    assert assistant_messages == response.history_items
+    assert _without_item_ids(assistant_messages) == response.history_items
 
 
 def test_agent_abort_signal_saves_interrupted_checkpoint():
@@ -422,6 +582,17 @@ def test_agent_stream_checkpoint_completes_when_stream_finishes():
 
     stream_response.add("hello")
     stream_response.add(" world")
+    stream_response.set_metadata(
+        {
+            "usage": {
+                "input_tokens": 90,
+                "output_tokens": 12,
+                "total_tokens": 102,
+                "cache_hit_percentage": 50.0,
+                "input_tokens_details": {"cached_tokens": 45},
+            }
+        }
+    )
     stream_response.finish()
 
     completed_state = store.load_state("test_agent", "user_42", "run_stream")
@@ -433,6 +604,14 @@ def test_agent_stream_checkpoint_completes_when_stream_finishes():
     chatml = restored.to_chatml()
     assert chatml[-1]["content"] == "hello world"
     assert restored.turns[-1]["status"] == "completed"
+    assistant_item = next(
+        item for item in reversed(list(restored)) if item.get("role") == "assistant"
+    )
+    assert assistant_item["metadata"]["usage"] == {
+        "input_tokens": 90,
+        "output_tokens": 12,
+        "cached_input_tokens": 45,
+    }
     assert "assistant_output" not in restored.turns[-1]
     assert [item["type"] for item in restored if item.get("type") == "reasoning"] == [
         "reasoning"

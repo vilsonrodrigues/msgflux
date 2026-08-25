@@ -14,7 +14,6 @@ class AgentNotification:
     source: str
     ref: str | None = None
     status: str | None = None
-    hint: str | None = None
     metadata: Dict[str, Any] = field(default_factory=dict)
     dedupe_key: str | None = None
     created_at: str = field(default_factory=utc_now_isoformat)
@@ -41,7 +40,6 @@ class AgentControlMessage:
             notification_id=self.control_id,
             source="control",
             status=self.command,
-            hint=self.reason,
             metadata=metadata,
             dedupe_key=f"control:{self.command}",
             created_at=self.created_at,

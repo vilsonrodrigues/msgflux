@@ -2,13 +2,28 @@
 
 The `@mf.tool_config` decorator adds special behaviors to tools.
 
+## description
+
+Set `description` to replace the model-facing tool description without changing
+the callable's docstring. When omitted, msgFlux snapshots the `description`
+class attribute, function docstring, or `__call__` docstring when the tool is
+registered.
+
+```python
+@mf.tool_config(description="Search the product catalog by SKU or product name.")
+def search_products(query: str) -> str:
+    """Internal implementation notes can remain here."""
+    return query
+```
+
+Configure the description before adding the tool to `ToolLibrary`. Do not edit
+captured `ToolMetadata` directly; use `handle.remove(name)` and
+`handle.add(configured_tool)` when replacing a dynamically registered tool.
+
 ## defer_loading
 
 Set `defer_loading=True` for tools that should remain searchable without
-occupying the model's initial callable surface. Loading is stored per thread in
-`ChatMessages`, so concurrent conversations sharing an agent do not change one
-another's active tools. See [Tool Search](tool-search.md) for the hosted OpenAI
-Responses path and the portable fallback.
+occupying the model's initial callable surface. See [Tool Search](tool-search.md) for more details.
 
 ```python
 import msgflux as mf
@@ -46,7 +61,7 @@ Use cases:
             return "This is your detailed report..."
 
         class Assistant(nn.Agent):
-            model = mf.Model.chat_completion("openai/gpt-4.1-mini")
+            model = mf.Model.chat_completion("openai/gpt-5.6-luna")
             tools = [get_report]
 
         agent = Assistant()
@@ -114,7 +129,7 @@ Use cases:
             return report
 
         class Reporter(nn.Agent):
-            model = mf.Model.chat_completion("openai/gpt-4.1-mini")
+            model = mf.Model.chat_completion("openai/gpt-5.6-luna")
             tools = [generate_formatted_report]
             config = {"verbose": True}
 
@@ -152,7 +167,7 @@ Use cases:
             return "File saved successfully"
 
         class Assistant(nn.Agent):
-            model = mf.Model.chat_completion("openai/gpt-4.1-mini")
+            model = mf.Model.chat_completion("openai/gpt-5.6-luna")
             tools = [save_to_s3]
 
         agent = Assistant()
@@ -178,7 +193,7 @@ Use cases:
             return f"Uploaded for user {user_id}"
 
         class Assistant(nn.Agent):
-            model = mf.Model.chat_completion("openai/gpt-4.1-mini")
+            model = mf.Model.chat_completion("openai/gpt-5.6-luna")
             tools = [upload_file]
 
         agent = Assistant()
@@ -210,7 +225,7 @@ Use cases:
             return vars.get(name, "Not found")
 
         class Assistant(nn.Agent):
-            model = mf.Model.chat_completion("openai/gpt-4.1-mini")
+            model = mf.Model.chat_completion("openai/gpt-5.6-luna")
             tools = [save_preference, get_preference]
 
         agent = Assistant()
@@ -244,34 +259,35 @@ This is useful for:
     class Specialist(nn.Agent):
         """Specialist that works only from conversation context."""
 
-        model = mf.Model.chat_completion("openai/gpt-4.1-mini")
+            model = mf.Model.chat_completion("openai/gpt-5.6-luna")
         system_message = "You are a specialist. Use the conversation history."
 
     class Coordinator(nn.Agent):
-        model = mf.Model.chat_completion("openai/gpt-4.1-mini")
+            model = mf.Model.chat_completion("openai/gpt-5.6-luna")
         tools = [Specialist]
     ```
 
-## Runtime Injection Options
-
-Tool config supports several `inject_*` flags for common agent state. Use
-`inject_handle=True` for runtime handle access, including tool mutation,
-background task progress, and notifications. `mf.Hidden` only hides a parameter
-from the model-facing schema; it does not inject a value by itself.
-
-| API | Runtime argument | Documentation |
-|-----|------------------|---------------|
-| `inject_vars=True` | `vars` | [inject_vars](#inject_vars) |
-| `inject_message=True` | `message` | [inject_message](#inject_message) |
-| `inject_messages=True` | `messages` | [inject_messages](#inject_messages) |
-| `inject_handle=True` | `handle` | [inject_handle](#inject_handle) |
-| `mf.Hidden` | Hidden schema parameter | [Tools: Hidden Tool Parameters](index.md#hidden-tool-parameters) |
-
 ## inject_handle
 
-With `inject_handle=True`, the tool receives a `handle` argument at runtime. This
-argument is removed from the public tool schema. Use `mf.Hidden` on the
-parameter when you want the signature to make that schema boundary explicit.
+With `inject_handle=True`, the tool receives a tool-scoped
+`ToolLibraryHandle` at runtime. The handle gives the implementation controlled
+access to the library and to runtime resources associated with the current
+call. It is not a model argument and is removed from the public tool schema.
+
+The most common operations are:
+
+| Area | Methods | Availability |
+|------|---------|--------------|
+| Tool library | `add`, `remove`, `list_tools`, `get_tool` | Any injected handle. |
+| Current background task | `get_task`, `get_task_id`, `set_running`, `update_progress` | Only while the tool is executing as a background task. |
+| Cooperative control | `raise_if_interrupted`, `raise_if_paused` | Only while the tool is executing as a background task. |
+| Agent notifications | `notify`, `get_notification` | Any tool-scoped handle; delivery uses the active agent inbox. |
+| Runtime stores | `get_task_store`, `get_agent_inbox` | Uses the resources inherited by the current execution. |
+
+Calling a task-only method during normal inline execution raises a
+`RuntimeError`. This catches tools that were configured with `inject_handle`
+but forgot to opt into `background=True` or model-selected
+`allow_background=True`.
 
 ```python
 import msgflux as mf
@@ -288,6 +304,47 @@ def enable_lookup(handle: mf.Hidden) -> list[str]:
     handle.add(lookup_customer)
     return handle.list_tools()
 ```
+
+`handle.add(...)` uses the same registration path as
+`ToolLibrary.add(...)`. That means the new tool is normalized, validated,
+routed into a matching [ToolBucket](tool-bucket.md), and reconciled with the
+background task controls. The mutation affects the shared `ToolLibrary`; it is
+not thread-local. By contrast, selecting an already registered deferred tool
+through [Tool Search](tool-search.md) is stored in `ChatMessages` and is local
+to that conversation.
+
+For a background tool, the same handle can report durable task progress and
+publish a lightweight notification without exposing runtime parameters to the
+model:
+
+```python
+import msgflux as mf
+
+
+@mf.tool_config(background=True, inject_handle=True)
+def reconcile_inventory(sku: str, handle: mf.Hidden) -> dict:
+    """Reconcile one SKU and report task progress."""
+    handle.set_running(stage="load", message=f"Loading {sku}")
+    handle.raise_if_interrupted()
+    handle.update_progress(
+        stage="compare",
+        message="Compared reservations with physical stock",
+        current=1,
+        total=1,
+    )
+    handle.notify(
+        source="task_progress",
+        status="reconciled",
+        metadata={"sku": sku},
+        dedupe_key=f"inventory:{handle.get_task_id()}",
+    )
+    return {"sku": sku, "status": "reconciled"}
+```
+
+The progress record is read with `task_status`; the notification is delivered
+through the agent inbox; and the return value is retrieved with `task_output`
+or `task_wait`. See [Background Tasks](background-tasks.md#reporting-progress)
+for the complete lifecycle.
 
 ## inject_message
 
@@ -360,7 +417,7 @@ Use cases:
 
         # mf.set_envs(OPENAI_API_KEY="...")
 
-        model = mf.Model.chat_completion("openai/gpt-4.1-mini")
+            model = mf.Model.chat_completion("openai/gpt-5.6-luna")
 
         # With inject_messages, the specialist receives
         # the coordinator's conversation as messages
@@ -412,7 +469,7 @@ Use cases:
             }
 
         class SafeAgent(nn.Agent):
-            model = mf.Model.chat_completion("openai/gpt-4.1-mini")
+            model = mf.Model.chat_completion("openai/gpt-5.6-luna")
             instructions = "Always check safety before responding."
             tools = [check_safety]
             config = {"verbose": True}
@@ -496,7 +553,7 @@ Unlike Agent-as-Tool, the Specialist's response bypasses the Coordinator entirel
 
     # mf.set_envs(OPENAI_API_KEY="...")
 
-    model = mf.Model.chat_completion("openai/gpt-4.1-mini")
+            model = mf.Model.chat_completion("openai/gpt-5.6-luna")
 
     # Tool is now "transfer_to_TechnicalSupport" with no parameters
     @mf.tool_config(handoff=True)
@@ -538,7 +595,7 @@ Use cases:
 
     # mf.set_envs(OPENAI_API_KEY="...")
 
-    model = mf.Model.chat_completion("openai/gpt-4.1-mini")
+            model = mf.Model.chat_completion("openai/gpt-5.6-luna")
 
     @mf.tool_config(call_as_response=True)
     def generate_sales_report(
@@ -600,7 +657,7 @@ Use cases:
         print(f"Notification sent to {user_id}: {message}")
 
     class Notifier(nn.Agent):
-        model = mf.Model.chat_completion("openai/gpt-4.1-mini")
+            model = mf.Model.chat_completion("openai/gpt-5.6-luna")
         tools = [send_notification]
         config = {"verbose": True}
 
@@ -630,9 +687,18 @@ def github_repository_search_v2_extended(query: str) -> str:
 
 ## background_capabilities
 
-Use `background_capabilities` to declare the optional task controls a
-background-capable tool implements. Valid values are `activity` and `message`.
-This option requires `background=True` or `allow_background=True`.
+Use `background_capabilities` to declare optional controls supported by a
+background-capable tool. It does not enable background execution by itself;
+the tool must also use `background=True` or `allow_background=True`.
+
+Every background-capable tool installs the common controls (`task_status`,
+`task_list`, `task_wait`, `task_output`, and `task_interrupt`). Capabilities add
+to that shared surface:
+
+| Capability | Adds | Intended source |
+|------------|------|-----------------|
+| `activity` | `task_activity` | Any background implementation that records compact activity. |
+| `message` | `task_message` | `Agent` and `AgentTool`, whose inbox and checkpoint runtime can continue a task. |
 
 ```python
 @mf.tool_config(background=True, background_capabilities=["activity"])
@@ -641,15 +707,21 @@ def index_documents(path: str) -> str:
     return path
 ```
 
-The declaration installs `task_activity` while the tool is registered. `message`
-installs `task_message`; it is currently implemented by background agents
-through their inbox and checkpoint runtime, so it is rejected for other source
-kinds. `Agent` and `AgentTool` use both capabilities by default when this
-option is omitted.
+The library computes the union of capabilities declared by its registered
+background sources and exposes only the required optional controls. Removing
+the last source for a capability removes its control as well. `message` is
+rejected for ordinary functions because they do not implement the agent
+continuation contract. Background `Agent` and `AgentTool` sources default to
+both `activity` and `message` when the option is omitted; ordinary tools default
+to no optional capabilities.
+
+See [Background Tasks: Background Capabilities](background-tasks.md#background-capabilities)
+for execution semantics, task continuation, and the reason these controls are
+managed by `ToolBackground` rather than captured by a bucket.
 
 ## tool_kind
 
-Use `tool_kind` to label a tool for `ToolBucket` routing. The label is stored
+Use `tool_kind` to label a tool for [ToolBucket](tool-bucket.md) routing. The label is stored
 in the tool configuration and does not change the function name or its
 model-facing schema.
 
@@ -743,7 +815,7 @@ def search_repos(query: str) -> str:
 
 agent = nn.Agent(
     name="assistant",
-    model=mf.Model.chat_completion("openai/gpt-4.1-mini"),
+    model=mf.Model.chat_completion("openai/gpt-5.6-luna"),
     tools=[search_repos],
 )
 
@@ -772,7 +844,7 @@ tools = apply_tool_guidance([AgentTool(), WebSearchTool(), WebFetchTool()])
 
 agent = nn.Agent(
     name="assistant",
-    model=mf.Model.chat_completion("openai/gpt-4.1-mini"),
+    model=mf.Model.chat_completion("openai/gpt-5.6-luna"),
     tools=tools,
 )
 

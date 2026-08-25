@@ -899,6 +899,173 @@ class TestToolLibrary:
         with pytest.raises(ValueError, match="Duplicate tool name `find_product`"):
             library.add(find_product)
 
+    def test_tool_bucket_handle_executes_captured_local_tool(self):
+        @mf.tool_config(tool_kind="catalog")
+        def find_product(query: str) -> str:
+            """Find a product."""
+            return f"match:{query}"
+
+        class CatalogBucket(ToolBucket, ToolLibraryOperator):
+            """Dispatch catalog operations."""
+
+            name = "catalog"
+            capture = {"tool_kind": "catalog", "defer_loading": False}
+            annotations = {
+                "name": str,
+                "query": str,
+                "handle": mf.Hidden,
+                "return": str,
+            }
+
+            def __call__(self, name: str, query: str, *, handle) -> str:
+                return handle(name, query=query)
+
+        library = ToolLibrary(name="lib", tools=[CatalogBucket(), find_product])
+        activity_recorder = Mock()
+
+        with execution_context(task_activity_recorder=activity_recorder):
+            response = library(
+                [
+                    (
+                        "call_1",
+                        "catalog",
+                        {"name": "find_product", "query": "SKU-1"},
+                    )
+                ]
+            )
+
+        assert response.tool_calls[0].result == "match:SKU-1"
+        activity_recorder.tool_call.assert_called_once_with(
+            "find_product",
+            {"query": "SKU-1"},
+        )
+
+    @pytest.mark.asyncio
+    async def test_tool_bucket_handle_async_executes_captured_tool(self):
+        async def find_product(query: str) -> str:
+            """Find a product."""
+            return f"match:{query}"
+
+        find_product.tool_config = dotdict({"tool_kind": "catalog"})
+
+        class CatalogBucket(ToolBucket, ToolLibraryOperator):
+            """Dispatch catalog operations."""
+
+            name = "catalog"
+            capture = {"tool_kind": "catalog", "defer_loading": False}
+            annotations = {
+                "name": str,
+                "query": str,
+                "handle": mf.Hidden,
+                "return": str,
+            }
+
+            async def acall(self, name: str, query: str, *, handle) -> str:
+                return await handle.acall(name, query=query)
+
+            def __call__(self, name: str, query: str, *, handle) -> str:
+                return handle(name, query=query)
+
+        library = ToolLibrary(name="lib", tools=[CatalogBucket(), find_product])
+
+        response = await library.acall(
+            [("call_1", "catalog", {"name": "find_product", "query": "SKU-1"})]
+        )
+
+        assert response.tool_calls[0].result == "match:SKU-1"
+
+    def test_tool_bucket_handle_preserves_non_agent_context_identity(self):
+        seen = {}
+
+        @mf.tool_config(
+            tool_kind="catalog",
+            inject_messages=True,
+            inject_vars=True,
+        )
+        def inspect_context(messages: list, vars: dict) -> str:
+            """Inspect the exact context objects received by a captured tool."""
+            seen["messages"] = messages
+            seen["vars"] = vars
+            return "ok"
+
+        class CatalogBucket(ToolBucket, ToolLibraryOperator):
+            """Dispatch catalog operations."""
+
+            name = "catalog"
+            capture = {"tool_kind": "catalog", "defer_loading": False}
+            annotations = {
+                "name": str,
+                "handle": mf.Hidden,
+                "return": str,
+            }
+
+            def __call__(self, name: str, *, handle) -> str:
+                return handle(name)
+
+        library = ToolLibrary(name="lib", tools=[CatalogBucket(), inspect_context])
+        messages = []
+        runtime_vars = {}
+
+        response = library(
+            [("call_1", "catalog", {"name": "inspect_context"})],
+            messages=messages,
+            vars=runtime_vars,
+        )
+
+        assert response.tool_calls[0].result == "ok"
+        assert seen["messages"] is messages
+        assert seen["vars"] is runtime_vars
+
+    @pytest.mark.parametrize(
+        "option",
+        [
+            "background",
+            "allow_background",
+            "spawn",
+            "call_as_response",
+            "return_direct",
+            "handoff",
+        ],
+    )
+    def test_executable_tool_bucket_rejects_captured_model_loop_options(
+        self,
+        option,
+    ):
+        def catalog_tool() -> str:
+            """Run a catalog operation."""
+            return "ok"
+
+        catalog_tool.tool_config = {
+            "tool_kind": "catalog",
+            option: True,
+        }
+
+        class CatalogBucket(ToolBucket, ToolLibraryOperator):
+            """Dispatch catalog operations."""
+
+            name = "catalog"
+            capture = {"tool_kind": "catalog", "defer_loading": False}
+            annotations = {"return": str}
+
+            def __call__(self) -> str:
+                return "ok"
+
+        with pytest.raises(
+            ValueError,
+            match="Configure that behavior on the public bucket",
+        ):
+            ToolLibrary(name="lib", tools=[CatalogBucket(), catalog_tool])
+
+    def test_tool_search_keeps_deferred_tool_loop_options_as_catalog_metadata(self):
+        @mf.tool_config(defer_loading=True, return_direct=True)
+        def deferred_lookup() -> str:
+            """Run a deferred lookup."""
+            return "ok"
+
+        library = ToolLibrary(name="lib", tools=[deferred_lookup])
+
+        assert library.get_tool_names() == ["tool_search", "deferred_lookup"]
+
     def test_tool_bucket_captures_background_tool_kinds(self):
         @mf.tool_config(tool_kind="background")
         def background_job() -> str:
@@ -2093,6 +2260,68 @@ class TestMCPTool:
         )
 
         assert tool.tool_config["timeout"] == 30
+
+    def test_tool_bucket_handle_preserves_mcp_proxy_execution(self):
+        class MockClient:
+            def __init__(self):
+                self.calls = []
+
+            async def call_tool(self, name, arguments):
+                self.calls.append((name, arguments))
+                return mock_result
+
+        mock_result = Mock()
+        mock_result.isError = False
+        mock_client = MockClient()
+        mock_info = Mock(
+            name="search",
+            description="Search the remote catalog.",
+            inputSchema={
+                "type": "object",
+                "properties": {"query": {"type": "string"}},
+            },
+        )
+        remote_tool = MCPTool(
+            name="search",
+            mcp_client=mock_client,
+            mcp_tool_info=mock_info,
+            namespace="catalog",
+            config={"tool_kind": "catalog"},
+        )
+
+        class CatalogBucket(ToolBucket, ToolLibraryOperator):
+            """Dispatch remote catalog operations."""
+
+            name = "catalog"
+            capture = {"tool_kind": "catalog"}
+            annotations = {
+                "name": str,
+                "query": str,
+                "handle": mf.Hidden,
+                "return": str,
+            }
+
+            def __call__(self, name: str, query: str, *, handle) -> str:
+                return handle(name, query=query)
+
+        library = ToolLibrary(name="lib", tools=[CatalogBucket(), remote_tool])
+
+        with patch(
+            "msgflux.nn.modules.tool.extract_tool_result_text",
+            return_value="remote match",
+        ):
+            response = library(
+                [
+                    (
+                        "call_1",
+                        "catalog",
+                        {"name": "catalog__search", "query": "SKU-1"},
+                    )
+                ]
+            )
+
+        assert response.tool_calls[0].result == "remote match"
+        assert mock_client.calls == [("search", {"query": "SKU-1"})]
 
     def test_mcp_tool_display_name_and_usage_guidance_are_not_duplicated(self):
         """Test MCP metadata is read from library tools without duplicate entries."""

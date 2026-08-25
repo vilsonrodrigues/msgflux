@@ -3,6 +3,7 @@
 import pytest
 
 from msgflux.core.dotdict import dotdict
+from msgflux.nn.modules.tool import ToolLibrary
 from msgflux.tools.config import decorate_function, decorate_instance, tool_config
 
 
@@ -69,6 +70,7 @@ class TestToolConfig:
         assert config.inject_message is False
         assert config.inject_messages is False
         assert config.inject_handle is False
+        assert config.description is None
         assert config.display_name is None
         assert config.usage_guidance is None
 
@@ -86,6 +88,17 @@ class TestToolConfig:
         assert (
             sample_function.tool_config.usage_guidance
             == "Use when you need customer profile data."
+        )
+
+    def test_tool_config_description_overrides_docstring(self):
+        @tool_config(description="Search the product catalog by SKU.")
+        def search_products(query: str) -> str:
+            return query
+
+        library = ToolLibrary(name="lib", tools=[search_products])
+
+        assert library.library["search_products"].description == (
+            "Search the product catalog by SKU."
         )
 
     def test_tool_config_call_as_response_sets_return_direct(self):

@@ -1,7 +1,8 @@
 # Tool Search
 
-Tool search keeps rarely used tools out of the model's initial callable surface.
-Mark those tools with `defer_loading=True`:
+Tool search lets a catalog grow without placing every tool schema in every
+request. The initial context stays approximately stable as rarely used tools
+are added; mark those tools with `defer_loading=True`:
 
 ```python
 import msgflux as mf
@@ -16,7 +17,7 @@ def query_finance_report(company: str) -> str:
 
 agent = nn.Agent(
     name="analyst",
-    model=mf.Model.chat_completion("openai/gpt-5.4"),
+    model=mf.Model.chat_completion("openai/gpt-5.6-luna"),
     tools=[query_finance_report],
 )
 ```
@@ -25,9 +26,10 @@ The name follows the OpenAI and Anthropic convention: the tool remains in the
 logical `ToolCatalog`, but its full callable definition is deferred until the
 model searches for it.
 
-## Provider Modes
+## Hosted And Portable Modes
 
-With OpenAI Responses, msgFlux compiles deferred tools to the hosted protocol:
+OpenAI GPT-5.6 models using Responses compile deferred tools to the hosted
+protocol:
 
 ```python
 [
@@ -45,9 +47,19 @@ OpenAI performs the search inside the same Responses request. Its
 `tool_search_call` and `tool_search_output` items are retained in
 `ChatMessages`, followed by the normal function call that msgFlux executes.
 
-Providers without hosted tool search receive the portable fallback. msgFlux
-exposes its local `tool_search` function first, and exposes a selected deferred
-tool on the next model turn.
+The model implementation checks both the active model and API mode through
+`supports_native_tool_search()`. Unknown models, Chat Completions, and providers
+without hosted search use the portable fallback: msgFlux exposes its local
+`tool_search` function first, then exposes a selected tool on the next model
+turn. This works with any msgFlux provider that supports ordinary function
+calling, including local tools, agents, and MCP tools.
+
+!!! warning "Portable loading changes the tool prefix"
+
+    Loading a portable deferred tool changes the tool payload on the following
+    request. The feature remains correct, but that boundary can reduce provider
+    prompt-cache hits. Hosted Responses search keeps discovery within the native
+    protocol and avoids this intermediate schema transition.
 
 ## Thread-Local Loading
 

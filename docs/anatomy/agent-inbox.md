@@ -35,7 +35,6 @@ class AgentNotification:
     source: str
     ref: str | None = None
     status: str | None = None
-    hint: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
     dedupe_key: str | None = None
     created_at: str | None = None
@@ -47,7 +46,6 @@ Notes:
   `checkpoint`, or `tool_registry`
 - `ref` points to the concrete object, for example `task_id` or `run_id`
 - `status` stays simple and machine-friendly
-- `hint` is the short instruction the model can act on
 - `metadata` carries extra fields without changing the base contract
 - `dedupe_key` allows coalescing repeated updates
 
@@ -135,7 +133,7 @@ background tool / checkpoint / hook
      AgentInbox.drain() + render_messages()
               |
               v
-<system_note><notification>...</notification></system_note>
+<notification source="task" ref="abcd1234" status="completed"/>
               |
               v
          provider call
@@ -145,13 +143,12 @@ background tool / checkpoint / hook
 
 The renderer converts a drained batch into one or more synthetic messages.
 
-Runtime notifications are delivered as `role="system"` messages containing a
-`<system_note>` with one or more `<notification>` blocks. They are operational context,
-not user speech.
+Runtime notifications are delivered as `role="system"` messages containing one
+or more compact `<notification .../>` tags. They are operational context, not
+user speech.
 
-Incoming user messages are delivered separately as `role="user"` messages. They
-are not wrapped in `<system_note>`, because they represent new user input rather
-than runtime context.
+Incoming user messages are delivered separately as `role="user"` messages
+because they represent new user input rather than runtime context.
 
 When a drain contains both runtime notifications and incoming user messages, the
 message order is:
@@ -164,20 +161,8 @@ That lets the model receive operational state before the new user turn.
 Example:
 
 ```xml
-<system_note>
-<notification>
-source: task
-ref: abcd1234
-status: completed
-tool: long_sum
-</notification>
-<notification>
-source: context_budget
-ref: run_1
-status: warning
-usage_percent: 92
-</notification>
-</system_note>
+<notification source="task" ref="abcd1234" status="completed" tool="long_sum"/>
+<notification source="context_budget" ref="run_1" status="warning" usage_percent="92"/>
 ```
 
 The corresponding ChatML message is:
@@ -185,7 +170,7 @@ The corresponding ChatML message is:
 ```python
 {
     "role": "system",
-    "content": "<system_note>...</system_note>",
+    "content": "<notification source=\"task\" .../>",
 }
 ```
 
@@ -202,15 +187,14 @@ An incoming user message renders separately:
 }
 ```
 
-Why group runtime notifications:
+Why group runtime notifications in one message:
 
 - it reduces message noise
 - it keeps the system-visible content grouped
 - it allows multiple runtime sources to deliver together
 
-Current tradeoff: the XML-like envelope is explicit but verbose. If token
-pressure becomes a problem, the renderer is the right place to simplify the
-format without changing producers or persistence.
+The notification has no instruction field. Behavioral guidance belongs in
+agent instructions or tool guidance; the event carries only state.
 
 ## Context Propagation
 

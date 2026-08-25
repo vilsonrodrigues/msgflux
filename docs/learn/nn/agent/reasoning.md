@@ -635,7 +635,7 @@ This is useful for debugging the relationship between the model's thinking and i
 | `return_reasoning` | `bool` | `True` | Store reasoning in `response.reasoning` |
 | `reasoning_max_tokens` | `int` | — | OpenRouter-only cap on reasoning token budget |
 | `reasoning_in_tool_call` | `bool` | `False` | Embed reasoning in `<think>` tags across tool call rounds |
-| `enable_thinking` | `bool` | `False` | Provider-level switch (e.g. Anthropic) |
+| `enable_thinking` | `bool \| str` | `False` | Provider-level switch; native Ollama also accepts `"low"`, `"medium"`, and `"high"` |
 
 ### Agent config
 

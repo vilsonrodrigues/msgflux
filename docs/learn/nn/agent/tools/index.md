@@ -24,6 +24,7 @@ In msgFlux, a **Tool can be any callable** (function, class with `__call__`/`aca
 
 - [Tool Config](config.md): per-tool behavior such as `return_direct`, runtime injection, retries, display names, and usage guidance.
 - [Builtin Tools](builtin.md): built-in web, weather, agent, skill, and runtime tools.
+- [Tool Bucket](tool-bucket.md): group several implementations behind one stable public tool.
 - [Tool Search](tool-search.md): keep rarely used tools on demand and activate them with `tool_search`.
 - [Background Tasks](background-tasks.md): background dispatch, task tools, progress, notifications, and `task_message`.
 - [AgentTool](agent-tool.md): route many agents through one `agent(name, message)` tool and tool bucket.
@@ -565,7 +566,7 @@ import msgflux as mf
 @mf.tool_config(background=True, inject_handle=True)
 def rebuild_index(index_name: str, handle: mf.Hidden) -> str:
     """Rebuild a search index in the background."""
-    handle.notify(status="started", hint=f"Rebuilding {index_name}.")
+    handle.notify(status="started", metadata={"index": index_name})
     return "started"
 ```
 
@@ -1029,4 +1030,5 @@ agents directly. If you want the model to see only one public
 - [Tool Search](tool-search.md)
 - [Background Tasks](background-tasks.md)
 - [Agent Tool](agent-tool.md)
+- [Tool Bucket](tool-bucket.md)
 - [MCP](mcp.md)

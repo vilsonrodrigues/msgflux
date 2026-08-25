@@ -24,6 +24,7 @@ def _normalize_configured_background_capabilities(
 
 def tool_config(
     *,
+    description: Optional[str] = None,
     display_name: Optional[str] = None,
     usage_guidance: Optional[str] = None,
     return_direct: Optional[bool] = False,
@@ -56,6 +57,9 @@ def tool_config(
     - **Instances**: Directly injects properties into the instance
 
     Args:
+        description:
+            Optional model-facing description. When set, it overrides the callable's
+            class attribute or docstring without mutating the callable.
         return_direct:
             If True, the tool will return its output directly without additional
             processing.
@@ -213,6 +217,7 @@ def tool_config(
         tool_config = {
             "tool_config": dotdict(
                 {
+                    "description": description,
                     "spawn": spawn,
                     "background": background,
                     "allow_background": allow_background,

@@ -263,6 +263,12 @@ class TestOpenAIChatCompletion:
         assert response.reasoning_summary == "Checked inventory."
         assert response.consume_reasoning_summary() == "Checked inventory."
         assert response.metadata.response_id == "resp_1"
+        assert response.metadata.model == {
+            "provider": "openai",
+            "model_id": "gpt-5",
+            "api_mode": "responses",
+            "reasoning_effort": "medium",
+        }
         assert response.history_items == [
             {
                 "type": "reasoning",
@@ -426,7 +432,7 @@ class TestOpenAIChatCompletion:
 
         from msgflux.models.providers.openai import OpenAIChatCompletion
 
-        model = OpenAIChatCompletion(model_id="gpt-5.4", api_mode="responses")
+        model = OpenAIChatCompletion(model_id="gpt-5.6", api_mode="responses")
         catalog = ToolCatalog(
             tools=[
                 ToolSpec(
@@ -457,6 +463,52 @@ class TestOpenAIChatCompletion:
                 "defer_loading": True,
             },
         ]
+
+    @pytest.mark.parametrize(
+        ("model_id", "api_mode"),
+        [
+            ("gpt-5.6", "chat_completions"),
+            ("gpt-4.1-mini", "responses"),
+            ("custom-gateway-model", "responses"),
+        ],
+    )
+    def test_deferred_tools_use_portable_search_without_native_model_support(
+        self,
+        mock_openai_client,
+        model_id,
+        api_mode,
+    ):
+        pytest.importorskip("openai")
+
+        from msgflux.models.providers.openai import OpenAIChatCompletion
+
+        model = OpenAIChatCompletion(model_id=model_id, api_mode=api_mode)
+        catalog = ToolCatalog(
+            tools=[
+                ToolSpec(
+                    name="lookup_inventory",
+                    description="Look up a SKU.",
+                    parameters={"type": "object", "properties": {}},
+                    defer_loading=True,
+                )
+            ],
+            catalog_id="warehouse_tools",
+            search_tool=ToolSpec(
+                name="tool_search",
+                description="Search tools.",
+                parameters={"type": "object", "properties": {}},
+            ),
+        )
+
+        assert model.supports_native_tool_search() is False
+        if api_mode == "responses":
+            params = model._build_generation_params(
+                messages="Check SKU-1842",
+                system_prompt=None,
+                prefilling=None,
+                tool_catalog=catalog,
+            )
+            assert [tool["name"] for tool in params["tools"]] == ["tool_search"]
 
     def test_responses_mode_preserves_hosted_tool_search_items(
         self, mock_openai_client
@@ -1328,6 +1380,11 @@ class TestOpenAIChatCompletion:
         assert response.metadata.usage["output_tokens"] == 2
         assert response.metadata.usage["input_tokens_details"]["cached_tokens"] == 2
         assert response.metadata.usage["raw"]["prompt_tokens"] == 3
+        assert response.metadata.model == {
+            "provider": "openai",
+            "model_id": "gpt-4",
+            "api_mode": "chat_completions",
+        }
 
     def test_prepare_generate_kwargs_lowers_dict_schema(self, mock_openai_client):
         """Test OpenAI transport schema lowering for dict-based structured outputs."""

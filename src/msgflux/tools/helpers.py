@@ -98,6 +98,8 @@ def build_call_parameters_for_response(
 def should_copy_injected_messages(tool: Callable, config: Mapping[str, Any]) -> bool:
     if not config.get("inject_messages", False):
         return False
+    if config.get("tool_kind") == "agent":
+        return True
 
     agent_type = import_module("msgflux.nn.modules.agent").Agent
     return isinstance(getattr(tool, "impl", tool), agent_type)

@@ -18,15 +18,18 @@ If you want to expose each agent as its own tool instead, see
 
 ## Basic Usage
 
-Create an `AgentTool` with the agents that should be available behind the
-single `agent` tool, then add that `AgentTool` to the coordinator.
+Add an empty `AgentTool()` and the specialist agents directly to the
+coordinator's `tools`. Every `nn.Agent` is registered with
+`tool_kind="agent"`, so the coordinator's `ToolLibrary` routes it into the
+bucket automatically. The model sees one `agent(name, message)` tool rather
+than one schema per specialist.
 
 ```python
 import msgflux as mf
 import msgflux.nn as nn
 from msgflux.tools.builtin import AgentTool
 
-model = mf.Model.chat_completion("openai/gpt-4.1-mini")
+model = mf.Model.chat_completion("openai/gpt-5.6-luna")
 
 class Researcher(nn.Agent):
     model = model
@@ -36,24 +39,35 @@ class Reviewer(nn.Agent):
     model = model
     instructions = "Review the answer for correctness and missing details."
 
-agent_tool = AgentTool(agents=[Researcher(), Reviewer()])
-
 coordinator = nn.Agent(
     name="coordinator",
     model=model,
     instructions="Delegate specialized work to the agent tool when useful.",
-    tools=[agent_tool],
+    tools=[AgentTool(), Researcher(), Reviewer()],
 )
 ```
 
-`AgentTool` also accepts runtime-injected `messages` and `vars`; those are
-provided by msgFlux and are not exposed as normal model parameters. Before
-dispatching, it only forwards those runtime values to the selected agent when
-that agent's own `tool_config` requests them.
+Registration order does not matter. If the agents are added before the bucket,
+registering `AgentTool()` discovers and captures the matching tools already in
+the library. If the bucket is present first, each later agent is routed into it.
+
+!!! warning "Register agents through ToolLibrary"
+
+    `AgentTool` does not accept agents in its constructor. Pass each agent in
+    `tools=[AgentTool(), researcher, reviewer]` so registration, duplicate
+    checks, bucket capture, and deferred-tool routing all use `ToolLibrary`.
+
+`AgentTool` dispatches through its scoped bucket handle instead of calling an
+agent implementation directly. `ToolLibrary` therefore remains responsible for
+the selected agent's runtime-injected `messages` and `vars`, retries,
+telemetry, and errors; none of those values appear as model parameters.
+The default child scope uses the agent's canonical module name. A
+`name_override` may change the public selector shown to the model without
+changing the agent's checkpoint namespace.
 
 ## Tool Bucket Capture
 
-Internally, `AgentTool` is a `ToolBucket`. A bucket is a tool that absorbs other
+Internally, `AgentTool` is a [ToolBucket](tool-bucket.md). A bucket is a tool that absorbs other
 tools of a specific kind and exposes them through one public tool. `AgentTool`
 uses:
 
@@ -63,10 +77,11 @@ class AgentTool(ToolBucket):
 ```
 
 `ToolBucket` supplies `tool_kind="bucket"`; the library stores that value in
-the bucket's `tool_config`. Agents are registered with
-`tool_config["tool_kind"]="agent"`. When a `ToolLibrary` contains an
-`AgentTool`, adding an agent tool causes the library to route that agent into
-the bucket instead of exposing it as a separate top-level tool:
+the bucket's `tool_config`. Every `nn.Agent` supplies
+`tool_config["tool_kind"]="agent"`. Therefore `AgentTool` captures any agent
+registered in the same library whose configuration still matches
+`defer_loading=False`; it does not need to know that agent's concrete class in
+advance:
 
 ```python
 from msgflux.tools.builtin import AgentTool
@@ -84,7 +99,7 @@ The bucket description is a compact list of the available agents. Explicit
 gets delegation guidance without inflating the tool description.
 
 The generic guidance for `agent` is opt-in through
-`apply_tool_guidance([AgentTool(...)])`, like other builtin guidance entries.
+`apply_tool_guidance([AgentTool()])`, like other builtin guidance entries.
 
 `capture` can match any tool configuration field. `capture["tool_kind"]` can
 also group multiple kinds with `|`, for example
@@ -93,16 +108,26 @@ captures are rejected, and the base `add()` method rejects duplicate captured
 names and calls the bucket's `refresh()` hook so `AgentTool` can update its
 description and usage guidance.
 
-[Tool Search](tool-search.md) is compatible with `ToolBucket` capture.
-On-demand agents can stay outside the active tool set until `tool_search`
-selects them. When the selected agent is promoted into the `ToolLibrary`, the
-existing `AgentTool` bucket captures it and makes it available as another
-`agent(name, message)` target.
+[Tool Search](tool-search.md) and `AgentTool` can coexist, but they provide
+different public shapes. `AgentTool` deliberately captures only
+`defer_loading=False` agents. An agent configured with `defer_loading=True` is
+owned by the tool-search bucket and, after activation, is exposed under its own
+tool schema rather than becoming an `agent(name, message)` target. Keep an
+agent non-deferred when it must remain behind the single `AgentTool` entry
+point. Loading a deferred agent therefore does not rewrite the `AgentTool`
+description or schema, preserving a stable tool prefix for provider caching.
 
 `AgentTool` also works with [Background Tasks](background-tasks.md). When
 configured with background support, the selected subagent can run through the
 same task dispatch, status, wait, and task-message flow as other background
 tools.
+
+Bucket membership belongs to the shared `ToolLibrary`. Adding an agent with
+`handle.add(...)` makes it available to every concurrent call using that
+library. Deferred activation is different: an agent marked
+`defer_loading=True` stays in the tool-search catalog, and loading it is
+recorded in that thread's `ChatMessages`. Because that agent does not match
+`AgentTool.capture`, it appears as its own callable after loading.
 
 ## Dynamic Agent Registration
 
@@ -124,7 +149,7 @@ from msgflux.tools.builtin import AgentTool
 
 # mf.set_envs(OPENAI_API_KEY="...")
 
-model = mf.Model.chat_completion("openai/gpt-4.1-mini")
+model = mf.Model.chat_completion("openai/gpt-5.6-luna")
 
 
 @mf.tool_config(inject_handle=True)
@@ -239,7 +264,7 @@ top-level tool.
 
         # mf.set_envs(OPENAI_API_KEY="...")
 
-        model = mf.Model.chat_completion("openai/gpt-4.1-mini")
+        model = mf.Model.chat_completion("openai/gpt-5.6-luna")
 
         nutritionist = nn.Agent(
             name="nutritionist",
@@ -263,8 +288,6 @@ top-level tool.
             level and goals. Focus on safety and sustainable progression.""",
         )
 
-        agent_tool = AgentTool([nutritionist, fitness_trainer])
-
         coordinator = nn.Agent(
             name="health_coordinator",
             model=model,
@@ -272,7 +295,7 @@ top-level tool.
             instructions="""Use the agent tool when a specialist should handle
             the request. Choose `nutritionist` for diet questions and
             `fitness_trainer` for workout questions.""",
-            tools=[agent_tool],
+            tools=[AgentTool(), nutritionist, fitness_trainer],
         )
 
         response = coordinator("I want to lose 10kg and build muscle")
@@ -295,7 +318,7 @@ top-level tool.
 
         # mf.set_envs(OPENAI_API_KEY="...")
 
-        model = mf.Model.chat_completion("openai/gpt-4.1-mini")
+        model = mf.Model.chat_completion("openai/gpt-5.6-luna")
 
         reviewer = nn.Agent(
             name="reviewer",

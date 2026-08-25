@@ -93,11 +93,11 @@ def _notification_messages(
     result = []
     for message in messages:
         content = message.get("content")
-        if not isinstance(content, str) or "<notification>" not in content:
+        if not isinstance(content, str) or "<notification " not in content:
             continue
-        if source is not None and f"source: {source}" not in content:
+        if source is not None and f'source="{source}"' not in content:
             continue
-        if status is not None and f"status: {status}" not in content:
+        if status is not None and f'status="{status}"' not in content:
             continue
         result.append(message)
     return result
@@ -867,7 +867,7 @@ def test_task_wait_falls_back_to_task_store_polling_without_future():
     assert wait_result.tool_calls[0].result == 99
 
 
-def test_agent_injects_pending_task_notifications_as_system_note_messages():
+def test_agent_injects_pending_task_notifications_as_system_messages():
     release = threading.Event()
 
     @mf.tool_config(background=True)
@@ -914,11 +914,10 @@ def test_agent_injects_pending_task_notifications_as_system_note_messages():
     assert len(notification_messages) == 1
     assert notification_messages[0]["role"] == "system"
     content = notification_messages[0]["content"]
-    assert "<system_note>" in content
-    assert "<notification>" in content
-    assert f"ref: {task_id}" in content
-    assert "tool: long_job" in content
-    assert f"task_output(task_id='{task_id}')" in content
+    assert content.startswith("<notification ")
+    assert f'ref="{task_id}"' in content
+    assert 'tool="long_job"' in content
+    assert "hint=" not in content
 
 
 def test_inspect_model_execution_params_does_not_consume_notifications():
@@ -1068,7 +1067,6 @@ def test_agent_incoming_user_message_is_injected_before_model_call():
     assert len(incoming) == 1
     assert incoming[0]["role"] == "user"
     assert "I changed my mind." in incoming[0]["content"]
-    assert "<system_note>" not in incoming[0]["content"]
 
 
 def test_agent_consumes_persisted_incoming_user_message_for_scope():
@@ -1091,7 +1089,6 @@ def test_agent_consumes_persisted_incoming_user_message_for_scope():
     assert len(incoming) == 1
     assert incoming[0]["role"] == "user"
     assert "Use the customer-visible tone." in incoming[0]["content"]
-    assert "<system_note>" not in incoming[0]["content"]
     assert external_inbox.peek() == []
 
 
@@ -1099,7 +1096,10 @@ def test_agent_drains_notifications_after_tool_call_before_next_model_call():
     @mf.tool_config(inject_handle=True)
     def publish_status(handle: mf.Hidden) -> str:
         """Publish an in-loop status update."""
-        handle.get_notification().update(status="progress", hint="Tool completed.")
+        handle.get_notification().update(
+            status="progress",
+            metadata={"detail": "Tool completed."},
+        )
         return "ok"
 
     model = _ScriptedModel(
@@ -1133,7 +1133,6 @@ def test_task_progress_notifications_are_persisted():
         handle.notify(
             source="task_progress",
             status="update",
-            hint="Wait for the final completion notification before consuming output.",
             metadata={"tool_stage": "prepare"},
             dedupe_key=f"progress:{handle.get_task_id()}",
         )
@@ -1167,8 +1166,8 @@ def test_task_progress_notifications_are_persisted():
     )
     assert len(progress_notifications) == 1
     assert progress_notifications[0]["role"] == "system"
-    assert f"ref: {task_id}" in progress_notifications[0]["content"]
-    assert "tool_stage: prepare" in progress_notifications[0]["content"]
+    assert f'ref="{task_id}"' in progress_notifications[0]["content"]
+    assert 'tool_stage="prepare"' in progress_notifications[0]["content"]
 
     persisted_notifications = _notification_messages(
         messages.to_chatml(),
@@ -1198,7 +1197,6 @@ def test_injected_handle_publishes_task_status_updates():
         """Emit task status updates through the injected tool handle."""
         handle.get_notification().update(
             "prepare",
-            hint="Background work has started.",
             metadata={"step": 1},
             dedupe_key="job-status",
         )
@@ -1235,9 +1233,9 @@ def test_injected_handle_publishes_task_status_updates():
         status="prepare",
     )
     assert len(status_notifications) == 1
-    assert f"ref: {task_id}" in status_notifications[0]["content"]
-    assert "tool: long_job" in status_notifications[0]["content"]
-    assert "step: 1" in status_notifications[0]["content"]
+    assert f'ref="{task_id}"' in status_notifications[0]["content"]
+    assert 'tool="long_job"' in status_notifications[0]["content"]
+    assert 'step="1"' in status_notifications[0]["content"]
 
     release.set()
     _wait_until(

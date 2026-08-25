@@ -49,7 +49,7 @@ scope = mf.ExecutionScope(
 
 agent = nn.Agent(
     name="assistant",
-    model=mf.Model.chat_completion("openai/gpt-4.1-mini"),
+    model=mf.Model.chat_completion("openai/gpt-5.6-luna"),
     tools=[long_sum],
 )
 
@@ -94,6 +94,14 @@ def monitored_job(command: str) -> str:
 run in the background. Another source kind can add message only together with
 an equivalent runtime implementation.
 
+The task controls are not collected by a `ToolBucket`. `ToolBackground`
+reconciles them whenever the library's background sources change: the five
+common controls are present while any background-capable source exists, and
+`task_activity` or `task_message` is added only when the union of declared
+capabilities requires it. This keeps the callable surface smaller without
+hiding independently callable task operations behind another dispatcher. See
+[ToolBucket](tool-bucket.md#toolbucket-versus-toolbackground) for the distinction.
+
 ## Basic Background Tool
 
 ```python
@@ -113,7 +121,7 @@ def long_sum(a: int, b: int) -> int:
 
 agent = nn.Agent(
     name="math_assistant",
-    model=mf.Model.chat_completion("openai/gpt-4.1-mini"),
+    model=mf.Model.chat_completion("openai/gpt-5.6-luna"),
     instructions="Use tools when needed.",
     tools=[long_sum],
 )
@@ -305,30 +313,30 @@ It also includes timing helpers such as:
 
 ## Passive Notifications Back Into The Agent
 
-Completed and failed tasks are injected back into the next provider call as a
-synthetic system message:
+Completed, failed, interrupted, and paused tasks are injected back into the
+next provider call as synthetic system messages. A completion notification
+contains the task reference, not the potentially large result itself:
 
 ```text
-<system_note>
-<notification>
-source: task
-ref: abcd1234
-status: completed
-tool: long_sum
-</notification>
-</system_note>
+<notification source="task" ref="abcd1234" status="completed" tool="long_sum"/>
 ```
 
-That means the model can recover task output without polling manually on every
-turn, as long as the prompt tells it what to do with these notifications.
+This is the intended return pattern: the background function's Python return
+value is stored in `TaskStore`; the inbox only announces the terminal state;
+and the model calls `task_output(ref)` when it needs that value. Keeping the
+result out of the notification avoids duplicating it in both task storage and
+conversation history. Notifications are drained before a provider boundary
+and persisted once in `ChatMessages`, so they are not injected again on later
+provider calls.
 
 ```python
 agent = nn.Agent(
     name="assistant",
-    model=mf.Model.chat_completion("openai/gpt-4.1-mini"),
+    model=mf.Model.chat_completion("openai/gpt-5.6-luna"),
     instructions=(
-        "If you receive a task notification with status=completed, "
-        "call task_output for that task before answering."
+        "When a task notification has status=completed, use its ref as the "
+        "task_id in task_output before answering. For failed or interrupted "
+        "tasks, inspect task_status instead."
     ),
     tools=[long_sum],
 )
@@ -390,22 +398,21 @@ def process_items(
     """Process items and publish task-scoped status updates."""
     handle.get_notification().update(
         "prepare",
-        hint="Background work has started.",
         metadata={"total": len(items)},
-        dedupe_key="process-items-status",
+        dedupe_key=f"process-items:{handle.get_task_id()}",
     )
     for index, item in enumerate(items, 1):
         handle.get_notification().update(
             "process",
             metadata={"item": item, "current": index, "total": len(items)},
-            dedupe_key="process-items-status",
+            dedupe_key=f"process-items:{handle.get_task_id()}",
         )
     return len(items)
 ```
 
 For background tools, `handle.get_notification()` is automatically bound to the
 current `task_id`, so the agent sees a normal notification block with
-`ref: <task_id>`.
+`ref="<task_id>"`.
 
 ## Dynamic Tool Mutation With The Handle
 
@@ -450,7 +457,7 @@ are registered automatically in the same library.
 ## Related Pages
 
 - [Tools](index.md)
-- [Tool Config](config.md#runtime-injection-options)
+- [Tool Config](config.md)
 
 ## Example Scripts
 

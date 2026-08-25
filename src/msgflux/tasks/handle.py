@@ -98,14 +98,12 @@ class TaskHandle:
         self,
         *,
         status: str,
-        hint: str | None = None,
         metadata: Dict[str, Any] | None = None,
         dedupe_key: str | None = None,
         source: str = "task",
     ) -> AgentNotification | None:
         return self._notification.publish(
             status=status,
-            hint=hint,
             metadata=metadata,
             dedupe_key=dedupe_key,
             source=source,

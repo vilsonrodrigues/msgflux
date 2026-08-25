@@ -83,6 +83,36 @@ def test_chat_messages_state_roundtrip():
     assert restored.to_chatml()[-1]["content"] == "4"
 
 
+def test_chat_messages_assign_unique_stable_item_ids_without_schema_version():
+    chat = ChatMessages(thread_id="thread_1", namespace="agent:test")
+    chat.add_user("same")
+    chat.add_user("same")
+
+    state = chat._to_state()
+    restored = ChatMessages()
+    restored._hydrate_state(state)
+
+    item_ids = [item["item_id"] for item in state["items"]]
+    assert len(set(item_ids)) == 2
+    assert [item["item_id"] for item in restored] == item_ids
+    assert "schema_version" not in state
+
+
+def test_legacy_chat_messages_get_deterministic_item_ids_on_hydration():
+    state = {
+        "items": [{"type": "message", "role": "user", "content": "legacy"}],
+        "thread_id": "thread_1",
+        "namespace": "agent:test",
+    }
+    first = ChatMessages()
+    second = ChatMessages()
+
+    first._hydrate_state(state)
+    second._hydrate_state(state)
+
+    assert first[0]["item_id"] == second[0]["item_id"]
+
+
 def test_loaded_tools_survive_copy_and_state_roundtrip():
     chat = ChatMessages(thread_id="thread_1", namespace="agent:test")
     chat.load_tools("agent_tools", ["lookup", "search"])
@@ -93,21 +123,6 @@ def test_loaded_tools_survive_copy_and_state_roundtrip():
 
     assert copied.get_loaded_tools("agent_tools") == {"lookup", "search"}
     assert restored.get_loaded_tools("agent_tools") == {"lookup", "search"}
-
-
-def test_inactive_chat_message_is_persisted_but_not_rendered():
-    chat = ChatMessages(thread_id="thread_1", namespace="agent:test")
-    chat.add_user("old context")
-    chat.add_user("current context")
-    chat.set_item_active(0, active=False)
-
-    state = chat._to_state()
-    restored = ChatMessages()
-    restored._hydrate_state(state)
-
-    assert restored.to_items()[0]["active"] is False
-    assert "active" not in restored.to_items()[1]
-    assert [item["content"] for item in restored.to_chatml()] == ["current context"]
 
 
 def test_turns_and_examples_are_derived_from_the_timeline():

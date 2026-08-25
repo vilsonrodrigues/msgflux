@@ -245,14 +245,19 @@ native tools, images, structured `format`, and streaming. Select
 import msgflux as mf
 
 native = mf.Model.chat_completion(
-    "ollama/qwen3:0.6b",
-    enable_thinking=True,
+    "ollama/gpt-oss:20b",
+    enable_thinking="medium",
 )
 compatible = mf.Model.chat_completion(
     "ollama/qwen3:0.6b",
     api_mode="chat_completions",
 )
 ```
+
+For native Ollama, `enable_thinking` accepts `True`/`False` for models with a
+boolean thinking switch. Models such as GPT-OSS accept the explicit levels
+`"low"`, `"medium"`, and `"high"`, which msgFlux forwards unchanged as the
+native `think` field. See [Ollama Thinking](https://docs.ollama.com/capabilities/thinking).
 
 For vLLM, configure the server-side parser for the served model, then select the
 Responses transport in msgFlux:
@@ -1219,7 +1224,7 @@ msgFlux exposes five parameters that control reasoning behaviour at model initia
 | `reasoning_effort` | How much reasoning to do. Values are model-dependent; GPT-5.6 accepts `"none"`, `"low"`, `"medium"`, `"high"`, `"xhigh"`, and `"max"`. | — |
 | `reasoning_max_tokens` | OpenRouter-only hard cap (in tokens) for the internal thinking budget. Maps to `extra_body.reasoning.max_tokens` and cannot be combined with `reasoning_effort`. | — |
 | `return_reasoning` | Expose the reasoning trace in `response.reasoning`. When `False`, it may still be retained in provider-neutral history when `reasoning_in_tool_call=True`. | `True` |
-| `enable_thinking` | Activate extended model reasoning. | `False` |
+| `enable_thinking` | Activate extended model reasoning. Native Ollama accepts a boolean or the levels `"low"`, `"medium"`, and `"high"`. | `False` |
 | `reasoning_in_tool_call` | Preserve reasoning context across tool calls. The selected provider codec reconstructs the API-native reasoning fields when history is sent back; msgFlux does not inject `<think>` tags implicitly. | `True` |
 
 ???+ example "Initialization"
@@ -1246,7 +1251,7 @@ ModelResponse
 ├── .reasoning_summary ← summary of reasoning (str or None)
 ├── .has_reasoning ← True if reasoning is present (bool)
 ├── .response_type ← "text_generation", "structured", "tool_call"
-└── .metadata      ← usage stats, annotations, etc.
+└── .metadata      ← model audit identity, usage stats, annotations, etc.
 ```
 
 The key methods on a non-streaming response:
@@ -1943,8 +1948,33 @@ Use it when you want OpenAI to keep cached prefixes in memory or retain them for
 
 ## 15. **Response Metadata**
 
-Chat completion providers expose the same canonical usage shape regardless of
-whether their native API calls tokens `prompt`/`completion`, `input`/`output`,
+Every chat response, including a completed stream, identifies the LM request in
+`response.metadata.model`:
+
+```python
+model = mf.Model.chat_completion(
+    "openai/gpt-5.6-luna",
+    api_mode="responses",
+    reasoning_effort="medium",
+)
+response = model("Summarize the incident.")
+
+print(response.metadata.model)
+# {
+#     "provider": "openai",
+#     "model_id": "gpt-5.6-luna",
+#     "api_mode": "responses",
+#     "reasoning_effort": "medium",
+# }
+```
+
+`reasoning_effort` is present only when that LM transport uses the setting.
+The other three fields are always produced by OpenAI-compatible chat LMs. An
+Agent can persist this small audit record with the generated timeline item
+without reconstructing provider details itself.
+
+Chat completion providers also expose the same canonical usage shape regardless
+of whether their native API calls tokens `prompt`/`completion`, `input`/`output`,
 or uses another convention:
 
 | Field | Description |

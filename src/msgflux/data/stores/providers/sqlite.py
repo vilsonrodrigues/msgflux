@@ -17,7 +17,8 @@
 # normalized state stored in `checkpoints.state` replaces `messages.items` with
 # `_messages = {"state": <messages without items>, "item_entries": [...]}`.
 # `item_entries` is an ordered list, not a join table, so rehydration can rebuild
-# the exact public message order while item payloads remain deduplicated.
+# the exact public message order and occurrence ids while item payloads remain
+# deduplicated.
 
 from __future__ import annotations
 
@@ -25,12 +26,15 @@ import hashlib
 import json
 import sqlite3
 import time
-from copy import deepcopy
 from functools import wraps
 from pathlib import Path
 from threading import RLock
-from typing import Any, Dict, List, Mapping
+from typing import Any, Dict, List, Literal, Mapping
 
+from msgflux._private.chat_items import (
+    restore_item_occurrence,
+    split_item_occurrence,
+)
 from msgflux.data.stores.base import CheckpointStore
 from msgflux.data.stores.registry import register_store
 from msgflux.data.stores.types import CheckpointStoreType
@@ -167,13 +171,20 @@ class SQLiteCheckpointStore(CheckpointStore, CheckpointStoreType):
 
         target = executor or self._conn
         item_entries = []
-        for item in items:
-            payload = deepcopy(item)
-            active = payload.pop("active", None) if isinstance(payload, dict) else None
+        item_ids: set[str] = set()
+        for index, item in enumerate(items):
+            payload, entry = split_item_occurrence(
+                namespace=namespace,
+                thread_id=thread_id,
+                index=index,
+                item=item,
+            )
+            item_id = entry["item_id"]
+            if item_id in item_ids:
+                raise ValueError(f"Duplicate ChatMessages item_id `{item_id}`.")
+            item_ids.add(item_id)
             item_ref = self._item_ref(payload)
-            entry = {"item_ref": item_ref}
-            if active is False:
-                entry["active"] = False
+            entry["item_ref"] = item_ref
             item_entries.append(entry)
             target.execute(
                 _UPSERT_MESSAGE_ITEM,
@@ -233,9 +244,7 @@ class SQLiteCheckpointStore(CheckpointStore, CheckpointStoreType):
                     "Checkpoint message item is missing or corrupted: "
                     f"{namespace}/{thread_id}/{item_ref!r}"
                 )
-            item = self._deserialize(row[0])
-            if entry.get("active") is False:
-                item["active"] = False
+            item = restore_item_occurrence(self._deserialize(row[0]), entry)
             messages["items"].append(item)
         state["messages"] = messages
         return state
@@ -442,6 +451,8 @@ class SQLiteCheckpointStore(CheckpointStore, CheckpointStoreType):
         target_thread_id: str,
         target_run_id: str,
         status: str | None = None,
+        at_item_id: str | None = None,
+        position: Literal["before", "at"] = "at",
     ) -> Mapping[str, Any]:
         row = self._conn.execute(
             _SELECT_STATE,
@@ -453,38 +464,34 @@ class SQLiteCheckpointStore(CheckpointStore, CheckpointStoreType):
                 f"`{source_thread_id}`."
             )
 
-        state = self._deserialize(row[0])
+        source_state = self._denormalize_state(
+            namespace,
+            source_thread_id,
+            row[0],
+        )
+        state = self._prepare_fork_state(
+            source_state,
+            at_item_id=at_item_id,
+            position=position,
+        )
         if status is not None:
             state["status"] = status
+        messages = state.get("messages")
+        if isinstance(messages, dict):
+            messages["thread_id"] = target_thread_id
         now = time.time()
-        payload = self._serialize(state)
-        item_refs = self._collect_refs_from_state(state)
 
         cur = self._conn.cursor()
         try:
             cur.execute("BEGIN")
-            for item_ref in item_refs:
-                item_row = cur.execute(
-                    "SELECT item FROM checkpoint_message_items "
-                    "WHERE namespace=? AND thread_id=? AND item_ref=?",
-                    (namespace, source_thread_id, item_ref),
-                ).fetchone()
-                if item_row is None:
-                    raise ValueError(
-                        "Checkpoint message item is missing or corrupted: "
-                        f"{namespace}/{source_thread_id}/{item_ref!r}"
-                    )
-                cur.execute(
-                    _UPSERT_MESSAGE_ITEM,
-                    (
-                        namespace,
-                        target_thread_id,
-                        item_ref,
-                        item_row[0],
-                        now,
-                        now,
-                    ),
-                )
+            normalized = self._normalize_state(
+                namespace,
+                target_thread_id,
+                state,
+                now,
+                executor=cur,
+            )
+            payload = self._serialize(normalized)
             cur.execute(
                 _UPSERT_STATE,
                 (

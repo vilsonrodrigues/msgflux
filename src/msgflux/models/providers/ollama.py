@@ -58,6 +58,9 @@ class OllamaChatCompletion(_BaseOllama, OpenAICompatibleChatCompletion):
     canonical_history_api_modes = ("ollama_chat",)
     reasoning_codecs = {"ollama_chat": OllamaReasoningCodec()}
 
+    def _get_reasoning_effort_metadata(self) -> None:
+        return None
+
     def _build_generation_params(self, messages, *args, **kwargs):
         if (
             self.api_mode == "ollama_chat"

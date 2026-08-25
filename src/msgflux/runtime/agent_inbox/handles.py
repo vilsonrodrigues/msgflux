@@ -33,7 +33,6 @@ class ToolNotificationHandle:
         self,
         *,
         status: str,
-        hint: str | None = None,
         metadata: Mapping[str, Any] | None = None,
         dedupe_key: str | None = None,
         source: str | None = None,
@@ -52,7 +51,6 @@ class ToolNotificationHandle:
                 source=source or self._source,
                 ref=self._ref if ref is None else ref,
                 status=status,
-                hint=hint,
                 metadata=payload,
                 dedupe_key=dedupe_key,
                 created_at=utc_now_isoformat(),
@@ -63,7 +61,6 @@ class ToolNotificationHandle:
         self,
         *,
         status: str,
-        hint: str | None = None,
         metadata: Mapping[str, Any] | None = None,
         dedupe_key: str | None = None,
         source: str | None = None,
@@ -71,7 +68,6 @@ class ToolNotificationHandle:
     ) -> AgentNotification | None:
         return self.publish(
             status=status,
-            hint=hint,
             metadata=metadata,
             dedupe_key=dedupe_key,
             source=source,
@@ -82,7 +78,6 @@ class ToolNotificationHandle:
         self,
         status: str,
         *,
-        hint: str | None = None,
         metadata: Mapping[str, Any] | None = None,
         dedupe_key: str | None = None,
         source: str | None = None,
@@ -90,7 +85,6 @@ class ToolNotificationHandle:
     ) -> AgentNotification | None:
         return self.publish(
             status=status,
-            hint=hint,
             metadata=metadata,
             dedupe_key=dedupe_key,
             source=source,

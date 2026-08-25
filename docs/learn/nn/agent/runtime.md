@@ -204,20 +204,47 @@ tool calls, tool results, and turn lifecycle events are all ordered items in
 that timeline; there is no second copy of turn inputs, assistant output, vars,
 or response type.
 
+Each model response may also annotate its final generated item with model audit
+metadata produced by the LM: `provider`, `model_id`, `api_mode`, and
+`reasoning_effort` when it was used. The same item retains the minimal usage
+counters `input_tokens`, `output_tokens`, and `cached_input_tokens` when the
+provider reports them. Derived totals, cache percentages, costs, and the raw
+provider payload are not checkpointed. These metadata annotations are for
+inspection and are not sent back to the model provider.
+
 Turn events are `start`, `pause`, `resume`, `complete`, `fail`, and
 `interrupt`. The `messages.turns` property is a calculated view of those
 events, not additional persisted state. This means a failed or paused turn can
 resume without duplicating its messages.
 
-Items are active by default, so the common case stores no flag. Compaction can
-retain an item for audit while excluding it from future model input:
+Every occurrence has a stable `item_id`, even when two items have identical
+content. Use that identity to create an append-only branch at an exact history
+boundary. For example, fork immediately after the first completed turn:
 
 ```python
-messages.set_item_active(4, active=False)
+state = checkpoint_store.load_state(namespace, thread_id, run_id)
+first_complete = next(
+    item
+    for item in state["messages"]["items"]
+    if item.get("type") == "turn" and item.get("event") == "complete"
+)
+
+forked = checkpoint_store.fork_run(
+    namespace,
+    source_thread_id=thread_id,
+    source_run_id=run_id,
+    target_thread_id=f"{thread_id}_review",
+    target_run_id=f"{run_id}_review",
+    at_item_id=first_complete["item_id"],
+    position="at",
+    status="paused",
+)
 ```
 
-Only `active=False` is serialized. This lets a compactor deactivate a middle
-section, insert a summary, and retain both ends of the trajectory.
+Use `position="before"` to exclude the selected item itself. The store rejects
+a boundary inside an active turn or between a tool call and its output. History
+alternatives use explicit forks; compaction will use append-only operations that
+define a new view without rewriting existing items.
 
 For background subagents, the task id is used as the subagent `run_id`. Reusing
 that task id resumes or continues the same subagent. Creating a new task id
@@ -258,10 +285,23 @@ has a `thread_id` but did not persist the latest `run_id` separately:
 latest = checkpoint_store.load_latest_run(namespace, thread_id)
 ```
 
-Fork a checkpoint into a new thread/run. This copies the checkpoint state while
-preserving the original run:
+Fork a complete checkpoint into a new thread/run. Omitting `at_item_id` copies
+the whole state while preserving the original run:
 
 ```python
+state = checkpoint_store.load_state(
+    namespace,
+    "warehouse_incident_42",
+    "initial_analysis",
+)
+second_turn_start = next(
+    item
+    for item in state["messages"]["items"]
+    if item.get("type") == "turn"
+    and item.get("event") == "start"
+    and item.get("index") == 1
+)
+
 forked = checkpoint_store.fork_run(
     namespace,
     source_thread_id="warehouse_incident_42",
@@ -269,6 +309,21 @@ forked = checkpoint_store.fork_run(
     target_thread_id="warehouse_incident_42_review",
     target_run_id="initial_analysis_review",
     status="paused",
+)
+```
+
+To fork a prefix instead, pass the stable `item_id` and choose whether that
+occurrence is included:
+
+```python
+forked = checkpoint_store.fork_run(
+    namespace,
+    source_thread_id="warehouse_incident_42",
+    source_run_id="initial_analysis",
+    target_thread_id="warehouse_incident_42_review",
+    target_run_id="before_second_turn",
+    at_item_id=second_turn_start["item_id"],
+    position="before",
 )
 ```
 
@@ -507,8 +562,7 @@ Behavior:
   when a checkpoint store is configured.
 - `interrupt` raises `TaskInterruptRequestedError` and checkpoints the run as
   `interrupted` when a checkpoint store is configured.
-- Unknown control commands remain normal notifications and are shown to the
-  model as `system_note`.
+- Unknown control commands remain normal system notifications.
 
 For a persistent writer:
 
@@ -518,12 +572,12 @@ external_inbox.pause(reason="Need human review before continuing.")
 
 ### System Notifications
 
-Non-user inbox items are delivered as `system_note`:
+Non-user inbox items are delivered as compact system notifications:
 
 ```python
 agent_inbox.publish(
     {
-        "source": "system_note",
+        "source": "policy",
         "status": "policy_update",
         "metadata": {"policy": "Returns are accepted within 30 days."},
     }
@@ -533,18 +587,11 @@ agent_inbox.publish(
 The model receives:
 
 ```xml
-<system_note>
-<notification>
-source: system_note
-status: policy_update
-policy: Returns are accepted within 30 days.
-</notification>
-</system_note>
+<notification source="policy" status="policy_update" policy="Returns are accepted within 30 days."/>
 ```
 
-Use `user_message(...)` for new user turns. Use `system_note` or another
-system-like source for structured progress, policy updates, or operator notes
-that should not be treated as a direct user request.
+Use `user_message(...)` for new user turns. Use a machine-friendly source such
+as `policy`, `task`, or `operator` for state that is not a direct user request.
 
 ## Abort Signal
 

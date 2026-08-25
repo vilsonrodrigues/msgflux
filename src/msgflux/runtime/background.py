@@ -26,9 +26,10 @@ from msgflux.tools.builtin.task_tool import (
     build_background_dispatch_result,
     truncate_activity_text,
 )
+from msgflux.tools.handles import ToolBucketHandle
 from msgflux.tools.helpers import build_call_parameters_for_response
 from msgflux.tools.responses import ToolCall
-from msgflux.tools.types import ToolBackground
+from msgflux.tools.types import ToolBackground, ToolBucket
 
 
 class BackgroundTaskDispatcher:
@@ -137,10 +138,6 @@ class BackgroundTaskDispatcher:
                     task_id=task_handle.task_id,
                     tool_name=tool_name,
                     status="interrupted",
-                    hint=(
-                        f"Use task_status(task_id='{task_handle.task_id}') "
-                        "if you need interrupt details."
-                    ),
                     agent_inbox=agent_inbox,
                 )
                 raise
@@ -150,10 +147,6 @@ class BackgroundTaskDispatcher:
                     task_id=task_handle.task_id,
                     tool_name=tool_name,
                     status="paused",
-                    hint=(
-                        f"Use task_message(task_id='{task_handle.task_id}', "
-                        "message='...') to resume the paused task."
-                    ),
                     agent_inbox=agent_inbox,
                 )
                 raise
@@ -163,10 +156,6 @@ class BackgroundTaskDispatcher:
                     task_id=task_handle.task_id,
                     tool_name=tool_name,
                     status="failed",
-                    hint=(
-                        f"Use task_status(task_id='{task_handle.task_id}') "
-                        "if you need error details."
-                    ),
                     agent_inbox=agent_inbox,
                 )
                 raise
@@ -175,10 +164,6 @@ class BackgroundTaskDispatcher:
                 task_id=task_handle.task_id,
                 tool_name=tool_name,
                 status="completed",
-                hint=(
-                    f"Use task_output(task_id='{task_handle.task_id}') "
-                    "if you need the result."
-                ),
                 agent_inbox=agent_inbox,
             )
             return result
@@ -243,6 +228,7 @@ class BackgroundTaskDispatcher:
             },
         )
 
+        activity_recorder = TaskActivityRecorder(task.task_id, task_store)
         execution_scope = {
             "thread_id": thread_id
             if isinstance(thread_id, str) and thread_id
@@ -252,8 +238,29 @@ class BackgroundTaskDispatcher:
             "root_run_id": task.metadata.get("root_run_id"),
             "checkpoint_store": checkpoint_store,
             "agent_inbox": task_inbox,
-            "task_activity_recorder": TaskActivityRecorder(task.task_id, task_store),
+            "task_activity_recorder": activity_recorder,
         }
+        resume_params = {
+            **dict(task.metadata.get("task_resume_params") or {}),
+            "message": message,
+            "scope": ExecutionScope(
+                thread_id=thread_id,
+                namespace=checkpoint_namespace,
+                run_id=run_id,
+                parent_run_id=task.metadata.get("parent_run_id"),
+                root_run_id=task.metadata.get("root_run_id"),
+            ),
+        }
+        if isinstance(getattr(tool, "impl", None), ToolBucket):
+            resume_params["handle"] = self.library_handle.for_tool(
+                tool_name=tool_name,
+                agent_inbox=task_inbox,
+                task_store=task_store,
+                message=message,
+                tool_call_id=task.metadata.get("tool_call_id"),
+                activity_recorder=activity_recorder,
+            )
+
         future = Executor.get_instance().submit(
             partial(
                 self.run_tool,
@@ -265,17 +272,7 @@ class BackgroundTaskDispatcher:
                     agent_inbox=root_inbox,
                 ),
                 tool_name=tool_name,
-                call_params={
-                    **dict(task.metadata.get("task_resume_params") or {}),
-                    "message": message,
-                    "scope": ExecutionScope(
-                        thread_id=thread_id,
-                        namespace=checkpoint_namespace,
-                        run_id=run_id,
-                        parent_run_id=task.metadata.get("parent_run_id"),
-                        root_run_id=task.metadata.get("root_run_id"),
-                    ),
-                },
+                call_params=resume_params,
                 execution_scope=execution_scope,
                 agent_inbox=root_inbox,
             )
@@ -384,6 +381,7 @@ class BackgroundTaskDispatcher:
                 ),
             )
         runner_params["tool_call_id"] = tool_id
+        activity_recorder = TaskActivityRecorder(task.task_id, task_store)
         execution_scope = {
             "thread_id": thread_id
             if isinstance(thread_id, str) and thread_id
@@ -405,8 +403,15 @@ class BackgroundTaskDispatcher:
                 tool_name=tool_name,
                 agent_inbox=root_agent_inbox,
             ),
-            "task_activity_recorder": TaskActivityRecorder(task.task_id, task_store),
+            "task_activity_recorder": activity_recorder,
         }
+        bucket_handle = runner_params.get("handle")
+        if isinstance(bucket_handle, ToolBucketHandle):
+            runner_params["handle"] = bucket_handle.with_runtime(
+                agent_inbox=task_inbox or root_agent_inbox,
+                task_store=task_store,
+                activity_recorder=activity_recorder,
+            )
         future = Executor.get_instance().submit(
             partial(
                 self.run_tool,
@@ -443,7 +448,6 @@ class BackgroundTaskDispatcher:
         task_id: str,
         tool_name: str,
         status: str,
-        hint: str,
         agent_inbox: AgentInbox | None = None,
     ) -> AgentNotification | None:
         inbox = agent_inbox
@@ -457,7 +461,6 @@ class BackgroundTaskDispatcher:
                 source="task",
                 ref=task_id,
                 status=status,
-                hint=hint,
                 metadata={"tool": tool_name},
                 dedupe_key=f"task:{task_id}:{status}",
             )

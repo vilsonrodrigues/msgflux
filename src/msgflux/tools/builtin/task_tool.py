@@ -279,8 +279,10 @@ class TaskMessageTool(ToolBackground):
                     "source": "task_message",
                     "ref": task_id,
                     "status": "message",
-                    "hint": message.strip(),
-                    "metadata": {"direction": "root_to_task"},
+                    "metadata": {
+                        "direction": "root_to_task",
+                        "message": message.strip(),
+                    },
                 }
             )
             task_store.add_activity(

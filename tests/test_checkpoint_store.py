@@ -5,15 +5,21 @@ from concurrent.futures import ThreadPoolExecutor
 
 from msgflux.data.stores import InMemoryCheckpointStore, SQLiteCheckpointStore
 from msgflux.data.stores import Store
+from msgflux.chat_messages import ChatMessages
 
 
 def _message_state(turn_id: str, content: str = "hello"):
-    return {
-        "items": [{"role": "user", "content": content}],
-        "thread_id": "session_1",
-        "namespace": "agent:test",
-        "metadata": {"run": turn_id},
-    }
+    messages = ChatMessages(
+        [{"role": "user", "content": content}],
+        thread_id="session_1",
+        namespace="agent:test",
+    )
+    messages.metadata = {"run": turn_id}
+    return messages._to_state()
+
+
+def _replace_items(messages, items):
+    messages["items"] = ChatMessages(items).to_items()
 
 
 def test_in_memory_checkpoint_store_state_and_events():
@@ -65,14 +71,22 @@ def test_in_memory_checkpoint_store_normalizes_messages():
                 "namespace": "agent:test",
                 "metadata": {"run": "run_1"},
             },
-            "item_entries": [{"item_ref": store._item_ref(messages["items"][0])}],
+            "item_entries": [
+                {
+                    "item_id": messages["items"][0]["item_id"],
+                    "item_ref": store._item_ref(
+                        {"type": "message", "role": "user", "content": "hello"}
+                    ),
+                }
+            ],
         },
     }
     encoded_item = store._message_items["agent:test"]["session_1"][
-        store._item_ref(messages["items"][0])
+        store._item_ref({"type": "message", "role": "user", "content": "hello"})
     ]
     assert isinstance(encoded_item, bytes)
     assert msgspec.msgpack.decode(encoded_item) == {
+        "type": "message",
         "role": "user",
         "content": "hello",
     }
@@ -104,13 +118,16 @@ def test_in_memory_checkpoint_store_reuses_thread_items_across_runs():
     assert len(store._message_items["agent:test"]["session_1"]) == 2
 
 
-def test_in_memory_checkpoint_store_keeps_active_on_item_occurrence():
+def test_in_memory_checkpoint_store_deduplicates_distinct_occurrences():
     store = InMemoryCheckpointStore()
     messages = _message_state("run_1")
-    messages["items"] = [
-        {"role": "user", "content": "same", "active": False},
-        {"role": "user", "content": "same"},
-    ]
+    _replace_items(
+        messages,
+        [
+            {"role": "user", "content": "same"},
+            {"role": "user", "content": "same"},
+        ],
+    )
 
     store.save_state(
         "agent:test",
@@ -124,8 +141,10 @@ def test_in_memory_checkpoint_store_keeps_active_on_item_occurrence():
 
     assert restored["messages"]["items"] == messages["items"]
     assert len(store._message_items["agent:test"]["session_1"]) == 1
-    assert raw["_messages"]["item_entries"][0]["active"] is False
-    assert "active" not in raw["_messages"]["item_entries"][1]
+    assert (
+        raw["_messages"]["item_entries"][0]["item_id"]
+        != raw["_messages"]["item_entries"][1]["item_id"]
+    )
 
 
 def test_in_memory_checkpoint_store_preserves_forked_items():
@@ -219,7 +238,7 @@ def test_in_memory_checkpoint_store_forks_run_to_new_thread():
     )
 
     assert forked["status"] == "running"
-    assert forked["messages"] == first
+    assert forked["messages"] == {**first, "thread_id": "session_fork"}
     assert store.load_state("agent:test", "session_fork", "run_fork") == forked
     assert len(store._message_items["agent:test"]["session_fork"]) == 1
 
@@ -287,20 +306,26 @@ def test_sqlite_checkpoint_store_normalizes_messages(tmp_path):
 
     assert state == {"status": "completed", "messages": messages}
     assert '"messages"' not in row[0]
-    assert store._item_ref(messages["items"][0]) in row[0]
+    assert (
+        store._item_ref({"type": "message", "role": "user", "content": "hello"})
+        in row[0]
+    )
     assert item_count == 1
     assert len(store._item_ref(messages["items"][0])) == len("item_") + 32
 
     store.close()
 
 
-def test_sqlite_checkpoint_store_keeps_active_on_item_occurrence(tmp_path):
+def test_sqlite_checkpoint_store_deduplicates_distinct_occurrences(tmp_path):
     store = SQLiteCheckpointStore(path=str(tmp_path / "checkpoints.sqlite3"))
     messages = _message_state("run_1")
-    messages["items"] = [
-        {"role": "user", "content": "same", "active": False},
-        {"role": "user", "content": "same"},
-    ]
+    _replace_items(
+        messages,
+        [
+            {"role": "user", "content": "same"},
+            {"role": "user", "content": "same"},
+        ],
+    )
 
     store.save_state(
         "agent:test",
@@ -469,7 +494,7 @@ def test_sqlite_checkpoint_store_forks_run_to_new_thread(tmp_path):
     ).fetchone()[0]
 
     assert forked["status"] == "running"
-    assert forked["messages"] == first
+    assert forked["messages"] == {**first, "thread_id": "session_fork"}
     assert store.load_state("agent:test", "session_fork", "run_fork") == forked
     assert item_count == 1
 
@@ -486,3 +511,126 @@ def test_store_factory_creates_checkpoint_stores(tmp_path):
     assert isinstance(sqlite_store, SQLiteCheckpointStore)
 
     sqlite_store.close()
+
+
+@pytest.mark.parametrize("provider", ["in_memory", "sqlite"])
+def test_checkpoint_store_forks_at_item_boundary(provider, tmp_path):
+    store = (
+        InMemoryCheckpointStore()
+        if provider == "in_memory"
+        else SQLiteCheckpointStore(path=str(tmp_path / "fork.sqlite3"))
+    )
+    messages = ChatMessages(thread_id="session_1", namespace="agent:test")
+    messages.begin_turn(turn_id="turn_1")
+    messages.add_user("first")
+    messages.add_assistant("answer one")
+    messages.end_turn()
+    first_turn_end_id = messages[-1]["item_id"]
+    messages.begin_turn(turn_id="turn_2")
+    second_turn_start_id = messages[-1]["item_id"]
+    messages.add_user("second")
+    messages.add_assistant("answer two")
+    messages.end_turn()
+    store.save_state(
+        "agent:test",
+        "session_1",
+        "run_1",
+        {"status": "completed", "messages": messages._to_state()},
+    )
+
+    forked_at = store.fork_run(
+        "agent:test",
+        "session_1",
+        "run_1",
+        target_thread_id="session_at",
+        target_run_id="run_at",
+        at_item_id=first_turn_end_id,
+        position="at",
+    )
+    forked_before = store.fork_run(
+        "agent:test",
+        "session_1",
+        "run_1",
+        target_thread_id="session_before",
+        target_run_id="run_before",
+        at_item_id=second_turn_start_id,
+        position="before",
+    )
+
+    expected_ids = [item["item_id"] for item in messages[:4]]
+    assert [item["item_id"] for item in forked_at["messages"]["items"]] == expected_ids
+    assert [
+        item["item_id"] for item in forked_before["messages"]["items"]
+    ] == expected_ids
+    assert forked_at["messages"]["thread_id"] == "session_at"
+    if isinstance(store, SQLiteCheckpointStore):
+        store.close()
+
+
+@pytest.mark.parametrize("provider", ["in_memory", "sqlite"])
+def test_checkpoint_store_rejects_unsafe_item_boundary(provider, tmp_path):
+    store = (
+        InMemoryCheckpointStore()
+        if provider == "in_memory"
+        else SQLiteCheckpointStore(path=str(tmp_path / "unsafe.sqlite3"))
+    )
+    messages = ChatMessages(thread_id="session_1", namespace="agent:test")
+    messages.begin_turn(turn_id="turn_1")
+    messages.add_user("inside turn")
+    unsafe_item_id = messages[-1]["item_id"]
+    messages.end_turn(event="interrupt")
+    store.save_state(
+        "agent:test",
+        "session_1",
+        "run_1",
+        {"status": "interrupted", "messages": messages._to_state()},
+    )
+
+    with pytest.raises(ValueError, match="inside an active turn"):
+        store.fork_run(
+            "agent:test",
+            "session_1",
+            "run_1",
+            target_thread_id="unsafe",
+            target_run_id="unsafe",
+            at_item_id=unsafe_item_id,
+        )
+    if isinstance(store, SQLiteCheckpointStore):
+        store.close()
+
+
+def test_checkpoint_store_rejects_boundary_between_tool_call_and_output():
+    store = InMemoryCheckpointStore()
+    messages = ChatMessages(
+        [
+            {
+                "type": "function_call",
+                "call_id": "call_1",
+                "name": "lookup",
+                "arguments": "{}",
+            },
+            {
+                "type": "function_call_output",
+                "call_id": "call_1",
+                "output": "done",
+            },
+        ],
+        thread_id="session_1",
+        namespace="agent:test",
+    )
+    store.save_state(
+        "agent:test",
+        "session_1",
+        "run_1",
+        {"status": "completed", "messages": messages._to_state()},
+    )
+
+    with pytest.raises(ValueError, match="between a tool call and its output"):
+        store.fork_run(
+            "agent:test",
+            "session_1",
+            "run_1",
+            target_thread_id="unsafe",
+            target_run_id="unsafe",
+            at_item_id=messages[0]["item_id"],
+        )

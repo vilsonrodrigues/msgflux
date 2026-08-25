@@ -179,6 +179,7 @@ nav:
           - Intro: learn/nn/agent/tools/index.md
           - learn/nn/agent/tools/builtin.md
           - learn/nn/agent/tools/config.md
+          - learn/nn/agent/tools/tool-bucket.md
           - learn/nn/agent/tools/tool-search.md
           - learn/nn/agent/tools/background-tasks.md
           - learn/nn/agent/tools/agent-tool.md
@@ -211,6 +212,8 @@ nav:
           - api-reference/nn/modules/agent.md       
   - Tutorials:
     - tutorials/index.md
+    - Agent Runtime:
+      - Durable Operations Coordinator: tutorials/durable-operations-agent.md
     - Payments & Commerce:
       - PIX Assistant: tutorials/pix-assistant.md
       - Food Delivery Assistant: tutorials/food-delivery-assistant.md

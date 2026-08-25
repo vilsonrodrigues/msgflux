@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Callable, Dict, List
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Mapping
 
 from msgflux.runtime.agent_inbox import ToolNotificationHandle
 from msgflux.runtime.context import execution_context, get_execution_context
@@ -33,7 +33,26 @@ class ToolLibraryHandle:
         tool_name: str,
         agent_inbox: AgentInbox | None = None,
         task_store: Any = None,
+        message: Any = None,
+        messages: Any = None,
+        vars: Mapping[str, Any] | None = None,  # noqa: A002
+        tool_call_id: str | None = None,
+        activity_recorder: Any = None,
     ) -> ToolLibraryHandle:
+        if self._library.is_bucket(tool_name):
+            return ToolBucketHandle(
+                self._library,
+                bucket_name=tool_name,
+                agent_inbox=(
+                    agent_inbox if agent_inbox is not None else self._agent_inbox
+                ),
+                task_store=task_store if task_store is not None else self._task_store,
+                message=message,
+                messages=messages,
+                vars=vars,
+                tool_call_id=tool_call_id,
+                activity_recorder=activity_recorder,
+            )
         return ToolLibraryHandle(
             self._library,
             tool_name=tool_name,
@@ -130,14 +149,12 @@ class ToolLibraryHandle:
         self,
         *,
         status: str,
-        hint: str | None = None,
         metadata: Dict[str, Any] | None = None,
         dedupe_key: str | None = None,
         source: str | None = None,
     ) -> Any:
         return self.get_notification().update(
             status,
-            hint=hint,
             metadata=metadata,
             dedupe_key=dedupe_key,
             source=source,
@@ -173,4 +190,90 @@ class ToolLibraryHandle:
             inbox,
             ref=ref,
             metadata={"tool": tool_name},
+        )
+
+
+class ToolBucketHandle(ToolLibraryHandle):
+    """Scoped proxy used by a bucket to execute one of its captured tools."""
+
+    def __init__(
+        self,
+        library: ToolLibrary,
+        *,
+        bucket_name: str,
+        agent_inbox: AgentInbox | None = None,
+        task_store: Any = None,
+        message: Any = None,
+        messages: Any = None,
+        vars: Mapping[str, Any] | None = None,  # noqa: A002
+        tool_call_id: str | None = None,
+        activity_recorder: Any = None,
+    ):
+        super().__init__(
+            library,
+            tool_name=bucket_name,
+            agent_inbox=agent_inbox,
+            task_store=task_store,
+        )
+        self._bucket_name = bucket_name
+        self._message = message
+        self._messages = messages
+        self._vars = vars
+        self._tool_call_id = tool_call_id
+        self._activity_recorder = activity_recorder
+
+    def has_tool(self, tool_name: str) -> bool:
+        return self._library.bucket_has_tool(self._bucket_name, tool_name)
+
+    def list_captured_tools(self) -> List[str]:
+        return self._library.get_bucket_tool_names(self._bucket_name)
+
+    def get_execution_namespace(self, tool_name: str) -> str:
+        return self._library.get_bucket_execution_namespace(
+            self._bucket_name,
+            tool_name,
+        )
+
+    def with_runtime(
+        self,
+        *,
+        agent_inbox: AgentInbox | None = None,
+        task_store: Any = None,
+        activity_recorder: Any = None,
+    ) -> ToolBucketHandle:
+        """Copy this call scope while rebinding background runtime resources."""
+        return ToolBucketHandle(
+            self._library,
+            bucket_name=self._bucket_name,
+            agent_inbox=agent_inbox if agent_inbox is not None else self._agent_inbox,
+            task_store=task_store if task_store is not None else self._task_store,
+            message=self._message,
+            messages=self._messages,
+            vars=self._vars,
+            tool_call_id=self._tool_call_id,
+            activity_recorder=activity_recorder,
+        )
+
+    def __call__(self, tool_name: str, /, **arguments: Any) -> Any:
+        return self._library._call_captured_tool(
+            self._bucket_name,
+            tool_name,
+            arguments,
+            message=self._message,
+            messages=self._messages,
+            vars=self._vars,
+            parent_tool_call_id=self._tool_call_id,
+            activity_recorder=self._activity_recorder,
+        )
+
+    async def acall(self, tool_name: str, /, **arguments: Any) -> Any:
+        return await self._library._acall_captured_tool(
+            self._bucket_name,
+            tool_name,
+            arguments,
+            message=self._message,
+            messages=self._messages,
+            vars=self._vars,
+            parent_tool_call_id=self._tool_call_id,
+            activity_recorder=self._activity_recorder,
         )

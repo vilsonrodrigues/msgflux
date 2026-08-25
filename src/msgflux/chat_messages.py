@@ -6,6 +6,7 @@ from copy import deepcopy
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Iterable, Iterator, List, Literal, Mapping
 
+from msgflux._private.chat_items import legacy_item_id, new_item_id
 from msgflux.core.examples import Example
 from msgflux.data.types import Audio, File, Image, MediaType, Video
 from msgflux.runtime.context import (
@@ -63,8 +64,20 @@ class ChatMessages:
         if not normalized_items:
             raise ValueError("`item` generated an empty normalized representation")
         if len(normalized_items) == 1:
+            existing_ids = {
+                existing.get("item_id")
+                for item_index, existing in enumerate(self._items)
+                if item_index != index
+            }
+            self._assign_item_ids(normalized_items, existing_ids=existing_ids)
             self._items[index] = normalized_items[0]
         else:
+            existing_ids = {
+                existing.get("item_id")
+                for item_index, existing in enumerate(self._items)
+                if item_index != index
+            }
+            self._assign_item_ids(normalized_items, existing_ids=existing_ids)
             self._items[index : index + 1] = normalized_items
 
     def __bool__(self) -> bool:
@@ -85,12 +98,14 @@ class ChatMessages:
         if not isinstance(item, Mapping):
             raise TypeError(f"`item` must be Mapping, given `{type(item)}`")
         normalized_items = self._normalize_item(item)
+        self._assign_item_ids(normalized_items)
         self._items.extend(normalized_items)
 
     def insert(self, index: int, item: Mapping[str, Any]) -> None:
         if not isinstance(item, Mapping):
             raise TypeError(f"`item` must be Mapping, given `{type(item)}`")
         normalized_items = self._normalize_item(item)
+        self._assign_item_ids(normalized_items)
         self._items[index:index] = normalized_items
 
     def insert_before_active_turn(self, item: Mapping[str, Any]) -> None:
@@ -102,6 +117,7 @@ class ChatMessages:
             return
 
         normalized_items = self._normalize_item(item)
+        self._assign_item_ids(normalized_items)
         start_item_index = active_turn.get("start_item_index")
         if not isinstance(start_item_index, int):
             self.append(item)
@@ -116,7 +132,30 @@ class ChatMessages:
             if not isinstance(item, Mapping):
                 raise TypeError(f"`item` must be Mapping, given `{type(item)}`")
             normalized_items = self._normalize_item(item)
+            self._assign_item_ids(normalized_items)
             self._items.extend(normalized_items)
+
+    def _assign_item_ids(
+        self,
+        items: Iterable[dict[str, Any]],
+        *,
+        existing_ids: set[Any] | None = None,
+    ) -> None:
+        used_ids = (
+            {
+                item.get("item_id")
+                for item in self._items
+                if isinstance(item.get("item_id"), str)
+            }
+            if existing_ids is None
+            else {item_id for item_id in existing_ids if isinstance(item_id, str)}
+        )
+        for item in items:
+            item_id = item.get("item_id")
+            if not isinstance(item_id, str) or not item_id or item_id in used_ids:
+                item_id = new_item_id()
+                item["item_id"] = item_id
+            used_ids.add(item_id)
 
     def copy(self) -> ChatMessages:
         copied = ChatMessages(
@@ -303,18 +342,26 @@ class ChatMessages:
             start = int(turn["start_item_index"]) + 1
             end = int(turn["end_item_index"])
             trajectory = self._items[start:end]
+            example_trajectory = [
+                {
+                    key: self._safe_copy(value)
+                    for key, value in item.items()
+                    if key not in {"item_id", "metadata"}
+                }
+                for item in trajectory
+            ]
             split = next(
                 (
                     index
-                    for index, item in enumerate(trajectory)
+                    for index, item in enumerate(example_trajectory)
                     if self._is_assistant_trajectory_item(item)
                 ),
-                len(trajectory),
+                len(example_trajectory),
             )
             examples.append(
                 Example(
-                    inputs={"trajectory": self._safe_copy(trajectory[:split])},
-                    labels={"trajectory": self._safe_copy(trajectory[split:])},
+                    inputs={"trajectory": example_trajectory[:split]},
+                    labels={"trajectory": example_trajectory[split:]},
                     topic=turn.get("namespace"),
                 )
             )
@@ -570,18 +617,6 @@ class ChatMessages:
     def to_items(self) -> List[dict[str, Any]]:
         return deepcopy(self._items)
 
-    def set_item_active(
-        self,
-        index: int,
-        *,
-        active: bool = True,
-    ) -> None:
-        item = self._items[index]
-        if active:
-            item.pop("active", None)
-        else:
-            item["active"] = False
-
     def to_chatml(  # noqa: C901
         self,
         *,
@@ -592,8 +627,6 @@ class ChatMessages:
         messages: List[dict[str, Any]] = []
         pending_reasoning: list[Mapping[str, Any]] = []
         for item in self._items:
-            if item.get("active", True) is False:
-                continue
             item_type = item.get("type")
             if item_type == "turn":
                 continue
@@ -738,8 +771,6 @@ class ChatMessages:
     ) -> List[dict[str, Any]]:
         result: List[dict[str, Any]] = []
         for item in self._items:
-            if item.get("active", True) is False:
-                continue
             item_type = item.get("type")
             if item_type == "turn":
                 continue
@@ -893,16 +924,6 @@ class ChatMessages:
         if not isinstance(state, Mapping):
             return
 
-        items = state.get("items")
-        if isinstance(items, list):
-            self._items = self._safe_copy(items)
-
-        metadata = state.get("metadata")
-        if isinstance(metadata, Mapping):
-            self.metadata = self._safe_copy(dict(metadata))
-        else:
-            self.metadata = {}
-
         persisted_thread_id = state.get("thread_id")
         if isinstance(persisted_thread_id, str) and persisted_thread_id:
             self.thread_id = persisted_thread_id
@@ -910,6 +931,33 @@ class ChatMessages:
         persisted_namespace = state.get("namespace")
         if isinstance(persisted_namespace, str) and persisted_namespace:
             self.namespace = persisted_namespace
+
+        items = state.get("items")
+        if isinstance(items, list):
+            restored_items = self._safe_copy(items)
+            seen_ids: set[str] = set()
+            for index, item in enumerate(restored_items):
+                if not isinstance(item, dict):
+                    continue
+                item_id = item.get("item_id")
+                if not isinstance(item_id, str) or not item_id:
+                    item_id = legacy_item_id(
+                        namespace=self.namespace,
+                        thread_id=self.thread_id,
+                        index=index,
+                        item=item,
+                    )
+                    item["item_id"] = item_id
+                if item_id in seen_ids:
+                    raise ValueError(f"Duplicate ChatMessages item_id `{item_id}`.")
+                seen_ids.add(item_id)
+            self._items = restored_items
+
+        metadata = state.get("metadata")
+        if isinstance(metadata, Mapping):
+            self.metadata = self._safe_copy(dict(metadata))
+        else:
+            self.metadata = {}
 
     def _chatml_message_to_response(self, message: Mapping[str, Any]) -> dict[str, Any]:
         role = message.get("role")
@@ -1171,8 +1219,6 @@ class ChatMessages:
         self, item: Mapping[str, Any]
     ) -> List[dict[str, Any]]:
         normalized = deepcopy(dict(item))
-        if normalized.get("active") is not False:
-            normalized.pop("active", None)
         item_type = normalized.get("type")
 
         if item_type == "reasoning":
@@ -1201,9 +1247,7 @@ class ChatMessages:
         role = normalized.get("role")
         if role == "assistant":
             item_attrs = {
-                key: normalized[key]
-                for key in ("active", "metadata")
-                if key in normalized
+                key: normalized[key] for key in ("metadata",) if key in normalized
             }
             reasoning_content = self._extract_reasoning_content(normalized)
             tool_calls = normalized.pop("tool_calls", None)
@@ -1264,7 +1308,7 @@ class ChatMessages:
                     "output": normalized.get("content"),
                     **{
                         key: normalized[key]
-                        for key in ("active", "metadata")
+                        for key in ("metadata",)
                         if key in normalized
                     },
                 }

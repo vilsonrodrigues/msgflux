@@ -70,8 +70,7 @@ class _RecordingAgent:
 
 def test_agent_tool_exposes_single_agent_tool_with_name_and_message_params():
     reviewer = Agent(name="reviewer", model=_mock_model("reviewed"))
-    tool = AgentTool([reviewer])
-    library = ToolLibrary(name="lib", tools=[tool])
+    library = ToolLibrary(name="lib", tools=[AgentTool(), reviewer])
 
     schema = library.get_tool_json_schemas()[0]
 
@@ -87,7 +86,8 @@ def test_agent_tool_description_lists_available_agents():
         description="Reviews drafts for clarity.",
     )
 
-    tool = AgentTool([reviewer])
+    tool = AgentTool()
+    ToolLibrary(name="lib", tools=[tool, reviewer])
 
     assert (
         tool.description == "Available agents:\n- reviewer: Reviews drafts for clarity."
@@ -123,7 +123,8 @@ def test_agent_tool_collects_agent_usage_guidance():
     reviewer.tool_config = {"usage_guidance": "Use for code review."}
     planner.usage_guidance = "Use for planning."
 
-    tool = AgentTool([reviewer, planner])
+    tool = AgentTool()
+    ToolLibrary(name="lib", tools=[tool, reviewer, planner])
 
     assert "reviewer: Use for code review." in tool.usage_guidance
     assert "planner: Use for planning." in tool.usage_guidance
@@ -153,20 +154,11 @@ def test_agent_tool_can_start_empty_and_capture_agents_from_library():
     assert response.tool_calls[0].result == "reviewed"
 
 
-def test_agent_tool_rejects_background_agent_on_initialization():
+def test_agent_tool_rejects_agents_in_constructor():
     reviewer = Agent(name="reviewer", model=_mock_model("reviewed"))
-    reviewer.tool_config = {"background": True}
 
-    with pytest.raises(ValueError, match="Bucket-captured tools cannot use"):
-        AgentTool([reviewer])
-
-
-def test_agent_tool_rejects_deferred_agent_on_initialization():
-    reviewer = Agent(name="reviewer", model=_mock_model("reviewed"))
-    reviewer.tool_config = {"defer_loading": True}
-
-    with pytest.raises(ValueError, match="does not match this bucket's capture rule"):
-        AgentTool([reviewer])
+    with pytest.raises(TypeError, match="unexpected keyword argument 'agents'"):
+        AgentTool(agents=[reviewer])
 
 
 def test_agent_tool_captures_registered_agents_when_added_later():
@@ -196,7 +188,7 @@ def test_agent_tool_rejects_background_agent_capture():
     else:
         raise AssertionError("AgentTool should reject background captured agents.")
 
-    assert "Bucket-captured tools cannot use `background=True`" in error
+    assert "Bucket-captured tools cannot define model-loop behavior" in error
     assert "reviewer" not in library.library
 
 
@@ -212,7 +204,7 @@ def test_agent_tool_rejects_existing_allow_background_agent_capture():
     else:
         raise AssertionError("AgentTool should reject allow-background agents.")
 
-    assert "Bucket-captured tools cannot use `background=True`" in error
+    assert "Bucket-captured tools cannot define model-loop behavior" in error
     assert "reviewer" in library.library
     assert "agent" not in library.library
 
@@ -220,7 +212,7 @@ def test_agent_tool_rejects_existing_allow_background_agent_capture():
 def test_agent_tool_dispatches_to_selected_agent():
     reviewer = Agent(name="reviewer", model=_mock_model("reviewed"))
     planner = Agent(name="planner", model=_mock_model("planned"))
-    library = ToolLibrary(name="lib", tools=[AgentTool([reviewer, planner])])
+    library = ToolLibrary(name="lib", tools=[AgentTool(), reviewer, planner])
 
     response = library([("call_1", "agent", {"name": "reviewer", "message": "Go"})])
 
@@ -247,6 +239,34 @@ def test_agent_tool_injects_messages_and_vars_without_exposing_them():
     assert response.tool_calls[0].result == "recorded"
     assert recorder.calls[0]["messages"] == messages
     assert recorder.calls[0]["vars"] == vars
+
+
+def test_agent_tool_child_agent_inherits_parent_messages_when_configured():
+    reviewer = mf.tool_config(inject_messages=True)(
+        Agent(name="reviewer", model=_mock_model("reviewed"))
+    )
+    library = ToolLibrary(name="lib", tools=[AgentTool(), reviewer])
+    messages = [{"role": "user", "content": "parent history"}]
+
+    response = library(
+        [("call_1", "agent", {"name": "reviewer", "message": "Review this"})],
+        messages=messages,
+    )
+
+    assert response.tool_calls[0].result == "reviewed"
+    inherited = reviewer.model.calls[0]["messages"]
+    assert inherited is not messages
+    assert inherited.to_chatml()[0] == messages[0]
+
+
+def test_agent_tool_uses_canonical_agent_name_for_default_scope():
+    reviewer = mf.tool_config(name_override="review_alias")(_RecordingAgent("reviewer"))
+    library = ToolLibrary(name="lib", tools=[AgentTool(), reviewer])
+
+    response = library([("call_1", "agent", {"name": "review_alias", "message": "Go"})])
+
+    assert response.tool_calls[0].result == "recorded"
+    assert reviewer.calls[0]["scope"].namespace == "reviewer"
 
 
 def test_agent_tool_injects_runtime_kwargs_only_for_selected_agent_config():
@@ -311,7 +331,7 @@ def test_agent_tool_injected_vars_list_requires_selected_agent_vars():
 
 def test_agent_tool_rejects_unknown_agent_name():
     reviewer = Agent(name="reviewer", model=_mock_model("reviewed"))
-    library = ToolLibrary(name="lib", tools=[AgentTool([reviewer])])
+    library = ToolLibrary(name="lib", tools=[AgentTool(), reviewer])
 
     response = library([("call_1", "agent", {"name": "missing", "message": "Go"})])
 
@@ -320,13 +340,16 @@ def test_agent_tool_rejects_unknown_agent_name():
     assert "reviewer" in response.tool_calls[0].error
 
 
-def test_agent_tool_captures_deferred_agents_after_tool_search():
+def test_deferred_agent_load_does_not_mutate_agent_tool():
     reviewer = mf.tool_config(defer_loading=True)(
         Agent(name="reviewer", model=_mock_model("reviewed"))
     )
     reviewer.tool_config.usage_guidance = "Use for code review."
     library = ToolLibrary(name="lib", tools=[AgentTool(), reviewer])
     messages = ChatMessages(thread_id="review-thread")
+    agent_tool = library.library["agent"]
+    description_before = agent_tool.description
+    schema_before = agent_tool.get_json_schema()
 
     before_search = library(
         [("call_1", "agent", {"name": "reviewer", "message": "Go"})]
@@ -365,13 +388,15 @@ def test_agent_tool_captures_deferred_agents_after_tool_search():
     assert visible_after == ["agent", "reviewer"]
     assert response.tool_calls[0].result == "reviewed"
     assert "reviewer" not in library.library
+    assert agent_tool.description == description_before
+    assert agent_tool.get_json_schema() == schema_before
 
 
 def test_agent_tool_background_run_uses_task_id_as_child_run_id():
     store = InMemoryCheckpointStore()
     reviewer = Agent(name="reviewer", model=_mock_model("reviewed"))
-    agent_tool = mf.tool_config(allow_background=True)(AgentTool([reviewer]))
-    library = ToolLibrary(name="lib", tools=[agent_tool])
+    agent_tool = mf.tool_config(allow_background=True)(AgentTool())
+    library = ToolLibrary(name="lib", tools=[agent_tool, reviewer])
 
     with execution_context(
         thread_id="user_42",
@@ -407,8 +432,8 @@ def test_agent_tool_background_task_message_resumes_selected_agent():
     store = InMemoryCheckpointStore()
     model = _mock_model("first", "second")
     reviewer = Agent(name="reviewer", model=model)
-    agent_tool = mf.tool_config(allow_background=True)(AgentTool([reviewer]))
-    library = ToolLibrary(name="lib", tools=[agent_tool])
+    agent_tool = mf.tool_config(allow_background=True)(AgentTool())
+    library = ToolLibrary(name="lib", tools=[agent_tool, reviewer])
 
     with execution_context(
         thread_id="user_42",

@@ -33,15 +33,12 @@ def test_agent_inbox_verbose_publish_and_drain_are_printed(capsys):
 
     captured = capsys.readouterr()
     assert "[assistant][notification_publish]" in captured.out
-    assert "<notification>" in captured.out
-    assert "source: task" in captured.out
-    assert "ref: task_123" in captured.out
-    assert "status: completed" in captured.out
-    assert "tool: worker" in captured.out
+    assert '<notification source="task"' in captured.out
+    assert 'ref="task_123"' in captured.out
+    assert 'status="completed"' in captured.out
+    assert 'tool="worker"' in captured.out
     assert "[assistant][notification_drain]" in captured.out
     assert "1 notification(s)" in captured.out
-    assert "<system_note>" in captured.out
-    assert "</system_note>" in captured.out
 
 
 def test_agent_inbox_verbose_replace_is_printed(capsys):
@@ -66,7 +63,7 @@ def test_agent_inbox_verbose_replace_is_printed(capsys):
 
     captured = capsys.readouterr()
     assert "[assistant][notification_replace]" in captured.out
-    assert "status: process" in captured.out
+    assert 'status="process"' in captured.out
     assert "dedupe_key: progress:task_123" in captured.out
 
 
@@ -78,7 +75,7 @@ def test_agent_inbox_accepts_control_messages():
     notification = inbox.drain()[0]
     assert notification.source == "control"
     assert notification.status == "pause"
-    assert notification.hint == "operator request"
+    assert notification.metadata["reason"] == "operator request"
 
 
 def test_agent_inbox_requires_store():
@@ -125,12 +122,50 @@ def test_agent_inbox_renders_runtime_notifications_as_system_messages():
     rendered = inbox.render(inbox.drain())
 
     assert isinstance(rendered, dict)
-    assert rendered["role"] == "system"
-    assert "<system_note>" in rendered["content"]
-    assert "<notification>" in rendered["content"]
-    assert "source: task" in rendered["content"]
-    assert "ref: task_123" in rendered["content"]
-    assert "status: completed" in rendered["content"]
+    assert rendered == {
+        "role": "system",
+        "content": (
+            '<notification source="task" ref="task_123" status="completed" '
+            'tool="worker"/>'
+        ),
+    }
+
+
+def test_agent_inbox_renders_multiple_notifications_without_wrapper():
+    inbox = _memory_inbox()
+
+    inbox.publish({"source": "task", "status": "started"})
+    inbox.publish({"source": "task", "status": "completed"})
+    rendered = inbox.render(inbox.drain())
+
+    assert rendered == {
+        "role": "system",
+        "content": (
+            '<notification source="task" status="started"/>\n'
+            '<notification source="task" status="completed"/>'
+        ),
+    }
+
+
+def test_agent_inbox_nests_reserved_or_invalid_metadata_attributes():
+    inbox = _memory_inbox()
+
+    inbox.publish(
+        {
+            "source": "task",
+            "metadata": {
+                "tool": "worker & reviewer",
+                "source": "shadow",
+                "bad key": {"step": 1},
+            },
+        }
+    )
+    rendered = inbox.render(inbox.drain())
+
+    assert rendered["content"] == (
+        '<notification source="task" tool="worker &amp; reviewer" '
+        'metadata=\'{"bad key":{"step":1},"source":"shadow"}\'/>'
+    )
 
 
 def test_agent_inbox_separates_incoming_user_message_from_system_notifications():
@@ -141,9 +176,10 @@ def test_agent_inbox_separates_incoming_user_message_from_system_notifications()
     rendered = inbox.render_messages(inbox.drain())
 
     assert [message["role"] for message in rendered] == ["system", "user"]
-    assert "<system_note>" in rendered[0]["content"]
+    assert rendered[0]["content"] == (
+        '<notification source="task" status="completed"/>'
+    )
     assert "<incoming_user_message>" in rendered[1]["content"]
-    assert "<system_note>" not in rendered[1]["content"]
 
 
 def test_agent_inbox_clear_user_messages_preserves_system_notifications():
@@ -180,7 +216,7 @@ def test_agent_inbox_persists_notifications_with_memory_store():
     notifications = reader.peek()
     assert len(notifications) == 1
     assert notifications[0].source == "incoming_user_message"
-    assert notifications[0].hint == "Continue with the new constraint."
+    assert notifications[0].metadata["content"] == "Continue with the new constraint."
 
     drained = reader.drain()
     assert len(drained) == 1
@@ -224,7 +260,7 @@ def test_agent_inbox_local_drain_is_scoped_by_thread_id():
     drained = inbox.drain()
 
     assert len(drained) == 1
-    assert drained[0].hint == "Only user 1 should see this."
+    assert drained[0].metadata["content"] == "Only user 1 should see this."
 
 
 def test_agent_inbox_memory_store_keeps_multiple_thread_queues():
@@ -238,12 +274,12 @@ def test_agent_inbox_memory_store_keeps_multiple_thread_queues():
     inbox.bind(thread_id="user_2", run_id="run_4")
     user_2_notifications = inbox.drain()
 
-    assert [notification.hint for notification in user_1_notifications] == [
-        "User 1 notification."
-    ]
-    assert [notification.hint for notification in user_2_notifications] == [
-        "User 2 notification."
-    ]
+    assert [
+        notification.metadata["content"] for notification in user_1_notifications
+    ] == ["User 1 notification."]
+    assert [
+        notification.metadata["content"] for notification in user_2_notifications
+    ] == ["User 2 notification."]
 
 
 def test_agent_inbox_local_first_bind_keeps_prebound_notifications():
@@ -255,7 +291,7 @@ def test_agent_inbox_local_first_bind_keeps_prebound_notifications():
     drained = inbox.drain()
 
     assert len(drained) == 1
-    assert drained[0].hint == "Deliver on first scope bind."
+    assert drained[0].metadata["content"] == "Deliver on first scope bind."
 
 
 def test_agent_inbox_local_moves_pending_notifications_between_runs_same_thread():
@@ -267,7 +303,7 @@ def test_agent_inbox_local_moves_pending_notifications_between_runs_same_thread(
     drained = inbox.drain()
 
     assert len(drained) == 1
-    assert drained[0].hint == "Deliver on next turn."
+    assert drained[0].metadata["content"] == "Deliver on next turn."
 
 
 def test_agent_inbox_memory_store_drain_is_scoped_by_thread_id():
@@ -297,7 +333,7 @@ def test_agent_inbox_memory_store_drain_is_scoped_by_thread_id():
 
     drained = original_thread.drain()
     assert len(drained) == 1
-    assert drained[0].hint == "Only user 1 should see this."
+    assert drained[0].metadata["content"] == "Only user 1 should see this."
 
 
 def test_agent_inbox_memory_store_moves_pending_notifications_between_runs_same_thread():
@@ -315,7 +351,7 @@ def test_agent_inbox_memory_store_moves_pending_notifications_between_runs_same_
     drained = inbox.drain()
 
     assert len(drained) == 1
-    assert drained[0].hint == "Deliver on next turn."
+    assert drained[0].metadata["content"] == "Deliver on next turn."
 
 
 def test_agent_inbox_sqlite_store_moves_pending_notifications_between_runs_same_thread(
@@ -335,7 +371,7 @@ def test_agent_inbox_sqlite_store_moves_pending_notifications_between_runs_same_
     drained = inbox.drain()
 
     assert len(drained) == 1
-    assert drained[0].hint == "Deliver on next turn."
+    assert drained[0].metadata["content"] == "Deliver on next turn."
 
     store.close()
 
@@ -377,7 +413,7 @@ def test_agent_inbox_persists_notifications_with_sqlite_store(tmp_path):
 
     assert notification.source == "control"
     assert notification.status == "pause"
-    assert notification.hint == "operator needs review"
+    assert notification.metadata["reason"] == "operator needs review"
     assert reader.peek() == []
 
     reopened.close()

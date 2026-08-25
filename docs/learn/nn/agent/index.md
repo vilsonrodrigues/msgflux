@@ -38,10 +38,11 @@ task to be treated in isolation.
 | [Tools](tools/index.md) | Tool calling overview |
 | [Builtin Tools](tools/builtin.md) | Built-in web, weather, agent, skill, and runtime tools |
 | [Tool Config](tools/config.md) | Per-tool behavior, runtime injection, retries, display names, and usage guidance |
+| [ToolBucket](tools/tool-bucket.md) | Group implementations behind one callable tool and understand bucket routing |
 | [Tool Search](tools/tool-search.md) | On-demand tools and `tool_search` activation |
 | [Agent Skills](skills.md) | Reusable `SKILL.md` workflows loaded through progressive disclosure |
 | [Background Tasks](tools/background-tasks.md) | Async tool dispatch, task polling, progress, and notifications |
-| [Agent Tool](tools/agent-tool.md) | Subagents, `AgentTool`, and tool buckets |
+| [Agent Tool](tools/agent-tool.md) | Capture registered subagents behind one `agent(name, message)` tool |
 | [MCP Tools](tools/mcp.md) | Connect external Model Context Protocol servers |
 | [Signatures](signatures.md) | Declarative input/output specifications |
 | [Hooks & Guards](hooks.md) | Input and output safety checks with configurable policy |

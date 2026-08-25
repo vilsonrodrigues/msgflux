@@ -14,3 +14,4 @@ class ToolMetadata:
     display_name: str | None = None
     usage_guidance: str | None = None
     source_tool: Any | None = None
+    execution_namespace: str | None = None

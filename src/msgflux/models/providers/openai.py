@@ -148,7 +148,7 @@ class _BaseOpenAI(BaseModel):
 class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
     """Shared implementation for OpenAI-compatible Chat Completions APIs."""
 
-    supports_hosted_tool_search = False
+    hosted_tool_search_model_families: tuple[str, ...] = ()
     default_api_mode = "chat_completions"
     supported_api_modes = ("chat_completions",)
     canonical_history_api_modes = ("responses",)
@@ -161,6 +161,16 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
     uses_max_completion_tokens = False
     responses_supports_reasoning_summary = False
     responses_supports_encrypted_reasoning = False
+
+    def supports_native_tool_search(self) -> bool:
+        """Return whether this model/API pair supports hosted tool search."""
+        if self.api_mode != "responses":
+            return False
+        model_id = self.model_id.rsplit("/", maxsplit=1)[-1]
+        return any(
+            model_id == family or model_id.startswith(f"{family}-20")
+            for family in self.hosted_tool_search_model_families
+        )
 
     @staticmethod
     def _merge_extra_body(
@@ -194,7 +204,7 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
         max_tokens: Optional[int] = None,
         reasoning_effort: Optional[str] = None,
         prompt_cache_retention: Optional[Literal["in_memory", "24h"]] = None,
-        enable_thinking: Optional[bool] = None,
+        enable_thinking: Optional[Union[bool, Literal["low", "medium", "high"]]] = None,
         return_reasoning: Optional[bool] = True,
         reasoning_in_tool_call: Optional[bool] = True,
         validate_typed_parser_output: Optional[bool] = False,
@@ -242,7 +252,8 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
             OpenAI-only prompt cache retention policy.
             Allowed values are "in_memory" and "24h".
         enable_thinking:
-            If True, enable the model reasoning.
+            Enables model reasoning. Native Ollama also accepts the effort
+            levels "low", "medium", and "high" for supported models.
         return_reasoning:
             If the model returns the `reasoning` field it will be added
             along with the response.
@@ -422,12 +433,25 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
                 params["max_completion_tokens"] = max_tokens
         return params
 
-    def _build_usage_metadata(self, model_output) -> dotdict:
-        metadata = dotdict()
+    def _build_response_metadata(self, model_output) -> dotdict:
+        model_metadata = {
+            "provider": self.provider,
+            "model_id": self.model_id,
+            "api_mode": self.api_mode,
+        }
+        reasoning_effort = self._get_reasoning_effort_metadata()
+        if reasoning_effort is not None:
+            model_metadata["reasoning_effort"] = reasoning_effort
+        metadata = dotdict({"model": model_metadata})
         usage = self.usage_codec.normalize(getattr(model_output, "usage", None))
         if usage is not None:
             metadata.usage = usage
         return metadata
+
+    def _get_reasoning_effort_metadata(self) -> str | None:
+        """Return the reasoning effort actually represented by this transport."""
+        reasoning_effort = self.sampling_run_params.get("reasoning_effort")
+        return reasoning_effort if isinstance(reasoning_effort, str) else None
 
     @staticmethod
     def _serialize_openai_value(value):
@@ -492,7 +516,7 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
         )
 
     def _build_completion_metadata(self, model_output, choice, message=None) -> dotdict:
-        metadata = self._build_usage_metadata(model_output)
+        metadata = self._build_response_metadata(model_output)
         self._set_stop_metadata(
             metadata, finish_reason=self._extract_finish_reason(choice)
         )
@@ -966,7 +990,7 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
             if reasoning_chunks and self.reasoning_in_tool_call:
                 aggregator.reasoning = "".join(reasoning_chunks)
             response.add(aggregator)
-            metadata = self._build_usage_metadata(model_output)
+            metadata = self._build_response_metadata(model_output)
             self._set_stop_metadata(metadata, finish_reason=status)
             response.set_metadata(metadata)
         else:
@@ -1171,7 +1195,7 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
         if self.api_mode == "responses":
             return self._stream_responses_generate(**kwargs)
         stream_response = kwargs.pop("stream_response")
-        metadata = dotdict()
+        metadata = self._build_response_metadata(None)
         reasoning_tool_call = ""
         reasoning_accumulated = ""
         reasoning_stream_started = False
@@ -1284,7 +1308,7 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
         if self.api_mode == "responses":
             return await self._astream_responses_generate(**kwargs)
         stream_response = kwargs.pop("stream_response")
-        metadata = dotdict()
+        metadata = self._build_response_metadata(None)
         reasoning_tool_call = ""
         reasoning_accumulated = ""
         reasoning_stream_started = False
@@ -1615,10 +1639,9 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
                     incomplete_details
                 )
 
-    @staticmethod
-    def _new_responses_stream_state() -> dict[str, Any]:
+    def _new_responses_stream_state(self) -> dict[str, Any]:
         return {
-            "metadata": dotdict(),
+            "metadata": self._build_response_metadata(None),
             "reasoning": "",
             "reasoning_summary": "",
             "tool_reasoning": "",
@@ -1854,7 +1877,7 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
         return generation_params
 
     def _tools_to_responses(self, catalog: ToolCatalog) -> List[Dict[str, Any]]:
-        if self.supports_hosted_tool_search and catalog.has_deferred_tools:
+        if self.supports_native_tool_search() and catalog.has_deferred_tools:
             return [
                 {"type": "tool_search"},
                 *[
@@ -2166,7 +2189,12 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
 class OpenAIChatCompletion(OpenAICompatibleChatCompletion):
     """OpenAI Chat Completions provider."""
 
-    supports_hosted_tool_search = True
+    hosted_tool_search_model_families = (
+        "gpt-5.6",
+        "gpt-5.6-sol",
+        "gpt-5.6-terra",
+        "gpt-5.6-luna",
+    )
     provider = "openai"
     default_api_mode = "responses"
     default_reasoning_codec = OpenAIReasoningCodec()

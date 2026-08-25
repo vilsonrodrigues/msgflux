@@ -216,23 +216,37 @@ The checkpoint deliberately does not persist:
 - `response_type`, which is transient dispatch state
 - copied turn inputs or assistant output already present in the timeline
 
+The final canonical item produced by each model response may retain its model
+audit identity (`provider`, `model_id`, and `api_mode`), the configured
+`reasoning_effort` when the LM used one, and only its input-token, output-token,
+and cached-input-token counters. The LM creates the model metadata; the Agent
+only copies a small allowlist into the timeline. Derived totals, percentages,
+costs, and provider-native usage payloads remain transient. Item metadata is
+stripped when the timeline is converted back to a provider wire format.
+
 That gives the agent a concrete way to:
 
 - save after each tool-loop boundary
 - recover the exact chat state later
 - continue from the last durable boundary instead of rebuilding context
 
-### Active items and compaction
+### Item identity and forks
 
-An item is active unless it explicitly contains `active=False`. The default is
-omitted from serialized data. This sparse flag supports compaction strategies
-that deactivate a middle range, insert a summary, and keep the original ends
-for audit or later recomputation.
+Every timeline occurrence has an `item_id`. The identity is independent from
+the immutable item payload: two identical messages can share one deduplicated
+payload while retaining different occurrence ids. Checkpoints written before
+this field existed receive a deterministic id when loaded, based on their
+thread, position, and content; no checkpoint schema version is introduced.
 
-Checkpoint stores deduplicate immutable item payloads by content. The active
-flag belongs to the ordered occurrence that references a payload, not to the
-payload itself. Two identical messages can therefore share one stored payload
-while one occurrence is active and the other inactive.
+`CheckpointStore.fork_run(..., at_item_id=..., position="before" | "at")`
+creates an append-only branch at an exact occurrence. A boundary is accepted
+only when it does not leave a turn active or separate a tool call from its
+output. This makes the branch reproducible and prevents malformed provider
+history.
+
+Future compaction should append an operation that defines a new view, while
+moderation or alternative history should fork from the exact `item_id` being
+reviewed.
 
 ### Streaming boundary
 

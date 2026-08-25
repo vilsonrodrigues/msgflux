@@ -1,21 +1,17 @@
 from __future__ import annotations
 
-from copy import deepcopy
-from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Sequence
+from typing import List
 
 from msgflux.runtime.context import (
     ExecutionScope,
     get_execution_context,
     new_thread_id,
 )
-from msgflux.tools.dataclasses import ToolMetadata
-from msgflux.tools.types import ToolBucket
-
-if TYPE_CHECKING:
-    from msgflux.nn.modules.agent import Agent
+from msgflux.tools.handles import ToolBucketHandle
+from msgflux.tools.types import ToolBucket, ToolLibraryOperator
 
 
-class AgentTool(ToolBucket):
+class AgentTool(ToolBucket, ToolLibraryOperator):
     """Dispatch a message to one of the configured agents."""
 
     capture = {"tool_kind": "agent", "defer_loading": False}
@@ -24,32 +20,13 @@ class AgentTool(ToolBucket):
     name = "agent"
     display_name = "Agent"
     tool_config = {
-        "inject_messages": True,
-        "inject_vars": True,
+        "inject_handle": True,
     }
     description = "Available agents:"
     annotations = {"name": str, "message": str, "return": str}
 
-    def __init__(self, agents: Sequence[Agent] = ()):
+    def __init__(self):
         self._base_description = type(self).description
-        for agent in agents:
-            agent_name = self._get_agent_name(agent)
-            self.add(
-                ToolMetadata(
-                    name=agent_name,
-                    description=self._get_agent_description(agent) or "",
-                    annotations={},
-                    tool_config={
-                        "defer_loading": False,
-                        **dict(getattr(agent, "tool_config", {}) or {}),
-                        "tool_kind": "agent",
-                    },
-                    impl=agent,
-                    display_name=agent_name,
-                    usage_guidance=self._get_agent_usage_guidance(agent),
-                )
-            )
-
         self.refresh()
 
     def refresh(self) -> None:
@@ -61,20 +38,15 @@ class AgentTool(ToolBucket):
         name: str,
         message: str,
         *,
-        messages: Sequence[Mapping[str, Any]] | None = None,
-        vars: Mapping[str, Any] | None = None,  # noqa: A002
+        handle: ToolBucketHandle,
         scope: ExecutionScope | None = None,
     ) -> str:
-        selected = self.resolve_agent(name)
-        return selected(
-            message,
-            **self._build_agent_kwargs(
-                name,
-                selected,
-                messages=messages,
-                runtime_vars=vars,
-                scope=scope,
-            ),
+        self._validate_agent(name, handle)
+        namespace = handle.get_execution_namespace(name)
+        return handle(
+            name,
+            message=message,
+            scope=scope or self._build_scope(namespace),
         )
 
     async def acall(
@@ -82,62 +54,25 @@ class AgentTool(ToolBucket):
         name: str,
         message: str,
         *,
-        messages: Sequence[Mapping[str, Any]] | None = None,
-        vars: Mapping[str, Any] | None = None,  # noqa: A002
+        handle: ToolBucketHandle,
         scope: ExecutionScope | None = None,
     ) -> str:
-        selected = self.resolve_agent(name)
-        return await selected.acall(
-            message,
-            **self._build_agent_kwargs(
-                name,
-                selected,
-                messages=messages,
-                runtime_vars=vars,
-                scope=scope,
-            ),
+        self._validate_agent(name, handle)
+        namespace = handle.get_execution_namespace(name)
+        return await handle.acall(
+            name,
+            message=message,
+            scope=scope or self._build_scope(namespace),
         )
 
-    def resolve_agent(self, name: str) -> Agent:
-        metadata = self.tools.get(name)
-        if metadata is not None:
-            return metadata.impl
-        available = ", ".join(sorted(self.tools))
+    @staticmethod
+    def _validate_agent(name: str, handle: ToolBucketHandle) -> None:
+        if handle.has_tool(name):
+            return
+        available = ", ".join(handle.list_captured_tools()) or "none"
         raise ValueError(f"Agent `{name}` not found. Available agents: {available}.")
 
-    def _build_agent_kwargs(
-        self,
-        agent_name: str,
-        agent: Agent,
-        *,
-        messages: Sequence[Mapping[str, Any]] | None,
-        runtime_vars: Mapping[str, Any] | None,
-        scope: ExecutionScope | None,
-    ) -> Dict[str, Any]:
-        metadata = self.tools.get(agent_name)
-        config = metadata.tool_config if metadata is not None else {}
-        kwargs: Dict[str, Any] = {"scope": scope or self._build_scope(agent)}
-
-        if config.get("inject_messages", False):
-            kwargs["messages"] = deepcopy(messages) if messages is not None else None
-
-        inject_vars = config.get("inject_vars", False)
-        if inject_vars is True:
-            kwargs["vars"] = runtime_vars or {}
-        elif isinstance(inject_vars, list) and inject_vars:
-            available_vars = runtime_vars or {}
-            missing = [key for key in inject_vars if key not in available_vars]
-            if missing:
-                missing_names = ", ".join(f"`{key}`" for key in missing)
-                raise ValueError(
-                    f"The agent `{agent_name}` requires the injected parameter "
-                    f"{missing_names}, but it was not found."
-                )
-            kwargs["vars"] = {key: available_vars[key] for key in inject_vars}
-
-        return kwargs
-
-    def _build_scope(self, agent: Agent) -> ExecutionScope:
+    def _build_scope(self, agent_name: str) -> ExecutionScope:
         context = get_execution_context()
         parent_scope = context["scope"]
         thread_id = context.get("thread_id")
@@ -148,7 +83,7 @@ class AgentTool(ToolBucket):
             parent_run_id = context.get("run_id")
 
         return parent_scope.with_overrides(
-            namespace=self._get_agent_runtime_name(agent),
+            namespace=agent_name,
             thread_id=thread_id if isinstance(thread_id, str) else new_thread_id(),
             run_id=run_id if isinstance(run_id, str) else None,
             parent_run_id=parent_run_id if isinstance(parent_run_id, str) else None,
@@ -187,44 +122,3 @@ class AgentTool(ToolBucket):
                 "Agent-specific guidance:\n" + "\n".join(guidance_lines)
             )
         return "\n\n".join(guidance_sections) or None
-
-    @staticmethod
-    def _get_agent_name(agent: Agent) -> str:
-        if hasattr(agent, "get_module_name"):
-            name = agent.get_module_name()
-        else:
-            name = getattr(agent, "name", None) or getattr(agent, "__name__", None)
-        if not isinstance(name, str) or not name:
-            raise ValueError("Each agent must provide a non-empty name.")
-        return name
-
-    @staticmethod
-    def _get_agent_runtime_name(agent: Agent) -> str:
-        if hasattr(agent, "get_module_name"):
-            return agent.get_module_name()
-        name = getattr(agent, "name", None) or getattr(agent, "__name__", None)
-        return name if isinstance(name, str) and name else "agent"
-
-    @staticmethod
-    def _get_agent_description(agent: Agent) -> str | None:
-        if hasattr(agent, "get_module_description"):
-            description = agent.get_module_description()
-        else:
-            description = getattr(agent, "description", None)
-        if not isinstance(description, str) or not description.strip():
-            return None
-        return " ".join(description.split())
-
-    @staticmethod
-    def _get_agent_usage_guidance(agent: Agent) -> str | None:
-        guidance = getattr(agent, "usage_guidance", None)
-        if isinstance(guidance, str):
-            return guidance
-        config = getattr(agent, "tool_config", None)
-        if isinstance(config, dict):
-            value = config.get("usage_guidance")
-        elif config is not None:
-            value = getattr(config, "usage_guidance", None)
-        else:
-            value = None
-        return value if isinstance(value, str) else None

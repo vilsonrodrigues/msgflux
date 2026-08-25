@@ -77,6 +77,18 @@ def test_native_chat_replays_thinking(mock_native_clients):
     assert adapted["think"] is True
 
 
+@pytest.mark.parametrize("level", ["low", "medium", "high"])
+def test_native_chat_accepts_thinking_levels(mock_native_clients, level):
+    from msgflux.models.providers.ollama import OllamaChatCompletion
+
+    model = OllamaChatCompletion(model_id="gpt-oss:20b", enable_thinking=level)
+
+    adapted = model._adapt_params({"messages": []})
+
+    assert adapted["think"] == level
+    assert "reasoning_effort" not in model._build_response_metadata(None).model
+
+
 def test_native_params_map_sampling_schema_tools_and_images(mock_native_clients):
     from msgflux.models.providers.ollama import OllamaChatCompletion
 
@@ -301,3 +313,14 @@ def test_openai_compatible_chat_keeps_thinking_request_control(
     adapted = model._adapt_params({"messages": [], "extra_body": {}})
 
     assert adapted["extra_body"]["think"] is True
+
+
+def test_ollama_does_not_audit_discarded_reasoning_effort(mock_native_clients):
+    from msgflux.models.providers.ollama import OllamaChatCompletion
+
+    model = OllamaChatCompletion(
+        model_id="gpt-oss:20b",
+        reasoning_effort="medium",
+    )
+
+    assert "reasoning_effort" not in model._build_response_metadata(None).model

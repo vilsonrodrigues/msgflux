@@ -15,6 +15,9 @@ from typing import (
 
 import msgspec
 
+from msgflux._private.response_metadata import (
+    attach_response_metadata,
+)
 from msgflux.auto import AutoParams
 from msgflux.chat_messages import ChatMessages
 from msgflux.core.dotdict import dotdict
@@ -926,6 +929,7 @@ class Agent(Module, metaclass=AutoParams):
             response_type = "tool_responses"
             reasoning = None
 
+        response_item_start = len(messages) if isinstance(messages, ChatMessages) else 0
         self._append_response_to_chat_messages(
             messages,
             raw_response,
@@ -935,6 +939,13 @@ class Agent(Module, metaclass=AutoParams):
             else None,
             reasoning=reasoning,
             history_items=getattr(model_response, "history_items", None),
+        )
+        attach_response_metadata(
+            messages,
+            getattr(model_response, "metadata", None)
+            if isinstance(model_response, (ModelResponse, ModelStreamResponse))
+            else None,
+            after_index=response_item_start,
         )
         self._finalize_chat_turn(
             messages,
@@ -1010,6 +1021,7 @@ class Agent(Module, metaclass=AutoParams):
             response_type = "tool_responses"
             reasoning = None
 
+        response_item_start = len(messages) if isinstance(messages, ChatMessages) else 0
         self._append_response_to_chat_messages(
             messages,
             raw_response,
@@ -1019,6 +1031,13 @@ class Agent(Module, metaclass=AutoParams):
             else None,
             reasoning=reasoning,
             history_items=getattr(model_response, "history_items", None),
+        )
+        attach_response_metadata(
+            messages,
+            getattr(model_response, "metadata", None)
+            if isinstance(model_response, (ModelResponse, ModelStreamResponse))
+            else None,
+            after_index=response_item_start,
         )
         self._finalize_chat_turn(
             messages,
@@ -1053,6 +1072,9 @@ class Agent(Module, metaclass=AutoParams):
         completed_tool_turns = 0
         flow_control = self.generation_schema
         while True:
+            response_item_start = (
+                len(messages) if isinstance(messages, ChatMessages) else 0
+            )
             raw_response = self._extract_raw_response(model_response)
 
             # Use ToolFlowControl interface via generation_schema
@@ -1101,6 +1123,11 @@ class Agent(Module, metaclass=AutoParams):
 
                 # Use interface to build history
                 messages = flow_control.build_history(raw_response, messages)
+                attach_response_metadata(
+                    messages,
+                    getattr(model_response, "metadata", None),
+                    after_index=response_item_start,
+                )
                 self._drain_inbox_into_messages(messages)
                 self._checkpoint_save(messages, vars)
 
@@ -1130,6 +1157,9 @@ class Agent(Module, metaclass=AutoParams):
         completed_tool_turns = 0
         flow_control = self.generation_schema
         while True:
+            response_item_start = (
+                len(messages) if isinstance(messages, ChatMessages) else 0
+            )
             raw_response = self._extract_raw_response(model_response)
 
             # Use ToolFlowControl interface via generation_schema (async)
@@ -1180,6 +1210,11 @@ class Agent(Module, metaclass=AutoParams):
 
                 # Use interface to build history (async version)
                 messages = await flow_control.abuild_history(raw_response, messages)
+                attach_response_metadata(
+                    messages,
+                    getattr(model_response, "metadata", None),
+                    after_index=response_item_start,
+                )
                 self._drain_inbox_into_messages(messages)
                 await self._acheckpoint_save(messages, vars)
 
@@ -1213,6 +1248,9 @@ class Agent(Module, metaclass=AutoParams):
 
         while True:
             if model_response.response_type == "tool_call":
+                response_item_start = (
+                    len(messages) if isinstance(messages, ChatMessages) else 0
+                )
                 if (
                     max_tool_turns is not None
                     and completed_tool_turns >= max_tool_turns
@@ -1231,6 +1269,11 @@ class Agent(Module, metaclass=AutoParams):
                 reasoning = model_response.reasoning
                 appended_item_types = self._append_tool_model_history(
                     messages, model_response
+                )
+                attach_response_metadata(
+                    messages,
+                    getattr(model_response, "metadata", None),
+                    after_index=response_item_start,
                 )
                 if "reasoning" in appended_item_types:
                     raw_response.reasoning = None
@@ -1303,6 +1346,9 @@ class Agent(Module, metaclass=AutoParams):
 
         while True:
             if model_response.response_type == "tool_call":
+                response_item_start = (
+                    len(messages) if isinstance(messages, ChatMessages) else 0
+                )
                 if (
                     max_tool_turns is not None
                     and completed_tool_turns >= max_tool_turns
@@ -1321,6 +1367,11 @@ class Agent(Module, metaclass=AutoParams):
                 reasoning = model_response.reasoning
                 appended_item_types = self._append_tool_model_history(
                     messages, model_response
+                )
+                attach_response_metadata(
+                    messages,
+                    getattr(model_response, "metadata", None),
+                    after_index=response_item_start,
                 )
                 if "reasoning" in appended_item_types:
                     raw_response.reasoning = None
@@ -2279,7 +2330,7 @@ class Agent(Module, metaclass=AutoParams):
                 continue
 
             command = (notification.status or "").lower()
-            reason = notification.hint or notification.metadata.get("reason")
+            reason = notification.metadata.get("reason")
             task_handle = get_execution_context().get("task_handle")
             task_id = getattr(task_handle, "task_id", None)
 
@@ -2528,6 +2579,37 @@ class Agent(Module, metaclass=AutoParams):
             }
         ]
         messages.extend(trajectory_items)
+
+        existing_call_ids = {
+            item.get("call_id") or item.get("id")
+            for item in messages
+            if item.get("type") == "function_call"
+        }
+        raw_response = getattr(model_response, "data", None)
+        get_calls = getattr(raw_response, "get_calls", None)
+        if callable(get_calls):
+            missing_calls = []
+            for call_id, name, arguments in get_calls():
+                if call_id in existing_call_ids:
+                    continue
+                if isinstance(arguments, str):
+                    serialized_arguments = arguments
+                else:
+                    serialized_arguments = msgspec.json.encode(
+                        arguments if arguments is not None else {}
+                    ).decode()
+                missing_calls.append(
+                    {
+                        "type": "function_call",
+                        "call_id": call_id,
+                        "name": name,
+                        "arguments": serialized_arguments,
+                    }
+                )
+                existing_call_ids.add(call_id)
+            messages.extend(missing_calls)
+            trajectory_items.extend(missing_calls)
+
         return {item["type"] for item in trajectory_items}
 
     def _extend_tool_response_history(
@@ -2600,7 +2682,13 @@ class Agent(Module, metaclass=AutoParams):
         stream_messages = messages.copy()
 
         def finalize_stream(final_state) -> None:
+            response_item_start = len(stream_messages)
             stream_messages.extend(final_state.items)
+            attach_response_metadata(
+                stream_messages,
+                final_state.metadata,
+                after_index=response_item_start,
+            )
             try:
                 if final_state.status == "completed":
                     stream_messages.end_turn(event="complete")

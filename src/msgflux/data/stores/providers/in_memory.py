@@ -15,7 +15,7 @@
 # state replaces
 # `messages.items` with `_messages = {"state": <messages without items>,
 # "item_entries": [...]}`. Entries preserve ordering and keep the sparse
-# per-occurrence ``active=False`` flag outside the deduplicated item payload.
+# per-occurrence ``item_id`` outside the deduplicated item payload.
 
 from __future__ import annotations
 
@@ -24,10 +24,14 @@ import json
 import time
 from copy import deepcopy
 from threading import RLock
-from typing import Any, Dict, List, Mapping
+from typing import Any, Dict, List, Literal, Mapping
 
 import msgspec
 
+from msgflux._private.chat_items import (
+    restore_item_occurrence,
+    split_item_occurrence,
+)
 from msgflux.data.stores.base import CheckpointStore
 from msgflux.data.stores.registry import register_store
 from msgflux.data.stores.types import CheckpointStoreType
@@ -79,14 +83,21 @@ class InMemoryCheckpointStore(CheckpointStore, CheckpointStoreType):
             thread_id, {}
         )
         item_entries = []
-        for item in items:
-            payload = deepcopy(item)
-            active = payload.pop("active", None) if isinstance(payload, dict) else None
+        item_ids: set[str] = set()
+        for index, item in enumerate(items):
+            payload, entry = split_item_occurrence(
+                namespace=namespace,
+                thread_id=thread_id,
+                index=index,
+                item=item,
+            )
+            item_id = entry["item_id"]
+            if item_id in item_ids:
+                raise ValueError(f"Duplicate ChatMessages item_id `{item_id}`.")
+            item_ids.add(item_id)
             item_ref = self._item_ref(payload)
             item_store.setdefault(item_ref, msgspec.msgpack.encode(payload))
-            entry = {"item_ref": item_ref}
-            if active is False:
-                entry["active"] = False
+            entry["item_ref"] = item_ref
             item_entries.append(entry)
 
         message_state = deepcopy(dict(messages))
@@ -125,9 +136,10 @@ class InMemoryCheckpointStore(CheckpointStore, CheckpointStoreType):
                     "Checkpoint message item is missing or corrupted: "
                     f"{namespace}/{thread_id}/{item_ref!r}"
                 )
-            item = msgspec.msgpack.decode(item_store[item_ref])
-            if entry.get("active") is False:
-                item["active"] = False
+            item = restore_item_occurrence(
+                msgspec.msgpack.decode(item_store[item_ref]),
+                entry,
+            )
             messages["items"].append(item)
         restored["messages"] = messages
         return restored
@@ -231,6 +243,8 @@ class InMemoryCheckpointStore(CheckpointStore, CheckpointStoreType):
         target_thread_id: str,
         target_run_id: str,
         status: str | None = None,
+        at_item_id: str | None = None,
+        position: Literal["before", "at"] = "at",
     ) -> Mapping[str, Any]:
         with self._lock:
             source = self._get_run(namespace, source_thread_id, source_run_id)
@@ -239,25 +253,31 @@ class InMemoryCheckpointStore(CheckpointStore, CheckpointStoreType):
                     f"Checkpoint run `{source_run_id}` not found in thread "
                     f"`{source_thread_id}`."
                 )
-            target = self._ensure_run(namespace, target_thread_id, target_run_id)
-            target["state"] = deepcopy(source["state"])
+            source_state = self._denormalize_state(
+                namespace,
+                source_thread_id,
+                source["state"],
+            )
+            forked = self._prepare_fork_state(
+                source_state,
+                at_item_id=at_item_id,
+                position=position,
+            )
             if status is not None:
-                target["state"]["status"] = status
-            target["updated_at"] = time.time()
+                forked["status"] = status
 
-            source_items = self._message_items.get(namespace, {}).get(
-                source_thread_id, {}
+            messages = forked.get("messages")
+            if isinstance(messages, dict):
+                messages["thread_id"] = target_thread_id
+
+            target = self._ensure_run(namespace, target_thread_id, target_run_id)
+            target["state"] = self._normalize_state(
+                namespace,
+                target_thread_id,
+                forked,
             )
-            target_items = self._message_items.setdefault(namespace, {}).setdefault(
-                target_thread_id, {}
-            )
-            for item_ref in self._collect_refs_from_state(target["state"]):
-                if item_ref not in source_items:
-                    raise ValueError(
-                        "Checkpoint message item is missing or corrupted: "
-                        f"{namespace}/{source_thread_id}/{item_ref!r}"
-                    )
-                target_items.setdefault(item_ref, source_items[item_ref])
+            target["updated_at"] = time.time()
+            self._cleanup_orphaned_items(namespace, target_thread_id)
             return self._denormalize_state(namespace, target_thread_id, target["state"])
 
     def save_with_event(

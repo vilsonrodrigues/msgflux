@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import json
+import re
 from copy import deepcopy
 from threading import RLock
 from typing import Any, Dict, Iterable, List, Mapping, Tuple
 from uuid import uuid4
-from xml.sax.saxutils import escape
+from xml.sax.saxutils import escape, quoteattr
 
 from msgflux.runtime.agent_inbox.base import AgentInboxStore
 from msgflux.runtime.agent_inbox.dataclasses import (
@@ -19,6 +21,9 @@ from msgflux.runtime.context import (
 )
 from msgflux.utils.console import cprint
 from msgflux.utils.time import utc_now_isoformat
+
+_NOTIFICATION_ATTRIBUTE_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_.:-]*$")
+_RESERVED_NOTIFICATION_ATTRIBUTES = {"source", "ref", "status", "metadata"}
 
 
 class AgentInbox:
@@ -179,11 +184,12 @@ class AgentInbox:
         *,
         metadata: Mapping[str, Any] | None = None,
     ) -> AgentNotification:
+        payload = deepcopy(dict(metadata or {}))
+        payload["content"] = content
         return self.publish(
             {
                 "source": "incoming_user_message",
-                "hint": content,
-                "metadata": deepcopy(dict(metadata or {})),
+                "metadata": payload,
             }
         )
 
@@ -291,13 +297,9 @@ class AgentInbox:
         self,
         notifications: List[AgentNotification],
     ) -> str:
-        lines: List[str] = ["<system_note>"]
-        for notification in notifications:
-            lines.append("<notification>")
-            lines.extend(self._render_notification_body(notification))
-            lines.append("</notification>")
-        lines.append("</system_note>")
-        return "\n".join(lines)
+        return "\n".join(
+            self._render_notification(notification) for notification in notifications
+        )
 
     def _render_incoming_user_messages(
         self,
@@ -306,25 +308,39 @@ class AgentInbox:
         lines: List[str] = []
         for notification in incoming_messages:
             lines.append("<incoming_user_message>")
-            if notification.hint:
-                lines.append(self._escape_text(notification.hint))
+            content = notification.metadata.get("content")
+            if content:
+                lines.append(self._escape_text(content))
             lines.append("</incoming_user_message>")
         if not lines:
             return None
         return "\n".join(lines)
 
-    def _render_notification_body(self, notification: AgentNotification) -> List[str]:
-        body_lines: List[str] = [f"source: {self._escape_text(notification.source)}"]
+    def _render_notification(self, notification: AgentNotification) -> str:
+        attributes: List[Tuple[str, Any]] = [("source", notification.source)]
         if notification.ref:
-            body_lines.append(f"ref: {self._escape_text(notification.ref)}")
+            attributes.append(("ref", notification.ref))
         if notification.status:
-            body_lines.append(f"status: {self._escape_text(notification.status)}")
-        for key, value in sorted(notification.metadata.items()):
-            rendered_value = self._escape_text(self._stringify(value))
-            body_lines.append(f"{self._escape_text(key)}: {rendered_value}")
-        if notification.hint:
-            body_lines.append(f"hint: {self._escape_text(notification.hint)}")
-        return body_lines
+            attributes.append(("status", notification.status))
+        nested_metadata: Dict[str, Any] = {}
+        for key, value in sorted(
+            notification.metadata.items(),
+            key=lambda item: str(item[0]),
+        ):
+            if (
+                isinstance(key, str)
+                and _NOTIFICATION_ATTRIBUTE_PATTERN.fullmatch(key)
+                and key not in _RESERVED_NOTIFICATION_ATTRIBUTES
+            ):
+                attributes.append((key, value))
+            else:
+                nested_metadata[str(key)] = value
+        if nested_metadata:
+            attributes.append(("metadata", nested_metadata))
+        rendered = " ".join(
+            f"{key}={quoteattr(self._stringify(value))}" for key, value in attributes
+        )
+        return f"<notification {rendered}/>"
 
     # --- Normalization Helpers ---
 
@@ -362,7 +378,6 @@ class AgentInbox:
             source=source,
             ref=payload.get("ref"),
             status=payload.get("status"),
-            hint=payload.get("hint"),
             metadata=deepcopy(dict(metadata)),
             dedupe_key=payload.get("dedupe_key"),
             created_at=created_at,
@@ -424,6 +439,13 @@ class AgentInbox:
 
     @staticmethod
     def _stringify(value: Any) -> str:
+        if isinstance(value, (Mapping, list, tuple)):
+            return json.dumps(
+                value,
+                ensure_ascii=False,
+                separators=(",", ":"),
+                default=str,
+            )
         if isinstance(value, bool):
             return "true" if value else "false"
         return str(value)
@@ -445,21 +467,8 @@ class AgentInbox:
         )
 
     def _render_notification_payload(self, notification: AgentNotification) -> str:
-        rendered = self.render([notification])
-        if rendered is None:
-            return ""
-        if isinstance(rendered, list):
-            rendered = rendered[0]
-        content = rendered["content"]
-        lines = content.splitlines()
-        if len(lines) >= 4:
-            return "\n".join(lines[2:-2])
-        return content
+        return self._render_notification(notification)
 
     @staticmethod
     def _escape_text(value: Any) -> str:
-        return escape(str(value), {'"': "&quot;"})
-
-    @staticmethod
-    def _escape_attr(value: Any) -> str:
         return escape(str(value), {'"': "&quot;"})
