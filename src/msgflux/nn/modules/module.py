@@ -364,6 +364,7 @@ class Module:
     _forward_pre_hooks_with_kwargs: Dict[int, bool]
     _method_pre_hooks: Dict[str, Dict[int, Callable]]
     _method_hooks: Dict[str, Dict[int, Callable]]
+    _lifecycle_hooks: Dict[str, Dict[int, "Hook"]]
     _load_state_dict_post_hooks: Dict[int, Callable]
     _load_state_dict_pre_hooks: Dict[int, Callable]
     _state_dict_hooks: Dict[int, Callable]
@@ -398,6 +399,7 @@ class Module:
         super().__setattr__("_forward_hooks_always_called", OrderedDict())
         super().__setattr__("_method_pre_hooks", {})
         super().__setattr__("_method_hooks", {})
+        super().__setattr__("_lifecycle_hooks", {})
         super().__setattr__("_state_dict_hooks", OrderedDict())
         super().__setattr__("_state_dict_pre_hooks", OrderedDict())
         super().__setattr__("_load_state_dict_pre_hooks", OrderedDict())
@@ -1225,6 +1227,58 @@ class Module:
             bucket.move_to_end(handle.id, last=False)
         return handle
 
+    def register_lifecycle_hook(
+        self,
+        event: str,
+        hook: "Hook",
+        *,
+        prepend: bool = False,
+    ) -> RemovableHandle:
+        """Register a hook on a stable module lifecycle event."""
+        if not isinstance(event, str) or not event.strip():
+            raise ValueError("`event` must be a non-empty string")
+        if not isinstance(hook, Hook) or not hook.is_lifecycle:
+            raise TypeError("`hook` must be a lifecycle Hook")
+        if hook.event != event:
+            raise ValueError(
+                f"Hook declares event `{hook.event}`, cannot register for `{event}`"
+            )
+
+        bucket = self._lifecycle_hooks.get(event)
+        if bucket is None:
+            bucket = OrderedDict()
+            self._lifecycle_hooks[event] = bucket
+        handle = RemovableHandle(bucket)
+        bucket[handle.id] = hook
+        if prepend:
+            bucket.move_to_end(handle.id, last=False)
+        return handle
+
+    def _run_lifecycle_hooks(self, event: str, payload: Any) -> Any:
+        """Run lifecycle hooks in registration order.
+
+        A non-``None`` result replaces the payload seen by later handlers.
+        """
+        current = payload
+        for hook in self._lifecycle_hooks.get(event, {}).values():
+            result = hook.handle(current)
+            if result is not None:
+                current = result
+        return current
+
+    async def _arun_lifecycle_hooks(self, event: str, payload: Any) -> Any:
+        """Async counterpart to :meth:`_run_lifecycle_hooks`."""
+        current = payload
+        for hook in self._lifecycle_hooks.get(event, {}).values():
+            result = await hook.ahandle(current)
+            if result is not None:
+                current = result
+        return current
+
+    def has_lifecycle_hooks(self, event: str) -> bool:
+        """Return whether at least one handler is registered for ``event``."""
+        return bool(self._lifecycle_hooks.get(event))
+
     def register_forward_hook(
         self,
         hook: Union[
@@ -1570,6 +1624,7 @@ class Module:
             self._method_pre_hooks = {}
         if "_method_hooks" not in self.__dict__:
             self._method_hooks = {}
+        self.__dict__.setdefault("_lifecycle_hooks", {})
         if "_state_dict_hooks" not in self.__dict__:
             self._state_dict_hooks = OrderedDict()
         if "_state_dict_pre_hooks" not in self.__dict__:

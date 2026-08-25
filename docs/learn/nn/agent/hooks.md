@@ -1,6 +1,56 @@
 # Hooks & Guards
 
-Hooks are the primary mechanism for intercepting and validating data flowing through Modules. The `Hook` base class provides the interface, and `Guard` is a built-in hook for input/output validation. Hooks can target either the module execution boundary (`forward`) or a specific method on the module.
+Hooks are the primary mechanism for intercepting and validating data flowing through Modules. The `Hook` base class provides the interface, and `Guard` is a built-in hook for input/output validation. Hooks can target a stable lifecycle event, the module execution boundary (`forward`), or a specific method on the module.
+
+## Lifecycle Hooks
+
+Lifecycle hooks attach to a named execution boundary instead of a Python method.
+This keeps extensions independent from internal method names and allows the same
+hook to work in synchronous and asynchronous execution.
+
+```python
+from msgflux.nn.hooks import Hook
+
+
+def expand_references(output):
+    return output.replace("artifact://report", "the complete report")
+
+
+output_hook = Hook(
+    event="transform_output",
+    handler=expand_references,
+)
+```
+
+Pass the hook through the module's `hooks` argument. When the module reaches
+`transform_output`, the handler receives the current payload. Returning a value
+replaces the payload for the next handler; returning `None` leaves it unchanged.
+Handlers run in registration order.
+
+```python
+agent = Agent(
+    name="reporter",
+    model=model,
+    hooks=[output_hook],
+)
+```
+
+An async handler is awaited during async execution:
+
+```python
+async def load_artifacts(output):
+    return await artifact_store.expand(output)
+
+
+output_hook = Hook(
+    event="transform_output",
+    handler=load_artifacts,
+)
+```
+
+`event=...` cannot be combined with `on=...` or `method=...`. Forward and
+method hooks remain available as lower-level extension points, while lifecycle
+events are the recommended contract for agent execution boundaries.
 
 ## Guard
 
