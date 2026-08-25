@@ -1344,7 +1344,8 @@ class Module:
 
     def _call_impl(self, *args, **kwargs):
         if not (self._forward_hooks or self._forward_pre_hooks):
-            return self._call(*args, **kwargs)
+            result = self._call(*args, **kwargs)
+            return self._transform_module_output(result)
 
         for hook in self._forward_pre_hooks.values():
             hook_result = hook(self, args, kwargs)
@@ -1363,7 +1364,13 @@ class Module:
             if hook_result is not None:
                 result = hook_result
 
-        return result
+        return self._transform_module_output(result)
+
+    def _transform_module_output(self, output: Any) -> Any:
+        """Apply presentation-only output hooks to a settled result."""
+        if isinstance(output, ModelStreamResponse):
+            return output
+        return self._run_lifecycle_hooks("transform_output", output)
 
     def _call_method_impl(
         self,
@@ -1476,7 +1483,8 @@ class Module:
 
     async def _acall_impl(self, *args, **kwargs):
         if not (self._forward_hooks or self._forward_pre_hooks):
-            return await self._acall(*args, **kwargs)
+            result = await self._acall(*args, **kwargs)
+            return await self._atransform_module_output(result)
 
         # Execute forward pre-hooks (sync or async)
         for hook in self._forward_pre_hooks.values():
@@ -1499,7 +1507,13 @@ class Module:
             if hook_result is not None:
                 result = hook_result
 
-        return result
+        return await self._atransform_module_output(result)
+
+    async def _atransform_module_output(self, output: Any) -> Any:
+        """Async counterpart to :meth:`_transform_module_output`."""
+        if isinstance(output, ModelStreamResponse):
+            return output
+        return await self._arun_lifecycle_hooks("transform_output", output)
 
     async def _acall_method_impl(
         self,
@@ -1624,10 +1638,15 @@ class Module:
         return kwargs
 
     @staticmethod
-    async def _aconsume_event_response(response: ModelStreamResponse) -> None:
+    async def _aconsume_event_response(
+        response: ModelStreamResponse,
+        *,
+        emit_content: bool = True,
+    ) -> None:
         async def consume_content() -> None:
             async for chunk in response.consume():
-                emit_event(EventType.MESSAGE_DELTA, {"delta": chunk})
+                if emit_content:
+                    emit_event(EventType.MESSAGE_DELTA, {"delta": chunk})
 
         async def consume_reasoning() -> None:
             async for chunk in response.consume_reasoning():
@@ -1647,10 +1666,17 @@ class Module:
         )
 
     async def _afinalize_event_result(self, result: Any) -> Any:
-        emit_event(EventType.MESSAGE_START, {"role": "assistant"})
+        buffered = isinstance(result, ModelStreamResponse) and self.has_lifecycle_hooks(
+            "transform_output"
+        )
+        emit_event(
+            EventType.MESSAGE_START,
+            {"role": "assistant", "buffered": buffered},
+        )
         if isinstance(result, ModelStreamResponse):
-            await self._aconsume_event_response(result)
+            await self._aconsume_event_response(result, emit_content=not buffered)
             output = result.data
+            output = await self._arun_lifecycle_hooks("transform_output", output)
         else:
             output = result
         emit_event(EventType.MESSAGE_END, {"role": "assistant", "content": output})

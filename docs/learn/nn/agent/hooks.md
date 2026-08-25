@@ -48,6 +48,47 @@ output_hook = Hook(
 )
 ```
 
+### Canonical Responses vs. Presented Output
+
+`after_response` and `transform_output` serve different purposes:
+
+| Event | Changes checkpoint history | Visible to the model later | Changes user output |
+| --- | --- | --- | --- |
+| `after_response` | Yes | Yes | Yes |
+| `transform_output` | No | No | Yes |
+
+Use `transform_output` for presentation work such as replacing an artifact
+reference with the file contents. The Agent commits the original response to
+`ChatMessages` first, then transforms the value returned to the caller:
+
+```python
+def expand_artifact_reference(output):
+    if output == "artifact://incident-report":
+        return artifact_store.read_text("incident-report")
+    return output
+
+
+agent = Agent(
+    name="reporter",
+    model=model,
+    hooks=[
+        Hook(
+            event="transform_output",
+            handler=expand_artifact_reference,
+        )
+    ],
+)
+```
+
+When `stream_events()` or `astream_events()` consumes a provider stream, a
+registered `transform_output` hook puts assistant content in buffered mode. Tool
+and reasoning events remain live, raw `message.delta` events are withheld, and
+the transformed complete value is emitted in `message.end` and `run.end`.
+
+For direct token streaming through `ModelStreamResponse`, no complete-output
+transformation is applied. Use the execution event stream when a hook requires
+the fully accumulated assistant output.
+
 `event=...` cannot be combined with `on=...` or `method=...`. Forward and
 method hooks remain available as lower-level extension points, while lifecycle
 events are the recommended contract for agent execution boundaries.

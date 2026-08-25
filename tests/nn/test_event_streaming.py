@@ -3,6 +3,7 @@
 import pytest
 from unittest.mock import Mock
 
+from msgflux.chat_messages import ChatMessages
 from msgflux.models.response import ModelResponse, ModelStreamResponse
 from msgflux.nn.hooks import Hook
 from msgflux.nn.modules.agent import Agent
@@ -159,3 +160,57 @@ def test_tool_events_wrap_validated_foreground_execution():
     ]
     assert tool_events[0].data["tool_call_id"] == "call_1"
     assert tool_events[1].data["result"] == 6
+
+
+def test_transform_output_changes_return_without_changing_canonical_history():
+    agent, _ = make_agent(
+        hooks=[
+            Hook(
+                event="transform_output",
+                handler=lambda output: output.replace("hello", "expanded report"),
+            )
+        ]
+    )
+    history = ChatMessages()
+
+    output = agent("hi", messages=history)
+    assistant_messages = [item for item in history if item.get("role") == "assistant"]
+
+    assert output == "expanded report"
+    assert assistant_messages[-1]["content"] == "hello"
+
+
+def test_transform_output_buffers_stream_content_but_keeps_reasoning_live():
+    module = StreamingModule()
+    Hook(
+        event="transform_output",
+        handler=lambda output: output.upper(),
+    ).register(module)
+
+    events = list(module.stream_events())
+
+    assert not [event for event in events if event.type == EventType.MESSAGE_DELTA]
+    assert [
+        event.data["delta"]
+        for event in events
+        if event.type == EventType.REASONING_DELTA
+    ] == ["think"]
+    message_start = next(
+        event for event in events if event.type == EventType.MESSAGE_START
+    )
+    message_end = next(event for event in events if event.type == EventType.MESSAGE_END)
+    assert message_start.data["buffered"] is True
+    assert message_end.data["content"] == "HELLO WORLD"
+
+
+@pytest.mark.asyncio
+async def test_async_transform_output_runs_after_stream_accumulation():
+    async def transform(output):
+        return f"[{output}]"
+
+    module = StreamingModule()
+    Hook(event="transform_output", handler=transform).register(module)
+
+    events = [event async for event in module.astream_events()]
+
+    assert events[-1].data["output"] == "[hello world]"

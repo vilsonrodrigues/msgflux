@@ -82,6 +82,17 @@ Closing an event iterator early requests cancellation through the execution's
 abort signal. Async execution is also cancelled locally so an abandoned client
 does not retain ownership of the stream.
 
+## Complete-Output Transformations
+
+A `Hook(event="transform_output", ...)` may replace the output presented to the
+caller without changing the canonical assistant message stored in history. If
+the model streams tokens, the event iterator accumulates assistant content and
+sets `message.start.data["buffered"]` to `True`. It then emits the transformed
+value once in `message.end` and `run.end`; raw assistant deltas are not exposed.
+
+Reasoning, tool, and progress events are independent and continue to arrive
+while assistant content is buffered.
+
 ## Event Isolation
 
 The event sink belongs to one execution. Concurrent Agent calls therefore keep
