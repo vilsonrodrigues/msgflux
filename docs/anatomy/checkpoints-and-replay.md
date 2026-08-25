@@ -246,7 +246,8 @@ history.
 
 Future compaction should append an operation that defines a new view, while
 moderation or alternative history should fork from the exact `item_id` being
-reviewed.
+reviewed. The complete proposed operation and repeated-compaction rules live in
+[Compaction And Context Views](compaction-and-context-views.md).
 
 ### Streaming boundary
 

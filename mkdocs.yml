@@ -126,6 +126,7 @@ nav:
     - anatomy/agent-inbox.md
     - anatomy/agent.md
     - anatomy/checkpoints-and-replay.md
+    - anatomy/compaction-and-context-views.md
     - anatomy/index.md
     - anatomy/tool-library.md
   - Learn:
