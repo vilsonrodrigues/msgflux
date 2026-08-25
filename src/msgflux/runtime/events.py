@@ -37,6 +37,7 @@ class EventType:
     COMPACTION_START = "compaction.start"
     COMPACTION_END = "compaction.end"
     CHECKPOINT_SAVED = "checkpoint.saved"
+    HANDLER_ERROR = "handler.error"
 
 
 @dataclass(frozen=True)

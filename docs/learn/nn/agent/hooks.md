@@ -27,6 +27,55 @@ Pass the hook through the module's `hooks` argument. When the module reaches
 replaces the payload for the next handler; returning `None` leaves it unchanged.
 Handlers run in registration order.
 
+The Agent currently exposes these lifecycle boundaries:
+
+| Event | Payload | Replacement behavior |
+| --- | --- | --- |
+| `before_run` | `BeforeRun` | May replace the message or call arguments before a fresh run is prepared. |
+| `before_resume` | `BeforeResume` | Observes restored durable state; its return value does not replace that state. |
+| `transform_context` | `ChatMessages` | May replace the model-visible context for the current request. |
+| `before_request` | Model execution parameters | May replace request parameters immediately before the LM call. |
+| `after_response` | `ModelResponse` | May replace a settled, non-streaming response before it enters history. |
+| `before_tool` | `BeforeTool` | May replace model-visible arguments or block local execution. |
+| `after_tool` | `AfterTool` | May replace the result or error before it becomes a tool result. |
+| `transform_output` | Settled user output | May replace only the value presented to the caller. |
+
+Import typed payloads from `msgflux.nn.hooks`. Dataclass replacement keeps a
+handler explicit and preserves fields added to the contract later:
+
+```python
+from dataclasses import replace
+
+from msgflux.nn.hooks import BeforeTool, Hook
+
+
+def authorize_tool(event: BeforeTool):
+    if event.tool_name == "delete_record":
+        return replace(event, block="Deletion requires approval")
+    return event
+
+
+agent = Agent(
+    name="operator",
+    model=model,
+    tools=[delete_record],
+    hooks=[Hook(event="before_tool", handler=authorize_tool)],
+)
+```
+
+`before_tool` runs after the tool has been resolved and its arguments prepared.
+It receives only model-visible arguments. Runtime injections such as
+`inject_messages`, `inject_vars`, and `inject_handle` remain attached to the
+call and are not exposed to or removed by the hook. If a `before_tool` handler
+raises or returns an invalid payload, execution fails closed and the tool is not
+called. An `after_tool` handler failure leaves the original outcome unchanged
+and emits a `handler.error` execution event.
+
+Use `before_resume` to restore extension-owned resources or telemetry after the
+Agent loads a checkpoint. It deliberately cannot replace the restored
+conversation; durable history remains owned by the checkpoint and replay
+contract.
+
 ```python
 agent = Agent(
     name="reporter",

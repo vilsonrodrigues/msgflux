@@ -2,12 +2,25 @@ from importlib import import_module
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from msgflux.nn.hooks.events import AfterTool, BeforeResume, BeforeRun, BeforeTool
     from msgflux.nn.hooks.guard import Guard
     from msgflux.nn.hooks.hook import Hook, RemovableHandle
 
-__all__ = ["Guard", "Hook", "RemovableHandle"]
+__all__ = [
+    "AfterTool",
+    "BeforeResume",
+    "BeforeRun",
+    "BeforeTool",
+    "Guard",
+    "Hook",
+    "RemovableHandle",
+]
 
 _LAZY_IMPORTS = {
+    "AfterTool": ("msgflux.nn.hooks.events", "AfterTool"),
+    "BeforeResume": ("msgflux.nn.hooks.events", "BeforeResume"),
+    "BeforeRun": ("msgflux.nn.hooks.events", "BeforeRun"),
+    "BeforeTool": ("msgflux.nn.hooks.events", "BeforeTool"),
     "Guard": ("msgflux.nn.hooks.guard", "Guard"),
     "Hook": ("msgflux.nn.hooks.hook", "Hook"),
     "RemovableHandle": ("msgflux.nn.hooks.hook", "RemovableHandle"),

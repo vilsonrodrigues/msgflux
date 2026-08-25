@@ -1,11 +1,14 @@
 """Tests for public Module event streams."""
 
+from dataclasses import replace
+
 import pytest
 from unittest.mock import Mock
 
 from msgflux.chat_messages import ChatMessages
 from msgflux.models.response import ModelResponse, ModelStreamResponse
 from msgflux.nn.hooks import Hook
+from msgflux.nn.hooks.events import BeforeRun
 from msgflux.nn.modules.agent import Agent
 from msgflux.nn.modules.module import Module
 from msgflux.nn.modules.tool import ToolLibrary
@@ -214,3 +217,104 @@ async def test_async_transform_output_runs_after_stream_accumulation():
     events = [event async for event in module.astream_events()]
 
     assert events[-1].data["output"] == "[hello world]"
+
+
+def test_before_run_can_replace_fresh_agent_input():
+    agent, model = make_agent(
+        hooks=[
+            Hook(
+                event="before_run",
+                handler=lambda event: replace(event, message="replacement"),
+            )
+        ]
+    )
+
+    agent("original")
+
+    sent_messages = model.call_args.kwargs["messages"]
+    assert sent_messages[-1]["content"] == "<task>replacement</task>"
+
+
+def test_before_run_receives_typed_payload():
+    received = []
+
+    def capture(event):
+        received.append(event)
+
+    agent, _ = make_agent(hooks=[Hook(event="before_run", handler=capture)])
+
+    agent("hello")
+
+    assert isinstance(received[0], BeforeRun)
+
+
+def test_before_and_after_tool_hooks_modify_validated_tool_call():
+    def double(value: int) -> int:
+        """Double a value."""
+        return value * 2
+
+    owner = EchoModule()
+    Hook(
+        event="before_tool",
+        handler=lambda event: replace(event, arguments={"value": 4}),
+    ).register(owner)
+    Hook(
+        event="after_tool",
+        handler=lambda event: replace(event, result=event.result + 1),
+    ).register(owner)
+    library = ToolLibrary(name="math", tools=[double])
+    library.set_lifecycle_owner(owner)
+
+    response = library(tool_callings=[("call_1", "double", {"value": 3})])
+
+    assert response.tool_calls[0].parameters == {"value": 4}
+    assert response.tool_calls[0].result == 9
+
+
+def test_before_tool_preserves_injected_tool_context():
+    seen = {}
+
+    def inspect(value: int, messages: list) -> int:
+        """Inspect a value and the inherited conversation."""
+        seen["messages"] = messages
+        return value
+
+    inspect.tool_config = {"inject_messages": True}
+    owner = EchoModule()
+    Hook(
+        event="before_tool",
+        handler=lambda event: replace(event, arguments={"value": 7}),
+    ).register(owner)
+    library = ToolLibrary(name="inspection", tools=[inspect])
+    library.set_lifecycle_owner(owner)
+    messages = [{"role": "user", "content": "context"}]
+
+    response = library(
+        tool_callings=[("call_1", "inspect", {"value": 3})],
+        messages=messages,
+    )
+
+    assert response.tool_calls[0].result == 7
+    assert seen["messages"] is messages
+
+
+def test_before_tool_hook_failure_blocks_execution():
+    calls = []
+
+    def double(value: int) -> int:
+        """Double a value."""
+        calls.append(value)
+        return value * 2
+
+    def fail(_event):
+        raise RuntimeError("policy unavailable")
+
+    owner = EchoModule()
+    Hook(event="before_tool", handler=fail).register(owner)
+    library = ToolLibrary(name="math", tools=[double])
+    library.set_lifecycle_owner(owner)
+
+    response = library(tool_callings=[("call_1", "double", {"value": 3})])
+
+    assert calls == []
+    assert "failed closed" in response.tool_calls[0].error

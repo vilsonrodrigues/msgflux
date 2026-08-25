@@ -1,5 +1,6 @@
 import asyncio
 import inspect
+import weakref
 from copy import deepcopy
 from functools import partial
 from typing import (
@@ -20,6 +21,7 @@ from msgflux.chat_messages import ChatMessages
 from msgflux.core.dotdict import dotdict
 from msgflux.exceptions import TaskError, TaskInterruptRequestedError
 from msgflux.logger import logger
+from msgflux.nn.hooks.events import AfterTool, BeforeTool
 from msgflux.nn.modules.container import ModuleDict
 from msgflux.nn.modules.module import Module
 from msgflux.protocols.mcp import (
@@ -556,6 +558,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
         self._disabled_background_task_tool_names: set[str] = set()
         self._handle: Optional[ToolLibraryHandle] = None
         self._background_dispatcher: Optional[BackgroundTaskDispatcher] = None
+        self._lifecycle_owner_ref: Optional[weakref.ReferenceType[Module]] = None
         for tool in tools:
             self.add(tool)
         if mcp_servers:
@@ -565,6 +568,30 @@ class ToolLibrary(Module, metaclass=AutoParams):
         if self._handle is None:
             self._handle = ToolLibraryHandle(self)
         return self._handle
+
+    def set_lifecycle_owner(self, owner: Module) -> None:
+        """Bind the owning Agent lifecycle without transferring hook ownership."""
+        self._lifecycle_owner_ref = weakref.ref(owner)
+
+    def __getstate__(self):
+        state = super().__getstate__()
+        state["_lifecycle_owner_ref"] = None
+        return state
+
+    def _get_lifecycle_owner(self) -> Optional[Module]:
+        if self._lifecycle_owner_ref is None:
+            return None
+        return self._lifecycle_owner_ref()
+
+    @staticmethod
+    def _apply_visible_tool_arguments(
+        call_params: Dict[str, Any],
+        previous: Mapping[str, Any],
+        current: Mapping[str, Any],
+    ) -> None:
+        for key in previous:
+            call_params.pop(key, None)
+        call_params.update(current)
 
     def is_bucket(self, tool_name: str) -> bool:
         """Return whether a registered public tool is a bucket."""
@@ -1200,6 +1227,62 @@ class ToolLibrary(Module, metaclass=AutoParams):
         )
         return call_params, response_params
 
+    def _run_before_tool_hook(
+        self,
+        *,
+        tool_id: str,
+        tool_name: str,
+        arguments: Mapping[str, Any],
+    ) -> BeforeTool:
+        event = BeforeTool(
+            tool_call_id=tool_id,
+            tool_name=tool_name,
+            arguments=dict(arguments),
+        )
+        owner = self._get_lifecycle_owner()
+        if owner is None or not owner.has_lifecycle_hooks("before_tool"):
+            return event
+        try:
+            result = owner._run_lifecycle_hooks("before_tool", event)
+            if not isinstance(result, BeforeTool):
+                raise TypeError("before_tool handlers must return BeforeTool or None")
+            return result
+        except Exception as exc:
+            return BeforeTool(
+                tool_call_id=tool_id,
+                tool_name=tool_name,
+                arguments=dict(arguments),
+                block=f"before_tool hook failed closed: {exc}",
+            )
+
+    async def _arun_before_tool_hook(
+        self,
+        *,
+        tool_id: str,
+        tool_name: str,
+        arguments: Mapping[str, Any],
+    ) -> BeforeTool:
+        event = BeforeTool(
+            tool_call_id=tool_id,
+            tool_name=tool_name,
+            arguments=dict(arguments),
+        )
+        owner = self._get_lifecycle_owner()
+        if owner is None or not owner.has_lifecycle_hooks("before_tool"):
+            return event
+        try:
+            result = await owner._arun_lifecycle_hooks("before_tool", event)
+            if not isinstance(result, BeforeTool):
+                raise TypeError("before_tool handlers must return BeforeTool or None")
+            return result
+        except Exception as exc:
+            return BeforeTool(
+                tool_call_id=tool_id,
+                tool_name=tool_name,
+                arguments=dict(arguments),
+                block=f"before_tool hook failed closed: {exc}",
+            )
+
     def _resolve_captured_tool(
         self,
         bucket_name: str,
@@ -1229,10 +1312,44 @@ class ToolLibrary(Module, metaclass=AutoParams):
         try:
             result = tool(**call_params)
         except BaseException as exc:
-            emit_event(EventType.TOOL_END, {**event_data, "error": str(exc)})
-            raise
-        emit_event(EventType.TOOL_END, {**event_data, "result": result})
-        return result
+            outcome = AfterTool(
+                tool_call_id=event_data["tool_call_id"],
+                tool_name=event_data["tool_name"],
+                arguments=event_data["arguments"],
+                error=exc,
+            )
+        else:
+            outcome = AfterTool(
+                tool_call_id=event_data["tool_call_id"],
+                tool_name=event_data["tool_name"],
+                arguments=event_data["arguments"],
+                result=result,
+            )
+        owner = self._get_lifecycle_owner()
+        if owner is not None and owner.has_lifecycle_hooks("after_tool"):
+            try:
+                hooked_outcome = owner._run_lifecycle_hooks("after_tool", outcome)
+                if not isinstance(hooked_outcome, AfterTool):
+                    raise TypeError("after_tool handlers must return AfterTool or None")
+                outcome = hooked_outcome
+            except Exception as exc:
+                emit_event(
+                    EventType.HANDLER_ERROR,
+                    {"hook": "after_tool", "error": str(exc)},
+                )
+        emit_event(
+            EventType.TOOL_END,
+            {
+                **event_data,
+                "result": outcome.result,
+                "error": str(outcome.error) if outcome.error is not None else None,
+            },
+        )
+        if outcome.error is not None:
+            if isinstance(outcome.error, BaseException):
+                raise outcome.error
+            raise RuntimeError(str(outcome.error))
+        return outcome.result
 
     async def _aexecute_prepared_tool(
         self,
@@ -1244,10 +1361,46 @@ class ToolLibrary(Module, metaclass=AutoParams):
         try:
             result = await tool.acall(**call_params)
         except BaseException as exc:
-            emit_event(EventType.TOOL_END, {**event_data, "error": str(exc)})
-            raise
-        emit_event(EventType.TOOL_END, {**event_data, "result": result})
-        return result
+            outcome = AfterTool(
+                tool_call_id=event_data["tool_call_id"],
+                tool_name=event_data["tool_name"],
+                arguments=event_data["arguments"],
+                error=exc,
+            )
+        else:
+            outcome = AfterTool(
+                tool_call_id=event_data["tool_call_id"],
+                tool_name=event_data["tool_name"],
+                arguments=event_data["arguments"],
+                result=result,
+            )
+        owner = self._get_lifecycle_owner()
+        if owner is not None and owner.has_lifecycle_hooks("after_tool"):
+            try:
+                hooked_outcome = await owner._arun_lifecycle_hooks(
+                    "after_tool", outcome
+                )
+                if not isinstance(hooked_outcome, AfterTool):
+                    raise TypeError("after_tool handlers must return AfterTool or None")
+                outcome = hooked_outcome
+            except Exception as exc:
+                emit_event(
+                    EventType.HANDLER_ERROR,
+                    {"hook": "after_tool", "error": str(exc)},
+                )
+        emit_event(
+            EventType.TOOL_END,
+            {
+                **event_data,
+                "result": outcome.result,
+                "error": str(outcome.error) if outcome.error is not None else None,
+            },
+        )
+        if outcome.error is not None:
+            if isinstance(outcome.error, BaseException):
+                raise outcome.error
+            raise RuntimeError(str(outcome.error))
+        return outcome.result
 
     @staticmethod
     def _tool_event_data(
@@ -1400,6 +1553,29 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 activity_recorder=activity_recorder,
                 tool_call_id=tool_id,
             )
+            visible_arguments = dict(response_params or {})
+            before_tool = self._run_before_tool_hook(
+                tool_id=tool_id,
+                tool_name=tool_name,
+                arguments=visible_arguments,
+            )
+            if before_tool.block is not None:
+                tool_calls.append(
+                    ToolCall(
+                        id=tool_id,
+                        name=tool_name,
+                        parameters=dict(before_tool.arguments),
+                        error=before_tool.block,
+                    )
+                )
+                return_directly = False
+                continue
+            self._apply_visible_tool_arguments(
+                call_params,
+                visible_arguments,
+                before_tool.arguments,
+            )
+            response_params = dict(before_tool.arguments)
 
             if config.get("spawn", False):
                 return_directly = False
@@ -1547,6 +1723,29 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 activity_recorder=activity_recorder,
                 tool_call_id=tool_id,
             )
+            visible_arguments = dict(response_params or {})
+            before_tool = await self._arun_before_tool_hook(
+                tool_id=tool_id,
+                tool_name=tool_name,
+                arguments=visible_arguments,
+            )
+            if before_tool.block is not None:
+                tool_calls.append(
+                    ToolCall(
+                        id=tool_id,
+                        name=tool_name,
+                        parameters=dict(before_tool.arguments),
+                        error=before_tool.block,
+                    )
+                )
+                return_directly = False
+                continue
+            self._apply_visible_tool_arguments(
+                call_params,
+                visible_arguments,
+                before_tool.arguments,
+            )
+            response_params = dict(before_tool.arguments)
 
             if config.get("spawn", False):
                 return_directly = False

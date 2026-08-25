@@ -8,6 +8,7 @@ from msgflux.data.stores import InMemoryCheckpointStore, SQLiteCheckpointStore
 from msgflux.exceptions import AbortRequestedError, TaskInterruptRequestedError
 from msgflux.models.response import ModelResponse, ModelStreamResponse
 from msgflux.models.tool_call_agg import ToolCallAggregator
+from msgflux.nn.hooks import BeforeResume, Hook
 from msgflux.nn.modules.agent import Agent
 from msgflux.runtime import AbortSignal
 from msgflux.runtime.context import ExecutionScope
@@ -292,6 +293,48 @@ def test_agent_resumes_exact_run_id():
     restored._hydrate_state(state["messages"])
     assert restored.to_chatml()[0]["content"] == "What is 2+2?"
     assert restored.to_chatml()[-1]["content"] == "4"
+
+
+def test_before_resume_observes_restored_state_without_replacing_it():
+    store = InMemoryCheckpointStore()
+    observed = []
+
+    def observe(event):
+        observed.append(event)
+        return BeforeResume(
+            scope=event.scope,
+            messages=ChatMessages(),
+            model_preference=event.model_preference,
+        )
+
+    agent = _make_agent(
+        checkpoint_store=store,
+        hooks=[Hook(event="before_resume", handler=observe)],
+    )
+    chat = ChatMessages(thread_id="user_42", namespace="test_agent")
+    chat.begin_turn(turn_id="run_resume_hook")
+    chat.add_user("Preserve this input")
+    store.save_state(
+        "test_agent",
+        "user_42",
+        "run_resume_hook",
+        {"status": "running", "messages": chat._to_state()},
+    )
+    agent.generator.forward = Mock(return_value=_text_response("preserved"))
+
+    agent(
+        "ignored",
+        scope=ExecutionScope(
+            thread_id="user_42",
+            namespace="test_agent",
+            run_id="run_resume_hook",
+        ),
+    )
+
+    assert len(observed) == 1
+    assert isinstance(observed[0], BeforeResume)
+    sent_messages = agent.generator.forward.call_args.kwargs["messages"]
+    assert sent_messages.to_chatml()[0]["content"] == "Preserve this input"
 
 
 def test_agent_resumes_failed_run_id():

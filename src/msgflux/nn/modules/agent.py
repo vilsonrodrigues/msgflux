@@ -48,6 +48,7 @@ from msgflux.models.response import ModelResponse, ModelStreamResponse
 from msgflux.models.types import ChatCompletionModel
 from msgflux.nn.functional import aspawn, await_for_event, spawn, wait_for_event
 from msgflux.nn.hooks import Hook
+from msgflux.nn.hooks.events import BeforeResume, BeforeRun
 from msgflux.nn.modules.generator import Generator
 from msgflux.nn.modules.module import Module
 from msgflux.nn.modules.tool import ToolLibrary, ToolResponses
@@ -556,7 +557,24 @@ class Agent(Module, metaclass=AutoParams):
         )
         if resumed is not None:
             resumed["vars"] = kwargs.get("vars", {})
-        inputs = resumed or self._prepare_inputs(message, **kwargs)
+            self._run_lifecycle_hooks(
+                "before_resume",
+                BeforeResume(
+                    scope=resumed["scope"],
+                    messages=resumed["messages"],
+                    model_preference=resumed.get("model_preference"),
+                ),
+            )
+            inputs = resumed
+        else:
+            run_event = self._run_lifecycle_hooks(
+                "before_run",
+                BeforeRun(message=message, kwargs=dict(kwargs)),
+            )
+            inputs = self._prepare_inputs(
+                run_event.message,
+                **dict(run_event.kwargs),
+            )
 
         effective_checkpoint_store = self._get_effective_checkpoint_store()
         effective_task_store = self._get_effective_task_store()
@@ -620,7 +638,24 @@ class Agent(Module, metaclass=AutoParams):
         )
         if resumed is not None:
             resumed["vars"] = kwargs.get("vars", {})
-        inputs = resumed or await self._aprepare_inputs(message, **kwargs)
+            await self._arun_lifecycle_hooks(
+                "before_resume",
+                BeforeResume(
+                    scope=resumed["scope"],
+                    messages=resumed["messages"],
+                    model_preference=resumed.get("model_preference"),
+                ),
+            )
+            inputs = resumed
+        else:
+            run_event = await self._arun_lifecycle_hooks(
+                "before_run",
+                BeforeRun(message=message, kwargs=dict(kwargs)),
+            )
+            inputs = await self._aprepare_inputs(
+                run_event.message,
+                **dict(run_event.kwargs),
+            )
 
         effective_checkpoint_store = self._get_effective_checkpoint_store()
         effective_task_store = self._get_effective_task_store()
@@ -1484,6 +1519,7 @@ class Agent(Module, metaclass=AutoParams):
         messages: Union[ChatMessages, List[Mapping[str, Any]]],
         vars: Mapping[str, Any],
     ) -> ToolResponses:
+        self.tool_library.set_lifecycle_owner(self)
         if self.config.get("verbose", False):
             for call in tool_callings:
                 repr_str = f"[{self.name}][tool_call] {call[1]}: {call[2]}"
@@ -1513,6 +1549,7 @@ class Agent(Module, metaclass=AutoParams):
         vars: Mapping[str, Any],
     ) -> ToolResponses:
         """Async version of _process_tool_call."""
+        self.tool_library.set_lifecycle_owner(self)
         if self.config.get("verbose", False):
             for call in tool_callings:
                 repr_str = f"[{self.name}][tool_call] {call[1]}: {call[2]}"
@@ -3179,6 +3216,7 @@ class Agent(Module, metaclass=AutoParams):
             tools,
             mcp_servers=mcp_servers,
         )
+        self.tool_library.set_lifecycle_owner(self)
         self.tool_library.set_agent_inbox(self.agent_inbox)
 
     def _set_skills(self, skills: Optional[SkillsConfig] = None):
