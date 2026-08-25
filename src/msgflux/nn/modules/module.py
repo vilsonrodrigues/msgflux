@@ -1,11 +1,13 @@
 import asyncio
 import functools
 import inspect
+import threading
 import weakref
 from collections import OrderedDict, namedtuple
 from types import MethodType
 from typing import (
     Any,
+    AsyncGenerator,
     Callable,
     Dict,
     Iterator,
@@ -39,6 +41,15 @@ from msgflux.models.model import Model
 from msgflux.models.response import ModelResponse, ModelStreamResponse
 from msgflux.nn.hooks import Hook, RemovableHandle
 from msgflux.nn.parameter import Parameter
+from msgflux.runtime.context import execution_context
+from msgflux.runtime.events import (
+    EventType,
+    ExecutionEvent,
+    _AsyncEventChannel,
+    _capture_events,
+    _SyncEventChannel,
+    emit_event,
+)
 from msgflux.telemetry import Spans
 from msgflux.utils.convert import convert_camel_snake_to_title
 from msgflux.utils.mermaid import plot_mermaid
@@ -1607,6 +1618,128 @@ class Module:
         else:
             # Use native async implementation
             return await self._acall_impl(*args, **kwargs)
+
+    def _prepare_event_stream_kwargs(self, kwargs: Dict[str, Any]) -> Dict[str, Any]:
+        """Prepare execution kwargs for an event-stream-owned call."""
+        return kwargs
+
+    @staticmethod
+    async def _aconsume_event_response(response: ModelStreamResponse) -> None:
+        async def consume_content() -> None:
+            async for chunk in response.consume():
+                emit_event(EventType.MESSAGE_DELTA, {"delta": chunk})
+
+        async def consume_reasoning() -> None:
+            async for chunk in response.consume_reasoning():
+                emit_event(EventType.REASONING_DELTA, {"delta": chunk})
+
+        async def consume_reasoning_summary() -> None:
+            async for chunk in response.consume_reasoning_summary():
+                emit_event(
+                    EventType.REASONING_SUMMARY_DELTA,
+                    {"delta": chunk},
+                )
+
+        await asyncio.gather(
+            consume_content(),
+            consume_reasoning(),
+            consume_reasoning_summary(),
+        )
+
+    async def _afinalize_event_result(self, result: Any) -> Any:
+        emit_event(EventType.MESSAGE_START, {"role": "assistant"})
+        if isinstance(result, ModelStreamResponse):
+            await self._aconsume_event_response(result)
+            output = result.data
+        else:
+            output = result
+        emit_event(EventType.MESSAGE_END, {"role": "assistant", "content": output})
+        emit_event(EventType.TURN_END, {"output": output})
+        emit_event(EventType.RUN_END, {"outcome": "completed", "output": output})
+        return output
+
+    def stream_events(self, *args, **kwargs) -> Iterator[ExecutionEvent]:
+        """Run the module and yield execution events as they occur."""
+        channel = _SyncEventChannel()
+        errors: List[BaseException] = []
+        stream_kwargs = self._prepare_event_stream_kwargs(dict(kwargs))
+        scope = stream_kwargs.get("scope")
+
+        def run() -> None:
+            try:
+                with _capture_events(channel.sink), execution_context(scope=scope):
+                    emit_event(
+                        EventType.RUN_START,
+                        {"module_name": self.get_module_name()},
+                    )
+                    emit_event(EventType.TURN_START)
+                    result = self(*args, **stream_kwargs)
+                    asyncio.run(self._afinalize_event_result(result))
+            except BaseException as exc:
+                errors.append(exc)
+                with _capture_events(channel.sink):
+                    emit_event(EventType.RUN_ERROR, {"error": str(exc)})
+            finally:
+                channel.close()
+
+        worker = threading.Thread(target=run, daemon=True)
+        worker.start()
+        try:
+            yield from channel
+        finally:
+            if (
+                worker.is_alive()
+                and scope is not None
+                and scope.abort_signal is not None
+            ):
+                scope.abort_signal.abort("event stream consumer closed")
+        if errors:
+            raise errors[0]
+
+    async def astream_events(
+        self,
+        *args,
+        **kwargs,
+    ) -> AsyncGenerator[ExecutionEvent, None]:
+        """Async counterpart to :meth:`stream_events`."""
+        channel = _AsyncEventChannel()
+        error: BaseException | None = None
+        stream_kwargs = self._prepare_event_stream_kwargs(dict(kwargs))
+        scope = stream_kwargs.get("scope")
+
+        async def run() -> None:
+            nonlocal error
+            try:
+                with _capture_events(channel.sink), execution_context(scope=scope):
+                    emit_event(
+                        EventType.RUN_START,
+                        {"module_name": self.get_module_name()},
+                    )
+                    emit_event(EventType.TURN_START)
+                    result = await self.acall(*args, **stream_kwargs)
+                    await self._afinalize_event_result(result)
+            except BaseException as exc:
+                error = exc
+                with _capture_events(channel.sink):
+                    emit_event(EventType.RUN_ERROR, {"error": str(exc)})
+            finally:
+                channel.close()
+
+        task = asyncio.create_task(run())
+        try:
+            while True:
+                event = await channel.get()
+                if event is None:
+                    break
+                yield event
+            await task
+        finally:
+            if not task.done():
+                if scope is not None and scope.abort_signal is not None:
+                    scope.abort_signal.abort("event stream consumer closed")
+                task.cancel()
+        if error is not None:
+            raise error
 
     def __getstate__(self):
         state = self.__dict__.copy()

@@ -27,6 +27,7 @@ task to be treated in isolation.
 | [Quick Start](quickstart.md) | Get started with a minimal agent, class-based definition (AutoParams) |
 | [Async](async.md) | Asynchronous agent execution |
 | [Streaming](streaming.md) | Real-time response streaming |
+| [Execution Event Streaming](event-streaming.md) | Ordered Agent, model, message, and tool lifecycle events |
 | [Prompt Cache Warmup](prompt-cache.md) | Warm provider prompt caches with the system prompt and tool schemas |
 | [Reasoning](reasoning.md) | Model-level reasoning, `reasoning_in_response`, dual-queue streaming |
 | [How to Debug an Agent](debug.md) | Inspection and debugging tools |

@@ -21,6 +21,7 @@ from msgflux.runtime.context import (
     new_thread_id,
     thread_context,
 )
+from msgflux.runtime.events import EventType, ExecutionEvent
 from msgflux.runtime.skills import (
     AgentSkill,
     AgentSkillManager,
@@ -40,6 +41,8 @@ __all__ = [
     "AgentSkillManager",
     "AbortSignal",
     "ExecutionScope",
+    "ExecutionEvent",
+    "EventType",
     "InMemoryAgentInboxStore",
     "SQLiteAgentInboxStore",
     "SkillPath",

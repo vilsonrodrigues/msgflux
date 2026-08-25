@@ -167,6 +167,7 @@ nav:
         - learn/nn/agent/quickstart.md
         - learn/nn/agent/async.md
         - learn/nn/agent/streaming.md
+        - learn/nn/agent/event-streaming.md
         - learn/nn/agent/prompt-cache.md
         - learn/nn/agent/reasoning.md
         - learn/nn/agent/debug.md

@@ -52,6 +52,7 @@ from msgflux.nn.modules.generator import Generator
 from msgflux.nn.modules.module import Module
 from msgflux.nn.modules.tool import ToolLibrary, ToolResponses
 from msgflux.nn.parameter import Parameter
+from msgflux.runtime.abort import AbortSignal
 from msgflux.runtime.agent_inbox import (
     AgentInbox,
     AgentNotification,
@@ -64,6 +65,7 @@ from msgflux.runtime.context import (
     new_run_id,
     new_thread_id,
 )
+from msgflux.runtime.events import EventType, emit_event
 from msgflux.runtime.skills import AgentSkillManager, SkillsConfig
 from msgflux.tools.builtin import ActivateSkillTool, SkillSearchTool
 from msgflux.tools.definitions import ToolCatalog, ToolSpec
@@ -454,6 +456,28 @@ class Agent(Module, metaclass=AutoParams):
             )
         return scope
 
+    def _prepare_event_stream_kwargs(self, kwargs: Dict[str, Any]) -> Dict[str, Any]:
+        """Give an event stream a cancellable, fully identified Agent scope."""
+        prepared = dict(kwargs)
+        scope = prepared.get("scope") or get_execution_context()["scope"]
+        abort_signal = scope.abort_signal or AbortSignal()
+        messages = prepared.get("messages")
+        thread_id = self._resolve_thread_id(
+            messages=messages,
+            thread_id=scope.thread_id,
+        )
+        run_id = self._resolve_run_id(
+            messages=messages,
+            run_id=scope.run_id,
+        )
+        prepared["scope"] = scope.with_overrides(
+            thread_id=thread_id,
+            namespace=self.get_module_name(),
+            run_id=run_id,
+            abort_signal=abort_signal,
+        )
+        return prepared
+
     def forward(
         self,
         message: Optional[Union[str, Mapping[str, Any], Message]] = None,
@@ -661,16 +685,31 @@ class Agent(Module, metaclass=AutoParams):
         scope: Optional[ExecutionScope] = None,  # noqa: ARG002
     ) -> Union[ModelResponse, ModelStreamResponse]:
         self._raise_if_background_task_interrupted()
+        context_messages = self._run_lifecycle_hooks("transform_context", messages)
         model_execution_params = self._prepare_model_execution(
-            messages=messages,
+            messages=context_messages,
             prefilling=prefilling,
             model_preference=model_preference,
             vars=vars,
             tool_filter=tool_filter,
         )
+        model_execution_params = self._run_lifecycle_hooks(
+            "before_request", model_execution_params
+        )
         if self.config.get("verbose", False):
             cprint(f"[{self.name}][call_model]", bc="br1", ls="b")
-        return self.generator(**model_execution_params)
+        emit_event(
+            EventType.MODEL_REQUEST,
+            {"message_count": len(model_execution_params.get("messages") or [])},
+        )
+        response = self.generator(**model_execution_params)
+        if not isinstance(response, ModelStreamResponse):
+            response = self._run_lifecycle_hooks("after_response", response)
+        emit_event(
+            EventType.MODEL_RESPONSE,
+            {"response_type": getattr(response, "response_type", None)},
+        )
+        return response
 
     async def _aexecute_model(
         self,
@@ -682,16 +721,33 @@ class Agent(Module, metaclass=AutoParams):
         scope: Optional[ExecutionScope] = None,  # noqa: ARG002
     ) -> Union[ModelResponse, ModelStreamResponse]:
         self._raise_if_background_task_interrupted()
+        context_messages = await self._arun_lifecycle_hooks(
+            "transform_context", messages
+        )
         model_execution_params = self._prepare_model_execution(
-            messages=messages,
+            messages=context_messages,
             prefilling=prefilling,
             model_preference=model_preference,
             vars=vars,
             tool_filter=tool_filter,
         )
+        model_execution_params = await self._arun_lifecycle_hooks(
+            "before_request", model_execution_params
+        )
         if self.config.get("verbose", False):
             cprint(f"[{self.name}][call_model]", bc="br1", ls="b")
-        return await self.generator.acall(**model_execution_params)
+        emit_event(
+            EventType.MODEL_REQUEST,
+            {"message_count": len(model_execution_params.get("messages") or [])},
+        )
+        response = await self.generator.acall(**model_execution_params)
+        if not isinstance(response, ModelStreamResponse):
+            response = await self._arun_lifecycle_hooks("after_response", response)
+        emit_event(
+            EventType.MODEL_RESPONSE,
+            {"response_type": getattr(response, "response_type", None)},
+        )
+        return response
 
     def warmup_system_prompt(
         self,

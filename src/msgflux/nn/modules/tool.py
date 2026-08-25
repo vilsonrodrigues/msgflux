@@ -34,6 +34,7 @@ from msgflux.runtime.agent_inbox import (
 )
 from msgflux.runtime.background import BackgroundTaskDispatcher
 from msgflux.runtime.context import get_execution_context
+from msgflux.runtime.events import EventType, emit_event
 from msgflux.tasks import InMemoryTaskStore
 from msgflux.telemetry.span import (
     aset_tool_attributes,
@@ -1218,19 +1219,46 @@ class ToolLibrary(Module, metaclass=AutoParams):
             )
         return self._tool_from_metadata(metadata), metadata.tool_config
 
-    @staticmethod
     def _execute_prepared_tool(
+        self,
         tool: Tool,
         call_params: Mapping[str, Any],
     ) -> Any:
-        return tool(**call_params)
+        event_data = self._tool_event_data(tool, call_params)
+        emit_event(EventType.TOOL_START, event_data)
+        try:
+            result = tool(**call_params)
+        except BaseException as exc:
+            emit_event(EventType.TOOL_END, {**event_data, "error": str(exc)})
+            raise
+        emit_event(EventType.TOOL_END, {**event_data, "result": result})
+        return result
+
+    async def _aexecute_prepared_tool(
+        self,
+        tool: Tool,
+        call_params: Mapping[str, Any],
+    ) -> Any:
+        event_data = self._tool_event_data(tool, call_params)
+        emit_event(EventType.TOOL_START, event_data)
+        try:
+            result = await tool.acall(**call_params)
+        except BaseException as exc:
+            emit_event(EventType.TOOL_END, {**event_data, "error": str(exc)})
+            raise
+        emit_event(EventType.TOOL_END, {**event_data, "result": result})
+        return result
 
     @staticmethod
-    async def _aexecute_prepared_tool(
+    def _tool_event_data(
         tool: Tool,
         call_params: Mapping[str, Any],
-    ) -> Any:
-        return await tool.acall(**call_params)
+    ) -> dict[str, Any]:
+        return {
+            "tool_call_id": call_params.get("tool_call_id"),
+            "tool_name": tool.get_module_name(),
+            "arguments": build_call_parameters_for_response(call_params),
+        }
 
     def _call_captured_tool(
         self,
