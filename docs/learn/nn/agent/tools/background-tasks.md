@@ -1,5 +1,9 @@
 # Background Tasks
 
+`BackgroundTasksExtension` manages the task-control surface derived from the
+background capabilities of tools registered in the library. Dispatch,
+injection, abort handling, and telemetry remain in the `ToolLibrary` core.
+
 Background tasks let tools start work immediately while the agent continues with a
 `task_id` handle. The result can be checked later through task tools, delivered
 back through notifications, or continued through `task_message` when the task

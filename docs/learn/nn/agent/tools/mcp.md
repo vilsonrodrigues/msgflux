@@ -1,5 +1,11 @@
 # MCP
 
+The `mcp_servers` configuration is implemented by `MCPServersExtension`, which
+owns connection setup, discovered `MCPTool` proxies, and cleanup. Direct
+configuration remains the convenient Agent API; use a
+[`ToolLibraryExtension`](tool-library-extensions.md) when composing a library
+outside an Agent.
+
 The **Model Context Protocol (MCP)** allows agents to connect to external tool servers. MCP servers expose tools that can be called by the agent, enabling integration with filesystems, databases, APIs, and other services.
 
 Configure MCP servers using the `mcp_servers` attribute:

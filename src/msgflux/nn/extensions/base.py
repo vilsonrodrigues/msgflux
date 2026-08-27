@@ -8,6 +8,7 @@ from collections.abc import Iterable
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any
 
+from msgflux.nn.extensions.tool_library import ToolLibraryExtension
 from msgflux.nn.hooks import Hook
 from msgflux.nn.modules.module import Module
 
@@ -181,3 +182,14 @@ class _ExtensionHook(Hook):
         if agent is None or not agent._extension_is_visible(self.extension_name):
             return payload
         return await self.hook.ahandle(payload)
+
+
+class _AgentToolsExtension(ToolLibraryExtension):
+    """Internal ownership bridge for tools contributed by an Agent extension."""
+
+    def __init__(self, name: str, tools: Iterable[Any]) -> None:
+        super().__init__(f"agent:{name}")
+        self._tools = tuple(tools)
+
+    def tools(self):
+        return self._tools

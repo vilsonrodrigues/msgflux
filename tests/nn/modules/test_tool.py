@@ -2076,8 +2076,10 @@ class TestToolLibrary:
         ]
 
         with (
-            patch("msgflux.nn.modules.tool.MCPClient") as mock_mcp_client_class,
-            patch("msgflux.nn.modules.tool.F.wait_for") as mock_wait_for,
+            patch(
+                "msgflux.nn.extensions.tool_library.MCPClient"
+            ) as mock_mcp_client_class,
+            patch("msgflux.nn.extensions.tool_library.F.wait_for") as mock_wait_for,
         ):
             mock_client = Mock()
             mock_tool_info = Mock()
@@ -2106,8 +2108,10 @@ class TestToolLibrary:
         ]
 
         with (
-            patch("msgflux.nn.modules.tool.MCPClient") as mock_mcp_client_class,
-            patch("msgflux.nn.modules.tool.F.wait_for") as mock_wait_for,
+            patch(
+                "msgflux.nn.extensions.tool_library.MCPClient"
+            ) as mock_mcp_client_class,
+            patch("msgflux.nn.extensions.tool_library.F.wait_for") as mock_wait_for,
         ):
             mock_client = Mock()
             mock_tool_info = Mock()
@@ -2133,7 +2137,7 @@ class TestToolLibrary:
             }
         ]
 
-        with patch("msgflux.nn.modules.tool.MCPClient"):
+        with patch("msgflux.nn.extensions.tool_library.MCPClient"):
             with pytest.raises(ValueError, match="Unknown transport type"):
                 ToolLibrary(name="lib", tools=[], mcp_servers=mcp_servers)
 
@@ -2161,7 +2165,9 @@ class TestToolLibrary:
             }
         ]
 
-        with patch("msgflux.nn.modules.tool.MCPClient") as mock_mcp_client_class:
+        with patch(
+            "msgflux.nn.extensions.tool_library.MCPClient"
+        ) as mock_mcp_client_class:
             mock_client = Mock()
             mock_tool1 = Mock()
             mock_tool1.name = "tool1"
@@ -2171,7 +2177,9 @@ class TestToolLibrary:
             mock_client.list_tools = AsyncMock(return_value=[mock_tool1])
             mock_mcp_client_class.from_stdio.return_value = mock_client
 
-            with patch("msgflux.nn.modules.tool.filter_tools") as mock_filter:
+            with patch(
+                "msgflux.nn.extensions.tool_library.filter_tools"
+            ) as mock_filter:
                 mock_filter.return_value = [mock_tool1]
 
                 library = ToolLibrary(name="lib", tools=[], mcp_servers=mcp_servers)
@@ -2189,7 +2197,9 @@ class TestToolLibrary:
             }
         ]
 
-        with patch("msgflux.nn.modules.tool.MCPClient") as mock_mcp_client_class:
+        with patch(
+            "msgflux.nn.extensions.tool_library.MCPClient"
+        ) as mock_mcp_client_class:
             mock_client = Mock()
             mock_client.connect = AsyncMock(side_effect=Exception("Connection failed"))
             mock_mcp_client_class.from_stdio.return_value = mock_client

@@ -1,5 +1,9 @@
 # Tool Search
 
+When the first deferred tool is registered, `ToolLibrary` installs
+`ToolSearchExtension`. The extension owns the `tool_search` bucket while loaded
+tool names remain isolated per thread in `ChatMessages`.
+
 Tool search lets a catalog grow without placing every tool schema in every
 request. The initial context stays approximately stable as rarely used tools
 are added; mark those tools with `defer_loading=True`:

@@ -52,6 +52,7 @@ from msgflux.nn.events import emit_model_response_events
 from msgflux.nn.extensions.base import (
     AgentExtension,
     AgentExtensionHandle,
+    _AgentToolsExtension,
     _extension_snapshot,
     _ExtensionHook,
     _get_extension_snapshot,
@@ -794,8 +795,7 @@ class Agent(Module, metaclass=AutoParams):
     def _initialize_extensions(self) -> None:
         self.extensions = ModuleDict()
         self._extension_hook_handles: dict[str, list[Any]] = {}
-        self._extension_tool_names: dict[str, tuple[str, ...]] = {}
-        self._extension_tool_owners: dict[str, str] = {}
+        self._extension_library_handles: dict[str, Any] = {}
         self._extension_refcounts: dict[str, int] = {}
         self._pending_extensions: dict[str, AgentExtension] = {}
         self._extension_async_cleanup_waiters: dict[str, Any] = {}
@@ -822,17 +822,20 @@ class Agent(Module, metaclass=AutoParams):
         extension_hooks = tuple(extension.hooks())
         extension_tools = tuple(extension.tools())
         hook_handles = []
-        tool_names = []
+        library_handle = None
         try:
-            for tool in extension_tools:
-                tool_name = self.tool_library.add(tool)
-                tool_names.append(tool_name)
-                self._extension_tool_owners[tool_name] = name
+            if extension_tools:
+                contribution = _AgentToolsExtension(name, extension_tools)
+                library_handle = self.tool_library.register_extension(
+                    contribution.name,
+                    contribution,
+                )
             for hook in extension_hooks:
                 hook_handles.append(self._register_extension_hook(name, hook))
             self.extensions[name] = extension
             self._extension_hook_handles[name] = hook_handles
-            self._extension_tool_names[name] = tuple(tool_names)
+            if library_handle is not None:
+                self._extension_library_handles[name] = library_handle
             self._extension_refcounts[name] = 0
             extension._bind_agent(self)
             extension.on_register(self)
@@ -842,9 +845,8 @@ class Agent(Module, metaclass=AutoParams):
                 del self.extensions[name]
             for handle in reversed(hook_handles):
                 handle.remove()
-            for tool_name in reversed(tool_names):
-                self._extension_tool_owners.pop(tool_name, None)
-                self.tool_library.remove(tool_name)
+            if library_handle is not None:
+                library_handle.remove()
             raise
         return AgentExtensionHandle(self, name)
 
@@ -917,9 +919,9 @@ class Agent(Module, metaclass=AutoParams):
     def _cleanup_extension_contributions(self, name: str) -> None:
         for handle in self._extension_hook_handles.pop(name, ()):
             handle.remove()
-        for tool_name in reversed(self._extension_tool_names.pop(name, ())):
-            self._extension_tool_owners.pop(tool_name, None)
-            self.tool_library.remove(tool_name)
+        library_handle = self._extension_library_handles.pop(name, None)
+        if library_handle is not None:
+            library_handle.remove()
 
     def _cleanup_extension(self, name: str) -> None:
         extension = self._pending_extensions.pop(name, None)
@@ -1612,14 +1614,7 @@ class Agent(Module, metaclass=AutoParams):
             )
 
         tool_catalog = self.tool_library.get_tool_catalog(model_messages)
-        tool_specs = [
-            tool
-            for tool in tool_catalog.tools
-            if (
-                (owner := self._extension_tool_owners.get(tool.name)) is None
-                or self._extension_is_visible(owner)
-            )
-        ]
+        tool_specs = list(tool_catalog.tools)
 
         tool_choice = self.config.get("tool_choice")
 

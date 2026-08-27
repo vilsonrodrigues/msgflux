@@ -10,12 +10,24 @@ if TYPE_CHECKING:
         ToolUsageGuidanceExtension,
     )
     from msgflux.nn.extensions.skills import SkillsExtension
+    from msgflux.nn.extensions.tool_library import (
+        BackgroundTasksExtension,
+        MCPServersExtension,
+        ToolLibraryExtension,
+        ToolLibraryExtensionHandle,
+        ToolSearchExtension,
+    )
 
 __all__ = [
     "AgentExtension",
     "AgentExtensionHandle",
+    "BackgroundTasksExtension",
     "CurrentDateExtension",
     "SkillsExtension",
+    "MCPServersExtension",
+    "ToolLibraryExtension",
+    "ToolLibraryExtensionHandle",
+    "ToolSearchExtension",
     "ToolUsageGuidanceExtension",
 ]
 
@@ -33,6 +45,26 @@ _LAZY_IMPORTS = {
     "ToolUsageGuidanceExtension": (
         "msgflux.nn.extensions.prompt",
         "ToolUsageGuidanceExtension",
+    ),
+    "BackgroundTasksExtension": (
+        "msgflux.nn.extensions.tool_library",
+        "BackgroundTasksExtension",
+    ),
+    "MCPServersExtension": (
+        "msgflux.nn.extensions.tool_library",
+        "MCPServersExtension",
+    ),
+    "ToolLibraryExtension": (
+        "msgflux.nn.extensions.tool_library",
+        "ToolLibraryExtension",
+    ),
+    "ToolLibraryExtensionHandle": (
+        "msgflux.nn.extensions.tool_library",
+        "ToolLibraryExtensionHandle",
+    ),
+    "ToolSearchExtension": (
+        "msgflux.nn.extensions.tool_library",
+        "ToolSearchExtension",
     ),
 }
 

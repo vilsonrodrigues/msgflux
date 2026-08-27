@@ -2,6 +2,7 @@ import asyncio
 import inspect
 import weakref
 from copy import deepcopy
+from dataclasses import dataclass
 from functools import partial
 from typing import (
     Any,
@@ -9,6 +10,7 @@ from typing import (
     Dict,
     Iterator,
     List,
+    Literal,
     Mapping,
     Optional,
     Tuple,
@@ -24,15 +26,20 @@ from msgflux.exceptions import (
     TaskError,
     TaskInterruptRequestedError,
 )
-from msgflux.logger import logger
+from msgflux.nn.extensions.tool_library import (
+    BackgroundTasksExtension,
+    MCPServersExtension,
+    ToolLibraryExtension,
+    ToolLibraryExtensionHandle,
+    ToolSearchExtension,
+)
+from msgflux.nn.hooks import Hook
 from msgflux.nn.hooks.events import AfterTool, BeforeTool
 from msgflux.nn.modules.container import ModuleDict
 from msgflux.nn.modules.module import Module
 from msgflux.protocols.mcp import (
-    MCPClient,
     convert_mcp_schema_to_tool_schema,
     extract_tool_result_text,
-    filter_tools,
 )
 from msgflux.runtime.abort import await_with_abort
 from msgflux.runtime.agent_inbox import (
@@ -47,11 +54,6 @@ from msgflux.telemetry.span import (
     aset_tool_attributes,
     set_tool_attributes,
 )
-from msgflux.tools.builtin.task_tool import (
-    BACKGROUND_CAPABILITY_TOOLS,
-    BASE_TASK_TOOLS,
-)
-from msgflux.tools.builtin.tool_search import ToolSearchTool
 from msgflux.tools.dataclasses import ToolMetadata
 from msgflux.tools.definitions import ToolCatalog, ToolSpec
 from msgflux.tools.handles import ToolLibraryHandle
@@ -67,7 +69,6 @@ from msgflux.tools.helpers import (
 )
 from msgflux.tools.responses import ToolCall, ToolResponses
 from msgflux.tools.types import (
-    ToolBackground,
     ToolBucket,
     ToolLibraryOperator,
     unwrap_hidden_annotation,
@@ -529,6 +530,20 @@ def _metadata_from_tool(tool: Tool) -> ToolMetadata:
     )
 
 
+@dataclass(frozen=True)
+class ToolExecutionPlan:
+    """Validated dispatch decision for one logical tool call."""
+
+    tool_id: str
+    tool_name: str
+    tool: Tool
+    config: Mapping[str, Any]
+    visible_arguments: Mapping[str, Any]
+    call_arguments: Mapping[str, Any]
+    mode: Literal["foreground", "background", "spawn", "call_as_response"]
+    return_direct: bool
+
+
 class ToolLibrary(Module, metaclass=AutoParams):
     """ToolLibrary is a Module type that manage tool calls over the tool library."""
 
@@ -540,6 +555,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
         tools: List[Callable],
         mcp_servers: Optional[List[Dict[str, Any]]] = None,
         task_store: Any | None = None,
+        extensions: Optional[List[ToolLibraryExtension]] = None,
     ):
         """Initialize the ToolLibrary.
 
@@ -555,6 +571,9 @@ class ToolLibrary(Module, metaclass=AutoParams):
             - For stdio: command, args, cwd, env
             - For http: base_url, headers
             - Optional: include_tools, exclude_tools, tool_config
+        extensions:
+            Optional tool-library capabilities that contribute tools, hooks,
+            setup, or cleanup under one removable owner.
         """
         super().__init__()
         self.set_name(f"{name}_tool_library")
@@ -567,10 +586,16 @@ class ToolLibrary(Module, metaclass=AutoParams):
         self._handle: Optional[ToolLibraryHandle] = None
         self._background_dispatcher: Optional[BackgroundTaskDispatcher] = None
         self._lifecycle_owner_ref: Optional[weakref.ReferenceType[Module]] = None
+        self.extensions = ModuleDict()
+        self._extension_hook_handles: dict[str, list[Any]] = {}
+        self._extension_tool_names: dict[str, tuple[str, ...]] = {}
+        self.register_extension("background_tasks", BackgroundTasksExtension())
+        for extension in extensions or ():
+            self.register_extension(extension.name, extension)
         for tool in tools:
             self.add(tool)
         if mcp_servers:
-            self._initialize_mcp_clients(mcp_servers)
+            self.register_extension("mcp_servers", MCPServersExtension(mcp_servers))
 
     def get_handle(self) -> ToolLibraryHandle:
         if self._handle is None:
@@ -581,10 +606,118 @@ class ToolLibrary(Module, metaclass=AutoParams):
         """Bind the owning Agent lifecycle without transferring hook ownership."""
         self._lifecycle_owner_ref = weakref.ref(owner)
 
+    @staticmethod
+    def inspect_tool_metadata(tool: Callable) -> ToolMetadata:
+        """Normalize one callable for extension-managed registration."""
+        return _inspect_tool_metadata(tool)
+
+    @staticmethod
+    def create_mcp_tool(**kwargs: Any) -> MCPTool:
+        """Build the library's canonical remote-tool proxy."""
+        return MCPTool(**kwargs)
+
+    def register_extension(  # noqa: C901
+        self,
+        name: str,
+        extension: ToolLibraryExtension,
+    ) -> ToolLibraryExtensionHandle:
+        """Install a named library extension and return its ownership handle."""
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError("`name` must be a non-empty string")
+        if not isinstance(extension, ToolLibraryExtension):
+            raise TypeError(
+                f"`extension` must be a ToolLibraryExtension, given `{type(extension)}`"
+            )
+        if name in self.extensions:
+            raise ValueError(f"The extension name `{name}` is already registered")
+
+        extension_tools = tuple(extension.tools())
+        extension_hooks = tuple(extension.hooks())
+        tool_names: list[str] = []
+        hook_handles = []
+        extension._bind_library(self)
+        try:
+            for tool in extension_tools:
+                tool_names.append(self.add(tool))
+            for hook in extension_hooks:
+                if not isinstance(hook, Hook):
+                    raise TypeError(
+                        f"Extension `{name}` returned a non-Hook contribution: "
+                        f"`{type(hook)}`"
+                    )
+                target = getattr(self, hook.target) if hook.target else self
+                hook_handles.append(hook.register(target))
+            self.extensions[name] = extension
+            self._extension_tool_names[name] = tuple(tool_names)
+            self._extension_hook_handles[name] = hook_handles
+            extension.on_register(self)
+        except Exception:
+            for handle in reversed(hook_handles):
+                handle.remove()
+            for tool_name in reversed(tool_names):
+                try:
+                    self.remove(tool_name)
+                except ValueError:
+                    pass
+            if name in self.extensions:
+                del self.extensions[name]
+            self._extension_tool_names.pop(name, None)
+            self._extension_hook_handles.pop(name, None)
+            try:
+                extension.on_remove(self)
+            finally:
+                extension._unbind_library()
+            raise
+        return ToolLibraryExtensionHandle(self, name)
+
+    def has_extension(self, name: str) -> bool:
+        return name in self.extensions
+
+    def remove_extension(self, name: str) -> None:
+        if name not in self.extensions:
+            return
+        extension = self.extensions[name]
+        for handle in reversed(self._extension_hook_handles.get(name, ())):
+            handle.remove()
+        for tool_name in reversed(self._extension_tool_names.get(name, ())):
+            self.remove(tool_name)
+        self._extension_hook_handles.pop(name, None)
+        self._extension_tool_names.pop(name, None)
+        try:
+            extension.on_remove(self)
+        finally:
+            if name in self.extensions:
+                del self.extensions[name]
+            extension._unbind_library()
+
+    async def aremove_extension(self, name: str) -> None:
+        if name not in self.extensions:
+            return
+        extension = self.extensions[name]
+        for handle in reversed(self._extension_hook_handles.get(name, ())):
+            handle.remove()
+        for tool_name in reversed(self._extension_tool_names.get(name, ())):
+            self.remove(tool_name)
+        self._extension_hook_handles.pop(name, None)
+        self._extension_tool_names.pop(name, None)
+        try:
+            await extension.aon_remove(self)
+        finally:
+            if name in self.extensions:
+                del self.extensions[name]
+            extension._unbind_library()
+
     def __getstate__(self):
         state = super().__getstate__()
         state["_lifecycle_owner_ref"] = None
         return state
+
+    def __setstate__(self, state):
+        super().__setstate__(state)
+        self._lifecycle_owner_ref = None
+        for extension in self.extensions.values():
+            if isinstance(extension, ToolLibraryExtension):
+                extension._bind_library(self)
 
     def _get_lifecycle_owner(self) -> Optional[Module]:
         if self._lifecycle_owner_ref is None:
@@ -654,17 +787,20 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 f"The tool name `{metadata.name}` is already in tool library"
             )
         if is_background_capable(metadata.tool_config):
-            ToolBackground.validate_background_capabilities(
-                metadata.impl,
-                metadata.tool_config,
-            )
+            background = self.extensions.get("background_tasks")
+            if isinstance(background, BackgroundTasksExtension):
+                background.validate_source(metadata.impl, metadata.tool_config)
 
         # Deferred tools are held by the search bucket. Loading is thread-local.
         if (
             metadata.tool_config.get("defer_loading", False)
-            and ToolSearchTool.name not in self.library
+            and "tool_search" not in self.library
         ):
-            self.add(ToolSearchTool())
+            if not self.has_extension("tool_search"):
+                self.register_extension("tool_search", ToolSearchExtension())
+            else:
+                search_extension = self.extensions["tool_search"]
+                self.add(next(iter(search_extension.tools())))
 
         # A matching registered bucket owns the tool instead of direct registration.
         bucket_name = ToolBucket.find_bucket(
@@ -699,13 +835,11 @@ class ToolLibrary(Module, metaclass=AutoParams):
                     "be removed."
                 )
             config = self.tool_configs.get(tool_name, {})
-            is_task_tool = ToolBackground.is_active_task_tool(
-                library=self,
-                tool_name=tool_name,
-                config=config,
-                base_tools=BASE_TASK_TOOLS,
-                capability_tools=BACKGROUND_CAPABILITY_TOOLS,
-                metadata_factory=_inspect_tool_metadata,
+            background = self.extensions.get("background_tasks")
+            is_task_tool = isinstance(
+                background, BackgroundTasksExtension
+            ) and background.is_active_task_tool(
+                library=self, tool_name=tool_name, config=config
             )
             was_background = not is_reserved_tool_kind(
                 config
@@ -838,90 +972,6 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 bucket.usage_guidance,
             )
 
-    def _initialize_mcp_clients(self, mcp_servers: List[Dict[str, Any]]):
-        """Initialize MCP clients from server configurations."""
-        for server_config in mcp_servers:
-            namespace = server_config.get("name")
-            if not namespace:
-                raise ValueError("MCP server config must include 'name' field")
-
-            transport_type = server_config.get("transport", "stdio")
-
-            # Create client based on transport type
-            if transport_type == "stdio":
-                command = server_config.get("command")
-                if not command:
-                    raise ValueError(
-                        f"MCP server '{namespace}' stdio transport requires 'command'"
-                    )
-                client = MCPClient.from_stdio(
-                    command=command,
-                    args=server_config.get("args"),
-                    cwd=server_config.get("cwd"),
-                    env=server_config.get("env"),
-                    timeout=server_config.get("timeout", 30.0),
-                )
-            elif transport_type == "http":
-                base_url = server_config.get("base_url")
-                if not base_url:
-                    raise ValueError(
-                        f"MCP server '{namespace}' http transport requires 'base_url'"
-                    )
-                client = MCPClient.from_http(
-                    base_url=base_url,
-                    timeout=server_config.get("timeout", 30.0),
-                    headers=server_config.get("headers"),
-                    auth=server_config.get("auth"),
-                )
-            else:
-                raise ValueError(
-                    f"Unknown transport type: {transport_type}. "
-                    "Supported types: 'stdio', 'http'"
-                )
-
-            # Connect and list tools with error handling
-            try:
-                F.wait_for(client.connect)
-                all_tools = F.wait_for(client.list_tools, use_cache=False)
-
-                # Apply filters
-                include_tools = server_config.get("include_tools")
-                exclude_tools = server_config.get("exclude_tools")
-                filtered_tools = filter_tools(all_tools, include_tools, exclude_tools)
-
-                # Create MCPTool for each remote tool
-                tool_configs = server_config.get("tool_config", {})
-                for mcp_tool_info in filtered_tools:
-                    tool_config = tool_configs.get(mcp_tool_info.name, {})
-
-                    # Create MCPTool instance
-                    mcp_tool = MCPTool(
-                        name=mcp_tool_info.name,
-                        mcp_client=client,
-                        mcp_tool_info=mcp_tool_info,
-                        namespace=namespace,
-                        config=tool_config,
-                    )
-
-                    self.add(mcp_tool)
-
-                self.mcp_clients[namespace] = {
-                    "client": client,
-                    "tools": filtered_tools,
-                    "tool_config": tool_configs,
-                }
-
-                logger.debug(
-                    f"Successfully connected to MCP server `{namespace}` "
-                    f"with {len(filtered_tools)} tools"
-                )
-            except Exception as e:
-                logger.error(
-                    f"Failed to initialize MCP server '{namespace}': {e!s}",
-                    exc_info=True,
-                )
-                # Continue with other servers instead of failing completely
-
     def get_tools(self) -> Iterator[Dict[str, Tool]]:
         return self.library.items()
 
@@ -987,7 +1037,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
         search_tool: ToolSpec | None = None
 
         for tool_name, tool in self.library.items():
-            if tool_name == ToolSearchTool.name:
+            if tool_name == "tool_search":
                 search_tool = ToolSpec.from_function_schema(
                     tool.get_json_schema(),
                     annotations=self._public_annotations(tool),
@@ -1103,13 +1153,9 @@ class ToolLibrary(Module, metaclass=AutoParams):
         self._sync_background_task_tools()
 
     def _sync_background_task_tools(self) -> None:
-        ToolBackground.sync_task_tools(
-            library=self,
-            disabled_tool_names=self._disabled_background_task_tool_names,
-            base_tools=BASE_TASK_TOOLS,
-            capability_tools=BACKGROUND_CAPABILITY_TOOLS,
-            metadata_factory=_inspect_tool_metadata,
-        )
+        background = self.extensions.get("background_tasks")
+        if isinstance(background, BackgroundTasksExtension):
+            background.sync(self)
 
     # --- Tool Call Preparation ---
 
@@ -1239,6 +1285,37 @@ class ToolLibrary(Module, metaclass=AutoParams):
         )
         return visible_params, runtime_params
 
+    def _build_execution_plan(
+        self,
+        *,
+        tool_id: str,
+        tool_name: str,
+        tool: Tool,
+        config: Mapping[str, Any],
+        visible_arguments: Mapping[str, Any],
+        runtime_arguments: Mapping[str, Any],
+    ) -> ToolExecutionPlan:
+        call_arguments = {**visible_arguments, **runtime_arguments}
+        if config.get("spawn", False):
+            mode = "spawn"
+        elif should_dispatch_background(config=config, call_params=call_arguments):
+            mode = "background"
+        elif config.get("call_as_response", False):
+            mode = "call_as_response"
+        else:
+            mode = "foreground"
+            call_arguments["tool_call_id"] = tool_id
+        return ToolExecutionPlan(
+            tool_id=tool_id,
+            tool_name=tool_name,
+            tool=tool,
+            config=config,
+            visible_arguments=dict(visible_arguments),
+            call_arguments=call_arguments,
+            mode=mode,
+            return_direct=bool(config.get("return_direct", False)),
+        )
+
     def _run_before_tool_hook(
         self,
         *,
@@ -1251,14 +1328,17 @@ class ToolLibrary(Module, metaclass=AutoParams):
             tool_name=tool_name,
             arguments=dict(arguments),
         )
-        owner = self._get_lifecycle_owner()
-        if owner is None or not owner.has_lifecycle_hooks("before_tool"):
-            return event
         try:
-            result = owner._run_lifecycle_hooks("before_tool", event)
-            if not isinstance(result, BeforeTool):
+            if self.has_lifecycle_hooks("before_tool"):
+                event = self._run_lifecycle_hooks("before_tool", event)
+            if not isinstance(event, BeforeTool):
                 raise TypeError("before_tool handlers must return BeforeTool or None")
-            return result
+            owner = self._get_lifecycle_owner()
+            if owner is not None and owner.has_lifecycle_hooks("before_tool"):
+                event = owner._run_lifecycle_hooks("before_tool", event)
+            if not isinstance(event, BeforeTool):
+                raise TypeError("before_tool handlers must return BeforeTool or None")
+            return event
         except (AbortRequestedError, TaskInterruptRequestedError):
             raise
         except Exception as exc:
@@ -1281,14 +1361,17 @@ class ToolLibrary(Module, metaclass=AutoParams):
             tool_name=tool_name,
             arguments=dict(arguments),
         )
-        owner = self._get_lifecycle_owner()
-        if owner is None or not owner.has_lifecycle_hooks("before_tool"):
-            return event
         try:
-            result = await owner._arun_lifecycle_hooks("before_tool", event)
-            if not isinstance(result, BeforeTool):
+            if self.has_lifecycle_hooks("before_tool"):
+                event = await self._arun_lifecycle_hooks("before_tool", event)
+            if not isinstance(event, BeforeTool):
                 raise TypeError("before_tool handlers must return BeforeTool or None")
-            return result
+            owner = self._get_lifecycle_owner()
+            if owner is not None and owner.has_lifecycle_hooks("before_tool"):
+                event = await owner._arun_lifecycle_hooks("before_tool", event)
+            if not isinstance(event, BeforeTool):
+                raise TypeError("before_tool handlers must return BeforeTool or None")
+            return event
         except (AbortRequestedError, TaskInterruptRequestedError):
             raise
         except Exception as exc:
@@ -1427,14 +1510,17 @@ class ToolLibrary(Module, metaclass=AutoParams):
         return outcome.result
 
     def _run_after_tool_hook(self, outcome: AfterTool) -> AfterTool:
-        owner = self._get_lifecycle_owner()
-        if owner is None or not owner.has_lifecycle_hooks("after_tool"):
-            return outcome
         try:
-            hooked_outcome = owner._run_lifecycle_hooks("after_tool", outcome)
-            if not isinstance(hooked_outcome, AfterTool):
+            if self.has_lifecycle_hooks("after_tool"):
+                outcome = self._run_lifecycle_hooks("after_tool", outcome)
+            if not isinstance(outcome, AfterTool):
                 raise TypeError("after_tool handlers must return AfterTool or None")
-            return hooked_outcome
+            owner = self._get_lifecycle_owner()
+            if owner is not None and owner.has_lifecycle_hooks("after_tool"):
+                outcome = owner._run_lifecycle_hooks("after_tool", outcome)
+            if not isinstance(outcome, AfterTool):
+                raise TypeError("after_tool handlers must return AfterTool or None")
+            return outcome
         except (AbortRequestedError, TaskInterruptRequestedError):
             raise
         except Exception as exc:
@@ -1445,14 +1531,17 @@ class ToolLibrary(Module, metaclass=AutoParams):
             return outcome
 
     async def _arun_after_tool_hook(self, outcome: AfterTool) -> AfterTool:
-        owner = self._get_lifecycle_owner()
-        if owner is None or not owner.has_lifecycle_hooks("after_tool"):
-            return outcome
         try:
-            hooked_outcome = await owner._arun_lifecycle_hooks("after_tool", outcome)
-            if not isinstance(hooked_outcome, AfterTool):
+            if self.has_lifecycle_hooks("after_tool"):
+                outcome = await self._arun_lifecycle_hooks("after_tool", outcome)
+            if not isinstance(outcome, AfterTool):
                 raise TypeError("after_tool handlers must return AfterTool or None")
-            return hooked_outcome
+            owner = self._get_lifecycle_owner()
+            if owner is not None and owner.has_lifecycle_hooks("after_tool"):
+                outcome = await owner._arun_lifecycle_hooks("after_tool", outcome)
+            if not isinstance(outcome, AfterTool):
+                raise TypeError("after_tool handlers must return AfterTool or None")
+            return outcome
         except (AbortRequestedError, TaskInterruptRequestedError):
             raise
         except Exception as exc:
@@ -1637,11 +1726,18 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 return_directly = False
                 continue
             response_params = dict(before_tool.arguments)
-            call_params = {**response_params, **runtime_arguments}
+            plan = self._build_execution_plan(
+                tool_id=tool_id,
+                tool_name=tool_name,
+                tool=tool,
+                config=config,
+                visible_arguments=response_params,
+                runtime_arguments=runtime_arguments,
+            )
 
-            if config.get("spawn", False):
+            if plan.mode == "spawn":
                 return_directly = False
-                F.spawn(tool, **call_params)
+                F.spawn(plan.tool, **plan.call_arguments)
                 tool_calls.append(
                     ToolCall(
                         id=tool_id,
@@ -1653,42 +1749,35 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 )
                 continue
 
-            if should_dispatch_background(
-                config=config,
-                call_params=call_params,
-            ):
+            if plan.mode == "background":
                 return_directly = False
                 tool_calls.append(
                     self.get_background_dispatcher().dispatch(
-                        tool=tool,
+                        tool=plan.tool,
                         tool_id=tool_id,
                         tool_name=tool_name,
-                        call_params=call_params,
+                        call_params=plan.call_arguments,
                         visible_params=response_params,
                         config=config,
                     )
                 )
                 continue
 
-            if config.get(
-                "call_as_response", False
-            ):  # return function call as response
+            if plan.mode == "call_as_response":
                 tool_calls.append(
                     ToolCall(id=tool_id, name=tool_name, parameters=response_params)
                 )
                 return_directly = True
                 continue
 
-            if not config.get("return_direct", False):
+            if not plan.return_direct:
                 return_directly = False
 
-            # Add tool_call_id for telemetry
-            call_params["tool_call_id"] = tool_id
             prepared_calls.append(
                 partial(
                     self._execute_prepared_tool,
-                    tool,
-                    call_params,
+                    plan.tool,
+                    plan.call_arguments,
                     response_params,
                 )
             )
@@ -1808,11 +1897,18 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 return_directly = False
                 continue
             response_params = dict(before_tool.arguments)
-            call_params = {**response_params, **runtime_arguments}
+            plan = self._build_execution_plan(
+                tool_id=tool_id,
+                tool_name=tool_name,
+                tool=tool,
+                config=config,
+                visible_arguments=response_params,
+                runtime_arguments=runtime_arguments,
+            )
 
-            if config.get("spawn", False):
+            if plan.mode == "spawn":
                 return_directly = False
-                await F.aspawn(tool, **call_params)
+                await F.aspawn(plan.tool, **plan.call_arguments)
                 tool_calls.append(
                     ToolCall(
                         id=tool_id,
@@ -1824,42 +1920,35 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 )
                 continue
 
-            if should_dispatch_background(
-                config=config,
-                call_params=call_params,
-            ):
+            if plan.mode == "background":
                 return_directly = False
                 tool_calls.append(
                     self.get_background_dispatcher().dispatch(
-                        tool=tool,
+                        tool=plan.tool,
                         tool_id=tool_id,
                         tool_name=tool_name,
-                        call_params=call_params,
+                        call_params=plan.call_arguments,
                         visible_params=response_params,
                         config=config,
                     )
                 )
                 continue
 
-            if config.get(
-                "call_as_response", False
-            ):  # return function call as response
+            if plan.mode == "call_as_response":
                 tool_calls.append(
                     ToolCall(id=tool_id, name=tool_name, parameters=response_params)
                 )
                 return_directly = True
                 continue
 
-            if not config.get("return_direct", False):
+            if not plan.return_direct:
                 return_directly = False
 
-            # Add tool_call_id for telemetry
-            call_params["tool_call_id"] = tool_id
             prepared_calls.append(
                 partial(
                     self._aexecute_prepared_tool,
-                    tool,
-                    call_params,
+                    plan.tool,
+                    plan.call_arguments,
                     response_params,
                 )
             )

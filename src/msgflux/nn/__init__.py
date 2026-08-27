@@ -15,6 +15,7 @@ _MODULE_EXPORTS = [
     "Sequential",
     "Speaker",
     "Tool",
+    "ToolExecutionPlan",
     "ToolLibrary",
     "Transcriber",
 ]
@@ -22,6 +23,7 @@ _MODULE_EXPORTS = [
 __all__ = [
     "AgentExtension",
     "AgentExtensionHandle",
+    "BackgroundTasksExtension",
     "CurrentDateExtension",
     "Parameter",
     "functional",
@@ -41,8 +43,13 @@ __all__ = [
     "Sequential",
     "Speaker",
     "SkillsExtension",
+    "MCPServersExtension",
+    "ToolLibraryExtension",
+    "ToolLibraryExtensionHandle",
+    "ToolSearchExtension",
     "ToolUsageGuidanceExtension",
     "Tool",
+    "ToolExecutionPlan",
     "ToolLibrary",
     "Transcriber",
 ]
@@ -54,8 +61,13 @@ def __getattr__(name: str):
     elif name in {
         "AgentExtension",
         "AgentExtensionHandle",
+        "BackgroundTasksExtension",
         "CurrentDateExtension",
         "SkillsExtension",
+        "MCPServersExtension",
+        "ToolLibraryExtension",
+        "ToolLibraryExtensionHandle",
+        "ToolSearchExtension",
         "ToolUsageGuidanceExtension",
     }:
         value = getattr(import_module("msgflux.nn.extensions"), name)

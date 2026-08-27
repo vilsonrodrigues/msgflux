@@ -107,7 +107,9 @@ async def test_extension_removal_preserves_active_run_snapshot():
 
     assert await agent.acall("second") == "ok"
     assert "active snapshot" not in (model.calls[0]["system_prompt"] or "")
-    assert model.calls[0]["tool_catalog"] is None
+    assert [tool.name for tool in model.calls[0]["tool_catalog"].tools] == [
+        "extension_tool"
+    ]
 
     release.set()
     assert await active_run == "ok"

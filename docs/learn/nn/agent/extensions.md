@@ -81,10 +81,12 @@ handle = agent.register_extension(
 handle.remove()
 ```
 
-`remove()` disables the extension for new runs immediately. A run that already
-started keeps the extension snapshot it began with; cleanup waits until those
-runs finish. This prevents one thread from losing a hook or tool because
-another thread changed the Agent concurrently.
+`remove()` disables extension hooks for new runs immediately. A run that
+already started keeps the extension snapshot it began with, and cleanup waits
+until those runs finish. Tools contributed through the Agent's `ToolLibrary`
+remain registered until that cleanup boundary; a concurrent run started during
+removal may still observe them. Configure extensions before serving concurrent
+requests when the tool surface must remain fixed.
 
 Use async removal only when the extension itself owns asynchronous cleanup:
 

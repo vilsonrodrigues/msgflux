@@ -78,13 +78,30 @@ tool_callings
   -> resolve tool by name
   -> apply tool config
   -> prepare call params
+  -> run before_tool lifecycle hooks
+  -> build ToolExecutionPlan
   -> execute tools with scatter_gather
+  -> run after_tool lifecycle hooks
   -> collect ToolCall results
   -> return ToolResponses
 ```
 
 The async path mirrors the same structure through `aforward(...)` and
-`ascatter_gather(...)`.
+`ascatter_gather(...)`. `ToolExecutionPlan` freezes the selected tool, visible
+arguments, runtime arguments, dispatch mode, and return policy before either
+path dispatches it.
+
+## Extensions And Core Invariants
+
+`ToolLibraryExtension` owns optional packages of tools, hooks, setup, and
+cleanup. Library lifecycle hooks run before hooks inherited from an owning
+Agent. The extension mechanism powers deferred tool search, background task
+controls, and MCP server integration.
+
+The core continues to own deterministic registration and bucket routing,
+transport restoration, runtime injection, abort handling, telemetry, and plan
+dispatch. Extensions can participate at stable lifecycle boundaries but cannot
+bypass these invariants.
 
 ## Local And Remote Tools
 
@@ -129,13 +146,15 @@ An explicitly injected `ToolLibraryHandle` is the natural companion feature
 here: a tool can add a new deferred tool at runtime, and `ToolLibrary` will
 expose `tool_search` automatically if needed.
 
-`tool_search` is both a builtin operator and a `ToolBucket` with
+`ToolSearchExtension` installs `tool_search`, which is both a builtin operator
+and a `ToolBucket` with
 `capture={"defer_loading": True}`. It owns the searchable metadata, while the
 thread's `ChatMessages` owns which names have been loaded. The shared library is
 never mutated by a selection, so concurrent threads can expose different tool
 subsets safely.
 
-Background task control tools follow the same pattern through `ToolBackground`.
+Background task control tools follow the same pattern through
+`BackgroundTasksExtension`, backed by `ToolBackground`.
 The `task_status`, `task_wait`, `task_output`, `task_interrupt`,
 `task_activity`, and `task_message` tools are callable objects with
 reserved background tool kinds: the common controls use `"background"`,
