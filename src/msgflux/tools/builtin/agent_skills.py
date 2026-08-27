@@ -25,9 +25,6 @@ class SkillTool:
         return self(name)
 
 
-ActivateSkillTool = SkillTool
-
-
 class SkillSearchTool:
     """Search Agent Skills that are not listed in the initial catalog."""
 

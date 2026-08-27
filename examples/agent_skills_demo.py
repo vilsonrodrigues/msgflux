@@ -65,18 +65,18 @@ def write_skill(
     description: str,
     body: str,
     *,
-    catalog: bool = True,
+    include_in_prompt: bool = True,
 ) -> None:
     skill_dir = root / name
     skill_dir.mkdir(parents=True)
-    catalog_line = ["catalog: false"] if not catalog else []
+    prompt_line = ["include_in_prompt: false"] if not include_in_prompt else []
     (skill_dir / "SKILL.md").write_text(
         "\n".join(
             [
                 "---",
                 f"name: {name}",
                 f"description: {description}",
-                *catalog_line,
+                *prompt_line,
                 "---",
                 body,
             ]
@@ -101,7 +101,7 @@ def main() -> None:
             "release-notes",
             "Write concise release notes from merged changes.",
             "# Release Notes\n\nGroup changes by user-visible impact.",
-            catalog=False,
+            include_in_prompt=False,
         )
 
         agent = nn.Agent(

@@ -6,7 +6,7 @@ import pytest
 from msgflux.exceptions import AbortRequestedError
 from msgflux.models.response import ModelResponse
 from msgflux.nn import Agent, AgentExtension
-from msgflux.nn.hooks import Hook, SystemPromptContext
+from msgflux.nn.hooks import Hook, ModelContext
 from msgflux.nn.modules.tool import ToolLibrary
 from msgflux.runtime import AbortSignal, ExecutionScope
 from msgflux.runtime.context import execution_context
@@ -41,7 +41,7 @@ class _PromptExtension(AgentExtension):
         super().__init__("prompt")
 
     def hooks(self):
-        def add_prompt(ctx: SystemPromptContext):
+        def add_prompt(ctx: ModelContext):
             return replace(ctx, prompt=f"{ctx.prompt}\nextension prompt".strip())
 
         return (Hook(event="transform_system_prompt", handler=add_prompt),)
@@ -78,7 +78,7 @@ async def test_extension_removal_preserves_active_run_snapshot():
     model = _RecordingModel()
 
     class BlockingExtension(_PromptExtension):
-        async def add_prompt(self, ctx: SystemPromptContext):
+        async def add_prompt(self, ctx: ModelContext):
             started.set()
             await release.wait()
             return replace(ctx, prompt=f"{ctx.prompt}\nactive snapshot".strip())
@@ -216,6 +216,25 @@ async def test_abort_reaches_transform_output_after_agent_forward():
 
 
 @pytest.mark.asyncio
+async def test_agent_output_context_exposes_runtime_vars_and_scope():
+    signal = AbortSignal()
+    scope = ExecutionScope(abort_signal=signal)
+
+    def transform(ctx):
+        assert ctx.vars == {"tenant": "acme"}
+        assert ctx.scope.abort_signal is signal
+        return replace(ctx, output=f"{ctx.output}:{ctx.vars['tenant']}")
+
+    agent = Agent(
+        name="agent",
+        model=_RecordingModel(),
+        hooks=[Hook(event="transform_output", handler=transform)],
+    )
+
+    assert await agent.acall("hello", vars={"tenant": "acme"}, scope=scope) == "ok:acme"
+
+
+@pytest.mark.asyncio
 async def test_extension_state_is_shared_within_run_and_isolated_between_runs():
     class StatefulExtension(AgentExtension):
         def __init__(self):
@@ -225,7 +244,7 @@ async def test_extension_state_is_shared_within_run_and_isolated_between_runs():
             self.state()["message"] = payload.message
             return payload
 
-        def add_prompt(self, ctx: SystemPromptContext):
+        def add_prompt(self, ctx: ModelContext):
             message = self.state()["message"]
             return replace(ctx, prompt=f"{ctx.prompt}\nrun:{message}".strip())
 

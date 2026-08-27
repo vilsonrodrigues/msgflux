@@ -9,11 +9,16 @@ This keeps extensions independent from internal method names and allows the same
 hook to work in synchronous and asynchronous execution.
 
 ```python
+from dataclasses import replace
+
 from msgflux.nn.hooks import Hook
 
 
-def expand_references(output):
-    return output.replace("artifact://report", "the complete report")
+def expand_references(ctx):
+    return replace(
+        ctx,
+        output=ctx.output.replace("artifact://report", "the complete report"),
+    )
 
 
 output_hook = Hook(
@@ -34,12 +39,12 @@ The Agent currently exposes these lifecycle boundaries:
 | `before_run` | `BeforeRun` | May replace the message or call arguments before a fresh run is prepared. |
 | `before_resume` | `BeforeResume` | Observes restored durable state; its return value does not replace that state. |
 | `transform_context` | `ChatMessages` | May replace the model-visible context for the current request. |
-| `transform_system_prompt` | `SystemPromptContext` | May replace the rendered prompt; includes `scope`, `vars`, and active tool names. |
+| `transform_system_prompt` | `ModelContext` | May replace the rendered prompt; includes `scope`, `vars`, and the active tool catalog. |
 | `before_request` | Model execution parameters | May replace request parameters immediately before the LM call. |
 | `after_response` | `ModelResponse` | May replace a settled, non-streaming response before it enters history. |
 | `before_tool` | `BeforeTool` | May replace model-visible arguments or block local execution. |
 | `after_tool` | `AfterTool` | May replace the result or error before it becomes a tool result. |
-| `transform_output` | Settled user output | May replace only the value presented to the caller. |
+| `transform_output` | `OutputContext` for Agents; settled value for other Modules | May replace only the value presented to the caller. |
 
 Import typed payloads from `msgflux.nn.hooks`. Dataclass replacement keeps a
 handler explicit and preserves fields added to the contract later:
@@ -88,8 +93,9 @@ agent = Agent(
 An async handler is awaited during async execution:
 
 ```python
-async def load_artifacts(output):
-    return await artifact_store.expand(output)
+async def load_artifacts(ctx):
+    expanded = await artifact_store.expand(ctx.output, tenant=ctx.vars["tenant"])
+    return replace(ctx, output=expanded)
 
 
 output_hook = Hook(
@@ -135,8 +141,8 @@ REFERENCE = "artifact://incident-report"
 REPORT = "Incident report: scanner recovered; reconciliation pending."
 
 
-def expand_artifact_reference(output: str) -> str:
-    return output.replace(REFERENCE, REPORT)
+def expand_artifact_reference(ctx):
+    return replace(ctx, output=ctx.output.replace(REFERENCE, REPORT))
 
 
 async def main():

@@ -3,16 +3,21 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Mapping
+from typing import TYPE_CHECKING, Any, Mapping
 
 from msgflux.runtime.context import ExecutionScope
 
+if TYPE_CHECKING:
+    from msgflux.tools.definitions import ToolCatalog
+
 __all__ = [
+    "AgentContext",
     "BeforeRun",
     "BeforeTool",
     "AfterTool",
     "BeforeResume",
-    "SystemPromptContext",
+    "OutputContext",
+    "ModelContext",
 ]
 
 
@@ -33,14 +38,33 @@ class BeforeResume:
     model_preference: str | None = None
 
 
-@dataclass(frozen=True)
-class SystemPromptContext:
-    """Rendered prompt and runtime inputs exposed to prompt extensions."""
+@dataclass(frozen=True, kw_only=True)
+class AgentContext:
+    """Runtime context shared by Agent lifecycle payloads."""
 
-    prompt: str
     scope: ExecutionScope
     vars: Mapping[str, Any] = field(default_factory=dict)
-    tool_names: frozenset[str] = field(default_factory=frozenset)
+
+
+@dataclass(frozen=True, kw_only=True)
+class ModelContext(AgentContext):
+    """Model-facing prompt and tool catalog exposed to request extensions."""
+
+    prompt: str
+    tool_catalog: ToolCatalog | None = None
+
+    @property
+    def tool_names(self) -> frozenset[str]:
+        if self.tool_catalog is None:
+            return frozenset()
+        return frozenset(tool.name for tool in self.tool_catalog.portable_tools())
+
+
+@dataclass(frozen=True, kw_only=True)
+class OutputContext(AgentContext):
+    """Settled Agent output before presentation to the caller."""
+
+    output: Any
 
 
 @dataclass(frozen=True)

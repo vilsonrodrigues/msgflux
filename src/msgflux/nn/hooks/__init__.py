@@ -4,34 +4,40 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from msgflux.nn.hooks.events import (
         AfterTool,
+        AgentContext,
         BeforeResume,
         BeforeRun,
         BeforeTool,
-        SystemPromptContext,
+        ModelContext,
+        OutputContext,
     )
     from msgflux.nn.hooks.guard import Guard
     from msgflux.nn.hooks.hook import Hook, RemovableHandle
 
 __all__ = [
+    "AgentContext",
     "AfterTool",
     "BeforeResume",
     "BeforeRun",
     "BeforeTool",
     "Guard",
     "Hook",
+    "OutputContext",
     "RemovableHandle",
-    "SystemPromptContext",
+    "ModelContext",
 ]
 
 _LAZY_IMPORTS = {
+    "AgentContext": ("msgflux.nn.hooks.events", "AgentContext"),
     "AfterTool": ("msgflux.nn.hooks.events", "AfterTool"),
     "BeforeResume": ("msgflux.nn.hooks.events", "BeforeResume"),
     "BeforeRun": ("msgflux.nn.hooks.events", "BeforeRun"),
     "BeforeTool": ("msgflux.nn.hooks.events", "BeforeTool"),
     "Guard": ("msgflux.nn.hooks.guard", "Guard"),
     "Hook": ("msgflux.nn.hooks.hook", "Hook"),
+    "OutputContext": ("msgflux.nn.hooks.events", "OutputContext"),
     "RemovableHandle": ("msgflux.nn.hooks.hook", "RemovableHandle"),
-    "SystemPromptContext": ("msgflux.nn.hooks.events", "SystemPromptContext"),
+    "ModelContext": ("msgflux.nn.hooks.events", "ModelContext"),
 }
 
 

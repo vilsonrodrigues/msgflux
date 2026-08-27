@@ -208,7 +208,8 @@ Agents in msgFlux are flexible — prompt them directly, use **signatures** for 
         class Support(nn.Agent):
             model = mf.Model.chat_completion("openai/gpt-4.1-mini")
             instructions = "Help the customer based on their account information."
-            config = {"verbose": True, "include_date": True}
+            extensions = [nn.CurrentDateExtension()]
+            config = {"verbose": True}
 
         agent = Support()
 

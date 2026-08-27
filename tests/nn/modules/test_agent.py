@@ -7,6 +7,7 @@ from msgflux.runtime.agent_inbox import AgentInbox, InMemoryAgentInboxStore
 from msgflux.nn.modules.agent import Agent, _RESERVED_KWARGS
 from msgflux.core.message import Message
 from msgflux.models.response import ModelResponse, ModelStreamResponse
+from msgflux.nn import CurrentDateExtension
 from msgflux.nn.modules.tool import ToolLibrary, ToolResponses, ToolCall
 from msgflux.core.examples import Example
 
@@ -928,14 +929,12 @@ class TestAgentConfigOptions:
 
         assert agent.config.get("tool_choice") == "auto"
 
-    def test_agent_config_include_date(self):
-        """Test Agent with include_date config."""
+    def test_agent_config_rejects_include_date(self):
         mock_model = Mock()
         mock_model.model_type = "chat_completion"
 
-        agent = Agent(name="agent", model=mock_model, config={"include_date": True})
-
-        assert agent.config.get("include_date") is True
+        with pytest.raises(ValueError, match="Invalid config keys"):
+            Agent(name="agent", model=mock_model, config={"include_date": True})
 
 
 class TestAgentAnnotations:
@@ -1069,7 +1068,7 @@ class TestAgentSystemPrompt:
             name="agent",
             model=mock_model,
             system_message="You are helpful",
-            config={"include_date": True},
+            extensions=[CurrentDateExtension()],
         )
 
         system_prompt = agent.get_system_prompt()

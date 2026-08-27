@@ -17,6 +17,7 @@ import asyncio
 import os
 from collections import Counter
 from collections.abc import AsyncIterator, Callable
+from dataclasses import replace
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any
@@ -137,8 +138,8 @@ async def validate_output_transform(model_path: str) -> None:
     reference = "artifact://incident-report"
     expanded = "Incident report: scanner recovered; reconciliation pending."
 
-    def expand_reference(output: str) -> str:
-        return output.replace(reference, expanded)
+    def expand_reference(ctx):
+        return replace(ctx, output=ctx.output.replace(reference, expanded))
 
     history = ChatMessages()
     agent = Agent(

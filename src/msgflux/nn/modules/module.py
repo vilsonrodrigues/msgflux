@@ -3,6 +3,7 @@ import functools
 import inspect
 import weakref
 from collections import OrderedDict, namedtuple
+from contextlib import nullcontext
 from types import MethodType
 from typing import (
     Any,
@@ -1731,6 +1732,10 @@ class Module:
         """Prepare execution kwargs for an event-stream-owned call."""
         return kwargs
 
+    def _event_stream_execution_context(self, _kwargs: Dict[str, Any]):
+        """Return optional module-specific context kept through stream finalization."""
+        return nullcontext()
+
     @staticmethod
     async def _aconsume_event_response(
         response: ModelStreamResponse,
@@ -1770,7 +1775,7 @@ class Module:
         if isinstance(result, ModelStreamResponse):
             await self._aconsume_event_response(result, emit_content=not buffered)
             output = result.data
-            output = await self._arun_lifecycle_hooks("transform_output", output)
+            output = await self._atransform_module_output(output)
         else:
             output = result
         emit_event(EventType.MESSAGE_END, {"content": output})
@@ -1797,6 +1802,7 @@ class Module:
                     _capture_events(channel.sink),
                     execution_context(scope=scope),
                     event_source(source_name, source_type),
+                    self._event_stream_execution_context(stream_kwargs),
                 ):
                     emit_event(EventType.RUN_START)
                     emit_event(EventType.TURN_START)

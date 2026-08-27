@@ -29,7 +29,9 @@ if TYPE_CHECKING:
     from msgflux.nn.extensions import (
         AgentExtension,
         AgentExtensionHandle,
+        CurrentDateExtension,
         SkillsExtension,
+        ToolUsageGuidanceExtension,
     )
     from msgflux.runtime import (
         AbortSignal,
@@ -66,6 +68,7 @@ __all__ = [
     "AgentSkillManager",
     "AgentExtension",
     "AgentExtensionHandle",
+    "CurrentDateExtension",
     "AgentInbox",
     "AgentInboxStore",
     "AgentControlMessage",
@@ -99,6 +102,7 @@ __all__ = [
     "Spans",
     "SkillsConfig",
     "SkillsExtension",
+    "ToolUsageGuidanceExtension",
     "Store",
     "TaskError",
     "ToolNotificationHandle",
@@ -123,6 +127,7 @@ __all__ = [
 _LAZY_IMPORTS = {
     "AgentExtension": ("msgflux.nn.extensions", "AgentExtension"),
     "AgentExtensionHandle": ("msgflux.nn.extensions", "AgentExtensionHandle"),
+    "CurrentDateExtension": ("msgflux.nn.extensions", "CurrentDateExtension"),
     "Audio": ("msgflux.data.types", "Audio"),
     "AgentSkill": ("msgflux.runtime", "AgentSkill"),
     "AgentSkillManager": ("msgflux.runtime", "AgentSkillManager"),
@@ -159,6 +164,10 @@ _LAZY_IMPORTS = {
     "Signature": ("msgflux.dsl.signature", "Signature"),
     "SkillsConfig": ("msgflux.runtime", "SkillsConfig"),
     "SkillsExtension": ("msgflux.nn.extensions", "SkillsExtension"),
+    "ToolUsageGuidanceExtension": (
+        "msgflux.nn.extensions",
+        "ToolUsageGuidanceExtension",
+    ),
     "Spans": ("msgflux.telemetry", "Spans"),
     "Store": ("msgflux.data.stores", "Store"),
     "TaskError": ("msgflux.exceptions", "TaskError"),

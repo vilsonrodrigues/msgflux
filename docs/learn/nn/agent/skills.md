@@ -32,8 +32,9 @@ Inspect correctness first, then tests and edge cases.
 to 64 characters. `description` is required and limited to 1024 characters.
 The optional `license`, `compatibility`, and `metadata` fields are retained.
 
-Set `catalog: false` in the frontmatter when a skill should be discoverable by
-search but omitted from the initial prompt.
+Set `include_in_prompt: false` in the frontmatter when a skill should remain
+discoverable but its name and description should be omitted from the initial
+prompt.
 
 ## Install Skills
 
@@ -73,7 +74,7 @@ code should use the extension directly.
 | `preload` | Put selected full instructions in the initial system prompt. |
 | `defer_loading` | When `true` (default), expose non-preloaded skills through `skill`. When `false`, preload all skills. |
 | `catalog_limit` | Maximum descriptions in the initial prompt; `0` keeps it empty. |
-| `search` | Register `skill_search` when hidden skills exist. Defaults to `true`. |
+| `discovery` | `"tool"` (default), a Markdown path, or `None`. Chooses how skills omitted from the prompt are discovered. |
 | `search_top_k` | Default maximum results from `skill_search`. |
 
 Preload stable instructions that every request needs:
@@ -118,16 +119,42 @@ Relative paths in this skill are relative to the skill directory.
 The result enters the conversation as a normal tool result, so it remains
 visible for the rest of the trajectory.
 
-If the catalog omits any deferred skills and `search=True`, the extension also
-contributes:
+With `discovery="tool"`, the extension contributes `skill_search` when the
+prompt omits any deferred skills:
 
 ```python
 skill_search(query: str, top_k: int | None = None) -> str
 ```
 
 Search uses the local BM25 retriever over skill names, descriptions, and
-metadata. Set `search=False` when discovery is handled elsewhere, such as a
-generated catalog file searchable through filesystem tools.
+metadata.
+
+### Filesystem Index
+
+Pass a Markdown path to keep the complete discovery catalog out of the prompt
+and avoid registering `skill_search`:
+
+```python
+from pathlib import Path
+
+skills = mf.SkillsExtension(
+    {
+        "paths": ".agents/skills",
+        "discovery": Path(".msgflux/skills/index.md"),
+    }
+)
+```
+
+On registration, the extension creates or refreshes the parent directories and
+`index.md`. The deterministic file contains each deferred skill's name and
+description. The system prompt includes only its resolved location and tells
+the model to search the index with an available filesystem tool, then call
+`skill(name)` to load the selected workflow. The extension does not repeat
+frontmatter in the index or expose the full skill body there.
+
+Use `discovery=None` only when the application supplies another discovery
+mechanism. Deferred skills still have the `skill` loader, but omitted names
+will not be discoverable through msgFlux.
 
 ## Remove Skills
 

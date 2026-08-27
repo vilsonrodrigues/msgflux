@@ -78,6 +78,14 @@ class AgentExtension(Module):
         key = (id(self._agent_ref()), self.name)
         return states.setdefault(key, {})
 
+    @property
+    def agent(self) -> Agent:
+        """Return the Agent that currently owns this extension."""
+        agent = self._agent_ref() if self._agent_ref is not None else None
+        if agent is None:
+            raise RuntimeError("The extension is not registered on an Agent")
+        return agent
+
     def _bind_agent(self, agent: Agent) -> None:
         self._agent_ref = weakref.ref(agent)
 

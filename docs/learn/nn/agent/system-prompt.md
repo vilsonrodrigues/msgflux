@@ -1,6 +1,7 @@
 # System Prompt Components
 
-The system prompt is composed of 7 components:
+The core system prompt template is composed of five stable components. Optional
+capabilities append their own sections through Agent Extensions:
 
 | Component | Description | Example |
 |-----------|-------------|---------|
@@ -9,10 +10,13 @@ The system prompt is composed of 7 components:
 | **expected_output** | Format of the response | "Your answer must be concise..." |
 | **examples** | Input/output examples | Examples of reasoning and outputs |
 | **system_extra_message** | Additional system context | Extra instructions or constraints |
-| **include_date** | Include current date | Adds "Weekday, Month DD, YYYY" |
-| **tool_usage_guidance** | Tool-specific usage instructions | Guidance from exposed tools, such as when to call each tool |
+| **CurrentDateExtension** | Optional current date capability | Adds "Weekday, Month DD, YYYY" |
+| **ToolUsageGuidanceExtension** | Tool-owned usage instructions | Guidance from exposed tools, such as when to call each tool |
 
-All components are assembled using a **system prompt template**, that can be customized via `templates={"system": "..."}`. By default, the template concatenates all defined components in a structured format using XML tags.
+The five core components are assembled using a **system prompt template**, which
+can be customized via `templates={"system_prompt": "..."}`. Extensions run
+after that template is rendered, so custom templates do not need placeholders
+for current date, tool guidance, skills, or other capabilities.
 
 ???+ example
 
@@ -42,7 +46,8 @@ All components are assembled using a **system prompt template**, that can be cus
         system_extra_message = """
         Ensure recommendations align with ethical sales practices.
         """
-        config = {"include_date": True, "verbose": True}
+        extensions = [nn.CurrentDateExtension()]
+        config = {"verbose": True}
 
     agent = BusinessAgent()
     print(agent.get_system_prompt())

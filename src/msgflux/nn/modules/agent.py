@@ -1,4 +1,5 @@
 import asyncio
+import contextvars
 from contextlib import contextmanager
 from inspect import cleandoc
 from typing import (
@@ -55,10 +56,16 @@ from msgflux.nn.extensions.base import (
     _ExtensionHook,
     _get_extension_snapshot,
 )
+from msgflux.nn.extensions.prompt import ToolUsageGuidanceExtension
 from msgflux.nn.extensions.skills import SkillsExtension
 from msgflux.nn.functional import aspawn, await_for_event, spawn, wait_for_event
 from msgflux.nn.hooks import Hook
-from msgflux.nn.hooks.events import BeforeResume, BeforeRun, SystemPromptContext
+from msgflux.nn.hooks.events import (
+    BeforeResume,
+    BeforeRun,
+    ModelContext,
+    OutputContext,
+)
 from msgflux.nn.modules.container import ModuleDict
 from msgflux.nn.modules.generator import Generator
 from msgflux.nn.modules.module import Module
@@ -84,7 +91,7 @@ from msgflux.utils.chat import ChatBlock, response_format_from_msgspec_struct
 from msgflux.utils.common import has_format_placeholder, is_jinja_template
 from msgflux.utils.console import cprint
 from msgflux.utils.msgspec import StructFactory, is_optional_field, msgspec_dumps
-from msgflux.utils.time import utc_current_date, utc_now_isoformat
+from msgflux.utils.time import utc_now_isoformat
 from msgflux.utils.validation import is_subclass_of
 from msgflux.utils.xml import apply_xml_tags
 
@@ -108,6 +115,28 @@ _UNSET = object()
 _DEFAULT_AGENT_ANNOTATIONS = {"task": str, "return": str}
 ToolFilterValue = Union[str, List[str]]
 ToolFilter = Dict[str, ToolFilterValue]
+
+_CURRENT_AGENT_CONTEXT = contextvars.ContextVar(
+    "msgflux_current_agent_context",
+    default=None,
+)
+
+
+@contextmanager
+def _agent_context(agent: "Agent", *, scope, vars):
+    current = _CURRENT_AGENT_CONTEXT.get() or {}
+    agent_id = id(agent)
+    if agent_id in current:
+        yield current[agent_id]
+        return
+    state = {"scope": scope, "vars": vars or {}}
+    updated = dict(current)
+    updated[agent_id] = state
+    token = _CURRENT_AGENT_CONTEXT.set(updated)
+    try:
+        yield state
+    finally:
+        _CURRENT_AGENT_CONTEXT.reset(token)
 
 
 def _prepare_agent_guard_input(model_execution_params):
@@ -243,7 +272,7 @@ class Agent(Module, metaclass=AutoParams):
         config:
             Dictionary with configuration options.
             Valid keys: "verbose", "return_messages", "tool_choice",
-            "stream", "image_block_kwargs", "video_block_kwargs", "include_date",
+            "stream", "image_block_kwargs", "video_block_kwargs",
             "reasoning_in_response", "validate_inputs"
             !!! example
                 config={
@@ -253,7 +282,6 @@ class Agent(Module, metaclass=AutoParams):
                     "stream": False,
                     "image_block_kwargs": {"detail": "high"},
                     "video_block_kwargs": {"format": "mp4"},
-                    "include_date": False,
                     "validate_inputs": True,
                 }
 
@@ -266,8 +294,6 @@ class Agent(Module, metaclass=AutoParams):
               (e.g., {"detail": "high"})
             - video_block_kwargs: Dict of kwargs to pass to ChatBlock.video
               (e.g., {"format": "mp4"})
-            - include_date: Include current date with weekday in system prompt
-              (bool). Format: "Weekday, Month DD, YYYY"
             - validate_inputs: Validate input types against the signature
               schema before calling the model (bool).
         templates:
@@ -288,8 +314,8 @@ class Agent(Module, metaclass=AutoParams):
             - system_prompt: Overrides the default system prompt
               template. If not provided, uses SYSTEM_PROMPT_TEMPLATE.
               Available variables: system_message, instructions,
-              expected_output, examples, system_extra_message,
-              current_date (if include_date=True)
+              expected_output, examples, and system_extra_message. Extensions
+              may append capability-specific sections after rendering.
         context_cache:
             A fixed context.
         prefilling:
@@ -463,6 +489,16 @@ class Agent(Module, metaclass=AutoParams):
             self._set_system_message(system_message)
 
         self._initialize_extensions()
+        configured_extension_names = (
+            set(extensions)
+            if isinstance(extensions, Mapping)
+            else {extension.name for extension in extensions or ()}
+        )
+        if "tool_usage_guidance" not in configured_extension_names:
+            self.register_extension(
+                "tool_usage_guidance",
+                ToolUsageGuidanceExtension(),
+            )
         if extensions:
             self._set_extensions(extensions)
         if skills is not None:
@@ -471,6 +507,237 @@ class Agent(Module, metaclass=AutoParams):
                     "`skills` cannot be combined with a `skills` extension."
                 )
             self.register_extension("skills", SkillsExtension(skills))
+
+    def forward(
+        self,
+        message: Optional[Union[str, Mapping[str, Any], Message]] = None,
+        **kwargs: Any,
+    ) -> Union[str, Mapping[str, None], ModelStreamResponse, Message]:
+        """Execute the agent with the given message.
+
+        Args:
+            message: The input message, which can be:
+                - str: Direct task input (used as task)
+                - Message: Message object with fields mapped via message_fields.
+                  Requires message_fields configuration, e.g.:
+                  message_fields={"task": "input.user"}
+                - dict: Task inputs as a dictionary
+                - None: When using named task arguments (see below)
+            **kwargs: Can include:
+                - Reserved kwargs (runtime overrides for message_fields):
+                    - task_multimodal: Override multimodal inputs
+                    - messages: Override chat messages (chat history)
+                    - task_context: Override task context
+                    - model_preference: Override model preference
+                    - vars: Override template/tool variables
+                    - tool_filter: Filter which tools are available to the model.
+                      Must contain exactly one key: "allow" or "block".
+                      Values can be a single tool name or a list of names.
+                      - {"allow": ["tool1", "tool2"]}: Only these tools are available
+                      - {"allow": "tool1"}: Only this tool is available
+                      - {"block": ["tool3"]}: All tools except these are available
+                      - {"block": "*"}: Disable all tools
+                - Named task arguments: When message=None and a task template is
+                  configured, any other kwargs are treated as task inputs.
+                  Example: agent(name="Vilson", age=28)
+                  This is useful when using agents as tools with typed annotations.
+
+        Returns:
+            Agent response (str, Message, or ModelStreamResponse depending on
+            configuration)
+
+        Raises:
+            ValueError: If both message and named task arguments are provided,
+                or if named arguments are used without a task template.
+
+        Examples:
+            >>> # String input
+            >>> agent("What is the weather?")
+
+            >>> # Dict input
+            >>> agent({"city": "Natal"})
+
+            >>> # Message input (requires message_fields configuration)
+            >>> agent_with_message = Agent(
+            ...     model=model,
+            ...     message_fields={"task": "user.query"}
+            ... )
+            >>> msg = Message()
+            >>> msg.set("user.query", "Hello")
+            >>> agent_with_message(msg)
+
+            >>> # Named arguments (requires task template)
+            >>> agent = Agent(
+            ...     model=model,
+            ...     templates={"task": "Greet {{name}} who is {{age}} years old"},
+            ... )
+            >>> agent(name="Vilson", age=28)
+
+            >>> # Filter tools - allow only specific tools
+            >>> agent("query", tool_filter={"allow": ["search", "calculator"]})
+
+            >>> # Filter tools - block specific tools
+            >>> agent("query", tool_filter={"block": ["browser"]})
+        """
+        requested_scope = self._get_requested_scope(kwargs)
+        resumed = self._try_resume_from_checkpoint(
+            kwargs.get("messages"),
+            scope=requested_scope,
+        )
+        if resumed is not None:
+            resumed["vars"] = kwargs.get("vars", {})
+            self._run_lifecycle_hooks(
+                "before_resume",
+                BeforeResume(
+                    scope=resumed["scope"],
+                    messages=resumed["messages"],
+                    model_preference=resumed.get("model_preference"),
+                ),
+            )
+            inputs = resumed
+        else:
+            run_event = self._run_lifecycle_hooks(
+                "before_run",
+                BeforeRun(message=message, kwargs=dict(kwargs)),
+            )
+            inputs = self._prepare_inputs(
+                run_event.message,
+                **dict(run_event.kwargs),
+            )
+
+        self._update_agent_context(inputs)
+        effective_checkpoint_store = self._get_effective_checkpoint_store()
+        effective_task_store = self._get_effective_task_store()
+        effective_inbox = self._get_effective_agent_inbox()
+        if effective_inbox is not None:
+            effective_inbox.bind_scope(
+                inputs.get("scope"),
+                namespace=self.get_module_name(),
+            )
+        with execution_context(
+            scope=inputs.get("scope"),
+            checkpoint_store=effective_checkpoint_store,
+            task_store=effective_task_store,
+            agent_inbox=effective_inbox,
+        ):
+            try:
+                model_response = self._execute_model(
+                    prefilling=self.prefilling,
+                    **inputs,
+                )
+            except _GuardInterrupt as e:
+                return self._define_response_mode(e.response, message)
+            except (AbortRequestedError, TaskInterruptRequestedError) as exc:
+                self._checkpoint_interrupted(inputs, exc)
+                self._raise_interrupted_from_abort(inputs, exc)
+            except TaskPauseRequestedError:
+                paused_messages = inputs.get("messages")
+                if (
+                    isinstance(paused_messages, ChatMessages)
+                    and paused_messages.get_active_turn() is not None
+                ):
+                    paused_messages.end_turn(event="pause")
+                self._checkpoint_save(
+                    paused_messages, inputs.get("vars", {}), status="paused"
+                )
+                raise
+            except Exception:
+                self._checkpoint_save_on_error(inputs)
+                raise
+            try:
+                response = self._process_model_response(
+                    message,
+                    model_response,
+                    **inputs,
+                )
+            except (AbortRequestedError, TaskInterruptRequestedError) as exc:
+                self._checkpoint_interrupted(inputs, exc)
+                self._raise_interrupted_from_abort(inputs, exc)
+            return response
+
+    async def aforward(
+        self,
+        message: Optional[Union[str, Mapping[str, Any], Message]] = None,
+        **kwargs: Any,
+    ) -> Union[str, Mapping[str, None], ModelStreamResponse, Message]:
+        """Async version of forward."""
+        requested_scope = self._get_requested_scope(kwargs)
+        resumed = await self._atry_resume_from_checkpoint(
+            kwargs.get("messages"),
+            scope=requested_scope,
+        )
+        if resumed is not None:
+            resumed["vars"] = kwargs.get("vars", {})
+            await self._arun_lifecycle_hooks(
+                "before_resume",
+                BeforeResume(
+                    scope=resumed["scope"],
+                    messages=resumed["messages"],
+                    model_preference=resumed.get("model_preference"),
+                ),
+            )
+            inputs = resumed
+        else:
+            run_event = await self._arun_lifecycle_hooks(
+                "before_run",
+                BeforeRun(message=message, kwargs=dict(kwargs)),
+            )
+            inputs = await self._aprepare_inputs(
+                run_event.message,
+                **dict(run_event.kwargs),
+            )
+
+        self._update_agent_context(inputs)
+        effective_checkpoint_store = self._get_effective_checkpoint_store()
+        effective_task_store = self._get_effective_task_store()
+        effective_inbox = self._get_effective_agent_inbox()
+        if effective_inbox is not None:
+            effective_inbox.bind_scope(
+                inputs.get("scope"),
+                namespace=self.get_module_name(),
+            )
+        with execution_context(
+            scope=inputs.get("scope"),
+            checkpoint_store=effective_checkpoint_store,
+            task_store=effective_task_store,
+            agent_inbox=effective_inbox,
+        ):
+            try:
+                model_response = await self._aexecute_model(
+                    prefilling=self.prefilling,
+                    **inputs,
+                )
+            except _GuardInterrupt as e:
+                return self._define_response_mode(e.response, message)
+            except (AbortRequestedError, TaskInterruptRequestedError) as exc:
+                await self._acheckpoint_interrupted(inputs, exc)
+                self._raise_interrupted_from_abort(inputs, exc)
+            except TaskPauseRequestedError:
+                paused_messages = inputs.get("messages")
+                if (
+                    isinstance(paused_messages, ChatMessages)
+                    and paused_messages.get_active_turn() is not None
+                ):
+                    paused_messages.end_turn(event="pause")
+                await self._acheckpoint_save(
+                    paused_messages,
+                    inputs.get("vars", {}),
+                    status="paused",
+                )
+                raise
+            except Exception:
+                await self._acheckpoint_save_on_error(inputs)
+                raise
+            try:
+                response = await self._aprocess_model_response(
+                    message,
+                    model_response,
+                    **inputs,
+                )
+            except (AbortRequestedError, TaskInterruptRequestedError) as exc:
+                await self._acheckpoint_interrupted(inputs, exc)
+                self._raise_interrupted_from_abort(inputs, exc)
+            return response
 
     # --- Extensions ---
 
@@ -646,13 +913,75 @@ class Agent(Module, metaclass=AutoParams):
 
     def _call_impl_with_hooks(self, *args, **kwargs):
         with self._extension_run_snapshot():
-            with execution_context(scope=kwargs.get("scope")):
+            with (
+                execution_context(scope=kwargs.get("scope")),
+                _agent_context(
+                    self,
+                    scope=kwargs.get("scope") or get_execution_context()["scope"],
+                    vars=kwargs.get("vars") or {},
+                ),
+            ):
                 return super()._call_impl_with_hooks(*args, **kwargs)
 
     async def _acall_impl_with_hooks(self, *args, **kwargs):
         with self._extension_run_snapshot():
-            with execution_context(scope=kwargs.get("scope")):
+            with (
+                execution_context(scope=kwargs.get("scope")),
+                _agent_context(
+                    self,
+                    scope=kwargs.get("scope") or get_execution_context()["scope"],
+                    vars=kwargs.get("vars") or {},
+                ),
+            ):
                 return await super()._acall_impl_with_hooks(*args, **kwargs)
+
+    @contextmanager
+    def _event_stream_execution_context(self, kwargs: Dict[str, Any]):
+        with (
+            self._extension_run_snapshot(),
+            _agent_context(
+                self,
+                scope=kwargs.get("scope") or get_execution_context()["scope"],
+                vars=kwargs.get("vars") or {},
+            ),
+        ):
+            yield
+
+    def _update_agent_context(self, inputs: Mapping[str, Any]) -> None:
+        state = (_CURRENT_AGENT_CONTEXT.get() or {}).get(id(self))
+        if state is not None:
+            state["scope"] = inputs.get("scope") or state["scope"]
+            state["vars"] = inputs.get("vars") or {}
+
+    def _output_context(self, output: Any) -> OutputContext:
+        state = (_CURRENT_AGENT_CONTEXT.get() or {}).get(id(self), {})
+        return OutputContext(
+            output=output,
+            scope=state.get("scope") or get_execution_context()["scope"],
+            vars=state.get("vars") or {},
+        )
+
+    def _transform_module_output(self, output: Any) -> Any:
+        if isinstance(output, ModelStreamResponse):
+            return output
+        context = self._run_lifecycle_hooks(
+            "transform_output",
+            self._output_context(output),
+        )
+        if not isinstance(context, OutputContext):
+            raise TypeError("Agent `transform_output` hooks must return OutputContext")
+        return context.output
+
+    async def _atransform_module_output(self, output: Any) -> Any:
+        if isinstance(output, ModelStreamResponse):
+            return output
+        context = await self._arun_lifecycle_hooks(
+            "transform_output",
+            self._output_context(output),
+        )
+        if not isinstance(context, OutputContext):
+            raise TypeError("Agent `transform_output` hooks must return OutputContext")
+        return context.output
 
     @property
     def agent_skill_manager(self):
@@ -695,235 +1024,6 @@ class Agent(Module, metaclass=AutoParams):
             abort_signal=abort_signal,
         )
         return prepared
-
-    def forward(
-        self,
-        message: Optional[Union[str, Mapping[str, Any], Message]] = None,
-        **kwargs: Any,
-    ) -> Union[str, Mapping[str, None], ModelStreamResponse, Message]:
-        """Execute the agent with the given message.
-
-        Args:
-            message: The input message, which can be:
-                - str: Direct task input (used as task)
-                - Message: Message object with fields mapped via message_fields.
-                  Requires message_fields configuration, e.g.:
-                  message_fields={"task": "input.user"}
-                - dict: Task inputs as a dictionary
-                - None: When using named task arguments (see below)
-            **kwargs: Can include:
-                - Reserved kwargs (runtime overrides for message_fields):
-                    - task_multimodal: Override multimodal inputs
-                    - messages: Override chat messages (chat history)
-                    - task_context: Override task context
-                    - model_preference: Override model preference
-                    - vars: Override template/tool variables
-                    - tool_filter: Filter which tools are available to the model.
-                      Must contain exactly one key: "allow" or "block".
-                      Values can be a single tool name or a list of names.
-                      - {"allow": ["tool1", "tool2"]}: Only these tools are available
-                      - {"allow": "tool1"}: Only this tool is available
-                      - {"block": ["tool3"]}: All tools except these are available
-                      - {"block": "*"}: Disable all tools
-                - Named task arguments: When message=None and a task template is
-                  configured, any other kwargs are treated as task inputs.
-                  Example: agent(name="Vilson", age=28)
-                  This is useful when using agents as tools with typed annotations.
-
-        Returns:
-            Agent response (str, Message, or ModelStreamResponse depending on
-            configuration)
-
-        Raises:
-            ValueError: If both message and named task arguments are provided,
-                or if named arguments are used without a task template.
-
-        Examples:
-            >>> # String input
-            >>> agent("What is the weather?")
-
-            >>> # Dict input
-            >>> agent({"city": "Natal"})
-
-            >>> # Message input (requires message_fields configuration)
-            >>> agent_with_message = Agent(
-            ...     model=model,
-            ...     message_fields={"task": "user.query"}
-            ... )
-            >>> msg = Message()
-            >>> msg.set("user.query", "Hello")
-            >>> agent_with_message(msg)
-
-            >>> # Named arguments (requires task template)
-            >>> agent = Agent(
-            ...     model=model,
-            ...     templates={"task": "Greet {{name}} who is {{age}} years old"},
-            ... )
-            >>> agent(name="Vilson", age=28)
-
-            >>> # Filter tools - allow only specific tools
-            >>> agent("query", tool_filter={"allow": ["search", "calculator"]})
-
-            >>> # Filter tools - block specific tools
-            >>> agent("query", tool_filter={"block": ["browser"]})
-        """
-        requested_scope = self._get_requested_scope(kwargs)
-        resumed = self._try_resume_from_checkpoint(
-            kwargs.get("messages"),
-            scope=requested_scope,
-        )
-        if resumed is not None:
-            resumed["vars"] = kwargs.get("vars", {})
-            self._run_lifecycle_hooks(
-                "before_resume",
-                BeforeResume(
-                    scope=resumed["scope"],
-                    messages=resumed["messages"],
-                    model_preference=resumed.get("model_preference"),
-                ),
-            )
-            inputs = resumed
-        else:
-            run_event = self._run_lifecycle_hooks(
-                "before_run",
-                BeforeRun(message=message, kwargs=dict(kwargs)),
-            )
-            inputs = self._prepare_inputs(
-                run_event.message,
-                **dict(run_event.kwargs),
-            )
-
-        effective_checkpoint_store = self._get_effective_checkpoint_store()
-        effective_task_store = self._get_effective_task_store()
-        effective_inbox = self._get_effective_agent_inbox()
-        if effective_inbox is not None:
-            effective_inbox.bind_scope(
-                inputs.get("scope"),
-                namespace=self.get_module_name(),
-            )
-        with execution_context(
-            scope=inputs.get("scope"),
-            checkpoint_store=effective_checkpoint_store,
-            task_store=effective_task_store,
-            agent_inbox=effective_inbox,
-        ):
-            try:
-                model_response = self._execute_model(
-                    prefilling=self.prefilling,
-                    **inputs,
-                )
-            except _GuardInterrupt as e:
-                return self._define_response_mode(e.response, message)
-            except (AbortRequestedError, TaskInterruptRequestedError) as exc:
-                self._checkpoint_interrupted(inputs, exc)
-                self._raise_interrupted_from_abort(inputs, exc)
-            except TaskPauseRequestedError:
-                paused_messages = inputs.get("messages")
-                if (
-                    isinstance(paused_messages, ChatMessages)
-                    and paused_messages.get_active_turn() is not None
-                ):
-                    paused_messages.end_turn(event="pause")
-                self._checkpoint_save(
-                    paused_messages, inputs.get("vars", {}), status="paused"
-                )
-                raise
-            except Exception:
-                self._checkpoint_save_on_error(inputs)
-                raise
-            try:
-                response = self._process_model_response(
-                    message,
-                    model_response,
-                    **inputs,
-                )
-            except (AbortRequestedError, TaskInterruptRequestedError) as exc:
-                self._checkpoint_interrupted(inputs, exc)
-                self._raise_interrupted_from_abort(inputs, exc)
-            return response
-
-    async def aforward(
-        self,
-        message: Optional[Union[str, Mapping[str, Any], Message]] = None,
-        **kwargs: Any,
-    ) -> Union[str, Mapping[str, None], ModelStreamResponse, Message]:
-        """Async version of forward."""
-        requested_scope = self._get_requested_scope(kwargs)
-        resumed = await self._atry_resume_from_checkpoint(
-            kwargs.get("messages"),
-            scope=requested_scope,
-        )
-        if resumed is not None:
-            resumed["vars"] = kwargs.get("vars", {})
-            await self._arun_lifecycle_hooks(
-                "before_resume",
-                BeforeResume(
-                    scope=resumed["scope"],
-                    messages=resumed["messages"],
-                    model_preference=resumed.get("model_preference"),
-                ),
-            )
-            inputs = resumed
-        else:
-            run_event = await self._arun_lifecycle_hooks(
-                "before_run",
-                BeforeRun(message=message, kwargs=dict(kwargs)),
-            )
-            inputs = await self._aprepare_inputs(
-                run_event.message,
-                **dict(run_event.kwargs),
-            )
-
-        effective_checkpoint_store = self._get_effective_checkpoint_store()
-        effective_task_store = self._get_effective_task_store()
-        effective_inbox = self._get_effective_agent_inbox()
-        if effective_inbox is not None:
-            effective_inbox.bind_scope(
-                inputs.get("scope"),
-                namespace=self.get_module_name(),
-            )
-        with execution_context(
-            scope=inputs.get("scope"),
-            checkpoint_store=effective_checkpoint_store,
-            task_store=effective_task_store,
-            agent_inbox=effective_inbox,
-        ):
-            try:
-                model_response = await self._aexecute_model(
-                    prefilling=self.prefilling,
-                    **inputs,
-                )
-            except _GuardInterrupt as e:
-                return self._define_response_mode(e.response, message)
-            except (AbortRequestedError, TaskInterruptRequestedError) as exc:
-                await self._acheckpoint_interrupted(inputs, exc)
-                self._raise_interrupted_from_abort(inputs, exc)
-            except TaskPauseRequestedError:
-                paused_messages = inputs.get("messages")
-                if (
-                    isinstance(paused_messages, ChatMessages)
-                    and paused_messages.get_active_turn() is not None
-                ):
-                    paused_messages.end_turn(event="pause")
-                await self._acheckpoint_save(
-                    paused_messages,
-                    inputs.get("vars", {}),
-                    status="paused",
-                )
-                raise
-            except Exception:
-                await self._acheckpoint_save_on_error(inputs)
-                raise
-            try:
-                response = await self._aprocess_model_response(
-                    message,
-                    model_response,
-                    **inputs,
-                )
-            except (AbortRequestedError, TaskInterruptRequestedError) as exc:
-                await self._acheckpoint_interrupted(inputs, exc)
-                self._raise_interrupted_from_abort(inputs, exc)
-            return response
 
     # --- Model Execution ---
 
@@ -1113,18 +1213,11 @@ class Agent(Module, metaclass=AutoParams):
     ) -> dotdict:
         prompt_ctx = await self._arun_lifecycle_hooks(
             "transform_system_prompt",
-            SystemPromptContext(
+            ModelContext(
                 prompt=model_execution_params.system_prompt or "",
                 scope=scope or get_execution_context()["scope"],
                 vars=vars,
-                tool_names=frozenset(
-                    tool.name
-                    for tool in (
-                        model_execution_params.tool_catalog.portable_tools()
-                        if model_execution_params.tool_catalog is not None
-                        else ()
-                    )
-                ),
+                tool_catalog=model_execution_params.tool_catalog,
             ),
         )
         model_execution_params.system_prompt = prompt_ctx.prompt or None
@@ -1192,10 +1285,9 @@ class Agent(Module, metaclass=AutoParams):
             search_tool=tool_catalog.search_tool,
         )
         portable_tools = tool_catalog.portable_tools()
-        tool_names = {tool.name for tool in portable_tools}
         system_prompt = self.get_system_prompt(
             vars,
-            tool_names=tool_names,
+            tool_catalog=tool_catalog,
             _apply_hooks=transform_system_prompt,
         )
 
@@ -3630,7 +3722,7 @@ class Agent(Module, metaclass=AutoParams):
             config:
                 Dictionary with configuration options.
                 Valid keys: "verbose", "return_messages", "tool_choice",
-                "stream", "image_block_kwargs", "video_block_kwargs", "include_date"
+                "stream", "image_block_kwargs", "video_block_kwargs"
 
         Raises:
             TypeError:
@@ -3646,7 +3738,6 @@ class Agent(Module, metaclass=AutoParams):
             "stream",
             "image_block_kwargs",
             "video_block_kwargs",
-            "include_date",
             "reasoning_in_response",
             "max_tool_turns",
             "validate_inputs",
@@ -3963,7 +4054,7 @@ class Agent(Module, metaclass=AutoParams):
     def get_system_prompt(
         self,
         vars: Optional[Mapping[str, Any]] = None,
-        tool_names: Optional[set[str]] = None,
+        tool_catalog: Optional[ToolCatalog] = None,
         *,
         _apply_hooks: bool = True,
     ) -> str:
@@ -3976,11 +4067,7 @@ class Agent(Module, metaclass=AutoParams):
             expected_output=self.expected_output.data,
             examples=self.examples.data,
             system_extra_message=self.system_extra_message,
-            tool_usage_guidance=self.tool_library.get_tool_usage_guidance(tool_names),
         )
-
-        if self.config.get("include_date", False):
-            template_inputs.current_date = utc_current_date()
 
         system_prompt = self._format_template(
             template_inputs, self.system_prompt_template
@@ -3990,13 +4077,15 @@ class Agent(Module, metaclass=AutoParams):
             system_prompt = self._format_template(vars, system_prompt)
         if not _apply_hooks:
             return system_prompt
+        if tool_catalog is None:
+            tool_catalog = self.tool_library.get_tool_catalog()
         ctx = self._run_lifecycle_hooks(
             "transform_system_prompt",
-            SystemPromptContext(
+            ModelContext(
                 prompt=system_prompt,
                 scope=get_execution_context()["scope"],
                 vars=vars or {},
-                tool_names=frozenset(tool_names or ()),
+                tool_catalog=tool_catalog,
             ),
         )
         return ctx.prompt

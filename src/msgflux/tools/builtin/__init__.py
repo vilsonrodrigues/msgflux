@@ -1,10 +1,6 @@
 """Built-in agent tools ready for use out of the box."""
 
-from msgflux.tools.builtin.agent_skills import (
-    ActivateSkillTool,
-    SkillSearchTool,
-    SkillTool,
-)
+from msgflux.tools.builtin.agent_skills import SkillSearchTool, SkillTool
 from msgflux.tools.builtin.agent_tool import AgentTool
 from msgflux.tools.builtin.task_tool import (
     BACKGROUND_CAPABILITY_TOOLS,
@@ -29,7 +25,6 @@ from msgflux.tools.builtin.web_fetch import WebFetchTool
 from msgflux.tools.builtin.web_search import WebSearchTool
 
 __all__ = [
-    "ActivateSkillTool",
     "AgentTool",
     "BACKGROUND_CAPABILITY_TOOLS",
     "BASE_TASK_TOOLS",

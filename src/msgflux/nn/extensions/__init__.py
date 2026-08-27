@@ -5,9 +5,19 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from msgflux.nn.extensions.base import AgentExtension, AgentExtensionHandle
+    from msgflux.nn.extensions.prompt import (
+        CurrentDateExtension,
+        ToolUsageGuidanceExtension,
+    )
     from msgflux.nn.extensions.skills import SkillsExtension
 
-__all__ = ["AgentExtension", "AgentExtensionHandle", "SkillsExtension"]
+__all__ = [
+    "AgentExtension",
+    "AgentExtensionHandle",
+    "CurrentDateExtension",
+    "SkillsExtension",
+    "ToolUsageGuidanceExtension",
+]
 
 _LAZY_IMPORTS = {
     "AgentExtension": ("msgflux.nn.extensions.base", "AgentExtension"),
@@ -15,7 +25,15 @@ _LAZY_IMPORTS = {
         "msgflux.nn.extensions.base",
         "AgentExtensionHandle",
     ),
+    "CurrentDateExtension": (
+        "msgflux.nn.extensions.prompt",
+        "CurrentDateExtension",
+    ),
     "SkillsExtension": ("msgflux.nn.extensions.skills", "SkillsExtension"),
+    "ToolUsageGuidanceExtension": (
+        "msgflux.nn.extensions.prompt",
+        "ToolUsageGuidanceExtension",
+    ),
 }
 
 

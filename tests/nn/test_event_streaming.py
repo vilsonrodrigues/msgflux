@@ -204,7 +204,10 @@ def test_transform_output_changes_return_without_changing_canonical_history():
         hooks=[
             Hook(
                 event="transform_output",
-                handler=lambda output: output.replace("hello", "expanded report"),
+                handler=lambda ctx: replace(
+                    ctx,
+                    output=ctx.output.replace("hello", "expanded report"),
+                ),
             )
         ]
     )

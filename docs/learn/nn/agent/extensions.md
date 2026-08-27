@@ -10,7 +10,7 @@ owns several pieces that should be installed and removed together.
 from dataclasses import replace
 
 import msgflux.nn as nn
-from msgflux.nn.hooks import Hook, SystemPromptContext
+from msgflux.nn.hooks import Hook, ModelContext
 
 
 class TenantContext(nn.AgentExtension):
@@ -18,7 +18,7 @@ class TenantContext(nn.AgentExtension):
         super().__init__("tenant_context")
         self.tenant_client = tenant_client
 
-    async def add_context(self, ctx: SystemPromptContext):
+    async def add_context(self, ctx: ModelContext):
         profile = await self.tenant_client.get_profile(ctx.vars["tenant_id"])
         return replace(ctx, prompt=f"{ctx.prompt}\nTenant profile: {profile}")
 
@@ -102,11 +102,38 @@ handle when ownership is temporary, or remove by name with
 not replace it. This separation keeps stable lifecycle boundaries reusable by
 application hooks, guards, skills, and future features such as compaction.
 
-The `transform_system_prompt` event receives `SystemPromptContext`, including
-the rendered prompt, execution scope, runtime `vars`, and active tool names.
-Return a replaced dataclass to modify it. Avoid storing per-run data on the
-extension instance because one Agent may execute multiple threads
-concurrently.
+Agent-specific lifecycle payloads derive from `AgentContext`, which carries the
+active execution `scope` and runtime `vars`. `ModelContext` adds the rendered
+`prompt` and active `tool_catalog`; `OutputContext` adds the settled
+presentation-only `output`. Return a replaced dataclass to modify one of these
+values. Avoid storing per-run data on the extension instance because one Agent
+may execute multiple threads concurrently.
+
+## Built-In Prompt Extensions
+
+Optional prompt capabilities use the same removable contract as application
+extensions. Add `CurrentDateExtension` when the model needs the current UTC
+date; tool usage guidance is supplied by `ToolUsageGuidanceExtension`. Both
+append their sections through `transform_system_prompt`, so the core Jinja
+template contains only the Agent's stable message, instructions, examples,
+expected output, and extra message.
+
+You can install or replace them explicitly:
+
+```python
+agent = nn.Agent(
+    name="support",
+    model=model,
+    extensions=[
+        nn.CurrentDateExtension(),
+        nn.ToolUsageGuidanceExtension(),
+    ],
+)
+```
+
+If an explicitly supplied extension uses one of those names, the Agent does not
+also install the matching built-in. Their names are `current_date` and
+`tool_usage_guidance`, so they can be removed like any other extension.
 
 Use `self.state()` when hooks in the same run need to share temporary data:
 

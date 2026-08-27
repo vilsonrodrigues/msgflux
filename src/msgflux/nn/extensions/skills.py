@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import replace
 
 from msgflux.nn.extensions.base import AgentExtension
-from msgflux.nn.hooks import Hook, SystemPromptContext
+from msgflux.nn.hooks import Hook, ModelContext
 from msgflux.runtime.skills import AgentSkillManager, SkillsConfig
 from msgflux.tools.builtin.agent_skills import SkillSearchTool, SkillTool
 
@@ -32,7 +32,10 @@ class SkillsExtension(AgentExtension):
                 tools.append(SkillSearchTool(self.manager))
         return tuple(tools)
 
-    def _transform_prompt(self, ctx: SystemPromptContext) -> SystemPromptContext:
+    def on_register(self, _agent) -> None:
+        self.manager.write_index()
+
+    def _transform_prompt(self, ctx: ModelContext) -> ModelContext:
         section = self._render_prompt_section()
         if not section:
             return ctx
@@ -83,7 +86,12 @@ class SkillsExtension(AgentExtension):
         elif manager.has_activatable_skills():
             lines.append("No skills are listed in this prompt.")
 
-        if manager.has_searchable_skills():
+        if manager.index_path is not None:
+            lines.append(
+                f"Search the skill index at `{manager.index_path}` by name or "
+                "description, then call `skill` with the selected name."
+            )
+        elif manager.has_searchable_skills():
             lines.append("Use `skill_search` to find skills not listed above.")
         lines.append("</agent_skills>")
         return "\n".join(lines)
