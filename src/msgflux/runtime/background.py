@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from concurrent.futures import CancelledError as FutureCancelledError
+from contextlib import nullcontext
 from functools import partial
 from threading import Lock
 from typing import Any, Dict, Mapping
@@ -20,6 +21,14 @@ from msgflux.runtime.context import (
     get_execution_context,
     new_run_id,
     new_thread_id,
+)
+from msgflux.runtime.events import (
+    EventType,
+    _capture_events,
+    _hub_event_sink,
+    _is_capturing_events,
+    emit_event,
+    event_source,
 )
 from msgflux.tasks import TaskActivityRecorder, TaskHandle
 from msgflux.tools.builtin.task_tool import (
@@ -127,7 +136,16 @@ class BackgroundTaskDispatcher:
         agent_inbox: AgentInbox | None = None,
     ) -> Any:
         scope = execution_scope or {}
-        with execution_context(**scope):
+        capture = (
+            nullcontext()
+            if _is_capturing_events()
+            else _capture_events(_hub_event_sink())
+        )
+        with (
+            execution_context(**scope),
+            capture,
+            event_source(tool_name, "background"),
+        ):
             task_handle.set_running()
             try:
                 result = tool(**call_params)
@@ -216,6 +234,14 @@ class BackgroundTaskDispatcher:
             self.register_task_inbox(task.task_id, task_inbox)
 
         task_store.requeue(task.task_id)
+        emit_event(
+            EventType.TASK_START,
+            {
+                "task_id": task.task_id,
+                "tool_name": tool_name,
+                "status": "queued",
+            },
+        )
         task_store.add_activity(
             task.task_id,
             kind="message",
@@ -352,6 +378,15 @@ class BackgroundTaskDispatcher:
             except TaskIdCollisionError:
                 continue
             break
+
+        emit_event(
+            EventType.TASK_START,
+            {
+                "task_id": task.task_id,
+                "tool_name": tool_name,
+                "status": task.status,
+            },
+        )
 
         task_inbox = None
         if is_agent_task:

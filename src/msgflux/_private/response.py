@@ -19,6 +19,18 @@ class StreamFinalState:
     items: list[dict[str, Any]]
 
 
+@dataclass(frozen=True)
+class LMStreamEvent:
+    """One provider-ordered event produced by a streaming language model."""
+
+    type: Literal[
+        "output.delta",
+        "reasoning.delta",
+        "reasoning_summary.delta",
+    ]
+    data: Any
+
+
 class CoreResponse:
     def set_metadata(self, metadata: Any):
         self.metadata = metadata
@@ -103,6 +115,14 @@ class BaseStreamResponse(CoreResponse):
         self._reasoning_summary_queue_lock = threading.Lock()
         self._reasoning_summary_closed = False
 
+        # Provider-ordered event journal. The response owns this bounded-lifetime
+        # replay so independent runtime and direct consumers preserve relative
+        # order without competing for one queue.
+        self._events = []
+        self._event_subscribers = []
+        self._event_queue_lock = threading.Lock()
+        self._events_closed = False
+
         self.metadata = None
         self.response_type = None
         self.error = None
@@ -144,6 +164,7 @@ class BaseStreamResponse(CoreResponse):
         self.finish_reasoning()
         self.finish_reasoning_summary()
         self._finish_content()
+        self._finish_events()
 
     def _finish_content(self) -> None:
         self._finish_queue_with_none(
@@ -153,6 +174,27 @@ class BaseStreamResponse(CoreResponse):
             lock_attr="_queue_lock",
             closed_attr="_content_closed",
         )
+
+    def _finish_events(self) -> None:
+        with self._event_queue_lock:
+            if self._events_closed:
+                return
+            self._events_closed = True
+            subscribers = tuple(self._event_subscribers)
+            self._event_subscribers.clear()
+        for loop, queue in subscribers:
+            if not loop.is_closed():
+                loop.call_soon_threadsafe(queue.put_nowait, None)
+
+    def _add_event(self, event: LMStreamEvent) -> None:
+        with self._event_queue_lock:
+            if self._events_closed:
+                raise RuntimeError("Cannot add an event to a closed stream.")
+            self._events.append(event)
+            subscribers = tuple(self._event_subscribers)
+        for loop, queue in subscribers:
+            if not loop.is_closed():
+                loop.call_soon_threadsafe(queue.put_nowait, event)
 
     def finish_reasoning(self) -> None:
         """Close the reasoning stream without finalizing the content stream."""
@@ -330,9 +372,9 @@ class BaseStreamResponse(CoreResponse):
             loop = self._queue_loop
             if queue is None or loop is None or loop.is_closed():
                 self._pending_chunks.append(data)
-                return
-
-        loop.call_soon_threadsafe(queue.put_nowait, data)
+            else:
+                loop.call_soon_threadsafe(queue.put_nowait, data)
+        self._add_event(LMStreamEvent(type="output.delta", data=data))
 
     def add_reasoning(
         self,
@@ -358,9 +400,10 @@ class BaseStreamResponse(CoreResponse):
             loop = self._reasoning_queue_loop
             if queue is None or loop is None or loop.is_closed():
                 self._reasoning_pending_chunks.append(data)
-                return
-
-        loop.call_soon_threadsafe(queue.put_nowait, data)
+            else:
+                loop.call_soon_threadsafe(queue.put_nowait, data)
+        if data is not None:
+            self._add_event(LMStreamEvent(type="reasoning.delta", data=data))
 
     def add_reasoning_summary(self, data: Any, *, item_id: str | None = None):
         """Add a summary delta without presenting it as chain-of-thought."""
@@ -380,8 +423,10 @@ class BaseStreamResponse(CoreResponse):
             loop = self._reasoning_summary_queue_loop
             if queue is None or loop is None or loop.is_closed():
                 self._reasoning_summary_pending_chunks.append(data)
-                return
-        loop.call_soon_threadsafe(queue.put_nowait, data)
+            else:
+                loop.call_soon_threadsafe(queue.put_nowait, data)
+        if data is not None:
+            self._add_event(LMStreamEvent(type="reasoning_summary.delta", data=data))
 
     def _bind_consumer_queue(self) -> asyncio.Queue:
         loop = asyncio.get_running_loop()
@@ -470,3 +515,32 @@ class BaseStreamResponse(CoreResponse):
                     raise self.error
                 break
             yield chunk
+
+    async def consume_events(self) -> AsyncGenerator[LMStreamEvent, None]:
+        """Yield language-model events in their original provider order."""
+        loop = asyncio.get_running_loop()
+        queue = asyncio.Queue()
+        subscriber = (loop, queue)
+        with self._event_queue_lock:
+            events = tuple(self._events)
+            closed = self._events_closed
+            if not closed:
+                self._event_subscribers.append(subscriber)
+        try:
+            for event in events:
+                yield event
+            if closed:
+                if self.error is not None:
+                    raise self.error
+                return
+            while True:
+                event = await queue.get()
+                if event is None:
+                    if self.error is not None:
+                        raise self.error
+                    return
+                yield event
+        finally:
+            with self._event_queue_lock:
+                if subscriber in self._event_subscribers:
+                    self._event_subscribers.remove(subscriber)

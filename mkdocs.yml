@@ -127,6 +127,7 @@ nav:
     - anatomy/agent.md
     - anatomy/checkpoints-and-replay.md
     - anatomy/compaction-and-context-views.md
+    - anatomy/execution-event-streaming.md
     - anatomy/index.md
     - anatomy/tool-library.md
   - Learn:

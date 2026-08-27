@@ -120,6 +120,32 @@ async def validate_basic(model_path: str) -> None:
     print_summary("basic", events)
 
 
+async def validate_reasoning_order(model_path: str) -> None:
+    agent = Agent(
+        name="reasoning_probe",
+        model=make_model(model_path),
+        instructions="Solve the arithmetic carefully, then answer briefly.",
+        config={"stream": True},
+    )
+
+    events = await collect(
+        agent.stream_events(
+            "A warehouse has 27 racks with 43 bins each. How many bins are there?"
+        )
+    )
+
+    assert_source_envelope(events)
+    assert_model_metrics(events)
+    first_summary = require_event(events, EventType.REASONING_SUMMARY_DELTA)
+    first_message_delta = require_event(events, EventType.MESSAGE_DELTA)
+    message_end = require_event(events, EventType.MESSAGE_END)
+    assert events.index(first_summary) < events.index(first_message_delta)
+    assert "1,161" in str(message_end.data["content"]) or "1161" in str(
+        message_end.data["content"]
+    )
+    print_summary("reasoning_order", events)
+
+
 async def validate_tool_loop(model_path: str) -> None:
     calls: list[str] = []
 
@@ -330,6 +356,7 @@ After loading this skill, reply with exactly EXTENSION_SKILL_OK.
 
 SCENARIOS: dict[str, Callable[[str], Any]] = {
     "basic": validate_basic,
+    "reasoning": validate_reasoning_order,
     "tool": validate_tool_loop,
     "transform": validate_output_transform,
     "nested": validate_nested_agent,

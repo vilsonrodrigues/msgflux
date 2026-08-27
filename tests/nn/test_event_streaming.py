@@ -1,12 +1,14 @@
 """Tests for public Module event streams."""
 
 import asyncio
+import threading
 from dataclasses import replace
 
 import pytest
 from unittest.mock import AsyncMock, Mock
 
 from msgflux.chat_messages import ChatMessages
+from msgflux.data.stores import InMemoryCheckpointStore
 from msgflux.models.response import ModelResponse, ModelStreamResponse
 from msgflux.models.tool_call_agg import ToolCallAggregator
 from msgflux.nn.hooks import Hook
@@ -15,7 +17,10 @@ from msgflux.nn.modules.agent import Agent
 from msgflux.nn.modules.module import Module
 from msgflux.nn.modules.tool import ToolLibrary
 from msgflux.runtime.events import EventType, emit_event, event_source
+from msgflux.runtime.context import ExecutionScope
+from msgflux.runtime.event_hub import get_event_hub
 from msgflux.tools.builtin import AgentTool
+from msgflux.tools.config import tool_config
 
 
 class EchoModule(Module):
@@ -114,6 +119,37 @@ async def test_stream_events_owns_and_consumes_model_stream():
 
 
 @pytest.mark.asyncio
+async def test_stream_events_preserve_reasoning_summary_and_output_order():
+    class OrderedStreamingModule(Module):
+        async def aforward(self):
+            response = ModelStreamResponse(mode="async")
+            response.set_response_type("text_generation")
+            response.add_reasoning("private")
+            response.add_reasoning_summary("safe summary")
+            response.add("visible answer")
+            response.finish()
+            return response
+
+    events = [event async for event in OrderedStreamingModule().stream_events()]
+    streamed = [
+        (event.type, event.data["delta"])
+        for event in events
+        if event.type
+        in {
+            EventType.REASONING_DELTA,
+            EventType.REASONING_SUMMARY_DELTA,
+            EventType.MESSAGE_DELTA,
+        }
+    ]
+
+    assert streamed == [
+        (EventType.REASONING_DELTA, "private"),
+        (EventType.REASONING_SUMMARY_DELTA, "safe summary"),
+        (EventType.MESSAGE_DELTA, "visible answer"),
+    ]
+
+
+@pytest.mark.asyncio
 async def test_parallel_internal_events_preserve_delivery_and_source_path():
     events = [event async for event in ParallelEventModule().stream_events()]
     updates = [event for event in events if event.type == EventType.TOOL_UPDATE]
@@ -168,6 +204,8 @@ async def test_model_response_event_exposes_compact_usage_and_timing():
     response = ModelResponse()
     response.set_response_type("text_generation")
     response.add("hello")
+    response.reasoning = "private reasoning"
+    response.reasoning_summary = "safe summary"
     response.metadata = {
         "usage": {
             "input_tokens": 100,
@@ -189,6 +227,17 @@ async def test_model_response_event_exposes_compact_usage_and_timing():
 
     model_response = next(
         event for event in events if event.type == EventType.MODEL_RESPONSE
+    )
+    reasoning = next(
+        event for event in events if event.type == EventType.REASONING_DELTA
+    )
+    summary = next(
+        event for event in events if event.type == EventType.REASONING_SUMMARY_DELTA
+    )
+    assert reasoning.data == {"delta": "private reasoning"}
+    assert summary.data == {"delta": "safe summary"}
+    assert (
+        events.index(reasoning) < events.index(summary) < events.index(model_response)
     )
     assert model_response.data == {
         "response_type": "text_generation",
@@ -272,6 +321,157 @@ async def test_streamed_model_response_event_waits_for_terminal_metrics():
     assert events.index(model_responses[0]) < next(
         index for index, event in enumerate(events) if event.type == EventType.RUN_END
     )
+
+
+@pytest.mark.asyncio
+async def test_watch_reconnects_to_normal_agent_stream_with_live_snapshot():
+    thread_id = "thread_watch_reconnect"
+    release = asyncio.Event()
+    model = Mock()
+    model.model_type = "chat_completion"
+
+    async def stream_call(**_kwargs):
+        response = ModelStreamResponse(mode="async")
+        response.set_response_type("text_generation")
+
+        async def produce():
+            response.add_reasoning_summary("checking inventory")
+            response.add("hel")
+            await release.wait()
+            response.add("lo")
+            response.finish()
+
+        asyncio.create_task(produce())
+        return response
+
+    model.acall = AsyncMock(side_effect=stream_call)
+    agent = Agent(name="watch_agent", model=model, config={"stream": True})
+    scope = ExecutionScope(thread_id=thread_id)
+
+    first_events = []
+    async with agent.watch(thread_id) as first_watcher:
+        call = asyncio.create_task(agent.acall("hi", scope=scope))
+        while True:
+            event = await asyncio.wait_for(first_watcher.__anext__(), timeout=1)
+            first_events.append(event)
+            if event.type == EventType.MESSAGE_DELTA:
+                break
+
+    response = await call
+    async with agent.watch(thread_id) as reconnected:
+        assert reconnected.snapshot.streaming_message == "hel"
+        assert reconnected.snapshot.active_run.reasoning_summary == "checking inventory"
+        release.set()
+        reconnected_events = []
+        while True:
+            event = await asyncio.wait_for(reconnected.__anext__(), timeout=1)
+            reconnected_events.append(event)
+            if event.type == EventType.RUN_END:
+                break
+
+    assert EventType.RUN_START in [event.type for event in first_events]
+    assert [
+        event.data["delta"]
+        for event in reconnected_events
+        if event.type == EventType.MESSAGE_DELTA
+    ] == ["lo"]
+    assert [(event.type, event.data) async for event in response.consume_events()] == [
+        ("reasoning_summary.delta", "checking inventory"),
+        ("output.delta", "hel"),
+        ("output.delta", "lo"),
+    ]
+    assert thread_id not in get_event_hub()._threads
+
+
+@pytest.mark.asyncio
+async def test_stream_events_and_watch_receive_one_copy_of_each_event():
+    agent, _ = make_agent()
+    thread_id = "thread_watch_stream_events"
+    scope = ExecutionScope(thread_id=thread_id)
+
+    async with agent.watch(thread_id) as watcher:
+        direct_task = asyncio.create_task(
+            _collect_events(agent.stream_events("hi", scope=scope))
+        )
+        watched = []
+        while True:
+            event = await asyncio.wait_for(watcher.__anext__(), timeout=1)
+            watched.append(event)
+            if event.type == EventType.RUN_END:
+                break
+        direct = await direct_task
+
+    assert [event.type for event in watched] == [event.type for event in direct]
+
+
+@pytest.mark.asyncio
+async def test_watch_snapshot_loads_durable_messages_after_run_completion():
+    store = InMemoryCheckpointStore()
+    agent, _ = make_agent()
+    agent.checkpoint_store = store
+    thread_id = "thread_watch_checkpoint"
+
+    await agent.acall("persist me", scope=ExecutionScope(thread_id=thread_id))
+
+    async with agent.watch(thread_id) as watcher:
+        snapshot = watcher.snapshot
+
+    assert snapshot.active_runs == ()
+    assert isinstance(snapshot.messages, ChatMessages)
+    assert [
+        item["content"] for item in snapshot.messages if item.get("type") == "message"
+    ] == ["<task>persist me</task>", "hello"]
+
+
+@pytest.mark.asyncio
+async def test_watch_keeps_background_task_visible_after_root_run_ends():
+    started = threading.Event()
+    release = threading.Event()
+
+    @tool_config(background=True)
+    def long_job(value: int) -> int:
+        """Double a value after an external release."""
+        started.set()
+        release.wait(timeout=2)
+        return value * 2
+
+    calls = ToolCallAggregator()
+    calls.process(0, "call_1", "long_job", '{"value":21}')
+    tool_response = ModelResponse()
+    tool_response.set_response_type("tool_call")
+    tool_response.add(calls)
+    final_response = ModelResponse()
+    final_response.set_response_type("text_generation")
+    final_response.add("dispatched")
+
+    model = Mock()
+    model.model_type = "chat_completion"
+    model.acall = AsyncMock(side_effect=[tool_response, final_response])
+    agent = Agent(name="background_agent", model=model, tools=[long_job])
+    thread_id = "thread_watch_background"
+
+    assert (
+        await agent.acall("start the job", scope=ExecutionScope(thread_id=thread_id))
+        == "dispatched"
+    )
+    assert await asyncio.to_thread(started.wait, 1)
+
+    async with agent.watch(thread_id) as watcher:
+        assert len(watcher.snapshot.background_tasks) == 1
+        task = watcher.snapshot.background_tasks[0]
+        assert task.tool_name == "long_job"
+        assert task.status == "running"
+        release.set()
+        while True:
+            event = await asyncio.wait_for(watcher.__anext__(), timeout=1)
+            if event.type == EventType.TASK_END:
+                break
+
+    assert event.data["status"] == "completed"
+
+
+async def _collect_events(stream):
+    return [event async for event in stream]
 
 
 def test_agent_lifecycle_hooks_transform_canonical_response():
@@ -439,6 +639,62 @@ async def test_foreground_agent_tool_events_include_nested_source_identity():
         "agent:reviewer",
         "agent:root",
     ]
+
+
+@pytest.mark.asyncio
+async def test_agent_streams_reasoning_from_intermediate_tool_model_response():
+    def multiply(left: int, right: int) -> int:
+        """Multiply two integers."""
+        return left * right
+
+    tool_calls = ToolCallAggregator()
+    tool_calls.process(
+        0,
+        "call_multiply",
+        "multiply",
+        '{"left":27,"right":43}',
+    )
+    tool_response = ModelStreamResponse(mode="async")
+    tool_response.set_response_type("tool_call")
+    tool_response.add_reasoning_summary("select multiplication tool")
+    tool_response.data = tool_calls
+    tool_response.metadata = {"usage": {"input_tokens": 10, "output_tokens": 2}}
+    tool_response.finish()
+
+    final_response = ModelStreamResponse(mode="async")
+    final_response.set_response_type("text_generation")
+    final_response.add_reasoning_summary("format final answer")
+    final_response.add("1161")
+    final_response.metadata = {"usage": {"input_tokens": 15, "output_tokens": 3}}
+    final_response.finish()
+
+    model = Mock()
+    model.model_type = "chat_completion"
+    model.acall = AsyncMock(side_effect=[tool_response, final_response])
+    agent = Agent(
+        name="reasoning_tool_agent",
+        model=model,
+        tools=[multiply],
+        config={"stream": True},
+    )
+
+    events = [event async for event in agent.stream_events("What is 27 * 43?")]
+    summaries = [
+        event for event in events if event.type == EventType.REASONING_SUMMARY_DELTA
+    ]
+    model_responses = [
+        event for event in events if event.type == EventType.MODEL_RESPONSE
+    ]
+    tool_start = next(event for event in events if event.type == EventType.TOOL_START)
+
+    assert [event.data["delta"] for event in summaries] == [
+        "select multiplication tool",
+        "format final answer",
+    ]
+    assert len(model_responses) == 2
+    assert events.index(summaries[0]) < events.index(model_responses[0])
+    assert events.index(model_responses[0]) < events.index(tool_start)
+    assert events.index(summaries[1]) < events.index(model_responses[1])
 
 
 def test_before_run_can_replace_fresh_agent_input():

@@ -1,4 +1,5 @@
 import asyncio
+import contextvars
 import functools
 import inspect
 import weakref
@@ -48,8 +49,10 @@ from msgflux.runtime.events import (
     ExecutionEvent,
     _AsyncEventChannel,
     _capture_events,
+    _hub_event_sink,
     _is_capturing_events,
     _is_event_stream_root,
+    _track_event_task,
     emit_event,
     event_source,
 )
@@ -1394,26 +1397,72 @@ class Module:
         )
 
     def _call_impl(self, *args, **kwargs):
-        source_name, source_type = self._event_source_identity()
+        root_hub_run = bool(
+            not _is_capturing_events()
+            and getattr(self, "_emit_nested_run_events", False)
+        )
         scope = kwargs.get("scope")
-        with event_source(source_name, source_type):
-            nested_run = self._should_emit_nested_run_events()
-            if nested_run:
+        if root_hub_run:
+            prepared = self._prepare_event_stream_kwargs(dict(kwargs))
+            scope = prepared.get("scope")
+            if kwargs.get("scope") is not None:
+                kwargs = prepared
+        source_name, source_type = self._event_source_identity()
+        capture = (
+            _capture_events(_hub_event_sink(root_module=self))
+            if root_hub_run
+            else nullcontext()
+        )
+        root_context = execution_context(scope=scope) if root_hub_run else nullcontext()
+        with root_context, capture, event_source(source_name, source_type):
+            run_boundary = root_hub_run or self._should_emit_nested_run_events()
+            if run_boundary:
                 emit_event(EventType.RUN_START, scope=scope)
                 emit_event(EventType.TURN_START, scope=scope)
             try:
                 result = self._call_impl_with_hooks(*args, **kwargs)
             except BaseException as exc:
-                if nested_run:
+                if run_boundary:
                     emit_event(
                         EventType.RUN_ERROR,
                         {"error": str(exc)},
                         scope=scope,
                     )
                 raise
-            if nested_run and not isinstance(result, ModelStreamResponse):
-                self._emit_nested_run_completion(result, scope=scope)
+            if run_boundary:
+                if isinstance(result, ModelStreamResponse):
+                    self._start_detached_event_finalizer(result, scope=scope)
+                else:
+                    self._emit_nested_run_completion(result, scope=scope)
             return result
+
+    async def _afinalize_detached_event_result(
+        self,
+        result: ModelStreamResponse,
+        *,
+        scope: Any = None,
+    ) -> None:
+        try:
+            await self._afinalize_event_result(result)
+        except BaseException as exc:
+            emit_event(
+                EventType.RUN_ERROR,
+                {"error": str(exc)},
+                scope=scope,
+            )
+
+    def _start_detached_event_finalizer(
+        self,
+        result: ModelStreamResponse,
+        *,
+        scope: Any = None,
+    ) -> None:
+        context = contextvars.copy_context()
+
+        def finalize() -> None:
+            asyncio.run(self._afinalize_detached_event_result(result, scope=scope))
+
+        Executor.get_instance().submit(context.run, finalize)
 
     def _call_impl_with_hooks(self, *args, **kwargs):
         if not (self._forward_hooks or self._forward_pre_hooks):
@@ -1555,25 +1604,50 @@ class Module:
             return await loop.run_in_executor(None, functools.partial(hook, *args))
 
     async def _acall_impl(self, *args, **kwargs):
-        source_name, source_type = self._event_source_identity()
+        root_hub_run = bool(
+            not _is_capturing_events()
+            and getattr(self, "_emit_nested_run_events", False)
+        )
         scope = kwargs.get("scope")
-        with event_source(source_name, source_type):
-            nested_run = self._should_emit_nested_run_events()
-            if nested_run:
+        if root_hub_run:
+            prepared = self._prepare_event_stream_kwargs(dict(kwargs))
+            scope = prepared.get("scope")
+            if kwargs.get("scope") is not None:
+                kwargs = prepared
+        source_name, source_type = self._event_source_identity()
+        capture = (
+            _capture_events(_hub_event_sink(root_module=self))
+            if root_hub_run
+            else nullcontext()
+        )
+        root_context = execution_context(scope=scope) if root_hub_run else nullcontext()
+        with root_context, capture, event_source(source_name, source_type):
+            run_boundary = root_hub_run or self._should_emit_nested_run_events()
+            if run_boundary:
                 emit_event(EventType.RUN_START, scope=scope)
                 emit_event(EventType.TURN_START, scope=scope)
             try:
                 result = await self._acall_impl_with_hooks(*args, **kwargs)
             except BaseException as exc:
-                if nested_run:
+                if run_boundary:
                     emit_event(
                         EventType.RUN_ERROR,
                         {"error": str(exc)},
                         scope=scope,
                     )
                 raise
-            if nested_run and not isinstance(result, ModelStreamResponse):
-                self._emit_nested_run_completion(result, scope=scope)
+            if run_boundary:
+                if isinstance(result, ModelStreamResponse):
+                    _track_event_task(
+                        asyncio.create_task(
+                            self._afinalize_detached_event_result(
+                                result,
+                                scope=scope,
+                            )
+                        )
+                    )
+                else:
+                    self._emit_nested_run_completion(result, scope=scope)
             return result
 
     async def _acall_impl_with_hooks(self, *args, **kwargs):
@@ -1742,28 +1816,18 @@ class Module:
         *,
         emit_content: bool = True,
     ) -> None:
-        async def consume_content() -> None:
-            async for chunk in response.consume():
-                if emit_content:
-                    emit_event(EventType.MESSAGE_DELTA, {"delta": chunk})
-
-        async def consume_reasoning() -> None:
-            async for chunk in response.consume_reasoning():
-                emit_event(EventType.REASONING_DELTA, {"delta": chunk})
-
-        async def consume_reasoning_summary() -> None:
-            async for chunk in response.consume_reasoning_summary():
-                emit_event(
-                    EventType.REASONING_SUMMARY_DELTA,
-                    {"delta": chunk},
-                )
-
         try:
-            await asyncio.gather(
-                consume_content(),
-                consume_reasoning(),
-                consume_reasoning_summary(),
-            )
+            async for event in response.consume_events():
+                if event.type == "output.delta":
+                    if emit_content:
+                        emit_event(EventType.MESSAGE_DELTA, {"delta": event.data})
+                elif event.type == "reasoning.delta":
+                    emit_event(EventType.REASONING_DELTA, {"delta": event.data})
+                elif event.type == "reasoning_summary.delta":
+                    emit_event(
+                        EventType.REASONING_SUMMARY_DELTA,
+                        {"delta": event.data},
+                    )
         finally:
             response._run_consumer_finalizers()
 

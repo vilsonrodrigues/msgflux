@@ -47,7 +47,7 @@ from msgflux.models import Model
 from msgflux.models.gateway import ModelGateway
 from msgflux.models.response import ModelResponse, ModelStreamResponse
 from msgflux.models.types import ChatCompletionModel
-from msgflux.nn.events import emit_model_response_event
+from msgflux.nn.events import emit_model_response_events
 from msgflux.nn.extensions.base import (
     AgentExtension,
     AgentExtensionHandle,
@@ -83,6 +83,7 @@ from msgflux.runtime.context import (
     new_run_id,
     new_thread_id,
 )
+from msgflux.runtime.event_hub import ThreadWatcher, get_event_hub
 from msgflux.runtime.events import EventType, emit_event
 from msgflux.runtime.skills import SkillsConfig
 from msgflux.tools.definitions import ToolCatalog, ToolSpec
@@ -1002,6 +1003,32 @@ class Agent(Module, metaclass=AutoParams):
             )
         return scope
 
+    def watch(self, thread_id: str) -> ThreadWatcher:
+        """Observe a thread snapshot and its future process-local events."""
+
+        def load_messages() -> ChatMessages | None:
+            checkpoint_store = self._get_effective_checkpoint_store()
+            if checkpoint_store is None:
+                return None
+            state = checkpoint_store.load_latest_run(
+                self.get_module_name(),
+                thread_id,
+            )
+            if not isinstance(state, Mapping):
+                return None
+            messages_state = state.get("messages")
+            if not isinstance(messages_state, Mapping):
+                return None
+            messages = ChatMessages()
+            messages._hydrate_state(messages_state)
+            return messages
+
+        return get_event_hub().watch(
+            thread_id,
+            namespace=self.get_module_name(),
+            load_messages=load_messages,
+        )
+
     def _prepare_event_stream_kwargs(self, kwargs: Dict[str, Any]) -> Dict[str, Any]:
         """Give an event stream a cancellable, fully identified Agent scope."""
         prepared = dict(kwargs)
@@ -1056,7 +1083,7 @@ class Agent(Module, metaclass=AutoParams):
         response = self.generator(**model_execution_params)
         if not isinstance(response, ModelStreamResponse):
             response = self._run_lifecycle_hooks("after_response", response)
-        emit_model_response_event(response, scope=scope)
+        emit_model_response_events(response, scope=scope)
         return response
 
     async def _aexecute_model(
@@ -1100,7 +1127,7 @@ class Agent(Module, metaclass=AutoParams):
         )
         if not isinstance(response, ModelStreamResponse):
             response = await self._arun_lifecycle_hooks("after_response", response)
-        emit_model_response_event(response, scope=scope)
+        emit_model_response_events(response, scope=scope)
         return response
 
     def warmup_system_prompt(
@@ -1801,6 +1828,11 @@ class Agent(Module, metaclass=AutoParams):
 
         while True:
             if model_response.response_type == "tool_call":
+                if isinstance(model_response, ModelStreamResponse):
+                    await self._aconsume_event_response(
+                        model_response,
+                        emit_content=False,
+                    )
                 response_item_start = (
                     len(messages) if isinstance(messages, ChatMessages) else 0
                 )

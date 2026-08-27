@@ -1,9 +1,11 @@
 """Tests for msgflux.models.response module."""
 
+import asyncio
+
 import pytest
 
 from msgflux.exceptions import AbortRequestedError
-from msgflux.models.response import ModelResponse, ModelStreamResponse
+from msgflux.models.response import LMStreamEvent, ModelResponse, ModelStreamResponse
 
 
 class TestModelResponse:
@@ -263,6 +265,80 @@ class TestModelStreamResponse:
                 "summary": "safe summary",
             }
         ]
+
+    @pytest.mark.asyncio
+    async def test_model_stream_response_preserves_cross_channel_event_order(self):
+        stream = ModelStreamResponse(mode="async")
+        stream.add_reasoning("private")
+        stream.add_reasoning_summary("safe summary")
+        stream.add("visible answer")
+        stream.finish()
+
+        events = [event async for event in stream.consume_events()]
+
+        assert events == [
+            LMStreamEvent(type="reasoning.delta", data="private"),
+            LMStreamEvent(
+                type="reasoning_summary.delta",
+                data="safe summary",
+            ),
+            LMStreamEvent(type="output.delta", data="visible answer"),
+        ]
+
+    @pytest.mark.asyncio
+    async def test_ordered_events_do_not_drain_legacy_stream_channels(self):
+        stream = ModelStreamResponse(mode="async")
+        stream.add_reasoning("private")
+        stream.add_reasoning_summary("safe summary")
+        stream.add("visible answer")
+        stream.finish()
+
+        assert [event async for event in stream.consume_events()]
+        assert [chunk async for chunk in stream.consume_reasoning()] == ["private"]
+        assert [chunk async for chunk in stream.consume_reasoning_summary()] == [
+            "safe summary"
+        ]
+        assert [chunk async for chunk in stream.consume()] == ["visible answer"]
+
+    @pytest.mark.asyncio
+    async def test_ordered_events_support_independent_replay_consumers(self):
+        stream = ModelStreamResponse(mode="async")
+        stream.add_reasoning_summary("plan")
+        stream.add("answer")
+        stream.finish()
+
+        first = [event async for event in stream.consume_events()]
+        second = [event async for event in stream.consume_events()]
+
+        assert (
+            first
+            == second
+            == [
+                LMStreamEvent(type="reasoning_summary.delta", data="plan"),
+                LMStreamEvent(type="output.delta", data="answer"),
+            ]
+        )
+
+    @pytest.mark.asyncio
+    async def test_ordered_events_multicast_to_concurrent_consumers(self):
+        stream = ModelStreamResponse(mode="async")
+
+        async def collect():
+            return [event async for event in stream.consume_events()]
+
+        first = asyncio.create_task(collect())
+        second = asyncio.create_task(collect())
+        await asyncio.sleep(0)
+        stream.add_reasoning("plan")
+        stream.add("answer")
+        stream.finish()
+
+        expected = [
+            LMStreamEvent(type="reasoning.delta", data="plan"),
+            LMStreamEvent(type="output.delta", data="answer"),
+        ]
+        assert await first == expected
+        assert await second == expected
 
     def test_reasoning_summary_event_completes_when_stream_has_no_summary(self):
         stream = ModelStreamResponse(mode="sync")

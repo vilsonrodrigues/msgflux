@@ -708,7 +708,8 @@ class TestOpenAIChatCompletion:
         ]
         assert response.consume().get_calls()[0][1] == "lookup_inventory"
 
-    def test_responses_stream_accumulates_summary_text_and_tool_call(
+    @pytest.mark.asyncio
+    async def test_responses_stream_accumulates_summary_text_and_tool_call(
         self, mock_openai_client
     ):
         pytest.importorskip("openai")
@@ -831,6 +832,10 @@ class TestOpenAIChatCompletion:
                 "name": "lookup_inventory",
                 "arguments": '{"sku":"1842"}',
             }
+        ]
+        events = [event async for event in stream_response.consume_events()]
+        assert [(event.type, event.data) for event in events] == [
+            ("reasoning_summary.delta", "Need inventory."),
         ]
 
     def test_responses_stream_preserves_message_phase_and_native_identity(

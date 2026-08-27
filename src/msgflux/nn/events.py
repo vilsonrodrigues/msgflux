@@ -39,7 +39,7 @@ def _model_response_event_data(
     return event_data
 
 
-def emit_model_response_event(
+def emit_model_response_events(
     response: Union[ModelResponse, ModelStreamResponse],
     *,
     scope: Optional[ExecutionScope] = None,
@@ -61,12 +61,23 @@ def emit_model_response_event(
                 )
             )
 
-        if response.response_type == "tool_call":
-            response.add_finalizer(emit_terminal_response)
-        else:
-            response._add_consumer_finalizer(emit_terminal_response)
+        response._add_consumer_finalizer(emit_terminal_response)
         return
 
+    reasoning = getattr(response, "reasoning", None)
+    if reasoning:
+        emit_event(
+            EventType.REASONING_DELTA,
+            {"delta": reasoning},
+            scope=scope,
+        )
+    reasoning_summary = getattr(response, "reasoning_summary", None)
+    if reasoning_summary:
+        emit_event(
+            EventType.REASONING_SUMMARY_DELTA,
+            {"delta": reasoning_summary},
+            scope=scope,
+        )
     emit_event(
         EventType.MODEL_RESPONSE,
         _model_response_event_data(

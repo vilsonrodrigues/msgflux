@@ -1427,21 +1427,30 @@ OpenRouter's own API examples pass the reasoning budget inside `extra_body={"rea
 
 ### 12.7 **Streaming with Reasoning**
 
-Streaming introduces a dual-queue architecture. Content and reasoning flow through independent queues, allowing consumers to process them in parallel or sequentially.
+Streaming keeps the channel-specific content and reasoning consumers while also
+providing one ordered LM event stream. `consume_events()` preserves the relative
+provider order across `reasoning.delta`, `reasoning_summary.delta`, and
+`output.delta`.
 
 ??? info "How it works internally"
 
     When `stream=True`, the model returns a `ModelStreamResponse` instead of a
-    `ModelResponse`. Internally, separate queues handle content and reasoning:
+    `ModelResponse`. Each published chunk enters its compatibility channel and
+    the canonical ordered event queue:
 
     ```text
     Provider stream thread
     │
-    ├── reasoning chunk → stream_response.add_reasoning(chunk) → reasoning queue
-    ├── reasoning chunk → stream_response.add_reasoning(chunk) → reasoning queue
+    ├── reasoning chunk → stream_response.add_reasoning(chunk)
+    │                     ├── reasoning queue
+    │                     └── reasoning.delta
+    ├── summary chunk   → stream_response.add_reasoning_summary(chunk)
+    │                     ├── reasoning-summary queue
+    │                     └── reasoning_summary.delta
     ├── stream_response.finish_reasoning()                     → closes reasoning queue
-    ├── content chunk   → stream_response.add(chunk)           → content queue
-    ├── content chunk   → stream_response.add(chunk)           → content queue
+    ├── content chunk   → stream_response.add(chunk)
+    │                     ├── content queue
+    │                     └── output.delta
     ├── ...
     └── stream_response.finish(status="completed")
         ├── closes any still-open queues
@@ -1461,6 +1470,11 @@ Streaming introduces a dual-queue architecture. Content and reasoning flow throu
     The provider also sets `stream_response.reasoning` with the full accumulated
     reasoning text, so it is available as a single string after the stream
     completes.
+
+    The Agent consumes the ordered queue rather than concurrently draining the
+    channel-specific queues. Consequently, a reasoning summary emitted before a
+    tool call or answer remains before that operation in the execution event
+    stream.
 
 #### The two-event system
 
@@ -1485,7 +1499,8 @@ Timeline:
 
 #### Consuming streams
 
-The `consume()` and `consume_reasoning()` methods become async generators in streaming mode:
+The `consume()`, `consume_reasoning()`, `consume_reasoning_summary()`, and
+`consume_events()` methods become async generators in streaming mode:
 
 For content streams, `next_chunk()` is also available when you want pull-based delivery. Each call returns one content chunk (`str` for chat completion) or `None` when the stream is complete. This controls when your application receives the next chunk; it does not pause the remote provider, which may continue producing chunks in the background.
 
@@ -1788,7 +1803,7 @@ Reasoning lives on two response base classes in `msgflux._private.response`:
 | Class | Used when | Reasoning storage |
 |---|---|---|
 | `BaseResponse` | Non-streaming (`stream=False`) | `reasoning` stores explicit reasoning text; `reasoning_summary` stores a provider-generated summary. |
-| `BaseStreamResponse` | Streaming (`stream=True`) | The same values are accumulated through independent reasoning and reasoning-summary channels. |
+| `BaseStreamResponse` | Streaming (`stream=True`) | The same values are accumulated through channel-specific consumers and an ordered LM event stream. |
 
 Both classes inherit from `CoreResponse`, which provides `set_metadata()` and `set_response_type()`.
 
@@ -1842,9 +1857,10 @@ model("prompt", stream=True)
 
 `finish_reasoning()` lets a consumer observe the end of the reasoning channel
 before the content channel is done. `finish()` signals end-of-stream to any
-remaining `next_chunk()`, `consume()`, `consume_reasoning()`, and
-`consume_reasoning_summary()` consumers by closing still-open queues. `consume()` is implemented as a convenience async
-generator over repeated `next_chunk()` calls. `finish()` also records the final
+remaining `next_chunk()`, `consume()`, `consume_reasoning()`,
+`consume_reasoning_summary()`, and `consume_events()` consumers by closing
+still-open queues. `consume()` is implemented as a convenience async generator
+over repeated `next_chunk()` calls. `finish()` also records the final
 stream status (`completed`, `failed`, or `interrupted`) and runs registered
 finalizers, which durable runtimes use to checkpoint streamed output after the
 consumer finishes reading it. The same finalizer updates the caller's

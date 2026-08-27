@@ -21,6 +21,13 @@ from msgflux.runtime.context import (
     new_thread_id,
     thread_context,
 )
+from msgflux.runtime.event_hub import (
+    BackgroundTaskSnapshot,
+    LiveRunSnapshot,
+    RunningToolSnapshot,
+    ThreadSnapshot,
+    ThreadWatcher,
+)
 from msgflux.runtime.events import EventType, ExecutionEvent
 from msgflux.runtime.skills import (
     AgentSkill,
@@ -40,15 +47,20 @@ __all__ = [
     "AgentSkill",
     "AgentSkillManager",
     "AbortSignal",
+    "BackgroundTaskSnapshot",
     "ExecutionScope",
     "ExecutionEvent",
     "EventType",
     "InMemoryAgentInboxStore",
+    "LiveRunSnapshot",
+    "RunningToolSnapshot",
     "SQLiteAgentInboxStore",
     "SkillPath",
     "SkillPaths",
     "SkillsConfig",
     "ToolNotificationHandle",
+    "ThreadSnapshot",
+    "ThreadWatcher",
     "_CURRENT_NAMESPACE",
     "_CURRENT_THREAD_ID",
     "default_skill_paths",

@@ -29,10 +29,95 @@ async for event in agent.stream_events("Summarize the incident"):
         outcome = event.data["outcome"]
 ```
 
+## Watching An Existing Thread
+
+`stream_events()` starts and owns one execution. Use `watch(thread_id)` when a
+UI, websocket, or worker needs to attach to a thread that may already be
+running:
+
+```python
+import asyncio
+
+from msgflux import ExecutionScope
+
+thread_id = "warehouse-incident-42"
+run = asyncio.create_task(
+    agent.acall(
+        "Reconcile the affected reservations",
+        scope=ExecutionScope(thread_id=thread_id),
+    )
+)
+
+async with agent.watch(thread_id) as watcher:
+    render_snapshot(watcher.snapshot)
+
+    async for event in watcher:
+        update_ui(event)
+        if event.type in {"run.end", "run.error"}:
+            break
+
+await run
+```
+
+Entering the async context atomically captures a `ThreadSnapshot` and subscribes
+to later events. Events produced after the capture are buffered until iteration
+starts, so there is no gap between reading the snapshot and receiving live
+updates.
+
+The snapshot contains:
+
+| Field | Description |
+| --- | --- |
+| `messages` | Latest durable `ChatMessages` when the Agent has a checkpoint store; otherwise `None` |
+| `active_runs` | All process-local runs currently active in the thread, including nested agents |
+| `running_tools` | Tool calls that started but have not settled |
+| `background_tasks` | Background tasks that were dispatched but have not settled |
+| `active_run` | Convenience access to the most recently started active run |
+| `streaming_message` | Convenience access to that run's accumulated assistant output |
+
+Each active-run snapshot also carries accumulated clear-text reasoning and
+reasoning summaries when the provider exposes them. This lets a reconnecting UI
+render the partial state first and then apply only the new deltas.
+
+Agent executions publish to the process-local event hub even when
+`stream_events()` is not active. Without watchers, the runtime maintains only
+the state needed for a live snapshot: it does not allocate subscriber queues or
+retain a replayable event log. Once runs, tools, and background tasks settle,
+that live projection is discarded. Durable conversation recovery continues to
+come from the checkpoint store.
+
+`watch()` observes but does not start, resume, or cancel a run. Leaving its
+context only unsubscribes that watcher. It also does not replay events that
+occurred before the snapshot; their current effects are represented by the
+snapshot instead.
+
 When the model itself streams, the event iterator owns and consumes that model
 stream. Do not separately consume a `ModelStreamResponse`: the content is
 already delivered through `message.delta`, reasoning through
-`reasoning.delta`, and the complete output through `message.end`.
+`reasoning.delta`, provider summaries through `reasoning_summary.delta`, and
+the complete output through `message.end`.
+
+Reasoning events preserve their order relative to visible output. They are
+also emitted for model calls that lead to a tool invocation, before
+`tool.start`, rather than being hidden inside the Agent's tool loop:
+
+```text
+model.request
+reasoning_summary.delta
+model.response
+tool.start
+tool.end
+model.request
+reasoning_summary.delta
+message.delta
+model.response
+```
+
+Providers that expose clear-text reasoning produce `reasoning.delta`. OpenAI
+Responses produces `reasoning_summary.delta`; its opaque reasoning state is
+retained for same-provider replay but is not presented as chain-of-thought. A
+non-streaming model response emits its available reasoning or summary as one
+delta before `model.response`.
 
 ## Event Shape
 
@@ -73,6 +158,9 @@ them. All following events remain correlatable through `run_id` and
 | `tool.start` | A validated tool call is starting |
 | `tool.update` | Intermediate tool progress |
 | `tool.end` | Tool execution completed or failed |
+| `task.start` | A background task was dispatched |
+| `task.update` | Background task status or progress changed |
+| `task.end` | A background task completed, failed, paused, or was interrupted |
 | `turn.end` | The turn reached a terminal boundary; it has no output payload |
 | `run.end` | The run completed and reports its outcome |
 | `run.error` | Execution failed; the iterator raises after this event |
@@ -121,7 +209,8 @@ iterator accumulates assistant content and sets
 once in `message.end`; raw assistant deltas are not exposed.
 
 Reasoning, tool, and progress events are independent and continue to arrive
-while assistant content is buffered.
+while assistant content is buffered. Reasoning and summaries are never passed
+through `transform_output`.
 
 See [Canonical Responses vs. Presented Output](hooks.md#canonical-responses-vs-presented-output)
 for a complete example that replaces an artifact reference in the presented
@@ -129,16 +218,24 @@ event output while preserving the original reference in `ChatMessages`.
 
 ## Event Isolation
 
-The event sink belongs to one execution. Concurrent Agent calls therefore keep
-independent queues and do not receive each other's events. Foreground nested
-executions publish into their root stream. Use `run_id` and `source_path` to
+Each direct `stream_events()` call owns an independent delivery channel.
+Concurrent calls therefore do not receive each other's events through those
+iterators. The process-local hub additionally routes events by `thread_id`, so a
+thread watcher intentionally sees every run, foreground nested execution, and
+background task belonging to that thread. Use `run_id` and `source_path` to
 separate the root Agent, ToolLibrary, called tool, and subagent while retaining
-one total delivery order.
+delivery order.
 
-A detached background task can outlive the root stream. Its later events are
-therefore not delivered through the already-closed root iterator. Observe its
-durable task activity and notifications until a task-scoped event stream is
-available.
+A detached background task can outlive the root `stream_events()` iterator. A
+thread watcher continues receiving its `task.update`, nested Agent, tool, and
+terminal events after that root iterator closes.
+
+The built-in hub is process-local. It covers concurrent Agents and background
+workers in the same Python process, but it is not a distributed broker and does
+not survive a process restart. After a restart, `watch()` restores the durable
+conversation snapshot and observes only newly produced live events. Applications
+running multiple worker processes need to route one thread to one process or
+bridge events through their own broker.
 
 ## Live OpenAI Validation
 
@@ -150,5 +247,7 @@ uv run python scripts/validate_openai_event_streaming.py
 
 It loads `OPENAI_API_KEY` from `.env`, uses `store=False`, and validates basic
 token streaming, complete-output transformation, a local tool loop, and a
-foreground AgentTool delegation. Use `--scenario basic`, `--scenario transform`,
-`--scenario tool`, or `--scenario nested` to run one case.
+foreground AgentTool delegation. The `reasoning` scenario also verifies that
+OpenAI Responses summaries precede visible output. Use `--scenario basic`,
+`--scenario reasoning`, `--scenario transform`, `--scenario tool`, or
+`--scenario nested` to run one case.

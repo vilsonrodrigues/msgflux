@@ -7,12 +7,16 @@ import contextvars
 import threading
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from typing import Any, Callable, Mapping
 
 from msgflux.runtime.context import ExecutionScope, get_execution_scope
+from msgflux.runtime.event_hub import get_event_hub
+from msgflux.utils.time import utc_now_isoformat
 
 __all__ = ["ExecutionEvent", "EventType", "emit_event", "event_source"]
+
+
+_DETACHED_EVENT_TASKS: set[asyncio.Task[Any]] = set()
 
 
 class EventType:
@@ -33,6 +37,9 @@ class EventType:
     TOOL_START = "tool.start"
     TOOL_UPDATE = "tool.update"
     TOOL_END = "tool.end"
+    TASK_START = "task.start"
+    TASK_UPDATE = "task.update"
+    TASK_END = "task.end"
     COMPACTION_START = "compaction.start"
     COMPACTION_END = "compaction.end"
     CHECKPOINT_SAVED = "checkpoint.saved"
@@ -115,16 +122,16 @@ class _EventSink:
                     if value is not None
                 },
             }
+        event = ExecutionEvent(
+            type=event_type,
+            timestamp=utc_now_isoformat(),
+            data=event_data,
+            run_id=scope.run_id,
+            source_path=tuple(f"{item.type}:{item.name}" for item in sources),
+        )
         with self._lock:
-            self._publish(
-                ExecutionEvent(
-                    type=event_type,
-                    timestamp=datetime.now(timezone.utc).isoformat(),
-                    data=event_data,
-                    run_id=scope.run_id,
-                    source_path=tuple(f"{item.type}:{item.name}" for item in sources),
-                )
-            )
+            get_event_hub().publish(scope.thread_id, event)
+            self._publish(event)
 
 
 _CURRENT_EVENT_SINK: contextvars.ContextVar[_EventSink | None] = contextvars.ContextVar(
@@ -139,6 +146,17 @@ def _capture_events(sink: _EventSink):
         yield
     finally:
         _CURRENT_EVENT_SINK.reset(token)
+
+
+def _hub_event_sink(*, root_module: Any = None) -> _EventSink:
+    """Create a sink that updates the shared hub without a direct subscriber."""
+    return _EventSink(lambda _event: None, root_module=root_module)
+
+
+def _track_event_task(task: asyncio.Task[Any]) -> None:
+    """Retain a detached event consumer until it settles."""
+    _DETACHED_EVENT_TASKS.add(task)
+    task.add_done_callback(_DETACHED_EVENT_TASKS.discard)
 
 
 def emit_event(

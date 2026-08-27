@@ -8,6 +8,7 @@ from msgflux.runtime.agent_inbox import (
     AgentNotification,
     ToolNotificationHandle,
 )
+from msgflux.runtime.events import EventType, emit_event
 from msgflux.tasks.dataclasses import TaskRecord
 
 if TYPE_CHECKING:
@@ -37,15 +38,30 @@ class TaskHandle:
 
     # --- Task State Updates ---
 
+    def _emit_record(self, event_type: str, record: TaskRecord | None) -> None:
+        if record is None:
+            return
+        emit_event(
+            event_type,
+            {
+                "task_id": record.task_id,
+                "tool_name": record.tool_name,
+                "status": record.status,
+                "progress": record.progress.to_dict(),
+            },
+        )
+
     def set_running(
         self,
         *,
         stage: str | None = None,
         message: str | None = None,
     ) -> TaskRecord | None:
-        return self._store.set_running(
+        record = self._store.set_running(
             task_id=self.task_id, stage=stage, message=message
         )
+        self._emit_record(EventType.TASK_UPDATE, record)
+        return record
 
     def update_progress(
         self,
@@ -56,7 +72,7 @@ class TaskHandle:
         total: int | None = None,
         percent: float | None = None,
     ) -> TaskRecord | None:
-        return self._store.update_progress(
+        record = self._store.update_progress(
             task_id=self.task_id,
             stage=stage,
             message=message,
@@ -64,18 +80,28 @@ class TaskHandle:
             total=total,
             percent=percent,
         )
+        self._emit_record(EventType.TASK_UPDATE, record)
+        return record
 
     def complete(self, result: Any) -> TaskRecord | None:
-        return self._store.complete(self.task_id, result)
+        record = self._store.complete(self.task_id, result)
+        self._emit_record(EventType.TASK_END, record)
+        return record
 
     def fail(self, error: Any) -> TaskRecord | None:
-        return self._store.fail(self.task_id, error)
+        record = self._store.fail(self.task_id, error)
+        self._emit_record(EventType.TASK_END, record)
+        return record
 
     def interrupt(self, *, reason: str | None = None) -> TaskRecord | None:
-        return self._store.interrupt(self.task_id, reason=reason)
+        record = self._store.interrupt(self.task_id, reason=reason)
+        self._emit_record(EventType.TASK_END, record)
+        return record
 
     def pause(self, *, reason: str | None = None) -> TaskRecord | None:
-        return self._store.pause(self.task_id, reason=reason)
+        record = self._store.pause(self.task_id, reason=reason)
+        self._emit_record(EventType.TASK_END, record)
+        return record
 
     def is_interrupt_requested(self) -> bool:
         task = self._store.get(self.task_id)

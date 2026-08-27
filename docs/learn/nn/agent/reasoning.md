@@ -193,7 +193,10 @@ The key insight is that `model_response.reasoning` is **always** populated (when
 
 ## 3. Streaming
 
-Streaming with reasoning introduces a **dual-queue architecture**. Content and reasoning flow through independent queues, allowing consumers to process them in parallel or sequentially.
+Streaming responses expose channel-specific consumers for compatibility and an
+ordered LM event stream. `consume_events()` preserves the relative provider
+order of reasoning, reasoning summaries, and visible output. This is the path
+used by `Agent.stream_events()`.
 
 ### Consuming streams
 
@@ -249,6 +252,26 @@ When `stream=True`, the Agent returns a `ModelStreamResponse`. Both `consume()` 
         async for chunk in response.consume():
             print(chunk, end="", flush=True)
         ```
+
+    === "Provider Order"
+
+        Use the canonical stream when one consumer needs to render every model
+        channel in the order produced:
+
+        ```python
+        response = await agent.acall("Solve: 15 * 7 + 3")
+
+        async for event in response.consume_events():
+            if event.type == "reasoning.delta":
+                show_reasoning(event.data)
+            elif event.type == "reasoning_summary.delta":
+                show_summary(event.data)
+            elif event.type == "output.delta":
+                show_answer(event.data)
+        ```
+
+        A missing reasoning channel produces no event. The final accumulated
+        field remains `None`.
 
     === "Sync Polling"
 
