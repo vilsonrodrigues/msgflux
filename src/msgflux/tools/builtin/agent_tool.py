@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from typing import List
+from typing import Any, List, Mapping, Optional
 
+from msgflux.models.gateway import ModelGateway
 from msgflux.runtime.context import (
     ExecutionScope,
     get_execution_context,
@@ -15,7 +16,7 @@ class AgentTool(ToolBucket, ToolLibraryOperator):
     """Dispatch a message to one of the configured agents."""
 
     capture = {"tool_kind": "agent", "defer_loading": False}
-    task_resume_params = ("name",)
+    task_resume_params = ("name", "model")
     task_checkpoint_namespace_param = "name"
     name = "agent"
     display_name = "Agent"
@@ -33,36 +34,57 @@ class AgentTool(ToolBucket, ToolLibraryOperator):
         self.description = self._build_description()
         self.usage_guidance = self._build_usage_guidance()
 
+    def patch_schema_annotations(
+        self,
+        annotations: Mapping[str, Any],
+    ) -> Mapping[str, Any]:
+        annotations = dict(annotations)
+        if self._has_gateway_agents():
+            annotations["model"] = Optional[str]
+        else:
+            annotations.pop("model", None)
+        return annotations
+
     def __call__(
         self,
         name: str,
         message: str,
+        model: str | None = None,
         *,
         handle: ToolBucketHandle,
         scope: ExecutionScope | None = None,
     ) -> str:
         self._validate_agent(name, handle)
+        model_preference = self._resolve_model_preference(name, model)
         namespace = handle.get_execution_namespace(name)
+        runtime_arguments = {"scope": scope or self._build_scope(namespace)}
+        if model_preference is not None:
+            runtime_arguments["model_preference"] = model_preference
         return handle(
             name,
             message=message,
-            _runtime_arguments={"scope": scope or self._build_scope(namespace)},
+            _runtime_arguments=runtime_arguments,
         )
 
     async def acall(
         self,
         name: str,
         message: str,
+        model: str | None = None,
         *,
         handle: ToolBucketHandle,
         scope: ExecutionScope | None = None,
     ) -> str:
         self._validate_agent(name, handle)
+        model_preference = self._resolve_model_preference(name, model)
         namespace = handle.get_execution_namespace(name)
+        runtime_arguments = {"scope": scope or self._build_scope(namespace)}
+        if model_preference is not None:
+            runtime_arguments["model_preference"] = model_preference
         return await handle.acall(
             name,
             message=message,
-            _runtime_arguments={"scope": scope or self._build_scope(namespace)},
+            _runtime_arguments=runtime_arguments,
         )
 
     @staticmethod
@@ -71,6 +93,19 @@ class AgentTool(ToolBucket, ToolLibraryOperator):
             return
         available = ", ".join(handle.list_captured_tools()) or "none"
         raise ValueError(f"Agent `{name}` not found. Available agents: {available}.")
+
+    def _resolve_model_preference(
+        self,
+        agent_name: str,
+        model: str | None,
+    ) -> str | None:
+        if model is None:
+            return None
+        gateway = self._get_agent_gateway(agent_name)
+        if gateway is None:
+            return None
+        gateway.validate_model_name(model)
+        return model
 
     def _build_scope(self, agent_name: str) -> ExecutionScope:
         context = get_execution_context()
@@ -102,9 +137,33 @@ class AgentTool(ToolBucket, ToolLibraryOperator):
                 agent_lines.append(f"- {agent_name}: {description}")
             else:
                 agent_lines.append(f"- {agent_name}")
+            gateway = self._get_agent_gateway(agent_name)
+            if gateway is not None:
+                agent_lines.append("  Models:")
+                for model_name in gateway.model_names:
+                    model_description = gateway.get_model_description(model_name)
+                    if model_description is None:
+                        raise ValueError(
+                            f"Agent `{agent_name}` uses ModelGateway model "
+                            f"`{model_name}` without a description. Add a non-empty "
+                            "`description` to every selectable deployment."
+                        )
+                    agent_lines.append(f"  - {model_name}: {model_description}")
         if not agent_lines:
             agent_lines.append("- none")
         return f"{self._base_description}\n" + "\n".join(agent_lines)
+
+    def _get_agent_gateway(self, agent_name: str) -> ModelGateway | None:
+        metadata = self.tools.get(agent_name)
+        if metadata is None:
+            return None
+        model = getattr(metadata.impl, "model", None)
+        return model if isinstance(model, ModelGateway) else None
+
+    def _has_gateway_agents(self) -> bool:
+        return any(
+            self._get_agent_gateway(agent_name) is not None for agent_name in self.tools
+        )
 
     def _build_usage_guidance(self) -> str | None:
         guidance_sections: List[str] = []

@@ -53,6 +53,13 @@ class ToolBucket:
     capture: Mapping[str, Any] | None = None
     expose_captured_names = False
 
+    def patch_schema_annotations(
+        self,
+        annotations: Mapping[str, Any],
+    ) -> Mapping[str, Any]:
+        """Patch the normalized public annotations after bucket changes."""
+        return annotations
+
     def add(self, tool: ToolMetadata) -> None:
         """Store a captured tool and refresh metadata derived from its contents."""
         self.validate_capture(tool)

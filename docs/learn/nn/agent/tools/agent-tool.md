@@ -4,7 +4,7 @@
 callable model tool:
 
 ```python
-agent(name: str, message: str) -> str
+agent(name: str, message: str, model: str | None = None) -> str
 ```
 
 Use it when a coordinator should delegate to specialized agents, but the model
@@ -50,6 +50,78 @@ coordinator = nn.Agent(
 Registration order does not matter. If the agents are added before the bucket,
 registering `AgentTool()` discovers and captures the matching tools already in
 the library. If the bucket is present first, each later agent is routed into it.
+
+## Selecting A Subagent Model
+
+Give a specialist a `ModelGateway` when the coordinator should be able to
+choose the model for a delegated task. Each deployment needs a concise
+`description`: `AgentTool` adds the aliases and descriptions to its public tool
+description so the coordinator can make an informed choice.
+
+```python
+# pip install msgflux[openai]
+import msgflux as mf
+import msgflux.nn as nn
+from msgflux.tools.builtin import AgentTool
+
+# mf.set_envs(OPENAI_API_KEY="...")
+
+review_models = mf.ModelGateway(
+    [
+        {
+            "model_name": "fast",
+            "model": "openai/gpt-5.6-luna",
+            "description": "Fast for clear, repeatable review tasks.",
+        },
+        {
+            "model_name": "deep",
+            "model": "openai/gpt-5.6-sol",
+            "description": (
+                "Stronger reasoning for ambiguous changes and architecture."
+            ),
+        },
+    ]
+)
+
+reviewer = nn.Agent(
+    name="reviewer",
+    model=review_models,
+    description="Reviews code changes for correctness and maintainability.",
+    instructions="Review the delegated change and return concise findings.",
+)
+
+coordinator = nn.Agent(
+    name="coordinator",
+    model="openai/gpt-5.6-sol",
+    instructions=(
+        "Delegate code reviews to reviewer. Choose fast for mechanical changes "
+        "and deep for ambiguous or architectural changes."
+    ),
+    tools=[AgentTool(), reviewer],
+)
+
+result = coordinator(
+    "Ask reviewer to analyze whether replacing a shared mutable model during "
+    "concurrent requests is safe. Use the deep model."
+)
+print(result)
+```
+
+The model selector appears only while the bucket contains at least one Agent
+whose model is a `ModelGateway`. Agents backed by a single model remain valid
+targets. If the coordinator supplies `model` for a single-model Agent, the
+preference is ignored and that Agent uses its configured model. If the selected
+Agent has a Gateway, an unknown alias raises instead of silently falling back.
+
+`model` is forwarded as the selected Agent's `model_preference`; the tool never
+mutates `agent.model`. Concurrent delegations can therefore choose different
+aliases safely. The Gateway keeps its normal fallback behavior: it tries the
+selected deployment first and then another available deployment if necessary.
+Set `fallback=False` on the Gateway when selection must be strict.
+
+The selected alias is retained when a background Agent task is resumed. Model
+descriptions are part of the Gateway's serialized state, so restored Agents
+produce the same selection guidance.
 
 !!! warning "Register agents through ToolLibrary"
 

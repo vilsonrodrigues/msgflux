@@ -1,3 +1,4 @@
+import asyncio
 from dataclasses import replace
 from unittest.mock import Mock
 
@@ -5,6 +6,8 @@ import msgflux as mf
 import pytest
 from msgflux.chat_messages import ChatMessages
 from msgflux.data.stores import InMemoryCheckpointStore
+from msgflux.models.base import BaseModel
+from msgflux.models.gateway import ModelGateway
 from msgflux.models.response import ModelResponse
 from msgflux.nn import Agent
 from msgflux.nn.hooks import Hook
@@ -15,11 +18,16 @@ from msgflux.tools import BUILTIN_TOOL_USAGE_GUIDANCE, apply_tool_guidance
 from msgflux.tools.builtin import AgentTool
 
 
-class _ScriptedModel:
-    def __init__(self, *texts: str):
+class _ScriptedModel(BaseModel):
+    def __init__(self, *texts: str, model_id: str = "scripted"):
         self.model_type = "chat_completion"
+        self.model_id = model_id
+        self.provider = "mock"
         self._texts = list(texts or ("ok",))
         self.calls = []
+
+    def _initialize(self):
+        pass
 
     def __call__(self, **kwargs):
         self.calls.append(kwargs)
@@ -43,6 +51,24 @@ def _response(text: str) -> Mock:
 
 def _mock_model(*texts: str) -> _ScriptedModel:
     return _ScriptedModel(*texts)
+
+
+def _model_gateway(*, fallback: bool = True) -> ModelGateway:
+    return ModelGateway(
+        models=[
+            {
+                "model_name": "fast",
+                "model": _ScriptedModel("fast response", model_id="fast-model"),
+                "description": "Fast for clear, repeatable tasks.",
+            },
+            {
+                "model_name": "deep",
+                "model": _ScriptedModel("deep response", model_id="deep-model"),
+                "description": "Deep reasoning for complex tasks.",
+            },
+        ],
+        fallback=fallback,
+    )
 
 
 def _extract_task_id(result: str) -> str:
@@ -95,6 +121,74 @@ def test_agent_tool_description_lists_available_agents():
 
     assert (
         tool.description == "Available agents:\n- reviewer: Reviews drafts for clarity."
+    )
+
+
+def test_agent_tool_exposes_gateway_models_with_descriptions():
+    gateway = _model_gateway()
+    reviewer = Agent(
+        name="reviewer",
+        model=gateway,
+        description="Reviews code and architecture.",
+    )
+    tool = AgentTool()
+    library = ToolLibrary(name="lib", tools=[tool, reviewer])
+
+    schema = library.get_tool_json_schemas()[0]
+    properties = schema["function"]["parameters"]["properties"]
+
+    assert set(properties) == {"name", "message", "model"}
+    assert schema["function"]["parameters"]["required"] == [
+        "name",
+        "message",
+        "model",
+    ]
+    assert {option["type"] for option in properties["model"]["anyOf"]} == {
+        "string",
+        "null",
+    }
+    assert "- reviewer: Reviews code and architecture." in tool.description
+    assert "  - fast: Fast for clear, repeatable tasks." in tool.description
+    assert "  - deep: Deep reasoning for complex tasks." in tool.description
+
+
+def test_agent_tool_requires_descriptions_for_gateway_models():
+    gateway = ModelGateway(
+        models=[
+            {
+                "model_name": "undescribed",
+                "model": _ScriptedModel(model_id="undescribed"),
+            }
+        ]
+    )
+    reviewer = Agent(name="reviewer", model=gateway)
+    library = ToolLibrary(name="lib", tools=[AgentTool()])
+
+    with pytest.raises(ValueError, match="without a description"):
+        library.add(reviewer)
+
+    assert library.get_tool_names() == ["agent"]
+    assert library.get_tool_json_schemas()[0]["function"]["parameters"][
+        "properties"
+    ].keys() == {"name", "message"}
+
+
+def test_agent_tool_removes_model_selector_after_last_gateway_agent_is_removed():
+    reviewer = Agent(name="reviewer", model=_model_gateway())
+    library = ToolLibrary(name="lib", tools=[AgentTool(), reviewer])
+
+    assert (
+        "model"
+        in library.get_tool_json_schemas()[0]["function"]["parameters"]["properties"]
+    )
+
+    library.remove("reviewer")
+
+    assert (
+        "model"
+        not in library.get_tool_json_schemas()[0]["function"]["parameters"][
+            "properties"
+        ]
     )
 
 
@@ -223,6 +317,101 @@ def test_agent_tool_dispatches_to_selected_agent():
     assert response.tool_calls[0].result == "reviewed"
     assert len(reviewer.model.calls) == 1
     assert planner.model.calls == []
+
+
+def test_agent_tool_dispatches_to_selected_gateway_model():
+    gateway = _model_gateway()
+    reviewer = Agent(name="reviewer", model=gateway)
+    library = ToolLibrary(name="lib", tools=[AgentTool(), reviewer])
+
+    response = library(
+        [
+            (
+                "call_1",
+                "agent",
+                {"name": "reviewer", "message": "Review this", "model": "deep"},
+            )
+        ]
+    )
+
+    assert response.tool_calls[0].result == "deep response"
+    assert gateway.models[0].calls == []
+    assert len(gateway.models[1].calls) == 1
+    assert response.tool_calls[0].parameters == {
+        "name": "reviewer",
+        "message": "Review this",
+        "model": "deep",
+    }
+
+
+@pytest.mark.asyncio
+async def test_agent_tool_dispatches_concurrent_gateway_model_selections():
+    gateway = _model_gateway()
+    reviewer = Agent(name="reviewer", model=gateway)
+    library = ToolLibrary(name="lib", tools=[AgentTool(), reviewer])
+
+    fast, deep = await asyncio.gather(
+        library.acall(
+            [
+                (
+                    "call_fast",
+                    "agent",
+                    {"name": "reviewer", "message": "Classify", "model": "fast"},
+                )
+            ]
+        ),
+        library.acall(
+            [
+                (
+                    "call_deep",
+                    "agent",
+                    {"name": "reviewer", "message": "Analyze", "model": "deep"},
+                )
+            ]
+        ),
+    )
+
+    assert fast.tool_calls[0].result == "fast response"
+    assert deep.tool_calls[0].result == "deep response"
+    assert len(gateway.models[0].calls) == 1
+    assert len(gateway.models[1].calls) == 1
+
+
+def test_agent_tool_ignores_model_for_agent_without_gateway():
+    gateway_reviewer = Agent(name="gateway_reviewer", model=_model_gateway())
+    recorder = _RecordingAgent()
+    library = ToolLibrary(
+        name="lib",
+        tools=[AgentTool(), gateway_reviewer, recorder],
+    )
+
+    response = library(
+        [
+            (
+                "call_1",
+                "agent",
+                {"name": "recorder", "message": "Review this", "model": "deep"},
+            )
+        ]
+    )
+
+    assert response.tool_calls[0].result == "recorded"
+    assert recorder.calls[0]["message"] == "Review this"
+    assert "model_preference" not in recorder.calls[0]
+
+
+def test_agent_tool_rejects_unknown_gateway_model():
+    reviewer = Agent(name="reviewer", model=_model_gateway())
+    tool = AgentTool()
+    library = ToolLibrary(name="lib", tools=[tool, reviewer])
+
+    with pytest.raises(ValueError, match="Unknown model `missing`"):
+        tool(
+            "reviewer",
+            "Review this",
+            model="missing",
+            handle=library.get_handle().for_tool(tool_name="agent"),
+        )
 
 
 def test_agent_tool_before_tool_can_rewrite_model_message():
@@ -545,3 +734,67 @@ def test_agent_tool_background_task_message_resumes_selected_agent():
     assert resumed_run_id != task_id
     new_state = store.load_state("reviewer", "user_42", resumed_run_id)
     assert new_state["status"] == "completed"
+
+
+def test_agent_tool_background_resume_preserves_gateway_model_selection():
+    store = InMemoryCheckpointStore()
+    fast_model = _ScriptedModel("unexpected", model_id="fast-model")
+    deep_model = _ScriptedModel("first", "second", model_id="deep-model")
+    gateway = ModelGateway(
+        models=[
+            {
+                "model_name": "fast",
+                "model": fast_model,
+                "description": "Fast for clear, repeatable tasks.",
+            },
+            {
+                "model_name": "deep",
+                "model": deep_model,
+                "description": "Deep reasoning for complex tasks.",
+            },
+        ]
+    )
+    reviewer = Agent(name="reviewer", model=gateway)
+    agent_tool = mf.tool_config(allow_background=True)(AgentTool())
+    library = ToolLibrary(name="lib", tools=[agent_tool, reviewer])
+
+    with execution_context(
+        thread_id="user_gateway",
+        namespace="root",
+        run_id="run_root",
+        root_run_id="run_root",
+        checkpoint_store=store,
+    ):
+        dispatch = library(
+            [
+                (
+                    "call_1",
+                    "agent",
+                    {
+                        "name": "reviewer",
+                        "message": "First",
+                        "model": "deep",
+                        "run_in_background": True,
+                    },
+                )
+            ]
+        )
+
+    task_id = _extract_task_id(dispatch.tool_calls[0].result)
+    first_wait = library(
+        [("call_2", "task_wait", {"task_id": task_id, "timeout": 1.0})]
+    )
+    assert first_wait.tool_calls[0].result == "first"
+
+    with execution_context(checkpoint_store=store):
+        resumed = library(
+            [("call_3", "task_message", {"task_id": task_id, "message": "Second"})]
+        )
+        assert resumed.tool_calls[0].result["status"] == "resumed"
+        second_wait = library(
+            [("call_4", "task_wait", {"task_id": task_id, "timeout": 1.0})]
+        )
+
+    assert second_wait.tool_calls[0].result == "second"
+    assert fast_model.calls == []
+    assert len(deep_model.calls) == 2

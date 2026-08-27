@@ -63,6 +63,7 @@ def _deployment(
     *,
     should_fail: bool = False,
     time_constraints=None,
+    description: str | None = None,
 ):
     """Helper to build a deployment dict."""
     if model_id is None:
@@ -78,6 +79,8 @@ def _deployment(
     }
     if time_constraints is not None:
         entry["time_constraints"] = time_constraints
+    if description is not None:
+        entry["description"] = description
     return entry
 
 
@@ -97,6 +100,42 @@ class TestModelGatewayInitialization:
         assert gateway.model_type == "chat_completion"
         assert gateway.current_model_index == 0
         assert gateway.model_names == ["model-1", "model-2"]
+        assert gateway.fallback is True
+        assert gateway.model_descriptions == {
+            "model-1": None,
+            "model-2": None,
+        }
+
+    @patch("msgflux.models.gateway.Model.chat_completion")
+    def test_gateway_accepts_chat_completion_shorthand(self, mock_factory):
+        model = MockModel("gpt-5.6-luna", provider="openai")
+        mock_factory.return_value = model
+
+        gateway = ModelGateway(
+            models=[
+                {
+                    "model_name": "fast",
+                    "model": "openai/gpt-5.6-luna",
+                    "description": "  Fast for repeatable tasks.  ",
+                }
+            ]
+        )
+
+        mock_factory.assert_called_once_with("openai/gpt-5.6-luna")
+        assert gateway.models == [model]
+        assert gateway.get_model_description("fast") == "Fast for repeatable tasks."
+
+    @pytest.mark.parametrize("description", ["", "   ", 42])
+    def test_gateway_rejects_invalid_description(self, description):
+        deployment = _deployment("model-1")
+        deployment["description"] = description
+
+        with pytest.raises(TypeError, match=r"description.*non-empty string"):
+            ModelGateway(models=[deployment])
+
+    def test_gateway_rejects_non_boolean_fallback(self):
+        with pytest.raises(TypeError, match="`fallback` must be a bool"):
+            ModelGateway(models=[_deployment("model-1")], fallback="yes")
 
     def test_gateway_initialization_with_time_constraints(self):
         """Test ModelGateway with time constraints inside deployments."""
@@ -451,6 +490,44 @@ class TestModelExecution:
         assert gateway.models[0].call_count == 1
         assert "weak" in response.data
 
+    def test_execute_model_rejects_unknown_preference(self):
+        gateway = ModelGateway(models=[_deployment("weak"), _deployment("strong")])
+
+        with pytest.raises(ValueError, match="Unknown model `missing`"):
+            gateway(model_preference="missing")
+
+        assert all(model.call_count == 0 for model in gateway.models)
+
+    def test_execute_model_without_fallback_does_not_transition(self):
+        gateway = ModelGateway(
+            models=[
+                _deployment("weak"),
+                _deployment("strong", should_fail=True),
+            ],
+            fallback=False,
+        )
+
+        with pytest.raises(ModelRouterError, match="All 1 available models failed"):
+            gateway(model_preference="strong")
+
+        assert gateway.models[1].call_count == 1
+        assert gateway.models[0].call_count == 0
+
+    def test_execute_model_without_fallback_uses_only_first_by_default(self):
+        gateway = ModelGateway(
+            models=[
+                _deployment("first", should_fail=True),
+                _deployment("second"),
+            ],
+            fallback=False,
+        )
+
+        with pytest.raises(ModelRouterError, match="All 1 available models failed"):
+            gateway()
+
+        assert gateway.models[0].call_count == 1
+        assert gateway.models[1].call_count == 0
+
     def test_execute_model_with_kwargs(self):
         """Test passing kwargs to model."""
         models = [_deployment("model-1"), _deployment("model-2")]
@@ -499,6 +576,30 @@ class TestModelExecution:
             ):
                 gateway()
 
+    def test_execute_model_without_fallback_rejects_restricted_selection(self):
+        with patch(
+            "msgflux.models.gateway.utc_now",
+            return_value=datetime(2025, 1, 1, 10, 0, 0, tzinfo=timezone.utc),
+        ):
+            gateway = ModelGateway(
+                models=[
+                    _deployment(
+                        "restricted",
+                        time_constraints=[("09:00", "17:00")],
+                    ),
+                    _deployment("fallback"),
+                ],
+                fallback=False,
+            )
+
+            with pytest.raises(
+                ModelRouterError,
+                match="Selected model `restricted` is unavailable",
+            ):
+                gateway(model_preference="restricted")
+
+            assert all(model.call_count == 0 for model in gateway.models)
+
     @pytest.mark.asyncio
     async def test_aexecute_model_basic(self):
         """Test basic async model execution."""
@@ -526,6 +627,22 @@ class TestModelExecution:
         assert gateway.models[0].call_count == 1
         assert gateway.models[1].call_count == 1
         assert "model-2" in response.data
+
+    @pytest.mark.asyncio
+    async def test_aexecute_model_without_fallback_does_not_transition(self):
+        gateway = ModelGateway(
+            models=[
+                _deployment("weak"),
+                _deployment("strong", should_fail=True),
+            ],
+            fallback=False,
+        )
+
+        with pytest.raises(ModelRouterError, match="All 1 available models failed"):
+            await gateway.acall(model_preference="strong")
+
+        assert gateway.models[1].call_count == 1
+        assert gateway.models[0].call_count == 0
 
     @pytest.mark.asyncio
     async def test_aexecute_model_all_fail(self):
@@ -571,6 +688,22 @@ class TestGatewaySerialization:
         deployments = serialized["state"]["models"]
         assert deployments[0]["time_constraints"] == [("09:00", "17:00")]
         assert "time_constraints" not in deployments[1]
+
+    def test_serialize_preserves_descriptions_and_fallback_policy(self):
+        gateway = ModelGateway(
+            models=[
+                _deployment("fast", description="Fast for repeatable tasks."),
+                _deployment("deep", description="Deep reasoning for complex tasks."),
+            ],
+            fallback=False,
+        )
+
+        serialized = gateway.serialize()
+
+        assert serialized["state"]["fallback"] is False
+        assert serialized["state"]["models"][0]["description"] == (
+            "Fast for repeatable tasks."
+        )
 
     @patch("msgflux.models.model.Model.from_serialized")
     def test_from_serialized_basic(self, mock_from_serialized):
@@ -630,6 +763,41 @@ class TestGatewaySerialization:
         gateway = ModelGateway.from_serialized(data)
 
         assert gateway.raw_time_constraints == {"weak": [("09:00", "17:00")]}
+
+    @patch("msgflux.models.model.Model.from_serialized")
+    def test_from_serialized_restores_descriptions_and_fallback(
+        self, mock_from_serialized
+    ):
+        mock_from_serialized.side_effect = [
+            MockModel("model-1"),
+            MockModel("model-2"),
+        ]
+        data = {
+            "msgflux_type": "model_gateway",
+            "state": {
+                "fallback": False,
+                "models": [
+                    {
+                        "model_name": "fast",
+                        "model": {"model_id": "model-1"},
+                        "description": "Fast for repeatable tasks.",
+                    },
+                    {
+                        "model_name": "deep",
+                        "model": {"model_id": "model-2"},
+                        "description": "Deep reasoning for complex tasks.",
+                    },
+                ],
+            },
+        }
+
+        gateway = ModelGateway.from_serialized(data)
+
+        assert gateway.fallback is False
+        assert gateway.model_descriptions == {
+            "fast": "Fast for repeatable tasks.",
+            "deep": "Deep reasoning for complex tasks.",
+        }
 
     def test_from_serialized_invalid_type(self):
         """Test error when deserializing with wrong msgflux_type."""

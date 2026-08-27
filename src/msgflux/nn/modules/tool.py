@@ -826,6 +826,12 @@ class ToolLibrary(Module, metaclass=AutoParams):
         bucket_tool = self.library[bucket_name]
         if isinstance(getattr(bucket, "description", None), str):
             bucket_tool.set_description(bucket.description)
+        annotations = bucket.patch_schema_annotations(
+            bucket_tool.get_module_annotations()
+        )
+        if not isinstance(annotations, Mapping):
+            raise TypeError("Bucket schema annotation patches must return a mapping.")
+        bucket_tool.set_annotations(dict(annotations))
         if hasattr(bucket, "usage_guidance"):
             bucket_tool.register_buffer(
                 "usage_guidance",
