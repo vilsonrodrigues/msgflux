@@ -7,27 +7,65 @@ tool activity, failures, and run boundaries share one ordered stream.
 ## Usage
 
 `stream_events()` is an async iterator. It runs the Agent and yields events as
-they occur:
+they occur. Set `OPENAI_API_KEY` in the environment, then consume the events
+inside an async function. This example defines a minimal Agent, prints streamed
+text, and captures the final output and run outcome. The complete Agent
+response is included in `message.end`; the following `run.end` closes the
+execution without repeating that potentially large content:
 
 ```python
-async for event in agent.stream_events("Investigate the warehouse alert"):
-    if event.type == "message.delta":
-        await websocket.send_text(event.data["delta"])
-    elif event.type == "tool.start":
-        print(f"\nRunning {event.data['tool_name']}")
+import asyncio
+
+import msgflux as mf
+import msgflux.nn as nn
+
+agent = nn.Agent(
+    name="incident_analyst",
+    model=mf.Model.chat_completion(
+        "openai/gpt-5.6-luna",
+        api_mode="responses",
+    ),
+    config={"stream": True},
+)
+
+incident_log = """\
+09:02 - Scanner A stopped sending inventory updates.
+09:07 - Orders continued reserving stock from the last known snapshot.
+09:18 - Scanner A was restarted and queued updates began arriving.
+09:23 - Two orders had overlapping reservations for SKU-1842.
+09:31 - New reservations for SKU-1842 were paused.
+"""
+
+
+async def main() -> None:
+    final_output = None
+    outcome = None
+
+    task = (
+        "Summarize the failure sequence, customer impact, and immediate next "
+        f"action from this incident log:\n\n{incident_log}"
+    )
+
+    async for event in agent.stream_events(task):
+        if event.type == "message.delta":
+            print(event.data["delta"], end="", flush=True)
+        elif event.type == "message.end":
+            final_output = event.data["content"]
+        elif event.type == "run.end":
+            outcome = event.data["outcome"]
+
+    print(f"\n\noutcome={outcome}")
+    print(f"final_output={final_output}")
+
+
+asyncio.run(main())
 ```
 
-The complete Agent response is included in `message.end`. The following
-`run.end` event closes the execution without repeating that potentially large
-content:
-
-```python
-async for event in agent.stream_events("Summarize the incident"):
-    if event.type == "message.end":
-        final_output = event.data["content"]
-    elif event.type == "run.end":
-        outcome = event.data["outcome"]
-```
+`stream_events()` and `config={"stream": True}` control different layers.
+`stream_events()` exposes Agent lifecycle events; the config enables incremental
+output from the model. Without `stream=True`, the lifecycle stream still emits
+events such as `model.request`, `message.end`, and `run.end`, but it has no
+model chunks from which to produce `message.delta`.
 
 ## Watching An Existing Thread
 
@@ -38,25 +76,71 @@ running:
 ```python
 import asyncio
 
-from msgflux import ExecutionScope
+import msgflux as mf
+import msgflux.nn as nn
 
-thread_id = "warehouse-incident-42"
-run = asyncio.create_task(
-    agent.acall(
-        "Reconcile the affected reservations",
-        scope=ExecutionScope(thread_id=thread_id),
-    )
+agent = nn.Agent(
+    name="incident_analyst",
+    model=mf.Model.chat_completion(
+        "openai/gpt-5.6-luna",
+        api_mode="responses",
+    ),
+    config={"stream": True},
 )
 
-async with agent.watch(thread_id) as watcher:
-    render_snapshot(watcher.snapshot)
+incident_log = """\
+09:02 - Scanner A stopped sending inventory updates.
+09:07 - Orders continued reserving stock from the last known snapshot.
+09:18 - Scanner A was restarted and queued updates began arriving.
+09:23 - Two orders had overlapping reservations for SKU-1842.
+09:31 - New reservations for SKU-1842 were paused.
+"""
 
-    async for event in watcher:
-        update_ui(event)
-        if event.type in {"run.end", "run.error"}:
-            break
 
-await run
+def render_snapshot(snapshot) -> None:
+    """Render state that existed before the live subscription began."""
+    print(f"watching thread={snapshot.thread_id}")
+
+    if snapshot.streaming_message:
+        print(snapshot.streaming_message, end="", flush=True)
+
+    for tool in snapshot.running_tools:
+        print(f"\nalready running tool={tool.tool_name}")
+
+
+def update_ui(event) -> None:
+    """Apply one live event to this example's terminal UI."""
+    if event.type == "message.delta":
+        print(event.data["delta"], end="", flush=True)
+    elif event.type == "tool.start":
+        print(f"\nrunning tool={event.data['tool_name']}")
+
+
+async def main() -> None:
+    thread_id = "warehouse-incident-42"
+    task = (
+        "Explain why the overlapping reservations require reconciliation and "
+        f"recommend the immediate operational action from this log:\n\n{incident_log}"
+    )
+    run = asyncio.create_task(
+        agent.acall(
+            task,
+            scope=mf.ExecutionScope(thread_id=thread_id),
+        )
+    )
+
+    async with agent.watch(thread_id) as watcher:
+        render_snapshot(watcher.snapshot)
+
+        async for event in watcher:
+            update_ui(event)
+            if event.type in {"run.end", "run.error"}:
+                break
+
+    await run
+
+
+asyncio.run(main())
 ```
 
 Entering the async context atomically captures a `ThreadSnapshot` and subscribes
@@ -172,16 +256,48 @@ response, it arrives after the model's content deltas have been drained, when
 terminal usage and timing are available:
 
 ```python
-async for event in agent.stream_events("Summarize the incident"):
-    if event.type == "model.response":
-        usage = event.data.get("usage", {})
-        timing = event.data.get("timing", {})
+import asyncio
 
-        print(usage.get("input_tokens"))
-        print(usage.get("output_tokens"))
-        print(usage.get("cached_input_tokens"))
-        print(timing.get("latency_ms"))
-        print(timing.get("ttft_ms"))
+import msgflux as mf
+import msgflux.nn as nn
+
+agent = nn.Agent(
+    name="incident_analyst",
+    model=mf.Model.chat_completion(
+        "openai/gpt-5.6-luna",
+        api_mode="responses",
+    ),
+    config={"stream": True},
+)
+
+incident_log = """\
+09:02 - Scanner A stopped sending inventory updates.
+09:07 - Orders continued reserving stock from the last known snapshot.
+09:18 - Scanner A was restarted and queued updates began arriving.
+09:23 - Two orders had overlapping reservations for SKU-1842.
+09:31 - New reservations for SKU-1842 were paused.
+"""
+
+
+async def main() -> None:
+    task = (
+        "Summarize the failure sequence, customer impact, and immediate next "
+        f"action from this incident log:\n\n{incident_log}"
+    )
+
+    async for event in agent.stream_events(task):
+        if event.type == "model.response":
+            usage = event.data.get("usage", {})
+            timing = event.data.get("timing", {})
+
+            print("input tokens:", usage.get("input_tokens"))
+            print("output tokens:", usage.get("output_tokens"))
+            print("cached input tokens:", usage.get("cached_input_tokens"))
+            print("latency (ms):", timing.get("latency_ms"))
+            print("TTFT (ms):", timing.get("ttft_ms"))
+
+
+asyncio.run(main())
 ```
 
 The payload is intentionally compact. `usage` contains `input_tokens`,
