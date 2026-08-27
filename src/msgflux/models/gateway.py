@@ -7,6 +7,7 @@ from msgflux.models.base import BaseModel
 from msgflux.models.model import Model
 from msgflux.models.response import ModelResponse, ModelStreamResponse
 from msgflux.tools.definitions import ToolCatalog
+from msgflux.utils.time import utc_now
 
 
 class ModelGateway:
@@ -158,7 +159,7 @@ class ModelGateway:
         if model_name not in self.parsed_time_constraints:
             return False
 
-        now = datetime.now(tz=timezone.utc).time()
+        now = utc_now().time()
 
         for start_time, end_time in self.parsed_time_constraints[model_name]:
             if start_time <= end_time:

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Iterable, Iterator, List, Literal, Mapping
 
 from msgflux._private.chat_items import legacy_item_id, new_item_id
@@ -16,6 +15,7 @@ from msgflux.runtime.context import (
     thread_context,
 )
 from msgflux.utils.msgspec import msgspec_dumps
+from msgflux.utils.time import utc_now_isoformat
 
 if TYPE_CHECKING:
     from msgflux.models.reasoning import ReasoningCodec
@@ -216,7 +216,7 @@ class ChatMessages:
             "index": turn_index,
             "thread_id": self.thread_id,
             "namespace": self.namespace,
-            "timestamp": self._utcnow_iso(),
+            "timestamp": utc_now_isoformat(),
         }
         if metadata:
             turn_event["metadata"] = self._safe_copy(dict(metadata))
@@ -243,7 +243,7 @@ class ChatMessages:
             "index": active_turn["index"],
             "thread_id": self.thread_id,
             "namespace": active_turn.get("namespace"),
-            "timestamp": self._utcnow_iso(),
+            "timestamp": utc_now_isoformat(),
         }
         if metadata:
             turn_event["metadata"] = self._safe_copy(dict(metadata))
@@ -273,7 +273,7 @@ class ChatMessages:
             "index": turn["index"],
             "thread_id": self.thread_id,
             "namespace": turn.get("namespace"),
-            "timestamp": self._utcnow_iso(),
+            "timestamp": utc_now_isoformat(),
         }
         if metadata:
             item["metadata"] = self._safe_copy(dict(metadata))
@@ -1648,7 +1648,3 @@ class ChatMessages:
             return deepcopy(value)
         except Exception:
             return str(value)
-
-    @staticmethod
-    def _utcnow_iso() -> str:
-        return datetime.now(timezone.utc).isoformat()

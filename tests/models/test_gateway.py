@@ -329,12 +329,10 @@ class TestTimeRestriction:
 
     def test_is_time_restricted_within_range(self):
         """Test model is restricted when current time is within range."""
-        with patch("msgflux.models.gateway.datetime") as mock_datetime:
-            mock_datetime.now.return_value = datetime(
-                2025, 1, 1, 10, 0, 0, tzinfo=timezone.utc
-            )
-            mock_datetime.strptime = datetime.strptime
-
+        with patch(
+            "msgflux.models.gateway.utc_now",
+            return_value=datetime(2025, 1, 1, 10, 0, 0, tzinfo=timezone.utc),
+        ):
             models = [
                 _deployment("model-1", time_constraints=[("09:00", "17:00")]),
                 _deployment("model-2"),
@@ -345,12 +343,10 @@ class TestTimeRestriction:
 
     def test_is_time_restricted_outside_range(self):
         """Test model is not restricted when current time is outside range."""
-        with patch("msgflux.models.gateway.datetime") as mock_datetime:
-            mock_datetime.now.return_value = datetime(
-                2025, 1, 1, 8, 0, 0, tzinfo=timezone.utc
-            )
-            mock_datetime.strptime = datetime.strptime
-
+        with patch(
+            "msgflux.models.gateway.utc_now",
+            return_value=datetime(2025, 1, 1, 8, 0, 0, tzinfo=timezone.utc),
+        ):
             models = [
                 _deployment("model-1", time_constraints=[("09:00", "17:00")]),
                 _deployment("model-2"),
@@ -362,12 +358,10 @@ class TestTimeRestriction:
     def test_is_time_restricted_midnight_crossover(self):
         """Test time restriction crossing midnight (e.g., 22:00 to 06:00)."""
         # Mock current time to be 23:00 (restricted)
-        with patch("msgflux.models.gateway.datetime") as mock_datetime:
-            mock_datetime.now.return_value = datetime(
-                2025, 1, 1, 23, 0, 0, tzinfo=timezone.utc
-            )
-            mock_datetime.strptime = datetime.strptime
-
+        with patch(
+            "msgflux.models.gateway.utc_now",
+            return_value=datetime(2025, 1, 1, 23, 0, 0, tzinfo=timezone.utc),
+        ):
             models = [
                 _deployment("model-1", time_constraints=[("22:00", "06:00")]),
                 _deployment("model-2"),
@@ -377,12 +371,10 @@ class TestTimeRestriction:
             assert gateway._is_time_restricted("model-1")
 
         # Mock current time to be 03:00 (also restricted)
-        with patch("msgflux.models.gateway.datetime") as mock_datetime:
-            mock_datetime.now.return_value = datetime(
-                2025, 1, 1, 3, 0, 0, tzinfo=timezone.utc
-            )
-            mock_datetime.strptime = datetime.strptime
-
+        with patch(
+            "msgflux.models.gateway.utc_now",
+            return_value=datetime(2025, 1, 1, 3, 0, 0, tzinfo=timezone.utc),
+        ):
             models = [
                 _deployment("model-1", time_constraints=[("22:00", "06:00")]),
                 _deployment("model-2"),
@@ -471,12 +463,10 @@ class TestModelExecution:
 
     def test_execute_model_time_restricted(self):
         """Test execution skips time-restricted models."""
-        with patch("msgflux.models.gateway.datetime") as mock_datetime:
-            mock_datetime.now.return_value = datetime(
-                2025, 1, 1, 10, 0, 0, tzinfo=timezone.utc
-            )
-            mock_datetime.strptime = datetime.strptime
-
+        with patch(
+            "msgflux.models.gateway.utc_now",
+            return_value=datetime(2025, 1, 1, 10, 0, 0, tzinfo=timezone.utc),
+        ):
             models = [
                 _deployment("model-1", time_constraints=[("09:00", "17:00")]),
                 _deployment("model-2"),
@@ -492,12 +482,10 @@ class TestModelExecution:
 
     def test_execute_model_all_restricted(self):
         """Test error when all models are time-restricted."""
-        with patch("msgflux.models.gateway.datetime") as mock_datetime:
-            mock_datetime.now.return_value = datetime(
-                2025, 1, 1, 10, 0, 0, tzinfo=timezone.utc
-            )
-            mock_datetime.strptime = datetime.strptime
-
+        with patch(
+            "msgflux.models.gateway.utc_now",
+            return_value=datetime(2025, 1, 1, 10, 0, 0, tzinfo=timezone.utc),
+        ):
             models = [
                 _deployment("model-1", time_constraints=[("09:00", "17:00")]),
                 _deployment("model-2", time_constraints=[("09:00", "17:00")]),

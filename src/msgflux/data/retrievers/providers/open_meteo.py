@@ -9,6 +9,7 @@ from msgflux.core.dotdict import dotdict
 from msgflux.data.retrievers.base import BaseRetriever
 from msgflux.data.retrievers.registry import register_retriever
 from msgflux.data.retrievers.types import WeatherRetriever
+from msgflux.utils.time import utc_now
 
 WhenKind = Literal["now", "future", "past"]
 LocationSource = Literal["coordinates", "geocoding"]
@@ -47,7 +48,7 @@ class TTLCache:
         if entry is None:
             return None
 
-        if entry.expires_at <= datetime.now(timezone.utc):
+        if entry.expires_at <= utc_now():
             self._data.pop(key, None)
             return None
 
@@ -57,7 +58,7 @@ class TTLCache:
         ttl = self.default_ttl_seconds if ttl_seconds is None else ttl_seconds
         self._data[key] = CacheEntry(
             value=value,
-            expires_at=datetime.now(timezone.utc) + timedelta(seconds=ttl),
+            expires_at=utc_now() + timedelta(seconds=ttl),
         )
 
     def clear(self) -> None:
@@ -283,7 +284,7 @@ class OpenMeteoWeatherRetriever(BaseRetriever, WeatherRetriever):
 
     def _resolve_when(self, when: str) -> ResolvedWhen:
         when = self._validate_text(when, "when")
-        now = datetime.now(timezone.utc)
+        now = utc_now()
         if when == "now":
             return ResolvedWhen(input=when, target=now, kind="now")
 
