@@ -8,6 +8,7 @@ from typing import (
     Callable,
     Dict,
     List,
+    Literal,
     Mapping,
     Optional,
     Tuple,
@@ -62,8 +63,14 @@ from msgflux.nn.hooks import Hook
 from msgflux.nn.hooks.events import (
     BeforeResume,
     BeforeRun,
+    ConversationContext,
     ModelContext,
+    ModelRequestContext,
+    ModelResponseContext,
+    NotificationContext,
     OutputContext,
+    RunEndContext,
+    ToolCatalogContext,
 )
 from msgflux.nn.modules.container import ModuleDict
 from msgflux.nn.modules.generator import Generator
@@ -137,6 +144,14 @@ def _apply_before_resume(
         "scope": event.scope,
         "vars": vars,
     }
+
+
+def _require_lifecycle_payload(event: str, payload: Any, expected_type: type):
+    if not isinstance(payload, expected_type):
+        raise TypeError(
+            f"Agent `{event}` hooks must return {expected_type.__name__} or None"
+        )
+    return payload
 
 
 # Reserved kwargs that should not be treated as task inputs
@@ -672,21 +687,13 @@ class Agent(Module, metaclass=AutoParams):
             except _GuardInterrupt as e:
                 return self._define_response_mode(e.response, message)
             except (AbortRequestedError, TaskInterruptRequestedError) as exc:
-                self._checkpoint_interrupted(inputs, exc)
+                self._settle_terminal_run(inputs, "interrupted", exc)
                 self._raise_interrupted_from_abort(inputs, exc)
-            except TaskPauseRequestedError:
-                paused_messages = inputs.get("messages")
-                if (
-                    isinstance(paused_messages, ChatMessages)
-                    and paused_messages.get_active_turn() is not None
-                ):
-                    paused_messages.end_turn(event="pause")
-                self._checkpoint_save(
-                    paused_messages, inputs.get("vars", {}), status="paused"
-                )
+            except TaskPauseRequestedError as exc:
+                self._settle_terminal_run(inputs, "paused", exc)
                 raise
-            except Exception:
-                self._checkpoint_save_on_error(inputs)
+            except Exception as exc:
+                self._settle_terminal_run(inputs, "failed", exc)
                 raise
             try:
                 response = self._process_model_response(
@@ -695,8 +702,11 @@ class Agent(Module, metaclass=AutoParams):
                     **inputs,
                 )
             except (AbortRequestedError, TaskInterruptRequestedError) as exc:
-                self._checkpoint_interrupted(inputs, exc)
+                self._settle_terminal_run(inputs, "interrupted", exc)
                 self._raise_interrupted_from_abort(inputs, exc)
+            except Exception as exc:
+                self._settle_terminal_run(inputs, "failed", exc)
+                raise
             return response
 
     async def aforward(
@@ -757,23 +767,13 @@ class Agent(Module, metaclass=AutoParams):
             except _GuardInterrupt as e:
                 return self._define_response_mode(e.response, message)
             except (AbortRequestedError, TaskInterruptRequestedError) as exc:
-                await self._acheckpoint_interrupted(inputs, exc)
+                await self._asettle_terminal_run(inputs, "interrupted", exc)
                 self._raise_interrupted_from_abort(inputs, exc)
-            except TaskPauseRequestedError:
-                paused_messages = inputs.get("messages")
-                if (
-                    isinstance(paused_messages, ChatMessages)
-                    and paused_messages.get_active_turn() is not None
-                ):
-                    paused_messages.end_turn(event="pause")
-                await self._acheckpoint_save(
-                    paused_messages,
-                    inputs.get("vars", {}),
-                    status="paused",
-                )
+            except TaskPauseRequestedError as exc:
+                await self._asettle_terminal_run(inputs, "paused", exc)
                 raise
-            except Exception:
-                await self._acheckpoint_save_on_error(inputs)
+            except Exception as exc:
+                await self._asettle_terminal_run(inputs, "failed", exc)
                 raise
             try:
                 response = await self._aprocess_model_response(
@@ -782,8 +782,11 @@ class Agent(Module, metaclass=AutoParams):
                     **inputs,
                 )
             except (AbortRequestedError, TaskInterruptRequestedError) as exc:
-                await self._acheckpoint_interrupted(inputs, exc)
+                await self._asettle_terminal_run(inputs, "interrupted", exc)
                 self._raise_interrupted_from_abort(inputs, exc)
+            except Exception as exc:
+                await self._asettle_terminal_run(inputs, "failed", exc)
+                raise
             return response
 
     # --- Extensions ---
@@ -1019,6 +1022,103 @@ class Agent(Module, metaclass=AutoParams):
             raise TypeError("Agent `transform_output` hooks must return OutputContext")
         return context.output
 
+    def _run_end_context(
+        self,
+        *,
+        outcome: Literal["completed", "failed", "interrupted", "paused"],
+        messages: Any,
+        vars: Mapping[str, Any],
+        scope: Optional[ExecutionScope],
+        output: Any = None,
+        error: BaseException | None = None,
+    ) -> RunEndContext:
+        return RunEndContext(
+            scope=scope or get_execution_context()["scope"],
+            vars=vars,
+            outcome=outcome,
+            messages=messages,
+            output=output,
+            error=error,
+        )
+
+    def _run_run_end_hook(self, event: str, context: RunEndContext) -> RunEndContext:
+        transformed = self._run_lifecycle_hooks(event, context)
+        return _require_lifecycle_payload(event, transformed, RunEndContext)
+
+    async def _arun_run_end_hook(
+        self, event: str, context: RunEndContext
+    ) -> RunEndContext:
+        transformed = await self._arun_lifecycle_hooks(event, context)
+        return _require_lifecycle_payload(event, transformed, RunEndContext)
+
+    def _settle_terminal_run(
+        self,
+        inputs: Mapping[str, Any],
+        outcome: Literal["failed", "interrupted", "paused"],
+        error: BaseException,
+    ) -> RunEndContext:
+        run_end = self._run_run_end_hook(
+            "before_run_end",
+            self._run_end_context(
+                outcome=outcome,
+                messages=inputs.get("messages"),
+                vars=inputs.get("vars", {}),
+                scope=inputs.get("scope"),
+                error=error,
+            ),
+        )
+        settled_inputs = {**inputs, "messages": run_end.messages}
+        if outcome == "interrupted":
+            self._checkpoint_interrupted(settled_inputs, error)
+        elif outcome == "paused":
+            if (
+                isinstance(run_end.messages, ChatMessages)
+                and run_end.messages.get_active_turn() is not None
+            ):
+                run_end.messages.end_turn(event="pause")
+            self._checkpoint_save(
+                run_end.messages,
+                inputs.get("vars", {}),
+                status="paused",
+            )
+        else:
+            self._checkpoint_save_on_error(settled_inputs)
+        return self._run_run_end_hook("after_run_end", run_end)
+
+    async def _asettle_terminal_run(
+        self,
+        inputs: Mapping[str, Any],
+        outcome: Literal["failed", "interrupted", "paused"],
+        error: BaseException,
+    ) -> RunEndContext:
+        run_end = await self._arun_run_end_hook(
+            "before_run_end",
+            self._run_end_context(
+                outcome=outcome,
+                messages=inputs.get("messages"),
+                vars=inputs.get("vars", {}),
+                scope=inputs.get("scope"),
+                error=error,
+            ),
+        )
+        settled_inputs = {**inputs, "messages": run_end.messages}
+        if outcome == "interrupted":
+            await self._acheckpoint_interrupted(settled_inputs, error)
+        elif outcome == "paused":
+            if (
+                isinstance(run_end.messages, ChatMessages)
+                and run_end.messages.get_active_turn() is not None
+            ):
+                run_end.messages.end_turn(event="pause")
+            await self._acheckpoint_save(
+                run_end.messages,
+                inputs.get("vars", {}),
+                status="paused",
+            )
+        else:
+            await self._acheckpoint_save_on_error(settled_inputs)
+        return await self._arun_run_end_hook("after_run_end", run_end)
+
     async def _atransform_module_output(self, output: Any) -> Any:
         if isinstance(output, ModelStreamResponse):
             return output
@@ -1110,17 +1210,36 @@ class Agent(Module, metaclass=AutoParams):
         scope: Optional[ExecutionScope] = None,
     ) -> Union[ModelResponse, ModelStreamResponse]:
         self._raise_if_background_task_interrupted()
-        context_messages = self._run_lifecycle_hooks("transform_context", messages)
+        effective_scope = scope or get_execution_context()["scope"]
+        conversation = self._run_lifecycle_hooks(
+            "transform_context",
+            ConversationContext(
+                scope=effective_scope,
+                vars=vars,
+                messages=messages,
+            ),
+        )
+        conversation = _require_lifecycle_payload(
+            "transform_context", conversation, ConversationContext
+        )
         model_execution_params = self._prepare_model_execution(
-            messages=context_messages,
+            messages=conversation.messages,
             prefilling=prefilling,
             model_preference=model_preference,
             vars=vars,
             tool_filter=tool_filter,
+            scope=effective_scope,
         )
-        model_execution_params = self._run_lifecycle_hooks(
-            "before_request", model_execution_params
+        request = ModelRequestContext.from_parameters(
+            model_execution_params,
+            scope=effective_scope,
+            runtime_vars=vars,
         )
+        request = self._run_lifecycle_hooks("before_request", request)
+        request = _require_lifecycle_payload(
+            "before_request", request, ModelRequestContext
+        )
+        model_execution_params = request.to_parameters()
         if self.config.get("verbose", False):
             cprint(f"[{self.name}][call_model]", bc="br1", ls="b")
         emit_event(
@@ -1129,7 +1248,19 @@ class Agent(Module, metaclass=AutoParams):
         )
         response = self.generator(**model_execution_params)
         if not isinstance(response, ModelStreamResponse):
-            response = self._run_lifecycle_hooks("after_response", response)
+            response_context = self._run_lifecycle_hooks(
+                "after_response",
+                ModelResponseContext(
+                    scope=effective_scope,
+                    vars=vars,
+                    response=response,
+                    request=request,
+                ),
+            )
+            response_context = _require_lifecycle_payload(
+                "after_response", response_context, ModelResponseContext
+            )
+            response = response_context.response
         emit_model_response_events(response, scope=scope)
         return response
 
@@ -1143,25 +1274,59 @@ class Agent(Module, metaclass=AutoParams):
         scope: Optional[ExecutionScope] = None,
     ) -> Union[ModelResponse, ModelStreamResponse]:
         self._raise_if_background_task_interrupted()
-        context_messages = await self._arun_lifecycle_hooks(
-            "transform_context", messages
+        effective_scope = scope or get_execution_context()["scope"]
+        conversation = await self._arun_lifecycle_hooks(
+            "transform_context",
+            ConversationContext(
+                scope=effective_scope,
+                vars=vars,
+                messages=messages,
+            ),
+        )
+        conversation = _require_lifecycle_payload(
+            "transform_context", conversation, ConversationContext
+        )
+        model_messages = await self._abuild_model_messages(
+            conversation.messages,
+            vars=vars,
+            scope=effective_scope,
         )
         model_execution_params = self._prepare_model_execution(
-            messages=context_messages,
+            messages=conversation.messages,
             prefilling=prefilling,
             model_preference=model_preference,
             vars=vars,
             tool_filter=tool_filter,
+            model_messages=model_messages,
+            scope=effective_scope,
+            transform_tool_catalog=False,
             transform_system_prompt=False,
+        )
+        model_execution_params = await self._atransform_model_tool_catalog(
+            model_execution_params,
+            vars=vars,
+            scope=effective_scope,
+        )
+        model_execution_params.system_prompt = self._build_system_prompt(
+            vars=vars,
+            tool_catalog=model_execution_params.tool_catalog,
+            apply_hooks=False,
         )
         model_execution_params = await self._atransform_model_system_prompt(
             model_execution_params,
             vars=vars,
-            scope=scope,
+            scope=effective_scope,
         )
-        model_execution_params = await self._arun_lifecycle_hooks(
-            "before_request", model_execution_params
+        request = ModelRequestContext.from_parameters(
+            model_execution_params,
+            scope=effective_scope,
+            runtime_vars=vars,
         )
+        request = await self._arun_lifecycle_hooks("before_request", request)
+        request = _require_lifecycle_payload(
+            "before_request", request, ModelRequestContext
+        )
+        model_execution_params = request.to_parameters()
         if self.config.get("verbose", False):
             cprint(f"[{self.name}][call_model]", bc="br1", ls="b")
         emit_event(
@@ -1173,7 +1338,19 @@ class Agent(Module, metaclass=AutoParams):
             (scope or get_execution_context()["scope"]).abort_signal,
         )
         if not isinstance(response, ModelStreamResponse):
-            response = await self._arun_lifecycle_hooks("after_response", response)
+            response_context = await self._arun_lifecycle_hooks(
+                "after_response",
+                ModelResponseContext(
+                    scope=effective_scope,
+                    vars=vars,
+                    response=response,
+                    request=request,
+                ),
+            )
+            response_context = _require_lifecycle_payload(
+                "after_response", response_context, ModelResponseContext
+            )
+            response = response_context.response
         emit_model_response_events(response, scope=scope)
         return response
 
@@ -1254,11 +1431,24 @@ class Agent(Module, metaclass=AutoParams):
             vars=vars or {},
             model_preference=model_preference,
             tool_filter=tool_filter,
+            transform_tool_catalog=False,
             transform_system_prompt=False,
+        )
+        effective_scope = get_execution_context()["scope"]
+        model_execution_params = await self._atransform_model_tool_catalog(
+            model_execution_params,
+            vars=vars or {},
+            scope=effective_scope,
+        )
+        model_execution_params.system_prompt = self._build_system_prompt(
+            vars=vars or {},
+            tool_catalog=model_execution_params.tool_catalog,
+            apply_hooks=False,
         )
         model_execution_params = await self._atransform_model_system_prompt(
             model_execution_params,
             vars=vars or {},
+            scope=effective_scope,
         )
         params = dotdict(
             system_prompt=model_execution_params.system_prompt,
@@ -1287,6 +1477,9 @@ class Agent(Module, metaclass=AutoParams):
                 tool_catalog=model_execution_params.tool_catalog,
             ),
         )
+        prompt_ctx = _require_lifecycle_payload(
+            "transform_system_prompt", prompt_ctx, ModelContext
+        )
         model_execution_params.system_prompt = prompt_ctx.prompt or None
         return model_execution_params
 
@@ -1313,6 +1506,88 @@ class Agent(Module, metaclass=AutoParams):
             ),
         )
 
+    def _transform_model_tool_catalog(
+        self,
+        tool_catalog: ToolCatalog,
+        *,
+        messages: Any,
+        vars: Mapping[str, Any],
+        scope: ExecutionScope,
+    ) -> ToolCatalog:
+        catalog_context = self._run_lifecycle_hooks(
+            "transform_tool_catalog",
+            ToolCatalogContext(
+                scope=scope,
+                vars=vars,
+                catalog=tool_catalog,
+                messages=messages,
+            ),
+        )
+        catalog_context = _require_lifecycle_payload(
+            "transform_tool_catalog", catalog_context, ToolCatalogContext
+        )
+        if not isinstance(catalog_context.catalog, ToolCatalog):
+            raise TypeError("ToolCatalogContext.catalog must be a ToolCatalog")
+        return catalog_context.catalog
+
+    async def _atransform_model_tool_catalog(
+        self,
+        model_execution_params: dotdict,
+        *,
+        vars: Mapping[str, Any],
+        scope: ExecutionScope,
+    ) -> dotdict:
+        tool_catalog = model_execution_params.tool_catalog
+        if tool_catalog is None:
+            return model_execution_params
+        catalog_context = await self._arun_lifecycle_hooks(
+            "transform_tool_catalog",
+            ToolCatalogContext(
+                scope=scope,
+                vars=vars,
+                catalog=tool_catalog,
+                messages=model_execution_params.messages,
+            ),
+        )
+        catalog_context = _require_lifecycle_payload(
+            "transform_tool_catalog", catalog_context, ToolCatalogContext
+        )
+        if not isinstance(catalog_context.catalog, ToolCatalog):
+            raise TypeError("ToolCatalogContext.catalog must be a ToolCatalog")
+        transformed = catalog_context.catalog
+        model_execution_params.tool_catalog = (
+            transformed if transformed.tools or transformed.portable_tools() else None
+        )
+        return model_execution_params
+
+    def _build_system_prompt(
+        self,
+        *,
+        vars: Mapping[str, Any],
+        tool_catalog: ToolCatalog | None,
+        apply_hooks: bool,
+    ) -> str | None:
+        prompt_catalog = tool_catalog or ToolCatalog(tools=[])
+        system_prompt = self.get_system_prompt(
+            vars,
+            tool_catalog=prompt_catalog,
+            _apply_hooks=apply_hooks,
+        )
+        portable_tools = tool_catalog.portable_tools() if tool_catalog else []
+        if is_subclass_of(self.generation_schema, ToolFlowControl) and portable_tools:
+            tools_template = self.generation_schema.tools_template
+            inputs = {
+                "tool_schemas": tool_catalog.portable_schemas(),
+                "tool_choice": tool_catalog.choice,
+            }
+            flow_control_tools = self._format_template(inputs, tools_template)
+            system_prompt = (
+                f"{flow_control_tools}\n\n{system_prompt}"
+                if system_prompt
+                else flow_control_tools
+            )
+        return system_prompt or None
+
     def _prepare_model_execution(
         self,
         messages: Union[ChatMessages, List[Mapping[str, Any]]],
@@ -1322,13 +1597,19 @@ class Agent(Module, metaclass=AutoParams):
         model_preference: Optional[str] = None,
         tool_filter: Optional[ToolFilter] = None,
         drain_notifications: bool = True,
-        scope: Optional[ExecutionScope] = None,  # noqa: ARG002
+        scope: Optional[ExecutionScope] = None,
+        model_messages: Any = None,
+        transform_tool_catalog: bool = True,
         transform_system_prompt: bool = True,
     ) -> Mapping[str, Any]:
-        model_messages = self._build_model_messages(
-            messages,
-            drain_notifications=drain_notifications,
-        )
+        effective_scope = scope or get_execution_context()["scope"]
+        if model_messages is None:
+            model_messages = self._build_model_messages(
+                messages,
+                vars=vars,
+                scope=effective_scope,
+                drain_notifications=drain_notifications,
+            )
 
         tool_catalog = self.tool_library.get_tool_catalog(model_messages)
         tool_specs = [
@@ -1351,30 +1632,27 @@ class Agent(Module, metaclass=AutoParams):
             catalog_id=tool_catalog.catalog_id,
             search_tool=tool_catalog.search_tool,
         )
-        portable_tools = tool_catalog.portable_tools()
-        system_prompt = self.get_system_prompt(
-            vars,
-            tool_catalog=tool_catalog,
-            _apply_hooks=transform_system_prompt,
+        if transform_tool_catalog:
+            tool_catalog = self._transform_model_tool_catalog(
+                tool_catalog,
+                messages=model_messages,
+                vars=vars,
+                scope=effective_scope,
+            )
+        tool_catalog = (
+            tool_catalog
+            if tool_catalog.tools or tool_catalog.portable_tools()
+            else None
         )
-
-        tool_catalog = tool_catalog if portable_tools or tool_specs else None
-
-        if is_subclass_of(self.generation_schema, ToolFlowControl) and portable_tools:
-            tools_template = self.generation_schema.tools_template
-            inputs = {
-                "tool_schemas": tool_catalog.portable_schemas(),
-                "tool_choice": tool_catalog.choice,
-            }
-            flow_control_tools = self._format_template(inputs, tools_template)
-            if system_prompt:
-                system_prompt = flow_control_tools + "\n\n" + system_prompt
-            else:
-                system_prompt = flow_control_tools
+        system_prompt = self._build_system_prompt(
+            vars=vars,
+            tool_catalog=tool_catalog,
+            apply_hooks=transform_system_prompt,
+        )
 
         model_execution_params = dotdict(
             messages=model_messages,
-            system_prompt=system_prompt or None,
+            system_prompt=system_prompt,
             prefilling=prefilling,
             stream=self.config.get("stream", False),
             tool_catalog=tool_catalog,
@@ -1409,7 +1687,7 @@ class Agent(Module, metaclass=AutoParams):
         vars: Mapping[str, Any],
         model_preference: Optional[str] = None,
         tool_filter: Optional[ToolFilter] = None,
-        scope: Optional[ExecutionScope] = None,  # noqa: ARG002
+        scope: Optional[ExecutionScope] = None,
     ) -> Union[str, Mapping[str, Any], Message, ModelStreamResponse]:
         if isinstance(model_response, ModelStreamResponse):
             wait_for_event(model_response._response_type_event)
@@ -1476,19 +1754,25 @@ class Agent(Module, metaclass=AutoParams):
             else None,
             after_index=response_item_start,
         )
-        self._finalize_chat_turn(
-            messages,
-            raw_response,
-        )
-        self._checkpoint_save(messages, vars, status="completed")
-
-        if response_type in self._supported_outputs:
-            response = self._prepare_response(
-                raw_response, response_type, messages, message, vars, reasoning
-            )
-            return response
-        else:
+        if response_type not in self._supported_outputs:
             raise ValueError(f"Unsupported `response_type={response_type}`")
+        response = self._prepare_response(
+            raw_response, response_type, messages, message, vars, reasoning
+        )
+        run_end = self._run_run_end_hook(
+            "before_run_end",
+            self._run_end_context(
+                outcome="completed",
+                messages=messages,
+                vars=vars,
+                scope=scope,
+                output=response,
+            ),
+        )
+        self._finalize_chat_turn(run_end.messages, raw_response)
+        self._checkpoint_save(run_end.messages, vars, status="completed")
+        run_end = self._run_run_end_hook("after_run_end", run_end)
+        return run_end.output
 
     async def _aprocess_model_response(
         self,
@@ -1498,7 +1782,7 @@ class Agent(Module, metaclass=AutoParams):
         vars: Mapping[str, Any],
         model_preference: Optional[str] = None,
         tool_filter: Optional[ToolFilter] = None,
-        scope: Optional[ExecutionScope] = None,  # noqa: ARG002
+        scope: Optional[ExecutionScope] = None,
     ) -> Union[str, Mapping[str, Any], Message, ModelStreamResponse]:
         if isinstance(model_response, ModelStreamResponse):
             await await_for_event(model_response._response_type_event)
@@ -1568,19 +1852,25 @@ class Agent(Module, metaclass=AutoParams):
             else None,
             after_index=response_item_start,
         )
-        self._finalize_chat_turn(
-            messages,
-            raw_response,
-        )
-        await self._acheckpoint_save(messages, vars, status="completed")
-
-        if response_type in self._supported_outputs:
-            response = self._prepare_response(
-                raw_response, response_type, messages, message, vars, reasoning
-            )
-            return response
-        else:
+        if response_type not in self._supported_outputs:
             raise ValueError(f"Unsupported `response_type={response_type}`")
+        response = self._prepare_response(
+            raw_response, response_type, messages, message, vars, reasoning
+        )
+        run_end = await self._arun_run_end_hook(
+            "before_run_end",
+            self._run_end_context(
+                outcome="completed",
+                messages=messages,
+                vars=vars,
+                scope=scope,
+                output=response,
+            ),
+        )
+        self._finalize_chat_turn(run_end.messages, raw_response)
+        await self._acheckpoint_save(run_end.messages, vars, status="completed")
+        run_end = await self._arun_run_end_hook("after_run_end", run_end)
+        return run_end.output
 
     # --- Tool Processing ---
 
@@ -1657,7 +1947,7 @@ class Agent(Module, metaclass=AutoParams):
                     getattr(model_response, "metadata", None),
                     after_index=response_item_start,
                 )
-                self._drain_inbox_into_messages(messages)
+                self._drain_inbox_into_messages(messages, vars=vars)
                 self._checkpoint_save(messages, vars)
 
             model_response = self._execute_model(
@@ -1744,7 +2034,7 @@ class Agent(Module, metaclass=AutoParams):
                     getattr(model_response, "metadata", None),
                     after_index=response_item_start,
                 )
-                self._drain_inbox_into_messages(messages)
+                await self._adrain_inbox_into_messages(messages, vars=vars)
                 await self._acheckpoint_save(messages, vars)
 
             model_response = await self._aexecute_model(
@@ -1840,7 +2130,7 @@ class Agent(Module, metaclass=AutoParams):
                 raw_response.insert_results(id_results)
                 tool_responses_message = raw_response.get_messages()
                 self._extend_tool_response_history(messages, tool_responses_message)
-                self._drain_inbox_into_messages(messages)
+                self._drain_inbox_into_messages(messages, vars=vars)
                 self._checkpoint_save(messages, vars)
             else:
                 return model_response, messages
@@ -1943,7 +2233,7 @@ class Agent(Module, metaclass=AutoParams):
                 raw_response.insert_results(id_results)
                 tool_responses_message = raw_response.get_messages()
                 self._extend_tool_response_history(messages, tool_responses_message)
-                self._drain_inbox_into_messages(messages)
+                await self._adrain_inbox_into_messages(messages, vars=vars)
                 await self._acheckpoint_save(messages, vars)
             else:
                 return model_response, messages
@@ -2888,6 +3178,8 @@ class Agent(Module, metaclass=AutoParams):
         self,
         messages: Union[ChatMessages, List[Mapping[str, Any]]],
         *,
+        vars: Optional[Mapping[str, Any]] = None,
+        scope: Optional[ExecutionScope] = None,
         drain_notifications: bool = True,
     ) -> bool:
         inbox = self._get_effective_agent_inbox()
@@ -2896,6 +3188,67 @@ class Agent(Module, metaclass=AutoParams):
 
         notifications = inbox.drain() if drain_notifications else inbox.peek()
         notifications = self._handle_control_notifications(notifications)
+        if not notifications:
+            return False
+
+        notification_context = self._run_lifecycle_hooks(
+            "transform_notifications",
+            NotificationContext(
+                scope=scope or get_execution_context()["scope"],
+                vars=vars or {},
+                notifications=tuple(notifications),
+                messages=messages,
+            ),
+        )
+        notification_context = _require_lifecycle_payload(
+            "transform_notifications", notification_context, NotificationContext
+        )
+        notifications = list(notification_context.notifications)
+        if not all(isinstance(item, AgentNotification) for item in notifications):
+            raise TypeError(
+                "NotificationContext.notifications must contain AgentNotification"
+            )
+        if not notifications:
+            return False
+
+        notification_messages = inbox.render_messages(notifications)
+        self._persist_notification_messages(messages, notification_messages)
+        return bool(notification_messages)
+
+    async def _adrain_inbox_into_messages(
+        self,
+        messages: Union[ChatMessages, List[Mapping[str, Any]]],
+        *,
+        vars: Optional[Mapping[str, Any]] = None,
+        scope: Optional[ExecutionScope] = None,
+        drain_notifications: bool = True,
+    ) -> bool:
+        inbox = self._get_effective_agent_inbox()
+        if inbox is None:
+            return False
+
+        notifications = inbox.drain() if drain_notifications else inbox.peek()
+        notifications = self._handle_control_notifications(notifications)
+        if not notifications:
+            return False
+
+        notification_context = await self._arun_lifecycle_hooks(
+            "transform_notifications",
+            NotificationContext(
+                scope=scope or get_execution_context()["scope"],
+                vars=vars or {},
+                notifications=tuple(notifications),
+                messages=messages,
+            ),
+        )
+        notification_context = _require_lifecycle_payload(
+            "transform_notifications", notification_context, NotificationContext
+        )
+        notifications = list(notification_context.notifications)
+        if not all(isinstance(item, AgentNotification) for item in notifications):
+            raise TypeError(
+                "NotificationContext.notifications must contain AgentNotification"
+            )
         if not notifications:
             return False
 
@@ -2909,6 +3262,8 @@ class Agent(Module, metaclass=AutoParams):
         self,
         messages: Union[ChatMessages, List[Mapping[str, Any]]],
         *,
+        vars: Optional[Mapping[str, Any]] = None,
+        scope: Optional[ExecutionScope] = None,
         drain_notifications: bool = True,
     ) -> Union[ChatMessages, List[Mapping[str, Any]]]:
         if isinstance(messages, ChatMessages):
@@ -2920,6 +3275,31 @@ class Agent(Module, metaclass=AutoParams):
 
         self._drain_inbox_into_messages(
             working_messages,
+            vars=vars,
+            scope=scope,
+            drain_notifications=drain_notifications,
+        )
+        return working_messages
+
+    async def _abuild_model_messages(
+        self,
+        messages: Union[ChatMessages, List[Mapping[str, Any]]],
+        *,
+        vars: Optional[Mapping[str, Any]] = None,
+        scope: Optional[ExecutionScope] = None,
+        drain_notifications: bool = True,
+    ) -> Union[ChatMessages, List[Mapping[str, Any]]]:
+        if isinstance(messages, ChatMessages):
+            working_messages: Union[ChatMessages, List[Mapping[str, Any]]] = (
+                messages if drain_notifications else messages.copy()
+            )
+        else:
+            working_messages = messages if drain_notifications else list(messages)
+
+        await self._adrain_inbox_into_messages(
+            working_messages,
+            vars=vars,
+            scope=scope,
             drain_notifications=drain_notifications,
         )
         return working_messages
@@ -4160,6 +4540,7 @@ class Agent(Module, metaclass=AutoParams):
                 tool_catalog=tool_catalog,
             ),
         )
+        ctx = _require_lifecycle_payload("transform_system_prompt", ctx, ModelContext)
         return ctx.prompt
 
     @property

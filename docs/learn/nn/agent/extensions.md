@@ -111,6 +111,21 @@ surface. Return a replaced dataclass to modify supported fields. Avoid storing
 per-run data on the extension instance because one Agent may execute multiple
 threads concurrently.
 
+Extensions can intercept the request at progressively narrower boundaries:
+
+- `transform_context` changes conversation messages through
+  `ConversationContext`.
+- `transform_notifications` filters pending non-control notifications.
+- `transform_tool_catalog` changes the logical tools available to the request.
+- `transform_system_prompt` changes only the rendered prompt.
+- `before_request` receives the final provider-neutral `ModelRequestContext`.
+- `after_response` receives a settled `ModelResponseContext`.
+- `before_run_end` and `after_run_end` surround the final durable checkpoint.
+
+Use the earliest boundary that owns the information being changed. For
+example, filtering tools in `before_request` is possible but makes prompt
+guidance inconsistent; `transform_tool_catalog` updates both surfaces together.
+
 ## Built-In Prompt Extensions
 
 Optional prompt capabilities use the same removable contract as application

@@ -475,9 +475,9 @@ async def _collect_events(stream):
 
 
 def test_agent_lifecycle_hooks_transform_canonical_response():
-    def add_suffix(response):
-        response.data += "!"
-        return response
+    def add_suffix(ctx):
+        ctx.response.data += "!"
+        return ctx
 
     agent, _ = make_agent(hooks=[Hook(event="after_response", handler=add_suffix)])
 

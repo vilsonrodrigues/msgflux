@@ -8,8 +8,14 @@ if TYPE_CHECKING:
         BeforeResume,
         BeforeRun,
         BeforeTool,
+        ConversationContext,
         ModelContext,
+        ModelRequestContext,
+        ModelResponseContext,
+        NotificationContext,
         OutputContext,
+        RunEndContext,
+        ToolCatalogContext,
     )
     from msgflux.nn.hooks.guard import Guard
     from msgflux.nn.hooks.hook import Hook, RemovableHandle
@@ -20,11 +26,17 @@ __all__ = [
     "BeforeResume",
     "BeforeRun",
     "BeforeTool",
+    "ConversationContext",
     "Guard",
     "Hook",
     "OutputContext",
     "RemovableHandle",
     "ModelContext",
+    "ModelRequestContext",
+    "ModelResponseContext",
+    "NotificationContext",
+    "RunEndContext",
+    "ToolCatalogContext",
 ]
 
 _LAZY_IMPORTS = {
@@ -33,11 +45,17 @@ _LAZY_IMPORTS = {
     "BeforeResume": ("msgflux.nn.hooks.events", "BeforeResume"),
     "BeforeRun": ("msgflux.nn.hooks.events", "BeforeRun"),
     "BeforeTool": ("msgflux.nn.hooks.events", "BeforeTool"),
+    "ConversationContext": ("msgflux.nn.hooks.events", "ConversationContext"),
     "Guard": ("msgflux.nn.hooks.guard", "Guard"),
     "Hook": ("msgflux.nn.hooks.hook", "Hook"),
     "OutputContext": ("msgflux.nn.hooks.events", "OutputContext"),
     "RemovableHandle": ("msgflux.nn.hooks.hook", "RemovableHandle"),
     "ModelContext": ("msgflux.nn.hooks.events", "ModelContext"),
+    "ModelRequestContext": ("msgflux.nn.hooks.events", "ModelRequestContext"),
+    "ModelResponseContext": ("msgflux.nn.hooks.events", "ModelResponseContext"),
+    "NotificationContext": ("msgflux.nn.hooks.events", "NotificationContext"),
+    "RunEndContext": ("msgflux.nn.hooks.events", "RunEndContext"),
+    "ToolCatalogContext": ("msgflux.nn.hooks.events", "ToolCatalogContext"),
 }
 
 

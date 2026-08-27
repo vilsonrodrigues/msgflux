@@ -4,12 +4,24 @@ from dataclasses import replace
 import pytest
 
 from msgflux.exceptions import AbortRequestedError
+from msgflux.data.stores import InMemoryCheckpointStore
+from msgflux.chat_messages import ChatMessages
 from msgflux.models.response import ModelResponse
 from msgflux.nn import Agent, AgentExtension
-from msgflux.nn.hooks import Hook, ModelContext
+from msgflux.nn.hooks import (
+    ConversationContext,
+    Hook,
+    ModelContext,
+    ModelRequestContext,
+    ModelResponseContext,
+    NotificationContext,
+    RunEndContext,
+    ToolCatalogContext,
+)
 from msgflux.nn.modules.tool import ToolLibrary
 from msgflux.runtime import AbortSignal, ExecutionScope
 from msgflux.runtime.context import execution_context
+from msgflux.tools.definitions import ToolCatalog
 
 
 def _text_response(text: str) -> ModelResponse:
@@ -232,6 +244,183 @@ async def test_agent_output_context_exposes_runtime_vars_and_scope():
     )
 
     assert await agent.acall("hello", vars={"tenant": "acme"}, scope=scope) == "ok:acme"
+
+
+@pytest.mark.asyncio
+async def test_typed_model_lifecycle_contexts_transform_request_and_response():
+    observed = []
+
+    async def transform_conversation(ctx):
+        assert isinstance(ctx, ConversationContext)
+        transformed = ctx.messages.copy()
+        transformed.add_system("extension context")
+        return replace(ctx, messages=transformed)
+
+    async def prepare_request(ctx):
+        assert isinstance(ctx, ModelRequestContext)
+        observed.append(ctx)
+        return replace(ctx, system_prompt="extension request")
+
+    async def transform_response(ctx):
+        assert isinstance(ctx, ModelResponseContext)
+        ctx.response.data = "transformed response"
+        return ctx
+
+    model = _RecordingModel()
+    agent = Agent(
+        name="agent",
+        model=model,
+        hooks=[
+            Hook(event="transform_context", handler=transform_conversation),
+            Hook(event="before_request", handler=prepare_request),
+            Hook(event="after_response", handler=transform_response),
+        ],
+    )
+
+    assert await agent.acall(
+        "hello", vars={"tenant": "acme"}, messages=ChatMessages()
+    ) == ("transformed response")
+    assert isinstance(observed[0], ModelRequestContext)
+    assert observed[0].vars == {"tenant": "acme"}
+    assert model.calls[0]["system_prompt"] == "extension request"
+    assert any(
+        item["role"] == "system" and item["content"] == "extension context"
+        for item in model.calls[0]["messages"].to_chatml()
+    )
+
+
+def test_transform_tool_catalog_changes_current_request_surface():
+    def alpha() -> str:
+        """Return alpha."""
+        return "alpha"
+
+    def beta() -> str:
+        """Return beta."""
+        return "beta"
+
+    def keep_alpha(ctx):
+        assert isinstance(ctx, ToolCatalogContext)
+        return replace(
+            ctx,
+            catalog=ToolCatalog(
+                tools=[tool for tool in ctx.catalog.tools if tool.name == "alpha"],
+                choice=None,
+                catalog_id=ctx.catalog.catalog_id,
+            ),
+        )
+
+    model = _RecordingModel()
+    agent = Agent(
+        name="agent",
+        model=model,
+        tools=[alpha, beta],
+        hooks=[Hook(event="transform_tool_catalog", handler=keep_alpha)],
+    )
+
+    assert agent("hello") == "ok"
+    assert [tool.name for tool in model.calls[0]["tool_catalog"].tools] == ["alpha"]
+
+
+@pytest.mark.asyncio
+async def test_async_transform_notifications_filters_model_context():
+    seen = []
+
+    async def suppress(ctx):
+        assert isinstance(ctx, NotificationContext)
+        seen.extend(ctx.notifications)
+        return replace(ctx, notifications=())
+
+    model = _RecordingModel()
+    agent = Agent(
+        name="agent",
+        model=model,
+        hooks=[Hook(event="transform_notifications", handler=suppress)],
+    )
+    agent.agent_inbox.publish(
+        {"source": "task", "status": "completed", "ref": "task_1"}
+    )
+
+    assert await agent.acall("continue", messages=ChatMessages()) == "ok"
+    assert len(seen) == 1
+    assert all(
+        "<notification " not in str(item.get("content"))
+        for item in model.calls[0]["messages"].to_chatml()
+    )
+
+
+def test_run_end_hooks_wrap_final_checkpoint():
+    trace = []
+
+    class RecordingStore(InMemoryCheckpointStore):
+        def save_state(self, namespace, thread_id, run_id, state):
+            trace.append("checkpoint")
+            return super().save_state(namespace, thread_id, run_id, state)
+
+    def before(ctx):
+        assert isinstance(ctx, RunEndContext)
+        trace.append("before")
+        return replace(ctx, output=f"{ctx.output}:before")
+
+    def after(ctx):
+        assert isinstance(ctx, RunEndContext)
+        trace.append("after")
+        return replace(ctx, output=f"{ctx.output}:after")
+
+    history = ChatMessages()
+    agent = Agent(
+        name="agent",
+        model=_RecordingModel(),
+        checkpoint_store=RecordingStore(),
+        hooks=[
+            Hook(event="before_run_end", handler=before),
+            Hook(event="after_run_end", handler=after),
+        ],
+    )
+
+    assert agent("hello", messages=history) == "ok:before:after"
+    assert trace == ["before", "checkpoint", "after"]
+
+
+def test_run_end_hooks_receive_failed_outcome_around_checkpoint():
+    trace = []
+
+    class FailingModel:
+        model_type = "chat_completion"
+
+        def __call__(self, **_kwargs):
+            raise RuntimeError("model failed")
+
+    class RecordingStore(InMemoryCheckpointStore):
+        def save_state(self, namespace, thread_id, run_id, state):
+            trace.append(("checkpoint", state["status"]))
+            return super().save_state(namespace, thread_id, run_id, state)
+
+    def record_before(ctx):
+        trace.append(("before", ctx.outcome))
+        return ctx
+
+    def record_after(ctx):
+        trace.append(("after", ctx.outcome))
+        return ctx
+
+    agent = Agent(
+        name="agent",
+        model=FailingModel(),
+        checkpoint_store=RecordingStore(),
+        hooks=[
+            Hook(event="before_run_end", handler=record_before),
+            Hook(event="after_run_end", handler=record_after),
+        ],
+    )
+
+    with pytest.raises(RuntimeError, match="model failed"):
+        agent("hello", messages=ChatMessages())
+
+    assert trace == [
+        ("before", "failed"),
+        ("checkpoint", "failed"),
+        ("after", "failed"),
+    ]
 
 
 @pytest.mark.asyncio

@@ -3,21 +3,28 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Mapping
+from typing import TYPE_CHECKING, Any, Literal, Mapping
 
 from msgflux.runtime.context import ExecutionScope
 
 if TYPE_CHECKING:
+    from msgflux.runtime.agent_inbox import AgentNotification
     from msgflux.tools.definitions import ToolCatalog
 
 __all__ = [
     "AgentContext",
+    "ConversationContext",
+    "NotificationContext",
     "BeforeRun",
     "BeforeTool",
     "AfterTool",
     "BeforeResume",
     "OutputContext",
     "ModelContext",
+    "ModelRequestContext",
+    "ModelResponseContext",
+    "RunEndContext",
+    "ToolCatalogContext",
 ]
 
 
@@ -51,6 +58,29 @@ class AgentContext:
 
 
 @dataclass(frozen=True, kw_only=True)
+class ConversationContext(AgentContext):
+    """Conversation prepared for one model request."""
+
+    messages: Any
+
+
+@dataclass(frozen=True, kw_only=True)
+class NotificationContext(AgentContext):
+    """Pending non-control notifications before they enter model context."""
+
+    notifications: tuple[AgentNotification, ...] = ()
+    messages: Any = None
+
+
+@dataclass(frozen=True, kw_only=True)
+class ToolCatalogContext(AgentContext):
+    """Logical tool catalog prepared for one model request."""
+
+    catalog: ToolCatalog
+    messages: Any = None
+
+
+@dataclass(frozen=True, kw_only=True)
 class ModelContext(AgentContext):
     """Model-facing prompt and read-only catalog exposed to prompt extensions.
 
@@ -70,10 +100,92 @@ class ModelContext(AgentContext):
 
 
 @dataclass(frozen=True, kw_only=True)
+class ModelRequestContext(AgentContext):
+    """Provider-neutral parameters immediately before an LM call."""
+
+    messages: Any
+    system_prompt: str | None = None
+    tool_catalog: ToolCatalog | None = None
+    prefilling: str | None = None
+    stream: bool = False
+    generation_schema: Any = None
+    typed_parser: Any = None
+    model_preference: str | None = None
+    extra: Mapping[str, Any] = field(default_factory=dict)
+
+    @classmethod
+    def from_parameters(
+        cls,
+        parameters: Mapping[str, Any],
+        *,
+        scope: ExecutionScope,
+        runtime_vars: Mapping[str, Any],
+    ) -> ModelRequestContext:
+        """Build the stable hook payload from Agent model parameters."""
+        known = {
+            "messages",
+            "system_prompt",
+            "tool_catalog",
+            "prefilling",
+            "stream",
+            "generation_schema",
+            "typed_parser",
+            "model_preference",
+        }
+        return cls(
+            scope=scope,
+            vars=runtime_vars,
+            messages=parameters.get("messages"),
+            system_prompt=parameters.get("system_prompt"),
+            tool_catalog=parameters.get("tool_catalog"),
+            prefilling=parameters.get("prefilling"),
+            stream=bool(parameters.get("stream", False)),
+            generation_schema=parameters.get("generation_schema"),
+            typed_parser=parameters.get("typed_parser"),
+            model_preference=parameters.get("model_preference"),
+            extra={key: value for key, value in parameters.items() if key not in known},
+        )
+
+    def to_parameters(self) -> dict[str, Any]:
+        """Return the model call parameters represented by this context."""
+        parameters = {
+            **self.extra,
+            "messages": self.messages,
+            "system_prompt": self.system_prompt,
+            "prefilling": self.prefilling,
+            "stream": self.stream,
+            "tool_catalog": self.tool_catalog,
+            "generation_schema": self.generation_schema,
+            "typed_parser": self.typed_parser,
+        }
+        if self.model_preference is not None:
+            parameters["model_preference"] = self.model_preference
+        return parameters
+
+
+@dataclass(frozen=True, kw_only=True)
+class ModelResponseContext(AgentContext):
+    """Settled non-streaming LM response before canonical history is updated."""
+
+    response: Any
+    request: ModelRequestContext
+
+
+@dataclass(frozen=True, kw_only=True)
 class OutputContext(AgentContext):
     """Settled Agent output before presentation to the caller."""
 
     output: Any
+
+
+@dataclass(frozen=True, kw_only=True)
+class RunEndContext(AgentContext):
+    """Terminal Agent outcome around the durable run boundary."""
+
+    outcome: Literal["completed", "failed", "interrupted", "paused"]
+    messages: Any
+    output: Any = None
+    error: BaseException | None = None
 
 
 @dataclass(frozen=True)

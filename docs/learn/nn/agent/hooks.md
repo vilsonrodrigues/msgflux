@@ -38,12 +38,16 @@ The Agent currently exposes these lifecycle boundaries:
 | --- | --- | --- |
 | `before_run` | `BeforeRun` | May replace the message or call arguments before a fresh run is prepared. |
 | `before_resume` | `BeforeResume` | May replace restored messages, model preference, or non-identity scope fields before execution resumes. |
-| `transform_context` | `ChatMessages` | May replace the model-visible context for the current request. |
+| `transform_context` | `ConversationContext` | May replace the model-visible messages for the current request. |
+| `transform_notifications` | `NotificationContext` | May filter or replace non-control notifications before they enter model context. |
+| `transform_tool_catalog` | `ToolCatalogContext` | May replace the logical tool catalog before prompt rendering and provider compilation. |
 | `transform_system_prompt` | `ModelContext` | May replace the rendered prompt; includes `scope`, `vars`, and a read-only view of the active tool catalog. |
-| `before_request` | Model execution parameters | May replace request parameters immediately before the LM call. |
-| `after_response` | `ModelResponse` | May replace a settled, non-streaming response before it enters history. |
+| `before_request` | `ModelRequestContext` | May replace provider-neutral request parameters immediately before the LM call. |
+| `after_response` | `ModelResponseContext` | May replace a settled, non-streaming response before it enters history. |
 | `before_tool` | `BeforeTool` | May replace model-visible arguments or block local execution. |
 | `after_tool` | `AfterTool` | May replace the result or error before it becomes a tool result. |
+| `before_run_end` | `RunEndContext` | May inspect or replace the terminal outcome immediately before the final checkpoint. |
+| `after_run_end` | `RunEndContext` | Runs after the final checkpoint is committed. |
 | `transform_output` | `OutputContext` for Agents; settled value for other Modules | May replace only the value presented to the caller. |
 
 Import typed payloads from `msgflux.nn.hooks`. Dataclass replacement keeps a
@@ -85,7 +89,20 @@ restored `thread_id`, `namespace`, or `run_id`.
 
 The tool catalog on `ModelContext` lets prompt extensions describe the tools
 available to the current request. It is contextual and read-only at this
-boundary; changing it does not alter the request tool surface.
+boundary. Use `transform_tool_catalog` when an extension needs to change the
+request tool surface; the transformed catalog is used both for prompt guidance
+and provider compilation.
+
+`transform_notifications` receives only ordinary progress and task
+notifications. Control messages such as pause and interrupt are handled before
+the hook and cannot be suppressed by an extension.
+
+`before_run_end` and `after_run_end` receive the same terminal context for
+completed, failed, interrupted, and paused non-streaming runs. The final
+checkpoint is written between these boundaries. A direct `ModelStreamResponse`
+settles later in its stream finalizer, so these hooks do not run when that
+stream is handed directly to the caller; use `stream_events()` when lifecycle
+observation must include the complete streamed execution.
 
 ```python
 agent = Agent(
