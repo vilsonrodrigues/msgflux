@@ -31,7 +31,11 @@ class BeforeRun:
 
 @dataclass(frozen=True)
 class BeforeResume:
-    """Durable state restored before execution resumes."""
+    """Durable state that may be transformed before execution resumes.
+
+    Hooks may replace messages, model preference, or non-identity scope fields.
+    The restored thread, namespace, and run identity cannot be changed.
+    """
 
     scope: ExecutionScope
     messages: Any
@@ -48,7 +52,12 @@ class AgentContext:
 
 @dataclass(frozen=True, kw_only=True)
 class ModelContext(AgentContext):
-    """Model-facing prompt and tool catalog exposed to request extensions."""
+    """Model-facing prompt and read-only catalog exposed to prompt extensions.
+
+    ``transform_system_prompt`` consumes only ``prompt``. The catalog provides
+    request context to prompt extensions and is not a catalog transformation
+    boundary.
+    """
 
     prompt: str
     tool_catalog: ToolCatalog | None = None

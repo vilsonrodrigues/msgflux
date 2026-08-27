@@ -37,9 +37,9 @@ The Agent currently exposes these lifecycle boundaries:
 | Event | Payload | Replacement behavior |
 | --- | --- | --- |
 | `before_run` | `BeforeRun` | May replace the message or call arguments before a fresh run is prepared. |
-| `before_resume` | `BeforeResume` | Observes restored durable state; its return value does not replace that state. |
+| `before_resume` | `BeforeResume` | May replace restored messages, model preference, or non-identity scope fields before execution resumes. |
 | `transform_context` | `ChatMessages` | May replace the model-visible context for the current request. |
-| `transform_system_prompt` | `ModelContext` | May replace the rendered prompt; includes `scope`, `vars`, and the active tool catalog. |
+| `transform_system_prompt` | `ModelContext` | May replace the rendered prompt; includes `scope`, `vars`, and a read-only view of the active tool catalog. |
 | `before_request` | Model execution parameters | May replace request parameters immediately before the LM call. |
 | `after_response` | `ModelResponse` | May replace a settled, non-streaming response before it enters history. |
 | `before_tool` | `BeforeTool` | May replace model-visible arguments or block local execution. |
@@ -77,10 +77,15 @@ raises or returns an invalid payload, execution fails closed and the tool is not
 called. An `after_tool` handler failure leaves the original outcome unchanged
 and emits a `handler.error` execution event.
 
-Use `before_resume` to restore extension-owned resources or telemetry after the
-Agent loads a checkpoint. It deliberately cannot replace the restored
-conversation; durable history remains owned by the checkpoint and replay
-contract.
+Use `before_resume` to restore extension-owned resources or transform the
+conversation loaded from a checkpoint. A replacement must remain a
+`BeforeResume` instance. It may change `messages`, `model_preference`, and
+non-identity scope fields such as the abort signal, but it cannot change the
+restored `thread_id`, `namespace`, or `run_id`.
+
+The tool catalog on `ModelContext` lets prompt extensions describe the tools
+available to the current request. It is contextual and read-only at this
+boundary; changing it does not alter the request tool surface.
 
 ```python
 agent = Agent(

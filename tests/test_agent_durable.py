@@ -1,5 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
@@ -295,16 +295,22 @@ def test_agent_resumes_exact_run_id():
     assert restored.to_chatml()[-1]["content"] == "4"
 
 
-def test_before_resume_observes_restored_state_without_replacing_it():
+def test_before_resume_transforms_restored_state():
     store = InMemoryCheckpointStore()
     observed = []
 
     def observe(event):
         observed.append(event)
+        transformed = ChatMessages(
+            thread_id=event.messages.thread_id,
+            namespace=event.messages.namespace,
+        )
+        transformed.begin_turn(turn_id=event.scope.run_id)
+        transformed.add_user("Transformed input")
         return BeforeResume(
             scope=event.scope,
-            messages=ChatMessages(),
-            model_preference=event.model_preference,
+            messages=transformed,
+            model_preference="strong",
         )
 
     agent = _make_agent(
@@ -334,7 +340,88 @@ def test_before_resume_observes_restored_state_without_replacing_it():
     assert len(observed) == 1
     assert isinstance(observed[0], BeforeResume)
     sent_messages = agent.generator.forward.call_args.kwargs["messages"]
-    assert sent_messages.to_chatml()[0]["content"] == "Preserve this input"
+    assert sent_messages.to_chatml()[0]["content"] == "Transformed input"
+    assert agent.generator.forward.call_args.kwargs["model_preference"] == "strong"
+
+
+def test_before_resume_rejects_checkpoint_identity_changes():
+    store = InMemoryCheckpointStore()
+
+    def change_thread(event):
+        return BeforeResume(
+            scope=event.scope.with_overrides(thread_id="another_thread"),
+            messages=event.messages,
+            model_preference=event.model_preference,
+        )
+
+    agent = _make_agent(
+        checkpoint_store=store,
+        hooks=[Hook(event="before_resume", handler=change_thread)],
+    )
+    chat = ChatMessages(thread_id="user_42", namespace="test_agent")
+    chat.begin_turn(turn_id="run_resume_identity")
+    chat.add_user("Preserve checkpoint identity")
+    store.save_state(
+        "test_agent",
+        "user_42",
+        "run_resume_identity",
+        {"status": "running", "messages": chat._to_state()},
+    )
+
+    with pytest.raises(ValueError, match=r"cannot change.*thread_id"):
+        agent(
+            "ignored",
+            scope=ExecutionScope(
+                thread_id="user_42",
+                namespace="test_agent",
+                run_id="run_resume_identity",
+            ),
+        )
+
+
+@pytest.mark.asyncio
+async def test_async_before_resume_applies_async_transformation():
+    store = InMemoryCheckpointStore()
+
+    async def transform(event):
+        transformed = ChatMessages(
+            thread_id=event.messages.thread_id,
+            namespace=event.messages.namespace,
+        )
+        transformed.begin_turn(turn_id=event.scope.run_id)
+        transformed.add_user("Async transformed input")
+        return BeforeResume(
+            scope=event.scope,
+            messages=transformed,
+            model_preference=event.model_preference,
+        )
+
+    agent = _make_agent(
+        checkpoint_store=store,
+        hooks=[Hook(event="before_resume", handler=transform)],
+    )
+    chat = ChatMessages(thread_id="user_42", namespace="test_agent")
+    chat.begin_turn(turn_id="run_async_resume_hook")
+    chat.add_user("Original input")
+    store.save_state(
+        "test_agent",
+        "user_42",
+        "run_async_resume_hook",
+        {"status": "running", "messages": chat._to_state()},
+    )
+    agent.generator.aforward = AsyncMock(return_value=_text_response("preserved"))
+
+    await agent.acall(
+        "ignored",
+        scope=ExecutionScope(
+            thread_id="user_42",
+            namespace="test_agent",
+            run_id="run_async_resume_hook",
+        ),
+    )
+
+    sent_messages = agent.generator.aforward.call_args.kwargs["messages"]
+    assert sent_messages.to_chatml()[0]["content"] == "Async transformed input"
 
 
 def test_agent_resumes_failed_run_id():

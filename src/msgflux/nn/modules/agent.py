@@ -98,6 +98,47 @@ from msgflux.utils.xml import apply_xml_tags
 if TYPE_CHECKING:
     from msgflux.data.stores import CheckpointStore
 
+
+def _apply_before_resume(
+    resumed: Mapping[str, Any],
+    event: Any,
+    *,
+    vars: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Validate and apply a transformed durable-resume payload."""
+    if not isinstance(event, BeforeResume):
+        raise TypeError("Agent `before_resume` hooks must return BeforeResume")
+    if not isinstance(event.messages, ChatMessages):
+        raise TypeError("BeforeResume.messages must be ChatMessages")
+    if not isinstance(event.scope, ExecutionScope):
+        raise TypeError("BeforeResume.scope must be an ExecutionScope")
+    if event.model_preference is not None and not isinstance(
+        event.model_preference, str
+    ):
+        raise TypeError("BeforeResume.model_preference must be a string or None")
+
+    restored_scope = resumed["scope"]
+    identity = ("thread_id", "namespace", "run_id")
+    changed = [
+        field
+        for field in identity
+        if getattr(event.scope, field) != getattr(restored_scope, field)
+    ]
+    if changed:
+        fields = ", ".join(changed)
+        raise ValueError(
+            f"BeforeResume cannot change restored checkpoint identity fields: {fields}."
+        )
+
+    return {
+        **resumed,
+        "messages": event.messages,
+        "model_preference": event.model_preference,
+        "scope": event.scope,
+        "vars": vars,
+    }
+
+
 # Reserved kwargs that should not be treated as task inputs
 _RESERVED_KWARGS = {
     "task",
@@ -585,8 +626,7 @@ class Agent(Module, metaclass=AutoParams):
             scope=requested_scope,
         )
         if resumed is not None:
-            resumed["vars"] = kwargs.get("vars", {})
-            self._run_lifecycle_hooks(
+            resume_event = self._run_lifecycle_hooks(
                 "before_resume",
                 BeforeResume(
                     scope=resumed["scope"],
@@ -594,7 +634,11 @@ class Agent(Module, metaclass=AutoParams):
                     model_preference=resumed.get("model_preference"),
                 ),
             )
-            inputs = resumed
+            inputs = _apply_before_resume(
+                resumed,
+                resume_event,
+                vars=kwargs.get("vars", {}),
+            )
         else:
             run_event = self._run_lifecycle_hooks(
                 "before_run",
@@ -667,8 +711,7 @@ class Agent(Module, metaclass=AutoParams):
             scope=requested_scope,
         )
         if resumed is not None:
-            resumed["vars"] = kwargs.get("vars", {})
-            await self._arun_lifecycle_hooks(
+            resume_event = await self._arun_lifecycle_hooks(
                 "before_resume",
                 BeforeResume(
                     scope=resumed["scope"],
@@ -676,7 +719,11 @@ class Agent(Module, metaclass=AutoParams):
                     model_preference=resumed.get("model_preference"),
                 ),
             )
-            inputs = resumed
+            inputs = _apply_before_resume(
+                resumed,
+                resume_event,
+                vars=kwargs.get("vars", {}),
+            )
         else:
             run_event = await self._arun_lifecycle_hooks(
                 "before_run",

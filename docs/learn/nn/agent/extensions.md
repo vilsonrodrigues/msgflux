@@ -104,10 +104,12 @@ application hooks, guards, skills, and future features such as compaction.
 
 Agent-specific lifecycle payloads derive from `AgentContext`, which carries the
 active execution `scope` and runtime `vars`. `ModelContext` adds the rendered
-`prompt` and active `tool_catalog`; `OutputContext` adds the settled
-presentation-only `output`. Return a replaced dataclass to modify one of these
-values. Avoid storing per-run data on the extension instance because one Agent
-may execute multiple threads concurrently.
+`prompt` and a read-only active `tool_catalog`; `OutputContext` adds the settled
+presentation-only `output`. The catalog is available so prompt extensions can
+describe the active tools, but this hook does not change the request tool
+surface. Return a replaced dataclass to modify supported fields. Avoid storing
+per-run data on the extension instance because one Agent may execute multiple
+threads concurrently.
 
 ## Built-In Prompt Extensions
 
