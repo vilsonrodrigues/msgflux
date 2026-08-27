@@ -1,7 +1,6 @@
 import asyncio
 import functools
 import inspect
-import threading
 import weakref
 from collections import OrderedDict, namedtuple
 from types import MethodType
@@ -41,14 +40,17 @@ from msgflux.models.model import Model
 from msgflux.models.response import ModelResponse, ModelStreamResponse
 from msgflux.nn.hooks import Hook, RemovableHandle
 from msgflux.nn.parameter import Parameter
-from msgflux.runtime.context import execution_context
+from msgflux.runtime.abort import await_with_abort
+from msgflux.runtime.context import execution_context, get_execution_context
 from msgflux.runtime.events import (
     EventType,
     ExecutionEvent,
     _AsyncEventChannel,
     _capture_events,
-    _SyncEventChannel,
+    _is_capturing_events,
+    _is_event_stream_root,
     emit_event,
+    event_source,
 )
 from msgflux.telemetry import Spans
 from msgflux.utils.convert import convert_camel_snake_to_title
@@ -1271,20 +1273,36 @@ class Module:
         A non-``None`` result replaces the payload seen by later handlers.
         """
         current = payload
-        for hook in self._lifecycle_hooks.get(event, {}).values():
+        for hook in tuple(self._lifecycle_hooks.get(event, {}).values()):
+            abort_signal = self._get_lifecycle_abort_signal(current)
+            if abort_signal is not None:
+                abort_signal.raise_if_aborted()
             result = hook.handle(current)
             if result is not None:
                 current = result
+            if abort_signal is not None:
+                abort_signal.raise_if_aborted()
         return current
 
     async def _arun_lifecycle_hooks(self, event: str, payload: Any) -> Any:
         """Async counterpart to :meth:`_run_lifecycle_hooks`."""
         current = payload
-        for hook in self._lifecycle_hooks.get(event, {}).values():
-            result = await hook.ahandle(current)
+        for hook in tuple(self._lifecycle_hooks.get(event, {}).values()):
+            abort_signal = self._get_lifecycle_abort_signal(current)
+            result = await await_with_abort(hook.ahandle(current), abort_signal)
             if result is not None:
                 current = result
         return current
+
+    @staticmethod
+    def _get_lifecycle_abort_signal(payload: Any):
+        """Resolve cancellation from a typed payload or the ambient execution."""
+        scope = getattr(payload, "scope", None)
+        if scope is None and hasattr(payload, "kwargs"):
+            scope = getattr(payload, "kwargs", {}).get("scope")
+        if scope is not None and getattr(scope, "abort_signal", None) is not None:
+            return scope.abort_signal
+        return get_execution_context().get("abort_signal")
 
     def has_lifecycle_hooks(self, event: str) -> bool:
         """Return whether at least one handler is registered for ``event``."""
@@ -1342,7 +1360,61 @@ class Module:
             self._forward_hooks.move_to_end(handle.id, last=False)
         return handle
 
+    def _event_source_identity(self) -> tuple[str, str]:
+        return (
+            str(self.get_module_name()),
+            str(getattr(self, "_event_source_type", "module")),
+        )
+
+    def _should_emit_nested_run_events(self) -> bool:
+        return bool(
+            _is_capturing_events()
+            and getattr(self, "_emit_nested_run_events", False)
+            and not _is_event_stream_root(self)
+        )
+
+    @staticmethod
+    def _emit_nested_run_completion(result: Any, *, scope: Any = None) -> None:
+        emit_event(
+            EventType.MESSAGE_START,
+            {"buffered": False},
+            scope=scope,
+        )
+        emit_event(
+            EventType.MESSAGE_END,
+            {"content": result},
+            scope=scope,
+        )
+        emit_event(EventType.TURN_END, scope=scope)
+        emit_event(
+            EventType.RUN_END,
+            {"outcome": "completed"},
+            scope=scope,
+        )
+
     def _call_impl(self, *args, **kwargs):
+        source_name, source_type = self._event_source_identity()
+        scope = kwargs.get("scope")
+        with event_source(source_name, source_type):
+            nested_run = self._should_emit_nested_run_events()
+            if nested_run:
+                emit_event(EventType.RUN_START, scope=scope)
+                emit_event(EventType.TURN_START, scope=scope)
+            try:
+                result = self._call_impl_with_hooks(*args, **kwargs)
+            except BaseException as exc:
+                if nested_run:
+                    emit_event(
+                        EventType.RUN_ERROR,
+                        {"error": str(exc)},
+                        scope=scope,
+                    )
+                raise
+            if nested_run and not isinstance(result, ModelStreamResponse):
+                self._emit_nested_run_completion(result, scope=scope)
+            return result
+
+    def _call_impl_with_hooks(self, *args, **kwargs):
         if not (self._forward_hooks or self._forward_pre_hooks):
             result = self._call(*args, **kwargs)
             return self._transform_module_output(result)
@@ -1482,6 +1554,28 @@ class Module:
             return await loop.run_in_executor(None, functools.partial(hook, *args))
 
     async def _acall_impl(self, *args, **kwargs):
+        source_name, source_type = self._event_source_identity()
+        scope = kwargs.get("scope")
+        with event_source(source_name, source_type):
+            nested_run = self._should_emit_nested_run_events()
+            if nested_run:
+                emit_event(EventType.RUN_START, scope=scope)
+                emit_event(EventType.TURN_START, scope=scope)
+            try:
+                result = await self._acall_impl_with_hooks(*args, **kwargs)
+            except BaseException as exc:
+                if nested_run:
+                    emit_event(
+                        EventType.RUN_ERROR,
+                        {"error": str(exc)},
+                        scope=scope,
+                    )
+                raise
+            if nested_run and not isinstance(result, ModelStreamResponse):
+                self._emit_nested_run_completion(result, scope=scope)
+            return result
+
+    async def _acall_impl_with_hooks(self, *args, **kwargs):
         if not (self._forward_hooks or self._forward_pre_hooks):
             result = await self._acall(*args, **kwargs)
             return await self._atransform_module_output(result)
@@ -1671,7 +1765,7 @@ class Module:
         )
         emit_event(
             EventType.MESSAGE_START,
-            {"role": "assistant", "buffered": buffered},
+            {"buffered": buffered},
         )
         if isinstance(result, ModelStreamResponse):
             await self._aconsume_event_response(result, emit_content=not buffered)
@@ -1679,75 +1773,46 @@ class Module:
             output = await self._arun_lifecycle_hooks("transform_output", output)
         else:
             output = result
-        emit_event(EventType.MESSAGE_END, {"role": "assistant", "content": output})
-        emit_event(EventType.TURN_END, {"output": output})
-        emit_event(EventType.RUN_END, {"outcome": "completed", "output": output})
+        emit_event(EventType.MESSAGE_END, {"content": output})
+        emit_event(EventType.TURN_END)
+        emit_event(EventType.RUN_END, {"outcome": "completed"})
         return output
 
-    def stream_events(self, *args, **kwargs) -> Iterator[ExecutionEvent]:
-        """Run the module and yield execution events as they occur."""
-        channel = _SyncEventChannel()
-        errors: List[BaseException] = []
-        stream_kwargs = self._prepare_event_stream_kwargs(dict(kwargs))
-        scope = stream_kwargs.get("scope")
-
-        def run() -> None:
-            try:
-                with _capture_events(channel.sink), execution_context(scope=scope):
-                    emit_event(
-                        EventType.RUN_START,
-                        {"module_name": self.get_module_name()},
-                    )
-                    emit_event(EventType.TURN_START)
-                    result = self(*args, **stream_kwargs)
-                    asyncio.run(self._afinalize_event_result(result))
-            except BaseException as exc:
-                errors.append(exc)
-                with _capture_events(channel.sink):
-                    emit_event(EventType.RUN_ERROR, {"error": str(exc)})
-            finally:
-                channel.close()
-
-        worker = threading.Thread(target=run, daemon=True)
-        worker.start()
-        try:
-            yield from channel
-        finally:
-            if (
-                worker.is_alive()
-                and scope is not None
-                and scope.abort_signal is not None
-            ):
-                scope.abort_signal.abort("event stream consumer closed")
-        if errors:
-            raise errors[0]
-
-    async def astream_events(
+    async def stream_events(
         self,
         *args,
         **kwargs,
     ) -> AsyncGenerator[ExecutionEvent, None]:
-        """Async counterpart to :meth:`stream_events`."""
-        channel = _AsyncEventChannel()
+        """Run the module and asynchronously yield execution events."""
+        channel = _AsyncEventChannel(root_module=self)
         error: BaseException | None = None
         stream_kwargs = self._prepare_event_stream_kwargs(dict(kwargs))
         scope = stream_kwargs.get("scope")
+        source_name, source_type = self._event_source_identity()
 
         async def run() -> None:
             nonlocal error
             try:
-                with _capture_events(channel.sink), execution_context(scope=scope):
-                    emit_event(
-                        EventType.RUN_START,
-                        {"module_name": self.get_module_name()},
-                    )
+                with (
+                    _capture_events(channel.sink),
+                    execution_context(scope=scope),
+                    event_source(source_name, source_type),
+                ):
+                    emit_event(EventType.RUN_START)
                     emit_event(EventType.TURN_START)
                     result = await self.acall(*args, **stream_kwargs)
                     await self._afinalize_event_result(result)
             except BaseException as exc:
                 error = exc
-                with _capture_events(channel.sink):
-                    emit_event(EventType.RUN_ERROR, {"error": str(exc)})
+                with (
+                    _capture_events(channel.sink),
+                    event_source(source_name, source_type),
+                ):
+                    emit_event(
+                        EventType.RUN_ERROR,
+                        {"error": str(exc)},
+                        scope=scope,
+                    )
             finally:
                 channel.close()
 

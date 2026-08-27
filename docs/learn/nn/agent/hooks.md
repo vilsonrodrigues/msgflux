@@ -34,6 +34,7 @@ The Agent currently exposes these lifecycle boundaries:
 | `before_run` | `BeforeRun` | May replace the message or call arguments before a fresh run is prepared. |
 | `before_resume` | `BeforeResume` | Observes restored durable state; its return value does not replace that state. |
 | `transform_context` | `ChatMessages` | May replace the model-visible context for the current request. |
+| `transform_system_prompt` | `SystemPromptContext` | May replace the rendered prompt; includes `scope`, `vars`, and active tool names. |
 | `before_request` | Model execution parameters | May replace request parameters immediately before the LM call. |
 | `after_response` | `ModelResponse` | May replace a settled, non-streaming response before it enters history. |
 | `before_tool` | `BeforeTool` | May replace model-visible arguments or block local execution. |
@@ -97,6 +98,17 @@ output_hook = Hook(
 )
 ```
 
+Lifecycle hooks observe the active `AbortSignal` before and after synchronous
+handlers. During async execution, aborting the signal also cancels an in-flight
+async handler. This lets hooks perform network or LM work without delaying
+execution cancellation. Prefer `agent.acall(...)` or `agent.stream_events(...)`
+for extensions that use async handlers; synchronous execution rejects an
+awaitable handler.
+
+For a removable package containing several hooks or tools, use an
+[Agent Extension](extensions.md). The `hooks=` argument remains the direct API
+for one-off interception and guards.
+
 ### Canonical Responses vs. Presented Output
 
 `after_response` and `transform_output` serve different purposes:
@@ -111,28 +123,64 @@ reference with the file contents. The Agent commits the original response to
 `ChatMessages` first, then transforms the value returned to the caller:
 
 ```python
-def expand_artifact_reference(output):
-    if output == "artifact://incident-report":
-        return artifact_store.read_text("incident-report")
-    return output
+import asyncio
+
+import msgflux as mf
+from msgflux.chat_messages import ChatMessages
+from msgflux.nn import Agent
+from msgflux.nn.hooks import Hook
 
 
-agent = Agent(
-    name="reporter",
-    model=model,
-    hooks=[
-        Hook(
-            event="transform_output",
-            handler=expand_artifact_reference,
+REFERENCE = "artifact://incident-report"
+REPORT = "Incident report: scanner recovered; reconciliation pending."
+
+
+def expand_artifact_reference(output: str) -> str:
+    return output.replace(REFERENCE, REPORT)
+
+
+async def main():
+    history = ChatMessages()
+    agent = Agent(
+        name="reporter",
+        model=mf.Model.chat_completion(
+            "openai/gpt-5.6-luna",
+            api_mode="responses",
+            store=False,
+        ),
+        instructions=f"Reply with exactly {REFERENCE} and nothing else.",
+        hooks=[Hook(event="transform_output", handler=expand_artifact_reference)],
+        config={"stream": True},
+    )
+
+    events = [
+        event
+        async for event in agent.stream_events(
+            "Return the incident report reference.",
+            messages=history,
         )
-    ],
-)
+    ]
+
+    message_end = next(event for event in events if event.type == "message.end")
+    run_end = next(event for event in events if event.type == "run.end")
+    assert message_end.data["content"] == REPORT
+    assert run_end.data == {"outcome": "completed"}
+
+    assistant = [
+        item for item in history.to_chatml() if item["role"] == "assistant"
+    ][-1]
+    assert assistant["content"] == REFERENCE
+
+
+asyncio.run(main())
 ```
 
-When `stream_events()` or `astream_events()` consumes a provider stream, a
-registered `transform_output` hook puts assistant content in buffered mode. Tool
-and reasoning events remain live, raw `message.delta` events are withheld, and
-the transformed complete value is emitted in `message.end` and `run.end`.
+When the async `stream_events()` iterator consumes a provider stream, a
+registered `transform_output` hook puts assistant content in buffered mode.
+Tool and reasoning events remain live, raw `message.delta` events are withheld,
+and the transformed complete value is emitted once in `message.end`.
+`to_chatml()` is used above only to make the assertion provider-independent;
+the canonical timeline may store Responses content as typed content blocks.
 
 For direct token streaming through `ModelStreamResponse`, no complete-output
 transformation is applied. Use the execution event stream when a hook requires

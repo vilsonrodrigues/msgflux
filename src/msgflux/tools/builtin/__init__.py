@@ -3,6 +3,7 @@
 from msgflux.tools.builtin.agent_skills import (
     ActivateSkillTool,
     SkillSearchTool,
+    SkillTool,
 )
 from msgflux.tools.builtin.agent_tool import AgentTool
 from msgflux.tools.builtin.task_tool import (
@@ -33,6 +34,7 @@ __all__ = [
     "BACKGROUND_CAPABILITY_TOOLS",
     "BASE_TASK_TOOLS",
     "SkillSearchTool",
+    "SkillTool",
     "TaskActivityTool",
     "TaskInterruptTool",
     "TaskListTool",

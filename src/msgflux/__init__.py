@@ -26,6 +26,11 @@ if TYPE_CHECKING:
     from msgflux.exceptions import TaskError
     from msgflux.models import Model
     from msgflux.models.gateway import ModelGateway
+    from msgflux.nn.extensions import (
+        AgentExtension,
+        AgentExtensionHandle,
+        SkillsExtension,
+    )
     from msgflux.runtime import (
         AbortSignal,
         AgentControlMessage,
@@ -59,6 +64,8 @@ __all__ = [
     "Audio",
     "AgentSkill",
     "AgentSkillManager",
+    "AgentExtension",
+    "AgentExtensionHandle",
     "AgentInbox",
     "AgentInboxStore",
     "AgentControlMessage",
@@ -91,6 +98,7 @@ __all__ = [
     "Signature",
     "Spans",
     "SkillsConfig",
+    "SkillsExtension",
     "Store",
     "TaskError",
     "ToolNotificationHandle",
@@ -113,6 +121,8 @@ __all__ = [
 ]
 
 _LAZY_IMPORTS = {
+    "AgentExtension": ("msgflux.nn.extensions", "AgentExtension"),
+    "AgentExtensionHandle": ("msgflux.nn.extensions", "AgentExtensionHandle"),
     "Audio": ("msgflux.data.types", "Audio"),
     "AgentSkill": ("msgflux.runtime", "AgentSkill"),
     "AgentSkillManager": ("msgflux.runtime", "AgentSkillManager"),
@@ -148,6 +158,7 @@ _LAZY_IMPORTS = {
     "SQLiteAgentInboxStore": ("msgflux.runtime", "SQLiteAgentInboxStore"),
     "Signature": ("msgflux.dsl.signature", "Signature"),
     "SkillsConfig": ("msgflux.runtime", "SkillsConfig"),
+    "SkillsExtension": ("msgflux.nn.extensions", "SkillsExtension"),
     "Spans": ("msgflux.telemetry", "Spans"),
     "Store": ("msgflux.data.stores", "Store"),
     "TaskError": ("msgflux.exceptions", "TaskError"),

@@ -20,6 +20,8 @@ _MODULE_EXPORTS = [
 ]
 
 __all__ = [
+    "AgentExtension",
+    "AgentExtensionHandle",
     "Parameter",
     "functional",
     "modules",
@@ -37,6 +39,7 @@ __all__ = [
     "Searcher",
     "Sequential",
     "Speaker",
+    "SkillsExtension",
     "Tool",
     "ToolLibrary",
     "Transcriber",
@@ -46,6 +49,8 @@ __all__ = [
 def __getattr__(name: str):
     if name in {"functional", "modules", "parameter"}:
         value = import_module(f"msgflux.nn.{name}")
+    elif name in {"AgentExtension", "AgentExtensionHandle", "SkillsExtension"}:
+        value = getattr(import_module("msgflux.nn.extensions"), name)
     elif name == "Parameter":
         value = getattr(import_module("msgflux.nn.parameter"), name)
     elif name in _MODULE_EXPORTS:

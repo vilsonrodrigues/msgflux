@@ -1,3 +1,5 @@
+import asyncio
+from contextlib import contextmanager
 from inspect import cleandoc
 from typing import (
     TYPE_CHECKING,
@@ -46,14 +48,23 @@ from msgflux.models import Model
 from msgflux.models.gateway import ModelGateway
 from msgflux.models.response import ModelResponse, ModelStreamResponse
 from msgflux.models.types import ChatCompletionModel
+from msgflux.nn.extensions.base import (
+    AgentExtension,
+    AgentExtensionHandle,
+    _extension_snapshot,
+    _ExtensionHook,
+    _get_extension_snapshot,
+)
+from msgflux.nn.extensions.skills import SkillsExtension
 from msgflux.nn.functional import aspawn, await_for_event, spawn, wait_for_event
 from msgflux.nn.hooks import Hook
-from msgflux.nn.hooks.events import BeforeResume, BeforeRun
+from msgflux.nn.hooks.events import BeforeResume, BeforeRun, SystemPromptContext
+from msgflux.nn.modules.container import ModuleDict
 from msgflux.nn.modules.generator import Generator
 from msgflux.nn.modules.module import Module
 from msgflux.nn.modules.tool import ToolLibrary, ToolResponses
 from msgflux.nn.parameter import Parameter
-from msgflux.runtime.abort import AbortSignal
+from msgflux.runtime.abort import AbortSignal, await_with_abort
 from msgflux.runtime.agent_inbox import (
     AgentInbox,
     AgentNotification,
@@ -67,8 +78,7 @@ from msgflux.runtime.context import (
     new_thread_id,
 )
 from msgflux.runtime.events import EventType, emit_event
-from msgflux.runtime.skills import AgentSkillManager, SkillsConfig
-from msgflux.tools.builtin import ActivateSkillTool, SkillSearchTool
+from msgflux.runtime.skills import SkillsConfig
 from msgflux.tools.definitions import ToolCatalog, ToolSpec
 from msgflux.utils.chat import ChatBlock, response_format_from_msgspec_struct
 from msgflux.utils.common import has_format_placeholder, is_jinja_template
@@ -131,6 +141,9 @@ class Agent(Module, metaclass=AutoParams):
     An Agent can handle multimodal inputs and outputs.
     """
 
+    _event_source_type = "agent"
+    _emit_nested_run_events = True
+
     # Configure AutoParams to use docstring as 'description' parameter
     _autoparams_use_docstring_for = "description"
     # Configure AutoParams to use class name as 'name' parameter
@@ -169,6 +182,9 @@ class Agent(Module, metaclass=AutoParams):
         response_mode: Optional[str] = None,
         tools: Optional[List[Callable]] = None,
         skills: Optional[SkillsConfig] = None,
+        extensions: Optional[
+            Union[List[AgentExtension], Mapping[str, AgentExtension]]
+        ] = None,
         mcp_servers: Optional[List[Mapping[str, Any]]] = None,
         signature: Optional[Union[str, Signature]] = None,
         description: Optional[str] = None,
@@ -292,9 +308,11 @@ class Agent(Module, metaclass=AutoParams):
         tools:
             A list of callable objects.
         skills:
-            Agent Skills config dict with `paths`, `catalog_limit`, `search_top_k`,
-            `allow`, `block`, and `load`. Use `msgflux.default_skill_paths()` when
-            you want common local paths.
+            Compatibility alias that installs ``SkillsExtension(skills)``.
+            Prefer passing a ``SkillsExtension`` through ``extensions``.
+        extensions:
+            Agent extensions installed at construction. Accepts a list, using
+            each extension's name, or a mapping of explicit names to extensions.
         mcp_servers:
             List of MCP (Model Context Protocol) server configurations.
             Each config should contain:
@@ -423,7 +441,6 @@ class Agent(Module, metaclass=AutoParams):
 
         self._set_response_mode(response_mode)
         self._set_templates(templates)
-        self._set_skills(skills)
         self._set_tools(tools, mcp_servers)
 
         if signature is not None:
@@ -444,6 +461,206 @@ class Agent(Module, metaclass=AutoParams):
             self._set_expected_output(expected_output)
             self._set_instructions(instructions)
             self._set_system_message(system_message)
+
+        self._initialize_extensions()
+        if extensions:
+            self._set_extensions(extensions)
+        if skills is not None:
+            if self.has_extension("skills"):
+                raise ValueError(
+                    "`skills` cannot be combined with a `skills` extension."
+                )
+            self.register_extension("skills", SkillsExtension(skills))
+
+    # --- Extensions ---
+
+    def _initialize_extensions(self) -> None:
+        self.extensions = ModuleDict()
+        self._extension_hook_handles: dict[str, list[Any]] = {}
+        self._extension_tool_names: dict[str, tuple[str, ...]] = {}
+        self._extension_tool_owners: dict[str, str] = {}
+        self._extension_refcounts: dict[str, int] = {}
+        self._pending_extensions: dict[str, AgentExtension] = {}
+        self._extension_async_cleanup_waiters: dict[str, Any] = {}
+
+    def _set_extensions(
+        self,
+        extensions: Union[List[AgentExtension], Mapping[str, AgentExtension]],
+    ) -> None:
+        entries = (
+            extensions.items()
+            if isinstance(extensions, Mapping)
+            else ((extension.name, extension) for extension in extensions)
+        )
+        for name, extension in entries:
+            self.register_extension(name, extension)
+
+    def register_extension(
+        self,
+        name: str,
+        extension: AgentExtension,
+    ) -> AgentExtensionHandle:
+        """Install a named extension and return its ownership handle."""
+        self._validate_extension_registration(name, extension)
+        extension_hooks = tuple(extension.hooks())
+        extension_tools = tuple(extension.tools())
+        hook_handles = []
+        tool_names = []
+        try:
+            for tool in extension_tools:
+                tool_name = self.tool_library.add(tool)
+                tool_names.append(tool_name)
+                self._extension_tool_owners[tool_name] = name
+            for hook in extension_hooks:
+                hook_handles.append(self._register_extension_hook(name, hook))
+            self.extensions[name] = extension
+            self._extension_hook_handles[name] = hook_handles
+            self._extension_tool_names[name] = tuple(tool_names)
+            self._extension_refcounts[name] = 0
+            extension._bind_agent(self)
+            extension.on_register(self)
+        except Exception:
+            extension._unbind_agent()
+            if name in self.extensions:
+                del self.extensions[name]
+            for handle in reversed(hook_handles):
+                handle.remove()
+            for tool_name in reversed(tool_names):
+                self._extension_tool_owners.pop(tool_name, None)
+                self.tool_library.remove(tool_name)
+            raise
+        return AgentExtensionHandle(self, name)
+
+    def _validate_extension_registration(
+        self,
+        name: str,
+        extension: AgentExtension,
+    ) -> None:
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError("`name` must be a non-empty string")
+        if not isinstance(extension, AgentExtension):
+            raise TypeError(
+                f"`extension` must be an AgentExtension, given `{type(extension)}`"
+            )
+        if name in self.extensions or name in self._pending_extensions:
+            raise ValueError(f"The extension name `{name}` is already registered")
+
+    def _register_extension_hook(self, name: str, hook: Hook):
+        if not isinstance(hook, Hook):
+            raise TypeError(
+                f"Extension `{name}` returned a non-Hook contribution: `{type(hook)}`"
+            )
+        owned_hook = _ExtensionHook(self, name, hook)
+        target = (
+            getattr(self, owned_hook.target) if owned_hook.target is not None else self
+        )
+        return owned_hook.register(target)
+
+    def has_extension(self, name: str) -> bool:
+        """Return whether an extension is enabled for new runs."""
+        return name in self.extensions
+
+    def remove_extension(self, name: str) -> None:
+        """Disable an extension for new runs and remove it when no run uses it."""
+        if name not in self.extensions:
+            return
+        extension = self.extensions[name]
+        del self.extensions[name]
+        self._pending_extensions[name] = extension
+        if self._extension_refcounts.get(name, 0) == 0:
+            self._cleanup_extension(name)
+
+    async def aremove_extension(self, name: str) -> None:
+        """Async removal, using async cleanup when no active run retains it."""
+        if name not in self.extensions:
+            return
+        extension = self.extensions[name]
+        del self.extensions[name]
+        self._pending_extensions[name] = extension
+        ready = asyncio.Event()
+        self._extension_async_cleanup_waiters[name] = ready
+        if self._extension_refcounts.get(name, 0) == 0:
+            ready.set()
+        try:
+            await ready.wait()
+        except asyncio.CancelledError:
+            self._extension_async_cleanup_waiters.pop(name, None)
+            if self._extension_refcounts.get(name, 0) == 0:
+                self._cleanup_extension(name)
+            raise
+        self._cleanup_extension_contributions(name)
+        self._pending_extensions.pop(name, None)
+        self._extension_refcounts.pop(name, None)
+        try:
+            await extension.aon_remove(self)
+        finally:
+            extension._unbind_agent()
+            self._extension_async_cleanup_waiters.pop(name, None)
+
+    def _cleanup_extension_contributions(self, name: str) -> None:
+        for handle in self._extension_hook_handles.pop(name, ()):
+            handle.remove()
+        for tool_name in reversed(self._extension_tool_names.pop(name, ())):
+            self._extension_tool_owners.pop(tool_name, None)
+            self.tool_library.remove(tool_name)
+
+    def _cleanup_extension(self, name: str) -> None:
+        extension = self._pending_extensions.pop(name, None)
+        if extension is None:
+            return
+        self._cleanup_extension_contributions(name)
+        self._extension_refcounts.pop(name, None)
+        try:
+            extension.on_remove(self)
+        finally:
+            extension._unbind_agent()
+
+    def _extension_is_visible(self, name: str) -> bool:
+        snapshot = _get_extension_snapshot(self)
+        if snapshot is not None:
+            return name in snapshot
+        return name in self.extensions
+
+    @contextmanager
+    def _extension_run_snapshot(self):
+        current = _get_extension_snapshot(self)
+        if current is not None:
+            yield current
+            return
+        names = frozenset(self.extensions)
+        for name in names:
+            self._extension_refcounts[name] = self._extension_refcounts.get(name, 0) + 1
+        try:
+            with _extension_snapshot(self, names):
+                yield names
+        finally:
+            for name in names:
+                count = self._extension_refcounts.get(name, 1) - 1
+                self._extension_refcounts[name] = count
+                if count == 0 and name in self._pending_extensions:
+                    waiter = self._extension_async_cleanup_waiters.get(name)
+                    if waiter is not None:
+                        waiter.set()
+                    else:
+                        self._cleanup_extension(name)
+
+    def _call_impl_with_hooks(self, *args, **kwargs):
+        with self._extension_run_snapshot():
+            with execution_context(scope=kwargs.get("scope")):
+                return super()._call_impl_with_hooks(*args, **kwargs)
+
+    async def _acall_impl_with_hooks(self, *args, **kwargs):
+        with self._extension_run_snapshot():
+            with execution_context(scope=kwargs.get("scope")):
+                return await super()._acall_impl_with_hooks(*args, **kwargs)
+
+    @property
+    def agent_skill_manager(self):
+        """Compatibility access to the manager owned by SkillsExtension."""
+        extension = self.extensions["skills"]
+        if not isinstance(extension, SkillsExtension):
+            raise AttributeError("The Agent has no SkillsExtension")
+        return extension.manager
 
     def _get_requested_scope(
         self, kwargs: Mapping[str, Any]
@@ -753,7 +970,7 @@ class Agent(Module, metaclass=AutoParams):
         prefilling: Optional[str] = None,
         model_preference: Optional[str] = None,
         tool_filter: Optional[ToolFilter] = None,
-        scope: Optional[ExecutionScope] = None,  # noqa: ARG002
+        scope: Optional[ExecutionScope] = None,
     ) -> Union[ModelResponse, ModelStreamResponse]:
         self._raise_if_background_task_interrupted()
         context_messages = await self._arun_lifecycle_hooks(
@@ -765,6 +982,12 @@ class Agent(Module, metaclass=AutoParams):
             model_preference=model_preference,
             vars=vars,
             tool_filter=tool_filter,
+            transform_system_prompt=False,
+        )
+        model_execution_params = await self._atransform_model_system_prompt(
+            model_execution_params,
+            vars=vars,
+            scope=scope,
         )
         model_execution_params = await self._arun_lifecycle_hooks(
             "before_request", model_execution_params
@@ -775,7 +998,10 @@ class Agent(Module, metaclass=AutoParams):
             EventType.MODEL_REQUEST,
             {"message_count": len(model_execution_params.get("messages") or [])},
         )
-        response = await self.generator.acall(**model_execution_params)
+        response = await await_with_abort(
+            self.generator.acall(**model_execution_params),
+            (scope or get_execution_context()["scope"]).abort_signal,
+        )
         if not isinstance(response, ModelStreamResponse):
             response = await self._arun_lifecycle_hooks("after_response", response)
         emit_event(
@@ -856,12 +1082,53 @@ class Agent(Module, metaclass=AutoParams):
         tool_filter: Optional[ToolFilter] = None,
         model_preference: Optional[str] = None,
     ):
-        params = self._prepare_warmup_execution(
-            vars=vars,
-            tool_filter=tool_filter,
+        model_execution_params = self._prepare_model_execution(
+            messages=[],
+            vars=vars or {},
             model_preference=model_preference,
+            tool_filter=tool_filter,
+            transform_system_prompt=False,
+        )
+        model_execution_params = await self._atransform_model_system_prompt(
+            model_execution_params,
+            vars=vars or {},
+        )
+        params = dotdict(
+            system_prompt=model_execution_params.system_prompt,
+            tool_catalog=model_execution_params.tool_catalog,
+            **(
+                {"model_preference": model_execution_params.model_preference}
+                if model_preference
+                else {}
+            ),
         )
         return await self.model.awarmup_system_prompt(**params)
+
+    async def _atransform_model_system_prompt(
+        self,
+        model_execution_params: dotdict,
+        *,
+        vars: Mapping[str, Any],
+        scope: Optional[ExecutionScope] = None,
+    ) -> dotdict:
+        prompt_ctx = await self._arun_lifecycle_hooks(
+            "transform_system_prompt",
+            SystemPromptContext(
+                prompt=model_execution_params.system_prompt or "",
+                scope=scope or get_execution_context()["scope"],
+                vars=vars,
+                tool_names=frozenset(
+                    tool.name
+                    for tool in (
+                        model_execution_params.tool_catalog.portable_tools()
+                        if model_execution_params.tool_catalog is not None
+                        else ()
+                    )
+                ),
+            ),
+        )
+        model_execution_params.system_prompt = prompt_ctx.prompt or None
+        return model_execution_params
 
     def _prepare_warmup_execution(
         self,
@@ -896,6 +1163,7 @@ class Agent(Module, metaclass=AutoParams):
         tool_filter: Optional[ToolFilter] = None,
         drain_notifications: bool = True,
         scope: Optional[ExecutionScope] = None,  # noqa: ARG002
+        transform_system_prompt: bool = True,
     ) -> Mapping[str, Any]:
         model_messages = self._build_model_messages(
             messages,
@@ -903,7 +1171,14 @@ class Agent(Module, metaclass=AutoParams):
         )
 
         tool_catalog = self.tool_library.get_tool_catalog(model_messages)
-        tool_specs = tool_catalog.tools
+        tool_specs = [
+            tool
+            for tool in tool_catalog.tools
+            if (
+                (owner := self._extension_tool_owners.get(tool.name)) is None
+                or self._extension_is_visible(owner)
+            )
+        ]
 
         tool_choice = self.config.get("tool_choice")
 
@@ -918,7 +1193,11 @@ class Agent(Module, metaclass=AutoParams):
         )
         portable_tools = tool_catalog.portable_tools()
         tool_names = {tool.name for tool in portable_tools}
-        system_prompt = self.get_system_prompt(vars, tool_names=tool_names)
+        system_prompt = self.get_system_prompt(
+            vars,
+            tool_names=tool_names,
+            _apply_hooks=transform_system_prompt,
+        )
 
         tool_catalog = tool_catalog if portable_tools or tool_specs else None
 
@@ -3207,10 +3486,6 @@ class Agent(Module, metaclass=AutoParams):
         mcp_servers: Optional[List[Mapping[str, Any]]] = None,
     ):
         tools = list(tools or [])
-        if self.agent_skill_manager.has_activatable_skills():
-            tools.append(ActivateSkillTool(self.agent_skill_manager))
-            if self.agent_skill_manager.has_searchable_skills():
-                tools.append(SkillSearchTool(self.agent_skill_manager))
         self.tool_library = ToolLibrary(
             self.get_module_name(),
             tools,
@@ -3218,9 +3493,6 @@ class Agent(Module, metaclass=AutoParams):
         )
         self.tool_library.set_lifecycle_owner(self)
         self.tool_library.set_agent_inbox(self.agent_inbox)
-
-    def _set_skills(self, skills: Optional[SkillsConfig] = None):
-        self.agent_skill_manager = AgentSkillManager(skills)
 
     def _set_generation_schema(
         self, generation_schema: Optional[msgspec.Struct] = None
@@ -3692,6 +3964,8 @@ class Agent(Module, metaclass=AutoParams):
         self,
         vars: Optional[Mapping[str, Any]] = None,
         tool_names: Optional[set[str]] = None,
+        *,
+        _apply_hooks: bool = True,
     ) -> str:
         """Render the system prompt using the Jinja template.
         Returns an empty string if no segments are provided.
@@ -3702,17 +3976,6 @@ class Agent(Module, metaclass=AutoParams):
             expected_output=self.expected_output.data,
             examples=self.examples.data,
             system_extra_message=self.system_extra_message,
-            agent_skills=self.agent_skill_manager.catalog()
-            if self.agent_skill_manager.has_activatable_skills()
-            else None,
-            loaded_agent_skills=self.agent_skill_manager.loaded_content()
-            if self.agent_skill_manager.has_skills()
-            else None,
-            agent_skill_search_enabled=self.agent_skill_manager.has_searchable_skills()
-            if self.agent_skill_manager.has_activatable_skills()
-            else False,
-            agent_skills_enabled=self.agent_skill_manager.has_skills(),
-            agent_skill_activation_enabled=self.agent_skill_manager.has_activatable_skills(),
             tool_usage_guidance=self.tool_library.get_tool_usage_guidance(tool_names),
         )
 
@@ -3725,7 +3988,18 @@ class Agent(Module, metaclass=AutoParams):
 
         if vars:  # Runtime inputs to system template
             system_prompt = self._format_template(vars, system_prompt)
-        return system_prompt
+        if not _apply_hooks:
+            return system_prompt
+        ctx = self._run_lifecycle_hooks(
+            "transform_system_prompt",
+            SystemPromptContext(
+                prompt=system_prompt,
+                scope=get_execution_context()["scope"],
+                vars=vars or {},
+                tool_names=frozenset(tool_names or ()),
+            ),
+        )
+        return ctx.prompt
 
     @property
     def system_prompt_template(self) -> str:

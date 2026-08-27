@@ -140,13 +140,12 @@ class Hook:
 
         Default implementation runs ``__call__`` in an executor.
         """
-        loop = asyncio.get_event_loop()
         if self.on == "pre":
-            return await loop.run_in_executor(
-                None, functools.partial(self, module, args, kwargs)
+            return await asyncio.to_thread(
+                functools.partial(self, module, args, kwargs)
             )
-        return await loop.run_in_executor(
-            None, functools.partial(self, module, args, kwargs, output)
+        return await asyncio.to_thread(
+            functools.partial(self, module, args, kwargs, output)
         )
 
     def handle(self, payload: Any) -> Any:
@@ -181,13 +180,11 @@ class Hook:
                 return await self.handler(payload)
 
         if type(self).handle is not Hook.handle:
-            loop = asyncio.get_running_loop()
-            return await loop.run_in_executor(None, self.handle, payload)
+            return await asyncio.to_thread(self.handle, payload)
 
         if self.handler is None:
             raise NotImplementedError
-        loop = asyncio.get_running_loop()
-        result = await loop.run_in_executor(None, self.handle, payload)
+        result = await asyncio.to_thread(self.handle, payload)
         if inspect.isawaitable(result):
             return await result
         return result

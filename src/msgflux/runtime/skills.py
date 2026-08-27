@@ -188,10 +188,19 @@ class AgentSkillManager:
         self.search_top_k = config["search_top_k"]
         self.allow = config["allow"]
         self.block = config["block"]
-        self.load = config["load"]
+        self.preload = config["preload"]
+        self.defer_loading = config["defer_loading"]
+        self.search_enabled = config["search"]
         self.skills: dict[str, AgentSkill] = {}
         self.diagnostics: list[str] = []
         self.discover()
+        if not self.defer_loading:
+            self.preload = set(self.skills)
+
+    @property
+    def load(self) -> set[str]:
+        """Compatibility alias for the previous internal attribute name."""
+        return self.preload
 
     def _normalize_config(self, config: Optional[SkillsConfig]) -> dict[str, Any]:
         if config is None:
@@ -201,12 +210,15 @@ class AgentSkillManager:
                 "search_top_k": 5,
                 "allow": None,
                 "block": None,
-                "load": set(),
+                "preload": set(),
+                "defer_loading": True,
+                "search": True,
             }
         if not isinstance(config, Mapping):
             raise TypeError(
                 "`skills` must be a dict with `paths`, `catalog_limit`, "
-                "`search_top_k`, `allow`, `block`, and `load` keys."
+                "`search_top_k`, `allow`, `block`, `preload`, "
+                "`defer_loading`, and `search` keys."
             )
         allowed_keys = {
             "paths",
@@ -215,6 +227,9 @@ class AgentSkillManager:
             "allow",
             "block",
             "load",
+            "preload",
+            "defer_loading",
+            "search",
         }
         invalid_keys = set(config) - allowed_keys
         if invalid_keys:
@@ -224,6 +239,14 @@ class AgentSkillManager:
             )
         if config.get("allow") is not None and config.get("block") is not None:
             raise ValueError("`skills` must contain only one of `allow` or `block`.")
+        if config.get("load") is not None and config.get("preload") is not None:
+            raise ValueError("`skills` must contain only one of `load` or `preload`.")
+        defer_loading = config.get("defer_loading", True)
+        search = config.get("search", True)
+        if not isinstance(defer_loading, bool):
+            raise TypeError("`skills['defer_loading']` must be a bool.")
+        if not isinstance(search, bool):
+            raise TypeError("`skills['search']` must be a bool.")
         catalog_limit = self._normalize_optional_int(
             config.get("catalog_limit"),
             name="catalog_limit",
@@ -240,8 +263,12 @@ class AgentSkillManager:
             "search_top_k": search_top_k,
             "allow": self._normalize_name_filter(config.get("allow"), name="allow"),
             "block": self._normalize_name_filter(config.get("block"), name="block"),
-            "load": self._normalize_name_filter(config.get("load"), name="load")
+            "preload": self._normalize_name_filter(
+                config.get("preload", config.get("load")), name="preload"
+            )
             or set(),
+            "defer_loading": defer_loading,
+            "search": search,
         }
 
     def _normalize_name_filter(
@@ -365,10 +392,10 @@ class AgentSkillManager:
             }
 
     def _validate_loaded_skills(self) -> None:
-        missing = self.load - set(self.skills)
+        missing = self.preload - set(self.skills)
         if missing:
             raise ValueError(
-                f"Unknown skills in `skills['load']`: {', '.join(sorted(missing))}."
+                f"Unknown skills in `skills['preload']`: {', '.join(sorted(missing))}."
             )
 
     def _iter_skill_files(self, root: Path) -> Iterable[Path]:
@@ -396,7 +423,7 @@ class AgentSkillManager:
         return bool(self.activatable_skills())
 
     def has_searchable_skills(self) -> bool:
-        return bool(self.searchable_skills())
+        return self.search_enabled and bool(self.searchable_skills())
 
     def names(self) -> list[str]:
         return sorted(self.skills)
@@ -414,20 +441,22 @@ class AgentSkillManager:
         skills = [
             skill
             for skill in sorted(self.skills.values(), key=lambda item: item.name)
-            if skill.catalog and skill.name not in self.load
+            if skill.catalog and skill.name not in self.preload
         ]
         if self.catalog_limit is None:
             return skills
         return skills[: max(int(self.catalog_limit), 0)]
 
     def loaded_skills(self) -> list[AgentSkill]:
-        return [self.skills[name] for name in sorted(self.load) if name in self.skills]
+        return [
+            self.skills[name] for name in sorted(self.preload) if name in self.skills
+        ]
 
     def activatable_skills(self) -> list[AgentSkill]:
         return [
             skill
             for skill in sorted(self.skills.values(), key=lambda item: item.name)
-            if skill.name not in self.load
+            if self.defer_loading and skill.name not in self.preload
         ]
 
     def searchable_skills(self) -> list[AgentSkill]:
@@ -501,7 +530,7 @@ class AgentSkillManager:
 
     def activate(self, name: str) -> str:
         skill = self.get(name)
-        if skill.name in self.load:
+        if skill.name in self.preload:
             raise ValueError(f"Skill `{name}` is already loaded in the system prompt.")
         return self.render_skill_content(skill)
 

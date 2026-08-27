@@ -46,7 +46,7 @@ class AgentTool(ToolBucket, ToolLibraryOperator):
         return handle(
             name,
             message=message,
-            scope=scope or self._build_scope(namespace),
+            _runtime_arguments={"scope": scope or self._build_scope(namespace)},
         )
 
     async def acall(
@@ -62,7 +62,7 @@ class AgentTool(ToolBucket, ToolLibraryOperator):
         return await handle.acall(
             name,
             message=message,
-            scope=scope or self._build_scope(namespace),
+            _runtime_arguments={"scope": scope or self._build_scope(namespace)},
         )
 
     @staticmethod

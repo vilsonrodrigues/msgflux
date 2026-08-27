@@ -19,7 +19,11 @@ import msgflux.nn.functional as F
 from msgflux.auto import AutoParams
 from msgflux.chat_messages import ChatMessages
 from msgflux.core.dotdict import dotdict
-from msgflux.exceptions import TaskError, TaskInterruptRequestedError
+from msgflux.exceptions import (
+    AbortRequestedError,
+    TaskError,
+    TaskInterruptRequestedError,
+)
 from msgflux.logger import logger
 from msgflux.nn.hooks.events import AfterTool, BeforeTool
 from msgflux.nn.modules.container import ModuleDict
@@ -30,13 +34,14 @@ from msgflux.protocols.mcp import (
     extract_tool_result_text,
     filter_tools,
 )
+from msgflux.runtime.abort import await_with_abort
 from msgflux.runtime.agent_inbox import (
     AgentInbox,
     InMemoryAgentInboxStore,
 )
 from msgflux.runtime.background import BackgroundTaskDispatcher
 from msgflux.runtime.context import get_execution_context
-from msgflux.runtime.events import EventType, emit_event
+from msgflux.runtime.events import EventType, emit_event, event_source
 from msgflux.tasks import InMemoryTaskStore
 from msgflux.telemetry.span import (
     aset_tool_attributes,
@@ -52,7 +57,6 @@ from msgflux.tools.definitions import ToolCatalog, ToolSpec
 from msgflux.tools.handles import ToolLibraryHandle
 from msgflux.tools.helpers import (
     RUNTIME_BACKGROUND_PARAM,
-    build_call_parameters_for_response,
     coerce_tool_params,
     is_agent_tool_impl,
     is_background_capable,
@@ -76,6 +80,8 @@ from msgflux.utils.tenacity import apply_retry, default_tool_retry
 
 class Tool(Module):
     """Tool is Module type that provide a json schema to tools."""
+
+    _event_source_type = "tool"
 
     def get_json_schema(self):
         return generate_tool_json_schema(self)
@@ -526,6 +532,8 @@ def _metadata_from_tool(tool: Tool) -> ToolMetadata:
 class ToolLibrary(Module, metaclass=AutoParams):
     """ToolLibrary is a Module type that manage tool calls over the tool library."""
 
+    _event_source_type = "tool_library"
+
     def __init__(
         self,
         name: str,
@@ -582,16 +590,6 @@ class ToolLibrary(Module, metaclass=AutoParams):
         if self._lifecycle_owner_ref is None:
             return None
         return self._lifecycle_owner_ref()
-
-    @staticmethod
-    def _apply_visible_tool_arguments(
-        call_params: Dict[str, Any],
-        previous: Mapping[str, Any],
-        current: Mapping[str, Any],
-    ) -> None:
-        for key in previous:
-            call_params.pop(key, None)
-        call_params.update(current)
 
     def is_bucket(self, tool_name: str) -> bool:
         """Return whether a registered public tool is a bucket."""
@@ -1109,7 +1107,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
 
     # --- Tool Call Preparation ---
 
-    def _build_call_params(  # noqa: C901
+    def _build_tool_argument_sets(  # noqa: C901
         self,
         *,
         tool: Tool,
@@ -1120,14 +1118,21 @@ class ToolLibrary(Module, metaclass=AutoParams):
         messages: List[Dict[str, Any]],
         vars: Mapping[str, Any],
         tool_call_id: str | None = None,
-    ) -> Dict[str, Any]:
+        runtime_arguments: Mapping[str, Any] | None = None,
+    ) -> tuple[Dict[str, Any], Dict[str, Any]]:
         if config.get("handoff", False) or config.get("disable_input", False):
-            call_params: Dict[str, Any] = {}
+            visible_params: Dict[str, Any] = {}
         else:
-            call_params = coerce_tool_params(tool_name, tool_params)
+            visible_params = coerce_tool_params(tool_name, tool_params)
 
         for param_name in config.get("_hidden_params") or {}:
-            call_params.pop(param_name, None)
+            visible_params.pop(param_name, None)
+
+        runtime_params: Dict[str, Any] = dict(runtime_arguments or {})
+        if RUNTIME_BACKGROUND_PARAM in visible_params:
+            runtime_params[RUNTIME_BACKGROUND_PARAM] = visible_params.pop(
+                RUNTIME_BACKGROUND_PARAM
+            )
 
         inject_vars = config.get("inject_vars", False)
         if inject_vars:
@@ -1147,24 +1152,24 @@ class ToolLibrary(Module, metaclass=AutoParams):
                         )
                     selected_vars[key] = vars[key]
                 if config.get("tool_kind") == "agent" or is_agent_tool_impl(tool.impl):
-                    call_params["vars"] = selected_vars
+                    runtime_params["vars"] = selected_vars
                 else:
-                    call_params.update(selected_vars)
+                    runtime_params.update(selected_vars)
             elif inject_vars is True:
-                call_params["vars"] = vars
+                runtime_params["vars"] = vars
 
         if config.get("inject_messages", False):
             if should_copy_injected_messages(tool, config):
-                call_params["messages"] = deepcopy(messages)
+                runtime_params["messages"] = deepcopy(messages)
             else:
-                call_params["messages"] = messages
+                runtime_params["messages"] = messages
 
         if config.get("inject_message", False):
-            call_params["message"] = message
+            runtime_params["message"] = message
 
         if config.get("inject_handle", False):
             context = get_execution_context()
-            call_params["handle"] = self.get_handle().for_tool(
+            runtime_params["handle"] = self.get_handle().for_tool(
                 tool_name=tool_name,
                 agent_inbox=context.get("agent_inbox"),
                 task_store=context.get("task_store"),
@@ -1175,7 +1180,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 activity_recorder=context.get("task_activity_recorder"),
             )
 
-        return call_params
+        return visible_params, runtime_params
 
     def _record_tool_activity(
         self,
@@ -1206,8 +1211,9 @@ class ToolLibrary(Module, metaclass=AutoParams):
         vars: Mapping[str, Any],
         activity_recorder: Any,
         tool_call_id: str | None = None,
-    ) -> tuple[Dict[str, Any], dict[str, Any] | None]:
-        call_params = self._build_call_params(
+        runtime_arguments: Mapping[str, Any] | None = None,
+    ) -> tuple[Dict[str, Any], Dict[str, Any]]:
+        visible_params, runtime_params = self._build_tool_argument_sets(
             tool=tool,
             tool_name=tool_name,
             tool_params=tool_params,
@@ -1216,16 +1222,16 @@ class ToolLibrary(Module, metaclass=AutoParams):
             messages=messages,
             vars=vars,
             tool_call_id=tool_call_id,
+            runtime_arguments=runtime_arguments,
         )
-        response_params = build_call_parameters_for_response(call_params)
         self._record_tool_activity(
             activity_recorder=activity_recorder,
             tool_name=tool_name,
             tool=tool,
             config=config,
-            parameters=response_params,
+            parameters=visible_params,
         )
-        return call_params, response_params
+        return visible_params, runtime_params
 
     def _run_before_tool_hook(
         self,
@@ -1247,6 +1253,8 @@ class ToolLibrary(Module, metaclass=AutoParams):
             if not isinstance(result, BeforeTool):
                 raise TypeError("before_tool handlers must return BeforeTool or None")
             return result
+        except (AbortRequestedError, TaskInterruptRequestedError):
+            raise
         except Exception as exc:
             return BeforeTool(
                 tool_call_id=tool_id,
@@ -1275,6 +1283,8 @@ class ToolLibrary(Module, metaclass=AutoParams):
             if not isinstance(result, BeforeTool):
                 raise TypeError("before_tool handlers must return BeforeTool or None")
             return result
+        except (AbortRequestedError, TaskInterruptRequestedError):
+            raise
         except Exception as exc:
             return BeforeTool(
                 tool_call_id=tool_id,
@@ -1306,11 +1316,26 @@ class ToolLibrary(Module, metaclass=AutoParams):
         self,
         tool: Tool,
         call_params: Mapping[str, Any],
+        visible_params: Mapping[str, Any],
     ) -> Any:
-        event_data = self._tool_event_data(tool, call_params)
+        event_data = self._tool_event_data(tool, call_params, visible_params)
+        with event_source(event_data["tool_name"], "tool"):
+            return self._execute_prepared_tool_impl(tool, call_params, event_data)
+
+    def _execute_prepared_tool_impl(
+        self,
+        tool: Tool,
+        call_params: Mapping[str, Any],
+        event_data: Mapping[str, Any],
+    ) -> Any:
         emit_event(EventType.TOOL_START, event_data)
         try:
+            abort_signal = get_execution_context().get("abort_signal")
+            if abort_signal is not None:
+                abort_signal.raise_if_aborted()
             result = tool(**call_params)
+            if abort_signal is not None:
+                abort_signal.raise_if_aborted()
         except BaseException as exc:
             outcome = AfterTool(
                 tool_call_id=event_data["tool_call_id"],
@@ -1325,18 +1350,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 arguments=event_data["arguments"],
                 result=result,
             )
-        owner = self._get_lifecycle_owner()
-        if owner is not None and owner.has_lifecycle_hooks("after_tool"):
-            try:
-                hooked_outcome = owner._run_lifecycle_hooks("after_tool", outcome)
-                if not isinstance(hooked_outcome, AfterTool):
-                    raise TypeError("after_tool handlers must return AfterTool or None")
-                outcome = hooked_outcome
-            except Exception as exc:
-                emit_event(
-                    EventType.HANDLER_ERROR,
-                    {"hook": "after_tool", "error": str(exc)},
-                )
+        outcome = self._run_after_tool_hook(outcome)
         emit_event(
             EventType.TOOL_END,
             {
@@ -1355,11 +1369,28 @@ class ToolLibrary(Module, metaclass=AutoParams):
         self,
         tool: Tool,
         call_params: Mapping[str, Any],
+        visible_params: Mapping[str, Any],
     ) -> Any:
-        event_data = self._tool_event_data(tool, call_params)
+        event_data = self._tool_event_data(tool, call_params, visible_params)
+        with event_source(event_data["tool_name"], "tool"):
+            return await self._aexecute_prepared_tool_impl(
+                tool,
+                call_params,
+                event_data,
+            )
+
+    async def _aexecute_prepared_tool_impl(
+        self,
+        tool: Tool,
+        call_params: Mapping[str, Any],
+        event_data: Mapping[str, Any],
+    ) -> Any:
         emit_event(EventType.TOOL_START, event_data)
         try:
-            result = await tool.acall(**call_params)
+            result = await await_with_abort(
+                tool.acall(**call_params),
+                get_execution_context().get("abort_signal"),
+            )
         except BaseException as exc:
             outcome = AfterTool(
                 tool_call_id=event_data["tool_call_id"],
@@ -1374,20 +1405,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 arguments=event_data["arguments"],
                 result=result,
             )
-        owner = self._get_lifecycle_owner()
-        if owner is not None and owner.has_lifecycle_hooks("after_tool"):
-            try:
-                hooked_outcome = await owner._arun_lifecycle_hooks(
-                    "after_tool", outcome
-                )
-                if not isinstance(hooked_outcome, AfterTool):
-                    raise TypeError("after_tool handlers must return AfterTool or None")
-                outcome = hooked_outcome
-            except Exception as exc:
-                emit_event(
-                    EventType.HANDLER_ERROR,
-                    {"hook": "after_tool", "error": str(exc)},
-                )
+        outcome = await self._arun_after_tool_hook(outcome)
         emit_event(
             EventType.TOOL_END,
             {
@@ -1402,15 +1420,52 @@ class ToolLibrary(Module, metaclass=AutoParams):
             raise RuntimeError(str(outcome.error))
         return outcome.result
 
+    def _run_after_tool_hook(self, outcome: AfterTool) -> AfterTool:
+        owner = self._get_lifecycle_owner()
+        if owner is None or not owner.has_lifecycle_hooks("after_tool"):
+            return outcome
+        try:
+            hooked_outcome = owner._run_lifecycle_hooks("after_tool", outcome)
+            if not isinstance(hooked_outcome, AfterTool):
+                raise TypeError("after_tool handlers must return AfterTool or None")
+            return hooked_outcome
+        except (AbortRequestedError, TaskInterruptRequestedError):
+            raise
+        except Exception as exc:
+            emit_event(
+                EventType.HANDLER_ERROR,
+                {"hook": "after_tool", "error": str(exc)},
+            )
+            return outcome
+
+    async def _arun_after_tool_hook(self, outcome: AfterTool) -> AfterTool:
+        owner = self._get_lifecycle_owner()
+        if owner is None or not owner.has_lifecycle_hooks("after_tool"):
+            return outcome
+        try:
+            hooked_outcome = await owner._arun_lifecycle_hooks("after_tool", outcome)
+            if not isinstance(hooked_outcome, AfterTool):
+                raise TypeError("after_tool handlers must return AfterTool or None")
+            return hooked_outcome
+        except (AbortRequestedError, TaskInterruptRequestedError):
+            raise
+        except Exception as exc:
+            emit_event(
+                EventType.HANDLER_ERROR,
+                {"hook": "after_tool", "error": str(exc)},
+            )
+            return outcome
+
     @staticmethod
     def _tool_event_data(
         tool: Tool,
         call_params: Mapping[str, Any],
+        visible_params: Mapping[str, Any],
     ) -> dict[str, Any]:
         return {
             "tool_call_id": call_params.get("tool_call_id"),
             "tool_name": tool.get_module_name(),
-            "arguments": build_call_parameters_for_response(call_params),
+            "arguments": dict(visible_params),
         }
 
     def _call_captured_tool(
@@ -1419,6 +1474,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
         tool_name: str,
         arguments: Mapping[str, Any],
         *,
+        runtime_arguments: Mapping[str, Any] | None = None,
         message: Any = None,
         messages: Any = None,
         vars: Mapping[str, Any] | None = None,
@@ -1427,7 +1483,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
     ) -> Any:
         """Execute a captured tool through its normalized library wrapper."""
         tool, config = self._resolve_captured_tool(bucket_name, tool_name)
-        call_params, _ = self._prepare_tool_kwargs(
+        visible_params, runtime_params = self._prepare_tool_kwargs(
             tool=tool,
             tool_name=tool_name,
             tool_params=arguments,
@@ -1441,13 +1497,15 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 else get_execution_context().get("task_activity_recorder")
             ),
             tool_call_id=parent_tool_call_id,
+            runtime_arguments=runtime_arguments,
         )
+        call_params = {**visible_params, **runtime_params}
         call_params["tool_call_id"] = (
             f"{parent_tool_call_id}:{tool_name}"
             if parent_tool_call_id
             else f"{bucket_name}:{tool_name}"
         )
-        return self._execute_prepared_tool(tool, call_params)
+        return self._execute_prepared_tool(tool, call_params, visible_params)
 
     async def _acall_captured_tool(
         self,
@@ -1455,6 +1513,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
         tool_name: str,
         arguments: Mapping[str, Any],
         *,
+        runtime_arguments: Mapping[str, Any] | None = None,
         message: Any = None,
         messages: Any = None,
         vars: Mapping[str, Any] | None = None,
@@ -1463,7 +1522,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
     ) -> Any:
         """Async counterpart of :meth:`_call_captured_tool`."""
         tool, config = self._resolve_captured_tool(bucket_name, tool_name)
-        call_params, _ = self._prepare_tool_kwargs(
+        visible_params, runtime_params = self._prepare_tool_kwargs(
             tool=tool,
             tool_name=tool_name,
             tool_params=arguments,
@@ -1477,13 +1536,15 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 else get_execution_context().get("task_activity_recorder")
             ),
             tool_call_id=parent_tool_call_id,
+            runtime_arguments=runtime_arguments,
         )
+        call_params = {**visible_params, **runtime_params}
         call_params["tool_call_id"] = (
             f"{parent_tool_call_id}:{tool_name}"
             if parent_tool_call_id
             else f"{bucket_name}:{tool_name}"
         )
-        return await self._aexecute_prepared_tool(tool, call_params)
+        return await self._aexecute_prepared_tool(tool, call_params, visible_params)
 
     def forward(  # noqa: C901
         self,
@@ -1542,7 +1603,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 messages, ChatMessages
             ):
                 messages.load_tools(self.name, [tool_name])
-            call_params, response_params = self._prepare_tool_kwargs(
+            visible_arguments, runtime_arguments = self._prepare_tool_kwargs(
                 tool=tool,
                 tool_name=tool_name,
                 tool_params=tool_params,
@@ -1553,7 +1614,6 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 activity_recorder=activity_recorder,
                 tool_call_id=tool_id,
             )
-            visible_arguments = dict(response_params or {})
             before_tool = self._run_before_tool_hook(
                 tool_id=tool_id,
                 tool_name=tool_name,
@@ -1570,12 +1630,8 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 )
                 return_directly = False
                 continue
-            self._apply_visible_tool_arguments(
-                call_params,
-                visible_arguments,
-                before_tool.arguments,
-            )
             response_params = dict(before_tool.arguments)
+            call_params = {**response_params, **runtime_arguments}
 
             if config.get("spawn", False):
                 return_directly = False
@@ -1602,6 +1658,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
                         tool_id=tool_id,
                         tool_name=tool_name,
                         call_params=call_params,
+                        visible_params=response_params,
                         config=config,
                     )
                 )
@@ -1622,7 +1679,12 @@ class ToolLibrary(Module, metaclass=AutoParams):
             # Add tool_call_id for telemetry
             call_params["tool_call_id"] = tool_id
             prepared_calls.append(
-                partial(self._execute_prepared_tool, tool, call_params)
+                partial(
+                    self._execute_prepared_tool,
+                    tool,
+                    call_params,
+                    response_params,
+                )
             )
 
             call_metadata.append(
@@ -1630,7 +1692,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
                     id=tool_id,
                     name=tool_name,
                     config=config,
-                    params=call_params,
+                    params=response_params,
                 )
             )
 
@@ -1638,15 +1700,15 @@ class ToolLibrary(Module, metaclass=AutoParams):
             results = F.scatter_gather(prepared_calls)
             for meta, result in zip(call_metadata, results):
                 if isinstance(result, TaskError) and isinstance(
-                    result.exception, TaskInterruptRequestedError
+                    result.exception,
+                    (AbortRequestedError, TaskInterruptRequestedError),
                 ):
                     raise result.exception
-                parameters = build_call_parameters_for_response(meta.params)
                 tool_calls.append(
                     ToolCall(
                         id=meta.id,
                         name=meta.name,
-                        parameters=parameters,
+                        parameters=dict(meta.params),
                         result=None if isinstance(result, TaskError) else result,
                         error=str(result) if isinstance(result, TaskError) else None,
                     )
@@ -1712,7 +1774,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 messages, ChatMessages
             ):
                 messages.load_tools(self.name, [tool_name])
-            call_params, response_params = self._prepare_tool_kwargs(
+            visible_arguments, runtime_arguments = self._prepare_tool_kwargs(
                 tool=tool,
                 tool_name=tool_name,
                 tool_params=tool_params,
@@ -1723,7 +1785,6 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 activity_recorder=activity_recorder,
                 tool_call_id=tool_id,
             )
-            visible_arguments = dict(response_params or {})
             before_tool = await self._arun_before_tool_hook(
                 tool_id=tool_id,
                 tool_name=tool_name,
@@ -1740,12 +1801,8 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 )
                 return_directly = False
                 continue
-            self._apply_visible_tool_arguments(
-                call_params,
-                visible_arguments,
-                before_tool.arguments,
-            )
             response_params = dict(before_tool.arguments)
+            call_params = {**response_params, **runtime_arguments}
 
             if config.get("spawn", False):
                 return_directly = False
@@ -1772,6 +1829,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
                         tool_id=tool_id,
                         tool_name=tool_name,
                         call_params=call_params,
+                        visible_params=response_params,
                         config=config,
                     )
                 )
@@ -1792,7 +1850,12 @@ class ToolLibrary(Module, metaclass=AutoParams):
             # Add tool_call_id for telemetry
             call_params["tool_call_id"] = tool_id
             prepared_calls.append(
-                partial(self._aexecute_prepared_tool, tool, call_params)
+                partial(
+                    self._aexecute_prepared_tool,
+                    tool,
+                    call_params,
+                    response_params,
+                )
             )
 
             call_metadata.append(
@@ -1800,7 +1863,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
                     id=tool_id,
                     name=tool_name,
                     config=config,
-                    params=call_params,
+                    params=response_params,
                 )
             )
 
@@ -1808,15 +1871,15 @@ class ToolLibrary(Module, metaclass=AutoParams):
             results = await F.ascatter_gather(prepared_calls)
             for meta, result in zip(call_metadata, results):
                 if isinstance(result, TaskError) and isinstance(
-                    result.exception, TaskInterruptRequestedError
+                    result.exception,
+                    (AbortRequestedError, TaskInterruptRequestedError),
                 ):
                     raise result.exception
-                parameters = build_call_parameters_for_response(meta.params)
                 tool_calls.append(
                     ToolCall(
                         id=meta.id,
                         name=meta.name,
-                        parameters=parameters,
+                        parameters=dict(meta.params),
                         result=None if isinstance(result, TaskError) else result,
                         error=str(result) if isinstance(result, TaskError) else None,
                     )

@@ -1,18 +1,21 @@
 """Tests for public Module event streams."""
 
+import asyncio
 from dataclasses import replace
 
 import pytest
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 
 from msgflux.chat_messages import ChatMessages
 from msgflux.models.response import ModelResponse, ModelStreamResponse
+from msgflux.models.tool_call_agg import ToolCallAggregator
 from msgflux.nn.hooks import Hook
 from msgflux.nn.hooks.events import BeforeRun
 from msgflux.nn.modules.agent import Agent
 from msgflux.nn.modules.module import Module
 from msgflux.nn.modules.tool import ToolLibrary
-from msgflux.runtime.events import EventType
+from msgflux.runtime.events import EventType, emit_event, event_source
+from msgflux.tools.builtin import AgentTool
 
 
 class EchoModule(Module):
@@ -38,6 +41,23 @@ class FailingModule(Module):
     def forward(self):
         raise RuntimeError("boom")
 
+    async def aforward(self):
+        raise RuntimeError("boom")
+
+
+class ParallelEventModule(Module):
+    async def aforward(self):
+        def emit_many(name):
+            with event_source(name, "worker"):
+                for index in range(50):
+                    emit_event(EventType.TOOL_UPDATE, {"worker_index": index})
+
+        await asyncio.gather(
+            asyncio.to_thread(emit_many, "left"),
+            asyncio.to_thread(emit_many, "right"),
+        )
+        return "done"
+
 
 def make_agent(*, hooks=None):
     model = Mock()
@@ -46,16 +66,14 @@ def make_agent(*, hooks=None):
     response.set_response_type("text_generation")
     response.add("hello")
     model.return_value = response
+    model.acall = AsyncMock(return_value=response)
     return Agent(name="agent", model=model, hooks=hooks), model
 
-    async def aforward(self):
-        raise RuntimeError("boom")
 
+@pytest.mark.asyncio
+async def test_stream_events_yields_ordered_message_lifecycle():
+    events = [event async for event in EchoModule().stream_events("hello")]
 
-def test_stream_events_yields_ordered_message_lifecycle():
-    events = list(EchoModule().stream_events("hello"))
-
-    assert [event.sequence for event in events] == list(range(len(events)))
     assert [event.type for event in events] == [
         EventType.RUN_START,
         EventType.TURN_START,
@@ -64,11 +82,21 @@ def test_stream_events_yields_ordered_message_lifecycle():
         EventType.TURN_END,
         EventType.RUN_END,
     ]
-    assert events[-1].data["output"] == "HELLO"
+    assert events[-3].data == {"content": "HELLO"}
+    assert events[-2].data == {}
+    assert events[-1].data == {"outcome": "completed"}
+    assert set(vars(events[0])) == {
+        "type",
+        "timestamp",
+        "data",
+        "run_id",
+        "source_path",
+    }
 
 
-def test_stream_events_owns_and_consumes_model_stream():
-    events = list(StreamingModule().stream_events())
+@pytest.mark.asyncio
+async def test_stream_events_owns_and_consumes_model_stream():
+    events = [event async for event in StreamingModule().stream_events()]
 
     content = [
         event.data["delta"] for event in events if event.type == EventType.MESSAGE_DELTA
@@ -81,52 +109,54 @@ def test_stream_events_owns_and_consumes_model_stream():
 
     assert content == ["hello", " world"]
     assert reasoning == ["think"]
-    assert events[-1].data["output"] == "hello world"
+    message_end = next(event for event in events if event.type == EventType.MESSAGE_END)
+    assert message_end.data["content"] == "hello world"
 
 
 @pytest.mark.asyncio
-async def test_astream_events_yields_events_while_running():
-    events = [event async for event in EchoModule().astream_events("hello")]
+async def test_parallel_internal_events_preserve_delivery_and_source_path():
+    events = [event async for event in ParallelEventModule().stream_events()]
+    updates = [event for event in events if event.type == EventType.TOOL_UPDATE]
 
-    assert [event.type for event in events] == [
-        EventType.RUN_START,
-        EventType.TURN_START,
-        EventType.MESSAGE_START,
-        EventType.MESSAGE_END,
-        EventType.TURN_END,
-        EventType.RUN_END,
-    ]
+    assert len(updates) == 100
+    assert {event.source_path[-1] for event in updates} == {
+        "worker:left",
+        "worker:right",
+    }
+    for worker in ("left", "right"):
+        assert [
+            event.data["worker_index"]
+            for event in updates
+            if event.source_path[-1] == f"worker:{worker}"
+        ] == list(range(50))
 
 
-def test_stream_events_reraises_execution_error_after_error_event():
+@pytest.mark.asyncio
+async def test_stream_events_reraises_execution_error_after_error_event():
     seen = []
 
     with pytest.raises(RuntimeError, match="boom"):
-        for event in FailingModule().stream_events():
+        async for event in FailingModule().stream_events():
             seen.append(event)
 
     assert seen[-1].type == EventType.RUN_ERROR
     assert seen[-1].data["error"] == "boom"
+    assert seen[-1].source_path == ("module:FailingModule",)
 
 
 @pytest.mark.asyncio
-async def test_astream_events_reraises_execution_error_after_error_event():
-    seen = []
-
-    with pytest.raises(RuntimeError, match="boom"):
-        async for event in FailingModule().astream_events():
-            seen.append(event)
-
-    assert seen[-1].type == EventType.RUN_ERROR
-
-
-def test_agent_events_include_resolved_execution_identity_and_model_boundaries():
+async def test_agent_run_start_carries_execution_context_and_model_boundaries():
     agent, _ = make_agent()
 
-    events = list(agent.stream_events("hi"))
+    events = [event async for event in agent.stream_events("hi")]
 
-    assert all(event.thread_id for event in events)
     assert all(event.run_id for event in events)
+    run_start = events[0]
+    assert run_start.type == EventType.RUN_START
+    assert run_start.data["thread_id"]
+    assert run_start.data["namespace"] == "agent"
+    assert run_start.data["root_run_id"] == run_start.run_id
+    assert "parent_run_id" not in run_start.data
     assert EventType.MODEL_REQUEST in [event.type for event in events]
     assert EventType.MODEL_RESPONSE in [event.type for event in events]
 
@@ -141,16 +171,20 @@ def test_agent_lifecycle_hooks_transform_canonical_response():
     assert agent("hi") == "hello!"
 
 
-def test_tool_events_wrap_validated_foreground_execution():
+@pytest.mark.asyncio
+async def test_tool_events_wrap_validated_foreground_execution():
     def double(value: int) -> int:
         """Double a value."""
         return value * 2
 
     library = ToolLibrary(name="math", tools=[double])
 
-    events = list(
-        library.stream_events(tool_callings=[("call_1", "double", {"value": 3})])
-    )
+    events = [
+        event
+        async for event in library.stream_events(
+            tool_callings=[("call_1", "double", {"value": 3})]
+        )
+    ]
     tool_events = [
         event
         for event in events
@@ -183,14 +217,15 @@ def test_transform_output_changes_return_without_changing_canonical_history():
     assert assistant_messages[-1]["content"] == "hello"
 
 
-def test_transform_output_buffers_stream_content_but_keeps_reasoning_live():
+@pytest.mark.asyncio
+async def test_transform_output_buffers_stream_content_but_keeps_reasoning_live():
     module = StreamingModule()
     Hook(
         event="transform_output",
         handler=lambda output: output.upper(),
     ).register(module)
 
-    events = list(module.stream_events())
+    events = [event async for event in module.stream_events()]
 
     assert not [event for event in events if event.type == EventType.MESSAGE_DELTA]
     assert [
@@ -214,9 +249,64 @@ async def test_async_transform_output_runs_after_stream_accumulation():
     module = StreamingModule()
     Hook(event="transform_output", handler=transform).register(module)
 
-    events = [event async for event in module.astream_events()]
+    events = [event async for event in module.stream_events()]
 
-    assert events[-1].data["output"] == "[hello world]"
+    message_end = next(event for event in events if event.type == EventType.MESSAGE_END)
+    assert message_end.data["content"] == "[hello world]"
+
+
+@pytest.mark.asyncio
+async def test_foreground_agent_tool_events_include_nested_source_identity():
+    root_model = Mock()
+    root_model.model_type = "chat_completion"
+    tool_calls = ToolCallAggregator()
+    tool_calls.process(
+        0,
+        "call_reviewer",
+        "agent",
+        '{"name":"reviewer","message":"Review this"}',
+    )
+    tool_response = ModelResponse()
+    tool_response.set_response_type("tool_call")
+    tool_response.data = tool_calls
+    final_response = ModelResponse()
+    final_response.set_response_type("text_generation")
+    final_response.add("root complete")
+    root_model.acall = AsyncMock(side_effect=[tool_response, final_response])
+
+    child_model = Mock()
+    child_model.model_type = "chat_completion"
+    child_response = ModelResponse()
+    child_response.set_response_type("text_generation")
+    child_response.add("review complete")
+    child_model.acall = AsyncMock(return_value=child_response)
+
+    reviewer = Agent(name="reviewer", model=child_model)
+    root = Agent(
+        name="root",
+        model=root_model,
+        tools=[AgentTool(), reviewer],
+    )
+
+    events = [event async for event in root.stream_events("Delegate the review")]
+
+    nested_start = next(
+        event
+        for event in events
+        if event.type == EventType.RUN_START
+        and event.source_path[-1] == "agent:reviewer"
+    )
+    child_request = next(
+        event
+        for event in events
+        if event.type == EventType.MODEL_REQUEST
+        and event.source_path[-1] == "agent:reviewer"
+    )
+    assert nested_start.source_path[-1] == "agent:reviewer"
+    assert nested_start.data["namespace"] == "reviewer"
+    assert nested_start.data["root_run_id"] == nested_start.run_id
+    assert "parent_run_id" not in nested_start.data
+    assert "agent:root" in child_request.source_path
 
 
 def test_before_run_can_replace_fresh_agent_input():

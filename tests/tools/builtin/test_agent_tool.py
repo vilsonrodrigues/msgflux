@@ -1,3 +1,4 @@
+from dataclasses import replace
 from unittest.mock import Mock
 
 import msgflux as mf
@@ -6,8 +7,10 @@ from msgflux.chat_messages import ChatMessages
 from msgflux.data.stores import InMemoryCheckpointStore
 from msgflux.models.response import ModelResponse
 from msgflux.nn import Agent
+from msgflux.nn.hooks import Hook
 from msgflux.nn.modules.tool import ToolLibrary
 from msgflux.runtime.context import execution_context
+from msgflux.runtime.events import EventType
 from msgflux.tools import BUILTIN_TOOL_USAGE_GUIDANCE, apply_tool_guidance
 from msgflux.tools.builtin import AgentTool
 
@@ -77,6 +80,7 @@ def test_agent_tool_exposes_single_agent_tool_with_name_and_message_params():
     assert schema["function"]["name"] == "agent"
     properties = schema["function"]["parameters"]["properties"]
     assert set(properties) == {"name", "message"}
+    assert schema["function"]["parameters"]["required"] == ["name", "message"]
 
 
 def test_agent_tool_description_lists_available_agents():
@@ -221,6 +225,66 @@ def test_agent_tool_dispatches_to_selected_agent():
     assert planner.model.calls == []
 
 
+def test_agent_tool_before_tool_can_rewrite_model_message():
+    recorder = _RecordingAgent()
+    owner = Agent(name="owner", model=_mock_model())
+    Hook(
+        event="before_tool",
+        handler=lambda event: replace(
+            event,
+            arguments={**event.arguments, "message": "Rewritten review task"},
+        ),
+    ).register(owner)
+    library = ToolLibrary(name="lib", tools=[AgentTool(), recorder])
+    library.set_lifecycle_owner(owner)
+
+    response = library(
+        [("call_1", "agent", {"name": "recorder", "message": "Original task"})]
+    )
+
+    assert response.tool_calls[0].parameters == {
+        "name": "recorder",
+        "message": "Rewritten review task",
+    }
+    assert recorder.calls[0]["message"] == "Rewritten review task"
+
+
+@pytest.mark.asyncio
+async def test_agent_tool_events_separate_visible_and_runtime_arguments():
+    recorder = _RecordingAgent()
+    recorder.tool_config = {"inject_messages": True, "inject_vars": True}
+    library = ToolLibrary(name="lib", tools=[AgentTool(), recorder])
+
+    events = [
+        event
+        async for event in library.stream_events(
+            tool_callings=[
+                (
+                    "call_1",
+                    "agent",
+                    {"name": "recorder", "message": "Review this"},
+                )
+            ],
+            messages=[{"role": "user", "content": "Parent context"}],
+            vars={"tenant": "acme"},
+        )
+    ]
+    starts = [event for event in events if event.type == EventType.TOOL_START]
+
+    assert starts[0].data["arguments"] == {
+        "name": "recorder",
+        "message": "Review this",
+    }
+    assert starts[1].data["arguments"] == {"message": "Review this"}
+    assert all(
+        not (
+            {"handle", "messages", "vars", "scope", "tool_call_id"}
+            & set(event.data["arguments"])
+        )
+        for event in starts
+    )
+
+
 def test_agent_tool_injects_messages_and_vars_without_exposing_them():
     recorder = _RecordingAgent()
     recorder.tool_config = {"inject_messages": True, "inject_vars": True}
@@ -237,6 +301,10 @@ def test_agent_tool_injects_messages_and_vars_without_exposing_them():
 
     assert set(schema["function"]["parameters"]["properties"]) == {"name", "message"}
     assert response.tool_calls[0].result == "recorded"
+    assert response.tool_calls[0].parameters == {
+        "name": "recorder",
+        "message": "Go",
+    }
     assert recorder.calls[0]["messages"] == messages
     assert recorder.calls[0]["vars"] == vars
 

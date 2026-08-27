@@ -6,7 +6,7 @@
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from msgflux import nn
+from msgflux import SkillsExtension, nn
 from msgflux.models.response import ModelResponse
 from msgflux.models.tool_call_agg import ToolCallAggregator
 from msgflux.utils.msgspec import msgspec_dumps
@@ -43,9 +43,9 @@ class ScriptedModel:
                 call_id="call_skill_search",
             ),
             tool_call_response(
-                "activate_skill",
+                "skill",
                 {"name": "code-review"},
-                call_id="call_activate_skill",
+                call_id="call_skill",
             ),
             text_response("I loaded the code-review skill and will use its checklist."),
         ]
@@ -107,11 +107,15 @@ def main() -> None:
         agent = nn.Agent(
             name="developer_agent",
             model=ScriptedModel(),
-            skills={
-                "paths": [project_skills, codex_skills],
-                "catalog_limit": 1,
-                "search_top_k": 3,
-            },
+            extensions=[
+                SkillsExtension(
+                    {
+                        "paths": [project_skills, codex_skills],
+                        "catalog_limit": 1,
+                        "search_top_k": 3,
+                    }
+                )
+            ],
             instructions="Use Agent Skills when they match the user's request.",
         )
 

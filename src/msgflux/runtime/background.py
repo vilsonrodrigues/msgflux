@@ -27,7 +27,6 @@ from msgflux.tools.builtin.task_tool import (
     truncate_activity_text,
 )
 from msgflux.tools.handles import ToolBucketHandle
-from msgflux.tools.helpers import build_call_parameters_for_response
 from msgflux.tools.responses import ToolCall
 from msgflux.tools.types import ToolBackground, ToolBucket
 
@@ -301,6 +300,7 @@ class BackgroundTaskDispatcher:
         tool_id: str,
         tool_name: str,
         call_params: Dict[str, Any],
+        visible_params: Mapping[str, Any],
         config: Mapping[str, Any],
     ) -> Any:
         task_kind = config.get("tool_kind", "tool")
@@ -434,7 +434,7 @@ class BackgroundTaskDispatcher:
         return ToolCall(
             id=tool_id,
             name=tool_name,
-            parameters=build_call_parameters_for_response(call_params),
+            parameters=dict(visible_params),
             result=build_background_dispatch_result(
                 task_id=task.task_id,
                 tool_name=tool_name,

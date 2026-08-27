@@ -254,11 +254,19 @@ class ToolBucketHandle(ToolLibraryHandle):
             activity_recorder=activity_recorder,
         )
 
-    def __call__(self, tool_name: str, /, **arguments: Any) -> Any:
+    def __call__(
+        self,
+        tool_name: str,
+        /,
+        *,
+        _runtime_arguments: Mapping[str, Any] | None = None,
+        **arguments: Any,
+    ) -> Any:
         return self._library._call_captured_tool(
             self._bucket_name,
             tool_name,
             arguments,
+            runtime_arguments=_runtime_arguments,
             message=self._message,
             messages=self._messages,
             vars=self._vars,
@@ -266,11 +274,19 @@ class ToolBucketHandle(ToolLibraryHandle):
             activity_recorder=self._activity_recorder,
         )
 
-    async def acall(self, tool_name: str, /, **arguments: Any) -> Any:
+    async def acall(
+        self,
+        tool_name: str,
+        /,
+        *,
+        _runtime_arguments: Mapping[str, Any] | None = None,
+        **arguments: Any,
+    ) -> Any:
         return await self._library._acall_captured_tool(
             self._bucket_name,
             tool_name,
             arguments,
+            runtime_arguments=_runtime_arguments,
             message=self._message,
             messages=self._messages,
             vars=self._vars,

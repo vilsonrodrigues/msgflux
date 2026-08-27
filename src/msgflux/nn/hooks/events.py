@@ -12,6 +12,7 @@ __all__ = [
     "BeforeTool",
     "AfterTool",
     "BeforeResume",
+    "SystemPromptContext",
 ]
 
 
@@ -30,6 +31,16 @@ class BeforeResume:
     scope: ExecutionScope
     messages: Any
     model_preference: str | None = None
+
+
+@dataclass(frozen=True)
+class SystemPromptContext:
+    """Rendered prompt and runtime inputs exposed to prompt extensions."""
+
+    prompt: str
+    scope: ExecutionScope
+    vars: Mapping[str, Any] = field(default_factory=dict)
+    tool_names: frozenset[str] = field(default_factory=frozenset)
 
 
 @dataclass(frozen=True)

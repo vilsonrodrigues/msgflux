@@ -42,6 +42,7 @@ task to be treated in isolation.
 | [ToolBucket](tools/tool-bucket.md) | Group implementations behind one callable tool and understand bucket routing |
 | [Tool Search](tools/tool-search.md) | On-demand tools and `tool_search` activation |
 | [Agent Skills](skills.md) | Reusable `SKILL.md` workflows loaded through progressive disclosure |
+| [Agent Extensions](extensions.md) | Removable packages of hooks and tools |
 | [Background Tasks](tools/background-tasks.md) | Async tool dispatch, task polling, progress, and notifications |
 | [Agent Tool](tools/agent-tool.md) | Capture registered subagents behind one `agent(name, message)` tool |
 | [MCP Tools](tools/mcp.md) | Connect external Model Context Protocol servers |

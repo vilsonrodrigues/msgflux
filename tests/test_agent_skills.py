@@ -4,6 +4,7 @@ import msgflux as mf
 from msgflux.models.response import ModelResponse
 from msgflux.models.tool_call_agg import ToolCallAggregator
 from msgflux.nn import Agent
+from msgflux.nn.extensions import SkillsExtension
 from msgflux.runtime.skills import AgentSkillManager, parse_skill_file
 from msgflux.utils.msgspec import msgspec_dumps
 
@@ -386,7 +387,7 @@ def test_agent_skill_catalog_is_rendered_in_system_prompt(tmp_path):
     assert "<name>code-review</name>" not in system_prompt
     assert "location:" not in system_prompt
     assert "SKILL.md" not in system_prompt
-    assert "activate_skill" in system_prompt
+    assert "`skill`" in system_prompt
     assert "tool result message" in system_prompt
     assert "not as higher-priority instructions" in system_prompt
     assert "reveal secrets" in system_prompt
@@ -394,7 +395,7 @@ def test_agent_skill_catalog_is_rendered_in_system_prompt(tmp_path):
 
 def test_agent_registers_builtin_skill_tools(tmp_path):
     agent_without_skills = Agent(name="agent", model=_ScriptedModel([]))
-    assert "activate_skill" not in agent_without_skills.tool_library.library
+    assert "skill" not in agent_without_skills.tool_library.library
 
     skills_root = tmp_path / ".agents" / "skills"
     _write_skill(skills_root, name="code-review")
@@ -408,23 +409,51 @@ def test_agent_registers_builtin_skill_tools(tmp_path):
         name="agent", model=_ScriptedModel([]), skills={"paths": skills_root}
     )
 
-    assert "activate_skill" in agent_with_skills.tool_library.library
+    assert "skill" in agent_with_skills.tool_library.library
     assert "skill_search" in agent_with_skills.tool_library.library
-    assert (
-        agent_with_skills.tool_library.library["activate_skill"].display_name == "Skill"
-    )
+    assert agent_with_skills.tool_library.library["skill"].display_name == "Skill"
     assert (
         agent_with_skills.tool_library.library["skill_search"].display_name
         == "Skill Search"
     )
     assert (
-        agent_with_skills.tool_library.library["activate_skill"].description
-        == "Activate an Agent Skill and return its full instructions."
+        agent_with_skills.tool_library.library["skill"].description
+        == "Load an Agent Skill and return its full instructions."
     )
     assert (
         agent_with_skills.tool_library.library["skill_search"].description
         == "Search Agent Skills that are not listed in the initial catalog."
     )
+
+
+def test_skills_extension_is_the_primary_installation_path(tmp_path):
+    skills_root = tmp_path / ".agents" / "skills"
+    _write_skill(skills_root, name="code-review")
+    extension = SkillsExtension({"paths": skills_root})
+
+    agent = Agent(
+        name="agent",
+        model=_ScriptedModel([]),
+        extensions=[extension],
+    )
+
+    assert agent.extensions["skills"] is extension
+    assert "skill" in agent.tool_library.library
+    assert "name: code-review" in agent.get_system_prompt()
+
+
+def test_skills_defer_loading_false_preloads_all_skills(tmp_path):
+    skills_root = tmp_path / ".agents" / "skills"
+    _write_skill(skills_root, name="code-review")
+
+    agent = Agent(
+        name="agent",
+        model=_ScriptedModel([]),
+        extensions=[SkillsExtension({"paths": skills_root, "defer_loading": False})],
+    )
+
+    assert "skill" not in agent.tool_library.library
+    assert '<skill_content name="code-review">' in agent.get_system_prompt()
 
 
 def test_agent_does_not_register_activate_tool_when_all_skills_are_loaded(tmp_path):
@@ -434,11 +463,11 @@ def test_agent_does_not_register_activate_tool_when_all_skills_are_loaded(tmp_pa
     agent = Agent(
         name="agent",
         model=_ScriptedModel([]),
-        skills={"paths": skills_root, "load": "code-review"},
+        skills={"paths": skills_root, "preload": "code-review"},
     )
     system_prompt = agent.get_system_prompt()
 
-    assert "activate_skill" not in agent.tool_library.library
+    assert "skill" not in agent.tool_library.library
     assert "skill_search" not in agent.tool_library.library
     assert '<skill_content name="code-review">' in system_prompt
     assert "Follow the PDF workflow" in system_prompt
@@ -458,7 +487,7 @@ def test_loaded_skill_includes_directory_when_related_content_exists(tmp_path):
     agent = Agent(
         name="agent",
         model=_ScriptedModel([]),
-        skills={"paths": skills_root, "load": "code-review"},
+        skills={"paths": skills_root, "preload": "code-review"},
     )
     system_prompt = agent.get_system_prompt()
 
@@ -475,7 +504,7 @@ def test_skill_search_is_not_registered_when_all_skills_are_cataloged(tmp_path):
     _write_skill(skills_root, name="code-review")
     agent = Agent(name="agent", model=_ScriptedModel([]), skills={"paths": skills_root})
 
-    assert "activate_skill" in agent.tool_library.library
+    assert "skill" in agent.tool_library.library
     assert "skill_search" not in agent.tool_library.library
 
 
@@ -564,7 +593,7 @@ def test_agent_can_activate_skill_through_tool_call(tmp_path):
     model = _ScriptedModel(
         [
             _tool_call_response(
-                "activate_skill",
+                "skill",
                 {"name": "code-review"},
                 call_id="call_1",
             ),
@@ -690,14 +719,14 @@ def test_skills_config_validates_filters(tmp_path):
     with pytest.raises(ValueError, match="skills\\['allow'\\]"):
         AgentSkillManager({"paths": skills_root, "allow": ""})
 
-    with pytest.raises(TypeError, match="skills\\['load'\\]"):
-        AgentSkillManager({"paths": skills_root, "load": {"alpha"}})
+    with pytest.raises(TypeError, match="skills\\['preload'\\]"):
+        AgentSkillManager({"paths": skills_root, "preload": {"alpha"}})
 
     with pytest.raises(ValueError, match="Unknown skills in `skills\\['allow'\\]`"):
         AgentSkillManager({"paths": skills_root, "allow": "missing"})
 
-    with pytest.raises(ValueError, match="Unknown skills in `skills\\['load'\\]`"):
-        AgentSkillManager({"paths": skills_root, "load": "missing"})
+    with pytest.raises(ValueError, match="Unknown skills in `skills\\['preload'\\]`"):
+        AgentSkillManager({"paths": skills_root, "preload": "missing"})
 
 
 def test_catalog_limit_zero_enables_search_for_all_skills(tmp_path):
