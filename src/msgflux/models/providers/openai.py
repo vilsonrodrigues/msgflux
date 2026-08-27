@@ -1,7 +1,7 @@
 import base64
 import tempfile
 from contextlib import asynccontextmanager, contextmanager
-from copy import deepcopy
+from copy import copy, deepcopy
 from functools import partial
 from os import getenv
 from typing import Any, Dict, List, Literal, Mapping, Optional, Union
@@ -40,6 +40,7 @@ from msgflux.models.reasoning import (
 )
 from msgflux.models.registry import register_model
 from msgflux.models.response import ModelResponse, ModelStreamResponse
+from msgflux.models.timing import ModelRequestTimer
 from msgflux.models.tool_call_agg import ToolCallAggregator
 from msgflux.models.types import (
     ChatCompletionModel,
@@ -563,6 +564,18 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
                 name=tool_call.function.name,
                 arguments=tool_call.function.arguments,
             )
+
+    @staticmethod
+    def _has_stream_tool_call_output(delta) -> bool:
+        for tool_call in delta.tool_calls:
+            function = getattr(tool_call, "function", None)
+            if (
+                getattr(tool_call, "id", None)
+                or getattr(function, "name", None)
+                or getattr(function, "arguments", None)
+            ):
+                return True
+        return False
 
     @staticmethod
     def _stream_add_chunk(
@@ -1136,9 +1149,13 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
         return kwargs
 
     def _generate(self, **kwargs: Mapping[str, Any]) -> ModelResponse:
+        cache_timer = ModelRequestTimer(source="cache")
         cached = self._check_cache(**kwargs)
-        if cached:
-            return cached
+        if cached is not None:
+            response = copy(cached)
+            response.metadata = deepcopy(cached.metadata)
+            response.metadata.timing = cache_timer.finish()
+            return response
 
         (
             typed_parser,
@@ -1146,6 +1163,7 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
             transport_generation_schema,
         ) = self._prepare_generate_kwargs(kwargs)
 
+        request_timer = ModelRequestTimer()
         model_output = self._execute_model(**kwargs)
         response = self._process_model_output(
             model_output,
@@ -1153,6 +1171,7 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
             generation_schema,
             transport_generation_schema,
         )
+        response.metadata.timing = request_timer.finish()
 
         self._store_cache(
             response,
@@ -1163,9 +1182,13 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
         return response
 
     async def _agenerate(self, **kwargs: Mapping[str, Any]) -> ModelResponse:
+        cache_timer = ModelRequestTimer(source="cache")
         cached = self._check_cache(**kwargs)
-        if cached:
-            return cached
+        if cached is not None:
+            response = copy(cached)
+            response.metadata = deepcopy(cached.metadata)
+            response.metadata.timing = cache_timer.finish()
+            return response
 
         (
             typed_parser,
@@ -1173,6 +1196,7 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
             transport_generation_schema,
         ) = self._prepare_generate_kwargs(kwargs)
 
+        request_timer = ModelRequestTimer()
         model_output = await self._aexecute_model(**kwargs)
         response = self._process_model_output(
             model_output,
@@ -1180,6 +1204,7 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
             generation_schema,
             transport_generation_schema,
         )
+        response.metadata.timing = request_timer.finish()
 
         self._store_cache(
             response,
@@ -1195,6 +1220,7 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
         if self.api_mode == "responses":
             return self._stream_responses_generate(**kwargs)
         stream_response = kwargs.pop("stream_response")
+        request_timer = kwargs.pop("_request_timer", None) or ModelRequestTimer()
         metadata = self._build_response_metadata(None)
         reasoning_tool_call = ""
         reasoning_accumulated = ""
@@ -1245,6 +1271,7 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
                         if self.reasoning_in_tool_call:
                             reasoning_tool_call += reasoning_chunk
                         if self.return_reasoning:
+                            request_timer.mark_first_output()
                             reasoning_accumulated += reasoning_chunk
                             reasoning_stream_started = True
                             self._stream_add_reasoning_chunk(
@@ -1258,6 +1285,7 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
                         continue
 
                     if getattr(delta, "content", None):
+                        request_timer.mark_first_output()
                         if reasoning_stream_started:
                             stream_response.finish_reasoning()
                             reasoning_stream_started = False
@@ -1269,6 +1297,8 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
                         continue
 
                     if getattr(delta, "tool_calls", None):
+                        if self._has_stream_tool_call_output(delta):
+                            request_timer.mark_first_output()
                         if reasoning_stream_started:
                             stream_response.finish_reasoning()
                             reasoning_stream_started = False
@@ -1299,6 +1329,7 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
                 stream_response.first_chunk_event.set()
             if not stream_response._response_type_event.is_set():
                 stream_response._response_type_event.set()
+            metadata.timing = request_timer.finish()
             stream_response.set_metadata(metadata)
             stream_response.finish(status=final_status)
 
@@ -1308,6 +1339,7 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
         if self.api_mode == "responses":
             return await self._astream_responses_generate(**kwargs)
         stream_response = kwargs.pop("stream_response")
+        request_timer = kwargs.pop("_request_timer", None) or ModelRequestTimer()
         metadata = self._build_response_metadata(None)
         reasoning_tool_call = ""
         reasoning_accumulated = ""
@@ -1358,6 +1390,7 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
                         if self.reasoning_in_tool_call:
                             reasoning_tool_call += reasoning_chunk
                         if self.return_reasoning:
+                            request_timer.mark_first_output()
                             reasoning_accumulated += reasoning_chunk
                             reasoning_stream_started = True
                             self._stream_add_reasoning_chunk(
@@ -1371,6 +1404,7 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
                         continue
 
                     if getattr(delta, "content", None):
+                        request_timer.mark_first_output()
                         if reasoning_stream_started:
                             stream_response.finish_reasoning()
                             reasoning_stream_started = False
@@ -1382,6 +1416,8 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
                         continue
 
                     if getattr(delta, "tool_calls", None):
+                        if self._has_stream_tool_call_output(delta):
+                            request_timer.mark_first_output()
                         if reasoning_stream_started:
                             stream_response.finish_reasoning()
                             reasoning_stream_started = False
@@ -1412,6 +1448,7 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
                 stream_response.first_chunk_event.set()
             if not stream_response._response_type_event.is_set():
                 stream_response._response_type_event.set()
+            metadata.timing = request_timer.finish()
             stream_response.set_metadata(metadata)
             stream_response.finish(status=final_status)
 
@@ -1438,6 +1475,7 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
                 logprobs = state["metadata"].setdefault("logprobs", {"content": []})
                 logprobs["content"].extend(self._serialize_openai_value(event_logprobs))
             if delta:
+                state["request_timer"].mark_first_output()
                 if state["reasoning_stream_started"]:
                     stream_response.finish_reasoning()
                     state["reasoning_stream_started"] = False
@@ -1474,6 +1512,7 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
             if self.reasoning_in_tool_call and not is_summary:
                 state["tool_reasoning"] += delta
             if self.return_reasoning:
+                state["request_timer"].mark_first_output()
                 if is_summary:
                     state["reasoning_summary_stream_started"] = True
                     stream_response.add_reasoning_summary(delta, item_id=item_id)
@@ -1518,6 +1557,8 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
             call_id = self._response_value(item, "call_id")
             name = self._response_value(item, "name")
             arguments = self._response_value(item, "arguments", "") or ""
+            if call_id or name or arguments:
+                state["request_timer"].mark_first_output()
             aggregator.process(index, call_id, name, arguments)
             stream_response.chat_accumulator.add_tool_call_delta(
                 index,
@@ -1543,6 +1584,8 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
         if event_type == "response.function_call_arguments.delta":
             index = self._response_value(event, "output_index", 0)
             delta = self._response_value(event, "delta", "") or ""
+            if delta:
+                state["request_timer"].mark_first_output()
             aggregator.process(index, None, None, delta)
             stream_response.chat_accumulator.add_tool_call_delta(
                 index,
@@ -1569,6 +1612,14 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
                     )
             elif item_type == "function_call":
                 index = self._response_value(event, "output_index", 0)
+                if any(
+                    (
+                        self._response_value(item, "call_id"),
+                        self._response_value(item, "name"),
+                        self._response_value(item, "arguments"),
+                    )
+                ):
+                    state["request_timer"].mark_first_output()
                 stream_response.chat_accumulator.add_tool_call_delta(
                     index,
                     call_id=self._response_value(item, "call_id"),
@@ -1639,9 +1690,12 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
                     incomplete_details
                 )
 
-    def _new_responses_stream_state(self) -> dict[str, Any]:
+    def _new_responses_stream_state(
+        self, request_timer: ModelRequestTimer
+    ) -> dict[str, Any]:
         return {
             "metadata": self._build_response_metadata(None),
+            "request_timer": request_timer,
             "reasoning": "",
             "reasoning_summary": "",
             "tool_reasoning": "",
@@ -1681,8 +1735,9 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
         self, **kwargs: Mapping[str, Any]
     ) -> ModelStreamResponse:
         stream_response = kwargs.pop("stream_response")
+        request_timer = kwargs.pop("_request_timer", None) or ModelRequestTimer()
         aggregator = ToolCallAggregator()
-        state = self._new_responses_stream_state()
+        state = self._new_responses_stream_state(request_timer)
         final_status = "completed"
         try:
             model_output = self._execute_model(**kwargs)
@@ -1709,6 +1764,7 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
                 stream_response.first_chunk_event.set()
             if not stream_response._response_type_event.is_set():
                 stream_response._response_type_event.set()
+            state["metadata"].timing = request_timer.finish()
             stream_response.set_metadata(state["metadata"])
             stream_response.finish(status=final_status)
         return stream_response
@@ -1717,8 +1773,9 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
         self, **kwargs: Mapping[str, Any]
     ) -> ModelStreamResponse:
         stream_response = kwargs.pop("stream_response")
+        request_timer = kwargs.pop("_request_timer", None) or ModelRequestTimer()
         aggregator = ToolCallAggregator()
-        state = self._new_responses_stream_state()
+        state = self._new_responses_stream_state(request_timer)
         final_status = "completed"
         try:
             model_output = await self._aexecute_model(**kwargs)
@@ -1745,6 +1802,7 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
                 stream_response.first_chunk_event.set()
             if not stream_response._response_type_event.is_set():
                 stream_response._response_type_event.set()
+            state["metadata"].timing = request_timer.finish()
             stream_response.set_metadata(state["metadata"])
             stream_response.finish(status=final_status)
         return stream_response
@@ -2061,11 +2119,13 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
         if stream is True:
             self._prepare_stream_kwargs(generation_params)
             stream_response = ModelStreamResponse(mode="sync")
+            request_timer = ModelRequestTimer()
             F.spawn(
                 self._stream_generate,
                 **generation_params,
                 stream=stream,
                 stream_response=stream_response,
+                _request_timer=request_timer,
                 stream_options={"include_usage": True},
             )
             F.wait_for_event(stream_response.first_chunk_event)
@@ -2161,11 +2221,13 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
         if stream is True:
             self._prepare_stream_kwargs(generation_params)
             stream_response = ModelStreamResponse(mode="async")
+            request_timer = ModelRequestTimer()
             await F.aspawn(
                 self._astream_generate,
                 **generation_params,
                 stream=stream,
                 stream_response=stream_response,
+                _request_timer=request_timer,
                 stream_options={"include_usage": True},
             )
             await F.await_for_event(stream_response.first_chunk_event)

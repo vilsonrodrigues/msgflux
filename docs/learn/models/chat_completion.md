@@ -1973,6 +1973,35 @@ The other three fields are always produced by OpenAI-compatible chat LMs. An
 Agent can persist this small audit record with the generated timeline item
 without reconstructing provider details itself.
 
+The same response metadata includes operational request timing:
+
+```python
+timing = response.metadata.timing
+
+print(timing.source)      # "provider" or "cache"
+print(timing.latency_ms)  # request start through the settled response
+```
+
+For a streamed response, `ttft_ms` measures the time to the first non-empty
+piece of content exposed by msgFlux. Content may be answer text, returned
+reasoning, or a tool call. Empty protocol and role-only events do not count:
+
+```python
+stream = await model.acall("Summarize the incident.", stream=True)
+
+async for chunk in stream.consume():
+    print(chunk, end="")
+
+print(stream.metadata.timing.latency_ms)
+print(stream.metadata.timing.get("ttft_ms"))
+```
+
+`ttft_ms` is omitted for non-streaming requests and for streams that settle
+without observable output. A msgFlux response-cache hit reports the latency of
+the cache lookup with `source="cache"`; it does not reuse the provider request's
+original timing. These operational measurements stay on the response and are
+not written to Agent checkpoints.
+
 Chat completion providers also expose the same canonical usage shape regardless
 of whether their native API calls tokens `prompt`/`completion`, `input`/`output`,
 or uses another convention:

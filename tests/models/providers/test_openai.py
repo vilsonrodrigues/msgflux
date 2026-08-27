@@ -305,6 +305,154 @@ class TestOpenAIChatCompletion:
             },
         ]
 
+    def test_non_stream_response_reports_provider_latency(self, mock_openai_client):
+        pytest.importorskip("openai")
+
+        from msgflux.models.providers.openai import OpenAIChatCompletion
+
+        mock_client, _ = mock_openai_client
+        mock_client.return_value.responses.create.return_value = SimpleNamespace(
+            id="resp_timing",
+            status="completed",
+            incomplete_details=None,
+            usage=None,
+            output=[
+                {
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [{"type": "output_text", "text": "Done."}],
+                }
+            ],
+        )
+        model = OpenAIChatCompletion(model_id="gpt-5.6-luna")
+
+        response = model("Finish")
+
+        assert response.metadata.timing.source == "provider"
+        assert response.metadata.timing.latency_ms >= 0
+        assert "ttft_ms" not in response.metadata.timing
+
+    def test_cache_hit_reports_lookup_latency_without_mutating_cached_metadata(
+        self, mock_openai_client
+    ):
+        pytest.importorskip("openai")
+
+        from msgflux.models.providers.openai import OpenAIChatCompletion
+
+        mock_client, _ = mock_openai_client
+        mock_client.return_value.responses.create.return_value = SimpleNamespace(
+            id="resp_cached",
+            status="completed",
+            incomplete_details=None,
+            usage=None,
+            output=[
+                {
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [{"type": "output_text", "text": "Cached."}],
+                }
+            ],
+        )
+        model = OpenAIChatCompletion(
+            model_id="gpt-5.6-luna",
+            enable_cache=True,
+        )
+
+        provider_response = model("Repeat")
+        cached_response = model("Repeat")
+
+        assert provider_response is not cached_response
+        assert provider_response.metadata.timing.source == "provider"
+        assert cached_response.metadata.timing.source == "cache"
+        assert cached_response.metadata.timing.latency_ms >= 0
+        assert mock_client.return_value.responses.create.call_count == 1
+        stored_response = next(iter(model._response_cache._cache.values()))
+        assert stored_response.metadata.timing.source == "provider"
+
+    def test_responses_stream_reports_ttft_for_first_text_delta(
+        self, mock_openai_client
+    ):
+        pytest.importorskip("openai")
+
+        from msgflux.models.providers.openai import OpenAIChatCompletion
+        from msgflux.models.response import ModelStreamResponse
+        from msgflux.models.timing import ModelRequestTimer
+
+        ticks = iter([1_000_000, 4_000_000, 9_000_000])
+        timer = ModelRequestTimer(clock_ns=lambda: next(ticks))
+        mock_client, _ = mock_openai_client
+        mock_client.return_value.responses.create.return_value = iter(
+            [
+                {
+                    "type": "response.output_item.added",
+                    "output_index": 0,
+                    "item": {"type": "message", "role": "assistant"},
+                },
+                {
+                    "type": "response.output_text.delta",
+                    "output_index": 0,
+                    "delta": "Done.",
+                },
+                {
+                    "type": "response.completed",
+                    "response": {"id": "resp_stream", "status": "completed"},
+                },
+            ]
+        )
+        model = OpenAIChatCompletion(model_id="gpt-5.6-luna")
+        stream_response = ModelStreamResponse()
+
+        model._stream_responses_generate(
+            input=[{"role": "user", "content": "Finish"}],
+            model="gpt-5.6-luna",
+            stream=True,
+            stream_response=stream_response,
+            _request_timer=timer,
+        )
+
+        assert stream_response.metadata.timing == {
+            "source": "provider",
+            "latency_ms": 8.0,
+            "ttft_ms": 3.0,
+        }
+
+    def test_responses_stream_omits_ttft_for_empty_protocol_events(
+        self, mock_openai_client
+    ):
+        pytest.importorskip("openai")
+
+        from msgflux.models.providers.openai import OpenAIChatCompletion
+        from msgflux.models.response import ModelStreamResponse
+        from msgflux.models.timing import ModelRequestTimer
+
+        ticks = iter([1_000_000, 5_000_000])
+        timer = ModelRequestTimer(clock_ns=lambda: next(ticks))
+        mock_client, _ = mock_openai_client
+        mock_client.return_value.responses.create.return_value = iter(
+            [
+                {"type": "response.created", "response": {"id": "resp_empty"}},
+                {
+                    "type": "response.completed",
+                    "response": {"id": "resp_empty", "status": "completed"},
+                },
+            ]
+        )
+        model = OpenAIChatCompletion(model_id="gpt-5.6-luna")
+        stream_response = ModelStreamResponse()
+
+        model._stream_responses_generate(
+            input=[{"role": "user", "content": "Finish"}],
+            model="gpt-5.6-luna",
+            stream=True,
+            stream_response=stream_response,
+            _request_timer=timer,
+        )
+
+        assert stream_response.metadata.timing == {
+            "source": "provider",
+            "latency_ms": 4.0,
+        }
+
     @pytest.mark.parametrize("parameter,value", [("stop", ["END"]), ("audio", {})])
     def test_responses_mode_rejects_parameters_without_equivalent(
         self, mock_openai_client, parameter, value

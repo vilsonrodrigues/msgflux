@@ -627,13 +627,18 @@ def test_agent_stream_checkpoint_completes_when_stream_finishes():
     stream_response.add(" world")
     stream_response.set_metadata(
         {
+            "timing": {
+                "source": "provider",
+                "latency_ms": 1200.0,
+                "ttft_ms": 300.0,
+            },
             "usage": {
                 "input_tokens": 90,
                 "output_tokens": 12,
                 "total_tokens": 102,
                 "cache_hit_percentage": 50.0,
                 "input_tokens_details": {"cached_tokens": 45},
-            }
+            },
         }
     )
     stream_response.finish()
@@ -655,6 +660,7 @@ def test_agent_stream_checkpoint_completes_when_stream_finishes():
         "output_tokens": 12,
         "cached_input_tokens": 45,
     }
+    assert "timing" not in assistant_item["metadata"]
     assert "assistant_output" not in restored.turns[-1]
     assert [item["type"] for item in restored if item.get("type") == "reasoning"] == [
         "reasoning"

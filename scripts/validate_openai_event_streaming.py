@@ -64,6 +64,17 @@ def assert_source_envelope(events: list[ExecutionEvent]) -> None:
     assert all(event.run_id for event in events)
 
 
+def assert_model_metrics(events: list[ExecutionEvent]) -> None:
+    requests = [event for event in events if event.type == EventType.MODEL_REQUEST]
+    responses = [event for event in events if event.type == EventType.MODEL_RESPONSE]
+    assert len(responses) == len(requests)
+    for response in responses:
+        assert response.data["usage"]["input_tokens"] > 0
+        assert response.data["usage"]["output_tokens"] > 0
+        assert response.data["timing"]["source"] == "provider"
+        assert response.data["timing"]["latency_ms"] >= 0
+
+
 def print_summary(name: str, events: list[ExecutionEvent]) -> None:
     counts = Counter(event.type for event in events)
     sources = sorted({" > ".join(event.source_path) for event in events})
@@ -85,13 +96,25 @@ async def validate_basic(model_path: str) -> None:
     events = await collect(agent.stream_events("Return the validation marker."))
 
     assert_source_envelope(events)
+    assert_model_metrics(events)
     require_event(events, EventType.MODEL_REQUEST)
-    require_event(events, EventType.MODEL_RESPONSE)
+    model_response = require_event(events, EventType.MODEL_RESPONSE)
     require_event(events, EventType.MESSAGE_DELTA)
     message_end = require_event(events, EventType.MESSAGE_END)
     terminal = require_event(events, EventType.RUN_END)
     run_start = require_event(events, EventType.RUN_START)
     assert "EVENT_STREAM_OK" in str(message_end.data["content"])
+    assert model_response.data["usage"]["input_tokens"] > 0
+    assert model_response.data["usage"]["output_tokens"] > 0
+    assert model_response.data["timing"]["source"] == "provider"
+    assert model_response.data["timing"]["latency_ms"] >= 0
+    assert model_response.data["timing"]["ttft_ms"] >= 0
+    assert events.index(model_response) > max(
+        index
+        for index, event in enumerate(events)
+        if event.type == EventType.MESSAGE_DELTA
+    )
+    assert events.index(model_response) < events.index(message_end)
     assert terminal.data == {"outcome": "completed"}
     assert run_start.data["namespace"] == "event_probe"
     print_summary("basic", events)
@@ -121,6 +144,7 @@ async def validate_tool_loop(model_path: str) -> None:
     )
 
     assert_source_envelope(events)
+    assert_model_metrics(events)
     tool_start = require_event(events, EventType.TOOL_START)
     tool_end = require_event(events, EventType.TOOL_END)
     message_end = require_event(events, EventType.MESSAGE_END)
@@ -155,6 +179,7 @@ async def validate_output_transform(model_path: str) -> None:
     )
 
     assert_source_envelope(events)
+    assert_model_metrics(events)
     assert not [event for event in events if event.type == EventType.MESSAGE_DELTA]
     message_start = require_event(events, EventType.MESSAGE_START)
     message_end = require_event(events, EventType.MESSAGE_END)
@@ -195,6 +220,7 @@ async def validate_nested_agent(model_path: str) -> None:
     )
 
     assert_source_envelope(events)
+    assert_model_metrics(events)
     nested_start = next(
         event
         for event in events

@@ -161,6 +161,119 @@ async def test_agent_run_start_carries_execution_context_and_model_boundaries():
     assert EventType.MODEL_RESPONSE in [event.type for event in events]
 
 
+@pytest.mark.asyncio
+async def test_model_response_event_exposes_compact_usage_and_timing():
+    model = Mock()
+    model.model_type = "chat_completion"
+    response = ModelResponse()
+    response.set_response_type("text_generation")
+    response.add("hello")
+    response.metadata = {
+        "usage": {
+            "input_tokens": 100,
+            "output_tokens": 20,
+            "total_tokens": 120,
+            "cache_hit_percentage": 25.0,
+            "input_tokens_details": {"cached_tokens": 25},
+            "raw": {"provider_field": "discarded"},
+        },
+        "timing": {
+            "source": "provider",
+            "latency_ms": 1250.5,
+        },
+    }
+    model.acall = AsyncMock(return_value=response)
+    agent = Agent(name="agent", model=model)
+
+    events = [event async for event in agent.stream_events("hi")]
+
+    model_response = next(
+        event for event in events if event.type == EventType.MODEL_RESPONSE
+    )
+    assert model_response.data == {
+        "response_type": "text_generation",
+        "usage": {
+            "input_tokens": 100,
+            "output_tokens": 20,
+            "cached_input_tokens": 25,
+        },
+        "timing": {
+            "source": "provider",
+            "latency_ms": 1250.5,
+        },
+    }
+
+
+@pytest.mark.asyncio
+async def test_streamed_model_response_event_waits_for_terminal_metrics():
+    model = Mock()
+    model.model_type = "chat_completion"
+
+    async def stream_call(**_kwargs):
+        response = ModelStreamResponse(mode="async")
+        response.set_response_type("text_generation")
+
+        async def produce():
+            await asyncio.sleep(0.01)
+            response.add("hello")
+            response.add(" world")
+            response.set_metadata(
+                {
+                    "usage": {
+                        "input_tokens": 12,
+                        "output_tokens": 2,
+                        "input_tokens_details": {"cached_tokens": 8},
+                    },
+                    "timing": {
+                        "source": "provider",
+                        "latency_ms": 900.0,
+                        "ttft_ms": 300.0,
+                    },
+                }
+            )
+            response.finish()
+
+        asyncio.create_task(produce())
+        return response
+
+    model.acall = AsyncMock(side_effect=stream_call)
+    agent = Agent(name="streaming_agent", model=model, config={"stream": True})
+
+    events = [event async for event in agent.stream_events("hi")]
+
+    model_responses = [
+        event for event in events if event.type == EventType.MODEL_RESPONSE
+    ]
+    assert len(model_responses) == 1
+    assert model_responses[0].data == {
+        "response_type": "text_generation",
+        "usage": {
+            "input_tokens": 12,
+            "output_tokens": 2,
+            "cached_input_tokens": 8,
+        },
+        "timing": {
+            "source": "provider",
+            "latency_ms": 900.0,
+            "ttft_ms": 300.0,
+        },
+    }
+    assert model_responses[0].source_path == ("agent:streaming_agent",)
+    assert events.index(model_responses[0]) > max(
+        index
+        for index, event in enumerate(events)
+        if event.type == EventType.MESSAGE_DELTA
+    )
+    assert events.index(model_responses[0]) < next(
+        index
+        for index, event in enumerate(events)
+        if event.type == EventType.MESSAGE_END
+    )
+    assert events.index(model_responses[0]) < next(
+        index for index, event in enumerate(events) if event.type == EventType.RUN_END
+    )
+
+
 def test_agent_lifecycle_hooks_transform_canonical_response():
     def add_suffix(response):
         response.data += "!"
@@ -272,9 +385,11 @@ async def test_foreground_agent_tool_events_include_nested_source_identity():
     tool_response = ModelResponse()
     tool_response.set_response_type("tool_call")
     tool_response.data = tool_calls
+    tool_response.metadata = {"usage": {"input_tokens": 10, "output_tokens": 2}}
     final_response = ModelResponse()
     final_response.set_response_type("text_generation")
     final_response.add("root complete")
+    final_response.metadata = {"usage": {"input_tokens": 20, "output_tokens": 3}}
     root_model.acall = AsyncMock(side_effect=[tool_response, final_response])
 
     child_model = Mock()
@@ -282,6 +397,7 @@ async def test_foreground_agent_tool_events_include_nested_source_identity():
     child_response = ModelResponse()
     child_response.set_response_type("text_generation")
     child_response.add("review complete")
+    child_response.metadata = {"usage": {"input_tokens": 30, "output_tokens": 4}}
     child_model.acall = AsyncMock(return_value=child_response)
 
     reviewer = Agent(name="reviewer", model=child_model)
@@ -310,6 +426,19 @@ async def test_foreground_agent_tool_events_include_nested_source_identity():
     assert nested_start.data["root_run_id"] == nested_start.run_id
     assert "parent_run_id" not in nested_start.data
     assert "agent:root" in child_request.source_path
+    model_responses = [
+        event for event in events if event.type == EventType.MODEL_RESPONSE
+    ]
+    assert [event.data["usage"]["input_tokens"] for event in model_responses] == [
+        10,
+        30,
+        20,
+    ]
+    assert [event.source_path[-1] for event in model_responses] == [
+        "agent:root",
+        "agent:reviewer",
+        "agent:root",
+    ]
 
 
 def test_before_run_can_replace_fresh_agent_input():

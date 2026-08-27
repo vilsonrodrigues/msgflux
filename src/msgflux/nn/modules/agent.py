@@ -18,9 +18,7 @@ from typing import (
 
 import msgspec
 
-from msgflux._private.response_metadata import (
-    attach_response_metadata,
-)
+from msgflux._private.response_metadata import attach_response_metadata
 from msgflux.auto import AutoParams
 from msgflux.chat_messages import ChatMessages
 from msgflux.core.dotdict import dotdict
@@ -49,6 +47,7 @@ from msgflux.models import Model
 from msgflux.models.gateway import ModelGateway
 from msgflux.models.response import ModelResponse, ModelStreamResponse
 from msgflux.models.types import ChatCompletionModel
+from msgflux.nn.events import emit_model_response_event
 from msgflux.nn.extensions.base import (
     AgentExtension,
     AgentExtensionHandle,
@@ -1034,7 +1033,7 @@ class Agent(Module, metaclass=AutoParams):
         prefilling: Optional[str] = None,
         model_preference: Optional[str] = None,
         tool_filter: Optional[ToolFilter] = None,
-        scope: Optional[ExecutionScope] = None,  # noqa: ARG002
+        scope: Optional[ExecutionScope] = None,
     ) -> Union[ModelResponse, ModelStreamResponse]:
         self._raise_if_background_task_interrupted()
         context_messages = self._run_lifecycle_hooks("transform_context", messages)
@@ -1057,10 +1056,7 @@ class Agent(Module, metaclass=AutoParams):
         response = self.generator(**model_execution_params)
         if not isinstance(response, ModelStreamResponse):
             response = self._run_lifecycle_hooks("after_response", response)
-        emit_event(
-            EventType.MODEL_RESPONSE,
-            {"response_type": getattr(response, "response_type", None)},
-        )
+        emit_model_response_event(response, scope=scope)
         return response
 
     async def _aexecute_model(
@@ -1104,10 +1100,7 @@ class Agent(Module, metaclass=AutoParams):
         )
         if not isinstance(response, ModelStreamResponse):
             response = await self._arun_lifecycle_hooks("after_response", response)
-        emit_event(
-            EventType.MODEL_RESPONSE,
-            {"response_type": getattr(response, "response_type", None)},
-        )
+        emit_model_response_event(response, scope=scope)
         return response
 
     def warmup_system_prompt(

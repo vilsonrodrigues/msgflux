@@ -64,7 +64,7 @@ them. All following events remain correlatable through `run_id` and
 | `run.start` | Execution was accepted |
 | `turn.start` | An agent turn started |
 | `model.request` | A request is being sent to a model |
-| `model.response` | The model returned a response or opened a stream |
+| `model.response` | The model response settled; includes compact token usage and timing when available |
 | `message.start` | Assistant output presentation started |
 | `message.delta` | Assistant content chunk |
 | `reasoning.delta` | Reasoning content chunk, when exposed by the provider |
@@ -76,6 +76,35 @@ them. All following events remain correlatable through `run_id` and
 | `turn.end` | The turn reached a terminal boundary; it has no output payload |
 | `run.end` | The run completed and reports its outcome |
 | `run.error` | Execution failed; the iterator raises after this event |
+
+## Model Metrics
+
+`model.response` is emitted once for every LM request. For a streamed model
+response, it arrives after the model's content deltas have been drained, when
+terminal usage and timing are available:
+
+```python
+async for event in agent.stream_events("Summarize the incident"):
+    if event.type == "model.response":
+        usage = event.data.get("usage", {})
+        timing = event.data.get("timing", {})
+
+        print(usage.get("input_tokens"))
+        print(usage.get("output_tokens"))
+        print(usage.get("cached_input_tokens"))
+        print(timing.get("latency_ms"))
+        print(timing.get("ttft_ms"))
+```
+
+The payload is intentionally compact. `usage` contains `input_tokens`,
+`output_tokens`, and `cached_input_tokens` when reported; provider-native raw
+usage, derived totals, and cache percentages are omitted. `timing` contains
+`source`, `latency_ms`, and streaming `ttft_ms` when available.
+
+Metrics stay on their individual `model.response` events instead of being
+summed into `run.end`. This keeps multi-step tool loops and nested agents
+auditable: each model call retains its own `run_id` and `source_path`, and a
+consumer can aggregate only the calls relevant to its view.
 
 Closing an event iterator early requests cancellation through the execution's
 abort signal. Async execution is also cancelled locally so an abandoned client

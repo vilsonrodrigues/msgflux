@@ -92,7 +92,7 @@ When `stream=True`, the agent returns a `ModelStreamResponse` instead of a plain
 | `response.consume()` | Async generator that yields `str` chunks until the stream ends. |
 | `response.data` | Full accumulated content after the stream completes (or `None` while streaming). |
 | `response.response_type` | `"text_generation"` or `"tool_call"` — set when the first content token arrives. |
-| `response.metadata` | Usage stats — set when the stream finishes. `None` while streaming, useful as a completion signal. |
+| `response.metadata` | Usage and request timing — set when the stream finishes. `None` while streaming, useful as a completion signal. |
 | `response.first_chunk_event` | Event that fires on the very first token (reasoning or content). |
 
 ## Streaming with Reasoning

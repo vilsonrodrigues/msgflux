@@ -1758,11 +1758,14 @@ class Module:
                     {"delta": chunk},
                 )
 
-        await asyncio.gather(
-            consume_content(),
-            consume_reasoning(),
-            consume_reasoning_summary(),
-        )
+        try:
+            await asyncio.gather(
+                consume_content(),
+                consume_reasoning(),
+                consume_reasoning_summary(),
+            )
+        finally:
+            response._run_consumer_finalizers()
 
     async def _afinalize_event_result(self, result: Any) -> Any:
         buffered = isinstance(result, ModelStreamResponse) and self.has_lifecycle_hooks(

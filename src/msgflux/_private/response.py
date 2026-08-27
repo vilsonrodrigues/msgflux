@@ -107,7 +107,9 @@ class BaseStreamResponse(CoreResponse):
         self.response_type = None
         self.error = None
         self._finalizers = []
+        self._consumer_finalizers = []
         self._finalized = False
+        self._consumer_finalized = False
         self._final_status = None
         self._finalizer_lock = threading.Lock()
         self.chat_accumulator = ChatStreamAccumulator()
@@ -221,6 +223,29 @@ class BaseStreamResponse(CoreResponse):
             else:
                 self._finalizers.append(finalizer)
         if final_state is not None:
+            finalizer(final_state)
+
+    def _add_consumer_finalizer(self, finalizer) -> None:
+        """Run a callback after an owner has drained all stream queues."""
+        final_state = None
+        with self._finalizer_lock:
+            if self._consumer_finalized:
+                final_state = self._build_final_state()
+            else:
+                self._consumer_finalizers.append(finalizer)
+        if final_state is not None:
+            finalizer(final_state)
+
+    def _run_consumer_finalizers(self) -> None:
+        with self._finalizer_lock:
+            if self._consumer_finalized:
+                return
+            self._consumer_finalized = True
+            finalizers = list(self._consumer_finalizers)
+            self._consumer_finalizers.clear()
+            final_state = self._build_final_state()
+
+        for finalizer in finalizers:
             finalizer(final_state)
 
     def _is_finalized(self) -> bool:
