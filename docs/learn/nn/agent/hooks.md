@@ -45,6 +45,7 @@ The Agent currently exposes these lifecycle boundaries:
 | `before_request` | `ModelRequestContext` | May replace provider-neutral request parameters immediately before the LM call. |
 | `after_response` | `ModelResponseContext` | May replace a settled, non-streaming response before it enters history. |
 | `before_tool` | `BeforeTool` | May replace model-visible arguments or block local execution. |
+| `before_dispatch` | `BeforeToolDispatch` | May block a validated call or reduce background/spawn dispatch to foreground. |
 | `after_tool` | `AfterTool` | May replace the result or error before it becomes a tool result. |
 | `before_run_end` | `RunEndContext` | May inspect or replace the terminal outcome immediately before the final checkpoint. |
 | `after_run_end` | `RunEndContext` | Runs after the final checkpoint is committed. |
@@ -80,6 +81,19 @@ call and are not exposed to or removed by the hook. If a `before_tool` handler
 raises or returns an invalid payload, execution fails closed and the tool is not
 called. An `after_tool` handler failure leaves the original outcome unchanged
 and emits a `handler.error` execution event.
+
+Handlers are sequential for each call. When a `before_tool` or
+`before_dispatch` handler sets `block`, later handlers for that event and that
+call do not run. Other tool calls from the same model response continue through
+their own hook chains. The reason becomes the tool error returned to the model,
+and the runtime emits `tool.blocked`; it does not emit `tool.start`, `tool.end`,
+or call `after_tool` because execution never began.
+
+`before_dispatch` runs after `ToolExecutionPlan` selects `foreground`,
+`background`, `spawn`, or `call_as_response`. Its payload exposes public
+arguments and normalized tool config, but not runtime injections. A handler may
+keep the selected mode, reduce `background` or `spawn` to `foreground`, or
+block. It cannot redirect a foreground call into detached execution.
 
 Use `before_resume` to restore extension-owned resources or transform the
 conversation loaded from a checkpoint. A replacement must remain a

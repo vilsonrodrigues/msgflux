@@ -100,6 +100,9 @@ tool.end
 ```
 
 This prevents tool-loop reasoning from becoming an opaque internal detail.
+A policy rejection instead produces one `tool.blocked` event with the public
+arguments and reason. Because the implementation never starts, it does not
+produce `tool.start` or `tool.end`.
 
 ## Event Identity
 

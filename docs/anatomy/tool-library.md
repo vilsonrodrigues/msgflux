@@ -80,6 +80,8 @@ tool_callings
   -> prepare call params
   -> run before_tool lifecycle hooks
   -> build ToolExecutionPlan
+  -> run before_dispatch lifecycle hooks
+     -> blocked: emit tool.blocked and return a tool error
   -> execute tools with scatter_gather
   -> run after_tool lifecycle hooks
   -> collect ToolCall results
@@ -90,6 +92,19 @@ The async path mirrors the same structure through `aforward(...)` and
 `ascatter_gather(...)`. `ToolExecutionPlan` freezes the selected tool, visible
 arguments, runtime arguments, dispatch mode, and return policy before either
 path dispatches it.
+
+Both pre-execution hook chains are sequential per call. The first `block`
+short-circuits the remaining handlers for that event invocation, including
+hooks inherited from the Agent when a library extension already denied the
+call. It does not stop preparation of sibling calls. `tool.blocked` is the
+terminal event for the denied call; `tool.start`, `after_tool`, and `tool.end`
+belong only to implementations that actually started.
+
+`before_dispatch` receives the public arguments and normalized config alongside
+the selected `dispatch_mode`. Runtime injections remain private. Extensions may
+reduce `background` or `spawn` to `foreground`, but cannot promote attached
+execution into a detached mode. When a mode changes, the library rebuilds the
+reserved call arguments before dispatch.
 
 ## Extensions And Core Invariants
 

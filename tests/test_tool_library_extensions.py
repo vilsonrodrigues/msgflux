@@ -6,6 +6,8 @@ import pytest
 from msgflux.nn import ToolLibrary
 from msgflux.nn.extensions import ToolLibraryExtension
 from msgflux.nn.hooks import Hook
+from msgflux.nn.modules.module import Module
+from msgflux.tools.config import tool_config
 
 
 class MathExtension(ToolLibraryExtension):
@@ -114,3 +116,205 @@ def test_background_controls_are_managed_by_builtin_extension():
 
     assert library.has_extension("background_tasks")
     assert "task_status" in library.get_tool_names()
+
+
+def test_before_tool_stops_current_call_after_first_block():
+    calls = []
+
+    def guarded(value: int) -> int:
+        """Return a guarded value."""
+        calls.append("tool")
+        return value
+
+    class PolicyExtension(ToolLibraryExtension):
+        def __init__(self, name, handler):
+            super().__init__(name)
+            self.handler = handler
+
+        def hooks(self):
+            return (Hook(event="before_tool", handler=self.handler),)
+
+    def allow(event):
+        calls.append("allow")
+        return event
+
+    def deny(event):
+        calls.append("deny")
+        return replace(event, block="Denied by policy.")
+
+    def must_not_run(event):
+        calls.append("late_library_hook")
+        return event
+
+    library = ToolLibrary(
+        "guarded",
+        [guarded],
+        extensions=[
+            PolicyExtension("allow", allow),
+            PolicyExtension("deny", deny),
+            PolicyExtension("late", must_not_run),
+        ],
+    )
+    owner = Module()
+    Hook(
+        event="before_tool",
+        handler=lambda event: calls.append("owner_hook") or event,
+    ).register(owner)
+    library.set_lifecycle_owner(owner)
+
+    response = library([("call_1", "guarded", {"value": 3})])
+
+    assert calls == ["allow", "deny"]
+    assert response.tool_calls[0].error == "Denied by policy."
+
+
+@pytest.mark.asyncio
+async def test_async_before_tool_is_sequential_and_block_is_call_local():
+    calls = []
+
+    def left() -> str:
+        """Return left."""
+        calls.append("left.tool")
+        return "left"
+
+    def right() -> str:
+        """Return right."""
+        calls.append("right.tool")
+        return "right"
+
+    class PolicyExtension(ToolLibraryExtension):
+        def __init__(self):
+            super().__init__("policy")
+
+        async def check(self, event):
+            calls.append(f"{event.tool_name}.first")
+            await asyncio.sleep(0)
+            if event.tool_name == "left":
+                return replace(event, block="Left is blocked.")
+            return event
+
+        async def later(self, event):
+            calls.append(f"{event.tool_name}.second")
+            await asyncio.sleep(0)
+            return event
+
+        def hooks(self):
+            return (
+                Hook(event="before_tool", handler=self.check),
+                Hook(event="before_tool", handler=self.later),
+            )
+
+    library = ToolLibrary("pair", [left, right], extensions=[PolicyExtension()])
+
+    response = await library.acall(
+        [("call_left", "left", {}), ("call_right", "right", {})]
+    )
+
+    assert calls == [
+        "left.first",
+        "right.first",
+        "right.second",
+        "right.tool",
+    ]
+    assert response.tool_calls[0].error == "Left is blocked."
+    assert response.tool_calls[1].result == "right"
+
+
+def test_before_dispatch_can_reduce_spawn_to_foreground():
+    observed_modes = []
+
+    @tool_config(spawn=True)
+    def report() -> str:
+        """Return a report."""
+        return "ready"
+
+    class ForegroundPolicy(ToolLibraryExtension):
+        def __init__(self):
+            super().__init__("foreground_policy")
+
+        def hooks(self):
+            def force_foreground(event):
+                observed_modes.append(event.dispatch_mode)
+                return replace(event, dispatch_mode="foreground")
+
+            return (Hook(event="before_dispatch", handler=force_foreground),)
+
+    library = ToolLibrary("reports", [report], extensions=[ForegroundPolicy()])
+
+    response = library([("call_1", "report", {})])
+
+    assert observed_modes == ["spawn"]
+    assert response.tool_calls[0].result == "ready"
+
+
+def test_before_dispatch_stops_after_first_block_and_fails_closed():
+    calls = []
+
+    def guarded() -> str:
+        """Return a guarded result."""
+        calls.append("tool")
+        return "unsafe"
+
+    class DispatchPolicy(ToolLibraryExtension):
+        def __init__(self):
+            super().__init__("dispatch_policy")
+
+        def hooks(self):
+            def deny(event):
+                calls.append("deny")
+                return replace(event, block="Dispatch denied.")
+
+            def must_not_run(event):
+                calls.append("late")
+                return event
+
+            return (
+                Hook(event="before_dispatch", handler=deny),
+                Hook(event="before_dispatch", handler=must_not_run),
+                Hook(
+                    event="after_tool",
+                    handler=lambda event: calls.append("after") or event,
+                ),
+            )
+
+    library = ToolLibrary(
+        "guarded",
+        [guarded],
+        extensions=[DispatchPolicy()],
+    )
+
+    response = library([("call_1", "guarded", {})])
+
+    assert calls == ["deny"]
+    assert response.tool_calls[0].error == "Dispatch denied."
+
+
+def test_before_dispatch_cannot_promote_foreground_to_spawn():
+    def guarded() -> str:
+        """Return a guarded result."""
+        return "unsafe"
+
+    class InvalidPolicy(ToolLibraryExtension):
+        def __init__(self):
+            super().__init__("invalid_policy")
+
+        def hooks(self):
+            return (
+                Hook(
+                    event="before_dispatch",
+                    handler=lambda event: replace(event, dispatch_mode="spawn"),
+                ),
+            )
+
+    library = ToolLibrary(
+        "guarded",
+        [guarded],
+        extensions=[InvalidPolicy()],
+    )
+
+    response = library([("call_1", "guarded", {})])
+
+    assert response.tool_calls[0].error == (
+        "before_dispatch hook failed closed: before_dispatch may only keep the "
+        "selected mode or reduce `background`/`spawn` dispatch to `foreground`"
+    )

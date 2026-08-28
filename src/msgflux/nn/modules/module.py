@@ -1271,10 +1271,18 @@ class Module:
             bucket.move_to_end(handle.id, last=False)
         return handle
 
-    def _run_lifecycle_hooks(self, event: str, payload: Any) -> Any:
+    def _run_lifecycle_hooks(
+        self,
+        event: str,
+        payload: Any,
+        *,
+        stop_when: Callable[[Any], bool] | None = None,
+    ) -> Any:
         """Run lifecycle hooks in registration order.
 
         A non-``None`` result replaces the payload seen by later handlers.
+        When ``stop_when`` accepts the current payload, remaining handlers for
+        this event invocation are skipped.
         """
         current = payload
         for hook in tuple(self._lifecycle_hooks.get(event, {}).values()):
@@ -1286,9 +1294,17 @@ class Module:
                 current = result
             if abort_signal is not None:
                 abort_signal.raise_if_aborted()
+            if stop_when is not None and stop_when(current):
+                break
         return current
 
-    async def _arun_lifecycle_hooks(self, event: str, payload: Any) -> Any:
+    async def _arun_lifecycle_hooks(
+        self,
+        event: str,
+        payload: Any,
+        *,
+        stop_when: Callable[[Any], bool] | None = None,
+    ) -> Any:
         """Async counterpart to :meth:`_run_lifecycle_hooks`."""
         current = payload
         for hook in tuple(self._lifecycle_hooks.get(event, {}).values()):
@@ -1296,6 +1312,8 @@ class Module:
             result = await await_with_abort(hook.ahandle(current), abort_signal)
             if result is not None:
                 current = result
+            if stop_when is not None and stop_when(current):
+                break
         return current
 
     @staticmethod

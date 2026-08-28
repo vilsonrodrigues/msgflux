@@ -50,6 +50,32 @@ sees only model-visible arguments; injected handles, messages, and vars remain
 protected runtime arguments. `after_tool` receives the result or error before
 it becomes a `ToolCall` result.
 
+Multiple extensions may contribute hooks for the same event. They run
+sequentially in registration order. A `block` from `before_tool` or
+`before_dispatch` stops the remaining handlers only for that call. The first
+reason is returned to the model and emitted as `tool.blocked`; another tool call
+in the same response is processed normally.
+
+Use `before_dispatch` when a policy depends on the normalized dispatch mode:
+
+```python
+class ForegroundOnly(ToolLibraryExtension):
+    def __init__(self):
+        super().__init__("foreground_only")
+
+    def hooks(self):
+        def keep_attached(event):
+            if event.dispatch_mode in {"background", "spawn"}:
+                return replace(event, dispatch_mode="foreground")
+            return event
+
+        return (Hook(event="before_dispatch", handler=keep_attached),)
+```
+
+This boundary exposes public arguments and normalized config, not injected
+runtime values. It may reduce background/spawn execution to foreground or
+block the call; it cannot promote a foreground call into detached execution.
+
 ## Register And Remove
 
 Registration returns an ownership handle:

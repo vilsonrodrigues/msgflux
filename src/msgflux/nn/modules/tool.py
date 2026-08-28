@@ -2,7 +2,7 @@ import asyncio
 import inspect
 import weakref
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import partial
 from typing import (
     Any,
@@ -34,7 +34,7 @@ from msgflux.nn.extensions.tool_library import (
     ToolSearchExtension,
 )
 from msgflux.nn.hooks import Hook
-from msgflux.nn.hooks.events import AfterTool, BeforeTool
+from msgflux.nn.hooks.events import AfterTool, BeforeTool, BeforeToolDispatch
 from msgflux.nn.modules.container import ModuleDict
 from msgflux.nn.modules.module import Module
 from msgflux.protocols.mcp import (
@@ -540,7 +540,7 @@ class ToolExecutionPlan:
     config: Mapping[str, Any]
     visible_arguments: Mapping[str, Any]
     call_arguments: Mapping[str, Any]
-    mode: Literal["foreground", "background", "spawn", "call_as_response"]
+    dispatch_mode: Literal["foreground", "background", "spawn", "call_as_response"]
     return_direct: bool
 
 
@@ -1297,13 +1297,13 @@ class ToolLibrary(Module, metaclass=AutoParams):
     ) -> ToolExecutionPlan:
         call_arguments = {**visible_arguments, **runtime_arguments}
         if config.get("spawn", False):
-            mode = "spawn"
+            dispatch_mode = "spawn"
         elif should_dispatch_background(config=config, call_params=call_arguments):
-            mode = "background"
+            dispatch_mode = "background"
         elif config.get("call_as_response", False):
-            mode = "call_as_response"
+            dispatch_mode = "call_as_response"
         else:
-            mode = "foreground"
+            dispatch_mode = "foreground"
             call_arguments["tool_call_id"] = tool_id
         return ToolExecutionPlan(
             tool_id=tool_id,
@@ -1312,9 +1312,208 @@ class ToolLibrary(Module, metaclass=AutoParams):
             config=config,
             visible_arguments=dict(visible_arguments),
             call_arguments=call_arguments,
-            mode=mode,
+            dispatch_mode=dispatch_mode,
             return_direct=bool(config.get("return_direct", False)),
         )
+
+    @staticmethod
+    def _with_dispatch_mode(
+        plan: ToolExecutionPlan,
+        dispatch_mode: Literal["foreground", "background", "spawn", "call_as_response"],
+    ) -> ToolExecutionPlan:
+        if dispatch_mode == plan.dispatch_mode:
+            return plan
+        call_arguments = dict(plan.call_arguments)
+        call_arguments.pop("tool_call_id", None)
+        call_arguments.pop(RUNTIME_BACKGROUND_PARAM, None)
+        if dispatch_mode == "foreground":
+            call_arguments["tool_call_id"] = plan.tool_id
+        return replace(
+            plan,
+            call_arguments=call_arguments,
+            dispatch_mode=dispatch_mode,
+        )
+
+    @staticmethod
+    def _emit_tool_blocked(event: BeforeTool | BeforeToolDispatch) -> None:
+        with event_source(event.tool_name, "tool"):
+            emit_event(
+                EventType.TOOL_BLOCKED,
+                {
+                    "tool_call_id": event.tool_call_id,
+                    "tool_name": event.tool_name,
+                    "arguments": dict(event.arguments),
+                    "reason": event.block,
+                },
+            )
+
+    @staticmethod
+    def _validate_before_dispatch_event(
+        event: Any,
+        initial_event: BeforeToolDispatch,
+    ) -> BeforeToolDispatch:
+        if not isinstance(event, BeforeToolDispatch):
+            raise TypeError(
+                "before_dispatch handlers must return BeforeToolDispatch or None"
+            )
+        protected_fields = ("tool_call_id", "tool_name", "arguments", "config")
+        changed_fields = [
+            name
+            for name in protected_fields
+            if getattr(event, name) != getattr(initial_event, name)
+        ]
+        if changed_fields:
+            formatted = ", ".join(f"`{name}`" for name in changed_fields)
+            raise ValueError(
+                "before_dispatch handlers may only replace `dispatch_mode` or "
+                f"`block`; changed protected fields: {formatted}"
+            )
+        if event.dispatch_mode not in {
+            "foreground",
+            "background",
+            "spawn",
+            "call_as_response",
+        }:
+            raise ValueError(f"Unsupported tool dispatch mode: `{event.dispatch_mode}`")
+        if event.dispatch_mode != initial_event.dispatch_mode and not (
+            initial_event.dispatch_mode in {"background", "spawn"}
+            and event.dispatch_mode == "foreground"
+        ):
+            raise ValueError(
+                "before_dispatch may only keep the selected mode or reduce "
+                "`background`/`spawn` dispatch to `foreground`"
+            )
+        return event
+
+    @staticmethod
+    def _validate_blocking_hook_payload(
+        event_name: str,
+        payload: Any,
+        expected_type: type,
+    ) -> Any:
+        if not isinstance(payload, expected_type):
+            raise TypeError(
+                f"{event_name} handlers must return {expected_type.__name__} or None"
+            )
+        return payload
+
+    def _run_owned_blocking_hooks(
+        self,
+        event_name: str,
+        payload: Any,
+        validator: Callable[[Any], Any],
+    ) -> Any:
+        def stop_when(current: Any) -> bool:
+            return getattr(current, "block", None) is not None
+
+        if self.has_lifecycle_hooks(event_name):
+            payload = self._run_lifecycle_hooks(
+                event_name,
+                payload,
+                stop_when=stop_when,
+            )
+        payload = validator(payload)
+        owner = self._get_lifecycle_owner()
+        if (
+            payload.block is None
+            and owner is not None
+            and owner.has_lifecycle_hooks(event_name)
+        ):
+            payload = owner._run_lifecycle_hooks(
+                event_name,
+                payload,
+                stop_when=stop_when,
+            )
+        return validator(payload)
+
+    async def _arun_owned_blocking_hooks(
+        self,
+        event_name: str,
+        payload: Any,
+        validator: Callable[[Any], Any],
+    ) -> Any:
+        def stop_when(current: Any) -> bool:
+            return getattr(current, "block", None) is not None
+
+        if self.has_lifecycle_hooks(event_name):
+            payload = await self._arun_lifecycle_hooks(
+                event_name,
+                payload,
+                stop_when=stop_when,
+            )
+        payload = validator(payload)
+        owner = self._get_lifecycle_owner()
+        if (
+            payload.block is None
+            and owner is not None
+            and owner.has_lifecycle_hooks(event_name)
+        ):
+            payload = await owner._arun_lifecycle_hooks(
+                event_name,
+                payload,
+                stop_when=stop_when,
+            )
+        return validator(payload)
+
+    def _run_before_dispatch_hook(
+        self,
+        plan: ToolExecutionPlan,
+    ) -> BeforeToolDispatch:
+        event = BeforeToolDispatch(
+            tool_call_id=plan.tool_id,
+            tool_name=plan.tool_name,
+            arguments=plan.visible_arguments,
+            config=plan.config,
+            dispatch_mode=plan.dispatch_mode,
+        )
+        initial_event = event
+        try:
+            event = self._run_owned_blocking_hooks(
+                "before_dispatch",
+                event,
+                partial(
+                    self._validate_before_dispatch_event,
+                    initial_event=initial_event,
+                ),
+            )
+            return event
+        except (AbortRequestedError, TaskInterruptRequestedError):
+            raise
+        except Exception as exc:
+            return replace(
+                initial_event,
+                block=f"before_dispatch hook failed closed: {exc}",
+            )
+
+    async def _arun_before_dispatch_hook(
+        self,
+        plan: ToolExecutionPlan,
+    ) -> BeforeToolDispatch:
+        event = BeforeToolDispatch(
+            tool_call_id=plan.tool_id,
+            tool_name=plan.tool_name,
+            arguments=plan.visible_arguments,
+            config=plan.config,
+            dispatch_mode=plan.dispatch_mode,
+        )
+        initial_event = event
+        try:
+            event = await self._arun_owned_blocking_hooks(
+                "before_dispatch",
+                event,
+                partial(
+                    self._validate_before_dispatch_event,
+                    initial_event=initial_event,
+                ),
+            )
+            return event
+        except (AbortRequestedError, TaskInterruptRequestedError):
+            raise
+        except Exception as exc:
+            return replace(
+                initial_event,
+                block=f"before_dispatch hook failed closed: {exc}",
+            )
 
     def _run_before_tool_hook(
         self,
@@ -1329,16 +1528,15 @@ class ToolLibrary(Module, metaclass=AutoParams):
             arguments=dict(arguments),
         )
         try:
-            if self.has_lifecycle_hooks("before_tool"):
-                event = self._run_lifecycle_hooks("before_tool", event)
-            if not isinstance(event, BeforeTool):
-                raise TypeError("before_tool handlers must return BeforeTool or None")
-            owner = self._get_lifecycle_owner()
-            if owner is not None and owner.has_lifecycle_hooks("before_tool"):
-                event = owner._run_lifecycle_hooks("before_tool", event)
-            if not isinstance(event, BeforeTool):
-                raise TypeError("before_tool handlers must return BeforeTool or None")
-            return event
+            return self._run_owned_blocking_hooks(
+                "before_tool",
+                event,
+                partial(
+                    self._validate_blocking_hook_payload,
+                    "before_tool",
+                    expected_type=BeforeTool,
+                ),
+            )
         except (AbortRequestedError, TaskInterruptRequestedError):
             raise
         except Exception as exc:
@@ -1362,16 +1560,15 @@ class ToolLibrary(Module, metaclass=AutoParams):
             arguments=dict(arguments),
         )
         try:
-            if self.has_lifecycle_hooks("before_tool"):
-                event = await self._arun_lifecycle_hooks("before_tool", event)
-            if not isinstance(event, BeforeTool):
-                raise TypeError("before_tool handlers must return BeforeTool or None")
-            owner = self._get_lifecycle_owner()
-            if owner is not None and owner.has_lifecycle_hooks("before_tool"):
-                event = await owner._arun_lifecycle_hooks("before_tool", event)
-            if not isinstance(event, BeforeTool):
-                raise TypeError("before_tool handlers must return BeforeTool or None")
-            return event
+            return await self._arun_owned_blocking_hooks(
+                "before_tool",
+                event,
+                partial(
+                    self._validate_blocking_hook_payload,
+                    "before_tool",
+                    expected_type=BeforeTool,
+                ),
+            )
         except (AbortRequestedError, TaskInterruptRequestedError):
             raise
         except Exception as exc:
@@ -1715,6 +1912,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 arguments=visible_arguments,
             )
             if before_tool.block is not None:
+                self._emit_tool_blocked(before_tool)
                 tool_calls.append(
                     ToolCall(
                         id=tool_id,
@@ -1734,8 +1932,22 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 visible_arguments=response_params,
                 runtime_arguments=runtime_arguments,
             )
+            before_dispatch = self._run_before_dispatch_hook(plan)
+            if before_dispatch.block is not None:
+                self._emit_tool_blocked(before_dispatch)
+                tool_calls.append(
+                    ToolCall(
+                        id=tool_id,
+                        name=tool_name,
+                        parameters=response_params,
+                        error=before_dispatch.block,
+                    )
+                )
+                return_directly = False
+                continue
+            plan = self._with_dispatch_mode(plan, before_dispatch.dispatch_mode)
 
-            if plan.mode == "spawn":
+            if plan.dispatch_mode == "spawn":
                 return_directly = False
                 F.spawn(plan.tool, **plan.call_arguments)
                 tool_calls.append(
@@ -1749,7 +1961,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 )
                 continue
 
-            if plan.mode == "background":
+            if plan.dispatch_mode == "background":
                 return_directly = False
                 tool_calls.append(
                     self.get_background_dispatcher().dispatch(
@@ -1763,7 +1975,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 )
                 continue
 
-            if plan.mode == "call_as_response":
+            if plan.dispatch_mode == "call_as_response":
                 tool_calls.append(
                     ToolCall(id=tool_id, name=tool_name, parameters=response_params)
                 )
@@ -1886,6 +2098,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 arguments=visible_arguments,
             )
             if before_tool.block is not None:
+                self._emit_tool_blocked(before_tool)
                 tool_calls.append(
                     ToolCall(
                         id=tool_id,
@@ -1905,8 +2118,22 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 visible_arguments=response_params,
                 runtime_arguments=runtime_arguments,
             )
+            before_dispatch = await self._arun_before_dispatch_hook(plan)
+            if before_dispatch.block is not None:
+                self._emit_tool_blocked(before_dispatch)
+                tool_calls.append(
+                    ToolCall(
+                        id=tool_id,
+                        name=tool_name,
+                        parameters=response_params,
+                        error=before_dispatch.block,
+                    )
+                )
+                return_directly = False
+                continue
+            plan = self._with_dispatch_mode(plan, before_dispatch.dispatch_mode)
 
-            if plan.mode == "spawn":
+            if plan.dispatch_mode == "spawn":
                 return_directly = False
                 await F.aspawn(plan.tool, **plan.call_arguments)
                 tool_calls.append(
@@ -1920,7 +2147,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 )
                 continue
 
-            if plan.mode == "background":
+            if plan.dispatch_mode == "background":
                 return_directly = False
                 tool_calls.append(
                     self.get_background_dispatcher().dispatch(
@@ -1934,7 +2161,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 )
                 continue
 
-            if plan.mode == "call_as_response":
+            if plan.dispatch_mode == "call_as_response":
                 tool_calls.append(
                     ToolCall(id=tool_id, name=tool_name, parameters=response_params)
                 )

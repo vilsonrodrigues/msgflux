@@ -240,6 +240,7 @@ them. All following events remain correlatable through `run_id` and
 | `reasoning_summary.delta` | Provider reasoning-summary chunk |
 | `message.end` | Complete assistant output |
 | `tool.start` | A validated tool call is starting |
+| `tool.blocked` | A tool policy rejected the call before execution; includes the public arguments and reason |
 | `tool.update` | Intermediate tool progress |
 | `tool.end` | Tool execution completed or failed |
 | `task.start` | A background task was dispatched |

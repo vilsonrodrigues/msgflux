@@ -17,6 +17,7 @@ __all__ = [
     "NotificationContext",
     "BeforeRun",
     "BeforeTool",
+    "BeforeToolDispatch",
     "AfterTool",
     "BeforeResume",
     "OutputContext",
@@ -195,6 +196,20 @@ class BeforeTool:
     tool_call_id: str
     tool_name: str
     arguments: Mapping[str, Any] = field(default_factory=dict)
+    block: str | None = None
+
+
+@dataclass(frozen=True)
+class BeforeToolDispatch:
+    """A validated tool call immediately before dispatch."""
+
+    tool_call_id: str
+    tool_name: str
+    arguments: Mapping[str, Any] = field(default_factory=dict)
+    config: Mapping[str, Any] = field(default_factory=dict)
+    dispatch_mode: Literal["foreground", "background", "spawn", "call_as_response"] = (
+        "foreground"
+    )
     block: str | None = None
 
 

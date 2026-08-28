@@ -512,6 +512,41 @@ async def test_tool_events_wrap_validated_foreground_execution():
     assert tool_events[1].data["result"] == 6
 
 
+@pytest.mark.asyncio
+async def test_blocked_tool_emits_one_terminal_policy_event():
+    def dangerous(command: str) -> str:
+        """Run a dangerous command."""
+        raise AssertionError("blocked tool must not execute")
+
+    library = ToolLibrary(name="shell", tools=[dangerous])
+    Hook(
+        event="before_tool",
+        handler=lambda event: replace(event, block="Command denied."),
+    ).register(library)
+
+    events = [
+        event
+        async for event in library.stream_events(
+            tool_callings=[("call_1", "dangerous", {"command": "rm -rf ~"})]
+        )
+    ]
+    blocked = [event for event in events if event.type == EventType.TOOL_BLOCKED]
+
+    assert len(blocked) == 1
+    assert blocked[0].data == {
+        "tool_call_id": "call_1",
+        "tool_name": "dangerous",
+        "arguments": {"command": "rm -rf ~"},
+        "reason": "Command denied.",
+    }
+    assert blocked[0].source_path[-1] == "tool:dangerous"
+    assert not [
+        event
+        for event in events
+        if event.type in {EventType.TOOL_START, EventType.TOOL_END}
+    ]
+
+
 def test_transform_output_changes_return_without_changing_canonical_history():
     agent, _ = make_agent(
         hooks=[
