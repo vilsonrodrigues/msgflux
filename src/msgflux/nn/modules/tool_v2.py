@@ -1,0 +1,923 @@
+"""Incubating contracts for the extensible ToolLibrary runtime.
+
+This module intentionally runs beside ``tool.py`` until the V2 pipeline reaches
+behavioral parity. It is not exported as public API during that transition.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import weakref
+from copy import deepcopy
+from typing import (
+    Any,
+    Awaitable,
+    Callable,
+    Collection,
+    Mapping,
+    Protocol,
+    runtime_checkable,
+)
+
+import msgspec
+
+import msgflux.nn.functional as F
+from msgflux.nn.modules.container import ModuleDict
+from msgflux.nn.modules.module import Module
+
+_OUTCOME_STATUSES = {
+    "blocked",
+    "completed",
+    "dispatched",
+    "execution_failed",
+    "interrupted",
+    "invalid_arguments",
+    "not_found",
+}
+
+
+def _require_name(value: Any, subject: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"`{subject}` must be a non-empty string")
+    return value
+
+
+def _copy_mapping(value: Mapping[str, Any], subject: str) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        raise TypeError(f"`{subject}` must be a mapping")
+    return deepcopy(dict(value))
+
+
+@runtime_checkable
+class ToolExecutor(Protocol):
+    """Execution adapter owned by one logical tool definition.
+
+    Local Python and remote MCP tools implement the same boundary. Dispatch
+    extensions decide *when* the adapter runs; the adapter decides *how* the
+    action reaches its implementation.
+    """
+
+    def __call__(self, **arguments: Any) -> Any: ...
+
+    async def acall(self, **arguments: Any) -> Any: ...
+
+
+class DispatchSpec(msgspec.Struct, frozen=True, kw_only=True):
+    """Open dispatch selection compiled from one tool declaration."""
+
+    name: str = "foreground"
+    options: Mapping[str, Any] = msgspec.field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        msgspec.structs.force_setattr(
+            self, "name", _require_name(self.name, "dispatch.name")
+        )
+        msgspec.structs.force_setattr(
+            self,
+            "options",
+            _copy_mapping(self.options, "dispatch.options"),
+        )
+
+    @classmethod
+    def coerce(cls, value: DispatchSpec | str | None) -> DispatchSpec:
+        if value is None:
+            return cls()
+        if isinstance(value, cls):
+            return value
+        if isinstance(value, str):
+            return cls(name=value)
+        raise TypeError("`dispatch` must be a DispatchSpec, string, or None")
+
+
+class FeedbackSpec(msgspec.Struct, frozen=True, kw_only=True):
+    """Agent-facing handling requested after dispatch settles."""
+
+    name: str = "model"
+    options: Mapping[str, Any] = msgspec.field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        msgspec.structs.force_setattr(
+            self, "name", _require_name(self.name, "feedback.name")
+        )
+        msgspec.structs.force_setattr(
+            self,
+            "options",
+            _copy_mapping(self.options, "feedback.options"),
+        )
+
+    @classmethod
+    def coerce(cls, value: FeedbackSpec | str | None) -> FeedbackSpec:
+        if value is None:
+            return cls()
+        if isinstance(value, cls):
+            return value
+        if isinstance(value, str):
+            return cls(name=value)
+        raise TypeError("`feedback` must be a FeedbackSpec, string, or None")
+
+
+class ContextBinding(msgspec.Struct, frozen=True, kw_only=True):
+    """Bind one named runtime source to one hidden tool parameter."""
+
+    source: str
+    parameter: str | None = None
+    required: bool = True
+    options: Mapping[str, Any] = msgspec.field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        source = _require_name(self.source, "context.source")
+        parameter = self.parameter if self.parameter is not None else source
+        msgspec.structs.force_setattr(self, "source", source)
+        msgspec.structs.force_setattr(
+            self,
+            "parameter",
+            _require_name(parameter, "context.parameter"),
+        )
+        if not isinstance(self.required, bool):
+            raise TypeError("`context.required` must be a bool")
+        msgspec.structs.force_setattr(
+            self,
+            "options",
+            _copy_mapping(self.options, "context.options"),
+        )
+
+    @classmethod
+    def coerce(cls, value: ContextBinding | str) -> ContextBinding:
+        if isinstance(value, cls):
+            return value
+        if isinstance(value, str):
+            return cls(source=value)
+        raise TypeError("Context bindings must be ContextBinding instances or strings")
+
+
+class ContextSpec(msgspec.Struct, frozen=True, kw_only=True):
+    """Explicit runtime values made available to one tool."""
+
+    bindings: tuple[ContextBinding | str, ...] = ()
+
+    def __post_init__(self) -> None:
+        bindings = tuple(ContextBinding.coerce(item) for item in self.bindings)
+        parameters = [binding.parameter for binding in bindings]
+        if len(parameters) != len(set(parameters)):
+            raise ValueError("Context bindings must target unique parameters")
+        msgspec.structs.force_setattr(self, "bindings", bindings)
+
+    @classmethod
+    def coerce(
+        cls,
+        value: ContextSpec | Collection[ContextBinding | str] | None,
+    ) -> ContextSpec:
+        if value is None:
+            return cls()
+        if isinstance(value, cls):
+            return value
+        if isinstance(value, str) or not isinstance(value, Collection):
+            raise TypeError("`context` must be a ContextSpec or collection of bindings")
+        return cls(bindings=tuple(value))
+
+
+class LoadingSpec(msgspec.Struct, frozen=True, kw_only=True):
+    """Catalog visibility policy independent from mutable thread state."""
+
+    deferred: bool = False
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.deferred, bool):
+            raise TypeError("`loading.deferred` must be a bool")
+
+
+class NativeToolBinding(msgspec.Struct, frozen=True, kw_only=True):
+    """Provider-native representation supported by a logical tool."""
+
+    provider: str
+    api_mode: str
+    kind: str
+    execution: str
+    options: Mapping[str, Any] = msgspec.field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        for field_name in ("provider", "api_mode", "kind"):
+            msgspec.structs.force_setattr(
+                self,
+                field_name,
+                _require_name(getattr(self, field_name), field_name),
+            )
+        if self.execution not in {"client", "provider"}:
+            raise ValueError("`execution` must be `client` or `provider`")
+        msgspec.structs.force_setattr(
+            self,
+            "options",
+            _copy_mapping(self.options, "native_binding.options"),
+        )
+
+
+class ToolRef(msgspec.Struct, frozen=True, kw_only=True):
+    """Stable reference used by buckets and handles without exposing internals."""
+
+    library_id: str
+    tool_id: str
+
+    def __post_init__(self) -> None:
+        msgspec.structs.force_setattr(
+            self,
+            "library_id",
+            _require_name(self.library_id, "library_id"),
+        )
+        msgspec.structs.force_setattr(
+            self,
+            "tool_id",
+            _require_name(self.tool_id, "tool_id"),
+        )
+
+
+class ToolDefinition(msgspec.Struct, frozen=True, kw_only=True):
+    """Stable logical declaration compiled before a tool can be executed."""
+
+    name: str
+    executor: ToolExecutor
+    input_schema: Mapping[str, Any]
+    description: str | None = None
+    annotations: Mapping[str, Any] = msgspec.field(default_factory=dict)
+    dispatch: DispatchSpec | str = msgspec.field(default_factory=DispatchSpec)
+    feedback: FeedbackSpec | str = msgspec.field(default_factory=FeedbackSpec)
+    context: ContextSpec | tuple[ContextBinding | str, ...] = msgspec.field(
+        default_factory=ContextSpec
+    )
+    loading: LoadingSpec = msgspec.field(default_factory=LoadingSpec)
+    retry: Any = None
+    native_bindings: tuple[NativeToolBinding, ...] = ()
+    kind: str = "tool"
+    display_name: str | None = None
+    usage_guidance: str | None = None
+    metadata: Mapping[str, Any] = msgspec.field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        msgspec.structs.force_setattr(self, "name", _require_name(self.name, "name"))
+        if not isinstance(self.executor, ToolExecutor):
+            raise TypeError(
+                "`executor` must provide synchronous `__call__` and async `acall`"
+            )
+        if self.description is not None and not isinstance(self.description, str):
+            raise TypeError("`description` must be a string or None")
+        msgspec.structs.force_setattr(self, "kind", _require_name(self.kind, "kind"))
+        msgspec.structs.force_setattr(
+            self, "dispatch", DispatchSpec.coerce(self.dispatch)
+        )
+        msgspec.structs.force_setattr(
+            self, "feedback", FeedbackSpec.coerce(self.feedback)
+        )
+        msgspec.structs.force_setattr(self, "context", ContextSpec.coerce(self.context))
+        if not isinstance(self.loading, LoadingSpec):
+            raise TypeError("`loading` must be a LoadingSpec")
+        native_bindings = tuple(self.native_bindings)
+        if not all(
+            isinstance(binding, NativeToolBinding) for binding in native_bindings
+        ):
+            raise TypeError("`native_bindings` must contain NativeToolBinding values")
+        native_keys = [
+            (binding.provider, binding.api_mode, binding.kind)
+            for binding in native_bindings
+        ]
+        if len(native_keys) != len(set(native_keys)):
+            raise ValueError(
+                "Native tool bindings must be unique per provider/API/kind"
+            )
+        msgspec.structs.force_setattr(self, "native_bindings", native_bindings)
+        msgspec.structs.force_setattr(
+            self,
+            "input_schema",
+            _copy_mapping(self.input_schema, "input_schema"),
+        )
+        msgspec.structs.force_setattr(
+            self,
+            "annotations",
+            _copy_mapping(self.annotations, "annotations"),
+        )
+        msgspec.structs.force_setattr(
+            self,
+            "metadata",
+            _copy_mapping(self.metadata, "metadata"),
+        )
+
+
+class ToolIntent(msgspec.Struct, frozen=True, kw_only=True):
+    """Provider-neutral request to perform one named action."""
+
+    id: str
+    name: str
+    arguments: Mapping[str, Any] = msgspec.field(default_factory=dict)
+    parent_id: str | None = None
+
+    def __post_init__(self) -> None:
+        msgspec.structs.force_setattr(self, "id", _require_name(self.id, "id"))
+        msgspec.structs.force_setattr(self, "name", _require_name(self.name, "name"))
+        msgspec.structs.force_setattr(
+            self,
+            "arguments",
+            _copy_mapping(self.arguments, "arguments"),
+        )
+
+
+class ToolError(msgspec.Struct, frozen=True, kw_only=True):
+    """Structured failure independent from model-facing error rendering."""
+
+    code: str
+    message: str
+    details: Mapping[str, Any] = msgspec.field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        msgspec.structs.force_setattr(
+            self, "code", _require_name(self.code, "error.code")
+        )
+        msgspec.structs.force_setattr(
+            self,
+            "message",
+            _require_name(self.message, "error.message"),
+        )
+        msgspec.structs.force_setattr(
+            self,
+            "details",
+            _copy_mapping(self.details, "error.details"),
+        )
+
+
+class ToolOutcome(msgspec.Struct, frozen=True, kw_only=True):
+    """Canonical result returned by every dispatch extension."""
+
+    intent_id: str
+    tool_name: str
+    status: str
+    result: Any = None
+    error: ToolError | None = None
+    metadata: Mapping[str, Any] = msgspec.field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        msgspec.structs.force_setattr(
+            self, "intent_id", _require_name(self.intent_id, "intent_id")
+        )
+        msgspec.structs.force_setattr(
+            self, "tool_name", _require_name(self.tool_name, "tool_name")
+        )
+        if self.status not in _OUTCOME_STATUSES:
+            expected = ", ".join(sorted(_OUTCOME_STATUSES))
+            raise ValueError(
+                f"Unsupported tool outcome status `{self.status}`: {expected}"
+            )
+        if self.status in {
+            "blocked",
+            "execution_failed",
+            "interrupted",
+            "invalid_arguments",
+            "not_found",
+        }:
+            if not isinstance(self.error, ToolError):
+                raise ValueError(f"Tool outcome `{self.status}` requires `error`")
+        elif self.error is not None:
+            raise ValueError(f"Tool outcome `{self.status}` cannot include `error`")
+        msgspec.structs.force_setattr(
+            self,
+            "metadata",
+            _copy_mapping(self.metadata, "outcome.metadata"),
+        )
+
+    @property
+    def ok(self) -> bool:
+        return self.status in {"completed", "dispatched"}
+
+    @classmethod
+    def completed(cls, intent: ToolIntent, result: Any) -> ToolOutcome:
+        return cls(
+            intent_id=intent.id,
+            tool_name=intent.name,
+            status="completed",
+            result=result,
+        )
+
+    @classmethod
+    def dispatched(
+        cls,
+        intent: ToolIntent,
+        result: Any = None,
+        *,
+        metadata: Mapping[str, Any] | None = None,
+    ) -> ToolOutcome:
+        return cls(
+            intent_id=intent.id,
+            tool_name=intent.name,
+            status="dispatched",
+            result=result,
+            metadata=metadata or {},
+        )
+
+
+class ToolExecutionPlan(msgspec.Struct, frozen=True, kw_only=True):
+    """Resolved intent plus private runtime arguments and selected policies."""
+
+    intent: ToolIntent
+    definition: ToolDefinition
+    visible_arguments: Mapping[str, Any] = msgspec.field(default_factory=dict)
+    runtime_arguments: Mapping[str, Any] = msgspec.field(default_factory=dict)
+    dispatch: DispatchSpec | str | None = None
+    feedback: FeedbackSpec | str | None = None
+
+    def __post_init__(self) -> None:
+        if self.intent.name != self.definition.name:
+            raise ValueError("Tool intent and definition names must match")
+        msgspec.structs.force_setattr(
+            self,
+            "visible_arguments",
+            _copy_mapping(self.visible_arguments, "visible_arguments"),
+        )
+        msgspec.structs.force_setattr(
+            self,
+            "runtime_arguments",
+            _copy_mapping(self.runtime_arguments, "runtime_arguments"),
+        )
+        collisions = self.visible_arguments.keys() & self.runtime_arguments.keys()
+        if collisions:
+            formatted = ", ".join(f"`{name}`" for name in sorted(collisions))
+            raise ValueError(
+                "Tool arguments cannot be both visible and runtime-provided: "
+                f"{formatted}"
+            )
+        msgspec.structs.force_setattr(
+            self,
+            "dispatch",
+            DispatchSpec.coerce(self.dispatch)
+            if self.dispatch is not None
+            else self.definition.dispatch,
+        )
+        msgspec.structs.force_setattr(
+            self,
+            "feedback",
+            FeedbackSpec.coerce(self.feedback)
+            if self.feedback is not None
+            else self.definition.feedback,
+        )
+
+    @property
+    def call_arguments(self) -> dict[str, Any]:
+        return {**self.visible_arguments, **self.runtime_arguments}
+
+
+class ToolRuntimeContext(msgspec.Struct, frozen=True, kw_only=True):
+    """Execution-local values available to opt-in context bindings."""
+
+    values: Mapping[str, Any] = msgspec.field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.values, Mapping):
+            raise TypeError("`values` must be a mapping")
+        msgspec.structs.force_setattr(self, "values", dict(self.values))
+
+    def get(self, name: str, default: Any = None) -> Any:
+        return self.values.get(name, default)
+
+    def require(self, name: str) -> Any:
+        try:
+            return self.values[name]
+        except KeyError as exc:
+            raise RuntimeError(
+                f"Runtime context value `{name}` is unavailable"
+            ) from exc
+
+
+ExecuteTool = Callable[[], Awaitable[ToolOutcome]]
+
+
+class DispatchRequest(msgspec.Struct, frozen=True, kw_only=True):
+    """Input delivered to a dispatch extension."""
+
+    plan: ToolExecutionPlan
+    context: ToolRuntimeContext
+    execute: ExecuteTool
+
+
+class ToolExtension(Module):
+    """Owned runtime capability registered by the future ToolLibrary."""
+
+    def __init__(self, name: str) -> None:
+        super().__init__()
+        self.name = _require_name(name, "extension.name")
+        self._registry_ref = None
+
+    @property
+    def registry(self) -> ToolExtensionRegistry:
+        registry = self._registry_ref() if self._registry_ref is not None else None
+        if registry is None:
+            raise RuntimeError("The extension is not registered")
+        return registry
+
+    def _bind_registry(self, registry: ToolExtensionRegistry) -> None:
+        self._registry_ref = weakref.ref(registry)
+
+    def _unbind_registry(self) -> None:
+        self._registry_ref = None
+
+    def on_register(self, registry: ToolExtensionRegistry) -> None:
+        """Run synchronous setup after the extension becomes visible."""
+
+    async def aon_register(self, registry: ToolExtensionRegistry) -> None:
+        """Run async setup; override this for network-backed extensions."""
+        self.on_register(registry)
+
+    def on_remove(self, registry: ToolExtensionRegistry) -> None:
+        """Clean up synchronously owned resources."""
+
+    async def aon_remove(self, registry: ToolExtensionRegistry) -> None:
+        self.on_remove(registry)
+
+    def __getstate__(self):
+        state = super().__getstate__()
+        state["_registry_ref"] = None
+        return state
+
+
+class ToolDispatch(ToolExtension):
+    """Extension that owns one open dispatch name."""
+
+    def __init__(self, name: str, *, dispatch_name: str) -> None:
+        super().__init__(name)
+        self.dispatch_name = _require_name(dispatch_name, "dispatch_name")
+
+    async def dispatch(self, request: DispatchRequest) -> ToolOutcome:
+        raise NotImplementedError
+
+
+class ForegroundDispatch(ToolDispatch):
+    """Execute and await the tool inside the current run."""
+
+    def __init__(self) -> None:
+        super().__init__("dispatch_foreground", dispatch_name="foreground")
+
+    async def dispatch(self, request: DispatchRequest) -> ToolOutcome:
+        return await request.execute()
+
+
+class DetachedDispatch(ToolDispatch):
+    """Start execution without retaining a task result."""
+
+    def __init__(self) -> None:
+        super().__init__("dispatch_detached", dispatch_name="detached")
+
+    async def dispatch(self, request: DispatchRequest) -> ToolOutcome:
+        await F.aspawn(request.execute)
+        return ToolOutcome.dispatched(
+            request.plan.intent,
+            metadata={"dispatch": self.dispatch_name},
+        )
+
+
+class BackgroundDispatch(ToolDispatch):
+    """Delegate durable scheduling to a runtime-provided background service."""
+
+    def __init__(self) -> None:
+        super().__init__("dispatch_background", dispatch_name="background")
+
+    async def dispatch(self, request: DispatchRequest) -> ToolOutcome:
+        scheduler = request.context.require("background_dispatcher")
+        if hasattr(scheduler, "adispatch"):
+            outcome = await scheduler.adispatch(request)
+        elif hasattr(scheduler, "dispatch"):
+            outcome = await asyncio.to_thread(scheduler.dispatch, request)
+        else:
+            raise TypeError(
+                "`background_dispatcher` must define `dispatch` or `adispatch`"
+            )
+        if not isinstance(outcome, ToolOutcome):
+            raise TypeError("Background dispatchers must return ToolOutcome")
+        return outcome
+
+
+class ContextRequest(msgspec.Struct, frozen=True, kw_only=True):
+    """Input delivered to a context provider extension."""
+
+    binding: ContextBinding
+    definition: ToolDefinition
+    intent: ToolIntent
+    context: ToolRuntimeContext
+
+
+class ToolContextProvider(ToolExtension):
+    """Extension that resolves one or more named runtime context sources."""
+
+    def __init__(self, name: str, *, sources: Collection[str]) -> None:
+        super().__init__(name)
+        if isinstance(sources, str) or not isinstance(sources, Collection):
+            raise TypeError("`sources` must be a collection of strings")
+        normalized = tuple(
+            _require_name(source, "context source") for source in sources
+        )
+        if not normalized:
+            raise ValueError("`sources` must not be empty")
+        if len(normalized) != len(set(normalized)):
+            raise ValueError("`sources` values must be unique")
+        self.sources = normalized
+
+    async def resolve(self, request: ContextRequest) -> Any:
+        raise NotImplementedError
+
+
+class RuntimeContextProvider(ToolContextProvider):
+    """Resolve explicitly bound values from ToolRuntimeContext."""
+
+    DEFAULT_SOURCES = ("handle", "message", "messages", "vars")
+
+    def __init__(self, sources: Collection[str] = DEFAULT_SOURCES) -> None:
+        super().__init__("context_runtime", sources=sources)
+
+    async def resolve(self, request: ContextRequest) -> Any:
+        binding = request.binding
+        if binding.source not in request.context.values:
+            if binding.required:
+                raise RuntimeError(
+                    f"Runtime context value `{binding.source}` is unavailable"
+                )
+            return _MISSING_CONTEXT
+
+        value = request.context.values[binding.source]
+        selected = binding.options.get("select")
+        if selected is not None:
+            if isinstance(selected, str) or not isinstance(selected, Collection):
+                raise TypeError("Context binding `select` must be a collection")
+            if not isinstance(value, Mapping):
+                raise TypeError(
+                    f"Context source `{binding.source}` does not support selection"
+                )
+            missing = [key for key in selected if key not in value]
+            if missing:
+                formatted = ", ".join(f"`{key}`" for key in missing)
+                raise KeyError(
+                    f"Context source `{binding.source}` is missing {formatted}"
+                )
+            value = {key: value[key] for key in selected}
+        if binding.options.get("copy", False):
+            value = deepcopy(value)
+        return value
+
+
+class ToolExtensionHandle:
+    """Ownership handle for one registered V2 extension."""
+
+    def __init__(self, registry: ToolExtensionRegistry, name: str) -> None:
+        self._registry_ref = weakref.ref(registry)
+        self.name = name
+
+    @property
+    def active(self) -> bool:
+        registry = self._registry_ref()
+        return registry is not None and registry.has(self.name)
+
+    def remove(self) -> None:
+        registry = self._registry_ref()
+        if registry is not None:
+            registry.remove(self.name)
+
+    async def aremove(self) -> None:
+        registry = self._registry_ref()
+        if registry is not None:
+            await registry.aremove(self.name)
+
+
+class ToolExtensionRegistry(Module):
+    """Transactional ownership and capability indexes for Tool extensions."""
+
+    def __init__(
+        self,
+        extensions: Collection[ToolExtension] = (),
+        *,
+        install_defaults: bool = False,
+    ) -> None:
+        super().__init__()
+        self.extensions = ModuleDict()
+        self._dispatches: dict[str, str] = {}
+        self._context_sources: dict[str, str] = {}
+        initial = list(extensions)
+        if install_defaults:
+            initial = [
+                ForegroundDispatch(),
+                BackgroundDispatch(),
+                DetachedDispatch(),
+                RuntimeContextProvider(),
+                *initial,
+            ]
+        for extension in initial:
+            self.register(extension)
+
+    def __setstate__(self, state) -> None:
+        super().__setstate__(state)
+        for extension in self.extensions.values():
+            if isinstance(extension, ToolExtension):
+                extension._bind_registry(self)
+
+    def _validate_registration(
+        self,
+        extension: ToolExtension,
+    ) -> tuple[str | None, tuple[str, ...]]:
+        if not isinstance(extension, ToolExtension):
+            raise TypeError("`extension` must be a ToolExtension")
+        current_registry = (
+            extension._registry_ref() if extension._registry_ref is not None else None
+        )
+        if current_registry is not None:
+            raise ValueError(
+                f"Extension `{extension.name}` is already registered on a registry"
+            )
+        if extension.name in self.extensions:
+            raise ValueError(f"Extension `{extension.name}` is already registered")
+
+        dispatch_name = (
+            extension.dispatch_name if isinstance(extension, ToolDispatch) else None
+        )
+        if dispatch_name is not None and dispatch_name in self._dispatches:
+            raise ValueError(f"Dispatch `{dispatch_name}` is already registered")
+
+        context_sources = (
+            extension.sources if isinstance(extension, ToolContextProvider) else ()
+        )
+        conflicts = [
+            source for source in context_sources if source in self._context_sources
+        ]
+        if conflicts:
+            formatted = ", ".join(f"`{source}`" for source in conflicts)
+            raise ValueError(f"Context sources already registered: {formatted}")
+        return dispatch_name, context_sources
+
+    def _install(
+        self,
+        extension: ToolExtension,
+    ) -> tuple[str | None, tuple[str, ...]]:
+        dispatch_name, context_sources = self._validate_registration(extension)
+        extension._bind_registry(self)
+        self.extensions[extension.name] = extension
+        if dispatch_name is not None:
+            self._dispatches[dispatch_name] = extension.name
+        for source in context_sources:
+            self._context_sources[source] = extension.name
+        return dispatch_name, context_sources
+
+    def _rollback_registration(
+        self,
+        extension: ToolExtension,
+        dispatch_name: str | None,
+        context_sources: tuple[str, ...],
+    ) -> None:
+        if extension.name in self.extensions:
+            del self.extensions[extension.name]
+        if dispatch_name is not None:
+            self._dispatches.pop(dispatch_name, None)
+        for source in context_sources:
+            self._context_sources.pop(source, None)
+        extension._unbind_registry()
+
+    def register(self, extension: ToolExtension) -> ToolExtensionHandle:
+        dispatch_name, context_sources = self._install(extension)
+        try:
+            extension.on_register(self)
+        except Exception:
+            try:
+                extension.on_remove(self)
+            finally:
+                self._rollback_registration(
+                    extension,
+                    dispatch_name,
+                    context_sources,
+                )
+            raise
+        return ToolExtensionHandle(self, extension.name)
+
+    async def aregister(
+        self,
+        extension: ToolExtension,
+    ) -> ToolExtensionHandle:
+        dispatch_name, context_sources = self._install(extension)
+        try:
+            await extension.aon_register(self)
+        except Exception:
+            try:
+                await extension.aon_remove(self)
+            finally:
+                self._rollback_registration(
+                    extension,
+                    dispatch_name,
+                    context_sources,
+                )
+            raise
+        return ToolExtensionHandle(self, extension.name)
+
+    def has(self, name: str) -> bool:
+        return name in self.extensions
+
+    def get_dispatch(self, name: str) -> ToolDispatch:
+        extension_name = self._dispatches.get(name)
+        if extension_name is None:
+            available = ", ".join(sorted(self._dispatches)) or "none"
+            raise ValueError(
+                f"Dispatch `{name}` is not registered. Available: {available}."
+            )
+        extension = self.extensions[extension_name]
+        if not isinstance(extension, ToolDispatch):
+            raise RuntimeError(f"Extension `{extension_name}` is not a ToolDispatch")
+        return extension
+
+    def get_context_provider(self, source: str) -> ToolContextProvider:
+        extension_name = self._context_sources.get(source)
+        if extension_name is None:
+            available = ", ".join(sorted(self._context_sources)) or "none"
+            raise ValueError(
+                f"Context source `{source}` is not registered. Available: {available}."
+            )
+        extension = self.extensions[extension_name]
+        if not isinstance(extension, ToolContextProvider):
+            raise RuntimeError(
+                f"Extension `{extension_name}` is not a ToolContextProvider"
+            )
+        return extension
+
+    async def resolve_context(
+        self,
+        definition: ToolDefinition,
+        intent: ToolIntent,
+        context: ToolRuntimeContext,
+    ) -> dict[str, Any]:
+        resolved = {}
+        for binding in definition.context.bindings:
+            provider = self.get_context_provider(binding.source)
+            value = await provider.resolve(
+                ContextRequest(
+                    binding=binding,
+                    definition=definition,
+                    intent=intent,
+                    context=context,
+                )
+            )
+            if value is not _MISSING_CONTEXT:
+                resolved[binding.parameter] = value
+        return resolved
+
+    async def dispatch(self, request: DispatchRequest) -> ToolOutcome:
+        dispatcher = self.get_dispatch(request.plan.dispatch.name)
+        outcome = await dispatcher.dispatch(request)
+        if not isinstance(outcome, ToolOutcome):
+            raise TypeError("Tool dispatch extensions must return ToolOutcome")
+        return outcome
+
+    def remove(self, name: str) -> None:
+        if name not in self.extensions:
+            return
+        extension = self.extensions[name]
+        self._remove_indexes(extension)
+        try:
+            extension.on_remove(self)
+        finally:
+            del self.extensions[name]
+            extension._unbind_registry()
+
+    async def aremove(self, name: str) -> None:
+        if name not in self.extensions:
+            return
+        extension = self.extensions[name]
+        self._remove_indexes(extension)
+        try:
+            await extension.aon_remove(self)
+        finally:
+            del self.extensions[name]
+            extension._unbind_registry()
+
+    def _remove_indexes(self, extension: ToolExtension) -> None:
+        if isinstance(extension, ToolDispatch):
+            self._dispatches.pop(extension.dispatch_name, None)
+        if isinstance(extension, ToolContextProvider):
+            for source in extension.sources:
+                self._context_sources.pop(source, None)
+
+
+_MISSING_CONTEXT = object()
+
+
+__all__ = [
+    "BackgroundDispatch",
+    "ContextBinding",
+    "ContextRequest",
+    "ContextSpec",
+    "DetachedDispatch",
+    "DispatchRequest",
+    "DispatchSpec",
+    "FeedbackSpec",
+    "ForegroundDispatch",
+    "LoadingSpec",
+    "NativeToolBinding",
+    "RuntimeContextProvider",
+    "ToolContextProvider",
+    "ToolDefinition",
+    "ToolDispatch",
+    "ToolError",
+    "ToolExecutionPlan",
+    "ToolExtension",
+    "ToolExtensionHandle",
+    "ToolExtensionRegistry",
+    "ToolIntent",
+    "ToolOutcome",
+    "ToolRef",
+    "ToolRuntimeContext",
+]
