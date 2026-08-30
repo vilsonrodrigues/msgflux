@@ -21,6 +21,29 @@ class ToolSpec(Struct, kw_only=True):
     namespace: str | None = None
 
     @classmethod
+    def from_definition(
+        cls,
+        definition: Any,
+        *,
+        loaded: bool = False,
+        namespace: str | None = None,
+    ) -> ToolSpec:
+        """Project one canonical runtime definition into a model catalog spec."""
+        loading = getattr(definition, "loading", None)
+        metadata = getattr(definition, "metadata", {})
+        strict = metadata.get("strict") if isinstance(metadata, Mapping) else None
+        return cls(
+            name=definition.name,
+            description=definition.description,
+            parameters=deepcopy(dict(definition.input_schema)),
+            strict=strict,
+            annotations=deepcopy(dict(definition.annotations)) or None,
+            defer_loading=bool(getattr(loading, "deferred", False)),
+            loaded=loaded,
+            namespace=namespace,
+        )
+
+    @classmethod
     def from_function_schema(
         cls,
         schema: Mapping[str, Any],

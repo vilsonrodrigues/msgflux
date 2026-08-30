@@ -93,6 +93,18 @@ class ToolBucket:
             self._tools = {}
         return self._tools
 
+    def get_ref(self, tool_name: str) -> Any:
+        """Return a captured tool reference without exposing its implementation."""
+        try:
+            metadata = self.tools[tool_name]
+        except KeyError as exc:
+            raise ValueError(
+                f"Tool `{tool_name}` is not captured by this bucket."
+            ) from exc
+        if metadata.ref is None:
+            raise RuntimeError(f"Tool `{tool_name}` has no runtime reference")
+        return metadata.ref
+
     def refresh(self) -> None:
         """Refresh presentation metadata after the library captures a tool."""
 

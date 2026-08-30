@@ -1707,17 +1707,16 @@ class TestToolLibrary:
             messages[0]["content"] = "changed"
             return str(len(messages))
 
-        stateful_tool.tool_config = {"inject_messages": True}
+        stateful_tool.tool_config = {
+            "inject_messages": True,
+            "tool_kind": "agent",
+        }
         library = ToolLibrary(name="lib", tools=[stateful_tool])
 
         original_messages = [{"role": "user", "content": "hello"}]
         tool_callings = [("call_1", "stateful_tool", {})]
 
-        with patch(
-            "msgflux.nn.modules.tool.should_copy_injected_messages",
-            return_value=True,
-        ):
-            result = library(tool_callings, messages=original_messages)
+        result = library(tool_callings, messages=original_messages)
 
         assert result.tool_calls[0].result == "2"
         assert original_messages == [{"role": "user", "content": "hello"}]
@@ -1980,17 +1979,16 @@ class TestToolLibrary:
             messages[0]["content"] = "changed"
             return str(len(messages))
 
-        async_tool.tool_config = {"inject_messages": True}
+        async_tool.tool_config = {
+            "inject_messages": True,
+            "tool_kind": "agent",
+        }
         library = ToolLibrary(name="lib", tools=[async_tool])
 
         original_messages = [{"role": "user", "content": "hello"}]
         tool_callings = [("call_1", "async_tool", {})]
 
-        with patch(
-            "msgflux.nn.modules.tool.should_copy_injected_messages",
-            return_value=True,
-        ):
-            result = await library.aforward(tool_callings, messages=original_messages)
+        result = await library.aforward(tool_callings, messages=original_messages)
 
         assert result.tool_calls[0].result == "2"
         assert original_messages == [{"role": "user", "content": "hello"}]

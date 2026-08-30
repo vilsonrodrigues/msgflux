@@ -26,6 +26,8 @@ from msgflux.exceptions import AbortRequestedError, TaskInterruptRequestedError
 from msgflux.nn.modules.container import ModuleDict
 from msgflux.nn.modules.module import Module
 from msgflux.runtime.abort import await_with_abort
+from msgflux.tools.dataclasses import ToolMetadata
+from msgflux.tools.helpers import RUNTIME_BACKGROUND_PARAM
 
 _OUTCOME_STATUSES = {
     "blocked",
@@ -331,6 +333,151 @@ class ToolDefinition(msgspec.Struct, frozen=True, kw_only=True):
             "metadata",
             _copy_mapping(self.metadata, "metadata"),
         )
+
+
+class ToolDefinitionCompiler:
+    """Compile legacy decorator metadata once into the canonical contract."""
+
+    @classmethod
+    def compile(
+        cls,
+        metadata: ToolMetadata,
+        *,
+        executor: ToolExecutor,
+    ) -> ToolDefinition:
+        if not isinstance(metadata, ToolMetadata):
+            raise TypeError("`metadata` must be ToolMetadata")
+        if not isinstance(executor, ToolExecutor):
+            raise TypeError("`executor` must implement ToolExecutor")
+        config = dict(metadata.tool_config)
+        input_schema, schema_metadata = cls._extract_executor_schema(executor)
+        runtime_metadata = {
+            **schema_metadata,
+            "execution_namespace": metadata.execution_namespace,
+            "background_capabilities": config.get("background_capabilities"),
+            "disable_input": bool(config.get("disable_input", False)),
+            "hidden_params": config.get("_hidden_params"),
+        }
+        runtime_metadata = {
+            key: value for key, value in runtime_metadata.items() if value is not None
+        }
+        native_bindings = tuple(getattr(executor, "native_bindings", ()))
+        return ToolDefinition(
+            name=metadata.name,
+            executor=executor,
+            input_schema=input_schema,
+            description=metadata.description,
+            annotations=metadata.annotations,
+            dispatch=cls._compile_dispatch(config),
+            feedback=cls._compile_feedback(config),
+            context=cls._compile_context(config),
+            loading=LoadingSpec(deferred=bool(config.get("defer_loading", False))),
+            retry=config.get("retry"),
+            native_bindings=native_bindings,
+            kind=config.get("tool_kind", "tool"),
+            display_name=metadata.display_name,
+            usage_guidance=metadata.usage_guidance,
+            metadata=runtime_metadata,
+        )
+
+    @classmethod
+    def _extract_executor_schema(
+        cls,
+        executor: ToolExecutor,
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        mcp_tool_info = getattr(executor, "_mcp_tool_info", None)
+        if mcp_tool_info is not None:
+            parameters = getattr(mcp_tool_info, "inputSchema", None)
+            return (
+                deepcopy(dict(parameters)) if isinstance(parameters, Mapping) else {},
+                {},
+            )
+        get_json_schema = getattr(executor, "get_json_schema", None)
+        if not callable(get_json_schema):
+            raise TypeError("Compiled tool executors must provide `get_json_schema()`")
+        return cls._extract_input_schema(get_json_schema())
+
+    @staticmethod
+    def _compile_dispatch(config: Mapping[str, Any]) -> DispatchSpec:
+        if config.get("background", False):
+            return DispatchSpec(
+                name="background",
+                options={
+                    "capabilities": config.get("background_capabilities", ()),
+                },
+            )
+        if config.get("spawn", False):
+            return DispatchSpec(name="detached")
+        if config.get("allow_background", False):
+            return DispatchSpec(
+                name="optional_background",
+                options={
+                    "argument": RUNTIME_BACKGROUND_PARAM,
+                    "capabilities": config.get("background_capabilities", ()),
+                },
+            )
+        return DispatchSpec(name="foreground")
+
+    @staticmethod
+    def _compile_feedback(config: Mapping[str, Any]) -> FeedbackSpec:
+        if config.get("call_as_response", False):
+            return FeedbackSpec(name="call_as_response")
+        if config.get("handoff", False):
+            return FeedbackSpec(name="handoff")
+        if config.get("return_direct", False):
+            return FeedbackSpec(name="direct")
+        return FeedbackSpec(name="model")
+
+    @staticmethod
+    def _compile_context(config: Mapping[str, Any]) -> ContextSpec:
+        bindings = []
+        for source in ("message", "messages", "handle"):
+            if config.get(f"inject_{source}", False):
+                options = (
+                    {"copy": True}
+                    if source == "messages" and config.get("tool_kind") == "agent"
+                    else {}
+                )
+                bindings.append(ContextBinding(source=source, options=options))
+        inject_vars = config.get("inject_vars", False)
+        if inject_vars is not False:
+            is_selection = isinstance(inject_vars, Collection) and not isinstance(
+                inject_vars,
+                (str, bytes, Mapping),
+            )
+            if is_selection and config.get("tool_kind") != "agent":
+                bindings.extend(
+                    ContextBinding(
+                        source="vars",
+                        parameter=name,
+                        options={"key": name},
+                    )
+                    for name in inject_vars
+                )
+            else:
+                options = {"select": tuple(inject_vars)} if is_selection else {}
+                bindings.append(ContextBinding(source="vars", options=options))
+        return ContextSpec(bindings=tuple(bindings))
+
+    @staticmethod
+    def _extract_input_schema(
+        schema: Mapping[str, Any],
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        if not isinstance(schema, Mapping):
+            raise TypeError("Tool schemas must be mappings")
+        function = schema.get("function")
+        if schema.get("type") == "function" and isinstance(function, Mapping):
+            parameters = function.get("parameters", {})
+            strict = function.get("strict")
+        elif schema.get("type") == "function":
+            parameters = schema.get("parameters", {})
+            strict = schema.get("strict")
+        else:
+            raise ValueError("Tool schemas must use a function-tool shape")
+        if not isinstance(parameters, Mapping):
+            raise TypeError("Tool schema parameters must be a mapping")
+        metadata = {"strict": strict} if strict is not None else {}
+        return deepcopy(dict(parameters)), metadata
 
 
 class ToolCatalogEntry(msgspec.Struct, frozen=True, kw_only=True):
@@ -761,7 +908,7 @@ class ToolRuntimeContext(msgspec.Struct, frozen=True, kw_only=True):
             ) from exc
 
 
-ExecuteTool = Callable[[], Awaitable[ToolOutcome]]
+ExecuteTool = Callable[[ToolExecutionPlan | None], Awaitable[ToolOutcome]]
 
 
 class DispatchRequest(msgspec.Struct, frozen=True, kw_only=True):
@@ -872,7 +1019,7 @@ class ForegroundDispatch(ToolDispatch):
         super().__init__("dispatch_foreground", dispatch_name="foreground")
 
     async def dispatch(self, request: DispatchRequest) -> ToolOutcome:
-        return await request.execute()
+        return await request.execute(None)
 
 
 class DetachedDispatch(ToolDispatch):
@@ -882,7 +1029,7 @@ class DetachedDispatch(ToolDispatch):
         super().__init__("dispatch_detached", dispatch_name="detached")
 
     async def dispatch(self, request: DispatchRequest) -> ToolOutcome:
-        await F.aspawn(request.execute)
+        await F.aspawn(request.execute, None)
         return ToolOutcome.dispatched(
             request.plan.intent,
             metadata={"dispatch": self.dispatch_name},
@@ -908,6 +1055,46 @@ class BackgroundDispatch(ToolDispatch):
         if not isinstance(outcome, ToolOutcome):
             raise TypeError("Background dispatchers must return ToolOutcome")
         return outcome
+
+
+class OptionalBackgroundDispatch(ToolDispatch):
+    """Choose foreground or background from one reserved model argument."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            "dispatch_optional_background",
+            dispatch_name="optional_background",
+        )
+
+    async def dispatch(self, request: DispatchRequest) -> ToolOutcome:
+        argument = request.plan.dispatch.options.get(
+            "argument",
+            RUNTIME_BACKGROUND_PARAM,
+        )
+        if not isinstance(argument, str) or not argument:
+            raise ValueError("Optional background dispatch requires an argument name")
+        visible_arguments = dict(request.plan.visible_arguments)
+        run_in_background = visible_arguments.pop(argument, False)
+        if run_in_background not in {True, False, None}:
+            raise TypeError(f"`{argument}` must be a bool or None")
+        dispatch_name = "background" if run_in_background is True else "foreground"
+        selected_plan = msgspec.structs.replace(
+            request.plan,
+            visible_arguments=visible_arguments,
+            dispatch=DispatchSpec(name=dispatch_name),
+        )
+        dispatcher = self.registry.get_dispatch(dispatch_name)
+
+        async def execute() -> ToolOutcome:
+            return await request.execute(selected_plan)
+
+        return await dispatcher.dispatch(
+            DispatchRequest(
+                plan=selected_plan,
+                context=request.context,
+                execute=lambda _plan=None: execute(),
+            )
+        )
 
 
 class ContextRequest(msgspec.Struct, frozen=True, kw_only=True):
@@ -947,6 +1134,40 @@ class RuntimeContextProvider(ToolContextProvider):
     def __init__(self, sources: Collection[str] = DEFAULT_SOURCES) -> None:
         super().__init__("context_runtime", sources=sources)
 
+    @staticmethod
+    def _select_key(binding: ContextBinding, value: Any) -> Any:
+        selected_key = binding.options.get("key")
+        if selected_key is None:
+            return value
+        if not isinstance(selected_key, str) or not selected_key:
+            raise TypeError("Context binding `key` must be a non-empty string")
+        if not isinstance(value, Mapping):
+            raise TypeError(
+                f"Context source `{binding.source}` does not support key lookup"
+            )
+        if selected_key not in value:
+            raise KeyError(
+                f"Context source `{binding.source}` is missing `{selected_key}`"
+            )
+        return value[selected_key]
+
+    @staticmethod
+    def _select_keys(binding: ContextBinding, value: Any) -> Any:
+        selected = binding.options.get("select")
+        if selected is None:
+            return value
+        if isinstance(selected, str) or not isinstance(selected, Collection):
+            raise TypeError("Context binding `select` must be a collection")
+        if not isinstance(value, Mapping):
+            raise TypeError(
+                f"Context source `{binding.source}` does not support selection"
+            )
+        missing = [key for key in selected if key not in value]
+        if missing:
+            formatted = ", ".join(f"`{key}`" for key in missing)
+            raise KeyError(f"Context source `{binding.source}` is missing {formatted}")
+        return {key: value[key] for key in selected}
+
     async def resolve(self, request: ContextRequest) -> Any:
         binding = request.binding
         if binding.source not in request.context.values:
@@ -957,21 +1178,8 @@ class RuntimeContextProvider(ToolContextProvider):
             return _MISSING_CONTEXT
 
         value = request.context.values[binding.source]
-        selected = binding.options.get("select")
-        if selected is not None:
-            if isinstance(selected, str) or not isinstance(selected, Collection):
-                raise TypeError("Context binding `select` must be a collection")
-            if not isinstance(value, Mapping):
-                raise TypeError(
-                    f"Context source `{binding.source}` does not support selection"
-                )
-            missing = [key for key in selected if key not in value]
-            if missing:
-                formatted = ", ".join(f"`{key}`" for key in missing)
-                raise KeyError(
-                    f"Context source `{binding.source}` is missing {formatted}"
-                )
-            value = {key: value[key] for key in selected}
+        value = self._select_key(binding, value)
+        value = self._select_keys(binding, value)
         if binding.options.get("copy", False):
             value = deepcopy(value)
         return value
@@ -1020,6 +1228,7 @@ class ToolExtensionRegistry(Module):
                 ForegroundDispatch(),
                 BackgroundDispatch(),
                 DetachedDispatch(),
+                OptionalBackgroundDispatch(),
                 RuntimeContextProvider(),
                 *initial,
             ]
@@ -1500,8 +1709,10 @@ class ToolLibraryV2(Module):
         plan: ToolExecutionPlan,
         context: ToolRuntimeContext,
     ) -> ToolOutcome:
-        async def execute() -> ToolOutcome:
-            return await self._aexecute(plan, context)
+        async def execute(
+            selected_plan: ToolExecutionPlan | None = None,
+        ) -> ToolOutcome:
+            return await self._aexecute(selected_plan or plan, context)
 
         try:
             outcome = await self.extensions.dispatch(

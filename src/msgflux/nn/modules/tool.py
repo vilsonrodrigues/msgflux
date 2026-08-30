@@ -37,6 +37,13 @@ from msgflux.nn.hooks import Hook
 from msgflux.nn.hooks.events import AfterTool, BeforeTool, BeforeToolDispatch
 from msgflux.nn.modules.container import ModuleDict
 from msgflux.nn.modules.module import Module
+from msgflux.nn.modules.tool_v2 import (
+    ToolDefinition as RuntimeToolDefinition,
+)
+from msgflux.nn.modules.tool_v2 import (
+    ToolDefinitionCompiler,
+    ToolRef,
+)
 from msgflux.protocols.mcp import (
     convert_mcp_schema_to_tool_schema,
     extract_tool_result_text,
@@ -60,12 +67,9 @@ from msgflux.tools.handles import ToolLibraryHandle
 from msgflux.tools.helpers import (
     RUNTIME_BACKGROUND_PARAM,
     coerce_tool_params,
-    is_agent_tool_impl,
     is_background_capable,
     is_reserved_tool_kind,
     normalize_background_capabilities,
-    should_copy_injected_messages,
-    should_dispatch_background,
 )
 from msgflux.tools.responses import ToolCall, ToolResponses
 from msgflux.tools.types import (
@@ -341,7 +345,13 @@ def _inspect_tool_metadata(impl: Callable) -> ToolMetadata:  # noqa: C901
 
         # Now extract annotations (after instantiation for classes)
         annotation_source = None
+        has_bucket_annotations = isinstance(impl, ToolBucket) and (
+            "annotations" in vars(type(impl)) or "annotations" in vars(impl)
+        )
         annotations = getattr(impl, "annotations", None)
+        if isinstance(impl, ToolBucket) and not has_bucket_annotations:
+            annotations = getattr(impl.__call__, "__annotations__", None)
+            annotation_source = impl.__call__ if annotations is not None else None
         if annotations is None:
             annotations = getattr(impl, "__annotations__", None)
             if annotations is not None:
@@ -579,6 +589,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
         self.set_name(f"{name}_tool_library")
         self.library = ModuleDict()
         self.register_buffer("tool_configs", {})
+        self.tool_definitions: Dict[str, RuntimeToolDefinition] = {}
         self.register_buffer("mcp_clients", {})
         self._task_store = task_store
         self._agent_inbox: Optional[AgentInbox] = None
@@ -868,10 +879,12 @@ class ToolLibrary(Module, metaclass=AutoParams):
         if tool_name in self.library:
             self.library.pop(tool_name)
         self.tool_configs.pop(tool_name, None)
+        self.tool_definitions.pop(tool_name, None)
 
     def clear(self):
         self.library.clear()
         self.tool_configs.clear()
+        self.tool_definitions.clear()
         for mcp_data in self.mcp_clients.values():
             F.wait_for(mcp_data["client"].disconnect)
         self.mcp_clients.clear()
@@ -909,7 +922,11 @@ class ToolLibrary(Module, metaclass=AutoParams):
         tool_config = dotdict(metadata.tool_config)
         if isinstance(metadata.source_tool, Tool):
             tool.register_buffer("tool_config", tool_config)
+        definition = ToolDefinitionCompiler.compile(metadata, executor=tool)
+        metadata.definition = definition
+        metadata.ref = ToolRef(library_id=self.name, tool_id=metadata.name)
         self.tool_configs[tool.name] = tool_config
+        self.tool_definitions[tool.name] = definition
         self.library.update({tool.name: tool})
         if isinstance(metadata.impl, ToolBucket):
             metadata.impl.refresh()
@@ -939,6 +956,11 @@ class ToolLibrary(Module, metaclass=AutoParams):
 
         if not isinstance(metadata.source_tool, Tool):
             metadata.source_tool = _convert_metadata_to_local_tool(metadata)
+        metadata.definition = ToolDefinitionCompiler.compile(
+            metadata,
+            executor=metadata.source_tool,
+        )
+        metadata.ref = ToolRef(library_id=self.name, tool_id=metadata.name)
 
         # Let the bucket validate, retain, and refresh its captured state.
         bucket.add(metadata)
@@ -971,6 +993,11 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 "usage_guidance",
                 bucket.usage_guidance,
             )
+        bucket_metadata = _metadata_from_tool(bucket_tool)
+        self.tool_definitions[bucket_name] = ToolDefinitionCompiler.compile(
+            bucket_metadata,
+            executor=bucket_tool,
+        )
 
     def get_tools(self) -> Iterator[Dict[str, Tool]]:
         return self.library.items()
@@ -1038,29 +1065,25 @@ class ToolLibrary(Module, metaclass=AutoParams):
 
         for tool_name, tool in self.library.items():
             if tool_name == "tool_search":
-                search_tool = ToolSpec.from_function_schema(
-                    tool.get_json_schema(),
-                    annotations=self._public_annotations(tool),
+                search_tool = ToolSpec.from_definition(
+                    self.tool_definitions[tool_name],
                 )
                 bucket = getattr(tool, "impl", None)
                 if isinstance(bucket, ToolBucket):
                     for metadata in bucket.tools.values():
-                        deferred_tool = self._tool_from_metadata(metadata)
+                        definition = metadata.definition
+                        if not isinstance(definition, RuntimeToolDefinition):
+                            raise RuntimeError(
+                                f"Tool `{metadata.name}` has no compiled definition"
+                            )
                         tools.append(
-                            ToolSpec.from_function_schema(
-                                deferred_tool.get_json_schema(),
-                                annotations=self._public_annotations(deferred_tool),
-                                defer_loading=True,
+                            ToolSpec.from_definition(
+                                definition,
                                 loaded=metadata.name in loaded,
                             )
                         )
                 continue
-            tools.append(
-                ToolSpec.from_function_schema(
-                    tool.get_json_schema(),
-                    annotations=self._public_annotations(tool),
-                )
-            )
+            tools.append(ToolSpec.from_definition(self.tool_definitions[tool_name]))
 
         return ToolCatalog(
             tools=tools,
@@ -1129,6 +1152,34 @@ class ToolLibrary(Module, metaclass=AutoParams):
             }
         return annotations
 
+    def get_tool_definition(self, tool_name: str) -> RuntimeToolDefinition:
+        """Return the canonical definition for a public or bucket-captured tool."""
+        definition = self.tool_definitions.get(tool_name)
+        if definition is not None:
+            return definition
+        bucket_name = ToolBucket.find_capturing_bucket(
+            tool_name,
+            self.library,
+            self.tool_configs,
+        )
+        if bucket_name is None:
+            raise ValueError(f"The tool name `{tool_name}` is not in tool library")
+        bucket = getattr(self.library[bucket_name], "impl", None)
+        if not isinstance(bucket, ToolBucket):
+            raise ValueError(f"The tool `{bucket_name}` is not a tool bucket.")
+        metadata = bucket.tools.get(tool_name)
+        if metadata is None or not isinstance(
+            metadata.definition,
+            RuntimeToolDefinition,
+        ):
+            raise RuntimeError(f"Tool `{tool_name}` has no compiled definition")
+        return metadata.definition
+
+    def get_tool_ref(self, tool_name: str) -> ToolRef:
+        """Return a stable reference for a public or bucket-captured tool."""
+        self.get_tool_definition(tool_name)
+        return ToolRef(library_id=self.name, tool_id=tool_name)
+
     def set_agent_inbox(self, agent_inbox: AgentInbox) -> None:
         self._agent_inbox = agent_inbox
 
@@ -1162,22 +1213,24 @@ class ToolLibrary(Module, metaclass=AutoParams):
     def _build_tool_argument_sets(  # noqa: C901
         self,
         *,
-        tool: Tool,
+        definition: RuntimeToolDefinition,
         tool_name: str,
         tool_params: Any,
-        config: Mapping[str, Any],
         message: Optional[Any],
         messages: List[Dict[str, Any]],
         vars: Mapping[str, Any],
         tool_call_id: str | None = None,
         runtime_arguments: Mapping[str, Any] | None = None,
     ) -> tuple[Dict[str, Any], Dict[str, Any]]:
-        if config.get("handoff", False) or config.get("disable_input", False):
+        if definition.feedback.name == "handoff" or definition.metadata.get(
+            "disable_input",
+            False,
+        ):
             visible_params: Dict[str, Any] = {}
         else:
             visible_params = coerce_tool_params(tool_name, tool_params)
 
-        for param_name in config.get("_hidden_params") or {}:
+        for param_name in definition.metadata.get("hidden_params") or {}:
             visible_params.pop(param_name, None)
 
         runtime_params: Dict[str, Any] = dict(runtime_arguments or {})
@@ -1186,51 +1239,50 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 RUNTIME_BACKGROUND_PARAM
             )
 
-        inject_vars = config.get("inject_vars", False)
-        if inject_vars:
-            if isinstance(inject_vars, list):
-                selected_vars = {}
-                for key in inject_vars:
+        for binding in definition.context.bindings:
+            if binding.source == "vars":
+                key = binding.options.get("key")
+                selected = binding.options.get("select")
+                if key is not None:
                     if key not in vars:
-                        subject = (
-                            "agent"
-                            if config.get("tool_kind") == "agent"
-                            or is_agent_tool_impl(tool.impl)
-                            else "tool"
-                        )
+                        subject = "agent" if definition.kind == "agent" else "tool"
                         raise ValueError(
                             f"The {subject} `{tool_name}` requires the injected "
                             f"parameter `{key}`, but it was not found."
                         )
-                    selected_vars[key] = vars[key]
-                if config.get("tool_kind") == "agent" or is_agent_tool_impl(tool.impl):
-                    runtime_params["vars"] = selected_vars
+                    runtime_params[binding.parameter] = vars[key]
+                elif selected is not None:
+                    missing = [key for key in selected if key not in vars]
+                    if missing:
+                        raise ValueError(
+                            f"The agent `{tool_name}` requires the injected parameter "
+                            f"`{missing[0]}`, but it was not found."
+                        )
+                    runtime_params[binding.parameter] = {
+                        key: vars[key] for key in selected
+                    }
                 else:
-                    runtime_params.update(selected_vars)
-            elif inject_vars is True:
-                runtime_params["vars"] = vars
-
-        if config.get("inject_messages", False):
-            if should_copy_injected_messages(tool, config):
-                runtime_params["messages"] = deepcopy(messages)
-            else:
-                runtime_params["messages"] = messages
-
-        if config.get("inject_message", False):
-            runtime_params["message"] = message
-
-        if config.get("inject_handle", False):
-            context = get_execution_context()
-            runtime_params["handle"] = self.get_handle().for_tool(
-                tool_name=tool_name,
-                agent_inbox=context.get("agent_inbox"),
-                task_store=context.get("task_store"),
-                message=message,
-                messages=messages,
-                vars=vars,
-                tool_call_id=tool_call_id,
-                activity_recorder=context.get("task_activity_recorder"),
-            )
+                    runtime_params[binding.parameter] = vars
+            elif binding.source == "messages":
+                runtime_params[binding.parameter] = (
+                    deepcopy(messages)
+                    if binding.options.get("copy", False)
+                    else messages
+                )
+            elif binding.source == "message":
+                runtime_params[binding.parameter] = message
+            elif binding.source == "handle":
+                context = get_execution_context()
+                runtime_params[binding.parameter] = self.get_handle().for_tool(
+                    tool_name=tool_name,
+                    agent_inbox=context.get("agent_inbox"),
+                    task_store=context.get("task_store"),
+                    message=message,
+                    messages=messages,
+                    vars=vars,
+                    tool_call_id=tool_call_id,
+                    activity_recorder=context.get("task_activity_recorder"),
+                )
 
         return visible_params, runtime_params
 
@@ -1266,10 +1318,9 @@ class ToolLibrary(Module, metaclass=AutoParams):
         runtime_arguments: Mapping[str, Any] | None = None,
     ) -> tuple[Dict[str, Any], Dict[str, Any]]:
         visible_params, runtime_params = self._build_tool_argument_sets(
-            tool=tool,
+            definition=self.get_tool_definition(tool_name),
             tool_name=tool_name,
             tool_params=tool_params,
-            config=config,
             message=message,
             messages=messages,
             vars=vars,
@@ -1295,15 +1346,23 @@ class ToolLibrary(Module, metaclass=AutoParams):
         visible_arguments: Mapping[str, Any],
         runtime_arguments: Mapping[str, Any],
     ) -> ToolExecutionPlan:
+        definition = self.get_tool_definition(tool_name)
         call_arguments = {**visible_arguments, **runtime_arguments}
-        if config.get("spawn", False):
-            dispatch_mode = "spawn"
-        elif should_dispatch_background(config=config, call_params=call_arguments):
-            dispatch_mode = "background"
-        elif config.get("call_as_response", False):
+        if definition.feedback.name == "call_as_response":
             dispatch_mode = "call_as_response"
+        elif definition.dispatch.name == "detached":
+            dispatch_mode = "spawn"
+        elif definition.dispatch.name == "background":
+            dispatch_mode = "background"
+        elif definition.dispatch.name == "optional_background":
+            dispatch_mode = (
+                "background"
+                if call_arguments.pop(RUNTIME_BACKGROUND_PARAM, False) is True
+                else "foreground"
+            )
         else:
             dispatch_mode = "foreground"
+        if dispatch_mode == "foreground":
             call_arguments["tool_call_id"] = tool_id
         return ToolExecutionPlan(
             tool_id=tool_id,
@@ -1313,7 +1372,8 @@ class ToolLibrary(Module, metaclass=AutoParams):
             visible_arguments=dict(visible_arguments),
             call_arguments=call_arguments,
             dispatch_mode=dispatch_mode,
-            return_direct=bool(config.get("return_direct", False)),
+            return_direct=definition.feedback.name
+            in {"direct", "handoff", "call_as_response"},
         )
 
     @staticmethod
@@ -1760,12 +1820,12 @@ class ToolLibrary(Module, metaclass=AutoParams):
             "arguments": dict(visible_params),
         }
 
-    def _call_captured_tool(
+    def run(
         self,
-        bucket_name: str,
-        tool_name: str,
+        tool_ref: ToolRef | str,
         arguments: Mapping[str, Any],
         *,
+        bucket_name: str | None = None,
         runtime_arguments: Mapping[str, Any] | None = None,
         message: Any = None,
         messages: Any = None,
@@ -1773,8 +1833,15 @@ class ToolLibrary(Module, metaclass=AutoParams):
         parent_tool_call_id: str | None = None,
         activity_recorder: Any = None,
     ) -> Any:
-        """Execute a captured tool through its normalized library wrapper."""
-        tool, config = self._resolve_captured_tool(bucket_name, tool_name)
+        """Execute one logical tool reference through the library pipeline."""
+        tool_name = self._resolve_tool_ref_name(tool_ref)
+        if bucket_name is not None:
+            tool, config = self._resolve_captured_tool(bucket_name, tool_name)
+        else:
+            resolved = self._resolve_tool(tool_name)
+            if resolved is None:
+                raise ValueError(f"The tool name `{tool_name}` is not in tool library")
+            tool, config = resolved
         visible_params, runtime_params = self._prepare_tool_kwargs(
             tool=tool,
             tool_name=tool_name,
@@ -1792,51 +1859,101 @@ class ToolLibrary(Module, metaclass=AutoParams):
             runtime_arguments=runtime_arguments,
         )
         call_params = {**visible_params, **runtime_params}
+        owner = bucket_name or self.name
         call_params["tool_call_id"] = (
             f"{parent_tool_call_id}:{tool_name}"
             if parent_tool_call_id
-            else f"{bucket_name}:{tool_name}"
+            else f"{owner}:{tool_name}"
         )
         return self._execute_prepared_tool(tool, call_params, visible_params)
+
+    async def arun(
+        self,
+        tool_ref: ToolRef | str,
+        arguments: Mapping[str, Any],
+        *,
+        bucket_name: str | None = None,
+        runtime_arguments: Mapping[str, Any] | None = None,
+        message: Any = None,
+        messages: Any = None,
+        vars: Mapping[str, Any] | None = None,
+        parent_tool_call_id: str | None = None,
+        activity_recorder: Any = None,
+    ) -> Any:
+        """Async counterpart of :meth:`run`."""
+        tool_name = self._resolve_tool_ref_name(tool_ref)
+        if bucket_name is not None:
+            tool, config = self._resolve_captured_tool(bucket_name, tool_name)
+        else:
+            resolved = self._resolve_tool(tool_name)
+            if resolved is None:
+                raise ValueError(f"The tool name `{tool_name}` is not in tool library")
+            tool, config = resolved
+        visible_params, runtime_params = self._prepare_tool_kwargs(
+            tool=tool,
+            tool_name=tool_name,
+            tool_params=arguments,
+            config=config,
+            message=message,
+            messages=messages if messages is not None else ChatMessages(),
+            vars=vars if vars is not None else {},
+            activity_recorder=(
+                activity_recorder
+                if activity_recorder is not None
+                else get_execution_context().get("task_activity_recorder")
+            ),
+            tool_call_id=parent_tool_call_id,
+            runtime_arguments=runtime_arguments,
+        )
+        call_params = {**visible_params, **runtime_params}
+        owner = bucket_name or self.name
+        call_params["tool_call_id"] = (
+            f"{parent_tool_call_id}:{tool_name}"
+            if parent_tool_call_id
+            else f"{owner}:{tool_name}"
+        )
+        return await self._aexecute_prepared_tool(tool, call_params, visible_params)
+
+    def _resolve_tool_ref_name(self, tool_ref: ToolRef | str) -> str:
+        if isinstance(tool_ref, ToolRef):
+            if tool_ref.library_id != self.name:
+                raise ValueError(
+                    f"Tool ref belongs to `{tool_ref.library_id}`, not `{self.name}`"
+                )
+            return tool_ref.tool_id
+        if not isinstance(tool_ref, str) or not tool_ref:
+            raise TypeError("`tool_ref` must be a ToolRef or non-empty string")
+        return tool_ref
+
+    def _call_captured_tool(
+        self,
+        bucket_name: str,
+        tool_name: str,
+        arguments: Mapping[str, Any],
+        **kwargs: Any,
+    ) -> Any:
+        """Compatibility wrapper for the former bucket execution path."""
+        return self.run(
+            self.get_tool_ref(tool_name),
+            arguments,
+            bucket_name=bucket_name,
+            **kwargs,
+        )
 
     async def _acall_captured_tool(
         self,
         bucket_name: str,
         tool_name: str,
         arguments: Mapping[str, Any],
-        *,
-        runtime_arguments: Mapping[str, Any] | None = None,
-        message: Any = None,
-        messages: Any = None,
-        vars: Mapping[str, Any] | None = None,
-        parent_tool_call_id: str | None = None,
-        activity_recorder: Any = None,
+        **kwargs: Any,
     ) -> Any:
-        """Async counterpart of :meth:`_call_captured_tool`."""
-        tool, config = self._resolve_captured_tool(bucket_name, tool_name)
-        visible_params, runtime_params = self._prepare_tool_kwargs(
-            tool=tool,
-            tool_name=tool_name,
-            tool_params=arguments,
-            config=config,
-            message=message,
-            messages=messages if messages is not None else ChatMessages(),
-            vars=vars if vars is not None else {},
-            activity_recorder=(
-                activity_recorder
-                if activity_recorder is not None
-                else get_execution_context().get("task_activity_recorder")
-            ),
-            tool_call_id=parent_tool_call_id,
-            runtime_arguments=runtime_arguments,
+        """Compatibility wrapper for the former async bucket execution path."""
+        return await self.arun(
+            self.get_tool_ref(tool_name),
+            arguments,
+            bucket_name=bucket_name,
+            **kwargs,
         )
-        call_params = {**visible_params, **runtime_params}
-        call_params["tool_call_id"] = (
-            f"{parent_tool_call_id}:{tool_name}"
-            if parent_tool_call_id
-            else f"{bucket_name}:{tool_name}"
-        )
-        return await self._aexecute_prepared_tool(tool, call_params, visible_params)
 
     def forward(  # noqa: C901
         self,

@@ -280,6 +280,69 @@ async def test_library_dispatches_through_custom_extension():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("run_in_background", [False, None])
+async def test_optional_background_dispatch_removes_reserved_foreground_argument(
+    run_in_background,
+):
+    executor = RecordingExecutor(result="foreground")
+    definition = make_definition(
+        executor=executor,
+        dispatch=DispatchSpec(
+            name="optional_background",
+            options={"argument": "run_in_background"},
+        ),
+    )
+    library = ToolLibraryV2([definition], name="warehouse_tools")
+    intent = msgspec.structs.replace(
+        make_intent(),
+        arguments={
+            "sku": "SKU-1842",
+            "run_in_background": run_in_background,
+        },
+    )
+
+    outcome = await library.acall(intent)
+
+    assert outcome.status == "completed"
+    assert outcome.result == "foreground"
+    assert executor.calls == [{"sku": "SKU-1842"}]
+
+
+@pytest.mark.asyncio
+async def test_optional_background_dispatch_delegates_to_background_extension():
+    requests = []
+
+    class Scheduler:
+        async def adispatch(self, request):
+            requests.append(request)
+            return ToolOutcome.dispatched(
+                request.plan.intent,
+                result={"task_id": "task_1"},
+            )
+
+    executor = RecordingExecutor(result="must not execute immediately")
+    definition = make_definition(
+        executor=executor,
+        dispatch=DispatchSpec(name="optional_background"),
+    )
+    library = ToolLibraryV2([definition], name="warehouse_tools")
+    intent = msgspec.structs.replace(
+        make_intent(),
+        arguments={"sku": "SKU-1842", "run_in_background": True},
+    )
+
+    outcome = await library.acall(
+        intent,
+        ToolRuntimeContext(values={"background_dispatcher": Scheduler()}),
+    )
+
+    assert outcome.status == "dispatched"
+    assert outcome.result == {"task_id": "task_1"}
+    assert requests[0].plan.visible_arguments == {"sku": "SKU-1842"}
+    assert executor.calls == []
+
+
+@pytest.mark.asyncio
 async def test_library_runs_policy_extensions_sequentially_and_monotonically():
     observed = []
 

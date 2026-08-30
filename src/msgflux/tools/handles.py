@@ -8,6 +8,7 @@ from msgflux.runtime.context import execution_context, get_execution_context
 if TYPE_CHECKING:
     from msgflux.chat_messages import ChatMessages
     from msgflux.nn.modules.tool import ToolLibrary
+    from msgflux.nn.modules.tool_v2 import ToolRef
     from msgflux.runtime.agent_inbox import AgentInbox
 
 
@@ -89,6 +90,25 @@ class ToolLibraryHandle:
         if tool_name not in self._library.library:
             raise ValueError(f"The tool `{tool_name}` is no longer available.")
         return self._library.library[tool_name]
+
+    def get_ref(self, tool_name: str) -> ToolRef:
+        return self._library.get_tool_ref(tool_name)
+
+    def __call__(
+        self,
+        tool: ToolRef | str,
+        /,
+        **arguments: Any,
+    ) -> Any:
+        return self._library.run(tool, arguments)
+
+    async def acall(
+        self,
+        tool: ToolRef | str,
+        /,
+        **arguments: Any,
+    ) -> Any:
+        return await self._library.arun(tool, arguments)
 
     def get_task_future(self, task_id: str) -> Any | None:
         return self._library.get_background_dispatcher().get_task_future(task_id)
@@ -256,16 +276,21 @@ class ToolBucketHandle(ToolLibraryHandle):
 
     def __call__(
         self,
-        tool_name: str,
+        tool_name: ToolRef | str,
         /,
         *,
         _runtime_arguments: Mapping[str, Any] | None = None,
         **arguments: Any,
     ) -> Any:
-        return self._library._call_captured_tool(
-            self._bucket_name,
-            tool_name,
+        tool_ref = (
+            tool_name
+            if not isinstance(tool_name, str)
+            else self._library.get_tool_ref(tool_name)
+        )
+        return self._library.run(
+            tool_ref,
             arguments,
+            bucket_name=self._bucket_name,
             runtime_arguments=_runtime_arguments,
             message=self._message,
             messages=self._messages,
@@ -276,16 +301,21 @@ class ToolBucketHandle(ToolLibraryHandle):
 
     async def acall(
         self,
-        tool_name: str,
+        tool_name: ToolRef | str,
         /,
         *,
         _runtime_arguments: Mapping[str, Any] | None = None,
         **arguments: Any,
     ) -> Any:
-        return await self._library._acall_captured_tool(
-            self._bucket_name,
-            tool_name,
+        tool_ref = (
+            tool_name
+            if not isinstance(tool_name, str)
+            else self._library.get_tool_ref(tool_name)
+        )
+        return await self._library.arun(
+            tool_ref,
             arguments,
+            bucket_name=self._bucket_name,
             runtime_arguments=_runtime_arguments,
             message=self._message,
             messages=self._messages,

@@ -389,7 +389,7 @@ async def test_foreground_dispatch_awaits_canonical_execution():
     plan = make_plan()
     calls = []
 
-    async def execute():
+    async def execute(_plan=None):
         calls.append("execute")
         return ToolOutcome.completed(plan.intent, 4)
 
@@ -412,7 +412,7 @@ async def test_detached_dispatch_returns_before_execution_settles():
     release = asyncio.Event()
     settled = asyncio.Event()
 
-    async def execute():
+    async def execute(_plan=None):
         await release.wait()
         settled.set()
         return ToolOutcome.completed(plan.intent, 4)
@@ -447,7 +447,7 @@ async def test_background_dispatch_delegates_to_runtime_service():
                 result={"task_id": "task_1"},
             )
 
-    async def execute():
+    async def execute(_plan=None):
         raise AssertionError("background extension owns scheduling")
 
     registry = ToolExtensionRegistry([BackgroundDispatch()])
@@ -482,7 +482,7 @@ async def test_custom_dispatch_is_a_first_class_extension():
         DispatchRequest(
             plan=plan,
             context=ToolRuntimeContext(),
-            execute=lambda: None,
+            execute=lambda _plan=None: None,
         )
     )
 
