@@ -22,8 +22,10 @@ from typing import (
 import msgspec
 
 import msgflux.nn.functional as F
+from msgflux.exceptions import AbortRequestedError, TaskInterruptRequestedError
 from msgflux.nn.modules.container import ModuleDict
 from msgflux.nn.modules.module import Module
+from msgflux.runtime.abort import await_with_abort
 
 _OUTCOME_STATUSES = {
     "blocked",
@@ -230,6 +232,37 @@ class ToolRef(msgspec.Struct, frozen=True, kw_only=True):
         )
 
 
+class ToolChoice(msgspec.Struct, frozen=True, kw_only=True):
+    """Provider-neutral catalog selection policy."""
+
+    mode: str = "auto"
+    name: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.mode not in {"auto", "none", "required", "tool"}:
+            raise ValueError("`choice.mode` must be auto, none, required, or tool")
+        if self.mode == "tool":
+            msgspec.structs.force_setattr(
+                self,
+                "name",
+                _require_name(self.name, "choice.name"),
+            )
+        elif self.name is not None:
+            raise ValueError("`choice.name` is only valid when mode is `tool`")
+
+    @classmethod
+    def coerce(cls, value: ToolChoice | str | None) -> ToolChoice:
+        if value is None:
+            return cls()
+        if isinstance(value, cls):
+            return value
+        if not isinstance(value, str) or not value.strip():
+            raise TypeError("`choice` must be a ToolChoice, string, or None")
+        if value in {"auto", "none", "required"}:
+            return cls(mode=value)
+        return cls(mode="tool", name=value)
+
+
 class ToolDefinition(msgspec.Struct, frozen=True, kw_only=True):
     """Stable logical declaration compiled before a tool can be executed."""
 
@@ -300,6 +333,215 @@ class ToolDefinition(msgspec.Struct, frozen=True, kw_only=True):
         )
 
 
+class ToolCatalogEntry(msgspec.Struct, frozen=True, kw_only=True):
+    """Execution-free projection of a tool in one thread catalog snapshot."""
+
+    ref: ToolRef
+    description: str | None
+    input_schema: Mapping[str, Any]
+    annotations: Mapping[str, Any] = msgspec.field(default_factory=dict)
+    native_bindings: tuple[NativeToolBinding, ...] = ()
+    kind: str = "tool"
+    deferred: bool = False
+    loaded: bool = False
+    display_name: str | None = None
+    usage_guidance: str | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.ref, ToolRef):
+            raise TypeError("`ref` must be a ToolRef")
+        if not isinstance(self.deferred, bool) or not isinstance(self.loaded, bool):
+            raise TypeError("`deferred` and `loaded` must be bool values")
+        if self.loaded and not self.deferred:
+            raise ValueError("Only deferred tools can be marked as loaded")
+        msgspec.structs.force_setattr(self, "kind", _require_name(self.kind, "kind"))
+        msgspec.structs.force_setattr(
+            self,
+            "input_schema",
+            _copy_mapping(self.input_schema, "input_schema"),
+        )
+        msgspec.structs.force_setattr(
+            self,
+            "annotations",
+            _copy_mapping(self.annotations, "annotations"),
+        )
+
+    @property
+    def name(self) -> str:
+        return self.ref.tool_id
+
+    @classmethod
+    def from_definition(
+        cls,
+        definition: ToolDefinition,
+        *,
+        library_id: str,
+        loaded: bool = False,
+    ) -> ToolCatalogEntry:
+        return cls(
+            ref=ToolRef(library_id=library_id, tool_id=definition.name),
+            description=definition.description,
+            input_schema=definition.input_schema,
+            annotations=definition.annotations,
+            native_bindings=definition.native_bindings,
+            kind=definition.kind,
+            deferred=definition.loading.deferred,
+            loaded=loaded,
+            display_name=definition.display_name,
+            usage_guidance=definition.usage_guidance,
+        )
+
+
+class ToolCatalogView(msgspec.Struct, frozen=True, kw_only=True):
+    """Immutable tool catalog snapshot scoped to one conversation thread."""
+
+    library_id: str
+    thread_id: str
+    entries: tuple[ToolCatalogEntry, ...]
+    choice: ToolChoice | str = msgspec.field(default_factory=ToolChoice)
+
+    def __post_init__(self) -> None:
+        msgspec.structs.force_setattr(
+            self,
+            "library_id",
+            _require_name(self.library_id, "library_id"),
+        )
+        msgspec.structs.force_setattr(
+            self,
+            "thread_id",
+            _require_name(self.thread_id, "thread_id"),
+        )
+        entries = tuple(self.entries)
+        if not all(isinstance(entry, ToolCatalogEntry) for entry in entries):
+            raise TypeError("`entries` must contain ToolCatalogEntry values")
+        names = [entry.name for entry in entries]
+        if len(names) != len(set(names)):
+            raise ValueError("Tool catalog entries must have unique names")
+        foreign = [
+            entry.name for entry in entries if entry.ref.library_id != self.library_id
+        ]
+        if foreign:
+            formatted = ", ".join(f"`{name}`" for name in foreign)
+            raise ValueError(
+                f"Tool catalog entries belong to another library: {formatted}"
+            )
+        choice = ToolChoice.coerce(self.choice)
+        if choice.mode == "tool" and choice.name not in set(names):
+            raise ValueError(f"Selected tool `{choice.name}` is not in the catalog")
+        msgspec.structs.force_setattr(self, "entries", entries)
+        msgspec.structs.force_setattr(self, "choice", choice)
+
+    @property
+    def has_deferred(self) -> bool:
+        return any(entry.deferred and not entry.loaded for entry in self.entries)
+
+    def visible_entries(self) -> tuple[ToolCatalogEntry, ...]:
+        selected = self.choice.name if self.choice.mode == "tool" else None
+        return tuple(
+            entry
+            for entry in self.entries
+            if not entry.deferred or entry.loaded or entry.name == selected
+        )
+
+
+class ToolRegistry(Module):
+    """Own stable logical definitions and their executable Modules."""
+
+    def __init__(
+        self,
+        library_id: str,
+        definitions: Collection[ToolDefinition] = (),
+    ) -> None:
+        super().__init__()
+        self.library_id = _require_name(library_id, "library_id")
+        self.executors = ModuleDict()
+        self._definitions: dict[str, ToolDefinition] = {}
+        for definition in definitions:
+            self.add(definition)
+
+    def add(self, definition: ToolDefinition) -> ToolRef:
+        if not isinstance(definition, ToolDefinition):
+            raise TypeError("`definition` must be a ToolDefinition")
+        if definition.name in self._definitions:
+            raise ValueError(f"Tool `{definition.name}` is already registered")
+        if not isinstance(definition.executor, Module):
+            raise TypeError("Tool executors must inherit msgflux.nn.Module")
+        self.executors[definition.name] = definition.executor
+        self._definitions[definition.name] = definition
+        return self.ref(definition.name)
+
+    def remove(self, tool: ToolRef | str) -> ToolDefinition:
+        name = self._resolve_name(tool)
+        try:
+            definition = self._definitions.pop(name)
+        except KeyError as exc:
+            raise ValueError(f"Tool `{name}` is not registered") from exc
+        del self.executors[name]
+        return definition
+
+    def get(self, tool: ToolRef | str) -> ToolDefinition:
+        name = self._resolve_name(tool)
+        try:
+            return self._definitions[name]
+        except KeyError as exc:
+            raise ValueError(f"Tool `{name}` is not registered") from exc
+
+    def has(self, tool: ToolRef | str) -> bool:
+        try:
+            name = self._resolve_name(tool)
+        except ValueError:
+            return False
+        return name in self._definitions
+
+    def ref(self, name: str) -> ToolRef:
+        return ToolRef(library_id=self.library_id, tool_id=name)
+
+    def definitions(self) -> tuple[ToolDefinition, ...]:
+        return tuple(self._definitions.values())
+
+    def catalog_view(
+        self,
+        thread_id: str,
+        *,
+        loaded_tools: Collection[str] = (),
+        choice: ToolChoice | str | None = None,
+    ) -> ToolCatalogView:
+        loaded = set(loaded_tools)
+        unknown = loaded - self._definitions.keys()
+        if unknown:
+            formatted = ", ".join(f"`{name}`" for name in sorted(unknown))
+            raise ValueError(f"Loaded tools are not registered: {formatted}")
+        non_deferred = {
+            name for name in loaded if not self._definitions[name].loading.deferred
+        }
+        if non_deferred:
+            formatted = ", ".join(f"`{name}`" for name in sorted(non_deferred))
+            raise ValueError(f"Only deferred tools can be loaded: {formatted}")
+        entries = tuple(
+            ToolCatalogEntry.from_definition(
+                definition,
+                library_id=self.library_id,
+                loaded=definition.name in loaded,
+            )
+            for definition in self._definitions.values()
+        )
+        return ToolCatalogView(
+            library_id=self.library_id,
+            thread_id=thread_id,
+            entries=entries,
+            choice=choice if choice is not None else ToolChoice(),
+        )
+
+    def _resolve_name(self, tool: ToolRef | str) -> str:
+        if isinstance(tool, ToolRef):
+            if tool.library_id != self.library_id:
+                raise ValueError(
+                    f"Tool ref belongs to `{tool.library_id}`, not `{self.library_id}`"
+                )
+            return tool.tool_id
+        return _require_name(tool, "tool")
+
+
 class ToolIntent(msgspec.Struct, frozen=True, kw_only=True):
     """Provider-neutral request to perform one named action."""
 
@@ -349,6 +591,7 @@ class ToolOutcome(msgspec.Struct, frozen=True, kw_only=True):
     status: str
     result: Any = None
     error: ToolError | None = None
+    feedback: FeedbackSpec = msgspec.field(default_factory=FeedbackSpec)
     metadata: Mapping[str, Any] = msgspec.field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -374,6 +617,8 @@ class ToolOutcome(msgspec.Struct, frozen=True, kw_only=True):
                 raise ValueError(f"Tool outcome `{self.status}` requires `error`")
         elif self.error is not None:
             raise ValueError(f"Tool outcome `{self.status}` cannot include `error`")
+        if not isinstance(self.feedback, FeedbackSpec):
+            raise TypeError("`feedback` must be a FeedbackSpec")
         msgspec.structs.force_setattr(
             self,
             "metadata",
@@ -385,12 +630,19 @@ class ToolOutcome(msgspec.Struct, frozen=True, kw_only=True):
         return self.status in {"completed", "dispatched"}
 
     @classmethod
-    def completed(cls, intent: ToolIntent, result: Any) -> ToolOutcome:
+    def completed(
+        cls,
+        intent: ToolIntent,
+        result: Any,
+        *,
+        feedback: FeedbackSpec | None = None,
+    ) -> ToolOutcome:
         return cls(
             intent_id=intent.id,
             tool_name=intent.name,
             status="completed",
             result=result,
+            feedback=feedback or FeedbackSpec(),
         )
 
     @classmethod
@@ -399,6 +651,7 @@ class ToolOutcome(msgspec.Struct, frozen=True, kw_only=True):
         intent: ToolIntent,
         result: Any = None,
         *,
+        feedback: FeedbackSpec | None = None,
         metadata: Mapping[str, Any] | None = None,
     ) -> ToolOutcome:
         return cls(
@@ -406,7 +659,33 @@ class ToolOutcome(msgspec.Struct, frozen=True, kw_only=True):
             tool_name=intent.name,
             status="dispatched",
             result=result,
+            feedback=feedback or FeedbackSpec(),
             metadata=metadata or {},
+        )
+
+    @classmethod
+    def failed(
+        cls,
+        intent: ToolIntent,
+        *,
+        status: str,
+        code: str,
+        message: str,
+        feedback: FeedbackSpec | None = None,
+        details: Mapping[str, Any] | None = None,
+    ) -> ToolOutcome:
+        if status not in _OUTCOME_STATUSES - {"completed", "dispatched"}:
+            raise ValueError(f"`{status}` is not a failure outcome status")
+        return cls(
+            intent_id=intent.id,
+            tool_name=intent.name,
+            status=status,
+            error=ToolError(
+                code=code,
+                message=message,
+                details=details or {},
+            ),
+            feedback=feedback or FeedbackSpec(),
         )
 
 
@@ -493,6 +772,29 @@ class DispatchRequest(msgspec.Struct, frozen=True, kw_only=True):
     execute: ExecuteTool
 
 
+class BeforeToolPolicy(msgspec.Struct, frozen=True, kw_only=True):
+    """Typed payload evaluated before runtime arguments are resolved."""
+
+    intent: ToolIntent
+    definition: ToolDefinition
+    context: ToolRuntimeContext
+
+
+class BeforeDispatchPolicy(msgspec.Struct, frozen=True, kw_only=True):
+    """Typed payload evaluated after an execution plan is prepared."""
+
+    plan: ToolExecutionPlan
+    context: ToolRuntimeContext
+
+
+class AfterToolPolicy(msgspec.Struct, frozen=True, kw_only=True):
+    """Typed payload evaluated after a dispatcher produces an outcome."""
+
+    plan: ToolExecutionPlan
+    outcome: ToolOutcome
+    context: ToolRuntimeContext
+
+
 class ToolExtension(Module):
     """Owned runtime capability registered by the future ToolLibrary."""
 
@@ -542,6 +844,25 @@ class ToolDispatch(ToolExtension):
 
     async def dispatch(self, request: DispatchRequest) -> ToolOutcome:
         raise NotImplementedError
+
+
+class ToolPolicy(ToolExtension):
+    """Sequential policy extension for tool planning and outcomes."""
+
+    async def before_tool(
+        self,
+        payload: BeforeToolPolicy,
+    ) -> BeforeToolPolicy | ToolOutcome:
+        return payload
+
+    async def before_dispatch(
+        self,
+        payload: BeforeDispatchPolicy,
+    ) -> BeforeDispatchPolicy | ToolOutcome:
+        return payload
+
+    async def after_tool(self, payload: AfterToolPolicy) -> AfterToolPolicy:
+        return payload
 
 
 class ForegroundDispatch(ToolDispatch):
@@ -692,6 +1013,7 @@ class ToolExtensionRegistry(Module):
         self.extensions = ModuleDict()
         self._dispatches: dict[str, str] = {}
         self._context_sources: dict[str, str] = {}
+        self._policies: list[str] = []
         initial = list(extensions)
         if install_defaults:
             initial = [
@@ -754,6 +1076,8 @@ class ToolExtensionRegistry(Module):
             self._dispatches[dispatch_name] = extension.name
         for source in context_sources:
             self._context_sources[source] = extension.name
+        if isinstance(extension, ToolPolicy):
+            self._policies.append(extension.name)
         return dispatch_name, context_sources
 
     def _rollback_registration(
@@ -768,6 +1092,8 @@ class ToolExtensionRegistry(Module):
             self._dispatches.pop(dispatch_name, None)
         for source in context_sources:
             self._context_sources.pop(source, None)
+        if extension.name in self._policies:
+            self._policies.remove(extension.name)
         extension._unbind_registry()
 
     def register(self, extension: ToolExtension) -> ToolExtensionHandle:
@@ -862,6 +1188,95 @@ class ToolExtensionRegistry(Module):
             raise TypeError("Tool dispatch extensions must return ToolOutcome")
         return outcome
 
+    async def before_tool(
+        self,
+        payload: BeforeToolPolicy,
+    ) -> BeforeToolPolicy | ToolOutcome:
+        for policy in self._iter_policies():
+            previous = payload
+            result = await policy.before_tool(payload)
+            if isinstance(result, ToolOutcome):
+                self._validate_blocked_outcome(result, payload.intent)
+                return result
+            if not isinstance(result, BeforeToolPolicy):
+                raise TypeError(
+                    "before_tool policies must return BeforeToolPolicy or ToolOutcome"
+                )
+            if (
+                result.intent.id != previous.intent.id
+                or result.intent.name != previous.intent.name
+                or result.definition is not previous.definition
+                or result.context is not previous.context
+            ):
+                raise ValueError(
+                    "before_tool policies may only replace intent arguments"
+                )
+            payload = result
+        return payload
+
+    async def before_dispatch(
+        self,
+        payload: BeforeDispatchPolicy,
+    ) -> BeforeDispatchPolicy | ToolOutcome:
+        for policy in self._iter_policies():
+            previous = payload
+            result = await policy.before_dispatch(payload)
+            if isinstance(result, ToolOutcome):
+                self._validate_blocked_outcome(result, payload.plan.intent)
+                return result
+            if not isinstance(result, BeforeDispatchPolicy):
+                raise TypeError(
+                    "before_dispatch policies must return "
+                    "BeforeDispatchPolicy or ToolOutcome"
+                )
+            if (
+                result.plan.intent != previous.plan.intent
+                or result.plan.definition is not previous.plan.definition
+                or result.plan.visible_arguments != previous.plan.visible_arguments
+                or result.plan.runtime_arguments != previous.plan.runtime_arguments
+                or result.plan.feedback != previous.plan.feedback
+                or result.context is not previous.context
+            ):
+                raise ValueError(
+                    "before_dispatch policies may only replace the dispatch spec"
+                )
+            payload = result
+        return payload
+
+    async def after_tool(self, payload: AfterToolPolicy) -> AfterToolPolicy:
+        for policy in self._iter_policies():
+            previous = payload
+            result = await policy.after_tool(payload)
+            if not isinstance(result, AfterToolPolicy):
+                raise TypeError("after_tool policies must return AfterToolPolicy")
+            if (
+                result.plan is not previous.plan
+                or result.context is not previous.context
+                or result.outcome.intent_id != previous.outcome.intent_id
+                or result.outcome.tool_name != previous.outcome.tool_name
+            ):
+                raise ValueError(
+                    "after_tool policies may only replace outcome result fields"
+                )
+            payload = result
+        return payload
+
+    def _iter_policies(self) -> tuple[ToolPolicy, ...]:
+        policies = tuple(self.extensions[name] for name in self._policies)
+        if not all(isinstance(policy, ToolPolicy) for policy in policies):
+            raise RuntimeError("The policy index contains a non-ToolPolicy extension")
+        return policies
+
+    @staticmethod
+    def _validate_blocked_outcome(
+        outcome: ToolOutcome,
+        intent: ToolIntent,
+    ) -> None:
+        if outcome.status != "blocked":
+            raise ValueError("A blocking policy must return a blocked ToolOutcome")
+        if outcome.intent_id != intent.id or outcome.tool_name != intent.name:
+            raise ValueError("A policy returned an outcome for another tool intent")
+
     def remove(self, name: str) -> None:
         if name not in self.extensions:
             return
@@ -890,13 +1305,272 @@ class ToolExtensionRegistry(Module):
         if isinstance(extension, ToolContextProvider):
             for source in extension.sources:
                 self._context_sources.pop(source, None)
+        if extension.name in self._policies:
+            self._policies.remove(extension.name)
+
+
+class ToolLibraryV2(Module):
+    """Incubating execution facade backed by canonical tool contracts."""
+
+    def __init__(
+        self,
+        definitions: Collection[ToolDefinition] = (),
+        *,
+        name: str = "tool_library",
+        extensions: Collection[ToolExtension] = (),
+    ) -> None:
+        super().__init__()
+        self.set_name(_require_name(name, "name"))
+        self.registry = ToolRegistry(name, definitions)
+        self.extensions = ToolExtensionRegistry(
+            extensions,
+            install_defaults=True,
+        )
+
+    def add(self, definition: ToolDefinition) -> ToolRef:
+        return self.registry.add(definition)
+
+    def remove(self, tool: ToolRef | str) -> ToolDefinition:
+        return self.registry.remove(tool)
+
+    def get_catalog_view(
+        self,
+        thread_id: str,
+        *,
+        loaded_tools: Collection[str] = (),
+        choice: ToolChoice | str | None = None,
+    ) -> ToolCatalogView:
+        return self.registry.catalog_view(
+            thread_id,
+            loaded_tools=loaded_tools,
+            choice=choice,
+        )
+
+    def forward(
+        self,
+        intent: ToolIntent,
+        context: ToolRuntimeContext | None = None,
+    ) -> ToolOutcome:
+        return F.wait_for(self.aforward, intent, context)
+
+    async def aforward(
+        self,
+        intent: ToolIntent,
+        context: ToolRuntimeContext | None = None,
+    ) -> ToolOutcome:
+        if not isinstance(intent, ToolIntent):
+            raise TypeError("`intent` must be a ToolIntent")
+        context = self._coerce_context(context)
+
+        try:
+            definition = self.registry.get(intent.name)
+        except ValueError as exc:
+            return ToolOutcome.failed(
+                intent,
+                status="not_found",
+                code="tool_not_found",
+                message=str(exc),
+            )
+
+        before_tool = await self._abefore_tool(intent, definition, context)
+        if isinstance(before_tool, ToolOutcome):
+            return self._with_feedback(before_tool, definition.feedback)
+        intent = before_tool.intent
+
+        try:
+            plan = await self._aprepare(intent, definition, context)
+        except (AbortRequestedError, TaskInterruptRequestedError) as exc:
+            return self._interrupted(intent, definition.feedback, exc)
+        except Exception as exc:
+            return ToolOutcome.failed(
+                intent,
+                status="execution_failed",
+                code="tool_preparation_failed",
+                message=str(exc),
+                feedback=definition.feedback,
+            )
+
+        before_dispatch = await self._abefore_dispatch(plan, context)
+        if isinstance(before_dispatch, ToolOutcome):
+            return self._with_feedback(before_dispatch, plan.feedback)
+        plan = before_dispatch.plan
+        return await self._adispatch(plan, context)
+
+    @staticmethod
+    def _coerce_context(
+        context: ToolRuntimeContext | None,
+    ) -> ToolRuntimeContext:
+        if context is None:
+            return ToolRuntimeContext()
+        if not isinstance(context, ToolRuntimeContext):
+            raise TypeError("`context` must be a ToolRuntimeContext or None")
+        return context
+
+    async def _aprepare(
+        self,
+        intent: ToolIntent,
+        definition: ToolDefinition,
+        context: ToolRuntimeContext,
+    ) -> ToolExecutionPlan:
+        runtime_arguments = await self.extensions.resolve_context(
+            definition,
+            intent,
+            context,
+        )
+        return ToolExecutionPlan(
+            intent=intent,
+            definition=definition,
+            visible_arguments=intent.arguments,
+            runtime_arguments=runtime_arguments,
+        )
+
+    async def _abefore_tool(
+        self,
+        intent: ToolIntent,
+        definition: ToolDefinition,
+        context: ToolRuntimeContext,
+    ) -> BeforeToolPolicy | ToolOutcome:
+        try:
+            return await self.extensions.before_tool(
+                BeforeToolPolicy(
+                    intent=intent,
+                    definition=definition,
+                    context=context,
+                )
+            )
+        except (AbortRequestedError, TaskInterruptRequestedError) as exc:
+            return self._interrupted(intent, definition.feedback, exc)
+        except Exception as exc:
+            return ToolOutcome.failed(
+                intent,
+                status="blocked",
+                code="tool_policy_failed",
+                message=f"before_tool policy failed closed: {exc}",
+                feedback=definition.feedback,
+            )
+
+    async def _abefore_dispatch(
+        self,
+        plan: ToolExecutionPlan,
+        context: ToolRuntimeContext,
+    ) -> BeforeDispatchPolicy | ToolOutcome:
+        try:
+            return await self.extensions.before_dispatch(
+                BeforeDispatchPolicy(plan=plan, context=context)
+            )
+        except (AbortRequestedError, TaskInterruptRequestedError) as exc:
+            return self._interrupted(plan.intent, plan.feedback, exc)
+        except Exception as exc:
+            return ToolOutcome.failed(
+                plan.intent,
+                status="blocked",
+                code="tool_policy_failed",
+                message=f"before_dispatch policy failed closed: {exc}",
+                feedback=plan.feedback,
+            )
+
+    async def _aexecute(
+        self,
+        plan: ToolExecutionPlan,
+        context: ToolRuntimeContext,
+    ) -> ToolOutcome:
+        try:
+            result = await await_with_abort(
+                plan.definition.executor.acall(**plan.call_arguments),
+                context.get("abort_signal"),
+            )
+        except (AbortRequestedError, TaskInterruptRequestedError) as exc:
+            return self._interrupted(plan.intent, plan.feedback, exc)
+        except Exception as exc:
+            return ToolOutcome.failed(
+                plan.intent,
+                status="execution_failed",
+                code="tool_execution_failed",
+                message=str(exc),
+                feedback=plan.feedback,
+            )
+        return ToolOutcome.completed(
+            plan.intent,
+            result,
+            feedback=plan.feedback,
+        )
+
+    async def _adispatch(
+        self,
+        plan: ToolExecutionPlan,
+        context: ToolRuntimeContext,
+    ) -> ToolOutcome:
+        async def execute() -> ToolOutcome:
+            return await self._aexecute(plan, context)
+
+        try:
+            outcome = await self.extensions.dispatch(
+                DispatchRequest(
+                    plan=plan,
+                    context=context,
+                    execute=execute,
+                )
+            )
+        except (AbortRequestedError, TaskInterruptRequestedError) as exc:
+            return self._interrupted(plan.intent, plan.feedback, exc)
+        except Exception as exc:
+            return ToolOutcome.failed(
+                plan.intent,
+                status="execution_failed",
+                code="tool_dispatch_failed",
+                message=str(exc),
+                feedback=plan.feedback,
+            )
+
+        if outcome.intent_id != plan.intent.id or outcome.tool_name != plan.intent.name:
+            raise ValueError("Dispatch returned an outcome for another tool intent")
+        outcome = self._with_feedback(outcome, plan.feedback)
+        try:
+            after_tool = await self.extensions.after_tool(
+                AfterToolPolicy(
+                    plan=plan,
+                    outcome=outcome,
+                    context=context,
+                )
+            )
+        except (AbortRequestedError, TaskInterruptRequestedError) as exc:
+            return self._interrupted(plan.intent, plan.feedback, exc)
+        except Exception:
+            return outcome
+        return self._with_feedback(after_tool.outcome, plan.feedback)
+
+    @staticmethod
+    def _with_feedback(
+        outcome: ToolOutcome,
+        feedback: FeedbackSpec,
+    ) -> ToolOutcome:
+        if outcome.feedback == feedback:
+            return outcome
+        return msgspec.structs.replace(outcome, feedback=feedback)
+
+    @staticmethod
+    def _interrupted(
+        intent: ToolIntent,
+        feedback: FeedbackSpec,
+        error: BaseException,
+    ) -> ToolOutcome:
+        return ToolOutcome.failed(
+            intent,
+            status="interrupted",
+            code="tool_interrupted",
+            message=str(error) or type(error).__name__,
+            feedback=feedback,
+        )
 
 
 _MISSING_CONTEXT = object()
 
 
 __all__ = [
+    "AfterToolPolicy",
     "BackgroundDispatch",
+    "BeforeDispatchPolicy",
+    "BeforeToolPolicy",
     "ContextBinding",
     "ContextRequest",
     "ContextSpec",
@@ -908,6 +1582,9 @@ __all__ = [
     "LoadingSpec",
     "NativeToolBinding",
     "RuntimeContextProvider",
+    "ToolCatalogEntry",
+    "ToolCatalogView",
+    "ToolChoice",
     "ToolContextProvider",
     "ToolDefinition",
     "ToolDispatch",
@@ -917,7 +1594,10 @@ __all__ = [
     "ToolExtensionHandle",
     "ToolExtensionRegistry",
     "ToolIntent",
+    "ToolLibraryV2",
     "ToolOutcome",
+    "ToolPolicy",
     "ToolRef",
+    "ToolRegistry",
     "ToolRuntimeContext",
 ]

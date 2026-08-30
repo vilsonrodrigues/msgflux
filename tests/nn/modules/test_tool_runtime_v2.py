@@ -1,0 +1,433 @@
+import asyncio
+from copy import deepcopy
+from types import SimpleNamespace
+
+import msgspec
+import pytest
+
+from msgflux.nn.modules.module import Module
+from msgflux.nn.modules.tool import LocalTool, MCPTool
+from msgflux.nn.modules.tool_v2 import (
+    AfterToolPolicy,
+    BeforeDispatchPolicy,
+    BeforeToolPolicy,
+    ContextBinding,
+    ContextSpec,
+    DispatchSpec,
+    FeedbackSpec,
+    LoadingSpec,
+    ToolDefinition,
+    ToolDispatch,
+    ToolIntent,
+    ToolLibraryV2,
+    ToolOutcome,
+    ToolPolicy,
+    ToolRef,
+    ToolRegistry,
+    ToolRuntimeContext,
+)
+from msgflux.protocols.mcp.types import MCPContent, MCPToolResult
+from msgflux.runtime.abort import AbortSignal
+
+
+class RecordingExecutor(Module):
+    def __init__(self, *, result=None, error=None):
+        super().__init__()
+        self.result = result
+        self.error = error
+        self.calls = []
+        self.started = asyncio.Event()
+        self.release = None
+
+    def forward(self, **arguments):
+        self.calls.append(arguments)
+        if self.error is not None:
+            raise self.error
+        return self.result
+
+    async def aforward(self, **arguments):
+        self.calls.append(arguments)
+        self.started.set()
+        if self.release is not None:
+            await self.release.wait()
+        if self.error is not None:
+            raise self.error
+        return self.result
+
+
+def make_definition(name="lookup", **overrides):
+    values = {
+        "name": name,
+        "executor": RecordingExecutor(result={"found": True}),
+        "description": "Look up an inventory item.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"sku": {"type": "string"}},
+            "required": ["sku"],
+        },
+    }
+    values.update(overrides)
+    return ToolDefinition(**values)
+
+
+def make_intent(name="lookup"):
+    return ToolIntent(id="call_1", name=name, arguments={"sku": "SKU-1842"})
+
+
+def test_registry_owns_stable_definitions_and_executor_modules():
+    definition = make_definition()
+    registry = ToolRegistry("warehouse_tools", [definition])
+
+    ref = registry.ref("lookup")
+
+    assert ref == ToolRef(library_id="warehouse_tools", tool_id="lookup")
+    assert registry.get(ref) is definition
+    assert registry.executors["lookup"] is definition.executor
+    with pytest.raises(ValueError, match="already registered"):
+        registry.add(definition)
+
+    removed = registry.remove(ref)
+
+    assert removed is definition
+    assert not registry.has("lookup")
+
+
+def test_registry_rejects_foreign_refs():
+    registry = ToolRegistry("warehouse_tools", [make_definition()])
+    foreign = ToolRef(library_id="other_tools", tool_id="lookup")
+
+    with pytest.raises(ValueError, match="belongs to `other_tools`"):
+        registry.get(foreign)
+
+
+def test_registry_deepcopy_preserves_definition_executor_identity():
+    registry = ToolRegistry("warehouse_tools", [make_definition()])
+
+    copied = deepcopy(registry)
+    definition = copied.get("lookup")
+
+    assert definition.executor is copied.executors["lookup"]
+    assert definition.executor is not registry.get("lookup").executor
+
+
+def test_catalog_views_isolate_deferred_loading_by_thread():
+    registry = ToolRegistry(
+        "warehouse_tools",
+        [
+            make_definition(),
+            make_definition(
+                "reconcile_inventory",
+                loading=LoadingSpec(deferred=True),
+            ),
+        ],
+    )
+
+    first = registry.catalog_view(
+        "thread_a",
+        loaded_tools=("reconcile_inventory",),
+    )
+    second = registry.catalog_view("thread_b")
+
+    assert [entry.name for entry in first.visible_entries()] == [
+        "lookup",
+        "reconcile_inventory",
+    ]
+    assert [entry.name for entry in second.visible_entries()] == ["lookup"]
+    assert first.entries[1].loaded
+    assert not second.entries[1].loaded
+    assert registry.get("reconcile_inventory").loading.deferred
+
+
+def test_catalog_selection_can_expose_one_unloaded_deferred_tool():
+    registry = ToolRegistry(
+        "warehouse_tools",
+        [make_definition("reconcile", loading=LoadingSpec(deferred=True))],
+    )
+
+    view = registry.catalog_view("thread_a", choice="reconcile")
+
+    assert [entry.name for entry in view.visible_entries()] == ["reconcile"]
+    assert view.choice.mode == "tool"
+
+
+@pytest.mark.asyncio
+async def test_library_resolves_opt_in_context_and_executes_foreground():
+    executor = RecordingExecutor(result="available")
+    definition = make_definition(
+        executor=executor,
+        feedback=FeedbackSpec(name="direct"),
+        context=ContextSpec(
+            bindings=(
+                ContextBinding(
+                    source="vars",
+                    parameter="context",
+                    options={"select": ("tenant",)},
+                ),
+            )
+        ),
+    )
+    library = ToolLibraryV2([definition], name="warehouse_tools")
+
+    outcome = await library.acall(
+        make_intent(),
+        ToolRuntimeContext(values={"vars": {"tenant": "north", "secret": 1}}),
+    )
+
+    assert outcome.status == "completed"
+    assert outcome.result == "available"
+    assert outcome.feedback.name == "direct"
+    assert executor.calls == [{"sku": "SKU-1842", "context": {"tenant": "north"}}]
+
+
+@pytest.mark.asyncio
+async def test_library_executes_real_local_and_mcp_adapters():
+    mcp_calls = []
+    mcp_info = SimpleNamespace(
+        description="Look up remote inventory.",
+        inputSchema={
+            "type": "object",
+            "properties": {"sku": {"type": "string"}},
+        },
+    )
+
+    class MCPClient:
+        async def call_tool(self, name, arguments):
+            mcp_calls.append((name, arguments))
+            return MCPToolResult(content=[MCPContent(type="text", text="remote")])
+
+    local = LocalTool(
+        name="local_lookup",
+        description="Look up local inventory.",
+        annotations={"sku": str, "return": str},
+        tool_config={},
+        impl=lambda sku: f"local:{sku}",
+    )
+    remote = MCPTool(
+        name="lookup",
+        mcp_client=MCPClient(),
+        mcp_tool_info=mcp_info,
+        namespace="remote",
+    )
+    library = ToolLibraryV2(
+        [
+            make_definition("local_lookup", executor=local),
+            make_definition(
+                "remote__lookup",
+                executor=remote,
+                description=mcp_info.description,
+                input_schema=mcp_info.inputSchema,
+            ),
+        ],
+        name="warehouse_tools",
+    )
+
+    local_outcome = await library.acall(make_intent("local_lookup"))
+    remote_outcome = await library.acall(make_intent("remote__lookup"))
+
+    assert local_outcome.result == "local:SKU-1842"
+    assert remote_outcome.result == "remote"
+    assert mcp_calls == [("lookup", {"sku": "SKU-1842"})]
+
+
+@pytest.mark.asyncio
+async def test_library_returns_structured_not_found_and_execution_failures():
+    executor = RecordingExecutor(error=RuntimeError("scanner offline"))
+    library = ToolLibraryV2(
+        [make_definition(executor=executor)],
+        name="warehouse_tools",
+    )
+
+    missing = await library.acall(make_intent("missing"))
+    failed = await library.acall(make_intent())
+
+    assert missing.status == "not_found"
+    assert missing.error.code == "tool_not_found"
+    assert failed.status == "execution_failed"
+    assert failed.error.code == "tool_execution_failed"
+    assert failed.error.message == "scanner offline"
+
+
+@pytest.mark.asyncio
+async def test_library_dispatches_through_custom_extension():
+    class QueueDispatch(ToolDispatch):
+        def __init__(self):
+            super().__init__("dispatch_queue", dispatch_name="queue")
+
+        async def dispatch(self, request):
+            return ToolOutcome.dispatched(
+                request.plan.intent,
+                result={"queue": request.plan.dispatch.options["queue"]},
+            )
+
+    executor = RecordingExecutor(result="must not execute")
+    definition = make_definition(
+        executor=executor,
+        dispatch=DispatchSpec(name="queue", options={"queue": "durable"}),
+        feedback=FeedbackSpec(name="direct"),
+    )
+    library = ToolLibraryV2(
+        [definition],
+        name="warehouse_tools",
+        extensions=[QueueDispatch()],
+    )
+
+    outcome = await library.acall(make_intent())
+
+    assert outcome.status == "dispatched"
+    assert outcome.result == {"queue": "durable"}
+    assert outcome.feedback.name == "direct"
+    assert executor.calls == []
+
+
+@pytest.mark.asyncio
+async def test_library_runs_policy_extensions_sequentially_and_monotonically():
+    observed = []
+
+    class AddAuditArgument(ToolPolicy):
+        def __init__(self):
+            super().__init__("add_audit_argument")
+
+        async def before_tool(self, payload):
+            observed.append("add")
+            intent = msgspec.structs.replace(
+                payload.intent,
+                arguments={**payload.intent.arguments, "audited": True},
+            )
+            return BeforeToolPolicy(
+                intent=intent,
+                definition=payload.definition,
+                context=payload.context,
+            )
+
+    class BlockAuditedCall(ToolPolicy):
+        def __init__(self):
+            super().__init__("block_audited_call")
+
+        async def before_tool(self, payload):
+            observed.append(("block", payload.intent.arguments["audited"]))
+            return ToolOutcome.failed(
+                payload.intent,
+                status="blocked",
+                code="policy_denied",
+                message="Audited calls are disabled.",
+            )
+
+    class MustNotRun(ToolPolicy):
+        def __init__(self):
+            super().__init__("must_not_run")
+
+        async def before_tool(self, payload):
+            observed.append("unexpected")
+            return payload
+
+    executor = RecordingExecutor(result="must not execute")
+    library = ToolLibraryV2(
+        [make_definition(executor=executor)],
+        name="warehouse_tools",
+        extensions=[AddAuditArgument(), BlockAuditedCall(), MustNotRun()],
+    )
+
+    outcome = await library.acall(make_intent())
+
+    assert outcome.status == "blocked"
+    assert outcome.error.code == "policy_denied"
+    assert observed == ["add", ("block", True)]
+    assert executor.calls == []
+
+
+@pytest.mark.asyncio
+async def test_before_tool_policy_errors_fail_closed_and_stop_the_chain():
+    observed = []
+
+    class BrokenPolicy(ToolPolicy):
+        def __init__(self):
+            super().__init__("broken_policy")
+
+        async def before_tool(self, _payload):
+            observed.append("broken")
+            raise RuntimeError("policy backend unavailable")
+
+    class LaterPolicy(ToolPolicy):
+        def __init__(self):
+            super().__init__("later_policy")
+
+        async def before_tool(self, payload):
+            observed.append("later")
+            return payload
+
+    executor = RecordingExecutor(result="must not execute")
+    library = ToolLibraryV2(
+        [make_definition(executor=executor)],
+        name="warehouse_tools",
+        extensions=[BrokenPolicy(), LaterPolicy()],
+    )
+
+    outcome = await library.acall(make_intent())
+
+    assert outcome.status == "blocked"
+    assert outcome.error.code == "tool_policy_failed"
+    assert "failed closed" in outcome.error.message
+    assert observed == ["broken"]
+    assert executor.calls == []
+
+
+@pytest.mark.asyncio
+async def test_policy_can_change_dispatch_and_transform_outcome():
+    class LocalFallbackPolicy(ToolPolicy):
+        def __init__(self):
+            super().__init__("local_fallback")
+
+        async def before_dispatch(self, payload):
+            plan = msgspec.structs.replace(
+                payload.plan,
+                dispatch=DispatchSpec(name="foreground"),
+            )
+            return BeforeDispatchPolicy(plan=plan, context=payload.context)
+
+        async def after_tool(self, payload):
+            outcome = msgspec.structs.replace(
+                payload.outcome,
+                result={"wrapped": payload.outcome.result},
+            )
+            return AfterToolPolicy(
+                plan=payload.plan,
+                outcome=outcome,
+                context=payload.context,
+            )
+
+    definition = make_definition(dispatch="unavailable_remote_queue")
+    library = ToolLibraryV2(
+        [definition],
+        name="warehouse_tools",
+        extensions=[LocalFallbackPolicy()],
+    )
+
+    outcome = await library.acall(make_intent())
+
+    assert outcome.status == "completed"
+    assert outcome.result == {"wrapped": {"found": True}}
+
+
+@pytest.mark.asyncio
+async def test_library_converts_abort_into_interrupted_outcome():
+    executor = RecordingExecutor(result="late")
+    executor.release = asyncio.Event()
+    library = ToolLibraryV2(
+        [make_definition(executor=executor)],
+        name="warehouse_tools",
+    )
+    signal = AbortSignal()
+
+    pending = asyncio.create_task(
+        library.acall(
+            make_intent(),
+            ToolRuntimeContext(values={"abort_signal": signal}),
+        )
+    )
+    await executor.started.wait()
+    signal.abort("operator stopped the run")
+    outcome = await pending
+
+    assert outcome.status == "interrupted"
+    assert outcome.error.code == "tool_interrupted"
+    assert outcome.error.message == "operator stopped the run"
