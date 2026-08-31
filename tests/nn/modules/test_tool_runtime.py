@@ -6,7 +6,7 @@ import msgspec
 import pytest
 
 from msgflux.nn.modules.tool import LocalTool, MCPTool
-from msgflux.nn.modules.tool_v2 import (
+from msgflux.nn.modules.tool_runtime import (
     BackgroundDispatch,
     ContextBinding,
     ContextSpec,

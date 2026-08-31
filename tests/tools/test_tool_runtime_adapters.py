@@ -8,7 +8,7 @@ from msgflux.exceptions import AbortRequestedError
 from msgflux.nn import ContextBinding, ToolContextProvider, ToolPolicy
 from msgflux.nn.hooks import Hook
 from msgflux.nn.modules.tool import ToolLibrary
-from msgflux.nn.modules.tool_v2 import DispatchSpec, ToolDispatch
+from msgflux.nn.modules.tool_runtime import DispatchSpec, ToolDispatch
 from msgflux.runtime.abort import AbortSignal
 from msgflux.runtime.context import execution_context
 from msgflux.tools.config import tool_config

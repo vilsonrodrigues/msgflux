@@ -6,7 +6,7 @@ import pytest
 from msgflux.chat_messages import ChatMessages
 from msgflux.nn import ContextBinding
 from msgflux.nn.modules.tool import LocalTool, ToolLibrary
-from msgflux.nn.modules.tool_v2 import ToolDefinitionCompiler
+from msgflux.nn.modules.tool_runtime import ToolDefinitionCompiler
 from msgflux.tools.config import tool_config
 from msgflux.tools.runtime import ToolIntent
 

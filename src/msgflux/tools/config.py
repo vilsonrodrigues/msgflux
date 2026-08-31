@@ -3,7 +3,7 @@ from types import FunctionType, MethodType
 from typing import Any, Callable, Collection, Dict, Optional, Union
 
 from msgflux.core.dotdict import dotdict
-from msgflux.nn.modules.tool_v2 import ContextBinding, ContextSpec
+from msgflux.nn.modules.tool_runtime import ContextBinding, ContextSpec
 from msgflux.tools.helpers import normalize_background_capabilities
 from msgflux.tools.runtime import FeedbackSpec
 

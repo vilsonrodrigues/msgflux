@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Mapping
 from msgspec import Struct
 
 if TYPE_CHECKING:
-    from msgflux.nn.modules.tool_v2 import ToolCatalogEntry, ToolCatalogView
+    from msgflux.nn.modules.tool_runtime import ToolCatalogEntry, ToolCatalogView
 
 
 class ToolSpec(Struct, kw_only=True):

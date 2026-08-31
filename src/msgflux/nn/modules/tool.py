@@ -38,7 +38,7 @@ from msgflux.nn.hooks import Hook
 from msgflux.nn.hooks.events import AfterTool, BeforeTool, BeforeToolDispatch
 from msgflux.nn.modules.container import ModuleDict
 from msgflux.nn.modules.module import Module
-from msgflux.nn.modules.tool_v2 import (
+from msgflux.nn.modules.tool_runtime import (
     AfterToolPolicy,
     BeforeDispatchPolicy,
     BeforeToolPolicy,
@@ -55,7 +55,7 @@ from msgflux.nn.modules.tool_v2 import (
     ToolRegistry,
     ToolRuntimeContext,
 )
-from msgflux.nn.modules.tool_v2 import (
+from msgflux.nn.modules.tool_runtime import (
     ToolDefinition as RuntimeToolDefinition,
 )
 from msgflux.protocols.mcp import (

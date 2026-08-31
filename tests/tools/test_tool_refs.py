@@ -4,7 +4,7 @@ import pytest
 
 from msgflux.chat_messages import ChatMessages
 from msgflux.nn.modules.tool import ToolLibrary
-from msgflux.nn.modules.tool_v2 import ToolDispatch, ToolPolicy, ToolRef
+from msgflux.nn.modules.tool_runtime import ToolDispatch, ToolPolicy, ToolRef
 from msgflux.tools.config import tool_config
 from msgflux.tools.runtime import ToolOutcome
 from msgflux.tools.types import ToolBucket, ToolLibraryOperator

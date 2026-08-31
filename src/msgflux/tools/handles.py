@@ -8,7 +8,7 @@ from msgflux.runtime.context import execution_context, get_execution_context
 if TYPE_CHECKING:
     from msgflux.chat_messages import ChatMessages
     from msgflux.nn.modules.tool import ToolLibrary
-    from msgflux.nn.modules.tool_v2 import ToolRef
+    from msgflux.nn.modules.tool_runtime import ToolRef
     from msgflux.runtime.agent_inbox import AgentInbox
 
 

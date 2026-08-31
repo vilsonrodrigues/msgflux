@@ -38,10 +38,9 @@ executors remain owned by the bucket metadata as before. Consequently, public,
 deferred, and bucket-captured tools all resolve through one definition registry
 without making hidden tools appear in the model-facing module surface.
 
-`ToolLibraryV2` follows the same boundary with its own executor `ModuleDict`.
 Deep copies preserve the identity between each copied definition and its copied
-executor because both are owned by the containing facade, not independently by
-the registry.
+executor because both are owned by the `ToolLibrary` facade, not independently
+by the registry.
 
 ## Two Phases
 
