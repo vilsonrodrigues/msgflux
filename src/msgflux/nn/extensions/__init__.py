@@ -1,4 +1,4 @@
-"""Composable Agent extensions."""
+"""Composable Agent and ToolLibrary extensions."""
 
 from importlib import import_module
 from typing import TYPE_CHECKING
@@ -18,7 +18,7 @@ if TYPE_CHECKING:
         ToolLibraryExtensionHandle,
         ToolSearchExtension,
     )
-    from msgflux.nn.modules.tool_v2 import ToolDispatch
+    from msgflux.nn.modules.tool_v2 import ToolDispatch, ToolPolicy
 
 __all__ = [
     "AgentExtension",
@@ -30,6 +30,7 @@ __all__ = [
     "ToolLibraryExtension",
     "ToolLibraryExtensionHandle",
     "ToolDispatch",
+    "ToolPolicy",
     "ToolSearchExtension",
     "ToolUsageGuidanceExtension",
     "DefaultToolFeedbackExtension",
@@ -75,6 +76,7 @@ _LAZY_IMPORTS = {
         "ToolSearchExtension",
     ),
     "ToolDispatch": ("msgflux.nn.modules.tool_v2", "ToolDispatch"),
+    "ToolPolicy": ("msgflux.nn.modules.tool_v2", "ToolPolicy"),
 }
 
 

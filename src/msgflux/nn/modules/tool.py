@@ -16,6 +16,8 @@ from typing import (
     get_type_hints,
 )
 
+import msgspec
+
 import msgflux.nn.functional as F
 from msgflux.auto import AutoParams
 from msgflux.chat_messages import ChatMessages
@@ -37,6 +39,9 @@ from msgflux.nn.hooks.events import AfterTool, BeforeTool, BeforeToolDispatch
 from msgflux.nn.modules.container import ModuleDict
 from msgflux.nn.modules.module import Module
 from msgflux.nn.modules.tool_v2 import (
+    AfterToolPolicy,
+    BeforeDispatchPolicy,
+    BeforeToolPolicy,
     DispatchRequest,
     ToolDefinitionCompiler,
     ToolExecutionPlan,
@@ -613,7 +618,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
             - Optional: include_tools, exclude_tools, tool_config
         extensions:
             Optional tool-library capabilities that contribute tools, hooks,
-            setup, or cleanup under one removable owner.
+            policies, dispatchers, setup, or cleanup under one removable owner.
         """
         super().__init__()
         self.set_name(f"{name}_tool_library")
@@ -1479,6 +1484,112 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 },
             )
 
+    @staticmethod
+    def _emit_policy_blocked(
+        intent: ToolIntent,
+        outcome: ToolOutcome,
+        arguments: Mapping[str, Any],
+    ) -> None:
+        reason = outcome.error.message if outcome.error is not None else "Tool blocked"
+        with event_source(intent.name, "tool"):
+            emit_event(
+                EventType.TOOL_BLOCKED,
+                {
+                    "tool_call_id": intent.id,
+                    "tool_name": intent.name,
+                    "arguments": dict(arguments),
+                    "reason": reason,
+                },
+            )
+
+    @classmethod
+    def _normalize_policy_outcome(
+        cls,
+        outcome: ToolOutcome,
+        *,
+        intent: ToolIntent,
+        feedback: Any,
+        arguments: Mapping[str, Any],
+    ) -> ToolOutcome:
+        if outcome.intent_id != intent.id or outcome.tool_name != intent.name:
+            raise ValueError("A policy returned an outcome for another tool intent")
+        return msgspec.structs.replace(
+            outcome,
+            feedback=feedback,
+            metadata={
+                **dict(outcome.metadata),
+                **cls._outcome_metadata(arguments),
+            },
+        )
+
+    async def _abefore_tool_policy(
+        self,
+        intent: ToolIntent,
+        definition: RuntimeToolDefinition,
+        context: ToolRuntimeContext,
+    ) -> BeforeToolPolicy | ToolOutcome:
+        try:
+            result = await await_with_abort(
+                self.runtime_extensions.before_tool(
+                    BeforeToolPolicy(
+                        intent=intent,
+                        definition=definition,
+                        context=context,
+                    )
+                ),
+                context.get("abort_signal"),
+            )
+        except (AbortRequestedError, TaskInterruptRequestedError):
+            raise
+        except Exception as exc:
+            return self._failed_intent(
+                intent,
+                status="blocked",
+                code="tool_policy_failed",
+                message=f"before_tool policy failed closed: {exc}",
+                feedback=definition.feedback,
+            )
+        if isinstance(result, ToolOutcome):
+            return self._normalize_policy_outcome(
+                result,
+                intent=intent,
+                feedback=definition.feedback,
+                arguments=intent.arguments,
+            )
+        return result
+
+    async def _abefore_dispatch_policy(
+        self,
+        plan: ToolExecutionPlan,
+        context: ToolRuntimeContext,
+    ) -> BeforeDispatchPolicy | ToolOutcome:
+        try:
+            result = await await_with_abort(
+                self.runtime_extensions.before_dispatch(
+                    BeforeDispatchPolicy(plan=plan, context=context)
+                ),
+                context.get("abort_signal"),
+            )
+        except (AbortRequestedError, TaskInterruptRequestedError):
+            raise
+        except Exception as exc:
+            return self._failed_intent(
+                plan.intent,
+                status="blocked",
+                code="tool_policy_failed",
+                message=f"before_dispatch policy failed closed: {exc}",
+                feedback=plan.feedback,
+                arguments=plan.visible_arguments,
+            )
+        if isinstance(result, ToolOutcome):
+            return self._normalize_policy_outcome(
+                result,
+                intent=plan.intent,
+                feedback=plan.feedback,
+                arguments=plan.visible_arguments,
+            )
+        return result
+
     def _validate_before_dispatch_event(
         self,
         event: Any,
@@ -2131,6 +2242,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
         self,
         intent: ToolIntent,
         *,
+        context: ToolRuntimeContext,
         message: Any,
         messages: ChatMessages | List[Dict[str, Any]],
         vars: Mapping[str, Any],
@@ -2146,6 +2258,17 @@ class ToolLibrary(Module, metaclass=AutoParams):
             )
 
         tool, config = resolved
+        definition = self.get_tool_definition(intent.name)
+        before_policy = F.wait_for(
+            self._abefore_tool_policy,
+            intent,
+            definition,
+            context,
+        )
+        if isinstance(before_policy, ToolOutcome):
+            self._emit_policy_blocked(intent, before_policy, intent.arguments)
+            return before_policy
+        intent = before_policy.intent
         if config.get("defer_loading", False) and isinstance(messages, ChatMessages):
             messages.load_tools(self.name, [intent.name])
         visible_arguments, runtime_arguments = self._prepare_tool_kwargs(
@@ -2159,7 +2282,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
             activity_recorder=activity_recorder,
             tool_call_id=intent.id,
         )
-        feedback = self.get_tool_definition(intent.name).feedback
+        feedback = definition.feedback
         before_tool = self._run_before_tool_hook(
             tool_id=intent.id,
             tool_name=intent.name,
@@ -2192,12 +2315,26 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 feedback=feedback,
                 arguments=response_arguments,
             )
-        return self._with_dispatch_mode(plan, before_dispatch.dispatch_mode)
+        plan = self._with_dispatch_mode(plan, before_dispatch.dispatch_mode)
+        before_policy_dispatch = F.wait_for(
+            self._abefore_dispatch_policy,
+            plan,
+            context,
+        )
+        if isinstance(before_policy_dispatch, ToolOutcome):
+            self._emit_policy_blocked(
+                intent,
+                before_policy_dispatch,
+                response_arguments,
+            )
+            return before_policy_dispatch
+        return before_policy_dispatch.plan
 
     async def _aprepare_intent(
         self,
         intent: ToolIntent,
         *,
+        context: ToolRuntimeContext,
         message: Any,
         messages: ChatMessages | List[Dict[str, Any]],
         vars: Mapping[str, Any],
@@ -2213,6 +2350,16 @@ class ToolLibrary(Module, metaclass=AutoParams):
             )
 
         tool, config = resolved
+        definition = self.get_tool_definition(intent.name)
+        before_policy = await self._abefore_tool_policy(
+            intent,
+            definition,
+            context,
+        )
+        if isinstance(before_policy, ToolOutcome):
+            self._emit_policy_blocked(intent, before_policy, intent.arguments)
+            return before_policy
+        intent = before_policy.intent
         if config.get("defer_loading", False) and isinstance(messages, ChatMessages):
             messages.load_tools(self.name, [intent.name])
         visible_arguments, runtime_arguments = self._prepare_tool_kwargs(
@@ -2226,7 +2373,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
             activity_recorder=activity_recorder,
             tool_call_id=intent.id,
         )
-        feedback = self.get_tool_definition(intent.name).feedback
+        feedback = definition.feedback
         before_tool = await self._arun_before_tool_hook(
             tool_id=intent.id,
             tool_name=intent.name,
@@ -2259,7 +2406,16 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 feedback=feedback,
                 arguments=response_arguments,
             )
-        return self._with_dispatch_mode(plan, before_dispatch.dispatch_mode)
+        plan = self._with_dispatch_mode(plan, before_dispatch.dispatch_mode)
+        before_policy_dispatch = await self._abefore_dispatch_policy(plan, context)
+        if isinstance(before_policy_dispatch, ToolOutcome):
+            self._emit_policy_blocked(
+                intent,
+                before_policy_dispatch,
+                response_arguments,
+            )
+            return before_policy_dispatch
+        return before_policy_dispatch.plan
 
     def _dispatch_intent_plan(
         self,
@@ -2321,8 +2477,11 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 arguments=current.visible_arguments,
             )
 
-        outcome = await self.runtime_extensions.dispatch(
-            DispatchRequest(plan=plan, context=context, execute=execute)
+        outcome = await await_with_abort(
+            self.runtime_extensions.dispatch(
+                DispatchRequest(plan=plan, context=context, execute=execute)
+            ),
+            context.get("abort_signal"),
         )
         result = outcome.result
         if plan.dispatch.name == "detached" and result is None:
@@ -2330,7 +2489,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 f"The `{plan.intent.name}` tool was dispatched. "
                 "This tool will not generate a return."
             )
-        return ToolOutcome(
+        outcome = ToolOutcome(
             intent_id=outcome.intent_id,
             tool_name=outcome.tool_name,
             status=outcome.status,
@@ -2341,6 +2500,29 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 **dict(outcome.metadata),
                 **self._outcome_metadata(plan.visible_arguments),
             },
+        )
+        if outcome.intent_id != plan.intent.id or outcome.tool_name != plan.intent.name:
+            raise ValueError("Dispatch returned an outcome for another tool intent")
+        try:
+            after_policy = await await_with_abort(
+                self.runtime_extensions.after_tool(
+                    AfterToolPolicy(
+                        plan=plan,
+                        outcome=outcome,
+                        context=context,
+                    )
+                ),
+                context.get("abort_signal"),
+            )
+        except (AbortRequestedError, TaskInterruptRequestedError):
+            raise
+        except Exception:
+            return outcome
+        return self._normalize_policy_outcome(
+            after_policy.outcome,
+            intent=plan.intent,
+            feedback=plan.feedback,
+            arguments=plan.visible_arguments,
         )
 
     def _execute_intent_batch(
@@ -2367,6 +2549,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
         for index, intent in enumerate(intents):
             prepared = self._prepare_intent(
                 intent,
+                context=runtime_context,
                 message=message,
                 messages=messages,
                 vars=vars,
@@ -2438,6 +2621,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
         for index, intent in enumerate(intents):
             prepared = await self._aprepare_intent(
                 intent,
+                context=runtime_context,
                 message=message,
                 messages=messages,
                 vars=vars,

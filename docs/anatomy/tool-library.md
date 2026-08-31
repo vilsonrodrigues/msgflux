@@ -92,13 +92,16 @@ ToolIntent
   -> ToolLibrary.execute_intents(...)
   -> resolve tool by name
   -> read compiled ToolDefinition
+  -> run before_tool runtime policies
   -> prepare call params
   -> run before_tool lifecycle hooks
   -> build ToolExecutionPlan
   -> run before_dispatch lifecycle hooks
+  -> run before_dispatch runtime policies
      -> blocked: emit tool.blocked and return a tool error
   -> execute tools with scatter_gather
   -> run after_tool lifecycle hooks
+  -> run after_tool runtime policies
   -> return one ToolOutcome per ToolIntent
 ```
 
@@ -119,6 +122,14 @@ hooks inherited from the Agent when a library extension already denied the
 call. It does not stop preparation of sibling calls. `tool.blocked` is the
 terminal event for the denied call; `tool.start`, `after_tool`, and `tool.end`
 belong only to implementations that actually started.
+
+Runtime policies use the owned extension registry shared with dispatchers.
+They operate on `ToolIntent`, `ToolExecutionPlan`, and `ToolOutcome` rather than
+the compatibility hook events. Policies are sequential and monotonic: the first
+blocked outcome ends that phase for one intent. A failure before execution
+fails closed, while a failure in `after_tool` preserves the outcome already
+produced. Lifecycle hooks remain inside this canonical policy envelope during
+the compatibility period.
 
 `before_dispatch` receives the public arguments and normalized config alongside
 the selected `dispatch_mode`. Runtime injections remain private. Extensions may

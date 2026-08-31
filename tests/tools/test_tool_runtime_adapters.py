@@ -1,12 +1,14 @@
 from dataclasses import replace
 from threading import Event
 
+import msgspec
 import pytest
 
 from msgflux.exceptions import AbortRequestedError
+from msgflux.nn import ToolPolicy
 from msgflux.nn.hooks import Hook
 from msgflux.nn.modules.tool import ToolLibrary
-from msgflux.nn.modules.tool_v2 import ToolDispatch
+from msgflux.nn.modules.tool_v2 import DispatchSpec, ToolDispatch
 from msgflux.runtime.abort import AbortSignal
 from msgflux.runtime.context import execution_context
 from msgflux.tools.config import tool_config
@@ -282,3 +284,182 @@ async def test_custom_dispatch_extension_routes_async_execution():
 
     assert outcome.status == "dispatched"
     assert len(queue.requests) == 1
+
+
+def test_policy_extensions_wrap_legacy_hooks_in_registration_order():
+    observed = []
+
+    class AuditPolicy(ToolPolicy):
+        def __init__(self):
+            super().__init__("audit_policy")
+
+        async def before_tool(self, payload):
+            observed.append("policy.before_tool")
+            intent = msgspec.structs.replace(
+                payload.intent,
+                arguments={"value": payload.intent.arguments["value"] + 1},
+            )
+            return msgspec.structs.replace(payload, intent=intent)
+
+        async def before_dispatch(self, payload):
+            observed.append("policy.before_dispatch")
+            return payload
+
+        async def after_tool(self, payload):
+            observed.append("policy.after_tool")
+            outcome = msgspec.structs.replace(
+                payload.outcome,
+                result={"audited": payload.outcome.result},
+            )
+            return msgspec.structs.replace(payload, outcome=outcome)
+
+    def double(value: int) -> int:
+        observed.append("tool")
+        return value * 2
+
+    def before_tool(event):
+        observed.append("hook.before_tool")
+        return replace(event, arguments={"value": event.arguments["value"] + 1})
+
+    def before_dispatch(event):
+        observed.append("hook.before_dispatch")
+        return event
+
+    def after_tool(event):
+        observed.append("hook.after_tool")
+        return replace(event, result=event.result + 1)
+
+    library = ToolLibrary(
+        name="test",
+        tools=[double],
+        extensions=[AuditPolicy()],
+    )
+    Hook(event="before_tool", handler=before_tool).register(library)
+    Hook(event="before_dispatch", handler=before_dispatch).register(library)
+    Hook(event="after_tool", handler=after_tool).register(library)
+
+    outcome = library.execute_intents(
+        [ToolIntent(id="call_1", name="double", arguments={"value": 2})]
+    )[0]
+
+    assert outcome.result == {"audited": 9}
+    assert outcome.metadata["arguments"] == {"value": 4}
+    assert observed == [
+        "policy.before_tool",
+        "hook.before_tool",
+        "hook.before_dispatch",
+        "policy.before_dispatch",
+        "tool",
+        "hook.after_tool",
+        "policy.after_tool",
+    ]
+
+
+def test_blocking_policy_stops_later_policies_and_tool_execution():
+    observed = []
+
+    class BlockDangerousTool(ToolPolicy):
+        def __init__(self):
+            super().__init__("block_dangerous_tool")
+
+        async def before_tool(self, payload):
+            observed.append("blocked")
+            return ToolOutcome.failed(
+                payload.intent,
+                status="blocked",
+                code="policy_denied",
+                message="Command denied by policy.",
+            )
+
+    class MustNotRun(ToolPolicy):
+        def __init__(self):
+            super().__init__("must_not_run")
+
+        async def before_tool(self, payload):
+            observed.append("unexpected")
+            return payload
+
+    def dangerous(command: str) -> str:
+        raise AssertionError("blocked tool must not execute")
+
+    library = ToolLibrary(
+        name="test",
+        tools=[dangerous],
+        extensions=[BlockDangerousTool(), MustNotRun()],
+    )
+
+    outcome = library.execute_intents(
+        [
+            ToolIntent(
+                id="call_1",
+                name="dangerous",
+                arguments={"command": "delete home"},
+            )
+        ]
+    )[0]
+
+    assert outcome.status == "blocked"
+    assert outcome.error.code == "policy_denied"
+    assert outcome.error.message == "Command denied by policy."
+    assert observed == ["blocked"]
+
+
+def test_before_policy_failure_blocks_execution():
+    class BrokenPolicy(ToolPolicy):
+        def __init__(self):
+            super().__init__("broken_policy")
+
+        async def before_tool(self, payload):
+            raise RuntimeError("policy backend unavailable")
+
+    def deploy() -> str:
+        raise AssertionError("failed policy must block execution")
+
+    library = ToolLibrary(
+        name="test",
+        tools=[deploy],
+        extensions=[BrokenPolicy()],
+    )
+
+    outcome = library.execute_intents([ToolIntent(id="call_1", name="deploy")])[0]
+
+    assert outcome.status == "blocked"
+    assert outcome.error.code == "tool_policy_failed"
+    assert "failed closed" in outcome.error.message
+
+
+@pytest.mark.asyncio
+async def test_policy_can_replace_dispatch_and_after_policy_failure_is_nonfatal():
+    class ForegroundFallback(ToolPolicy):
+        def __init__(self):
+            super().__init__("foreground_fallback")
+
+        async def before_dispatch(self, payload):
+            plan = msgspec.structs.replace(
+                payload.plan,
+                dispatch=DispatchSpec(name="foreground"),
+            )
+            return msgspec.structs.replace(payload, plan=plan)
+
+        async def after_tool(self, payload):
+            raise RuntimeError("audit sink unavailable")
+
+    @tool_config(detached=True)
+    def calculate(value: int) -> int:
+        return value * 2
+
+    library = ToolLibrary(
+        name="test",
+        tools=[calculate],
+        extensions=[ForegroundFallback()],
+    )
+
+    outcome = (
+        await library.aexecute_intents(
+            [ToolIntent(id="call_1", name="calculate", arguments={"value": 3})]
+        )
+    )[0]
+
+    assert outcome.status == "completed"
+    assert outcome.result == 6
+    assert outcome.metadata["arguments"] == {"value": 3}

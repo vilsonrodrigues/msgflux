@@ -76,6 +76,84 @@ This boundary exposes public arguments and normalized config, not injected
 runtime values. It may reduce background/detached execution to foreground or
 block the call; it cannot promote a foreground call into detached execution.
 
+## Runtime Policies
+
+`ToolPolicy` is the typed extension boundary for rules that must apply to every
+canonical tool intent, including calls redirected through buckets and handles.
+Policies are asynchronous, so they may consult a remote authorization or audit
+service without blocking the event loop. The current execution abort signal
+cancels an in-flight policy or dispatcher await.
+
+This complete example blocks production deployments before the implementation
+can run:
+
+```python
+import msgflux.nn as nn
+from msgflux.tools import ToolIntent, ToolOutcome
+
+
+class ProductionGuard(nn.ToolPolicy):
+    def __init__(self):
+        super().__init__("production_guard")
+
+    async def before_tool(self, payload):
+        if (
+            payload.intent.name == "deploy"
+            and payload.intent.arguments.get("environment") == "production"
+        ):
+            return ToolOutcome.failed(
+                payload.intent,
+                status="blocked",
+                code="production_requires_approval",
+                message="Production deployment requires approval.",
+            )
+        return payload
+
+
+def deploy(environment: str) -> str:
+    """Deploy the current release to one environment."""
+    return f"deployed:{environment}"
+
+
+library = nn.ToolLibrary(
+    name="deployments",
+    tools=[deploy],
+    extensions=[ProductionGuard()],
+)
+
+outcome = library.execute_intents(
+    [
+        ToolIntent(
+            id="call_1",
+            name="deploy",
+            arguments={"environment": "production"},
+        )
+    ]
+)[0]
+
+assert outcome.status == "blocked"
+assert outcome.error.code == "production_requires_approval"
+```
+
+Policies run sequentially in registration order. The phases are:
+
+1. `before_tool` receives the provider-neutral intent before runtime arguments
+   are injected. It may replace only the intent arguments or return a blocked
+   `ToolOutcome`.
+2. `before_dispatch` receives the prepared `ToolExecutionPlan`. It may replace
+   only its dispatch spec or block the call.
+3. `after_tool` receives the outcome produced by the dispatcher and may replace
+   its result fields.
+
+The first blocked outcome stops later policies for that phase and affects only
+that tool call. An exception in `before_tool` or `before_dispatch` fails closed.
+An exception in `after_tool` preserves the outcome already produced.
+
+Existing lifecycle hooks remain supported. Their order is: policy
+`before_tool`, legacy `before_tool`, legacy `before_dispatch`, policy
+`before_dispatch`, tool execution, legacy `after_tool`, then policy
+`after_tool`.
+
 ## Custom Dispatch Modes
 
 `ToolDispatch` adds an execution mode without changing `ToolLibrary`. Its
