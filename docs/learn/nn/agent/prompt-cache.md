@@ -43,7 +43,7 @@ await agent.awarmup_system_prompt()
 response = await agent.acall("Check ticket MSGFLUX-42")
 ```
 
-## Fire And Forget
+## Detached Warmup
 
 Warmup can run in the background while the process continues initializing:
 

@@ -220,7 +220,7 @@ async def test_async_before_tool_is_sequential_and_block_is_call_local():
     assert response.tool_calls[1].result == "right"
 
 
-def test_before_dispatch_can_reduce_spawn_to_foreground():
+def test_before_dispatch_can_reduce_detached_to_foreground():
     observed_modes = []
 
     @tool_config(detached=True)
@@ -289,7 +289,7 @@ def test_before_dispatch_stops_after_first_block_and_fails_closed():
     assert response.tool_calls[0].error == "Dispatch denied."
 
 
-def test_before_dispatch_cannot_promote_foreground_to_spawn():
+def test_before_dispatch_cannot_promote_foreground_to_detached():
     def guarded() -> str:
         """Return a guarded result."""
         return "unsafe"
