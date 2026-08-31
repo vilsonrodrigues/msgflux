@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from typing import Any, Dict, List, Mapping
+from typing import TYPE_CHECKING, Any, Dict, List, Mapping
 
 from msgspec import Struct
+
+if TYPE_CHECKING:
+    from msgflux.nn.modules.tool_v2 import ToolCatalogEntry, ToolCatalogView
 
 
 class ToolSpec(Struct, kw_only=True):
@@ -19,6 +22,12 @@ class ToolSpec(Struct, kw_only=True):
     defer_loading: bool = False
     loaded: bool = False
     namespace: str | None = None
+    ref: Any | None = None
+    native_bindings: tuple[Any, ...] = ()
+    kind: str = "tool"
+    display_name: str | None = None
+    usage_guidance: str | None = None
+    catalog_role: str | None = None
 
     @classmethod
     def from_definition(
@@ -41,6 +50,33 @@ class ToolSpec(Struct, kw_only=True):
             defer_loading=bool(getattr(loading, "deferred", False)),
             loaded=loaded,
             namespace=namespace,
+            native_bindings=tuple(getattr(definition, "native_bindings", ())),
+            kind=getattr(definition, "kind", "tool"),
+            display_name=getattr(definition, "display_name", None),
+            usage_guidance=getattr(definition, "usage_guidance", None),
+            catalog_role=metadata.get("catalog_role")
+            if isinstance(metadata, Mapping)
+            else None,
+        )
+
+    @classmethod
+    def from_catalog_entry(cls, entry: ToolCatalogEntry) -> ToolSpec:
+        """Adapt one canonical catalog entry for legacy provider consumers."""
+        return cls(
+            name=entry.name,
+            description=entry.description,
+            parameters=deepcopy(dict(entry.input_schema)),
+            strict=entry.strict,
+            annotations=deepcopy(dict(entry.annotations)) or None,
+            defer_loading=entry.deferred,
+            loaded=entry.loaded,
+            namespace=entry.namespace,
+            ref=entry.ref,
+            native_bindings=tuple(entry.native_bindings),
+            kind=entry.kind,
+            display_name=entry.display_name,
+            usage_guidance=entry.usage_guidance,
+            catalog_role=entry.catalog_role,
         )
 
     @classmethod
@@ -106,6 +142,25 @@ class ToolCatalog(Struct, kw_only=True):
     choice: str | Dict[str, Any] | None = None
     catalog_id: str | None = None
     search_tool: ToolSpec | None = None
+
+    @classmethod
+    def from_view(cls, view: ToolCatalogView) -> ToolCatalog:
+        """Adapt one canonical thread view for legacy Agent and Model paths."""
+        choice = None
+        if view.choice.mode in {"none", "required"}:
+            choice = view.choice.mode
+        elif view.choice.mode == "tool":
+            choice = view.choice.name
+        return cls(
+            tools=[ToolSpec.from_catalog_entry(entry) for entry in view.tool_entries()],
+            choice=choice,
+            catalog_id=view.library_id,
+            search_tool=(
+                ToolSpec.from_catalog_entry(view.search_entry)
+                if view.search_entry is not None
+                else None
+            ),
+        )
 
     @classmethod
     def from_function_schemas(

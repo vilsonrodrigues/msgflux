@@ -28,6 +28,7 @@ from msgflux.nn.modules.tool_v2 import (
 )
 from msgflux.protocols.mcp.types import MCPContent, MCPToolResult
 from msgflux.runtime.abort import AbortSignal
+from msgflux.tools.definitions import ToolCatalog
 
 
 class RecordingExecutor(Module):
@@ -172,6 +173,99 @@ def test_catalog_selection_can_expose_one_unloaded_deferred_tool():
 
     assert [entry.name for entry in view.visible_entries()] == ["reconcile"]
     assert view.choice.mode == "tool"
+
+
+@pytest.mark.parametrize(
+    ("choice", "expected_name"),
+    [
+        ({"type": "function", "function": {"name": "reconcile"}}, "reconcile"),
+        ({"type": "function", "name": "reconcile"}, "reconcile"),
+    ],
+)
+def test_catalog_choice_normalizes_provider_function_shapes(choice, expected_name):
+    registry = ToolRegistry("warehouse_tools", [make_definition("reconcile")])
+
+    view = registry.catalog_view("thread_a", choice=choice)
+
+    assert view.choice.mode == "tool"
+    assert view.choice.name == expected_name
+
+
+def test_catalog_choice_rejects_provider_specific_non_function_shape():
+    registry = ToolRegistry("warehouse_tools", [make_definition("reconcile")])
+
+    with pytest.raises(ValueError, match="must select a function tool"):
+        registry.catalog_view(
+            "thread_a",
+            choice={"type": "computer", "name": "reconcile"},
+        )
+
+
+def test_catalog_view_identifies_search_by_role_and_preserves_entry_metadata():
+    search = make_definition(
+        "discover",
+        metadata={"catalog_role": "search"},
+    )
+    deferred = make_definition(
+        "remote_lookup",
+        loading=LoadingSpec(deferred=True),
+        metadata={
+            "strict": True,
+            "execution_namespace": "remote",
+        },
+    )
+    registry = ToolRegistry("warehouse_tools", [search, deferred])
+
+    unloaded = registry.catalog_view("thread_a")
+    loaded = registry.catalog_view(
+        "thread_a",
+        loaded_tools=("remote_lookup",),
+    )
+    selected = registry.catalog_view("thread_b", choice="remote_lookup")
+
+    assert unloaded.search_entry.name == "discover"
+    assert [entry.name for entry in unloaded.visible_entries()] == ["discover"]
+    assert [entry.name for entry in loaded.visible_entries()] == ["remote_lookup"]
+    assert [entry.name for entry in selected.visible_entries()] == ["remote_lookup"]
+    assert unloaded.tool_entries()[0].strict is True
+    assert unloaded.tool_entries()[0].namespace == "remote"
+
+
+def test_legacy_catalog_adapter_preserves_canonical_view_semantics():
+    registry = ToolRegistry(
+        "warehouse_tools",
+        [
+            make_definition("discover", metadata={"catalog_role": "search"}),
+            make_definition(
+                "remote_lookup",
+                loading=LoadingSpec(deferred=True),
+                metadata={"strict": True, "execution_namespace": "remote"},
+            ),
+        ],
+    )
+    view = registry.catalog_view("thread_a", choice="remote_lookup")
+
+    catalog = ToolCatalog.from_view(view)
+
+    assert catalog.catalog_id == "warehouse_tools"
+    assert catalog.choice == "remote_lookup"
+    assert catalog.search_tool.name == "discover"
+    assert catalog.tools[0].strict is True
+    assert catalog.tools[0].namespace == "remote"
+    assert catalog.tools[0].ref == registry.ref("remote_lookup")
+    assert [tool.name for tool in catalog.portable_tools()] == ["remote_lookup"]
+
+
+def test_catalog_view_can_project_public_subset_without_losing_registry_entries():
+    registry = ToolRegistry(
+        "warehouse_tools",
+        [make_definition("bucket"), make_definition("captured")],
+    )
+
+    view = registry.catalog_view("thread_a", include_tools=("bucket",))
+
+    assert [entry.name for entry in view.entries] == ["bucket"]
+    assert registry.has("captured")
 
 
 @pytest.mark.asyncio

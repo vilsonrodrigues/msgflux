@@ -10,6 +10,7 @@ class ToolSearchTool(ToolBucket, ToolLibraryOperator):
     """Search and load deferred tools for the current thread."""
 
     name = "tool_search"
+    catalog_role = "search"
     tool_config = {"runtime_inputs": ("handle", "messages")}
     capture = {"defer_loading": True}
     expose_captured_names = True

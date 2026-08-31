@@ -82,6 +82,32 @@ Those methods are used for different reasons.
 - transport restoration after structured output decoding
 - typed reconstruction of lowered values before local tool execution
 
+### Canonical Catalog Projection
+
+`ToolCatalogView` is the canonical, immutable catalog snapshot. The registry
+projects it from stable definitions plus thread-local loaded names. Every entry
+retains the provider-neutral schema, annotations, strict mode, execution
+namespace, native bindings, tool kind, display metadata, and stable `ToolRef`.
+The view therefore contains enough information for a Model adapter without
+accessing an executor or reading `tool_config` again.
+
+The library explicitly selects which registered definitions belong to its
+model-facing surface. A normal executable bucket appears as one public tool;
+its captured children remain resolvable in the registry but do not leak into
+the catalog. The deferred-search bucket intentionally exposes its captured
+children because they are the searchable definitions.
+
+Search is identified by the entry's `catalog_role="search"`, not by a reserved
+tool name. `entries` remains stable for the lifetime of the snapshot, while
+`visible_entries()` derives the portable callable surface. It exposes loaded
+or directly selected deferred tools and includes the portable search entry only
+while unresolved deferred tools remain.
+
+`ToolCatalog` is currently a compatibility adapter produced by
+`ToolCatalog.from_view(...)` for Agent and Model paths that have not migrated
+yet. This conversion is one-way: registration, loading, filtering, and choice
+validation happen in the canonical view rather than in the legacy catalog.
+
 ### 2. Runtime
 
 The Model decodes provider calls into `ToolIntent` values. The Agent passes

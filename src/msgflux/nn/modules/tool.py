@@ -76,7 +76,7 @@ from msgflux.telemetry.span import (
     set_tool_attributes,
 )
 from msgflux.tools.dataclasses import ToolMetadata
-from msgflux.tools.definitions import ToolCatalog, ToolSpec
+from msgflux.tools.definitions import ToolCatalog
 from msgflux.tools.handles import ToolLibraryHandle
 from msgflux.tools.helpers import (
     RESERVED_TOOL_KINDS,
@@ -1128,59 +1128,48 @@ class ToolLibrary(Module, metaclass=AutoParams):
 
     def get_tool_catalog(self, messages: ChatMessages | None = None) -> ToolCatalog:
         """Build the logical tool surface for one conversation thread."""
+        return ToolCatalog.from_view(
+            self._build_tool_catalog_view(messages, require_thread=False)
+        )
+
+    def _build_tool_catalog_view(
+        self,
+        messages: ChatMessages | None,
+        *,
+        choice: ToolChoice | str | Mapping[str, Any] | None = None,
+        require_thread: bool,
+    ) -> ToolCatalogView:
+        if require_thread and not isinstance(messages, ChatMessages):
+            raise TypeError("`messages` must be ChatMessages")
+        thread_id = messages.thread_id if isinstance(messages, ChatMessages) else None
+        if require_thread and (not isinstance(thread_id, str) or not thread_id):
+            raise ValueError("Tool catalog views require a configured thread id")
+        if not isinstance(thread_id, str) or not thread_id:
+            thread_id = f"{self.name}:unscoped"
+        catalog_names = set(self.get_tool_names())
         loaded = (
             messages.get_loaded_tools(self.name)
             if isinstance(messages, ChatMessages)
             else set()
         )
-        tools: list[ToolSpec] = []
-        search_tool: ToolSpec | None = None
-
-        for tool_name, tool in self.library.items():
-            if tool_name == "tool_search":
-                search_tool = ToolSpec.from_definition(
-                    self.registry.get(tool_name),
-                )
-                bucket = getattr(tool, "impl", None)
-                if isinstance(bucket, ToolBucket):
-                    for metadata in bucket.tools.values():
-                        definition = metadata.definition
-                        if not isinstance(definition, RuntimeToolDefinition):
-                            raise RuntimeError(
-                                f"Tool `{metadata.name}` has no compiled definition"
-                            )
-                        tools.append(
-                            ToolSpec.from_definition(
-                                definition,
-                                loaded=metadata.name in loaded,
-                            )
-                        )
-                continue
-            tools.append(ToolSpec.from_definition(self.registry.get(tool_name)))
-
-        return ToolCatalog(
-            tools=tools,
-            catalog_id=self.name,
-            search_tool=search_tool,
+        return self.registry.catalog_view(
+            thread_id,
+            loaded_tools=loaded & catalog_names,
+            choice=choice,
+            include_tools=catalog_names,
         )
 
     def get_tool_catalog_view(
         self,
         messages: ChatMessages,
         *,
-        choice: ToolChoice | str | None = None,
+        choice: ToolChoice | str | Mapping[str, Any] | None = None,
     ) -> ToolCatalogView:
         """Return an immutable definition view for one configured thread."""
-        if not isinstance(messages, ChatMessages):
-            raise TypeError("`messages` must be ChatMessages")
-        if not isinstance(messages.thread_id, str) or not messages.thread_id:
-            raise ValueError("Tool catalog views require a configured thread id")
-        registered = {definition.name for definition in self.registry.definitions()}
-        loaded = messages.get_loaded_tools(self.name) & registered
-        return self.registry.catalog_view(
-            messages.thread_id,
-            loaded_tools=loaded,
+        return self._build_tool_catalog_view(
+            messages,
             choice=choice,
+            require_thread=True,
         )
 
     @staticmethod

@@ -132,10 +132,7 @@ def test_library_catalog_view_is_scoped_to_chat_messages_thread():
     second_view = library.get_tool_catalog_view(second)
 
     assert first_view.thread_id == "thread_a"
-    assert [entry.name for entry in first_view.visible_entries()] == [
-        "tool_search",
-        "lookup",
-    ]
+    assert [entry.name for entry in first_view.visible_entries()] == ["lookup"]
     assert [entry.name for entry in second_view.visible_entries()] == ["tool_search"]
     assert [entry.name for entry in second_view.entries] == ["tool_search", "lookup"]
 

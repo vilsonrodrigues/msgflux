@@ -2,6 +2,7 @@ import asyncio
 
 import pytest
 
+from msgflux.chat_messages import ChatMessages
 from msgflux.nn.modules.tool import ToolLibrary
 from msgflux.nn.modules.tool_v2 import ToolDispatch, ToolPolicy, ToolRef
 from msgflux.tools.config import tool_config
@@ -57,9 +58,11 @@ def test_bucket_handle_resolves_captured_tool_by_ref_without_accessing_impl():
     handle = library.get_handle().for_tool(tool_name="worker")
 
     result = handle(ref, value=4)
+    view = library.get_tool_catalog_view(ChatMessages(thread_id="thread_1"))
 
     assert ref == library.get_tool_ref("double")
     assert result == 8
+    assert [entry.name for entry in view.entries] == ["worker"]
 
 
 def test_bucket_handle_applies_policy_before_captured_tool_execution():

@@ -95,7 +95,7 @@ first_view = agent.tool_library.get_tool_catalog_view(first)
 second_view = agent.tool_library.get_tool_catalog_view(second)
 
 print([entry.name for entry in first_view.visible_entries()])
-# ["tool_search", "query_finance_report"]
+# ["query_finance_report"]
 print([entry.name for entry in second_view.visible_entries()])
 # ["tool_search"]
 ```
@@ -104,6 +104,13 @@ Both views retain `query_finance_report` in `entries`; only `loaded` and the
 derived visible projection differ. A view requires a `ChatMessages` instance
 with a configured `thread_id`, making accidental process-global activation
 explicitly invalid.
+
+Each entry is an execution-free description containing its stable reference,
+input schema, annotations, native bindings, loading state, and display
+metadata. The search tool is marked by a semantic catalog role instead of a
+reserved name. Once no unresolved deferred tools remain, the portable search
+entry disappears from `visible_entries()` without mutating the underlying
+catalog.
 
 The executable catalog is not mutated. This means simultaneous threads can
 share one agent safely while exposing different tool subsets. The state is also

@@ -217,16 +217,28 @@ class ToolChoice(msgspec.Struct, frozen=True, kw_only=True):
             raise ValueError("`choice.name` is only valid when mode is `tool`")
 
     @classmethod
-    def coerce(cls, value: ToolChoice | str | None) -> ToolChoice:
+    def coerce(
+        cls,
+        value: ToolChoice | str | Mapping[str, Any] | None,
+    ) -> ToolChoice:
         if value is None:
             return cls()
         if isinstance(value, cls):
             return value
-        if not isinstance(value, str) or not value.strip():
-            raise TypeError("`choice` must be a ToolChoice, string, or None")
-        if value in {"auto", "none", "required"}:
-            return cls(mode=value)
-        return cls(mode="tool", name=value)
+        if isinstance(value, Mapping):
+            function = value.get("function")
+            if value.get("type") == "function" and isinstance(function, Mapping):
+                name = function.get("name")
+            elif value.get("type") == "function":
+                name = value.get("name")
+            else:
+                raise ValueError("Tool choice mappings must select a function tool")
+            return cls(mode="tool", name=_require_name(name, "choice.name"))
+        if isinstance(value, str) and value.strip():
+            if value in {"auto", "none", "required"}:
+                return cls(mode=value)
+            return cls(mode="tool", name=value)
+        raise TypeError("`choice` must be a ToolChoice, string, mapping, or None")
 
 
 class ToolDefinition(msgspec.Struct, frozen=True, kw_only=True):
@@ -318,6 +330,7 @@ class ToolDefinitionCompiler:
         runtime_metadata = {
             **schema_metadata,
             "declaration": config,
+            "catalog_role": getattr(metadata.impl, "catalog_role", None),
             "execution_namespace": metadata.execution_namespace,
             "background_capabilities": config.get("background_capabilities"),
             "disable_input": bool(config.get("disable_input", False)),
@@ -474,6 +487,9 @@ class ToolCatalogEntry(msgspec.Struct, frozen=True, kw_only=True):
     input_schema: Mapping[str, Any]
     annotations: Mapping[str, Any] = msgspec.field(default_factory=dict)
     native_bindings: tuple[NativeToolBinding, ...] = ()
+    strict: bool | None = None
+    namespace: str | None = None
+    catalog_role: str | None = None
     kind: str = "tool"
     deferred: bool = False
     loaded: bool = False
@@ -487,6 +503,20 @@ class ToolCatalogEntry(msgspec.Struct, frozen=True, kw_only=True):
             raise TypeError("`deferred` and `loaded` must be bool values")
         if self.loaded and not self.deferred:
             raise ValueError("Only deferred tools can be marked as loaded")
+        if self.strict is not None and not isinstance(self.strict, bool):
+            raise TypeError("`strict` must be bool or None")
+        if self.namespace is not None:
+            msgspec.structs.force_setattr(
+                self,
+                "namespace",
+                _require_name(self.namespace, "namespace"),
+            )
+        if self.catalog_role is not None:
+            msgspec.structs.force_setattr(
+                self,
+                "catalog_role",
+                _require_name(self.catalog_role, "catalog_role"),
+            )
         msgspec.structs.force_setattr(self, "kind", _require_name(self.kind, "kind"))
         msgspec.structs.force_setattr(
             self,
@@ -517,6 +547,9 @@ class ToolCatalogEntry(msgspec.Struct, frozen=True, kw_only=True):
             input_schema=definition.input_schema,
             annotations=definition.annotations,
             native_bindings=definition.native_bindings,
+            strict=definition.metadata.get("strict"),
+            namespace=definition.metadata.get("execution_namespace"),
+            catalog_role=definition.metadata.get("catalog_role"),
             kind=definition.kind,
             deferred=definition.loading.deferred,
             loaded=loaded,
@@ -531,7 +564,9 @@ class ToolCatalogView(msgspec.Struct, frozen=True, kw_only=True):
     library_id: str
     thread_id: str
     entries: tuple[ToolCatalogEntry, ...]
-    choice: ToolChoice | str = msgspec.field(default_factory=ToolChoice)
+    choice: ToolChoice | str | Mapping[str, Any] = msgspec.field(
+        default_factory=ToolChoice
+    )
 
     def __post_init__(self) -> None:
         msgspec.structs.force_setattr(
@@ -563,18 +598,42 @@ class ToolCatalogView(msgspec.Struct, frozen=True, kw_only=True):
             raise ValueError(f"Selected tool `{choice.name}` is not in the catalog")
         msgspec.structs.force_setattr(self, "entries", entries)
         msgspec.structs.force_setattr(self, "choice", choice)
+        search_entries = [entry for entry in entries if entry.catalog_role == "search"]
+        if len(search_entries) > 1:
+            raise ValueError("Tool catalog views support at most one search entry")
+        if search_entries and search_entries[0].deferred:
+            raise ValueError("The tool catalog search entry cannot be deferred")
+
+    @property
+    def search_entry(self) -> ToolCatalogEntry | None:
+        return next(
+            (entry for entry in self.entries if entry.catalog_role == "search"),
+            None,
+        )
+
+    def tool_entries(self) -> tuple[ToolCatalogEntry, ...]:
+        search = self.search_entry
+        return tuple(entry for entry in self.entries if entry is not search)
 
     @property
     def has_deferred(self) -> bool:
-        return any(entry.deferred and not entry.loaded for entry in self.entries)
+        selected = self.choice.name if self.choice.mode == "tool" else None
+        return any(
+            entry.deferred and not entry.loaded and entry.name != selected
+            for entry in self.tool_entries()
+        )
 
     def visible_entries(self) -> tuple[ToolCatalogEntry, ...]:
         selected = self.choice.name if self.choice.mode == "tool" else None
-        return tuple(
+        visible = tuple(
             entry
-            for entry in self.entries
+            for entry in self.tool_entries()
             if not entry.deferred or entry.loaded or entry.name == selected
         )
+        search = self.search_entry
+        if self.has_deferred and search is not None:
+            return (*visible, search)
+        return visible
 
 
 class ToolRegistry(Module):
@@ -654,10 +713,18 @@ class ToolRegistry(Module):
         thread_id: str,
         *,
         loaded_tools: Collection[str] = (),
-        choice: ToolChoice | str | None = None,
+        choice: ToolChoice | str | Mapping[str, Any] | None = None,
+        include_tools: Collection[str] | None = None,
     ) -> ToolCatalogView:
+        included = (
+            set(self._definitions) if include_tools is None else set(include_tools)
+        )
+        unknown_included = included - self._definitions.keys()
+        if unknown_included:
+            formatted = ", ".join(f"`{name}`" for name in sorted(unknown_included))
+            raise ValueError(f"Catalog tools are not registered: {formatted}")
         loaded = set(loaded_tools)
-        unknown = loaded - self._definitions.keys()
+        unknown = loaded - included
         if unknown:
             formatted = ", ".join(f"`{name}`" for name in sorted(unknown))
             raise ValueError(f"Loaded tools are not registered: {formatted}")
@@ -674,6 +741,7 @@ class ToolRegistry(Module):
                 loaded=definition.name in loaded,
             )
             for definition in self._definitions.values()
+            if definition.name in included
         )
         return ToolCatalogView(
             library_id=self.library_id,
@@ -1419,7 +1487,7 @@ class ToolLibraryV2(Module):
         thread_id: str,
         *,
         loaded_tools: Collection[str] = (),
-        choice: ToolChoice | str | None = None,
+        choice: ToolChoice | str | Mapping[str, Any] | None = None,
     ) -> ToolCatalogView:
         return self.registry.catalog_view(
             thread_id,
