@@ -57,6 +57,7 @@ from msgflux.nn.extensions.base import (
     _ExtensionHook,
     _get_extension_snapshot,
 )
+from msgflux.nn.extensions.feedback import DefaultToolFeedbackExtension
 from msgflux.nn.extensions.prompt import ToolUsageGuidanceExtension
 from msgflux.nn.extensions.skills import SkillsExtension
 from msgflux.nn.functional import aspawn, await_for_event, spawn, wait_for_event
@@ -72,6 +73,7 @@ from msgflux.nn.hooks.events import (
     OutputContext,
     RunEndContext,
     ToolCatalogContext,
+    ToolFeedbackContext,
 )
 from msgflux.nn.modules.container import ModuleDict
 from msgflux.nn.modules.generator import Generator
@@ -95,6 +97,7 @@ from msgflux.runtime.event_hub import ThreadWatcher, get_event_hub
 from msgflux.runtime.events import EventType, emit_event
 from msgflux.runtime.skills import SkillsConfig
 from msgflux.tools.definitions import ToolCatalog, ToolSpec
+from msgflux.tools.runtime import ToolIntent, ToolOutcome
 from msgflux.utils.chat import ChatBlock, response_format_from_msgspec_struct
 from msgflux.utils.common import has_format_placeholder, is_jinja_template
 from msgflux.utils.console import cprint
@@ -555,6 +558,11 @@ class Agent(Module, metaclass=AutoParams):
             self.register_extension(
                 "tool_usage_guidance",
                 ToolUsageGuidanceExtension(),
+            )
+        if "tool_feedback" not in configured_extension_names:
+            self.register_extension(
+                "tool_feedback",
+                DefaultToolFeedbackExtension(),
             )
         if extensions:
             self._set_extensions(extensions)
@@ -2097,33 +2105,33 @@ class Agent(Module, metaclass=AutoParams):
                         repr_str = f"[{self.name}][tool_calls_reasoning] {reasoning}"
                         cprint(repr_str, bc="br2", ls="b")
 
-                tool_callings = raw_response.get_calls()
+                tool_intents = model_response.get_tool_intents()
                 try:
-                    tool_results = self._process_tool_call(
-                        tool_callings, message, messages, vars
+                    tool_outcomes = self._process_tool_intents(
+                        tool_intents, message, messages, vars
                     )
                 except TaskInterruptRequestedError as exc:
                     self._append_interrupted_tool_response_messages(
                         messages,
-                        raw_response,
+                        model_response,
                         reason=str(exc),
                     )
                     raise
                 completed_tool_turns += 1
 
-                if tool_results.return_directly:
-                    tool_calls = tool_results.to_dict()
-                    tool_calls.pop("return_directly")
-                    tool_calls["reasoning"] = reasoning
-                    tool_responses = dotdict(tool_responses=tool_calls)
-                    return tool_responses, messages
+                feedback = self._resolve_tool_feedback(
+                    tool_intents,
+                    tool_outcomes,
+                    messages=messages,
+                    vars=vars,
+                    reasoning=reasoning,
+                )
+                if feedback.action == "return":
+                    return feedback.output, messages
 
-                id_results = {
-                    call.id: call.result or call.error
-                    for call in tool_results.tool_calls
-                }
-                raw_response.insert_results(id_results)
-                tool_responses_message = raw_response.get_messages()
+                tool_responses_message = model_response.render_tool_outcomes(
+                    tool_outcomes
+                )
                 self._extend_tool_response_history(messages, tool_responses_message)
                 self._drain_inbox_into_messages(messages, vars=vars)
                 self._checkpoint_save(messages, vars)
@@ -2200,33 +2208,33 @@ class Agent(Module, metaclass=AutoParams):
                         repr_str = f"[{self.name}][tool_calls_reasoning] {reasoning}"
                         cprint(repr_str, bc="br2", ls="b")
 
-                tool_callings = raw_response.get_calls()
+                tool_intents = model_response.get_tool_intents()
                 try:
-                    tool_results = await self._aprocess_tool_call(
-                        tool_callings, message, messages, vars
+                    tool_outcomes = await self._aprocess_tool_intents(
+                        tool_intents, message, messages, vars
                     )
                 except TaskInterruptRequestedError as exc:
                     self._append_interrupted_tool_response_messages(
                         messages,
-                        raw_response,
+                        model_response,
                         reason=str(exc),
                     )
                     raise
                 completed_tool_turns += 1
 
-                if tool_results.return_directly:
-                    tool_calls = tool_results.to_dict()
-                    tool_calls.pop("return_directly")
-                    tool_calls["reasoning"] = reasoning
-                    tool_responses = dotdict(tool_responses=tool_calls)
-                    return tool_responses, messages
+                feedback = await self._aresolve_tool_feedback(
+                    tool_intents,
+                    tool_outcomes,
+                    messages=messages,
+                    vars=vars,
+                    reasoning=reasoning,
+                )
+                if feedback.action == "return":
+                    return feedback.output, messages
 
-                id_results = {
-                    call.id: call.result or call.error
-                    for call in tool_results.tool_calls
-                }
-                raw_response.insert_results(id_results)
-                tool_responses_message = raw_response.get_messages()
+                tool_responses_message = model_response.render_tool_outcomes(
+                    tool_outcomes
+                )
                 self._extend_tool_response_history(messages, tool_responses_message)
                 await self._adrain_inbox_into_messages(messages, vars=vars)
                 await self._acheckpoint_save(messages, vars)
@@ -2239,6 +2247,139 @@ class Agent(Module, metaclass=AutoParams):
                 vars=vars,
                 tool_filter=tool_filter,
             )
+
+    def _process_tool_intents(
+        self,
+        intents: tuple[ToolIntent, ...],
+        message: Union[str, Mapping[str, Any], Message],
+        messages: Union[ChatMessages, List[Mapping[str, Any]]],
+        vars: Mapping[str, Any],
+    ) -> tuple[ToolOutcome, ...]:
+        self.tool_library.set_lifecycle_owner(self)
+        self._log_tool_intents(intents)
+        outcomes = self.tool_library.execute_intents(
+            intents,
+            message=message,
+            messages=messages,
+            vars=vars,
+        )
+        self._log_tool_outcomes(outcomes)
+        return outcomes
+
+    async def _aprocess_tool_intents(
+        self,
+        intents: tuple[ToolIntent, ...],
+        message: Union[str, Mapping[str, Any], Message],
+        messages: Union[ChatMessages, List[Mapping[str, Any]]],
+        vars: Mapping[str, Any],
+    ) -> tuple[ToolOutcome, ...]:
+        self.tool_library.set_lifecycle_owner(self)
+        self._log_tool_intents(intents)
+        outcomes = await self.tool_library.aexecute_intents(
+            intents,
+            message=message,
+            messages=messages,
+            vars=vars,
+        )
+        self._log_tool_outcomes(outcomes)
+        return outcomes
+
+    def _log_tool_intents(self, intents: tuple[ToolIntent, ...]) -> None:
+        if not self.config.get("verbose", False):
+            return
+        for intent in intents:
+            repr_str = f"[{self.name}][tool_call] {intent.name}: {intent.arguments}"
+            cprint(repr_str, bc="br2", ls="b")
+
+    def _log_tool_outcomes(self, outcomes: tuple[ToolOutcome, ...]) -> None:
+        if not self.config.get("verbose", False):
+            return
+        repr_str = f"[{self.name}][tool_responses]"
+        cprint(repr_str, bc="br1", ls="b")
+        for outcome in outcomes:
+            result = (
+                outcome.error.message if outcome.error is not None else outcome.result
+            )
+            repr_str = (
+                f"[{self.name}][tool_response] {outcome.tool_name}: {result or ''}"
+            )
+            cprint(repr_str, ls="b")
+
+    @staticmethod
+    def _validate_tool_feedback_context(
+        context: Any,
+    ) -> ToolFeedbackContext:
+        if not isinstance(context, ToolFeedbackContext):
+            raise TypeError(
+                "Agent `resolve_tool_feedback` hooks must return ToolFeedbackContext"
+            )
+        if context.action not in {"continue", "return"}:
+            raise ValueError(
+                "ToolFeedbackContext.action must be `continue` or `return`"
+            )
+        return context
+
+    def _tool_feedback_context(
+        self,
+        intents: tuple[ToolIntent, ...],
+        outcomes: tuple[ToolOutcome, ...],
+        *,
+        messages: Union[ChatMessages, List[Mapping[str, Any]]],
+        vars: Mapping[str, Any],
+        reasoning: str | None,
+    ) -> ToolFeedbackContext:
+        return ToolFeedbackContext(
+            scope=get_execution_context()["scope"],
+            vars=vars,
+            intents=intents,
+            outcomes=outcomes,
+            messages=messages,
+            reasoning=reasoning,
+        )
+
+    def _resolve_tool_feedback(
+        self,
+        intents: tuple[ToolIntent, ...],
+        outcomes: tuple[ToolOutcome, ...],
+        *,
+        messages: Union[ChatMessages, List[Mapping[str, Any]]],
+        vars: Mapping[str, Any],
+        reasoning: str | None,
+    ) -> ToolFeedbackContext:
+        context = self._run_lifecycle_hooks(
+            "resolve_tool_feedback",
+            self._tool_feedback_context(
+                intents,
+                outcomes,
+                messages=messages,
+                vars=vars,
+                reasoning=reasoning,
+            ),
+            stop_when=lambda current: getattr(current, "action", None) != "continue",
+        )
+        return self._validate_tool_feedback_context(context)
+
+    async def _aresolve_tool_feedback(
+        self,
+        intents: tuple[ToolIntent, ...],
+        outcomes: tuple[ToolOutcome, ...],
+        *,
+        messages: Union[ChatMessages, List[Mapping[str, Any]]],
+        vars: Mapping[str, Any],
+        reasoning: str | None,
+    ) -> ToolFeedbackContext:
+        context = await self._arun_lifecycle_hooks(
+            "resolve_tool_feedback",
+            self._tool_feedback_context(
+                intents,
+                outcomes,
+                messages=messages,
+                vars=vars,
+                reasoning=reasoning,
+            ),
+            stop_when=lambda current: getattr(current, "action", None) != "continue",
+        )
+        return self._validate_tool_feedback_context(context)
 
     def _process_tool_call(
         self,
@@ -3496,13 +3637,13 @@ class Agent(Module, metaclass=AutoParams):
             for item in messages
             if item.get("type") == "function_call"
         }
-        raw_response = getattr(model_response, "data", None)
-        get_calls = getattr(raw_response, "get_calls", None)
-        if callable(get_calls):
+        get_tool_intents = getattr(model_response, "get_tool_intents", None)
+        if callable(get_tool_intents):
             missing_calls = []
-            for call_id, name, arguments in get_calls():
-                if call_id in existing_call_ids:
+            for intent in get_tool_intents():
+                if intent.id in existing_call_ids:
                     continue
+                arguments = intent.arguments
                 if isinstance(arguments, str):
                     serialized_arguments = arguments
                 else:
@@ -3512,12 +3653,12 @@ class Agent(Module, metaclass=AutoParams):
                 missing_calls.append(
                     {
                         "type": "function_call",
-                        "call_id": call_id,
-                        "name": name,
+                        "call_id": intent.id,
+                        "name": intent.name,
                         "arguments": serialized_arguments,
                     }
                 )
-                existing_call_ids.add(call_id)
+                existing_call_ids.add(intent.id)
             messages.extend(missing_calls)
             trajectory_items.extend(missing_calls)
 
@@ -3643,26 +3784,27 @@ class Agent(Module, metaclass=AutoParams):
     def _append_interrupted_tool_response_messages(
         self,
         messages: Union[ChatMessages, List[Mapping[str, Any]]],
-        raw_response: Any,
+        model_response: Union[ModelResponse, ModelStreamResponse],
         *,
         reason: str | None = None,
     ) -> None:
-        if not hasattr(raw_response, "get_calls") or not hasattr(
-            raw_response,
-            "insert_results",
-        ):
+        intents = model_response.get_tool_intents()
+        if not intents:
             self._close_interrupted_tool_calls(messages, reason=reason)
             return
 
-        interrupted_output = ChatMessages._interrupted_tool_call_output(reason)
-        raw_response.insert_results(
-            {
-                call_id: interrupted_output
-                for call_id, _tool_name, _parameters in raw_response.get_calls()
-                if isinstance(call_id, str) and call_id
-            }
+        interrupted_outcomes = tuple(
+            ToolOutcome.failed(
+                intent,
+                status="interrupted",
+                code="tool_interrupted",
+                message=reason or "Tool call interrupted.",
+            )
+            for intent in intents
         )
-        tool_response_messages = raw_response.get_messages()
+        tool_response_messages = model_response.render_tool_outcomes(
+            interrupted_outcomes
+        )
         self._extend_tool_response_history(messages, tool_response_messages)
         self._close_interrupted_tool_calls(messages, reason=reason)
 

@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from msgflux.nn.extensions.base import AgentExtension, AgentExtensionHandle
+    from msgflux.nn.extensions.feedback import DefaultToolFeedbackExtension
     from msgflux.nn.extensions.prompt import (
         CurrentDateExtension,
         ToolUsageGuidanceExtension,
@@ -29,6 +30,7 @@ __all__ = [
     "ToolLibraryExtensionHandle",
     "ToolSearchExtension",
     "ToolUsageGuidanceExtension",
+    "DefaultToolFeedbackExtension",
 ]
 
 _LAZY_IMPORTS = {
@@ -36,6 +38,10 @@ _LAZY_IMPORTS = {
     "AgentExtensionHandle": (
         "msgflux.nn.extensions.base",
         "AgentExtensionHandle",
+    ),
+    "DefaultToolFeedbackExtension": (
+        "msgflux.nn.extensions.feedback",
+        "DefaultToolFeedbackExtension",
     ),
     "CurrentDateExtension": (
         "msgflux.nn.extensions.prompt",

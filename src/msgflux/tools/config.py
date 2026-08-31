@@ -4,6 +4,7 @@ from typing import Any, Callable, Collection, Dict, List, Optional, Union
 
 from msgflux.core.dotdict import dotdict
 from msgflux.tools.helpers import normalize_background_capabilities
+from msgflux.tools.runtime import FeedbackSpec
 
 
 def _normalize_configured_background_capabilities(
@@ -22,11 +23,29 @@ def _normalize_configured_background_capabilities(
     return normalize_background_capabilities(capabilities)
 
 
+def _normalize_feedback(
+    feedback: Optional[Union[str, FeedbackSpec]],
+    *,
+    return_direct: Optional[bool],
+    handoff: Optional[bool],
+    call_as_response: Optional[bool],
+) -> FeedbackSpec | None:
+    if feedback is None:
+        return None
+    if return_direct or handoff or call_as_response:
+        raise ValueError(
+            "`feedback` cannot be combined with `return_direct=True`, "
+            "`handoff=True`, or `call_as_response=True`."
+        )
+    return FeedbackSpec.coerce(feedback)
+
+
 def tool_config(
     *,
     description: Optional[str] = None,
     display_name: Optional[str] = None,
     usage_guidance: Optional[str] = None,
+    feedback: Optional[Union[str, FeedbackSpec]] = None,
     return_direct: Optional[bool] = False,
     call_as_response: Optional[bool] = False,
     spawn: Optional[bool] = False,
@@ -68,6 +87,11 @@ def tool_config(
         usage_guidance:
             Optional guidance describing when and how an agent should use the tool.
             Agents may render this in their system prompt.
+        feedback:
+            Optional Agent feedback mode selected after execution. Use a string for
+            an application-defined mode or FeedbackSpec for a mode with options.
+            It cannot be combined with the legacy return_direct, handoff, or
+            call_as_response aliases.
         call_as_response:
             If True, returns the tool call as its result. This property requires
             `return_direct = True` and will automatically change it to True if it
@@ -173,6 +197,13 @@ def tool_config(
         _inject_message = inject_message  # Local copy
         _inject_messages = inject_messages  # Local copy
 
+        normalized_feedback = _normalize_feedback(
+            feedback,
+            return_direct=_return_direct,
+            handoff=handoff,
+            call_as_response=call_as_response,
+        )
+
         if call_as_response is True and _return_direct is False:
             _return_direct = True
 
@@ -224,6 +255,7 @@ def tool_config(
                     "background_capabilities": normalized_background_capabilities,
                     "display_name": display_name,
                     "usage_guidance": usage_guidance,
+                    "feedback": normalized_feedback,
                     "call_as_response": call_as_response,
                     "handoff": handoff,
                     "disable_input": disable_input,

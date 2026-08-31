@@ -43,6 +43,20 @@ class CoreResponse:
                 f"`response_type` requires strgiven `{type(response_type)}`"
             )
 
+    def get_tool_intents(self):
+        """Return provider-neutral tool intents decoded by the Model."""
+        get_intents = getattr(self.data, "get_intents", None)
+        if not callable(get_intents):
+            return ()
+        return get_intents()
+
+    def render_tool_outcomes(self, outcomes):
+        """Render runtime outcomes for this response's provider protocol."""
+        render = getattr(self.data, "render_outcomes", None)
+        if not callable(render):
+            raise TypeError("Model response cannot render tool outcomes")
+        return render(outcomes)
+
 
 class BaseResponse(CoreResponse):
     def __init__(self):

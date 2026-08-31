@@ -17,9 +17,10 @@ meet here.
 
 - registering local and remote tools
 - routing tools into buckets when a bucket capture matches their configuration
-- exposing tool schemas to other modules
+- compiling each tool once into a stable logical definition
+- projecting provider-neutral catalog entries from those definitions
 - executing prepared tool calls
-- collecting results into a uniform `ToolResponses` object
+- normalizing execution feedback into `ToolOutcome` values
 
 It does not decide when a tool should be called. That remains the job of the
 provider response path or of a `ToolFlowControl`.
@@ -28,9 +29,15 @@ provider response path or of a `ToolFlowControl`.
 
 `ToolLibrary` participates in two different phases of the runtime.
 
-### 1. Schema-Time
+### 1. Definition And Catalog Time
 
-Before the model runs, other modules ask `ToolLibrary` for metadata:
+When a tool is registered, `ToolLibrary` compiles its implementation, schema,
+dispatch policy, feedback policy, context bindings, and loading policy into one
+immutable `ToolDefinition`. Runtime code reads that definition instead of
+reinterpreting `tool_config` flags for every call.
+
+Before the model runs, other modules ask `ToolLibrary` for a catalog view. The
+current compatibility methods remain available:
 
 - `get_tool_json_schemas()`
 - `get_tool_annotations()`
@@ -50,9 +57,19 @@ Those methods are used for different reasons.
 
 ### 2. Runtime
 
-Once tool calls are produced, `ToolLibrary.forward(...)` or
-`ToolLibrary.aforward(...)` executes them and returns a `ToolResponses`
-container.
+The Model decodes provider calls into `ToolIntent` values. The Agent passes
+those intents to `ToolLibrary.execute_intents(...)` or
+`ToolLibrary.aexecute_intents(...)`, which returns `ToolOutcome` values. These
+entry points currently adapt through the established `forward(...)` and
+`aforward(...)` pipeline so lifecycle hooks, telemetry, background dispatch,
+abort handling, and task state keep the same behavior during the migration.
+
+`forward(...)`, `aforward(...)`, and `ToolResponses` remain as compatibility
+contracts for custom `ToolFlowControl` implementations.
+
+Feedback is declarative at this boundary. `ToolLibrary` attaches the compiled
+`FeedbackSpec` to each outcome, but does not decide whether that feedback ends
+the Agent run. Agent extensions own that orchestration decision.
 
 That runtime path applies tool configuration rules such as:
 
@@ -73,10 +90,11 @@ This keeps the execution policy centralized instead of spreading it across
 The synchronous path looks like this:
 
 ```text
-tool_callings
-  -> ToolLibrary.forward(...)
+ToolIntent
+  -> ToolLibrary.execute_intents(...)
+  -> compatibility execution pipeline
   -> resolve tool by name
-  -> apply tool config
+  -> read compiled ToolDefinition
   -> prepare call params
   -> run before_tool lifecycle hooks
   -> build ToolExecutionPlan
@@ -84,14 +102,14 @@ tool_callings
      -> blocked: emit tool.blocked and return a tool error
   -> execute tools with scatter_gather
   -> run after_tool lifecycle hooks
-  -> collect ToolCall results
-  -> return ToolResponses
+  -> normalize ToolCall compatibility results
+  -> return ToolOutcome
 ```
 
-The async path mirrors the same structure through `aforward(...)` and
-`ascatter_gather(...)`. `ToolExecutionPlan` freezes the selected tool, visible
-arguments, runtime arguments, dispatch mode, and return policy before either
-path dispatches it.
+The async path mirrors the same structure through `aexecute_intents(...)`,
+`aforward(...)`, and `ascatter_gather(...)`. `ToolExecutionPlan` freezes the
+selected tool, visible arguments, runtime arguments, dispatch mode, and return
+policy before either path dispatches it.
 
 Both pre-execution hook chains are sequential per call. The first `block`
 short-circuits the remaining handlers for that event invocation, including

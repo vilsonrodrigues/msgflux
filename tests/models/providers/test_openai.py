@@ -15,6 +15,7 @@ from msgflux.generation.reasoning.react import ReAct
 from msgflux.runtime import AbortSignal
 from msgflux.runtime.context import execution_context
 from msgflux.tools.definitions import ToolCatalog, ToolSpec
+from msgflux.tools.runtime import ToolOutcome
 
 
 class TestOpenAIProviderImport:
@@ -707,6 +708,16 @@ class TestOpenAIChatCompletion:
             search_output,
         ]
         assert response.consume().get_calls()[0][1] == "lookup_inventory"
+        intent = response.get_tool_intents()[0]
+        assert response.render_tool_outcomes(
+            [ToolOutcome.completed(intent, "available")]
+        ) == [
+            {
+                "type": "function_call_output",
+                "call_id": "call_1",
+                "output": "available",
+            }
+        ]
 
     @pytest.mark.asyncio
     async def test_responses_stream_accumulates_summary_text_and_tool_call(
@@ -790,6 +801,7 @@ class TestOpenAIChatCompletion:
         assert stream_response.data.get_calls() == [
             ("call_1", "lookup_inventory", {"sku": "1842"})
         ]
+        assert stream_response.data.api_mode == "responses"
         assert stream_response.metadata.response_id == "resp_3"
         assert stream_response.chat_accumulator.snapshot()[0] == {
             "type": "reasoning",

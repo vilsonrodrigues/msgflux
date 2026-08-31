@@ -33,9 +33,9 @@ def _text_response(text="Hello!"):
 def _tool_call_response():
     tool_calls = ToolCallAggregator()
     tool_calls.process(0, "call_lookup", "lookup", '{"query":"status"}')
-    response = Mock(spec=ModelResponse)
-    response.response_type = "tool_call"
-    response.data = tool_calls
+    response = ModelResponse()
+    response.set_response_type("tool_call")
+    response.add(tool_calls)
     response.reasoning = None
     response.metadata = {"model": "test"}
     return response

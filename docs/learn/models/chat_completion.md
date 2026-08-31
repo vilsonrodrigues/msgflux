@@ -925,7 +925,8 @@ catalog to its own request format internally.
 
         ```python
         import msgflux as mf
-        from msgflux.tools import ToolCatalog
+        from msgflux import ChatMessages
+        from msgflux.tools import ToolCatalog, ToolOutcome
 
         def get_weather(location, unit="celsius"):
             """Simulate weather API call."""
@@ -949,37 +950,44 @@ catalog to its own request format internally.
 
         tool_catalog = ToolCatalog.from_function_schemas(schemas=tools)
 
-        model = mf.Model.chat_completion("openai/gpt-4.1-mini")
+        model = mf.Model.chat_completion(
+            "openai/gpt-5.6-luna",
+            api_mode="responses",
+            reasoning_effort="low",
+            store=False,
+        )
 
         # Initial request
-        messages = [{"role": "user", "content": "What's the weather in Paris?"}]
+        messages = ChatMessages(
+            [{"role": "user", "content": "What's the weather in Paris?"}]
+        )
 
         response = model(messages=messages, tool_catalog=tool_catalog)
-        tool_call_agg = response.consume()
-
-        # Execute tool calls
         tool_functions = {"get_weather": get_weather}
-        calls = tool_call_agg.get_calls()
+        intents = response.get_tool_intents()
+        outcomes = [
+            ToolOutcome.completed(
+                intent,
+                tool_functions[intent.name](**intent.arguments),
+            )
+            for intent in intents
+        ]
 
-        for call in calls:
-            func_name = call['function']['name']
-            func_args = call['function']['arguments']
-
-            # Execute function
-            result = tool_functions[func_name](**func_args)
-
-            # Add result to aggregator
-            tool_call_agg.insert_results(call['id'], result)
-
-        # Get messages with tool results
-        tool_messages = tool_call_agg.get_messages()
-        messages.extend(tool_messages)
+        # Preserve the provider response trajectory, then let the same Model
+        # encode outcomes for its selected API mode.
+        messages.extend(response.history_items)
+        messages.extend(response.render_tool_outcomes(outcomes))
 
         # Final response with tool results
-        final_response = model(messages=messages)
+        final_response = model(messages=messages, tool_catalog=tool_catalog)
         print(final_response.consume())
         # "The weather in Paris is currently 22°C."
         ```
+
+        `ToolIntent` and `ToolOutcome` are provider-neutral. The response owns
+        the final encoding: Chat Completions produces assistant/tool messages,
+        while Responses produces `function_call_output` items. When you use
+        `Agent`, this loop and conversion happen automatically.
 
     === "Streaming"
 

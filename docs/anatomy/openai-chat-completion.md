@@ -220,9 +220,16 @@ This provider handles two distinct tool-related modes:
 ### Native OpenAI Tool Calls
 
 If OpenAI returns `tool_calls`, the provider builds a `ToolCallAggregator` and
-returns a `ModelResponse` with `response_type="tool_call"`.
+returns a `ModelResponse` with `response_type="tool_call"`. The aggregator is a
+Model-owned protocol codec: it exposes provider-neutral `ToolIntent` values and
+later renders `ToolOutcome` values for the API mode that produced the call.
 
-At that point the provider stops. The loop continues in `Agent`.
+- Chat Completions renders one assistant tool-call message followed by
+  `role="tool"` messages.
+- Responses renders `function_call_output` input items.
+
+The loop continues in `Agent`, but provider payload construction does not move
+into the Agent or ToolLibrary.
 
 ### Structured Tool Loops
 

@@ -35,9 +35,35 @@ def search_archive(query: str) -> str:
     return query
 ```
 
+## feedback
+
+Set `feedback` when an Agent extension should decide what happens after the
+tool settles. The value is compiled into the tool's `FeedbackSpec` and copied
+to its canonical `ToolOutcome`:
+
+```python
+import msgflux as mf
+
+
+@mf.tool_config(feedback="approval")
+def request_deployment(environment: str) -> str:
+    """Prepare a deployment request for review."""
+    return f"deployment:{environment}"
+```
+
+An extension can handle `approval` through the `resolve_tool_feedback`
+lifecycle event. If no extension makes a return decision, the Agent sends
+the outcome back to the model normally. See
+[Tool Feedback Extensions](../extensions.md#tool-feedback-extensions).
+
+Use either `feedback` or one of the compatibility aliases `return_direct`,
+`handoff`, and `call_as_response`; combining them is rejected. Pass a
+`FeedbackSpec` instead of a string when the mode requires static options.
+
 ## return_direct
 
-When `return_direct=True`, the tool result is returned directly as the final response instead of going back to the model.
+When `return_direct=True`, the builtin `tool_feedback` Agent extension returns
+the tool result as the final response instead of sending it back to the model.
 
 Use cases:
 

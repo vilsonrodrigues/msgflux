@@ -28,16 +28,7 @@ from msgflux.nn.modules.module import Module
 from msgflux.runtime.abort import await_with_abort
 from msgflux.tools.dataclasses import ToolMetadata
 from msgflux.tools.helpers import RUNTIME_BACKGROUND_PARAM
-
-_OUTCOME_STATUSES = {
-    "blocked",
-    "completed",
-    "dispatched",
-    "execution_failed",
-    "interrupted",
-    "invalid_arguments",
-    "not_found",
-}
+from msgflux.tools.runtime import FeedbackSpec, ToolError, ToolIntent, ToolOutcome
 
 
 def _require_name(value: Any, subject: str) -> str:
@@ -91,33 +82,6 @@ class DispatchSpec(msgspec.Struct, frozen=True, kw_only=True):
         if isinstance(value, str):
             return cls(name=value)
         raise TypeError("`dispatch` must be a DispatchSpec, string, or None")
-
-
-class FeedbackSpec(msgspec.Struct, frozen=True, kw_only=True):
-    """Agent-facing handling requested after dispatch settles."""
-
-    name: str = "model"
-    options: Mapping[str, Any] = msgspec.field(default_factory=dict)
-
-    def __post_init__(self) -> None:
-        msgspec.structs.force_setattr(
-            self, "name", _require_name(self.name, "feedback.name")
-        )
-        msgspec.structs.force_setattr(
-            self,
-            "options",
-            _copy_mapping(self.options, "feedback.options"),
-        )
-
-    @classmethod
-    def coerce(cls, value: FeedbackSpec | str | None) -> FeedbackSpec:
-        if value is None:
-            return cls()
-        if isinstance(value, cls):
-            return value
-        if isinstance(value, str):
-            return cls(name=value)
-        raise TypeError("`feedback` must be a FeedbackSpec, string, or None")
 
 
 class ContextBinding(msgspec.Struct, frozen=True, kw_only=True):
@@ -420,6 +384,8 @@ class ToolDefinitionCompiler:
 
     @staticmethod
     def _compile_feedback(config: Mapping[str, Any]) -> FeedbackSpec:
+        if config.get("feedback") is not None:
+            return FeedbackSpec.coerce(config["feedback"])
         if config.get("call_as_response", False):
             return FeedbackSpec(name="call_as_response")
         if config.get("handoff", False):
@@ -687,153 +653,6 @@ class ToolRegistry(Module):
                 )
             return tool.tool_id
         return _require_name(tool, "tool")
-
-
-class ToolIntent(msgspec.Struct, frozen=True, kw_only=True):
-    """Provider-neutral request to perform one named action."""
-
-    id: str
-    name: str
-    arguments: Mapping[str, Any] = msgspec.field(default_factory=dict)
-    parent_id: str | None = None
-
-    def __post_init__(self) -> None:
-        msgspec.structs.force_setattr(self, "id", _require_name(self.id, "id"))
-        msgspec.structs.force_setattr(self, "name", _require_name(self.name, "name"))
-        msgspec.structs.force_setattr(
-            self,
-            "arguments",
-            _copy_mapping(self.arguments, "arguments"),
-        )
-
-
-class ToolError(msgspec.Struct, frozen=True, kw_only=True):
-    """Structured failure independent from model-facing error rendering."""
-
-    code: str
-    message: str
-    details: Mapping[str, Any] = msgspec.field(default_factory=dict)
-
-    def __post_init__(self) -> None:
-        msgspec.structs.force_setattr(
-            self, "code", _require_name(self.code, "error.code")
-        )
-        msgspec.structs.force_setattr(
-            self,
-            "message",
-            _require_name(self.message, "error.message"),
-        )
-        msgspec.structs.force_setattr(
-            self,
-            "details",
-            _copy_mapping(self.details, "error.details"),
-        )
-
-
-class ToolOutcome(msgspec.Struct, frozen=True, kw_only=True):
-    """Canonical result returned by every dispatch extension."""
-
-    intent_id: str
-    tool_name: str
-    status: str
-    result: Any = None
-    error: ToolError | None = None
-    feedback: FeedbackSpec = msgspec.field(default_factory=FeedbackSpec)
-    metadata: Mapping[str, Any] = msgspec.field(default_factory=dict)
-
-    def __post_init__(self) -> None:
-        msgspec.structs.force_setattr(
-            self, "intent_id", _require_name(self.intent_id, "intent_id")
-        )
-        msgspec.structs.force_setattr(
-            self, "tool_name", _require_name(self.tool_name, "tool_name")
-        )
-        if self.status not in _OUTCOME_STATUSES:
-            expected = ", ".join(sorted(_OUTCOME_STATUSES))
-            raise ValueError(
-                f"Unsupported tool outcome status `{self.status}`: {expected}"
-            )
-        if self.status in {
-            "blocked",
-            "execution_failed",
-            "interrupted",
-            "invalid_arguments",
-            "not_found",
-        }:
-            if not isinstance(self.error, ToolError):
-                raise ValueError(f"Tool outcome `{self.status}` requires `error`")
-        elif self.error is not None:
-            raise ValueError(f"Tool outcome `{self.status}` cannot include `error`")
-        if not isinstance(self.feedback, FeedbackSpec):
-            raise TypeError("`feedback` must be a FeedbackSpec")
-        msgspec.structs.force_setattr(
-            self,
-            "metadata",
-            _copy_mapping(self.metadata, "outcome.metadata"),
-        )
-
-    @property
-    def ok(self) -> bool:
-        return self.status in {"completed", "dispatched"}
-
-    @classmethod
-    def completed(
-        cls,
-        intent: ToolIntent,
-        result: Any,
-        *,
-        feedback: FeedbackSpec | None = None,
-    ) -> ToolOutcome:
-        return cls(
-            intent_id=intent.id,
-            tool_name=intent.name,
-            status="completed",
-            result=result,
-            feedback=feedback or FeedbackSpec(),
-        )
-
-    @classmethod
-    def dispatched(
-        cls,
-        intent: ToolIntent,
-        result: Any = None,
-        *,
-        feedback: FeedbackSpec | None = None,
-        metadata: Mapping[str, Any] | None = None,
-    ) -> ToolOutcome:
-        return cls(
-            intent_id=intent.id,
-            tool_name=intent.name,
-            status="dispatched",
-            result=result,
-            feedback=feedback or FeedbackSpec(),
-            metadata=metadata or {},
-        )
-
-    @classmethod
-    def failed(
-        cls,
-        intent: ToolIntent,
-        *,
-        status: str,
-        code: str,
-        message: str,
-        feedback: FeedbackSpec | None = None,
-        details: Mapping[str, Any] | None = None,
-    ) -> ToolOutcome:
-        if status not in _OUTCOME_STATUSES - {"completed", "dispatched"}:
-            raise ValueError(f"`{status}` is not a failure outcome status")
-        return cls(
-            intent_id=intent.id,
-            tool_name=intent.name,
-            status=status,
-            error=ToolError(
-                code=code,
-                message=message,
-                details=details or {},
-            ),
-            feedback=feedback or FeedbackSpec(),
-        )
 
 
 class ToolExecutionPlan(msgspec.Struct, frozen=True, kw_only=True):

@@ -47,6 +47,7 @@ The Agent currently exposes these lifecycle boundaries:
 | `before_tool` | `BeforeTool` | May replace model-visible arguments or block local execution. |
 | `before_dispatch` | `BeforeToolDispatch` | May block a validated call or reduce background/spawn dispatch to foreground. |
 | `after_tool` | `AfterTool` | May replace the result or error before it becomes a tool result. |
+| `resolve_tool_feedback` | `ToolFeedbackContext` | May continue the model loop or return an Agent result after a batch of tool outcomes. The first return decision stops this hook chain. |
 | `before_run_end` | `RunEndContext` | May inspect or replace the terminal outcome immediately before the final checkpoint. |
 | `after_run_end` | `RunEndContext` | Runs after the final checkpoint is committed. |
 | `transform_output` | `OutputContext` for Agents; settled value for other Modules | May replace only the value presented to the caller. |

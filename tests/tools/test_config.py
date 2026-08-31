@@ -73,6 +73,29 @@ class TestToolConfig:
         assert config.description is None
         assert config.display_name is None
         assert config.usage_guidance is None
+        assert config.feedback is None
+
+    def test_tool_config_accepts_custom_feedback(self):
+        @tool_config(feedback="approval")
+        def sample_function():
+            pass
+
+        assert sample_function.tool_config.feedback.name == "approval"
+
+    @pytest.mark.parametrize(
+        "legacy",
+        [
+            {"return_direct": True},
+            {"handoff": True},
+            {"call_as_response": True},
+        ],
+    )
+    def test_custom_feedback_rejects_legacy_feedback_aliases(self, legacy):
+        with pytest.raises(ValueError, match="cannot be combined"):
+
+            @tool_config(feedback="approval", **legacy)
+            def sample_function():
+                pass
 
     def test_tool_config_display_name_and_usage_guidance(self):
         """Test display_name and usage_guidance metadata."""

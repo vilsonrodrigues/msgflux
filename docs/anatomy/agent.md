@@ -217,15 +217,24 @@ tool loop.
 ```text
 provider response_type == "tool_call"
   -> _process_tool_call_response(...)
-  -> raw_response.get_calls()
-  -> _process_tool_call(...)
-  -> ToolLibrary(...)
-  -> raw_response.insert_results(...)
-  -> messages.extend(tool_messages)
+  -> ModelResponse.get_tool_intents()
+  -> _process_tool_intents(...)
+  -> ToolLibrary.execute_intents(...)
+  -> ModelResponse.render_tool_outcomes(...)
+  -> messages.extend(provider continuation)
   -> _execute_model(...) again
 ```
 
-This loop continues until the provider stops returning tool calls.
+This loop continues until the provider stops returning tool calls. `Agent`
+orchestrates the loop but does not know whether the continuation uses Chat
+Completions messages or Responses `function_call_output` items. That encoding
+belongs to the Model response that decoded the calls.
+
+After each execution batch, `resolve_tool_feedback` extensions decide whether
+the loop continues. The core defaults to continuing. The builtin
+`DefaultToolFeedbackExtension` implements `direct`, `handoff`, and
+`call_as_response`, so adding another feedback policy does not require changing
+the Agent loop.
 
 ### 3. ToolFlowControl
 
@@ -260,17 +269,16 @@ The dependency is narrow and intentional:
 
 ```text
 Agent
-  -> ToolLibrary.get_tool_json_schemas()
-  -> ToolLibrary.get_tool_annotations()
-  -> ToolLibrary(...) / ToolLibrary.acall(...)
+  -> ToolLibrary.get_tool_catalog()
+  -> ToolLibrary.execute_intents(...) / aexecute_intents(...)
 ```
 
 That means `Agent` relies on `ToolLibrary` for two separate concerns:
 
-- schema-time concerns:
-  tool JSON schemas and parameter annotations
+- definition/catalog concerns:
+  stable logical definitions and the active catalog view
 - runtime concerns:
-  executing tool calls and collecting results
+  executing canonical intents and collecting canonical outcomes
 
 This is why `ToolLibrary` matters even when the active provider never uses
 native tool calling directly.

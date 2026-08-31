@@ -17,6 +17,7 @@ if TYPE_CHECKING:
         OutputContext,
         RunEndContext,
         ToolCatalogContext,
+        ToolFeedbackContext,
     )
     from msgflux.nn.hooks.guard import Guard
     from msgflux.nn.hooks.hook import Hook, RemovableHandle
@@ -39,6 +40,7 @@ __all__ = [
     "NotificationContext",
     "RunEndContext",
     "ToolCatalogContext",
+    "ToolFeedbackContext",
 ]
 
 _LAZY_IMPORTS = {
@@ -59,6 +61,7 @@ _LAZY_IMPORTS = {
     "NotificationContext": ("msgflux.nn.hooks.events", "NotificationContext"),
     "RunEndContext": ("msgflux.nn.hooks.events", "RunEndContext"),
     "ToolCatalogContext": ("msgflux.nn.hooks.events", "ToolCatalogContext"),
+    "ToolFeedbackContext": ("msgflux.nn.hooks.events", "ToolFeedbackContext"),
 }
 
 

@@ -858,7 +858,7 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
         reasoning_chunks: list[str] = []
         reasoning_summary_chunks: list[str] = []
         history_items: list[dict[str, Any]] = []
-        aggregator = ToolCallAggregator()
+        aggregator = ToolCallAggregator(api_mode=self.api_mode)
 
         for output_index, item in enumerate(output_items):
             item_type = self._response_value(item, "type")
@@ -1736,7 +1736,7 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
     ) -> ModelStreamResponse:
         stream_response = kwargs.pop("stream_response")
         request_timer = kwargs.pop("_request_timer", None) or ModelRequestTimer()
-        aggregator = ToolCallAggregator()
+        aggregator = ToolCallAggregator(api_mode=self.api_mode)
         state = self._new_responses_stream_state(request_timer)
         final_status = "completed"
         try:
@@ -1774,7 +1774,7 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
     ) -> ModelStreamResponse:
         stream_response = kwargs.pop("stream_response")
         request_timer = kwargs.pop("_request_timer", None) or ModelRequestTimer()
-        aggregator = ToolCallAggregator()
+        aggregator = ToolCallAggregator(api_mode=self.api_mode)
         state = self._new_responses_stream_state(request_timer)
         final_status = "completed"
         try:

@@ -10,6 +10,7 @@ from msgflux.runtime.context import ExecutionScope
 if TYPE_CHECKING:
     from msgflux.runtime.agent_inbox import AgentNotification
     from msgflux.tools.definitions import ToolCatalog
+    from msgflux.tools.runtime import ToolIntent, ToolOutcome
 
 __all__ = [
     "AgentContext",
@@ -26,6 +27,7 @@ __all__ = [
     "ModelResponseContext",
     "RunEndContext",
     "ToolCatalogContext",
+    "ToolFeedbackContext",
 ]
 
 
@@ -177,6 +179,18 @@ class OutputContext(AgentContext):
     """Settled Agent output before presentation to the caller."""
 
     output: Any
+
+
+@dataclass(frozen=True, kw_only=True)
+class ToolFeedbackContext(AgentContext):
+    """Tool outcomes awaiting an Agent-level continuation decision."""
+
+    intents: tuple[ToolIntent, ...]
+    outcomes: tuple[ToolOutcome, ...]
+    messages: Any
+    reasoning: str | None = None
+    action: Literal["continue", "return"] = "continue"
+    output: Any = None
 
 
 @dataclass(frozen=True, kw_only=True)

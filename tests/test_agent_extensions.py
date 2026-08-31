@@ -7,6 +7,7 @@ from msgflux.exceptions import AbortRequestedError
 from msgflux.data.stores import InMemoryCheckpointStore
 from msgflux.chat_messages import ChatMessages
 from msgflux.models.response import ModelResponse
+from msgflux.models.tool_call_agg import ToolCallAggregator
 from msgflux.nn import Agent, AgentExtension
 from msgflux.nn.hooks import (
     ConversationContext,
@@ -17,11 +18,14 @@ from msgflux.nn.hooks import (
     NotificationContext,
     RunEndContext,
     ToolCatalogContext,
+    ToolFeedbackContext,
 )
 from msgflux.nn.modules.tool import ToolLibrary
 from msgflux.runtime import AbortSignal, ExecutionScope
 from msgflux.runtime.context import execution_context
 from msgflux.tools.definitions import ToolCatalog
+from msgflux.tools.config import tool_config
+from msgflux.tools.runtime import FeedbackSpec, ToolIntent, ToolOutcome
 
 
 def _text_response(text: str) -> ModelResponse:
@@ -64,6 +68,141 @@ class _PromptExtension(AgentExtension):
             return value
 
         return (extension_tool,)
+
+
+def _tool_feedback_values(*modes: str):
+    intents = tuple(
+        ToolIntent(id=f"call_{index}", name=f"tool_{index}")
+        for index, _mode in enumerate(modes)
+    )
+    outcomes = tuple(
+        ToolOutcome.completed(
+            intent,
+            f"result_{index}",
+            feedback=FeedbackSpec(name=mode),
+        )
+        for index, (intent, mode) in enumerate(zip(intents, modes))
+    )
+    return intents, outcomes
+
+
+def test_builtin_tool_feedback_extension_resolves_direct_output():
+    agent = Agent(name="agent", model=_RecordingModel())
+    intents, outcomes = _tool_feedback_values("direct")
+
+    with execution_context(scope=ExecutionScope(thread_id="thread_1")):
+        feedback = agent._resolve_tool_feedback(
+            intents,
+            outcomes,
+            messages=ChatMessages(),
+            vars={},
+            reasoning="checked",
+        )
+
+    assert agent.has_extension("tool_feedback")
+    assert feedback.action == "return"
+    assert feedback.output.tool_responses.reasoning == "checked"
+    assert feedback.output.tool_responses.tool_calls[0]["result"] == "result_0"
+
+
+def test_builtin_tool_feedback_extension_rejects_mixed_return_modes():
+    agent = Agent(name="agent", model=_RecordingModel())
+    intents, outcomes = _tool_feedback_values("direct", "handoff")
+
+    with (
+        execution_context(scope=ExecutionScope(thread_id="thread_1")),
+        pytest.raises(ValueError, match="incompatible return feedback"),
+    ):
+        agent._resolve_tool_feedback(
+            intents,
+            outcomes,
+            messages=ChatMessages(),
+            vars={},
+            reasoning=None,
+        )
+
+
+@pytest.mark.asyncio
+async def test_custom_tool_feedback_extension_can_resolve_new_mode():
+    class ApprovalFeedbackExtension(AgentExtension):
+        def __init__(self):
+            super().__init__("tool_feedback")
+
+        async def resolve(self, ctx: ToolFeedbackContext):
+            await asyncio.sleep(0)
+            if {outcome.feedback.name for outcome in ctx.outcomes} == {"approval"}:
+                return replace(ctx, action="return", output="awaiting approval")
+            return ctx
+
+        def hooks(self):
+            return (Hook(event="resolve_tool_feedback", handler=self.resolve),)
+
+    agent = Agent(
+        name="agent",
+        model=_RecordingModel(),
+        extensions=[ApprovalFeedbackExtension()],
+    )
+    intents, outcomes = _tool_feedback_values("approval")
+
+    with execution_context(scope=ExecutionScope(thread_id="thread_1")):
+        feedback = await agent._aresolve_tool_feedback(
+            intents,
+            outcomes,
+            messages=ChatMessages(),
+            vars={},
+            reasoning=None,
+        )
+
+    assert feedback.action == "return"
+    assert feedback.output == "awaiting approval"
+
+
+@pytest.mark.asyncio
+async def test_custom_tool_feedback_extension_ends_real_tool_loop():
+    class ApprovalFeedbackExtension(AgentExtension):
+        def __init__(self):
+            super().__init__("tool_feedback")
+
+        async def resolve(self, ctx: ToolFeedbackContext):
+            if {outcome.feedback.name for outcome in ctx.outcomes} == {"approval"}:
+                return replace(ctx, action="return", output="awaiting approval")
+            return ctx
+
+        def hooks(self):
+            return (Hook(event="resolve_tool_feedback", handler=self.resolve),)
+
+    class ToolCallingModel:
+        model_type = "chat_completion"
+
+        def __init__(self):
+            self.calls = 0
+
+        async def acall(self, **_kwargs):
+            self.calls += 1
+            response = ModelResponse()
+            response.set_response_type("tool_call")
+            calls = ToolCallAggregator()
+            calls.process(0, "call_1", "deploy", '{"environment":"staging"}')
+            response.add(calls)
+            response.metadata = {}
+            return response
+
+    @tool_config(feedback="approval")
+    def deploy(environment: str) -> str:
+        return f"deployment:{environment}"
+
+    model = ToolCallingModel()
+    agent = Agent(
+        name="agent",
+        model=model,
+        tools=[deploy],
+        extensions=[ApprovalFeedbackExtension()],
+    )
+
+    output = await agent.acall("Deploy staging")
+
+    assert output == "awaiting approval"
+    assert model.calls == 1
 
 
 def test_extension_contributes_and_removes_hooks_and_tools():

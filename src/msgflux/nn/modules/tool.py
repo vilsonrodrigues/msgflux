@@ -72,6 +72,7 @@ from msgflux.tools.helpers import (
     normalize_background_capabilities,
 )
 from msgflux.tools.responses import ToolCall, ToolResponses
+from msgflux.tools.runtime import ToolIntent, ToolOutcome
 from msgflux.tools.types import (
     ToolBucket,
     ToolLibraryOperator,
@@ -1954,6 +1955,100 @@ class ToolLibrary(Module, metaclass=AutoParams):
             bucket_name=bucket_name,
             **kwargs,
         )
+
+    def execute_intents(
+        self,
+        intents: List[ToolIntent] | Tuple[ToolIntent, ...],
+        *,
+        message: Optional[Any] = None,
+        messages: Optional[List[Dict[str, Any]]] = None,
+        vars: Optional[Mapping[str, Any]] = None,
+    ) -> Tuple[ToolOutcome, ...]:
+        """Execute canonical intents through the current runtime pipeline."""
+        normalized = self._validate_intents(intents)
+        responses = self(
+            tool_callings=[
+                (intent.id, intent.name, intent.arguments) for intent in normalized
+            ],
+            message=message,
+            messages=messages,
+            vars=vars,
+        )
+        return self._responses_to_outcomes(normalized, responses)
+
+    async def aexecute_intents(
+        self,
+        intents: List[ToolIntent] | Tuple[ToolIntent, ...],
+        *,
+        message: Optional[Any] = None,
+        messages: Optional[List[Dict[str, Any]]] = None,
+        vars: Optional[Mapping[str, Any]] = None,
+    ) -> Tuple[ToolOutcome, ...]:
+        """Async counterpart of execute_intents."""
+        normalized = self._validate_intents(intents)
+        responses = await self.acall(
+            tool_callings=[
+                (intent.id, intent.name, intent.arguments) for intent in normalized
+            ],
+            message=message,
+            messages=messages,
+            vars=vars,
+        )
+        return self._responses_to_outcomes(normalized, responses)
+
+    @staticmethod
+    def _validate_intents(
+        intents: List[ToolIntent] | Tuple[ToolIntent, ...],
+    ) -> Tuple[ToolIntent, ...]:
+        normalized = tuple(intents)
+        if not all(isinstance(intent, ToolIntent) for intent in normalized):
+            raise TypeError("`intents` must contain ToolIntent values")
+        return normalized
+
+    def _responses_to_outcomes(
+        self,
+        intents: Tuple[ToolIntent, ...],
+        responses: ToolResponses,
+    ) -> Tuple[ToolOutcome, ...]:
+        calls_by_id = {call.id: call for call in responses.tool_calls}
+        outcomes = []
+        for intent in intents:
+            call = calls_by_id.get(intent.id)
+            definition = self.tool_definitions.get(intent.name)
+            feedback = definition.feedback if definition is not None else None
+            if call is None:
+                outcomes.append(
+                    ToolOutcome.failed(
+                        intent,
+                        status="execution_failed",
+                        code="tool_outcome_missing",
+                        message="Tool execution did not produce an outcome.",
+                        feedback=feedback,
+                    )
+                )
+                continue
+            if call.error is not None:
+                not_found = definition is None
+                outcomes.append(
+                    ToolOutcome.failed(
+                        intent,
+                        status="not_found" if not_found else "execution_failed",
+                        code="tool_not_found" if not_found else "tool_execution_failed",
+                        message=call.error,
+                        feedback=feedback,
+                    )
+                )
+                continue
+            is_dispatched = definition is not None and (
+                definition.dispatch.name in {"background", "detached"}
+                or (
+                    definition.dispatch.name == "optional_background"
+                    and intent.arguments.get(RUNTIME_BACKGROUND_PARAM) is True
+                )
+            )
+            factory = ToolOutcome.dispatched if is_dispatched else ToolOutcome.completed
+            outcomes.append(factory(intent, call.result, feedback=feedback))
+        return tuple(outcomes)
 
     def forward(  # noqa: C901
         self,

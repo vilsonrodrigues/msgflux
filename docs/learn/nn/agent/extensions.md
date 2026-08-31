@@ -122,6 +122,8 @@ Extensions can intercept the request at progressively narrower boundaries:
 - `transform_system_prompt` changes only the rendered prompt.
 - `before_request` receives the final provider-neutral `ModelRequestContext`.
 - `after_response` receives a settled `ModelResponseContext`.
+- `resolve_tool_feedback` receives canonical tool intents and outcomes before
+  the Agent either continues the model loop or returns.
 - `before_run_end` and `after_run_end` surround the final durable checkpoint.
 
 Use the earliest boundary that owns the information being changed. For
@@ -153,6 +155,66 @@ agent = nn.Agent(
 If an explicitly supplied extension uses one of those names, the Agent does not
 also install the matching built-in. Their names are `current_date` and
 `tool_usage_guidance`, so they can be removed like any other extension.
+
+## Tool Feedback Extensions
+
+After the ToolLibrary returns canonical outcomes, the Agent runs
+`resolve_tool_feedback`. The default action is `"continue"`, which sends the
+outcomes back to the Model. `DefaultToolFeedbackExtension` is installed by
+default under the name `tool_feedback`; it converts `direct`, `handoff`, and
+`call_as_response` feedback into an Agent return value.
+
+The first extension that returns `action="return"` ends the feedback chain.
+Handlers therefore run sequentially and cannot overwrite an earlier return
+decision. A model response mixing different return modes is rejected because
+there is no unambiguous owner for the final output.
+
+Replace the built-in by supplying an extension with the same name. This example
+adds an application-specific `approval` feedback mode:
+
+```python
+from dataclasses import replace
+
+import msgflux.nn as nn
+from msgflux.tools.config import tool_config
+from msgflux.nn.hooks import Hook, ToolFeedbackContext
+
+
+class ApprovalFeedback(nn.AgentExtension):
+    def __init__(self):
+        super().__init__("tool_feedback")
+
+    async def resolve(self, ctx: ToolFeedbackContext):
+        modes = {outcome.feedback.name for outcome in ctx.outcomes}
+        if modes == {"approval"}:
+            return replace(
+                ctx,
+                action="return",
+                output={"status": "awaiting_approval"},
+            )
+        return ctx
+
+    def hooks(self):
+        return (Hook(event="resolve_tool_feedback", handler=self.resolve),)
+
+
+@tool_config(feedback="approval")
+def request_deployment(environment: str) -> str:
+    """Prepare a deployment request for review."""
+    return f"deployment:{environment}"
+
+
+agent = nn.Agent(
+    name="operator",
+    model=model,
+    tools=[request_deployment],
+    extensions=[ApprovalFeedback()],
+)
+```
+
+Replacing `tool_feedback` also removes the standard return behavior. If a
+custom extension should only add a new mode, give it another name and install
+it alongside `DefaultToolFeedbackExtension`.
 
 Use `self.state()` when hooks in the same run need to share temporary data:
 
