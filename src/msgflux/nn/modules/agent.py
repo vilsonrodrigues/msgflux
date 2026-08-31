@@ -79,7 +79,13 @@ from msgflux.nn.modules.container import ModuleDict
 from msgflux.nn.modules.generator import Generator
 from msgflux.nn.modules.module import Module
 from msgflux.nn.modules.tool import ToolLibrary, ToolResponses
+from msgflux.nn.modules.tool_runtime import (
+    ToolCatalogEntry,
+    ToolCatalogView,
+    ToolChoice,
+)
 from msgflux.nn.parameter import Parameter
+from msgflux.nn.tool_catalog import adapt_model_tool_catalog
 from msgflux.runtime.abort import AbortSignal, await_with_abort
 from msgflux.runtime.agent_inbox import (
     AgentInbox,
@@ -96,7 +102,7 @@ from msgflux.runtime.context import (
 from msgflux.runtime.event_hub import ThreadWatcher, get_event_hub
 from msgflux.runtime.events import EventType, emit_event
 from msgflux.runtime.skills import SkillsConfig
-from msgflux.tools.definitions import ToolCatalog, ToolSpec
+from msgflux.tools.definitions import ToolCatalog
 from msgflux.tools.runtime import ToolIntent, ToolOutcome
 from msgflux.utils.chat import ChatBlock, response_format_from_msgspec_struct
 from msgflux.utils.common import has_format_placeholder, is_jinja_template
@@ -1250,6 +1256,7 @@ class Agent(Module, metaclass=AutoParams):
             tool_filter=tool_filter,
             scope=effective_scope,
         )
+        model_execution_params = adapt_model_tool_catalog(model_execution_params)
         request = ModelRequestContext.from_parameters(
             model_execution_params,
             scope=effective_scope,
@@ -1337,6 +1344,7 @@ class Agent(Module, metaclass=AutoParams):
             vars=vars,
             scope=effective_scope,
         )
+        model_execution_params = adapt_model_tool_catalog(model_execution_params)
         request = ModelRequestContext.from_parameters(
             model_execution_params,
             scope=effective_scope,
@@ -1470,6 +1478,7 @@ class Agent(Module, metaclass=AutoParams):
             vars=vars or {},
             scope=effective_scope,
         )
+        model_execution_params = adapt_model_tool_catalog(model_execution_params)
         params = dotdict(
             system_prompt=model_execution_params.system_prompt,
             tool_catalog=model_execution_params.tool_catalog,
@@ -1516,6 +1525,7 @@ class Agent(Module, metaclass=AutoParams):
             model_preference=model_preference,
             tool_filter=tool_filter,
         )
+        model_execution_params = adapt_model_tool_catalog(model_execution_params)
         return dotdict(
             system_prompt=model_execution_params.system_prompt,
             tool_catalog=model_execution_params.tool_catalog,
@@ -1528,12 +1538,12 @@ class Agent(Module, metaclass=AutoParams):
 
     def _transform_model_tool_catalog(
         self,
-        tool_catalog: ToolCatalog,
+        tool_catalog: ToolCatalogView,
         *,
         messages: Any,
         vars: Mapping[str, Any],
         scope: ExecutionScope,
-    ) -> ToolCatalog:
+    ) -> ToolCatalogView:
         catalog_context = self._run_lifecycle_hooks(
             "transform_tool_catalog",
             ToolCatalogContext(
@@ -1546,8 +1556,8 @@ class Agent(Module, metaclass=AutoParams):
         catalog_context = _require_lifecycle_payload(
             "transform_tool_catalog", catalog_context, ToolCatalogContext
         )
-        if not isinstance(catalog_context.catalog, ToolCatalog):
-            raise TypeError("ToolCatalogContext.catalog must be a ToolCatalog")
+        if not isinstance(catalog_context.catalog, ToolCatalogView):
+            raise TypeError("ToolCatalogContext.catalog must be a ToolCatalogView")
         return catalog_context.catalog
 
     async def _atransform_model_tool_catalog(
@@ -1572,11 +1582,11 @@ class Agent(Module, metaclass=AutoParams):
         catalog_context = _require_lifecycle_payload(
             "transform_tool_catalog", catalog_context, ToolCatalogContext
         )
-        if not isinstance(catalog_context.catalog, ToolCatalog):
-            raise TypeError("ToolCatalogContext.catalog must be a ToolCatalog")
+        if not isinstance(catalog_context.catalog, ToolCatalogView):
+            raise TypeError("ToolCatalogContext.catalog must be a ToolCatalogView")
         transformed = catalog_context.catalog
         model_execution_params.tool_catalog = (
-            transformed if transformed.tools or transformed.portable_tools() else None
+            transformed if transformed.visible_entries() else None
         )
         return model_execution_params
 
@@ -1584,21 +1594,21 @@ class Agent(Module, metaclass=AutoParams):
         self,
         *,
         vars: Mapping[str, Any],
-        tool_catalog: ToolCatalog | None,
+        tool_catalog: ToolCatalogView | None,
         apply_hooks: bool,
     ) -> str | None:
-        prompt_catalog = tool_catalog or ToolCatalog(tools=[])
         system_prompt = self.get_system_prompt(
             vars,
-            tool_catalog=prompt_catalog,
+            tool_catalog=tool_catalog,
             _apply_hooks=apply_hooks,
         )
-        portable_tools = tool_catalog.portable_tools() if tool_catalog else []
+        portable_catalog = ToolCatalog.from_view(tool_catalog) if tool_catalog else None
+        portable_tools = portable_catalog.portable_tools() if portable_catalog else []
         if is_subclass_of(self.generation_schema, ToolFlowControl) and portable_tools:
             tools_template = self.generation_schema.tools_template
             inputs = {
-                "tool_schemas": tool_catalog.portable_schemas(),
-                "tool_choice": tool_catalog.choice,
+                "tool_schemas": portable_catalog.portable_schemas(),
+                "tool_choice": portable_catalog.choice,
             }
             flow_control_tools = self._format_template(inputs, tools_template)
             system_prompt = (
@@ -1631,19 +1641,22 @@ class Agent(Module, metaclass=AutoParams):
                 drain_notifications=drain_notifications,
             )
 
-        tool_catalog = self.tool_library.get_tool_catalog(model_messages)
-        tool_specs = list(tool_catalog.tools)
+        tool_catalog = self.tool_library.get_tool_catalog_view(
+            model_messages if isinstance(model_messages, ChatMessages) else None,
+            thread_id=(
+                effective_scope.thread_id or f"{self.tool_library.name}:unscoped"
+            ),
+        )
+        tool_entries = list(tool_catalog.tool_entries())
 
         tool_choice = self.config.get("tool_choice")
 
-        if tool_filter is not None and tool_specs:
-            tool_specs = self._apply_tool_filter(tool_specs, tool_filter)
+        if tool_filter is not None and tool_entries:
+            tool_entries = self._apply_tool_filter(tool_entries, tool_filter)
 
-        tool_catalog = ToolCatalog(
-            tools=tool_specs,
-            choice=self._resolve_tool_choice(tool_choice, tool_specs),
-            catalog_id=tool_catalog.catalog_id,
-            search_tool=tool_catalog.search_tool,
+        tool_catalog = tool_catalog.with_tools(entry.name for entry in tool_entries)
+        tool_catalog = tool_catalog.with_choice(
+            self._resolve_tool_choice(tool_choice, tool_entries)
         )
         if transform_tool_catalog:
             tool_catalog = self._transform_model_tool_catalog(
@@ -1652,11 +1665,7 @@ class Agent(Module, metaclass=AutoParams):
                 vars=vars,
                 scope=effective_scope,
             )
-        tool_catalog = (
-            tool_catalog
-            if tool_catalog.tools or tool_catalog.portable_tools()
-            else None
-        )
+        tool_catalog = tool_catalog if tool_catalog.visible_entries() else None
         system_prompt = self._build_system_prompt(
             vars=vars,
             tool_catalog=tool_catalog,
@@ -3130,9 +3139,9 @@ class Agent(Module, metaclass=AutoParams):
 
     def _apply_tool_filter(
         self,
-        tool_specs: List[ToolSpec],
+        tool_specs: List[ToolCatalogEntry],
         tool_filter: ToolFilter,
-    ) -> List[ToolSpec]:
+    ) -> List[ToolCatalogEntry]:
         """Return only the logical tools allowed by the runtime filter."""
         if not isinstance(tool_filter, dict):
             raise ValueError(
@@ -3199,27 +3208,23 @@ class Agent(Module, metaclass=AutoParams):
     def _resolve_tool_choice(
         self,
         tool_choice: Optional[Union[str, Dict[str, Any]]],
-        tool_specs: Optional[List[ToolSpec]],
-    ) -> Optional[Union[str, Dict[str, Any]]]:
+        tool_specs: Optional[List[ToolCatalogEntry]],
+    ) -> ToolChoice:
         """Keep tool_choice aligned with the filtered tool set."""
         if not tool_specs:
-            return None
+            return ToolChoice(mode="none")
 
         tool_names = {tool.name for tool in tool_specs}
-        adjusted_tool_choice = tool_choice
-
-        if isinstance(tool_choice, dict):
-            choice_name = tool_choice.get("function", {}).get("name")
-            if isinstance(choice_name, str) and choice_name not in tool_names:
-                adjusted_tool_choice = "auto"
-        elif (
-            isinstance(tool_choice, str)
-            and tool_choice not in {"auto", "required", "none"}
-            and tool_choice not in tool_names
+        adjusted_tool_choice = ToolChoice.coerce(tool_choice)
+        if (
+            adjusted_tool_choice.mode == "tool"
+            and adjusted_tool_choice.name not in tool_names
         ):
-            adjusted_tool_choice = "auto"
+            adjusted_tool_choice = ToolChoice()
 
-        if adjusted_tool_choice != tool_choice and self.config.get("verbose", False):
+        if adjusted_tool_choice != ToolChoice.coerce(tool_choice) and self.config.get(
+            "verbose", False
+        ):
             cprint(
                 f"[{self.name}][tool_choice] Adjusted to `{adjusted_tool_choice}` "
                 "after tool filtering",
@@ -4653,7 +4658,7 @@ class Agent(Module, metaclass=AutoParams):
     def get_system_prompt(
         self,
         vars: Optional[Mapping[str, Any]] = None,
-        tool_catalog: Optional[ToolCatalog] = None,
+        tool_catalog: Optional[ToolCatalogView] = None,
         *,
         _apply_hooks: bool = True,
     ) -> str:
@@ -4677,7 +4682,10 @@ class Agent(Module, metaclass=AutoParams):
         if not _apply_hooks:
             return system_prompt
         if tool_catalog is None:
-            tool_catalog = self.tool_library.get_tool_catalog()
+            scope = get_execution_context()["scope"]
+            tool_catalog = self.tool_library.get_tool_catalog_view(
+                thread_id=scope.thread_id or f"{self.name}:system_prompt"
+            )
         ctx = self._run_lifecycle_hooks(
             "transform_system_prompt",
             ModelContext(

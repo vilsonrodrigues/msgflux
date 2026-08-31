@@ -105,6 +105,16 @@ derived visible projection differ. A view requires a `ChatMessages` instance
 with a configured `thread_id`, making accidental process-global activation
 explicitly invalid.
 
+If the caller has a runtime scope but no `ChatMessages`, pass its identity
+explicitly:
+
+```python
+view = agent.tool_library.get_tool_catalog_view(thread_id="analysis-a")
+```
+
+An explicit ID creates an isolated snapshot with no loaded deferred names; it
+does not create or mutate conversation history.
+
 Each entry is an execution-free description containing its stable reference,
 input schema, annotations, native bindings, loading state, and display
 metadata. The search tool is marked by a semantic catalog role instead of a

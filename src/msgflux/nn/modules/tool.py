@@ -1138,10 +1138,13 @@ class ToolLibrary(Module, metaclass=AutoParams):
         *,
         choice: ToolChoice | str | Mapping[str, Any] | None = None,
         require_thread: bool,
+        thread_id: str | None = None,
     ) -> ToolCatalogView:
         if require_thread and not isinstance(messages, ChatMessages):
-            raise TypeError("`messages` must be ChatMessages")
-        thread_id = messages.thread_id if isinstance(messages, ChatMessages) else None
+            if not isinstance(thread_id, str) or not thread_id:
+                raise TypeError("`messages` must be ChatMessages or set `thread_id`")
+        if thread_id is None and isinstance(messages, ChatMessages):
+            thread_id = messages.thread_id
         if require_thread and (not isinstance(thread_id, str) or not thread_id):
             raise ValueError("Tool catalog views require a configured thread id")
         if not isinstance(thread_id, str) or not thread_id:
@@ -1161,15 +1164,17 @@ class ToolLibrary(Module, metaclass=AutoParams):
 
     def get_tool_catalog_view(
         self,
-        messages: ChatMessages,
+        messages: ChatMessages | None = None,
         *,
         choice: ToolChoice | str | Mapping[str, Any] | None = None,
+        thread_id: str | None = None,
     ) -> ToolCatalogView:
         """Return an immutable definition view for one configured thread."""
         return self._build_tool_catalog_view(
             messages,
             choice=choice,
             require_thread=True,
+            thread_id=thread_id,
         )
 
     @staticmethod

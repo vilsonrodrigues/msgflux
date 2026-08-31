@@ -56,6 +56,19 @@ msgFlux provides several inspection mechanisms to help you debug and understand 
         print(params)
         ```
 
+        When tools are available, `params.tool_catalog` is the immutable
+        `ToolCatalogView` prepared by the Agent before provider adaptation.
+        Inspect the regular logical tools with:
+
+        ```python
+        names = [entry.name for entry in params.tool_catalog.tool_entries()]
+        print(names)
+        ```
+
+        This view retains thread identity, loading state, stable references,
+        and native bindings. The Model receives its protocol adapter only when
+        the request is executed.
+
         Expected Output:
         
         ```bash

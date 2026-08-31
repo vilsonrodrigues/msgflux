@@ -629,6 +629,34 @@ class ToolCatalogView(msgspec.Struct, frozen=True, kw_only=True):
             return (*visible, search)
         return visible
 
+    def with_tools(self, names: Collection[str]) -> ToolCatalogView:
+        """Return a view containing selected regular tools and the search entry."""
+        included = set(names)
+        available = {entry.name for entry in self.tool_entries()}
+        unknown = included - available
+        if unknown:
+            formatted = ", ".join(f"`{name}`" for name in sorted(unknown))
+            raise ValueError(f"Catalog tools are not available: {formatted}")
+        entries = tuple(
+            entry
+            for entry in self.entries
+            if entry.catalog_role == "search" or entry.name in included
+        )
+        choice = self.choice
+        if choice.mode == "tool" and choice.name not in included:
+            choice = ToolChoice()
+        return msgspec.structs.replace(self, entries=entries, choice=choice)
+
+    def with_choice(
+        self,
+        choice: ToolChoice | str | Mapping[str, Any] | None,
+    ) -> ToolCatalogView:
+        """Return a view with a normalized provider-neutral selection policy."""
+        normalized = ToolChoice.coerce(choice)
+        if not self.tool_entries():
+            normalized = ToolChoice(mode="none")
+        return msgspec.structs.replace(self, choice=normalized)
+
 
 class ToolRegistry(Module):
     """Own stable logical definitions without owning executor modules."""

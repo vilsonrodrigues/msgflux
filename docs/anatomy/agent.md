@@ -154,6 +154,13 @@ That step is where `Agent` combines:
 - `generation_schema`
 - tool schemas from `ToolLibrary`
 
+The tool surface remains a thread-scoped `ToolCatalogView` while the Agent
+filters tools, resolves `tool_choice`, renders prompt guidance, and runs
+`transform_tool_catalog` hooks. This preserves canonical registry metadata and
+prevents Agent extensions from rebuilding partial provider-shaped schemas.
+The current Model boundary receives a compatibility `ToolCatalog` adapter;
+provider compilation remains outside the Agent.
+
 When no custom flow control is involved, tool schemas can be passed directly to
 the provider as native tool definitions.
 

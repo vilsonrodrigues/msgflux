@@ -235,3 +235,34 @@ def test_catalog_view_can_project_public_subset_without_losing_registry_entries(
 
     assert [entry.name for entry in view.entries] == ["bucket"]
     assert registry.has("captured")
+
+
+def test_catalog_view_filters_regular_tools_without_losing_search_role():
+    registry = ToolRegistry(
+        "warehouse_tools",
+        [
+            make_definition("discover", metadata={"catalog_role": "search"}),
+            make_definition("lookup"),
+            make_definition("reconcile", loading=LoadingSpec(deferred=True)),
+        ],
+    )
+
+    view = registry.catalog_view("thread_a", choice="reconcile")
+    filtered = view.with_tools(("lookup",))
+
+    assert [entry.name for entry in filtered.entries] == ["discover", "lookup"]
+    assert [entry.name for entry in filtered.visible_entries()] == ["lookup"]
+    assert filtered.choice.mode == "auto"
+    assert len(view.entries) == 3
+
+
+def test_catalog_view_applies_choice_after_filtering():
+    registry = ToolRegistry("warehouse_tools", [make_definition("lookup")])
+    view = registry.catalog_view("thread_a")
+
+    selected = view.with_choice({"type": "function", "function": {"name": "lookup"}})
+    empty = view.with_tools(()).with_choice("lookup")
+
+    assert selected.choice.mode == "tool"
+    assert selected.choice.name == "lookup"
+    assert empty.choice.mode == "none"

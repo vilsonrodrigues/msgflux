@@ -144,6 +144,17 @@ def test_library_catalog_view_requires_configured_thread():
         library.get_tool_catalog_view(ChatMessages())
 
 
+def test_library_catalog_view_accepts_explicit_thread_without_chat_messages():
+    def status() -> str:
+        return "ok"
+
+    library = ToolLibrary(name="runtime", tools=[status])
+
+    view = library.get_tool_catalog_view(thread_id="thread_a")
+
+    assert view.thread_id == "thread_a"
+
+
 def test_feedback_flags_compile_to_one_feedback_axis():
     def implementation() -> str:
         """Return a value."""

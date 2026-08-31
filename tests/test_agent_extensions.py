@@ -23,7 +23,6 @@ from msgflux.nn.hooks import (
 from msgflux.nn.modules.tool import ToolLibrary
 from msgflux.runtime import AbortSignal, ExecutionScope
 from msgflux.runtime.context import execution_context
-from msgflux.tools.definitions import ToolCatalog
 from msgflux.tools.config import tool_config
 from msgflux.tools.runtime import FeedbackSpec, ToolIntent, ToolOutcome
 
@@ -441,14 +440,7 @@ def test_transform_tool_catalog_changes_current_request_surface():
 
     def keep_alpha(ctx):
         assert isinstance(ctx, ToolCatalogContext)
-        return replace(
-            ctx,
-            catalog=ToolCatalog(
-                tools=[tool for tool in ctx.catalog.tools if tool.name == "alpha"],
-                choice=None,
-                catalog_id=ctx.catalog.catalog_id,
-            ),
-        )
+        return replace(ctx, catalog=ctx.catalog.with_tools(("alpha",)))
 
     model = _RecordingModel()
     agent = Agent(
@@ -459,6 +451,29 @@ def test_transform_tool_catalog_changes_current_request_surface():
     )
 
     assert agent("hello") == "ok"
+    assert [tool.name for tool in model.calls[0]["tool_catalog"].tools] == ["alpha"]
+
+
+@pytest.mark.asyncio
+async def test_async_transform_tool_catalog_preserves_canonical_entry_metadata():
+    def alpha() -> str:
+        """Return alpha."""
+        return "alpha"
+
+    async def select_alpha(ctx):
+        entry = ctx.catalog.tool_entries()[0]
+        assert entry.ref.library_id == ctx.catalog.library_id
+        return replace(ctx, catalog=ctx.catalog.with_tools(("alpha",)))
+
+    model = _RecordingModel()
+    agent = Agent(
+        name="agent",
+        model=model,
+        tools=[alpha],
+        hooks=[Hook(event="transform_tool_catalog", handler=select_alpha)],
+    )
+
+    assert await agent.acall("hello") == "ok"
     assert [tool.name for tool in model.calls[0]["tool_catalog"].tools] == ["alpha"]
 
 

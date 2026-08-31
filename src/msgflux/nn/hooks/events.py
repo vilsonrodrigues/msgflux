@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any, Literal, Mapping
 from msgflux.runtime.context import ExecutionScope
 
 if TYPE_CHECKING:
+    from msgflux.nn.modules.tool_runtime import ToolCatalogView
     from msgflux.runtime.agent_inbox import AgentNotification
     from msgflux.tools.definitions import ToolCatalog
     from msgflux.tools.runtime import ToolIntent, ToolOutcome
@@ -79,7 +80,7 @@ class NotificationContext(AgentContext):
 class ToolCatalogContext(AgentContext):
     """Logical tool catalog prepared for one model request."""
 
-    catalog: ToolCatalog
+    catalog: ToolCatalogView
     messages: Any = None
 
 
@@ -93,13 +94,13 @@ class ModelContext(AgentContext):
     """
 
     prompt: str
-    tool_catalog: ToolCatalog | None = None
+    tool_catalog: ToolCatalogView | None = None
 
     @property
     def tool_names(self) -> frozenset[str]:
         if self.tool_catalog is None:
             return frozenset()
-        return frozenset(tool.name for tool in self.tool_catalog.portable_tools())
+        return frozenset(entry.name for entry in self.tool_catalog.visible_entries())
 
 
 @dataclass(frozen=True, kw_only=True)

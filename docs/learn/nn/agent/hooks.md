@@ -108,6 +108,38 @@ boundary. Use `transform_tool_catalog` when an extension needs to change the
 request tool surface; the transformed catalog is used both for prompt guidance
 and provider compilation.
 
+`ToolCatalogContext.catalog` is an immutable `ToolCatalogView`. Filter its
+regular entries with `with_tools(...)` instead of rebuilding schemas:
+
+```python
+from dataclasses import replace
+
+from msgflux.nn.hooks import Hook
+from msgflux.tools import ToolCatalogView
+
+
+def expose_read_only_tools(ctx):
+    assert isinstance(ctx.catalog, ToolCatalogView)
+    allowed = {"search_orders", "lookup_customer"}
+    names = (
+        entry.name
+        for entry in ctx.catalog.tool_entries()
+        if entry.name in allowed
+    )
+    return replace(ctx, catalog=ctx.catalog.with_tools(names))
+
+
+catalog_hook = Hook(
+    event="transform_tool_catalog",
+    handler=expose_read_only_tools,
+)
+```
+
+The returned view preserves stable tool references, native bindings, loading
+state, and thread identity. `with_choice(...)` can apply a provider-neutral
+selection after filtering. The Agent converts the view to a provider catalog
+only at the Model request boundary.
+
 `transform_notifications` receives only ordinary progress and task
 notifications. Control messages such as pause and interrupt are handled before
 the hook and cannot be suppressed by an extension.

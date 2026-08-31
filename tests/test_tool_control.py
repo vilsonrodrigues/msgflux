@@ -160,7 +160,7 @@ class TestToolFilterIntegration:
         return Agent(name="agent", model=mock_model, tools=[search, browser], **kwargs)
 
     def _tool_names(self, params):
-        return [tool.name for tool in params.tool_catalog.tools]
+        return [tool.name for tool in params.tool_catalog.tool_entries()]
 
     def test_inspect_model_execution_params_accepts_tool_filter(self):
         """tool_filter should work with inspect_model_execution_params."""
@@ -217,7 +217,7 @@ class TestToolFilterIntegration:
         )
 
         assert self._tool_names(params) == ["search"]
-        assert params.tool_catalog.choice == "auto"
+        assert params.tool_catalog.choice.mode == "auto"
 
 
 class TestMaxToolTurnsConfig:
