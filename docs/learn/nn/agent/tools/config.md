@@ -656,13 +656,15 @@ Use cases:
     # Returns the tool call parameters without executing the function
     ```
 
-## spawn
+## detached
 
-Dispatch a tool without waiting for a result. The model receives a confirmation that the task was started, but no return value. Requires async tool.
+Dispatch a tool without waiting for a result. The model receives confirmation
+that the task started, but no eventual return value. The tool may be synchronous
+or asynchronous.
 
 Use cases:
 
-- Spawned operations (emails, notifications)
+- Detached operations (emails, notifications)
 - Tasks that don't need to return a result to the model
 
 ???+ example
@@ -675,7 +677,7 @@ Use cases:
 
     # mf.set_envs(OPENAI_API_KEY="...")
 
-    @mf.tool_config(spawn=True)
+    @mf.tool_config(detached=True)
     async def send_notification(user_id: str, message: str):
         """Send notification asynchronously. Will not generate a return."""
         # Simulate async operation (e.g., API call, email sending)

@@ -48,7 +48,7 @@ def tool_config(
     feedback: Optional[Union[str, FeedbackSpec]] = None,
     return_direct: Optional[bool] = False,
     call_as_response: Optional[bool] = False,
-    spawn: Optional[bool] = False,
+    detached: Optional[bool] = False,
     background: Optional[bool] = False,
     allow_background: Optional[bool] = False,
     background_capabilities: Optional[Collection[str]] = None,
@@ -96,7 +96,7 @@ def tool_config(
             If True, returns the tool call as its result. This property requires
             `return_direct = True` and will automatically change it to True if it
             is passed as false.
-        spawn:
+        detached:
             If True, the tool will be dispatched without waiting for a result.
             The model receives a confirmation that the task was started.
         background:
@@ -157,14 +157,14 @@ def tool_config(
 
     Raises:
         ValueError:
-           `spawn=True` is not compatible with `return_direct=True`
+           `detached=True` is not compatible with `return_direct=True`
            and `call_as_response=True`.
         ValueError:
            `background=True` is not compatible with `return_direct=True`,
-           `call_as_response=True`, `spawn=True`, and `handoff=True`.
+           `call_as_response=True`, `detached=True`, and `handoff=True`.
         ValueError:
            `allow_background=True` is not compatible with `return_direct=True`,
-           `call_as_response=True`, `spawn=True`, and `handoff=True`.
+           `call_as_response=True`, `detached=True`, and `handoff=True`.
         ValueError:
            `inject_vars=True` is not compatible with `call_as_response=True`.
 
@@ -211,24 +211,24 @@ def tool_config(
             _return_direct = True
             _inject_messages = True
 
-        if spawn and (_return_direct or call_as_response):
+        if detached and (_return_direct or call_as_response):
             raise ValueError(
-                "`spawn=True` is not compatible with `return_direct=True`"
+                "`detached=True` is not compatible with `return_direct=True`"
                 " and `call_as_response=True`."
             )
 
-        if background and (_return_direct or call_as_response or spawn or handoff):
+        if background and (_return_direct or call_as_response or detached or handoff):
             raise ValueError(
                 "`background=True` is not compatible with `return_direct=True`,"
-                " `call_as_response=True`, `spawn=True`, and `handoff=True`."
+                " `call_as_response=True`, `detached=True`, and `handoff=True`."
             )
 
         if allow_background and (
-            _return_direct or call_as_response or spawn or handoff
+            _return_direct or call_as_response or detached or handoff
         ):
             raise ValueError(
                 "`allow_background=True` is not compatible with "
-                "`return_direct=True`, `call_as_response=True`, `spawn=True`, "
+                "`return_direct=True`, `call_as_response=True`, `detached=True`, "
                 "and `handoff=True`."
             )
 
@@ -249,7 +249,7 @@ def tool_config(
             "tool_config": dotdict(
                 {
                     "description": description,
-                    "spawn": spawn,
+                    "detached": detached,
                     "background": background,
                     "allow_background": allow_background,
                     "background_capabilities": normalized_background_capabilities,

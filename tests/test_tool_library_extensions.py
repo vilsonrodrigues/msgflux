@@ -223,7 +223,7 @@ async def test_async_before_tool_is_sequential_and_block_is_call_local():
 def test_before_dispatch_can_reduce_spawn_to_foreground():
     observed_modes = []
 
-    @tool_config(spawn=True)
+    @tool_config(detached=True)
     def report() -> str:
         """Return a report."""
         return "ready"
@@ -243,7 +243,7 @@ def test_before_dispatch_can_reduce_spawn_to_foreground():
 
     response = library([("call_1", "report", {})])
 
-    assert observed_modes == ["spawn"]
+    assert observed_modes == ["detached"]
     assert response.tool_calls[0].result == "ready"
 
 
@@ -302,7 +302,7 @@ def test_before_dispatch_cannot_promote_foreground_to_spawn():
             return (
                 Hook(
                     event="before_dispatch",
-                    handler=lambda event: replace(event, dispatch_mode="spawn"),
+                    handler=lambda event: replace(event, dispatch_mode="detached"),
                 ),
             )
 
@@ -316,5 +316,5 @@ def test_before_dispatch_cannot_promote_foreground_to_spawn():
 
     assert response.tool_calls[0].error == (
         "before_dispatch hook failed closed: before_dispatch may only keep the "
-        "selected mode or reduce `background`/`spawn` dispatch to `foreground`"
+        "selected mode or reduce `background`/`detached` dispatch to `foreground`"
     )

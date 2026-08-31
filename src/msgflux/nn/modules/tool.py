@@ -2,7 +2,7 @@ import asyncio
 import inspect
 import weakref
 from copy import deepcopy
-from dataclasses import dataclass, replace
+from dataclasses import replace
 from functools import partial
 from typing import (
     Any,
@@ -10,7 +10,6 @@ from typing import (
     Dict,
     Iterator,
     List,
-    Literal,
     Mapping,
     Optional,
     Tuple,
@@ -42,6 +41,7 @@ from msgflux.nn.modules.tool_v2 import (
 )
 from msgflux.nn.modules.tool_v2 import (
     ToolDefinitionCompiler,
+    ToolExecutionPlan,
     ToolRef,
 )
 from msgflux.protocols.mcp import (
@@ -293,6 +293,8 @@ class LocalTool(Tool):
 def _inspect_tool_metadata(impl: Callable) -> ToolMetadata:  # noqa: C901
     """Extract normalized metadata from a callable tool."""
     tool_config = dotdict(deepcopy(getattr(impl, "tool_config", dotdict())))
+    if "spawn" in tool_config:
+        raise ValueError("The `spawn` tool option was removed; use `detached`.")
     if ToolLibraryOperator.is_operator_tool(impl):
         inherited_config = getattr(type(impl), "tool_config", {})
         for key in ("inject_handle", "inject_message", "inject_messages"):
@@ -450,7 +452,7 @@ def _inspect_tool_metadata(impl: Callable) -> ToolMetadata:  # noqa: C901
         ):
             annotations[RUNTIME_BACKGROUND_PARAM] = Optional[bool]
 
-    if tool_config.get("spawn"):
+    if tool_config.get("detached"):
         doc = "This tool will not generate a return. \n" + doc
     if tool_config.get("background"):
         doc = "This tool runs in the background and returns a task id. \n" + doc
@@ -539,20 +541,6 @@ def _metadata_from_tool(tool: Tool) -> ToolMetadata:
         source_tool=tool,
         execution_namespace=getattr(tool, "execution_namespace", None),
     )
-
-
-@dataclass(frozen=True)
-class ToolExecutionPlan:
-    """Validated dispatch decision for one logical tool call."""
-
-    tool_id: str
-    tool_name: str
-    tool: Tool
-    config: Mapping[str, Any]
-    visible_arguments: Mapping[str, Any]
-    call_arguments: Mapping[str, Any]
-    dispatch_mode: Literal["foreground", "background", "spawn", "call_as_response"]
-    return_direct: bool
 
 
 class ToolLibrary(Module, metaclass=AutoParams):
@@ -1340,60 +1328,61 @@ class ToolLibrary(Module, metaclass=AutoParams):
     def _build_execution_plan(
         self,
         *,
-        tool_id: str,
-        tool_name: str,
-        tool: Tool,
-        config: Mapping[str, Any],
+        intent: ToolIntent,
         visible_arguments: Mapping[str, Any],
         runtime_arguments: Mapping[str, Any],
     ) -> ToolExecutionPlan:
-        definition = self.get_tool_definition(tool_name)
-        call_arguments = {**visible_arguments, **runtime_arguments}
-        if definition.feedback.name == "call_as_response":
-            dispatch_mode = "call_as_response"
-        elif definition.dispatch.name == "detached":
-            dispatch_mode = "spawn"
-        elif definition.dispatch.name == "background":
-            dispatch_mode = "background"
-        elif definition.dispatch.name == "optional_background":
-            dispatch_mode = (
+        definition = self.get_tool_definition(intent.name)
+        selected_dispatch = definition.dispatch.name
+        selected_runtime_arguments = dict(runtime_arguments)
+        if selected_dispatch == "optional_background":
+            selected_dispatch = (
                 "background"
-                if call_arguments.pop(RUNTIME_BACKGROUND_PARAM, False) is True
+                if selected_runtime_arguments.pop(RUNTIME_BACKGROUND_PARAM, False)
+                is True
                 else "foreground"
             )
-        else:
-            dispatch_mode = "foreground"
-        if dispatch_mode == "foreground":
-            call_arguments["tool_call_id"] = tool_id
+        if (
+            selected_dispatch == "foreground"
+            and definition.feedback.name != "call_as_response"
+        ):
+            selected_runtime_arguments["tool_call_id"] = intent.id
         return ToolExecutionPlan(
-            tool_id=tool_id,
-            tool_name=tool_name,
-            tool=tool,
-            config=config,
+            intent=intent,
+            definition=definition,
             visible_arguments=dict(visible_arguments),
-            call_arguments=call_arguments,
-            dispatch_mode=dispatch_mode,
-            return_direct=definition.feedback.name
-            in {"direct", "handoff", "call_as_response"},
+            runtime_arguments=selected_runtime_arguments,
+            dispatch=selected_dispatch,
         )
 
     @staticmethod
     def _with_dispatch_mode(
         plan: ToolExecutionPlan,
-        dispatch_mode: Literal["foreground", "background", "spawn", "call_as_response"],
+        dispatch_mode: str,
     ) -> ToolExecutionPlan:
-        if dispatch_mode == plan.dispatch_mode:
+        selected_dispatch = dispatch_mode
+        if selected_dispatch == plan.dispatch.name:
             return plan
-        call_arguments = dict(plan.call_arguments)
-        call_arguments.pop("tool_call_id", None)
-        call_arguments.pop(RUNTIME_BACKGROUND_PARAM, None)
-        if dispatch_mode == "foreground":
-            call_arguments["tool_call_id"] = plan.tool_id
-        return replace(
-            plan,
-            call_arguments=call_arguments,
-            dispatch_mode=dispatch_mode,
+        runtime_arguments = dict(plan.runtime_arguments)
+        runtime_arguments.pop("tool_call_id", None)
+        runtime_arguments.pop(RUNTIME_BACKGROUND_PARAM, None)
+        if (
+            selected_dispatch == "foreground"
+            and plan.feedback.name != "call_as_response"
+        ):
+            runtime_arguments["tool_call_id"] = plan.intent.id
+        return ToolExecutionPlan(
+            intent=plan.intent,
+            definition=plan.definition,
+            visible_arguments=plan.visible_arguments,
+            runtime_arguments=runtime_arguments,
+            dispatch=selected_dispatch,
+            feedback=plan.feedback,
         )
+
+    @staticmethod
+    def _plan_config(plan: ToolExecutionPlan) -> Mapping[str, Any]:
+        return getattr(plan.definition.executor, "tool_config", {})
 
     @staticmethod
     def _emit_tool_blocked(event: BeforeTool | BeforeToolDispatch) -> None:
@@ -1432,17 +1421,16 @@ class ToolLibrary(Module, metaclass=AutoParams):
         if event.dispatch_mode not in {
             "foreground",
             "background",
-            "spawn",
-            "call_as_response",
+            "detached",
         }:
             raise ValueError(f"Unsupported tool dispatch mode: `{event.dispatch_mode}`")
         if event.dispatch_mode != initial_event.dispatch_mode and not (
-            initial_event.dispatch_mode in {"background", "spawn"}
+            initial_event.dispatch_mode in {"background", "detached"}
             and event.dispatch_mode == "foreground"
         ):
             raise ValueError(
                 "before_dispatch may only keep the selected mode or reduce "
-                "`background`/`spawn` dispatch to `foreground`"
+                "`background`/`detached` dispatch to `foreground`"
             )
         return event
 
@@ -1521,11 +1509,11 @@ class ToolLibrary(Module, metaclass=AutoParams):
         plan: ToolExecutionPlan,
     ) -> BeforeToolDispatch:
         event = BeforeToolDispatch(
-            tool_call_id=plan.tool_id,
-            tool_name=plan.tool_name,
+            tool_call_id=plan.intent.id,
+            tool_name=plan.intent.name,
             arguments=plan.visible_arguments,
-            config=plan.config,
-            dispatch_mode=plan.dispatch_mode,
+            config=self._plan_config(plan),
+            dispatch_mode=plan.dispatch.name,
         )
         initial_event = event
         try:
@@ -1551,11 +1539,11 @@ class ToolLibrary(Module, metaclass=AutoParams):
         plan: ToolExecutionPlan,
     ) -> BeforeToolDispatch:
         event = BeforeToolDispatch(
-            tool_call_id=plan.tool_id,
-            tool_name=plan.tool_name,
+            tool_call_id=plan.intent.id,
+            tool_name=plan.intent.name,
             arguments=plan.visible_arguments,
-            config=plan.config,
-            dispatch_mode=plan.dispatch_mode,
+            config=self._plan_config(plan),
+            dispatch_mode=plan.dispatch.name,
         )
         initial_event = event
         try:
@@ -2107,10 +2095,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
             )
         response_arguments = dict(before_tool.arguments)
         plan = self._build_execution_plan(
-            tool_id=intent.id,
-            tool_name=intent.name,
-            tool=tool,
-            config=config,
+            intent=intent,
             visible_arguments=response_arguments,
             runtime_arguments=runtime_arguments,
         )
@@ -2177,10 +2162,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
             )
         response_arguments = dict(before_tool.arguments)
         plan = self._build_execution_plan(
-            tool_id=intent.id,
-            tool_name=intent.name,
-            tool=tool,
-            config=config,
+            intent=intent,
             visible_arguments=response_arguments,
             runtime_arguments=runtime_arguments,
         )
@@ -2202,10 +2184,17 @@ class ToolLibrary(Module, metaclass=AutoParams):
         intent: ToolIntent,
         plan: ToolExecutionPlan,
     ) -> ToolOutcome | Callable[[], Any]:
-        feedback = self.get_tool_definition(intent.name).feedback
+        feedback = plan.feedback
         arguments = plan.visible_arguments
-        if plan.dispatch_mode == "spawn":
-            F.spawn(plan.tool, **plan.call_arguments)
+        if feedback.name == "call_as_response":
+            return self._completed_intent(
+                intent,
+                None,
+                feedback=feedback,
+                arguments=arguments,
+            )
+        if plan.dispatch.name == "detached":
+            F.spawn(plan.definition.executor, **plan.call_arguments)
             return self._dispatched_intent(
                 intent,
                 f"The `{intent.name}` tool was dispatched. "
@@ -2213,14 +2202,14 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 feedback=feedback,
                 arguments=arguments,
             )
-        if plan.dispatch_mode == "background":
+        if plan.dispatch.name == "background":
             call = self.get_background_dispatcher().dispatch(
-                tool=plan.tool,
+                tool=plan.definition.executor,
                 tool_id=intent.id,
                 tool_name=intent.name,
                 call_params=plan.call_arguments,
                 visible_params=arguments,
-                config=plan.config,
+                config=self._plan_config(plan),
             )
             if call.error is not None:
                 return self._failed_intent(
@@ -2237,16 +2226,9 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 feedback=feedback,
                 arguments=arguments,
             )
-        if plan.dispatch_mode == "call_as_response":
-            return self._completed_intent(
-                intent,
-                None,
-                feedback=feedback,
-                arguments=arguments,
-            )
         return partial(
             self._execute_prepared_tool,
-            plan.tool,
+            plan.definition.executor,
             plan.call_arguments,
             arguments,
         )
@@ -2256,10 +2238,17 @@ class ToolLibrary(Module, metaclass=AutoParams):
         intent: ToolIntent,
         plan: ToolExecutionPlan,
     ) -> ToolOutcome | Callable[[], Any]:
-        feedback = self.get_tool_definition(intent.name).feedback
+        feedback = plan.feedback
         arguments = plan.visible_arguments
-        if plan.dispatch_mode == "spawn":
-            await F.aspawn(plan.tool, **plan.call_arguments)
+        if feedback.name == "call_as_response":
+            return self._completed_intent(
+                intent,
+                None,
+                feedback=feedback,
+                arguments=arguments,
+            )
+        if plan.dispatch.name == "detached":
+            await F.aspawn(plan.definition.executor, **plan.call_arguments)
             return self._dispatched_intent(
                 intent,
                 f"The `{intent.name}` tool was dispatched. "
@@ -2267,14 +2256,14 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 feedback=feedback,
                 arguments=arguments,
             )
-        if plan.dispatch_mode == "background":
+        if plan.dispatch.name == "background":
             call = self.get_background_dispatcher().dispatch(
-                tool=plan.tool,
+                tool=plan.definition.executor,
                 tool_id=intent.id,
                 tool_name=intent.name,
                 call_params=plan.call_arguments,
                 visible_params=arguments,
-                config=plan.config,
+                config=self._plan_config(plan),
             )
             if call.error is not None:
                 return self._failed_intent(
@@ -2291,16 +2280,9 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 feedback=feedback,
                 arguments=arguments,
             )
-        if plan.dispatch_mode == "call_as_response":
-            return self._completed_intent(
-                intent,
-                None,
-                feedback=feedback,
-                arguments=arguments,
-            )
         return partial(
             self._aexecute_prepared_tool,
-            plan.tool,
+            plan.definition.executor,
             plan.call_arguments,
             arguments,
         )

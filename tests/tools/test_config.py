@@ -13,13 +13,13 @@ class TestToolConfig:
     def test_tool_config_on_function(self):
         """Test tool_config decorator on a regular function."""
 
-        @tool_config(return_direct=True, spawn=False)
+        @tool_config(return_direct=True, detached=False)
         def sample_function(x: int) -> int:
             return x * 2
 
         assert hasattr(sample_function, "tool_config")
         assert sample_function.tool_config.return_direct is True
-        assert sample_function.tool_config.spawn is False
+        assert sample_function.tool_config.detached is False
         assert sample_function(5) == 10
 
     def test_tool_config_on_method(self):
@@ -60,7 +60,7 @@ class TestToolConfig:
 
         config = sample_function.tool_config
         assert config.return_direct is False
-        assert config.spawn is False
+        assert config.detached is False
         assert config.background is False
         assert config.handoff is False
         assert config.call_as_response is False
@@ -146,26 +146,26 @@ class TestToolConfig:
         assert sample_function.tool_config.inject_messages is True
 
     def test_tool_config_spawn_incompatible_with_return_direct(self):
-        """Test that spawn=True is incompatible with return_direct=True."""
-        with pytest.raises(ValueError, match="`spawn=True` is not compatible"):
+        """Test that detached=True is incompatible with return_direct=True."""
+        with pytest.raises(ValueError, match="`detached=True` is not compatible"):
 
-            @tool_config(spawn=True, return_direct=True)
+            @tool_config(detached=True, return_direct=True)
             def sample_function():
                 pass
 
     def test_tool_config_spawn_incompatible_with_call_as_response(self):
-        """Test that spawn=True is incompatible with call_as_response=True."""
-        with pytest.raises(ValueError, match="`spawn=True` is not compatible"):
+        """Test that detached=True is incompatible with call_as_response=True."""
+        with pytest.raises(ValueError, match="`detached=True` is not compatible"):
 
-            @tool_config(spawn=True, call_as_response=True)
+            @tool_config(detached=True, call_as_response=True)
             def sample_function():
                 pass
 
     def test_tool_config_background_incompatible_with_spawn(self):
-        """Test that background=True is incompatible with spawn=True."""
+        """Test that background=True is incompatible with detached=True."""
         with pytest.raises(ValueError, match="`background=True` is not compatible"):
 
-            @tool_config(background=True, spawn=True)
+            @tool_config(background=True, detached=True)
             def sample_function():
                 pass
 
@@ -249,7 +249,7 @@ class TestDecorateFunction:
         def sample_function():
             return "result"
 
-        config = {"tool_config": dotdict({"return_direct": True, "spawn": False})}
+        config = {"tool_config": dotdict({"return_direct": True, "detached": False})}
 
         decorated = decorate_function(sample_function, config)
         assert hasattr(decorated, "tool_config")
@@ -262,7 +262,7 @@ class TestDecorateFunction:
         def multiply(x: int, y: int) -> int:
             return x * y
 
-        config = {"tool_config": dotdict({"return_direct": False, "spawn": False})}
+        config = {"tool_config": dotdict({"return_direct": False, "detached": False})}
 
         decorated = decorate_function(multiply, config)
         assert decorated(3, 4) == 12
@@ -280,7 +280,7 @@ class TestDecorateInstance:
                 return "result"
 
         instance = SampleCallable()
-        config = {"tool_config": dotdict({"return_direct": True, "spawn": False})}
+        config = {"tool_config": dotdict({"return_direct": True, "detached": False})}
 
         decorated = decorate_instance(instance, config)
         assert hasattr(decorated, "tool_config")
@@ -295,7 +295,7 @@ class TestDecorateInstance:
                 return x * y
 
         instance = Multiplier()
-        config = {"tool_config": dotdict({"return_direct": False, "spawn": False})}
+        config = {"tool_config": dotdict({"return_direct": False, "detached": False})}
 
         decorated = decorate_instance(instance, config)
         assert decorated(3, 4) == 12
@@ -315,13 +315,13 @@ class TestToolConfigCombinations:
         assert sample.tool_config.return_direct is True
 
     def test_spawn_true(self):
-        """Test spawn=True configuration."""
+        """Test detached=True configuration."""
 
-        @tool_config(spawn=True)
+        @tool_config(detached=True)
         def sample():
             pass
 
-        assert sample.tool_config.spawn is True
+        assert sample.tool_config.detached is True
         assert sample.tool_config.return_direct is False
 
     def test_inject_messages_true(self):
@@ -385,7 +385,7 @@ class TestToolConfigCombinations:
 
         @tool_config(
             return_direct=False,
-            spawn=False,
+            detached=False,
             handoff=False,
             call_as_response=False,
             disable_input=False,
@@ -400,7 +400,7 @@ class TestToolConfigCombinations:
 
         config = sample.tool_config
         assert config.return_direct is False
-        assert config.spawn is False
+        assert config.detached is False
         assert config.handoff is False
         assert config.call_as_response is False
         assert config.disable_input is False

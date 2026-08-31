@@ -151,7 +151,7 @@ class ToolBucket:
             for option in (
                 "background",
                 "allow_background",
-                "spawn",
+                "detached",
                 "call_as_response",
                 "return_direct",
                 "handoff",

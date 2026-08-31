@@ -166,15 +166,17 @@ def test_tool_definition_rejects_raw_callable_before_adapter_compilation():
 
 
 def test_tool_execution_plan_keeps_visible_and_runtime_arguments_separate():
+    handle = object()
     plan = ToolExecutionPlan(
         intent=make_intent(),
         definition=make_definition(),
         visible_arguments={"value": 2},
-        runtime_arguments={"handle": object()},
+        runtime_arguments={"handle": handle},
     )
 
     assert plan.visible_arguments == {"value": 2}
     assert set(plan.runtime_arguments) == {"handle"}
+    assert plan.runtime_arguments["handle"] is handle
     assert set(plan.call_arguments) == {"value", "handle"}
 
 

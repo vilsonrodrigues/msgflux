@@ -158,7 +158,7 @@ def test_call_as_response_produces_outcome_without_running_implementation():
 
 
 def test_detached_dispatch_produces_dispatched_outcome():
-    @tool_config(spawn=True)
+    @tool_config(detached=True)
     def refresh_index(name: str) -> str:
         return name
 

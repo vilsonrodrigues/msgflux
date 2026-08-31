@@ -103,7 +103,7 @@ The library validates ownership before mutating its state:
 - a bucket cannot be removed while it still owns tools;
 - empty or duplicate `tool_kind` alternatives are rejected;
 - an executable bucket rejects captured tools configured with model-loop
-  behavior: `background`, `allow_background`, `spawn`, `call_as_response`,
+  behavior: `background`, `allow_background`, `detached`, `call_as_response`,
   `return_direct`, or `handoff`.
 
 The last rule keeps ownership explicit. The public bucket controls whether its

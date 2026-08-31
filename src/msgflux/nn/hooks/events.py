@@ -221,9 +221,7 @@ class BeforeToolDispatch:
     tool_name: str
     arguments: Mapping[str, Any] = field(default_factory=dict)
     config: Mapping[str, Any] = field(default_factory=dict)
-    dispatch_mode: Literal["foreground", "background", "spawn", "call_as_response"] = (
-        "foreground"
-    )
+    dispatch_mode: Literal["foreground", "background", "detached"] = "foreground"
     block: str | None = None
 
 

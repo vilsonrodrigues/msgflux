@@ -432,13 +432,13 @@ class TestConvertModuleToNNTool:
         assert tool.annotations == {}
 
     def test_convert_with_spawn_config(self):
-        """Test converting with spawn configuration."""
+        """Test converting with detached configuration."""
 
         def dispatched_task(data: str) -> None:
             """Dispatch task without return."""
             pass
 
-        dispatched_task.tool_config = {"spawn": True}
+        dispatched_task.tool_config = {"detached": True}
         tool = _convert_module_to_nn_tool(dispatched_task)
 
         assert "not generate a return" in tool.description.lower()
@@ -493,6 +493,16 @@ class TestConvertModuleToNNTool:
 
 class TestToolLibrary:
     """Test suite for ToolLibrary."""
+
+    def test_tool_library_rejects_removed_spawn_option(self):
+        def legacy_task() -> str:
+            """Run a detached task."""
+            return "done"
+
+        legacy_task.tool_config = {"spawn": True}
+
+        with pytest.raises(ValueError, match="removed; use `detached`"):
+            ToolLibrary(name="lib", tools=[legacy_task])
 
     def test_tool_library_initialization(self):
         """Test ToolLibrary basic initialization."""
@@ -1021,7 +1031,7 @@ class TestToolLibrary:
         [
             "background",
             "allow_background",
-            "spawn",
+            "detached",
             "call_as_response",
             "return_direct",
             "handoff",
@@ -1894,13 +1904,13 @@ class TestToolLibrary:
 
     @pytest.mark.asyncio
     async def test_tool_library_aforward_spawn(self):
-        """Test async ToolLibrary spawn execution."""
+        """Test async ToolLibrary detached execution."""
 
         async def async_tool(x: int) -> int:
             """Spawn async tool."""
             return x * 2
 
-        async_tool.tool_config = {"spawn": True}
+        async_tool.tool_config = {"detached": True}
         library = ToolLibrary(name="lib", tools=[async_tool])
 
         tool_callings = [("call_1", "async_tool", {"x": 10})]
@@ -2046,13 +2056,13 @@ class TestToolLibrary:
         assert "x" not in result.tool_calls[0].parameters
 
     def test_tool_library_forward_spawn(self):
-        """Test ToolLibrary spawn execution in sync mode."""
+        """Test ToolLibrary detached execution in sync mode."""
 
         def sync_tool(x: int) -> int:
             """Spawn sync tool."""
             return x * 4
 
-        sync_tool.tool_config = {"spawn": True}
+        sync_tool.tool_config = {"detached": True}
         library = ToolLibrary(name="lib", tools=[sync_tool])
 
         tool_callings = [("call_1", "sync_tool", {"x": 5})]

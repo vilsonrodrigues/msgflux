@@ -370,7 +370,7 @@ class ToolDefinitionCompiler:
                     "capabilities": config.get("background_capabilities", ()),
                 },
             )
-        if config.get("spawn", False):
+        if config.get("detached", False):
             return DispatchSpec(name="detached")
         if config.get("allow_background", False):
             return DispatchSpec(
@@ -673,10 +673,12 @@ class ToolExecutionPlan(msgspec.Struct, frozen=True, kw_only=True):
             "visible_arguments",
             _copy_mapping(self.visible_arguments, "visible_arguments"),
         )
+        if not isinstance(self.runtime_arguments, Mapping):
+            raise TypeError("`runtime_arguments` must be a mapping")
         msgspec.structs.force_setattr(
             self,
             "runtime_arguments",
-            _copy_mapping(self.runtime_arguments, "runtime_arguments"),
+            dict(self.runtime_arguments),
         )
         collisions = self.visible_arguments.keys() & self.runtime_arguments.keys()
         if collisions:

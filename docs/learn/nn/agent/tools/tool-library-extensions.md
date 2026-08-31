@@ -65,7 +65,7 @@ class ForegroundOnly(ToolLibraryExtension):
 
     def hooks(self):
         def keep_attached(event):
-            if event.dispatch_mode in {"background", "spawn"}:
+            if event.dispatch_mode in {"background", "detached"}:
                 return replace(event, dispatch_mode="foreground")
             return event
 
@@ -73,7 +73,7 @@ class ForegroundOnly(ToolLibraryExtension):
 ```
 
 This boundary exposes public arguments and normalized config, not injected
-runtime values. It may reduce background/spawn execution to foreground or
+runtime values. It may reduce background/detached execution to foreground or
 block the call; it cannot promote a foreground call into detached execution.
 
 ## Register And Remove

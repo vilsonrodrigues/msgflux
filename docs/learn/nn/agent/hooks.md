@@ -45,7 +45,7 @@ The Agent currently exposes these lifecycle boundaries:
 | `before_request` | `ModelRequestContext` | May replace provider-neutral request parameters immediately before the LM call. |
 | `after_response` | `ModelResponseContext` | May replace a settled, non-streaming response before it enters history. |
 | `before_tool` | `BeforeTool` | May replace model-visible arguments or block local execution. |
-| `before_dispatch` | `BeforeToolDispatch` | May block a validated call or reduce background/spawn dispatch to foreground. |
+| `before_dispatch` | `BeforeToolDispatch` | May block a validated call or reduce background/detached dispatch to foreground. |
 | `after_tool` | `AfterTool` | May replace the result or error before it becomes a tool result. |
 | `resolve_tool_feedback` | `ToolFeedbackContext` | May continue the model loop or return an Agent result after a batch of tool outcomes. The first return decision stops this hook chain. |
 | `before_run_end` | `RunEndContext` | May inspect or replace the terminal outcome immediately before the final checkpoint. |
@@ -91,9 +91,9 @@ and the runtime emits `tool.blocked`; it does not emit `tool.start`, `tool.end`,
 or call `after_tool` because execution never began.
 
 `before_dispatch` runs after `ToolExecutionPlan` selects `foreground`,
-`background`, `spawn`, or `call_as_response`. Its payload exposes public
+`background`, or `detached`. Its payload exposes public
 arguments and normalized tool config, but not runtime injections. A handler may
-keep the selected mode, reduce `background` or `spawn` to `foreground`, or
+keep the selected mode, reduce `background` or `detached` to `foreground`, or
 block. It cannot redirect a foreground call into detached execution.
 
 Use `before_resume` to restore extension-owned resources or transform the

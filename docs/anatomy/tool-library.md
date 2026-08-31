@@ -59,13 +59,11 @@ Those methods are used for different reasons.
 
 The Model decodes provider calls into `ToolIntent` values. The Agent passes
 those intents to `ToolLibrary.execute_intents(...)` or
-`ToolLibrary.aexecute_intents(...)`, which returns `ToolOutcome` values. These
-entry points currently adapt through the established `forward(...)` and
-`aforward(...)` pipeline so lifecycle hooks, telemetry, background dispatch,
-abort handling, and task state keep the same behavior during the migration.
+`ToolLibrary.aexecute_intents(...)`, which execute the canonical runtime path
+and return ordered `ToolOutcome` values.
 
-`forward(...)`, `aforward(...)`, and `ToolResponses` remain as compatibility
-contracts for custom `ToolFlowControl` implementations.
+`forward(...)`, `aforward(...)`, and `ToolResponses` adapt that canonical path
+for custom `ToolFlowControl` implementations that still use tuple calls.
 
 Feedback is declarative at this boundary. `ToolLibrary` attaches the compiled
 `FeedbackSpec` to each outcome, but does not decide whether that feedback ends
@@ -75,7 +73,7 @@ That runtime path applies tool configuration rules such as:
 
 - `return_direct`
 - `call_as_response`
-- `spawn`
+- `detached`
 - `inject_vars`
 - `inject_message`
 - `inject_messages`
@@ -124,7 +122,7 @@ belong only to implementations that actually started.
 
 `before_dispatch` receives the public arguments and normalized config alongside
 the selected `dispatch_mode`. Runtime injections remain private. Extensions may
-reduce `background` or `spawn` to `foreground`, but cannot promote attached
+reduce `background` or `detached` to `foreground`, but cannot promote attached
 execution into a detached mode. When a mode changes, the library rebuilds the
 reserved call arguments before dispatch.
 
@@ -230,7 +228,7 @@ Two bucket captures cannot overlap. This makes routing deterministic without a
 priority system. A kind bucket that coexists with deferred tools should include
 `"defer_loading": False`, leaving `{"defer_loading": True}` to `tool_search`. The
 base executable bucket rejects captured tools that configure
-`background`, `allow_background`, `spawn`, `call_as_response`,
+`background`, `allow_background`, `detached`, `call_as_response`,
 `return_direct`, or `handoff`; these model-loop policies belong to the
 public bucket. `ToolSearchTool` overrides this validation because it catalogs
 deferred tools rather than proxy-executing them behind its own call.
