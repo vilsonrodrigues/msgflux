@@ -74,6 +74,29 @@ def test_library_preserves_custom_compiled_feedback_mode():
     assert outcome.feedback.name == "approval"
 
 
+def test_legacy_dispatch_hook_reads_compiled_declaration():
+    observed = []
+
+    def inspect(value: str) -> str:
+        """Inspect one value."""
+        return value
+
+    inspect.tool_config = {"audit_tier": "strict"}
+    library = ToolLibrary(name="test", tools=[inspect])
+    library.library["inspect"].tool_config["audit_tier"] = "relaxed"
+    Hook(
+        event="before_dispatch",
+        handler=lambda event: observed.append(event.config["audit_tier"]),
+    ).register(library)
+
+    outcome = library.execute_intents(
+        [ToolIntent(id="call_1", name="inspect", arguments={"value": "ok"})]
+    )[0]
+
+    assert outcome.result == "ok"
+    assert observed == ["strict"]
+
+
 def test_canonical_outcomes_preserve_intent_order_across_execution_paths():
     def double(value: int) -> int:
         return value * 2

@@ -76,6 +76,7 @@ from msgflux.tools.dataclasses import ToolMetadata
 from msgflux.tools.definitions import ToolCatalog, ToolSpec
 from msgflux.tools.handles import ToolLibraryHandle
 from msgflux.tools.helpers import (
+    RESERVED_TOOL_KINDS,
     RUNTIME_BACKGROUND_PARAM,
     coerce_tool_params,
     is_background_capable,
@@ -1164,9 +1165,9 @@ class ToolLibrary(Module, metaclass=AutoParams):
             return metadata.source_tool
         return _convert_metadata_to_local_tool(metadata)
 
-    def _resolve_tool(self, tool_name: str) -> tuple[Tool, Mapping[str, Any]] | None:
+    def _resolve_tool(self, tool_name: str) -> Tool | None:
         if tool_name in self.library:
-            return self.library[tool_name], self.tool_configs.get(tool_name, {})
+            return self.library[tool_name]
         bucket_name = ToolBucket.find_capturing_bucket(
             tool_name,
             self.library,
@@ -1180,7 +1181,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
         metadata = bucket.tools.get(tool_name)
         if metadata is None:
             return None
-        return self._tool_from_metadata(metadata), metadata.tool_config
+        return self._tool_from_metadata(metadata)
 
     def load_tools(
         self,
@@ -1379,32 +1380,29 @@ class ToolLibrary(Module, metaclass=AutoParams):
         self,
         *,
         activity_recorder: Any,
-        tool_name: str,
-        tool: Tool,
-        config: Mapping[str, Any],
+        definition: RuntimeToolDefinition,
         parameters: Mapping[str, Any] | None,
     ) -> None:
         if (
             activity_recorder is None
-            or is_reserved_tool_kind(config)
-            or ToolLibraryOperator.is_operator_tool(tool)
+            or definition.kind in RESERVED_TOOL_KINDS
+            or ToolLibraryOperator.is_operator_tool(definition.executor)
         ):
             return
-        activity_recorder.tool_call(tool_name, parameters)
+        activity_recorder.tool_call(definition.name, parameters)
 
     def _prepare_tool_kwargs(
         self,
         *,
-        tool: Tool,
+        definition: RuntimeToolDefinition,
         intent: ToolIntent,
         tool_params: Any,
-        config: Mapping[str, Any],
         context: ToolRuntimeContext,
         activity_recorder: Any,
         runtime_arguments: Mapping[str, Any] | None = None,
     ) -> tuple[Dict[str, Any], Dict[str, Any]]:
         visible_params, runtime_params = self._build_tool_argument_sets(
-            definition=self.get_tool_definition(intent.name),
+            definition=definition,
             intent=intent,
             tool_params=tool_params,
             context=context,
@@ -1412,9 +1410,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
         )
         self._record_tool_activity(
             activity_recorder=activity_recorder,
-            tool_name=intent.name,
-            tool=tool,
-            config=config,
+            definition=definition,
             parameters=visible_params,
         )
         return visible_params, runtime_params
@@ -1422,16 +1418,15 @@ class ToolLibrary(Module, metaclass=AutoParams):
     async def _aprepare_tool_kwargs(
         self,
         *,
-        tool: Tool,
+        definition: RuntimeToolDefinition,
         intent: ToolIntent,
         tool_params: Any,
-        config: Mapping[str, Any],
         context: ToolRuntimeContext,
         activity_recorder: Any,
         runtime_arguments: Mapping[str, Any] | None = None,
     ) -> tuple[Dict[str, Any], Dict[str, Any]]:
         visible_params, runtime_params = await self._abuild_tool_argument_sets(
-            definition=self.get_tool_definition(intent.name),
+            definition=definition,
             intent=intent,
             tool_params=tool_params,
             context=context,
@@ -1439,9 +1434,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
         )
         self._record_tool_activity(
             activity_recorder=activity_recorder,
-            tool_name=intent.name,
-            tool=tool,
-            config=config,
+            definition=definition,
             parameters=visible_params,
         )
         return visible_params, runtime_params
@@ -1449,11 +1442,11 @@ class ToolLibrary(Module, metaclass=AutoParams):
     def _build_execution_plan(
         self,
         *,
+        definition: RuntimeToolDefinition,
         intent: ToolIntent,
         visible_arguments: Mapping[str, Any],
         runtime_arguments: Mapping[str, Any],
     ) -> ToolExecutionPlan:
-        definition = self.get_tool_definition(intent.name)
         selected_dispatch = definition.dispatch.name
         selected_runtime_arguments = dict(runtime_arguments)
         if selected_dispatch == "optional_background":
@@ -1502,8 +1495,15 @@ class ToolLibrary(Module, metaclass=AutoParams):
         )
 
     @staticmethod
-    def _plan_config(plan: ToolExecutionPlan) -> Mapping[str, Any]:
-        return getattr(plan.definition.executor, "tool_config", {})
+    def _definition_config(
+        definition: RuntimeToolDefinition,
+    ) -> Mapping[str, Any]:
+        declaration = definition.metadata.get("declaration", {})
+        return declaration if isinstance(declaration, Mapping) else {}
+
+    @classmethod
+    def _plan_config(cls, plan: ToolExecutionPlan) -> Mapping[str, Any]:
+        return cls._definition_config(plan.definition)
 
     def _tool_runtime_context(
         self,
@@ -1895,7 +1895,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
         self,
         bucket_name: str,
         tool_name: str,
-    ) -> tuple[Tool, Mapping[str, Any]]:
+    ) -> Tool:
         if bucket_name not in self.library:
             raise ValueError(f"The bucket `{bucket_name}` is no longer available.")
         bucket = getattr(self.library[bucket_name], "impl", None)
@@ -1908,7 +1908,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 f"Tool `{tool_name}` is not captured by `{bucket_name}`. "
                 f"Available tools: {available}."
             )
-        return self._tool_from_metadata(metadata), metadata.tool_config
+        return self._tool_from_metadata(metadata)
 
     def _execute_prepared_tool(
         self,
@@ -2356,7 +2356,6 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 message=f"Error: Tool `{intent.name}` not found.",
             )
 
-        tool, config = resolved
         definition = self.get_tool_definition(intent.name)
         before_policy = F.wait_for(
             self._abefore_tool_policy,
@@ -2368,13 +2367,12 @@ class ToolLibrary(Module, metaclass=AutoParams):
             self._emit_policy_blocked(intent, before_policy, intent.arguments)
             return before_policy
         intent = before_policy.intent
-        if config.get("defer_loading", False) and isinstance(messages, ChatMessages):
+        if definition.loading.deferred and isinstance(messages, ChatMessages):
             messages.load_tools(self.name, [intent.name])
         visible_arguments, runtime_arguments = self._prepare_tool_kwargs(
-            tool=tool,
+            definition=definition,
             intent=intent,
             tool_params=intent.arguments,
-            config=config,
             context=context,
             activity_recorder=activity_recorder,
             runtime_arguments=runtime_arguments,
@@ -2397,6 +2395,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
             )
         response_arguments = dict(before_tool.arguments)
         plan = self._build_execution_plan(
+            definition=definition,
             intent=intent,
             visible_arguments=response_arguments,
             runtime_arguments=runtime_arguments,
@@ -2450,7 +2449,6 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 message=f"Error: Tool `{intent.name}` not found.",
             )
 
-        tool, config = resolved
         definition = self.get_tool_definition(intent.name)
         before_policy = await self._abefore_tool_policy(
             intent,
@@ -2461,13 +2459,12 @@ class ToolLibrary(Module, metaclass=AutoParams):
             self._emit_policy_blocked(intent, before_policy, intent.arguments)
             return before_policy
         intent = before_policy.intent
-        if config.get("defer_loading", False) and isinstance(messages, ChatMessages):
+        if definition.loading.deferred and isinstance(messages, ChatMessages):
             messages.load_tools(self.name, [intent.name])
         visible_arguments, runtime_arguments = await self._aprepare_tool_kwargs(
-            tool=tool,
+            definition=definition,
             intent=intent,
             tool_params=intent.arguments,
-            config=config,
             context=context,
             activity_recorder=activity_recorder,
             runtime_arguments=runtime_arguments,
@@ -2490,6 +2487,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
             )
         response_arguments = dict(before_tool.arguments)
         plan = self._build_execution_plan(
+            definition=definition,
             intent=intent,
             visible_arguments=response_arguments,
             runtime_arguments=runtime_arguments,

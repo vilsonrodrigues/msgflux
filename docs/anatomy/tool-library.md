@@ -36,6 +36,15 @@ dispatch policy, feedback policy, context bindings, and loading policy into one
 immutable `ToolDefinition`. Runtime code reads that definition instead of
 reinterpreting `tool_config` flags for every call.
 
+The definition also retains a stable snapshot of the normalized declaration
+for compatibility lifecycle hooks and the legacy background-task adapter. This
+snapshot is not a second policy source: dispatch, feedback, loading, context,
+kind, schema, and execution all use their typed `ToolDefinition` fields. It only
+allows older `before_dispatch` handlers to keep reading `event.config` while
+those handlers migrate to typed `ToolPolicy` payloads. Mutating a callable's or
+executor's `tool_config` after registration does not change runtime behavior;
+remove and add the tool again to compile a new definition.
+
 Before the model runs, other modules ask `ToolLibrary` for a catalog view. The
 current compatibility methods remain available:
 
@@ -138,8 +147,9 @@ source against a per-intent `ToolRuntimeContext`, allowing custom runtime data
 without another conditional in the library core. Handles are scoped to the
 current tool call before they enter that context.
 
-`before_dispatch` receives the public arguments and normalized config alongside
-the selected `dispatch_mode`. Runtime injections remain private. Extensions may
+`before_dispatch` receives the public arguments and the registration-time
+config snapshot alongside the selected `dispatch_mode`. Runtime injections
+remain private. Extensions may
 reduce `background` or `detached` to `foreground`, but cannot promote attached
 execution into a detached mode. When a mode changes, the library rebuilds the
 reserved call arguments before dispatch.

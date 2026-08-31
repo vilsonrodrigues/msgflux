@@ -317,6 +317,7 @@ class ToolDefinitionCompiler:
         input_schema, schema_metadata = cls._extract_executor_schema(executor)
         runtime_metadata = {
             **schema_metadata,
+            "declaration": config,
             "execution_namespace": metadata.execution_namespace,
             "background_capabilities": config.get("background_capabilities"),
             "disable_input": bool(config.get("disable_input", False)),

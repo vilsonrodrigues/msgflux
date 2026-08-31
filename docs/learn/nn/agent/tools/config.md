@@ -2,6 +2,12 @@
 
 The `@mf.tool_config` decorator adds special behaviors to tools.
 
+`ToolLibrary` compiles this configuration when the tool is registered. Changing
+the callable's `tool_config` afterward does not alter an already registered
+tool; remove and add it again when an application intentionally needs a new
+definition. This keeps concurrent executions on one stable schema and runtime
+policy.
+
 ## description
 
 Set `description` to replace the model-facing tool description without changing

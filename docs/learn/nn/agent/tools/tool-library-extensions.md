@@ -72,9 +72,10 @@ class ForegroundOnly(ToolLibraryExtension):
         return (Hook(event="before_dispatch", handler=keep_attached),)
 ```
 
-This boundary exposes public arguments and normalized config, not injected
-runtime values. It may reduce background/detached execution to foreground or
-block the call; it cannot promote a foreground call into detached execution.
+This boundary exposes public arguments and the normalized configuration
+snapshot compiled at registration, not injected runtime values or a mutable
+executor attribute. It may reduce background/detached execution to foreground
+or block the call; it cannot promote a foreground call into detached execution.
 
 ## Runtime Policies
 
