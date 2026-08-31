@@ -1,8 +1,11 @@
+import asyncio
+
 import pytest
 
 from msgflux.nn.modules.tool import ToolLibrary
-from msgflux.nn.modules.tool_v2 import ToolRef
+from msgflux.nn.modules.tool_v2 import ToolDispatch, ToolPolicy, ToolRef
 from msgflux.tools.config import tool_config
+from msgflux.tools.runtime import ToolOutcome
 from msgflux.tools.types import ToolBucket, ToolLibraryOperator
 
 
@@ -57,3 +60,110 @@ def test_bucket_handle_resolves_captured_tool_by_ref_without_accessing_impl():
 
     assert ref == library.get_tool_ref("double")
     assert result == 8
+
+
+def test_bucket_handle_applies_policy_before_captured_tool_execution():
+    called = False
+
+    class WorkerBucket(ToolBucket, ToolLibraryOperator):
+        """Proxy worker tools."""
+
+        name = "worker"
+        capture = {"tool_kind": "worker", "defer_loading": False}
+
+        def __call__(self) -> str:
+            return "worker"
+
+    class BlockDouble(ToolPolicy):
+        def __init__(self):
+            super().__init__("block_double")
+
+        async def before_tool(self, payload):
+            if payload.intent.name != "double":
+                return payload
+            return ToolOutcome.failed(
+                payload.intent,
+                status="blocked",
+                code="policy_denied",
+                message="Doubling is disabled.",
+            )
+
+    @tool_config(tool_kind="worker")
+    def double(value: int) -> int:
+        """Double one value."""
+        nonlocal called
+        called = True
+        return value * 2
+
+    library = ToolLibrary(
+        name="math",
+        tools=[WorkerBucket(), double],
+        extensions=[BlockDouble()],
+    )
+    handle = library.get_handle().for_tool(tool_name="worker")
+
+    with pytest.raises(RuntimeError, match="Doubling is disabled"):
+        handle("double", value=4)
+
+    assert called is False
+
+
+@pytest.mark.asyncio
+async def test_handle_routes_through_custom_dispatch_extension():
+    class QueueDispatch(ToolDispatch):
+        def __init__(self):
+            super().__init__("queue_dispatch", dispatch_name="queue")
+            self.requests = []
+
+        async def dispatch(self, request):
+            self.requests.append(request)
+            return ToolOutcome.dispatched(request.plan.intent, result="queued")
+
+    queue = QueueDispatch()
+
+    @tool_config(dispatch="queue")
+    async def publish(report_id: str) -> str:
+        """Publish one report."""
+        raise AssertionError("the queue dispatcher must own execution")
+
+    library = ToolLibrary(name="reports", tools=[publish], extensions=[queue])
+
+    result = await library.get_handle().acall("publish", report_id="rpt_42")
+
+    assert result == "queued"
+    assert len(queue.requests) == 1
+    assert queue.requests[0].plan.visible_arguments == {"report_id": "rpt_42"}
+
+
+@pytest.mark.asyncio
+async def test_concurrent_bucket_handles_keep_runtime_inputs_isolated():
+    class WorkerBucket(ToolBucket, ToolLibraryOperator):
+        """Proxy worker tools."""
+
+        name = "worker"
+        capture = {"tool_kind": "worker", "defer_loading": False}
+
+        def __call__(self) -> str:
+            return "worker"
+
+    @tool_config(tool_kind="worker", runtime_inputs=["vars"])
+    def identify(value: str, vars: dict) -> str:
+        """Identify one value in the current tenant."""
+        return f"{vars['tenant']}:{value}"
+
+    library = ToolLibrary(name="workers", tools=[WorkerBucket(), identify])
+    first = library.get_handle().for_tool(
+        tool_name="worker",
+        vars={"tenant": "acme"},
+    )
+    second = library.get_handle().for_tool(
+        tool_name="worker",
+        vars={"tenant": "globex"},
+    )
+
+    results = await asyncio.gather(
+        first.acall("identify", value="one"),
+        second.acall("identify", value="two"),
+    )
+
+    assert results == ["acme:one", "globex:two"]

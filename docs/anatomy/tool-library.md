@@ -266,8 +266,12 @@ derived presentation data such as its description and usage guidance.
 Buckets do not call `ToolMetadata.impl` to execute a child. An injected
 `ToolBucketHandle` accepts `handle(tool_name, **arguments)` and
 `handle.acall(...)`, validates membership, resolves the captured `LocalTool` or
-`MCPTool`, and re-enters the library's normal argument preparation and telemetry
-path.
+`MCPTool`, and creates a canonical `ToolIntent`. The intent re-enters the same
+policy, hook, argument-preparation, dispatch, abort, event, and telemetry path
+used by a top-level tool call. The handle unwraps a successful `ToolOutcome`
+back to the plain value expected by bucket implementations; a failed outcome is
+raised at the proxy boundary and becomes the public bucket call's error. The
+bucket never executes `ToolMetadata.impl` directly.
 
 The registration rule is:
 

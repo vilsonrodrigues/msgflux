@@ -2087,13 +2087,6 @@ class ToolLibrary(Module, metaclass=AutoParams):
     ) -> Any:
         """Execute one logical tool reference through the library pipeline."""
         tool_name = self._resolve_tool_ref_name(tool_ref)
-        if bucket_name is not None:
-            tool, config = self._resolve_captured_tool(bucket_name, tool_name)
-        else:
-            resolved = self._resolve_tool(tool_name)
-            if resolved is None:
-                raise ValueError(f"The tool name `{tool_name}` is not in tool library")
-            tool, config = resolved
         messages = messages if messages is not None else ChatMessages()
         vars = vars if vars is not None else {}
         owner = bucket_name or self.name
@@ -2111,22 +2104,26 @@ class ToolLibrary(Module, metaclass=AutoParams):
             vars=vars,
             sync_dispatch=True,
         )
-        visible_params, runtime_params = self._prepare_tool_kwargs(
-            tool=tool,
+        recorder = (
+            activity_recorder
+            if activity_recorder is not None
+            else get_execution_context().get("task_activity_recorder")
+        )
+        prepared = self._prepare_intent(
             intent=intent,
-            tool_params=arguments,
-            config=config,
             context=context,
-            activity_recorder=(
-                activity_recorder
-                if activity_recorder is not None
-                else get_execution_context().get("task_activity_recorder")
-            ),
+            messages=messages,
+            activity_recorder=recorder,
+            bucket_name=bucket_name,
             runtime_arguments=runtime_arguments,
         )
-        call_params = {**visible_params, **runtime_params}
-        call_params["tool_call_id"] = tool_call_id
-        return self._execute_prepared_tool(tool, call_params, visible_params)
+        if isinstance(prepared, ToolOutcome):
+            return self._unwrap_handle_outcome(prepared)
+        dispatched = self._dispatch_intent_plan(intent, prepared, context)
+        outcome = dispatched if isinstance(dispatched, ToolOutcome) else dispatched()
+        if isinstance(outcome, TaskError):
+            raise outcome.exception
+        return self._unwrap_handle_outcome(outcome)
 
     async def arun(
         self,
@@ -2143,13 +2140,6 @@ class ToolLibrary(Module, metaclass=AutoParams):
     ) -> Any:
         """Async counterpart of :meth:`run`."""
         tool_name = self._resolve_tool_ref_name(tool_ref)
-        if bucket_name is not None:
-            tool, config = self._resolve_captured_tool(bucket_name, tool_name)
-        else:
-            resolved = self._resolve_tool(tool_name)
-            if resolved is None:
-                raise ValueError(f"The tool name `{tool_name}` is not in tool library")
-            tool, config = resolved
         messages = messages if messages is not None else ChatMessages()
         vars = vars if vars is not None else {}
         owner = bucket_name or self.name
@@ -2167,22 +2157,39 @@ class ToolLibrary(Module, metaclass=AutoParams):
             vars=vars,
             sync_dispatch=False,
         )
-        visible_params, runtime_params = await self._aprepare_tool_kwargs(
-            tool=tool,
+        recorder = (
+            activity_recorder
+            if activity_recorder is not None
+            else get_execution_context().get("task_activity_recorder")
+        )
+        prepared = await self._aprepare_intent(
             intent=intent,
-            tool_params=arguments,
-            config=config,
             context=context,
-            activity_recorder=(
-                activity_recorder
-                if activity_recorder is not None
-                else get_execution_context().get("task_activity_recorder")
-            ),
+            messages=messages,
+            activity_recorder=recorder,
+            bucket_name=bucket_name,
             runtime_arguments=runtime_arguments,
         )
-        call_params = {**visible_params, **runtime_params}
-        call_params["tool_call_id"] = tool_call_id
-        return await self._aexecute_prepared_tool(tool, call_params, visible_params)
+        if isinstance(prepared, ToolOutcome):
+            return self._unwrap_handle_outcome(prepared)
+        dispatched = await self._adispatch_intent_plan(intent, prepared, context)
+        outcome = (
+            dispatched if isinstance(dispatched, ToolOutcome) else await dispatched()
+        )
+        return self._unwrap_handle_outcome(outcome)
+
+    @staticmethod
+    def _unwrap_handle_outcome(outcome: ToolOutcome) -> Any:
+        """Preserve the handle's value-or-exception interface over outcomes."""
+        if outcome.ok:
+            return outcome.result
+        if outcome.error is None:
+            raise RuntimeError(
+                f"Tool `{outcome.tool_name}` finished with status `{outcome.status}`."
+            )
+        if outcome.status == "not_found":
+            raise ValueError(outcome.error.message)
+        raise RuntimeError(outcome.error.message)
 
     def _resolve_tool_ref_name(self, tool_ref: ToolRef | str) -> str:
         if isinstance(tool_ref, ToolRef):
@@ -2333,8 +2340,14 @@ class ToolLibrary(Module, metaclass=AutoParams):
         context: ToolRuntimeContext,
         messages: ChatMessages | List[Dict[str, Any]],
         activity_recorder: Any,
+        bucket_name: str | None = None,
+        runtime_arguments: Mapping[str, Any] | None = None,
     ) -> ToolExecutionPlan | ToolOutcome:
-        resolved = self._resolve_tool(intent.name)
+        resolved = (
+            self._resolve_captured_tool(bucket_name, intent.name)
+            if bucket_name is not None
+            else self._resolve_tool(intent.name)
+        )
         if resolved is None:
             return self._failed_intent(
                 intent,
@@ -2364,6 +2377,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
             config=config,
             context=context,
             activity_recorder=activity_recorder,
+            runtime_arguments=runtime_arguments,
         )
         feedback = definition.feedback
         before_tool = self._run_before_tool_hook(
@@ -2420,8 +2434,14 @@ class ToolLibrary(Module, metaclass=AutoParams):
         context: ToolRuntimeContext,
         messages: ChatMessages | List[Dict[str, Any]],
         activity_recorder: Any,
+        bucket_name: str | None = None,
+        runtime_arguments: Mapping[str, Any] | None = None,
     ) -> ToolExecutionPlan | ToolOutcome:
-        resolved = self._resolve_tool(intent.name)
+        resolved = (
+            self._resolve_captured_tool(bucket_name, intent.name)
+            if bucket_name is not None
+            else self._resolve_tool(intent.name)
+        )
         if resolved is None:
             return self._failed_intent(
                 intent,
@@ -2450,6 +2470,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
             config=config,
             context=context,
             activity_recorder=activity_recorder,
+            runtime_arguments=runtime_arguments,
         )
         feedback = definition.feedback
         before_tool = await self._arun_before_tool_hook(

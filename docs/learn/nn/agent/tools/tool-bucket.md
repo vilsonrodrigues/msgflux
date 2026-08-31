@@ -83,6 +83,16 @@ shared or copied; agent children receive an isolated history, while ordinary
 tools retain reference semantics. Add and remove tools through the library or
 its handle so capture rules and presentation refresh remain correct.
 
+The handle is a proxy over the complete library pipeline, not a shortcut to the
+captured Python callable. The selected call is represented as a normal tool
+intent, then passes through runtime policies, lifecycle hooks, runtime input
+resolution, the configured dispatcher, abort handling, and tool events. A
+policy that blocks the selected child therefore prevents its implementation
+from running, just as it would for a directly exposed tool. Successful calls
+still return the child's plain result from `handle(...)` or `handle.acall(...)`;
+failures raise at the proxy boundary so the public bucket reports the error to
+the model.
+
 ## Capture Rules
 
 `capture` matches normalized `tool_config` fields by equality. The special
