@@ -1964,17 +1964,14 @@ class ToolLibrary(Module, metaclass=AutoParams):
         messages: Optional[List[Dict[str, Any]]] = None,
         vars: Optional[Mapping[str, Any]] = None,
     ) -> Tuple[ToolOutcome, ...]:
-        """Execute canonical intents through the current runtime pipeline."""
+        """Execute canonical intents without lowering them to legacy responses."""
         normalized = self._validate_intents(intents)
-        responses = self(
-            tool_callings=[
-                (intent.id, intent.name, intent.arguments) for intent in normalized
-            ],
+        return self._execute_intent_batch(
+            normalized,
             message=message,
             messages=messages,
             vars=vars,
         )
-        return self._responses_to_outcomes(normalized, responses)
 
     async def aexecute_intents(
         self,
@@ -1986,15 +1983,12 @@ class ToolLibrary(Module, metaclass=AutoParams):
     ) -> Tuple[ToolOutcome, ...]:
         """Async counterpart of execute_intents."""
         normalized = self._validate_intents(intents)
-        responses = await self.acall(
-            tool_callings=[
-                (intent.id, intent.name, intent.arguments) for intent in normalized
-            ],
+        return await self._aexecute_intent_batch(
+            normalized,
             message=message,
             messages=messages,
             vars=vars,
         )
-        return self._responses_to_outcomes(normalized, responses)
 
     @staticmethod
     def _validate_intents(
@@ -2005,52 +1999,487 @@ class ToolLibrary(Module, metaclass=AutoParams):
             raise TypeError("`intents` must contain ToolIntent values")
         return normalized
 
-    def _responses_to_outcomes(
+    @staticmethod
+    def _outcome_metadata(arguments: Mapping[str, Any]) -> Dict[str, Any]:
+        return {"arguments": dict(arguments)}
+
+    @classmethod
+    def _failed_intent(
+        cls,
+        intent: ToolIntent,
+        *,
+        status: str,
+        code: str,
+        message: str,
+        feedback: Any = None,
+        arguments: Mapping[str, Any] | None = None,
+    ) -> ToolOutcome:
+        return ToolOutcome.failed(
+            intent,
+            status=status,
+            code=code,
+            message=message,
+            feedback=feedback,
+            metadata=cls._outcome_metadata(
+                intent.arguments if arguments is None else arguments
+            ),
+        )
+
+    @classmethod
+    def _completed_intent(
+        cls,
+        intent: ToolIntent,
+        result: Any,
+        *,
+        feedback: Any,
+        arguments: Mapping[str, Any],
+    ) -> ToolOutcome:
+        return ToolOutcome.completed(
+            intent,
+            result,
+            feedback=feedback,
+            metadata=cls._outcome_metadata(arguments),
+        )
+
+    @classmethod
+    def _dispatched_intent(
+        cls,
+        intent: ToolIntent,
+        result: Any,
+        *,
+        feedback: Any,
+        arguments: Mapping[str, Any],
+    ) -> ToolOutcome:
+        return ToolOutcome.dispatched(
+            intent,
+            result,
+            feedback=feedback,
+            metadata=cls._outcome_metadata(arguments),
+        )
+
+    def _prepare_intent(
+        self,
+        intent: ToolIntent,
+        *,
+        message: Any,
+        messages: ChatMessages | List[Dict[str, Any]],
+        vars: Mapping[str, Any],
+        activity_recorder: Any,
+    ) -> ToolExecutionPlan | ToolOutcome:
+        resolved = self._resolve_tool(intent.name)
+        if resolved is None:
+            return self._failed_intent(
+                intent,
+                status="not_found",
+                code="tool_not_found",
+                message=f"Error: Tool `{intent.name}` not found.",
+            )
+
+        tool, config = resolved
+        if config.get("defer_loading", False) and isinstance(messages, ChatMessages):
+            messages.load_tools(self.name, [intent.name])
+        visible_arguments, runtime_arguments = self._prepare_tool_kwargs(
+            tool=tool,
+            tool_name=intent.name,
+            tool_params=intent.arguments,
+            config=config,
+            message=message,
+            messages=messages,
+            vars=vars,
+            activity_recorder=activity_recorder,
+            tool_call_id=intent.id,
+        )
+        feedback = self.get_tool_definition(intent.name).feedback
+        before_tool = self._run_before_tool_hook(
+            tool_id=intent.id,
+            tool_name=intent.name,
+            arguments=visible_arguments,
+        )
+        if before_tool.block is not None:
+            self._emit_tool_blocked(before_tool)
+            return self._failed_intent(
+                intent,
+                status="blocked",
+                code="tool_blocked",
+                message=before_tool.block,
+                feedback=feedback,
+                arguments=before_tool.arguments,
+            )
+        response_arguments = dict(before_tool.arguments)
+        plan = self._build_execution_plan(
+            tool_id=intent.id,
+            tool_name=intent.name,
+            tool=tool,
+            config=config,
+            visible_arguments=response_arguments,
+            runtime_arguments=runtime_arguments,
+        )
+        before_dispatch = self._run_before_dispatch_hook(plan)
+        if before_dispatch.block is not None:
+            self._emit_tool_blocked(before_dispatch)
+            return self._failed_intent(
+                intent,
+                status="blocked",
+                code="tool_dispatch_blocked",
+                message=before_dispatch.block,
+                feedback=feedback,
+                arguments=response_arguments,
+            )
+        return self._with_dispatch_mode(plan, before_dispatch.dispatch_mode)
+
+    async def _aprepare_intent(
+        self,
+        intent: ToolIntent,
+        *,
+        message: Any,
+        messages: ChatMessages | List[Dict[str, Any]],
+        vars: Mapping[str, Any],
+        activity_recorder: Any,
+    ) -> ToolExecutionPlan | ToolOutcome:
+        resolved = self._resolve_tool(intent.name)
+        if resolved is None:
+            return self._failed_intent(
+                intent,
+                status="not_found",
+                code="tool_not_found",
+                message=f"Error: Tool `{intent.name}` not found.",
+            )
+
+        tool, config = resolved
+        if config.get("defer_loading", False) and isinstance(messages, ChatMessages):
+            messages.load_tools(self.name, [intent.name])
+        visible_arguments, runtime_arguments = self._prepare_tool_kwargs(
+            tool=tool,
+            tool_name=intent.name,
+            tool_params=intent.arguments,
+            config=config,
+            message=message,
+            messages=messages,
+            vars=vars,
+            activity_recorder=activity_recorder,
+            tool_call_id=intent.id,
+        )
+        feedback = self.get_tool_definition(intent.name).feedback
+        before_tool = await self._arun_before_tool_hook(
+            tool_id=intent.id,
+            tool_name=intent.name,
+            arguments=visible_arguments,
+        )
+        if before_tool.block is not None:
+            self._emit_tool_blocked(before_tool)
+            return self._failed_intent(
+                intent,
+                status="blocked",
+                code="tool_blocked",
+                message=before_tool.block,
+                feedback=feedback,
+                arguments=before_tool.arguments,
+            )
+        response_arguments = dict(before_tool.arguments)
+        plan = self._build_execution_plan(
+            tool_id=intent.id,
+            tool_name=intent.name,
+            tool=tool,
+            config=config,
+            visible_arguments=response_arguments,
+            runtime_arguments=runtime_arguments,
+        )
+        before_dispatch = await self._arun_before_dispatch_hook(plan)
+        if before_dispatch.block is not None:
+            self._emit_tool_blocked(before_dispatch)
+            return self._failed_intent(
+                intent,
+                status="blocked",
+                code="tool_dispatch_blocked",
+                message=before_dispatch.block,
+                feedback=feedback,
+                arguments=response_arguments,
+            )
+        return self._with_dispatch_mode(plan, before_dispatch.dispatch_mode)
+
+    def _dispatch_intent_plan(
+        self,
+        intent: ToolIntent,
+        plan: ToolExecutionPlan,
+    ) -> ToolOutcome | Callable[[], Any]:
+        feedback = self.get_tool_definition(intent.name).feedback
+        arguments = plan.visible_arguments
+        if plan.dispatch_mode == "spawn":
+            F.spawn(plan.tool, **plan.call_arguments)
+            return self._dispatched_intent(
+                intent,
+                f"The `{intent.name}` tool was dispatched. "
+                "This tool will not generate a return.",
+                feedback=feedback,
+                arguments=arguments,
+            )
+        if plan.dispatch_mode == "background":
+            call = self.get_background_dispatcher().dispatch(
+                tool=plan.tool,
+                tool_id=intent.id,
+                tool_name=intent.name,
+                call_params=plan.call_arguments,
+                visible_params=arguments,
+                config=plan.config,
+            )
+            if call.error is not None:
+                return self._failed_intent(
+                    intent,
+                    status="execution_failed",
+                    code="tool_dispatch_failed",
+                    message=call.error,
+                    feedback=feedback,
+                    arguments=arguments,
+                )
+            return self._dispatched_intent(
+                intent,
+                call.result,
+                feedback=feedback,
+                arguments=arguments,
+            )
+        if plan.dispatch_mode == "call_as_response":
+            return self._completed_intent(
+                intent,
+                None,
+                feedback=feedback,
+                arguments=arguments,
+            )
+        return partial(
+            self._execute_prepared_tool,
+            plan.tool,
+            plan.call_arguments,
+            arguments,
+        )
+
+    async def _adispatch_intent_plan(
+        self,
+        intent: ToolIntent,
+        plan: ToolExecutionPlan,
+    ) -> ToolOutcome | Callable[[], Any]:
+        feedback = self.get_tool_definition(intent.name).feedback
+        arguments = plan.visible_arguments
+        if plan.dispatch_mode == "spawn":
+            await F.aspawn(plan.tool, **plan.call_arguments)
+            return self._dispatched_intent(
+                intent,
+                f"The `{intent.name}` tool was dispatched. "
+                "This tool will not generate a return.",
+                feedback=feedback,
+                arguments=arguments,
+            )
+        if plan.dispatch_mode == "background":
+            call = self.get_background_dispatcher().dispatch(
+                tool=plan.tool,
+                tool_id=intent.id,
+                tool_name=intent.name,
+                call_params=plan.call_arguments,
+                visible_params=arguments,
+                config=plan.config,
+            )
+            if call.error is not None:
+                return self._failed_intent(
+                    intent,
+                    status="execution_failed",
+                    code="tool_dispatch_failed",
+                    message=call.error,
+                    feedback=feedback,
+                    arguments=arguments,
+                )
+            return self._dispatched_intent(
+                intent,
+                call.result,
+                feedback=feedback,
+                arguments=arguments,
+            )
+        if plan.dispatch_mode == "call_as_response":
+            return self._completed_intent(
+                intent,
+                None,
+                feedback=feedback,
+                arguments=arguments,
+            )
+        return partial(
+            self._aexecute_prepared_tool,
+            plan.tool,
+            plan.call_arguments,
+            arguments,
+        )
+
+    def _execute_intent_batch(
         self,
         intents: Tuple[ToolIntent, ...],
-        responses: ToolResponses,
+        *,
+        message: Any,
+        messages: ChatMessages | List[Dict[str, Any]] | None,
+        vars: Mapping[str, Any] | None,
     ) -> Tuple[ToolOutcome, ...]:
-        calls_by_id = {call.id: call for call in responses.tool_calls}
-        outcomes = []
-        for intent in intents:
-            call = calls_by_id.get(intent.id)
-            definition = self.tool_definitions.get(intent.name)
-            feedback = definition.feedback if definition is not None else None
-            if call is None:
-                outcomes.append(
-                    ToolOutcome.failed(
+        messages = messages if messages is not None else ChatMessages()
+        vars = vars if vars is not None else {}
+        activity_recorder = get_execution_context().get("task_activity_recorder")
+        outcomes: List[ToolOutcome | None] = [None] * len(intents)
+        prepared_calls = []
+        prepared_metadata = []
+
+        for index, intent in enumerate(intents):
+            prepared = self._prepare_intent(
+                intent,
+                message=message,
+                messages=messages,
+                vars=vars,
+                activity_recorder=activity_recorder,
+            )
+            if isinstance(prepared, ToolOutcome):
+                outcomes[index] = prepared
+                continue
+            dispatched = self._dispatch_intent_plan(intent, prepared)
+            if isinstance(dispatched, ToolOutcome):
+                outcomes[index] = dispatched
+                continue
+            prepared_calls.append(dispatched)
+            prepared_metadata.append((index, intent, prepared))
+
+        if prepared_calls:
+            results = F.scatter_gather(prepared_calls)
+            for (index, intent, plan), result in zip(prepared_metadata, results):
+                if isinstance(result, TaskError):
+                    if isinstance(
+                        result.exception,
+                        (AbortRequestedError, TaskInterruptRequestedError),
+                    ):
+                        raise result.exception
+                    outcomes[index] = self._failed_intent(
                         intent,
                         status="execution_failed",
-                        code="tool_outcome_missing",
-                        message="Tool execution did not produce an outcome.",
-                        feedback=feedback,
+                        code="tool_execution_failed",
+                        message=str(result),
+                        feedback=self.get_tool_definition(intent.name).feedback,
+                        arguments=plan.visible_arguments,
                     )
-                )
-                continue
-            if call.error is not None:
-                not_found = definition is None
-                outcomes.append(
-                    ToolOutcome.failed(
+                else:
+                    outcomes[index] = self._completed_intent(
                         intent,
-                        status="not_found" if not_found else "execution_failed",
-                        code="tool_not_found" if not_found else "tool_execution_failed",
-                        message=call.error,
-                        feedback=feedback,
+                        result,
+                        feedback=self.get_tool_definition(intent.name).feedback,
+                        arguments=plan.visible_arguments,
                     )
-                )
+        return self._finalize_outcomes(outcomes)
+
+    async def _aexecute_intent_batch(
+        self,
+        intents: Tuple[ToolIntent, ...],
+        *,
+        message: Any,
+        messages: ChatMessages | List[Dict[str, Any]] | None,
+        vars: Mapping[str, Any] | None,
+    ) -> Tuple[ToolOutcome, ...]:
+        messages = messages if messages is not None else ChatMessages()
+        vars = vars if vars is not None else {}
+        activity_recorder = get_execution_context().get("task_activity_recorder")
+        outcomes: List[ToolOutcome | None] = [None] * len(intents)
+        prepared_calls = []
+        prepared_metadata = []
+
+        for index, intent in enumerate(intents):
+            prepared = await self._aprepare_intent(
+                intent,
+                message=message,
+                messages=messages,
+                vars=vars,
+                activity_recorder=activity_recorder,
+            )
+            if isinstance(prepared, ToolOutcome):
+                outcomes[index] = prepared
                 continue
-            is_dispatched = definition is not None and (
-                definition.dispatch.name in {"background", "detached"}
-                or (
-                    definition.dispatch.name == "optional_background"
-                    and intent.arguments.get(RUNTIME_BACKGROUND_PARAM) is True
+            dispatched = await self._adispatch_intent_plan(intent, prepared)
+            if isinstance(dispatched, ToolOutcome):
+                outcomes[index] = dispatched
+                continue
+            prepared_calls.append(dispatched)
+            prepared_metadata.append((index, intent, prepared))
+
+        if prepared_calls:
+            results = await F.ascatter_gather(prepared_calls)
+            for (index, intent, plan), result in zip(prepared_metadata, results):
+                if isinstance(result, TaskError):
+                    if isinstance(
+                        result.exception,
+                        (AbortRequestedError, TaskInterruptRequestedError),
+                    ):
+                        raise result.exception
+                    outcomes[index] = self._failed_intent(
+                        intent,
+                        status="execution_failed",
+                        code="tool_execution_failed",
+                        message=str(result),
+                        feedback=self.get_tool_definition(intent.name).feedback,
+                        arguments=plan.visible_arguments,
+                    )
+                else:
+                    outcomes[index] = self._completed_intent(
+                        intent,
+                        result,
+                        feedback=self.get_tool_definition(intent.name).feedback,
+                        arguments=plan.visible_arguments,
+                    )
+        return self._finalize_outcomes(outcomes)
+
+    @staticmethod
+    def _finalize_outcomes(
+        outcomes: List[ToolOutcome | None],
+    ) -> Tuple[ToolOutcome, ...]:
+        missing = [index for index, outcome in enumerate(outcomes) if outcome is None]
+        if missing:
+            formatted = ", ".join(str(index) for index in missing)
+            raise RuntimeError(f"Tool outcomes are missing at indexes: {formatted}")
+        return tuple(outcome for outcome in outcomes if outcome is not None)
+
+    @staticmethod
+    def _outcomes_to_responses(
+        intents: Tuple[ToolIntent, ...],
+        outcomes: Tuple[ToolOutcome, ...],
+    ) -> ToolResponses:
+        if len(intents) != len(outcomes):
+            raise ValueError("Each legacy tool call must have exactly one outcome")
+        direct_modes = {"direct", "handoff", "call_as_response"}
+        return_directly = bool(outcomes) and all(
+            outcome.status == "completed" and outcome.feedback.name in direct_modes
+            for outcome in outcomes
+        )
+        tool_calls = []
+        for intent, outcome in zip(intents, outcomes):
+            if outcome.intent_id != intent.id:
+                raise ValueError("Tool outcomes must preserve intent ordering")
+            arguments = outcome.metadata.get("arguments", intent.arguments)
+            tool_calls.append(
+                ToolCall(
+                    id=outcome.intent_id,
+                    name=outcome.tool_name,
+                    parameters=dict(arguments),
+                    result=outcome.result,
+                    error=(
+                        outcome.error.message if outcome.error is not None else None
+                    ),
                 )
             )
-            factory = ToolOutcome.dispatched if is_dispatched else ToolOutcome.completed
-            outcomes.append(factory(intent, call.result, feedback=feedback))
-        return tuple(outcomes)
+        return ToolResponses(
+            return_directly=return_directly,
+            tool_calls=tool_calls,
+        )
 
-    def forward(  # noqa: C901
+    @staticmethod
+    def _legacy_calls_to_intents(
+        tool_callings: List[Tuple[str, str, Any]],
+    ) -> Tuple[ToolIntent, ...]:
+        return tuple(
+            ToolIntent(
+                id=tool_id,
+                name=tool_name,
+                arguments=coerce_tool_params(tool_name, tool_params),
+            )
+            for tool_id, tool_name, tool_params in tool_callings
+        )
+
+    def forward(
         self,
         tool_callings: List[Tuple[str, str, Any]],
         message: Optional[Any] = None,
@@ -2064,7 +2493,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 A list of tuples containing the tool id, name and parameters.
                 !!! example
                     [('123121', 'tool_name1', {'parameter1': 'value1'}),
-                    ('322', 'tool_name2', '')]
+                    ('322', 'tool_name2', {})]
             messages:
                 The current messages (chat history) for the `handoff` functionality.
             message:
@@ -2076,166 +2505,16 @@ class ToolLibrary(Module, metaclass=AutoParams):
             ToolResponses:
                 Structured object containing all tool call results.
         """
-        if messages is None:
-            messages = ChatMessages()
+        intents = self._legacy_calls_to_intents(tool_callings)
+        outcomes = self.execute_intents(
+            intents,
+            message=message,
+            messages=messages,
+            vars=vars,
+        )
+        return self._outcomes_to_responses(intents, outcomes)
 
-        if vars is None:
-            vars = {}
-
-        activity_recorder = get_execution_context().get("task_activity_recorder")
-        prepared_calls = []
-        call_metadata = []
-        tool_calls: List[ToolCall] = []
-        return_directly = True if tool_callings else False
-
-        for tool_id, tool_name, tool_params in tool_callings:
-            resolved = self._resolve_tool(tool_name)
-            if resolved is None:
-                tool_calls.append(
-                    ToolCall(
-                        id=tool_id,
-                        name=tool_name,
-                        parameters=tool_params,
-                        error=f"Error: Tool `{tool_name}` not found.",
-                    )
-                )
-                return_directly = False
-                continue
-
-            tool, config = resolved
-            if config.get("defer_loading", False) and isinstance(
-                messages, ChatMessages
-            ):
-                messages.load_tools(self.name, [tool_name])
-            visible_arguments, runtime_arguments = self._prepare_tool_kwargs(
-                tool=tool,
-                tool_name=tool_name,
-                tool_params=tool_params,
-                config=config,
-                message=message,
-                messages=messages,
-                vars=vars,
-                activity_recorder=activity_recorder,
-                tool_call_id=tool_id,
-            )
-            before_tool = self._run_before_tool_hook(
-                tool_id=tool_id,
-                tool_name=tool_name,
-                arguments=visible_arguments,
-            )
-            if before_tool.block is not None:
-                self._emit_tool_blocked(before_tool)
-                tool_calls.append(
-                    ToolCall(
-                        id=tool_id,
-                        name=tool_name,
-                        parameters=dict(before_tool.arguments),
-                        error=before_tool.block,
-                    )
-                )
-                return_directly = False
-                continue
-            response_params = dict(before_tool.arguments)
-            plan = self._build_execution_plan(
-                tool_id=tool_id,
-                tool_name=tool_name,
-                tool=tool,
-                config=config,
-                visible_arguments=response_params,
-                runtime_arguments=runtime_arguments,
-            )
-            before_dispatch = self._run_before_dispatch_hook(plan)
-            if before_dispatch.block is not None:
-                self._emit_tool_blocked(before_dispatch)
-                tool_calls.append(
-                    ToolCall(
-                        id=tool_id,
-                        name=tool_name,
-                        parameters=response_params,
-                        error=before_dispatch.block,
-                    )
-                )
-                return_directly = False
-                continue
-            plan = self._with_dispatch_mode(plan, before_dispatch.dispatch_mode)
-
-            if plan.dispatch_mode == "spawn":
-                return_directly = False
-                F.spawn(plan.tool, **plan.call_arguments)
-                tool_calls.append(
-                    ToolCall(
-                        id=tool_id,
-                        name=tool_name,
-                        parameters=response_params,
-                        result=f"The `{tool_name}` tool was dispatched. "
-                        "This tool will not generate a return.",
-                    )
-                )
-                continue
-
-            if plan.dispatch_mode == "background":
-                return_directly = False
-                tool_calls.append(
-                    self.get_background_dispatcher().dispatch(
-                        tool=plan.tool,
-                        tool_id=tool_id,
-                        tool_name=tool_name,
-                        call_params=plan.call_arguments,
-                        visible_params=response_params,
-                        config=config,
-                    )
-                )
-                continue
-
-            if plan.dispatch_mode == "call_as_response":
-                tool_calls.append(
-                    ToolCall(id=tool_id, name=tool_name, parameters=response_params)
-                )
-                return_directly = True
-                continue
-
-            if not plan.return_direct:
-                return_directly = False
-
-            prepared_calls.append(
-                partial(
-                    self._execute_prepared_tool,
-                    plan.tool,
-                    plan.call_arguments,
-                    response_params,
-                )
-            )
-
-            call_metadata.append(
-                dotdict(
-                    id=tool_id,
-                    name=tool_name,
-                    config=config,
-                    params=response_params,
-                )
-            )
-
-        if prepared_calls:
-            results = F.scatter_gather(prepared_calls)
-            for meta, result in zip(call_metadata, results):
-                if isinstance(result, TaskError) and isinstance(
-                    result.exception,
-                    (AbortRequestedError, TaskInterruptRequestedError),
-                ):
-                    raise result.exception
-                tool_calls.append(
-                    ToolCall(
-                        id=meta.id,
-                        name=meta.name,
-                        parameters=dict(meta.params),
-                        result=None if isinstance(result, TaskError) else result,
-                        error=str(result) if isinstance(result, TaskError) else None,
-                    )
-                )
-
-        return ToolResponses(return_directly=return_directly, tool_calls=tool_calls)
-
-    async def aforward(  # noqa: C901
+    async def aforward(
         self,
         tool_callings: List[Tuple[str, str, Any]],
         message: Optional[Any] = None,
@@ -2250,7 +2529,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 A list of tuples containing the tool id, name and parameters.
                 !!! example
                     [('123121', 'tool_name1', {'parameter1': 'value1'}),
-                    ('322', 'tool_name2', '')]
+                    ('322', 'tool_name2', {})]
             messages:
                 The current messages (chat history) for the `handoff` functionality.
             message:
@@ -2262,160 +2541,11 @@ class ToolLibrary(Module, metaclass=AutoParams):
             ToolResponses:
                 Structured object containing all tool call results.
         """
-        if messages is None:
-            messages = ChatMessages()
-
-        if vars is None:
-            vars = {}
-
-        activity_recorder = get_execution_context().get("task_activity_recorder")
-        prepared_calls = []
-        call_metadata = []
-        tool_calls: List[ToolCall] = []
-        return_directly = True if tool_callings else False
-
-        for tool_id, tool_name, tool_params in tool_callings:
-            resolved = self._resolve_tool(tool_name)
-            if resolved is None:
-                tool_calls.append(
-                    ToolCall(
-                        id=tool_id,
-                        name=tool_name,
-                        parameters=tool_params,
-                        error=f"Error: Tool `{tool_name}` not found.",
-                    )
-                )
-                return_directly = False
-                continue
-
-            tool, config = resolved
-            if config.get("defer_loading", False) and isinstance(
-                messages, ChatMessages
-            ):
-                messages.load_tools(self.name, [tool_name])
-            visible_arguments, runtime_arguments = self._prepare_tool_kwargs(
-                tool=tool,
-                tool_name=tool_name,
-                tool_params=tool_params,
-                config=config,
-                message=message,
-                messages=messages,
-                vars=vars,
-                activity_recorder=activity_recorder,
-                tool_call_id=tool_id,
-            )
-            before_tool = await self._arun_before_tool_hook(
-                tool_id=tool_id,
-                tool_name=tool_name,
-                arguments=visible_arguments,
-            )
-            if before_tool.block is not None:
-                self._emit_tool_blocked(before_tool)
-                tool_calls.append(
-                    ToolCall(
-                        id=tool_id,
-                        name=tool_name,
-                        parameters=dict(before_tool.arguments),
-                        error=before_tool.block,
-                    )
-                )
-                return_directly = False
-                continue
-            response_params = dict(before_tool.arguments)
-            plan = self._build_execution_plan(
-                tool_id=tool_id,
-                tool_name=tool_name,
-                tool=tool,
-                config=config,
-                visible_arguments=response_params,
-                runtime_arguments=runtime_arguments,
-            )
-            before_dispatch = await self._arun_before_dispatch_hook(plan)
-            if before_dispatch.block is not None:
-                self._emit_tool_blocked(before_dispatch)
-                tool_calls.append(
-                    ToolCall(
-                        id=tool_id,
-                        name=tool_name,
-                        parameters=response_params,
-                        error=before_dispatch.block,
-                    )
-                )
-                return_directly = False
-                continue
-            plan = self._with_dispatch_mode(plan, before_dispatch.dispatch_mode)
-
-            if plan.dispatch_mode == "spawn":
-                return_directly = False
-                await F.aspawn(plan.tool, **plan.call_arguments)
-                tool_calls.append(
-                    ToolCall(
-                        id=tool_id,
-                        name=tool_name,
-                        parameters=response_params,
-                        result=f"The `{tool_name}` tool was dispatched. "
-                        "This tool will not generate a return.",
-                    )
-                )
-                continue
-
-            if plan.dispatch_mode == "background":
-                return_directly = False
-                tool_calls.append(
-                    self.get_background_dispatcher().dispatch(
-                        tool=plan.tool,
-                        tool_id=tool_id,
-                        tool_name=tool_name,
-                        call_params=plan.call_arguments,
-                        visible_params=response_params,
-                        config=config,
-                    )
-                )
-                continue
-
-            if plan.dispatch_mode == "call_as_response":
-                tool_calls.append(
-                    ToolCall(id=tool_id, name=tool_name, parameters=response_params)
-                )
-                return_directly = True
-                continue
-
-            if not plan.return_direct:
-                return_directly = False
-
-            prepared_calls.append(
-                partial(
-                    self._aexecute_prepared_tool,
-                    plan.tool,
-                    plan.call_arguments,
-                    response_params,
-                )
-            )
-
-            call_metadata.append(
-                dotdict(
-                    id=tool_id,
-                    name=tool_name,
-                    config=config,
-                    params=response_params,
-                )
-            )
-
-        if prepared_calls:
-            results = await F.ascatter_gather(prepared_calls)
-            for meta, result in zip(call_metadata, results):
-                if isinstance(result, TaskError) and isinstance(
-                    result.exception,
-                    (AbortRequestedError, TaskInterruptRequestedError),
-                ):
-                    raise result.exception
-                tool_calls.append(
-                    ToolCall(
-                        id=meta.id,
-                        name=meta.name,
-                        parameters=dict(meta.params),
-                        result=None if isinstance(result, TaskError) else result,
-                        error=str(result) if isinstance(result, TaskError) else None,
-                    )
-                )
-        return ToolResponses(return_directly=return_directly, tool_calls=tool_calls)
+        intents = self._legacy_calls_to_intents(tool_callings)
+        outcomes = await self.aexecute_intents(
+            intents,
+            message=message,
+            messages=messages,
+            vars=vars,
+        )
+        return self._outcomes_to_responses(intents, outcomes)

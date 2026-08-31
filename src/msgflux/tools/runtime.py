@@ -143,6 +143,7 @@ class ToolOutcome(msgspec.Struct, frozen=True, kw_only=True):
         result: Any,
         *,
         feedback: FeedbackSpec | None = None,
+        metadata: Mapping[str, Any] | None = None,
     ) -> "ToolOutcome":
         return cls(
             intent_id=intent.id,
@@ -150,6 +151,7 @@ class ToolOutcome(msgspec.Struct, frozen=True, kw_only=True):
             status="completed",
             result=result,
             feedback=feedback or FeedbackSpec(),
+            metadata=metadata or {},
         )
 
     @classmethod
@@ -180,6 +182,7 @@ class ToolOutcome(msgspec.Struct, frozen=True, kw_only=True):
         message: str,
         feedback: FeedbackSpec | None = None,
         details: Mapping[str, Any] | None = None,
+        metadata: Mapping[str, Any] | None = None,
     ) -> "ToolOutcome":
         if status not in _OUTCOME_STATUSES - {"completed", "dispatched"}:
             raise ValueError(f"`{status}` is not a failure outcome status")
@@ -193,6 +196,7 @@ class ToolOutcome(msgspec.Struct, frozen=True, kw_only=True):
                 details=details or {},
             ),
             feedback=feedback or FeedbackSpec(),
+            metadata=metadata or {},
         )
 
 

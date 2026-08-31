@@ -92,7 +92,6 @@ The synchronous path looks like this:
 ```text
 ToolIntent
   -> ToolLibrary.execute_intents(...)
-  -> compatibility execution pipeline
   -> resolve tool by name
   -> read compiled ToolDefinition
   -> prepare call params
@@ -102,14 +101,19 @@ ToolIntent
      -> blocked: emit tool.blocked and return a tool error
   -> execute tools with scatter_gather
   -> run after_tool lifecycle hooks
-  -> normalize ToolCall compatibility results
-  -> return ToolOutcome
+  -> return one ToolOutcome per ToolIntent
 ```
 
-The async path mirrors the same structure through `aexecute_intents(...)`,
-`aforward(...)`, and `ascatter_gather(...)`. `ToolExecutionPlan` freezes the
-selected tool, visible arguments, runtime arguments, dispatch mode, and return
-policy before either path dispatches it.
+The async path mirrors the same structure through `aexecute_intents(...)` and
+`ascatter_gather(...)`. `ToolExecutionPlan` freezes the selected tool, visible
+arguments, runtime arguments, dispatch mode, and return policy before either
+path dispatches it.
+
+`execute_intents(...)` and `aexecute_intents(...)` are the primary execution
+boundary. The older `forward(...)` and `aforward(...)` APIs convert tuple calls
+to `ToolIntent`, execute that same path, and render the outcomes as
+`ToolResponses`. The compatibility object is therefore no longer part of the
+Agent or canonical runtime path.
 
 Both pre-execution hook chains are sequential per call. The first `block`
 short-circuits the remaining handlers for that event invocation, including
