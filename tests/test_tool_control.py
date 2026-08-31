@@ -7,7 +7,7 @@ import pytest
 
 from msgflux.core.message import Message
 from msgflux.nn.modules.agent import Agent
-from msgflux.tools import ToolSpec
+from msgflux.tools import ToolIntent, ToolOutcome, ToolSpec
 
 
 def search(query: str) -> str:
@@ -267,11 +267,6 @@ class TestMaxToolTurnsBehavior:
         processed_tool_turns = []
         execution_filters = []
 
-        class ToolResults:
-            def __init__(self):
-                self.return_directly = False
-                self.tool_calls = [SimpleNamespace(id="id", result="ok", error=None)]
-
         class RawResponse:
             def __init__(self, label: str):
                 self.reasoning = None
@@ -286,10 +281,17 @@ class TestMaxToolTurnsBehavior:
             def get_messages(self):
                 return []
 
-        first = SimpleNamespace(
+        class ToolResponse(SimpleNamespace):
+            def get_tool_intents(self):
+                return (ToolIntent(id="id", name=self.data.label, arguments={}),)
+
+            def render_tool_outcomes(self, outcomes):
+                return []
+
+        first = ToolResponse(
             response_type="tool_call", data=RawResponse("first"), reasoning=None
         )
-        second = SimpleNamespace(
+        second = ToolResponse(
             response_type="tool_call", data=RawResponse("second"), reasoning=None
         )
         final = SimpleNamespace(
@@ -297,15 +299,18 @@ class TestMaxToolTurnsBehavior:
         )
         queued_responses = [second, final]
 
-        def process_tool_call(tool_callings, message, messages, vars):
-            processed_tool_turns.append(tool_callings[0][1])
-            return ToolResults()
+        def process_tool_intents(intents, message, messages, vars):
+            processed_tool_turns.append(intents[0].name)
+            return (ToolOutcome.completed(intents[0], "ok"),)
 
         def execute_model(**kwargs):
             execution_filters.append(kwargs.get("tool_filter"))
             return queued_responses.pop(0)
 
-        agent._process_tool_call = process_tool_call
+        agent._process_tool_intents = process_tool_intents
+        agent._resolve_tool_feedback = lambda *args, **kwargs: SimpleNamespace(
+            action="continue"
+        )
         agent._execute_model = execute_model
 
         result, messages = agent._process_tool_call_response(
