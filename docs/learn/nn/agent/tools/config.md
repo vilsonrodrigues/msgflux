@@ -126,7 +126,7 @@ Use cases:
 
     === "Report Generator"
 
-        Combine with `inject_vars` for external processing:
+        Combine with the `vars` runtime input for external processing:
 
         ```python
         # pip install msgflux[openai]
@@ -135,7 +135,7 @@ Use cases:
 
         # mf.set_envs(GROQ_API_KEY="...")
 
-        @mf.tool_config(return_direct=True, inject_vars=True)
+        @mf.tool_config(return_direct=True, runtime_inputs=["vars"])
         def generate_formatted_report(**kwargs) -> str:
             """Generate a formatted sales report."""
             vars = kwargs.get("vars", {})
@@ -163,9 +163,53 @@ Use cases:
         response = agent("Generate the Q3 report", vars={"date_range": "2024-Q3"})
         ```
 
-## inject_vars
+## runtime_inputs
 
-With `inject_vars=True`, tools can access and modify the agent's variable dictionary.
+`runtime_inputs` binds values supplied by the ToolLibrary runtime to hidden tool
+parameters. These parameters are removed from the schema shown to the model.
+
+```python
+import msgflux as mf
+
+
+@mf.tool_config(runtime_inputs=["handle", "messages", "vars"])
+def inspect_runtime(handle, messages, vars):
+    """Inspect the current execution environment."""
+    return {
+        "tools": handle.list_tools(),
+        "message_count": len(messages),
+        "tenant": vars.get("tenant"),
+    }
+```
+
+Built-in sources are `message`, `messages`, `vars`, and `handle`. Use
+`ContextBinding` when the parameter name differs from the source or only one
+value should be selected:
+
+```python
+import msgflux.nn as nn
+
+
+@mf.tool_config(
+    runtime_inputs=[
+        nn.ContextBinding(
+            source="vars",
+            parameter="tenant_id",
+            options={"key": "tenant_id"},
+        )
+    ]
+)
+def load_orders(tenant_id: str) -> str:
+    """Load orders for the current tenant."""
+    return tenant_id
+```
+
+Extensions may register additional sources with `ToolContextProvider`. See
+[ToolLibrary Extensions](tool-library-extensions.md#custom-runtime-inputs).
+
+### `vars`
+
+The `vars` source gives tools access to the agent's variable dictionary.
 
 Use cases:
 
@@ -184,7 +228,7 @@ Use cases:
 
         # mf.set_envs(OPENAI_API_KEY="...")
 
-        @mf.tool_config(inject_vars=True)
+        @mf.tool_config(runtime_inputs=["vars"])
         def save_to_s3(**kwargs) -> str:
             """Save file to S3."""
             vars = kwargs.get("vars")
@@ -211,7 +255,20 @@ Use cases:
 
         # mf.set_envs(OPENAI_API_KEY="...")
 
-        @mf.tool_config(inject_vars=["api_key", "user_id"])
+        @mf.tool_config(
+            runtime_inputs=[
+                nn.ContextBinding(
+                    source="vars",
+                    parameter="api_key",
+                    options={"key": "api_key"},
+                ),
+                nn.ContextBinding(
+                    source="vars",
+                    parameter="user_id",
+                    options={"key": "user_id"},
+                ),
+            ]
+        )
         def upload_file(**kwargs) -> str:
             """Upload user file."""
             api_key = kwargs["api_key"]
@@ -237,14 +294,14 @@ Use cases:
 
         # mf.set_envs(OPENAI_API_KEY="...")
 
-        @mf.tool_config(inject_vars=True)
+        @mf.tool_config(runtime_inputs=["vars"])
         def save_preference(name: str, value: str, **kwargs):
             """Save a user preference."""
             vars = kwargs.get("vars")
             vars[name] = value  # Modifies the vars dict
             return f"Saved {name} = {value}"
 
-        @mf.tool_config(inject_vars=True)
+        @mf.tool_config(runtime_inputs=["vars"])
         def get_preference(name: str, **kwargs):
             """Get a user preference."""
             vars = kwargs.get("vars")
@@ -281,7 +338,7 @@ This is useful for:
     import msgflux as mf
     import msgflux.nn as nn
 
-    @mf.tool_config(disable_input=True, inject_messages=True)
+    @mf.tool_config(disable_input=True, runtime_inputs=["messages"])
     class Specialist(nn.Agent):
         """Specialist that works only from conversation context."""
 
@@ -293,9 +350,9 @@ This is useful for:
         tools = [Specialist]
     ```
 
-## inject_handle
+## `handle` Runtime Input
 
-With `inject_handle=True`, the tool receives a tool-scoped
+With `runtime_inputs=["handle"]`, the tool receives a tool-scoped
 `ToolLibraryHandle` at runtime. The handle gives the implementation controlled
 access to the library and to runtime resources associated with the current
 call. It is not a model argument and is removed from the public tool schema.
@@ -311,7 +368,7 @@ The most common operations are:
 | Runtime stores | `get_task_store`, `get_agent_inbox` | Uses the resources inherited by the current execution. |
 
 Calling a task-only method during normal inline execution raises a
-`RuntimeError`. This catches tools that were configured with `inject_handle`
+`RuntimeError`. This catches tools that request the `handle` runtime input
 but forgot to opt into `background=True` or model-selected
 `allow_background=True`.
 
@@ -324,7 +381,7 @@ def lookup_customer(customer_id: str) -> str:
     return customer_id
 
 
-@mf.tool_config(inject_handle=True)
+@mf.tool_config(runtime_inputs=["handle"])
 def enable_lookup(handle: mf.Hidden) -> list[str]:
     """Register tools dynamically through the runtime handle."""
     handle.add(lookup_customer)
@@ -347,7 +404,7 @@ model:
 import msgflux as mf
 
 
-@mf.tool_config(background=True, inject_handle=True)
+@mf.tool_config(background=True, runtime_inputs=["handle"])
 def reconcile_inventory(sku: str, handle: mf.Hidden) -> dict:
     """Reconcile one SKU and report task progress."""
     handle.set_running(stage="load", message=f"Loading {sku}")
@@ -372,9 +429,9 @@ through the agent inbox; and the return value is retrieved with `task_output`
 or `task_wait`. See [Background Tasks](background-tasks.md#reporting-progress)
 for the complete lifecycle.
 
-## inject_message
+## `message` Runtime Input
 
-With `inject_message=True`, the tool receives the original `message` passed to the
+The `message` runtime input receives the original message passed to the
 agent. This is useful when the tool needs access to the full envelope object,
 including `Message` fields that should not be part of the public tool schema.
 
@@ -393,7 +450,7 @@ Use cases:
         the model does not see or fill `message`.
 
         ```python
-        @mf.tool_config(inject_message=True, disable_input=True)
+        @mf.tool_config(runtime_inputs=["message"], disable_input=True)
         def inspect_original_message(message) -> str:
             """Inspect the original message envelope."""
             if isinstance(message, mf.Message):
@@ -407,7 +464,7 @@ Use cases:
         msgFlux injects it through `kwargs`.
 
         ```python
-        @mf.tool_config(inject_message=True)
+        @mf.tool_config(runtime_inputs=["message"])
         def inspect_original_message(**kwargs) -> str:
             """Inspect the original message envelope."""
             message = kwargs.get("message")
@@ -416,9 +473,9 @@ Use cases:
             return "No structured message available."
         ```
 
-## inject_messages
+## `messages` Runtime Input
 
-With `inject_messages=True`, the tool receives the agent's internal state
+The `messages` runtime input receives the agent's internal state
 (conversation history) as `messages` in kwargs. This is particularly useful for
 **agent-as-a-tool** patterns where you want to pass the full conversation context
 to a specialist agent.
@@ -434,7 +491,7 @@ Use cases:
 
     === "Agent-as-Tool (Primary Use)"
 
-        When an agent is used as a tool, `inject_messages` passes the conversation history so the specialist has full context:
+        When an agent is used as a tool, the `messages` runtime input passes the conversation history so the specialist has full context:
 
         ```python
         # pip install msgflux[openai]
@@ -445,9 +502,9 @@ Use cases:
 
             model = mf.Model.chat_completion("openai/gpt-5.6-luna")
 
-        # With inject_messages, the specialist receives
+        # With the messages runtime input, the specialist receives
         # the coordinator's conversation as messages
-        @mf.tool_config(inject_messages=True)
+        @mf.tool_config(runtime_inputs=["messages"])
         class Specialist(nn.Agent):
             """Expert that needs conversation context."""
 
@@ -478,7 +535,7 @@ Use cases:
 
         # mf.set_envs(OPENAI_API_KEY="...")
 
-        @mf.tool_config(inject_messages=True)
+        @mf.tool_config(runtime_inputs=["messages"])
         def check_safety(**kwargs) -> dict:
             """Check if the conversation is safe to continue."""
             messages = kwargs.get("messages", [])
@@ -515,7 +572,7 @@ Use cases:
 
         # mf.set_envs(OPENAI_API_KEY="...")
 
-        @mf.tool_config(inject_messages=True)
+        @mf.tool_config(runtime_inputs=["messages"])
         def analyze_shared_images(**kwargs) -> str:
             """Analyze all images shared in the conversation."""
             messages = kwargs.get("messages", [])
@@ -538,7 +595,7 @@ Use cases:
 
 When `handoff=True`, the tool is configured for seamless agent-to-agent handoff:
 
-- Sets `return_direct=True` and `inject_messages=True`
+- Sets `return_direct=True` and requests the `messages` runtime input
 - Changes tool name to `transfer_to_{original_name}`
 - Removes input parameters (equivalent to `disable_input=True`)
 

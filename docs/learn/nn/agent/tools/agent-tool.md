@@ -203,7 +203,7 @@ recorded in that thread's `ChatMessages`. Because that agent does not match
 
 ## Dynamic Agent Registration
 
-A tool can use `inject_handle=True` to register agents while the coordinator is
+A tool can request `runtime_inputs=["handle"]` to register agents while the coordinator is
 running. The model writes the subagent specification through normal tool
 arguments, and the injected `handle` gives the Python tool access to the current
 `ToolLibrary`.
@@ -224,7 +224,7 @@ from msgflux.tools.builtin import AgentTool
 model = mf.Model.chat_completion("openai/gpt-5.6-luna")
 
 
-@mf.tool_config(inject_handle=True)
+@mf.tool_config(runtime_inputs=["handle"])
 def create_specialist(
     agent_name: str,
     description: str,

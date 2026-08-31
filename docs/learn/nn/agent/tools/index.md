@@ -557,14 +557,14 @@ Control how the model selects tools.
 Use `mf.Hidden` when a Python tool parameter should not be included in the
 model-facing schema. This is useful with `@mf.tool_config(...)` when a tool
 needs implementation-only values. `Hidden` only hides the parameter; use an
-explicit injection flag such as `inject_handle=True` when the runtime should
+explicit runtime input such as `runtime_inputs=["handle"]` when the runtime should
 provide the value.
 
 ```python
 import msgflux as mf
 
 
-@mf.tool_config(background=True, inject_handle=True)
+@mf.tool_config(background=True, runtime_inputs=["handle"])
 def rebuild_index(index_name: str, handle: mf.Hidden) -> str:
     """Rebuild a search index in the background."""
     handle.notify(status="started", metadata={"index": index_name})

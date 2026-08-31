@@ -131,6 +131,13 @@ fails closed, while a failure in `after_tool` preserves the outcome already
 produced. Lifecycle hooks remain inside this canonical policy envelope during
 the compatibility period.
 
+Runtime argument injection uses the same registry. `runtime_inputs` compiles to
+immutable `ContextBinding` values on `ToolDefinition`; the model sees neither
+the binding nor its target parameter. `ToolContextProvider` resolves each
+source against a per-intent `ToolRuntimeContext`, allowing custom runtime data
+without another conditional in the library core. Handles are scoped to the
+current tool call before they enter that context.
+
 `before_dispatch` receives the public arguments and normalized config alongside
 the selected `dispatch_mode`. Runtime injections remain private. Extensions may
 reduce `background` or `detached` to `foreground`, but cannot promote attached

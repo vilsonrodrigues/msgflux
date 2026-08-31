@@ -499,7 +499,7 @@ def test_agent_tool_injects_messages_and_vars_without_exposing_them():
 
 
 def test_agent_tool_child_agent_inherits_parent_messages_when_configured():
-    reviewer = mf.tool_config(inject_messages=True)(
+    reviewer = mf.tool_config(runtime_inputs=["messages"])(
         Agent(name="reviewer", model=_mock_model("reviewed"))
     )
     library = ToolLibrary(name="lib", tools=[AgentTool(), reviewer])

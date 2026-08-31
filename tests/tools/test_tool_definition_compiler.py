@@ -1,5 +1,6 @@
 from types import SimpleNamespace
 
+from msgflux.nn import ContextBinding
 from msgflux.nn.modules.tool import LocalTool, ToolLibrary
 from msgflux.nn.modules.tool_v2 import ToolDefinitionCompiler
 from msgflux.tools.config import tool_config
@@ -9,10 +10,16 @@ def test_library_compiles_legacy_config_once_into_canonical_definition():
     @tool_config(
         allow_background=True,
         background_capabilities=("activity",),
-        inject_message=True,
-        inject_messages=True,
-        inject_handle=True,
-        inject_vars=["tenant"],
+        runtime_inputs=[
+            "message",
+            "messages",
+            "handle",
+            ContextBinding(
+                source="vars",
+                parameter="tenant",
+                options={"key": "tenant"},
+            ),
+        ],
         defer_loading=True,
     )
     def inspect_inventory(sku: str) -> str:

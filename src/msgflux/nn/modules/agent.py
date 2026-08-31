@@ -414,7 +414,17 @@ class Agent(Module, metaclass=AutoParams):
                     "command": "npx",
                     "args": ["-y", "@modelcontextprotocol/server-filesystem"],
                     "include_tools": ["read_file", "write_file"],
-                    "tool_config": {"read_file": {"inject_vars": ["context"]}}
+                    "tool_config": {
+                        "read_file": {
+                            "runtime_inputs": (
+                                ContextBinding(
+                                    source="vars",
+                                    parameter="context",
+                                    options={"key": "context"},
+                                ),
+                            )
+                        }
+                    }
                 }]
         signature:
             A DSPy-based signature. A signature creates a task_template,

@@ -330,7 +330,10 @@ def test_background_task_tools_are_registered_as_classes():
     assert isinstance(installed.impl, TaskStatusTool)
     assert isinstance(installed.impl, ToolLibraryOperator)
     assert isinstance(installed.impl, ToolBackground)
-    assert installed.tool_config["inject_handle"] is True
+    assert [
+        binding.source
+        for binding in library.get_tool_definition("task_status").context.bindings
+    ] == ["handle"]
     assert installed.tool_config["tool_kind"] == "background"
 
 
@@ -566,13 +569,13 @@ def test_injected_handle_can_add_and_remove_tools():
         """Multiply a number by two."""
         return x * 2
 
-    @mf.tool_config(inject_handle=True)
+    @mf.tool_config(runtime_inputs=["handle"])
     def add_multiplier(handle: mf.Hidden) -> list[str]:
         """Register the multiply tool."""
         handle.add(multiply)
         return handle.list_tools()
 
-    @mf.tool_config(inject_handle=True)
+    @mf.tool_config(runtime_inputs=["handle"])
     def remove_tool(
         handle: mf.Hidden,
         name: str,
@@ -595,7 +598,7 @@ def test_injected_handle_can_add_and_remove_tools():
 
 
 def test_injected_handle_can_add_background_tool_with_task_tools():
-    @mf.tool_config(background=True, inject_handle=True)
+    @mf.tool_config(background=True, runtime_inputs=["handle"])
     def background_multiplier(
         value: int,
         handle: mf.Hidden,
@@ -604,7 +607,7 @@ def test_injected_handle_can_add_background_tool_with_task_tools():
         handle.update_progress(stage="work", message="Running", current=1, total=1)
         return value * 2
 
-    @mf.tool_config(inject_handle=True)
+    @mf.tool_config(runtime_inputs=["handle"])
     def add_background_multiplier(
         handle: mf.Hidden,
     ) -> list[str]:
@@ -641,7 +644,7 @@ def test_background_task_reports_progress_and_output():
     started = threading.Event()
     release = threading.Event()
 
-    @mf.tool_config(background=True, inject_handle=True)
+    @mf.tool_config(background=True, runtime_inputs=["handle"])
     def long_job(value: int, handle: mf.Hidden) -> int:
         """Run a long job in the background."""
         handle.set_running(stage="prepare", message="Preparing")
@@ -724,7 +727,7 @@ def test_task_wait_returns_final_output():
 def test_task_wait_returns_timeout_payload_with_progress():
     release = threading.Event()
 
-    @mf.tool_config(background=True, inject_handle=True)
+    @mf.tool_config(background=True, runtime_inputs=["handle"])
     def long_job(value: int, handle: mf.Hidden) -> int:
         """Run a long job in the background."""
         handle.update_progress(stage="work", message="Halfway", current=1, total=2)
@@ -1093,7 +1096,7 @@ def test_agent_consumes_persisted_incoming_user_message_for_scope():
 
 
 def test_agent_drains_notifications_after_tool_call_before_next_model_call():
-    @mf.tool_config(inject_handle=True)
+    @mf.tool_config(runtime_inputs=["handle"])
     def publish_status(handle: mf.Hidden) -> str:
         """Publish an in-loop status update."""
         handle.get_notification().update(
@@ -1127,7 +1130,7 @@ def test_task_progress_notifications_are_persisted():
     started = threading.Event()
     release = threading.Event()
 
-    @mf.tool_config(background=True, inject_handle=True)
+    @mf.tool_config(background=True, runtime_inputs=["handle"])
     def long_job(value: int, handle: mf.Hidden) -> int:
         """Emit progress updates while running in the background."""
         handle.notify(
@@ -1192,7 +1195,7 @@ def test_injected_handle_publishes_task_status_updates():
     started = threading.Event()
     release = threading.Event()
 
-    @mf.tool_config(background=True, inject_handle=True)
+    @mf.tool_config(background=True, runtime_inputs=["handle"])
     def long_job(value: int, handle: mf.Hidden) -> int:
         """Emit task status updates through the injected tool handle."""
         handle.get_notification().update(
@@ -1327,7 +1330,7 @@ def test_injected_handle_can_add_background_agent_with_agent_task_tools():
     worker = Agent(name="worker", model=_mock_model("done"))
     worker.tool_config = {"background": True}
 
-    @mf.tool_config(inject_handle=True)
+    @mf.tool_config(runtime_inputs=["handle"])
     def add_worker(handle: mf.Hidden) -> list[str]:
         """Register a background agent."""
         handle.add(worker)

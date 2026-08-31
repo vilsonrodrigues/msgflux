@@ -398,6 +398,23 @@ class ToolDefinitionCompiler:
 
     @staticmethod
     def _compile_context(config: Mapping[str, Any]) -> ContextSpec:
+        configured = config.get("runtime_inputs")
+        if configured is not None:
+            context = ContextSpec.coerce(configured)
+            bindings = []
+            for binding in context.bindings:
+                selected_binding = binding
+                if (
+                    binding.source == "messages"
+                    and config.get("tool_kind") == "agent"
+                    and "copy" not in binding.options
+                ):
+                    selected_binding = msgspec.structs.replace(
+                        binding,
+                        options={**binding.options, "copy": True},
+                    )
+                bindings.append(selected_binding)
+            return ContextSpec(bindings=tuple(bindings))
         bindings = []
         for source in ("message", "messages", "handle"):
             if config.get(f"inject_{source}", False):

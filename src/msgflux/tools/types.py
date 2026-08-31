@@ -271,7 +271,7 @@ class ToolBucket:
 class ToolLibraryOperator:
     """Base class for tools that operate through ToolLibraryHandle."""
 
-    tool_config = {"inject_handle": True}
+    tool_config = {"runtime_inputs": ("handle",)}
 
     @classmethod
     def is_operator_tool(cls, tool: Any | None) -> bool:

@@ -258,7 +258,7 @@ talking to the same subagent task, use `task_message` with the existing
 
 ## Reporting Progress
 
-Use `inject_handle=True` when the tool should update its own progress. The
+Use `runtime_inputs=["handle"]` when the tool should update its own progress. The
 handle is hidden from the model schema, and the runtime passes it to the Python
 function.
 
@@ -267,7 +267,7 @@ import time
 import msgflux as mf
 
 
-@mf.tool_config(background=True, inject_handle=True)
+@mf.tool_config(background=True, runtime_inputs=["handle"])
 def process_items(
     items: list[str],
     handle: mf.Hidden,
@@ -351,7 +351,7 @@ agent = nn.Agent(
 The same injected handle can publish lightweight agent-visible updates.
 
 ```python
-@mf.tool_config(background=True, inject_handle=True)
+@mf.tool_config(background=True, runtime_inputs=["handle"])
 def process_items(
     items: list[str],
     handle: mf.Hidden,
@@ -394,7 +394,7 @@ Use `handle.get_notification()` when the tool should publish lightweight status
 updates.
 
 ```python
-@mf.tool_config(background=True, inject_handle=True)
+@mf.tool_config(background=True, runtime_inputs=["handle"])
 def process_items(
     items: list[str],
     handle: mf.Hidden,
@@ -420,7 +420,7 @@ current `task_id`, so the agent sees a normal notification block with
 
 ## Dynamic Tool Mutation With The Handle
 
-`inject_handle=True` exposes a small handle to the tool without exposing that
+The `handle` runtime input exposes a small handle to the tool without exposing that
 parameter to the model.
 
 The current handle supports:
@@ -438,14 +438,14 @@ def multiply(x: int) -> int:
     return x * 2
 
 
-@mf.tool_config(inject_handle=True)
+@mf.tool_config(runtime_inputs=["handle"])
 def enable_multiplier(handle: mf.Hidden) -> list[str]:
     """Register the multiply tool."""
     handle.add(multiply)
     return handle.list_tools()
 
 
-@mf.tool_config(inject_handle=True)
+@mf.tool_config(runtime_inputs=["handle"])
 def disable_tool(
     handle: mf.Hidden,
     name: str,

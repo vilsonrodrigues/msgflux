@@ -80,7 +80,7 @@ Configure MCP servers using the `mcp_servers` attribute:
                 "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"],
                 "include_tools": ["read_file", "write_file"],
                 "tool_config": {
-                    "read_file": {"inject_vars": True}
+                    "read_file": {"runtime_inputs": ["vars"]}
                 }
             }]
 

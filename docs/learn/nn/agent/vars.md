@@ -38,7 +38,8 @@ Three use cases drive its design:
 
     === "Tools"
 
-        `inject_vars` accepts two forms:
+        `runtime_inputs` accepts the entire `vars` mapping as a source, while
+        `ContextBinding` selects individual fields:
 
         - **`True`** — all vars are passed as a single `vars` dict in `kwargs`
         - **`["field1", "field2"]`** — only the listed fields are injected as direct named arguments; raises an error if any field is missing
@@ -50,8 +51,8 @@ Three use cases drive its design:
 
         # mf.set_envs(OPENAI_API_KEY="...")
 
-        # inject_vars=True — receives all vars as kwargs["vars"]
-        @mf.tool_config(inject_vars=True)
+        # Receives all vars as kwargs["vars"]
+        @mf.tool_config(runtime_inputs=["vars"])
         def get_discount_full(**kwargs) -> str:
             """Get the discount for the current customer."""
             vars = kwargs.get("vars")
@@ -59,8 +60,16 @@ Three use cases drive its design:
             return f"{customer_name} has a 15% loyalty discount."
 
 
-        # inject_vars=[...] — selected fields become direct named arguments
-        @mf.tool_config(inject_vars=["customer_name"])
+        # A selected field becomes one direct named argument
+        @mf.tool_config(
+            runtime_inputs=[
+                nn.ContextBinding(
+                    source="vars",
+                    parameter="customer_name",
+                    options={"key": "customer_name"},
+                )
+            ]
+        )
         def get_discount_selective(customer_name: str) -> str:
             """Get the discount for the current customer."""
             return f"{customer_name} has a 15% loyalty discount."
@@ -78,7 +87,7 @@ Three use cases drive its design:
         response = agent("What discount do I have?", vars=vars)
         ```
 
-        See [inject_vars](tools/config.md#inject_vars) for more details.
+        See [runtime_inputs](tools/config.md#runtime_inputs) for more details.
 
     === "Skills"
 
@@ -119,7 +128,15 @@ Three use cases drive its design:
         }
 
 
-        @mf.tool_config(inject_vars=["skills"])
+        @mf.tool_config(
+            runtime_inputs=[
+                nn.ContextBinding(
+                    source="vars",
+                    parameter="skills",
+                    options={"key": "skills"},
+                )
+            ]
+        )
         def skill(name: str, **kwargs) -> str:
             """Read the full instructions for a skill by name."""
             skills = kwargs["skills"]
@@ -171,7 +188,7 @@ Three use cases drive its design:
             "C-002": {"name": "Lois Lane",  "plan": "Basic",   "balance":   45.00, "overdue": True},
         }
 
-        @mf.tool_config(inject_vars=True)
+        @mf.tool_config(runtime_inputs=["vars"])
         def load_account(**kwargs) -> str:
             """Load the customer's account details."""
             vars = kwargs.get("vars")
@@ -206,7 +223,8 @@ Three use cases drive its design:
 
         Some values must reach your tools but must never appear in the model's context — API keys, internal service tokens, customer IDs used for authenticated lookups. Pass them through `vars`: the model is unaware they exist.
 
-        Using `inject_vars=["customer_id"]` makes the intent explicit: only that field is injected, directly as a named argument.
+        A `ContextBinding` makes the intent explicit: only `customer_id` is
+        supplied as a named argument.
 
         ```python
         # pip install msgflux[openai]
@@ -222,7 +240,15 @@ Three use cases drive its design:
             ]
         }
 
-        @mf.tool_config(inject_vars=["customer_id"])
+        @mf.tool_config(
+            runtime_inputs=[
+                nn.ContextBinding(
+                    source="vars",
+                    parameter="customer_id",
+                    options={"key": "customer_id"},
+                )
+            ]
+        )
         def list_orders(customer_id: str) -> str:
             """List the customer's recent orders."""
             orders = ORDER_DB.get(customer_id, [])
@@ -259,7 +285,15 @@ Three use cases drive its design:
 
         # mf.set_envs(OPENAI_API_KEY="...")
 
-        @mf.tool_config(inject_vars=["customer_name"])
+        @mf.tool_config(
+            runtime_inputs=[
+                nn.ContextBinding(
+                    source="vars",
+                    parameter="customer_name",
+                    options={"key": "customer_name"},
+                )
+            ]
+        )
         def get_discount(customer_name: str) -> str:
             """Get the discount for the current customer."""
             return f"{customer_name} has a 15% loyalty discount."

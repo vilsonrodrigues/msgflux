@@ -21,7 +21,7 @@ class AgentTool(ToolBucket, ToolLibraryOperator):
     name = "agent"
     display_name = "Agent"
     tool_config = {
-        "inject_handle": True,
+        "runtime_inputs": ("handle",),
     }
     description = "Available agents:"
     annotations = {"name": str, "message": str, "return": str}

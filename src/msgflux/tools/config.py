@@ -1,8 +1,9 @@
 from functools import wraps
 from types import FunctionType, MethodType
-from typing import Any, Callable, Collection, Dict, List, Optional, Union
+from typing import Any, Callable, Collection, Dict, Optional, Union
 
 from msgflux.core.dotdict import dotdict
+from msgflux.nn.modules.tool_v2 import ContextBinding, ContextSpec
 from msgflux.tools.helpers import normalize_background_capabilities
 from msgflux.tools.runtime import FeedbackSpec
 
@@ -57,6 +58,20 @@ def _normalize_dispatch(
     return dispatch
 
 
+def _normalize_runtime_inputs(
+    runtime_inputs: ContextSpec | Collection[ContextBinding | str] | None,
+    *,
+    handoff: Optional[bool],
+) -> ContextSpec:
+    if runtime_inputs is not None:
+        bindings = list(ContextSpec.coerce(runtime_inputs).bindings)
+    else:
+        bindings = []
+    if handoff and not any(binding.source == "messages" for binding in bindings):
+        bindings.append(ContextBinding(source="messages"))
+    return ContextSpec(bindings=tuple(bindings))
+
+
 def tool_config(
     *,
     description: Optional[str] = None,
@@ -72,10 +87,7 @@ def tool_config(
     background_capabilities: Optional[Collection[str]] = None,
     disable_input: Optional[bool] = False,
     defer_loading: Optional[bool] = False,
-    inject_message: Optional[bool] = False,
-    inject_messages: Optional[bool] = False,
-    inject_handle: Optional[bool] = False,
-    inject_vars: Optional[Union[bool, List[str]]] = False,
+    runtime_inputs: ContextSpec | Collection[ContextBinding | str] | None = None,
     handoff: Optional[bool] = False,
     tool_kind: Optional[str] = None,
     name_override: Optional[str] = None,
@@ -141,22 +153,10 @@ def tool_config(
         defer_loading:
             If True, keep the tool registered in the library but hide its schema
             from the model until it is loaded through `tool_search`.
-        inject_message:
-            If True, the tool receives the original `message` passed to the Agent
-            at runtime. This injected parameter does not become part of the tool
-            schema exposed to the model.
-        inject_messages:
-            If True, the tool receives the current conversation history as
-            `messages` at runtime. This injected parameter does not become part of
-            the tool schema exposed to the model.
-        inject_handle:
-            If True, the tool receives the current `ToolLibraryHandle` as
-            `handle` at runtime. This injected parameter does not become part of
-            the tool schema exposed to the model.
-        inject_vars:
-            Indicates if the tool should receive vars. If True, the tool receives all
-            vars as a named argument `vars`. If a list of vars is passed, only those
-            vars will be passed.
+        runtime_inputs:
+            Runtime context sources injected outside the model-visible schema.
+            Accepts source names or ContextBinding values for custom parameters
+            and provider-specific options.
         handoff:
             If True, indicates that this function will receive the `messages`
             from the Agent.
@@ -187,7 +187,7 @@ def tool_config(
            `allow_background=True` is not compatible with `return_direct=True`,
            `call_as_response=True`, `detached=True`, and `handoff=True`.
         ValueError:
-           `inject_vars=True` is not compatible with `call_as_response=True`.
+           `runtime_inputs` is not compatible with `call_as_response=True`.
 
     Examples:
         Decorating a function:
@@ -215,8 +215,6 @@ def tool_config(
 
     def decorator(f):
         _return_direct = return_direct  # Local copy
-        _inject_message = inject_message  # Local copy
-        _inject_messages = inject_messages  # Local copy
 
         normalized_feedback = _normalize_feedback(
             feedback,
@@ -237,7 +235,11 @@ def tool_config(
 
         if handoff:
             _return_direct = True
-            _inject_messages = True
+
+        normalized_context = _normalize_runtime_inputs(
+            runtime_inputs,
+            handoff=handoff,
+        )
 
         if detached and (_return_direct or call_as_response):
             raise ValueError(
@@ -268,9 +270,9 @@ def tool_config(
             )
         )
 
-        if inject_vars is not False and call_as_response is True:
+        if normalized_context.bindings and call_as_response is True:
             raise ValueError(
-                "`inject_vars` is not compatible with `call_as_response=True`"
+                "`runtime_inputs` is not compatible with `call_as_response=True`"
             )
 
         tool_config = {
@@ -289,10 +291,7 @@ def tool_config(
                     "handoff": handoff,
                     "disable_input": disable_input,
                     "defer_loading": defer_loading,
-                    "inject_message": _inject_message,
-                    "inject_messages": _inject_messages,
-                    "inject_handle": inject_handle,
-                    "inject_vars": inject_vars,
+                    "runtime_inputs": normalized_context,
                     "return_direct": _return_direct,
                     "tool_kind": tool_kind,
                     "name_overridden": name_override,

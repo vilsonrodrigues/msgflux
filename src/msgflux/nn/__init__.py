@@ -25,6 +25,7 @@ __all__ = [
     "AgentExtensionHandle",
     "BackgroundTasksExtension",
     "CurrentDateExtension",
+    "ContextBinding",
     "Parameter",
     "functional",
     "modules",
@@ -47,6 +48,7 @@ __all__ = [
     "ToolLibraryExtension",
     "ToolLibraryExtensionHandle",
     "ToolDispatch",
+    "ToolContextProvider",
     "ToolPolicy",
     "ToolSearchExtension",
     "DefaultToolFeedbackExtension",
@@ -71,6 +73,7 @@ def __getattr__(name: str):
         "ToolLibraryExtension",
         "ToolLibraryExtensionHandle",
         "ToolDispatch",
+        "ToolContextProvider",
         "ToolPolicy",
         "ToolSearchExtension",
         "DefaultToolFeedbackExtension",
@@ -79,6 +82,8 @@ def __getattr__(name: str):
         value = getattr(import_module("msgflux.nn.extensions"), name)
     elif name == "Parameter":
         value = getattr(import_module("msgflux.nn.parameter"), name)
+    elif name == "ContextBinding":
+        value = getattr(import_module("msgflux.nn.modules.tool_v2"), name)
     elif name in _MODULE_EXPORTS:
         value = getattr(import_module("msgflux.nn.modules"), name)
     else:

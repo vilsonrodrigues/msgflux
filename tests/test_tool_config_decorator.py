@@ -116,10 +116,7 @@ def test_tool_config_values_are_correct():
         call_as_response=False,
         detached=False,
         disable_input=False,
-        inject_message=False,
-        inject_messages=False,
-        inject_handle=False,
-        inject_vars=["var1", "var2"],
+        runtime_inputs=["vars"],
         handoff=False,
         tool_kind="specialist",
         name_override="CustomName",
@@ -136,10 +133,7 @@ def test_tool_config_values_are_correct():
     assert config.call_as_response is False
     assert config.detached is False
     assert config.disable_input is False
-    assert config.inject_message is False
-    assert config.inject_messages is False
-    assert config.inject_handle is False
-    assert config.inject_vars == ["var1", "var2"]
+    assert [binding.source for binding in config.runtime_inputs.bindings] == ["vars"]
     assert config.handoff is False
     assert config.tool_kind == "specialist"
     assert config.name_overridden == "CustomName"
@@ -158,10 +152,10 @@ def test_tool_config_handoff_sets_return_direct():
         name = "HandoffAgent"
         model = mock_model
 
-    # handoff should automatically enable return_direct and inject_messages
+    # handoff automatically enables return_direct and the messages runtime input
     assert HandoffAgent.tool_config.handoff is True
     assert HandoffAgent.tool_config.return_direct is True
-    assert HandoffAgent.tool_config.inject_messages is True
+    assert HandoffAgent.tool_config.runtime_inputs.bindings[0].source == "messages"
 
     print("✓ Test 5 passed: handoff=True sets dependent flags")
 

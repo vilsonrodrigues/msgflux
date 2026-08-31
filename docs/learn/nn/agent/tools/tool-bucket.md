@@ -48,7 +48,7 @@ class OperationsTool(ToolBucket):
         "tool_kind": "catalog|orders",
         "defer_loading": False,
     }
-    tool_config = {"inject_handle": True}
+    tool_config = {"runtime_inputs": ["handle"]}
     annotations = {
         "name": str,
         "query": str,

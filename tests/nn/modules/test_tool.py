@@ -7,6 +7,7 @@ from typing import Optional
 
 from msgflux.core.dotdict import dotdict
 from msgflux.chat_messages import ChatMessages
+from msgflux.nn import ContextBinding
 from msgflux.nn.modules.agent import Agent
 from msgflux.nn.modules.tool import (
     ToolCall,
@@ -843,7 +844,10 @@ class TestToolLibrary:
         assert {"type": "null"} in properties["max_results"]["anyOf"]
         assert isinstance(library.library["tool_search"].impl, ToolLibraryOperator)
         assert isinstance(library.library["tool_search"].impl, ToolBucket)
-        assert library.library["tool_search"].tool_config["inject_handle"] is True
+        assert [
+            binding.source
+            for binding in library.get_tool_definition("tool_search").context.bindings
+        ] == ["handle", "messages"]
         assert library.library["tool_search"].tool_config["tool_kind"] == "bucket"
 
     def test_tool_search_is_not_captured_by_tool_search_bucket(self):
@@ -989,8 +993,7 @@ class TestToolLibrary:
 
         @mf.tool_config(
             tool_kind="catalog",
-            inject_messages=True,
-            inject_vars=True,
+            runtime_inputs=["messages", "vars"],
         )
         def inspect_context(messages: list, vars: dict) -> str:
             """Inspect the exact context objects received by a captured tool."""
@@ -1194,7 +1197,10 @@ class TestToolLibrary:
 
         assert "handle" not in schema["function"]["parameters"].get("properties", {})
         assert result.tool_calls[0].result == "runtime_echo"
-        assert library.library["runtime_echo"].tool_config["inject_handle"] is True
+        assert [
+            binding.source
+            for binding in library.get_tool_definition("runtime_echo").context.bindings
+        ] == ["handle"]
         assert library.library["runtime_echo"].tool_config["tool_kind"] == "diagnostic"
 
     def test_tool_search_captures_deferred_operator_tools(self):
@@ -1377,7 +1383,7 @@ class TestToolLibrary:
             """Look up external information."""
             return query
 
-        @mf.tool_config(inject_handle=True)
+        @mf.tool_config(runtime_inputs=["handle"])
         def enable_remote_lookup(
             handle: mf.Hidden,
         ) -> list[str]:
@@ -1407,7 +1413,7 @@ class TestToolLibrary:
             """Look up external information."""
             return query
 
-        @mf.tool_config(inject_handle=True)
+        @mf.tool_config(runtime_inputs=["handle"])
         def enable_lookup(handle: mf.Hidden) -> str:
             """Register a tool."""
             return handle.add(lookup)
@@ -1622,7 +1628,15 @@ class TestToolLibrary:
             metadata={"task_kind": "agent"},
         )
 
-        @mf.tool_config(inject_vars=["required"])
+        @mf.tool_config(
+            runtime_inputs=[
+                ContextBinding(
+                    source="vars",
+                    parameter="required",
+                    options={"key": "required"},
+                )
+            ]
+        )
         def tool_needs_var(a: int, required: str) -> str:
             """Tool needs var."""
             return f"{a}-{required}"
@@ -1763,7 +1777,7 @@ class TestToolLibrary:
     def test_tool_library_with_inject_handle(self):
         """Test ToolLibrary with inject_handle config."""
 
-        @mf.tool_config(inject_handle=True)
+        @mf.tool_config(runtime_inputs=["handle"])
         def runtime_tool(handle: mf.Hidden) -> str:
             """Tool that uses the runtime handle."""
             return ",".join(handle.list_tools())

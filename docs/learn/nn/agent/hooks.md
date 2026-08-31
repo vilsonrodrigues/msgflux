@@ -77,7 +77,7 @@ agent = Agent(
 
 `before_tool` runs after the tool has been resolved and its arguments prepared.
 It receives only model-visible arguments. Runtime injections such as
-`inject_messages`, `inject_vars`, and `inject_handle` remain attached to the
+`runtime_inputs` bindings remain attached to the
 call and are not exposed to or removed by the hook. If a `before_tool` handler
 raises or returns an invalid payload, execution fails closed and the tool is not
 called. An `after_tool` handler failure leaves the original outcome unchanged

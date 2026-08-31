@@ -5,7 +5,7 @@ import msgspec
 import pytest
 
 from msgflux.exceptions import AbortRequestedError
-from msgflux.nn import ToolPolicy
+from msgflux.nn import ContextBinding, ToolContextProvider, ToolPolicy
 from msgflux.nn.hooks import Hook
 from msgflux.nn.modules.tool import ToolLibrary
 from msgflux.nn.modules.tool_v2 import DispatchSpec, ToolDispatch
@@ -253,7 +253,7 @@ def test_custom_dispatch_extension_routes_sync_execution():
         "queue": "priority",
         "arguments": {"report_id": "rpt_42"},
     }
-    assert queue.requests[0].context.get("handle") is library.get_handle()
+    assert queue.requests[0].context.get("handle").list_tools() == ["publish_report"]
 
 
 @pytest.mark.asyncio
@@ -463,3 +463,73 @@ async def test_policy_can_replace_dispatch_and_after_policy_failure_is_nonfatal(
     assert outcome.status == "completed"
     assert outcome.result == 6
     assert outcome.metadata["arguments"] == {"value": 3}
+
+
+class TenantRuntimeProvider(ToolContextProvider):
+    def __init__(self):
+        super().__init__("tenant_runtime", sources=("tenant",))
+
+    async def resolve(self, request):
+        return request.context.require("vars")["tenant"]
+
+
+def test_custom_runtime_input_provider_resolves_hidden_parameter():
+    @tool_config(
+        runtime_inputs=[
+            ContextBinding(source="tenant", parameter="tenant_id"),
+        ]
+    )
+    def identify_order(order_id: str, tenant_id: str) -> str:
+        return f"{tenant_id}:{order_id}"
+
+    library = ToolLibrary(
+        name="test",
+        tools=[identify_order],
+        extensions=[TenantRuntimeProvider()],
+    )
+
+    outcome = library.execute_intents(
+        [
+            ToolIntent(
+                id="call_1",
+                name="identify_order",
+                arguments={"order_id": "order_42"},
+            )
+        ],
+        vars={"tenant": "acme"},
+    )[0]
+
+    assert outcome.result == "acme:order_42"
+    assert outcome.metadata["arguments"] == {"order_id": "order_42"}
+
+
+@pytest.mark.asyncio
+async def test_custom_runtime_input_provider_supports_async_execution():
+    @tool_config(
+        runtime_inputs=[
+            ContextBinding(source="tenant", parameter="tenant_id"),
+        ]
+    )
+    def identify_order(order_id: str, tenant_id: str) -> str:
+        return f"{tenant_id}:{order_id}"
+
+    library = ToolLibrary(
+        name="test",
+        tools=[identify_order],
+        extensions=[TenantRuntimeProvider()],
+    )
+
+    outcome = (
+        await library.aexecute_intents(
+            [
+                ToolIntent(
+                    id="call_1",
+                    name="identify_order",
+                    arguments={"order_id": "order_42"},
+                )
+            ],
+            vars={"tenant": "acme"},
+        )
+    )[0]
+
+    assert outcome.result == "acme:order_42"

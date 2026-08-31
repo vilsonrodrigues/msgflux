@@ -42,6 +42,7 @@ from msgflux.nn.modules.tool_v2 import (
     AfterToolPolicy,
     BeforeDispatchPolicy,
     BeforeToolPolicy,
+    ContextSpec,
     DispatchRequest,
     ToolDefinitionCompiler,
     ToolExecutionPlan,
@@ -307,6 +308,8 @@ def _inspect_tool_metadata(impl: Callable) -> ToolMetadata:  # noqa: C901
         raise ValueError("The `spawn` tool option was removed; use `detached`.")
     if ToolLibraryOperator.is_operator_tool(impl):
         inherited_config = getattr(type(impl), "tool_config", {})
+        if inherited_config.get("runtime_inputs") is not None:
+            tool_config["runtime_inputs"] = inherited_config["runtime_inputs"]
         for key in ("inject_handle", "inject_message", "inject_messages"):
             if inherited_config.get(key):
                 tool_config[key] = True
@@ -449,6 +452,10 @@ def _inspect_tool_metadata(impl: Callable) -> ToolMetadata:  # noqa: C901
     if tool_config.get("handoff", False) or tool_config.get("disable_input", False):
         annotations = {}  # pass only the model state
     else:
+        configured_context = tool_config.get("runtime_inputs")
+        if configured_context is not None:
+            for binding in ContextSpec.coerce(configured_context).bindings:
+                annotations.pop(binding.parameter, None)
         if tool_config.get("inject_message", False):
             annotations.pop("message", None)
         if tool_config.get("inject_messages", False):
@@ -1262,16 +1269,13 @@ class ToolLibrary(Module, metaclass=AutoParams):
 
     # --- Tool Call Preparation ---
 
-    def _build_tool_argument_sets(  # noqa: C901
+    def _build_tool_argument_sets(
         self,
         *,
         definition: RuntimeToolDefinition,
-        tool_name: str,
+        intent: ToolIntent,
         tool_params: Any,
-        message: Optional[Any],
-        messages: List[Dict[str, Any]],
-        vars: Mapping[str, Any],
-        tool_call_id: str | None = None,
+        context: ToolRuntimeContext,
         runtime_arguments: Mapping[str, Any] | None = None,
     ) -> tuple[Dict[str, Any], Dict[str, Any]]:
         if definition.feedback.name == "handoff" or definition.metadata.get(
@@ -1280,7 +1284,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
         ):
             visible_params: Dict[str, Any] = {}
         else:
-            visible_params = coerce_tool_params(tool_name, tool_params)
+            visible_params = coerce_tool_params(intent.name, tool_params)
 
         for param_name in definition.metadata.get("hidden_params") or {}:
             visible_params.pop(param_name, None)
@@ -1291,52 +1295,85 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 RUNTIME_BACKGROUND_PARAM
             )
 
-        for binding in definition.context.bindings:
-            if binding.source == "vars":
-                key = binding.options.get("key")
-                selected = binding.options.get("select")
-                if key is not None:
-                    if key not in vars:
-                        subject = "agent" if definition.kind == "agent" else "tool"
-                        raise ValueError(
-                            f"The {subject} `{tool_name}` requires the injected "
-                            f"parameter `{key}`, but it was not found."
-                        )
-                    runtime_params[binding.parameter] = vars[key]
-                elif selected is not None:
-                    missing = [key for key in selected if key not in vars]
-                    if missing:
-                        raise ValueError(
-                            f"The agent `{tool_name}` requires the injected parameter "
-                            f"`{missing[0]}`, but it was not found."
-                        )
-                    runtime_params[binding.parameter] = {
-                        key: vars[key] for key in selected
-                    }
-                else:
-                    runtime_params[binding.parameter] = vars
-            elif binding.source == "messages":
-                runtime_params[binding.parameter] = (
-                    deepcopy(messages)
-                    if binding.options.get("copy", False)
-                    else messages
-                )
-            elif binding.source == "message":
-                runtime_params[binding.parameter] = message
-            elif binding.source == "handle":
-                context = get_execution_context()
-                runtime_params[binding.parameter] = self.get_handle().for_tool(
-                    tool_name=tool_name,
-                    agent_inbox=context.get("agent_inbox"),
-                    task_store=context.get("task_store"),
-                    message=message,
-                    messages=messages,
-                    vars=vars,
-                    tool_call_id=tool_call_id,
-                    activity_recorder=context.get("task_activity_recorder"),
-                )
+        resolved = F.wait_for(
+            self._aresolve_runtime_inputs,
+            definition,
+            intent,
+            context,
+        )
+        if isinstance(resolved, TaskError):
+            raise resolved.exception
+        runtime_params.update(resolved)
 
         return visible_params, runtime_params
+
+    async def _abuild_tool_argument_sets(
+        self,
+        *,
+        definition: RuntimeToolDefinition,
+        intent: ToolIntent,
+        tool_params: Any,
+        context: ToolRuntimeContext,
+        runtime_arguments: Mapping[str, Any] | None = None,
+    ) -> tuple[Dict[str, Any], Dict[str, Any]]:
+        if definition.feedback.name == "handoff" or definition.metadata.get(
+            "disable_input",
+            False,
+        ):
+            visible_params: Dict[str, Any] = {}
+        else:
+            visible_params = coerce_tool_params(intent.name, tool_params)
+        for param_name in definition.metadata.get("hidden_params") or {}:
+            visible_params.pop(param_name, None)
+        runtime_params: Dict[str, Any] = dict(runtime_arguments or {})
+        if RUNTIME_BACKGROUND_PARAM in visible_params:
+            runtime_params[RUNTIME_BACKGROUND_PARAM] = visible_params.pop(
+                RUNTIME_BACKGROUND_PARAM
+            )
+        runtime_params.update(
+            await self._aresolve_runtime_inputs(definition, intent, context)
+        )
+        return visible_params, runtime_params
+
+    async def _aresolve_runtime_inputs(
+        self,
+        definition: RuntimeToolDefinition,
+        intent: ToolIntent,
+        context: ToolRuntimeContext,
+    ) -> Dict[str, Any]:
+        try:
+            return await await_with_abort(
+                self.runtime_extensions.resolve_context(
+                    definition,
+                    intent,
+                    context,
+                ),
+                context.get("abort_signal"),
+            )
+        except KeyError as exc:
+            key = "unknown"
+            for binding in definition.context.bindings:
+                value = context.get(binding.source)
+                selected_key = binding.options.get("key")
+                if selected_key is not None and (
+                    not isinstance(value, Mapping) or selected_key not in value
+                ):
+                    key = selected_key
+                    break
+                selected = binding.options.get("select") or ()
+                missing = [
+                    selected_key
+                    for selected_key in selected
+                    if not isinstance(value, Mapping) or selected_key not in value
+                ]
+                if missing:
+                    key = missing[0]
+                    break
+            subject = "agent" if definition.kind == "agent" else "tool"
+            raise ValueError(
+                f"The {subject} `{intent.name}` requires the injected parameter "
+                f"`{key}`, but it was not found."
+            ) from exc
 
     def _record_tool_activity(
         self,
@@ -1359,29 +1396,50 @@ class ToolLibrary(Module, metaclass=AutoParams):
         self,
         *,
         tool: Tool,
-        tool_name: str,
+        intent: ToolIntent,
         tool_params: Any,
         config: Mapping[str, Any],
-        message: Optional[Any],
-        messages: List[Dict[str, Any]],
-        vars: Mapping[str, Any],
+        context: ToolRuntimeContext,
         activity_recorder: Any,
-        tool_call_id: str | None = None,
         runtime_arguments: Mapping[str, Any] | None = None,
     ) -> tuple[Dict[str, Any], Dict[str, Any]]:
         visible_params, runtime_params = self._build_tool_argument_sets(
-            definition=self.get_tool_definition(tool_name),
-            tool_name=tool_name,
+            definition=self.get_tool_definition(intent.name),
+            intent=intent,
             tool_params=tool_params,
-            message=message,
-            messages=messages,
-            vars=vars,
-            tool_call_id=tool_call_id,
+            context=context,
             runtime_arguments=runtime_arguments,
         )
         self._record_tool_activity(
             activity_recorder=activity_recorder,
-            tool_name=tool_name,
+            tool_name=intent.name,
+            tool=tool,
+            config=config,
+            parameters=visible_params,
+        )
+        return visible_params, runtime_params
+
+    async def _aprepare_tool_kwargs(
+        self,
+        *,
+        tool: Tool,
+        intent: ToolIntent,
+        tool_params: Any,
+        config: Mapping[str, Any],
+        context: ToolRuntimeContext,
+        activity_recorder: Any,
+        runtime_arguments: Mapping[str, Any] | None = None,
+    ) -> tuple[Dict[str, Any], Dict[str, Any]]:
+        visible_params, runtime_params = await self._abuild_tool_argument_sets(
+            definition=self.get_tool_definition(intent.name),
+            intent=intent,
+            tool_params=tool_params,
+            context=context,
+            runtime_arguments=runtime_arguments,
+        )
+        self._record_tool_activity(
+            activity_recorder=activity_recorder,
+            tool_name=intent.name,
             tool=tool,
             config=config,
             parameters=visible_params,
@@ -1450,18 +1508,30 @@ class ToolLibrary(Module, metaclass=AutoParams):
     def _tool_runtime_context(
         self,
         *,
+        tool_name: str,
+        tool_call_id: str,
         message: Any,
         messages: Any,
         vars: Mapping[str, Any],
         sync_dispatch: bool,
     ) -> ToolRuntimeContext:
         execution = get_execution_context()
+        handle = self.get_handle().for_tool(
+            tool_name=tool_name,
+            agent_inbox=execution.get("agent_inbox"),
+            task_store=execution.get("task_store"),
+            message=message,
+            messages=messages,
+            vars=vars,
+            tool_call_id=tool_call_id,
+            activity_recorder=execution.get("task_activity_recorder"),
+        )
         return ToolRuntimeContext(
             values={
                 "message": message,
                 "messages": messages,
                 "vars": vars,
-                "handle": self.get_handle(),
+                "handle": handle,
                 "abort_signal": execution.get("abort_signal"),
                 "task_store": execution.get("task_store"),
                 "agent_inbox": execution.get("agent_inbox"),
@@ -2024,29 +2094,38 @@ class ToolLibrary(Module, metaclass=AutoParams):
             if resolved is None:
                 raise ValueError(f"The tool name `{tool_name}` is not in tool library")
             tool, config = resolved
+        messages = messages if messages is not None else ChatMessages()
+        vars = vars if vars is not None else {}
+        owner = bucket_name or self.name
+        tool_call_id = (
+            f"{parent_tool_call_id}:{tool_name}"
+            if parent_tool_call_id
+            else f"{owner}:{tool_name}"
+        )
+        intent = ToolIntent(id=tool_call_id, name=tool_name, arguments=arguments)
+        context = self._tool_runtime_context(
+            tool_name=tool_name,
+            tool_call_id=tool_call_id,
+            message=message,
+            messages=messages,
+            vars=vars,
+            sync_dispatch=True,
+        )
         visible_params, runtime_params = self._prepare_tool_kwargs(
             tool=tool,
-            tool_name=tool_name,
+            intent=intent,
             tool_params=arguments,
             config=config,
-            message=message,
-            messages=messages if messages is not None else ChatMessages(),
-            vars=vars if vars is not None else {},
+            context=context,
             activity_recorder=(
                 activity_recorder
                 if activity_recorder is not None
                 else get_execution_context().get("task_activity_recorder")
             ),
-            tool_call_id=parent_tool_call_id,
             runtime_arguments=runtime_arguments,
         )
         call_params = {**visible_params, **runtime_params}
-        owner = bucket_name or self.name
-        call_params["tool_call_id"] = (
-            f"{parent_tool_call_id}:{tool_name}"
-            if parent_tool_call_id
-            else f"{owner}:{tool_name}"
-        )
+        call_params["tool_call_id"] = tool_call_id
         return self._execute_prepared_tool(tool, call_params, visible_params)
 
     async def arun(
@@ -2071,29 +2150,38 @@ class ToolLibrary(Module, metaclass=AutoParams):
             if resolved is None:
                 raise ValueError(f"The tool name `{tool_name}` is not in tool library")
             tool, config = resolved
-        visible_params, runtime_params = self._prepare_tool_kwargs(
-            tool=tool,
+        messages = messages if messages is not None else ChatMessages()
+        vars = vars if vars is not None else {}
+        owner = bucket_name or self.name
+        tool_call_id = (
+            f"{parent_tool_call_id}:{tool_name}"
+            if parent_tool_call_id
+            else f"{owner}:{tool_name}"
+        )
+        intent = ToolIntent(id=tool_call_id, name=tool_name, arguments=arguments)
+        context = self._tool_runtime_context(
             tool_name=tool_name,
+            tool_call_id=tool_call_id,
+            message=message,
+            messages=messages,
+            vars=vars,
+            sync_dispatch=False,
+        )
+        visible_params, runtime_params = await self._aprepare_tool_kwargs(
+            tool=tool,
+            intent=intent,
             tool_params=arguments,
             config=config,
-            message=message,
-            messages=messages if messages is not None else ChatMessages(),
-            vars=vars if vars is not None else {},
+            context=context,
             activity_recorder=(
                 activity_recorder
                 if activity_recorder is not None
                 else get_execution_context().get("task_activity_recorder")
             ),
-            tool_call_id=parent_tool_call_id,
             runtime_arguments=runtime_arguments,
         )
         call_params = {**visible_params, **runtime_params}
-        owner = bucket_name or self.name
-        call_params["tool_call_id"] = (
-            f"{parent_tool_call_id}:{tool_name}"
-            if parent_tool_call_id
-            else f"{owner}:{tool_name}"
-        )
+        call_params["tool_call_id"] = tool_call_id
         return await self._aexecute_prepared_tool(tool, call_params, visible_params)
 
     def _resolve_tool_ref_name(self, tool_ref: ToolRef | str) -> str:
@@ -2243,9 +2331,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
         intent: ToolIntent,
         *,
         context: ToolRuntimeContext,
-        message: Any,
         messages: ChatMessages | List[Dict[str, Any]],
-        vars: Mapping[str, Any],
         activity_recorder: Any,
     ) -> ToolExecutionPlan | ToolOutcome:
         resolved = self._resolve_tool(intent.name)
@@ -2273,14 +2359,11 @@ class ToolLibrary(Module, metaclass=AutoParams):
             messages.load_tools(self.name, [intent.name])
         visible_arguments, runtime_arguments = self._prepare_tool_kwargs(
             tool=tool,
-            tool_name=intent.name,
+            intent=intent,
             tool_params=intent.arguments,
             config=config,
-            message=message,
-            messages=messages,
-            vars=vars,
+            context=context,
             activity_recorder=activity_recorder,
-            tool_call_id=intent.id,
         )
         feedback = definition.feedback
         before_tool = self._run_before_tool_hook(
@@ -2335,9 +2418,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
         intent: ToolIntent,
         *,
         context: ToolRuntimeContext,
-        message: Any,
         messages: ChatMessages | List[Dict[str, Any]],
-        vars: Mapping[str, Any],
         activity_recorder: Any,
     ) -> ToolExecutionPlan | ToolOutcome:
         resolved = self._resolve_tool(intent.name)
@@ -2362,16 +2443,13 @@ class ToolLibrary(Module, metaclass=AutoParams):
         intent = before_policy.intent
         if config.get("defer_loading", False) and isinstance(messages, ChatMessages):
             messages.load_tools(self.name, [intent.name])
-        visible_arguments, runtime_arguments = self._prepare_tool_kwargs(
+        visible_arguments, runtime_arguments = await self._aprepare_tool_kwargs(
             tool=tool,
-            tool_name=intent.name,
+            intent=intent,
             tool_params=intent.arguments,
             config=config,
-            message=message,
-            messages=messages,
-            vars=vars,
+            context=context,
             activity_recorder=activity_recorder,
-            tool_call_id=intent.id,
         )
         feedback = definition.feedback
         before_tool = await self._arun_before_tool_hook(
@@ -2536,23 +2614,23 @@ class ToolLibrary(Module, metaclass=AutoParams):
         messages = messages if messages is not None else ChatMessages()
         vars = vars if vars is not None else {}
         activity_recorder = get_execution_context().get("task_activity_recorder")
-        runtime_context = self._tool_runtime_context(
-            message=message,
-            messages=messages,
-            vars=vars,
-            sync_dispatch=True,
-        )
         outcomes: List[ToolOutcome | None] = [None] * len(intents)
         prepared_calls = []
         prepared_metadata = []
 
         for index, intent in enumerate(intents):
-            prepared = self._prepare_intent(
-                intent,
-                context=runtime_context,
+            runtime_context = self._tool_runtime_context(
+                tool_name=intent.name,
+                tool_call_id=intent.id,
                 message=message,
                 messages=messages,
                 vars=vars,
+                sync_dispatch=True,
+            )
+            prepared = self._prepare_intent(
+                intent,
+                context=runtime_context,
+                messages=messages,
                 activity_recorder=activity_recorder,
             )
             if isinstance(prepared, ToolOutcome):
@@ -2608,23 +2686,23 @@ class ToolLibrary(Module, metaclass=AutoParams):
         messages = messages if messages is not None else ChatMessages()
         vars = vars if vars is not None else {}
         activity_recorder = get_execution_context().get("task_activity_recorder")
-        runtime_context = self._tool_runtime_context(
-            message=message,
-            messages=messages,
-            vars=vars,
-            sync_dispatch=False,
-        )
         outcomes: List[ToolOutcome | None] = [None] * len(intents)
         prepared_calls = []
         prepared_metadata = []
 
         for index, intent in enumerate(intents):
-            prepared = await self._aprepare_intent(
-                intent,
-                context=runtime_context,
+            runtime_context = self._tool_runtime_context(
+                tool_name=intent.name,
+                tool_call_id=intent.id,
                 message=message,
                 messages=messages,
                 vars=vars,
+                sync_dispatch=False,
+            )
+            prepared = await self._aprepare_intent(
+                intent,
+                context=runtime_context,
+                messages=messages,
                 activity_recorder=activity_recorder,
             )
             if isinstance(prepared, ToolOutcome):

@@ -154,6 +154,60 @@ Existing lifecycle hooks remain supported. Their order is: policy
 `before_dispatch`, tool execution, legacy `after_tool`, then policy
 `after_tool`.
 
+## Custom Runtime Inputs
+
+`ToolContextProvider` registers one or more sources that tools select through
+`runtime_inputs`. This keeps provider lookup, network access, and runtime state
+out of the ToolLibrary core.
+
+```python
+import msgflux as mf
+import msgflux.nn as nn
+from msgflux.tools import ToolIntent
+
+
+class TenantProvider(nn.ToolContextProvider):
+    def __init__(self):
+        super().__init__("tenant_runtime", sources=["tenant"])
+
+    async def resolve(self, request):
+        return request.context.require("vars")["tenant"]
+
+
+@mf.tool_config(
+    runtime_inputs=[
+        nn.ContextBinding(source="tenant", parameter="tenant_id"),
+    ]
+)
+def identify_order(order_id: str, tenant_id: str) -> str:
+    """Return a tenant-qualified order identifier."""
+    return f"{tenant_id}:{order_id}"
+
+
+library = nn.ToolLibrary(
+    name="orders",
+    tools=[identify_order],
+    extensions=[TenantProvider()],
+)
+
+outcome = library.execute_intents(
+    [
+        ToolIntent(
+            id="call_1",
+            name="identify_order",
+            arguments={"order_id": "order_42"},
+        )
+    ],
+    vars={"tenant": "acme"},
+)[0]
+
+assert outcome.result == "acme:order_42"
+```
+
+Providers run asynchronously in registration order and receive the canonical
+definition, intent, and tool-scoped runtime context. Missing providers fail
+during argument preparation, before tool execution or activity recording.
+
 ## Custom Dispatch Modes
 
 `ToolDispatch` adds an execution mode without changing `ToolLibrary`. Its
