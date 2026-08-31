@@ -158,8 +158,9 @@ The tool surface remains a thread-scoped `ToolCatalogView` while the Agent
 filters tools, resolves `tool_choice`, renders prompt guidance, and runs
 `transform_tool_catalog` hooks. This preserves canonical registry metadata and
 prevents Agent extensions from rebuilding partial provider-shaped schemas.
-The current Model boundary receives a compatibility `ToolCatalog` adapter;
-provider compilation remains outside the Agent.
+The Model receives that canonical view directly. Its concrete provider adapter
+then compiles the view to the selected wire protocol, such as Chat Completions
+or Responses; provider compilation remains outside the Agent.
 
 When no custom flow control is involved, tool schemas can be passed directly to
 the provider as native tool definitions.

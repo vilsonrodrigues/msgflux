@@ -10,7 +10,6 @@ from msgflux.runtime.context import ExecutionScope
 if TYPE_CHECKING:
     from msgflux.nn.modules.tool_runtime import ToolCatalogView
     from msgflux.runtime.agent_inbox import AgentNotification
-    from msgflux.tools.definitions import ToolCatalog
     from msgflux.tools.runtime import ToolIntent, ToolOutcome
 
 __all__ = [
@@ -109,7 +108,7 @@ class ModelRequestContext(AgentContext):
 
     messages: Any
     system_prompt: str | None = None
-    tool_catalog: ToolCatalog | None = None
+    tool_catalog: ToolCatalogView | None = None
     prefilling: str | None = None
     stream: bool = False
     generation_schema: Any = None

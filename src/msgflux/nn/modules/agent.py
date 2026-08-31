@@ -85,7 +85,6 @@ from msgflux.nn.modules.tool_runtime import (
     ToolChoice,
 )
 from msgflux.nn.parameter import Parameter
-from msgflux.nn.tool_catalog import adapt_model_tool_catalog
 from msgflux.runtime.abort import AbortSignal, await_with_abort
 from msgflux.runtime.agent_inbox import (
     AgentInbox,
@@ -102,7 +101,6 @@ from msgflux.runtime.context import (
 from msgflux.runtime.event_hub import ThreadWatcher, get_event_hub
 from msgflux.runtime.events import EventType, emit_event
 from msgflux.runtime.skills import SkillsConfig
-from msgflux.tools.definitions import ToolCatalog
 from msgflux.tools.runtime import ToolIntent, ToolOutcome
 from msgflux.utils.chat import ChatBlock, response_format_from_msgspec_struct
 from msgflux.utils.common import has_format_placeholder, is_jinja_template
@@ -1256,7 +1254,6 @@ class Agent(Module, metaclass=AutoParams):
             tool_filter=tool_filter,
             scope=effective_scope,
         )
-        model_execution_params = adapt_model_tool_catalog(model_execution_params)
         request = ModelRequestContext.from_parameters(
             model_execution_params,
             scope=effective_scope,
@@ -1344,7 +1341,6 @@ class Agent(Module, metaclass=AutoParams):
             vars=vars,
             scope=effective_scope,
         )
-        model_execution_params = adapt_model_tool_catalog(model_execution_params)
         request = ModelRequestContext.from_parameters(
             model_execution_params,
             scope=effective_scope,
@@ -1478,7 +1474,6 @@ class Agent(Module, metaclass=AutoParams):
             vars=vars or {},
             scope=effective_scope,
         )
-        model_execution_params = adapt_model_tool_catalog(model_execution_params)
         params = dotdict(
             system_prompt=model_execution_params.system_prompt,
             tool_catalog=model_execution_params.tool_catalog,
@@ -1525,7 +1520,6 @@ class Agent(Module, metaclass=AutoParams):
             model_preference=model_preference,
             tool_filter=tool_filter,
         )
-        model_execution_params = adapt_model_tool_catalog(model_execution_params)
         return dotdict(
             system_prompt=model_execution_params.system_prompt,
             tool_catalog=model_execution_params.tool_catalog,
@@ -1602,13 +1596,16 @@ class Agent(Module, metaclass=AutoParams):
             tool_catalog=tool_catalog,
             _apply_hooks=apply_hooks,
         )
-        portable_catalog = ToolCatalog.from_view(tool_catalog) if tool_catalog else None
-        portable_tools = portable_catalog.portable_tools() if portable_catalog else []
-        if is_subclass_of(self.generation_schema, ToolFlowControl) and portable_tools:
+        portable_schemas = tool_catalog.portable_schemas() if tool_catalog else []
+        if is_subclass_of(self.generation_schema, ToolFlowControl) and portable_schemas:
             tools_template = self.generation_schema.tools_template
             inputs = {
-                "tool_schemas": portable_catalog.portable_schemas(),
-                "tool_choice": portable_catalog.choice,
+                "tool_schemas": portable_schemas,
+                "tool_choice": (
+                    tool_catalog.choice.name
+                    if tool_catalog.choice.mode == "tool"
+                    else tool_catalog.choice.mode
+                ),
             }
             flow_control_tools = self._format_template(inputs, tools_template)
             system_prompt = (
@@ -3496,7 +3493,7 @@ class Agent(Module, metaclass=AutoParams):
             effective_checkpoint_store is not None
             or isinstance(messages, ChatMessages)
             or scope is not None
-            or self.tool_library.get_tool_catalog().has_deferred_tools
+            or self.tool_library.has_deferred_tools
         )
         if should_use_chat_messages:
             messages = self._coerce_chat_messages(messages)

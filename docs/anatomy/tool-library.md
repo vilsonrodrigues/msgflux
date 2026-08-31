@@ -102,10 +102,10 @@ tool name. `entries` remains stable for the lifetime of the snapshot, while
 or directly selected deferred tools and includes the portable search entry only
 while unresolved deferred tools remain.
 
-`ToolCatalog` is currently a compatibility adapter produced by
-`ToolCatalog.from_view(...)` for Agent and Model paths that have not migrated
-yet. This conversion is one-way: registration, loading, filtering, and choice
-validation happen in the canonical view rather than in the legacy catalog.
+`Agent` and `Model` use `ToolCatalogView` directly. `ToolCatalog` remains a
+temporary compatibility input for callers that pass pre-built function schemas
+straight to a Model. Registration, loading, filtering, choice validation, and
+new integrations belong to the canonical view.
 
 ### 2. Runtime
 

@@ -33,6 +33,9 @@ def generate_cache_key(**kwargs) -> str:
         elif key == "typed_parser":
             cacheable_kwargs[key] = value
             continue
+        elif key == "tool_catalog" and hasattr(value, "cache_key_data"):
+            cacheable_kwargs[key] = value.cache_key_data()
+            continue
 
         # Convert msgspec Structs to dicts
         if hasattr(value, "__msgspec_fields__"):

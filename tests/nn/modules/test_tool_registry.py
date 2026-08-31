@@ -266,3 +266,25 @@ def test_catalog_view_applies_choice_after_filtering():
     assert selected.choice.mode == "tool"
     assert selected.choice.name == "lookup"
     assert empty.choice.mode == "none"
+
+
+def test_catalog_view_projects_portable_schemas_and_annotations():
+    definition = make_definition(
+        "lookup",
+        annotations={"sku": str},
+        metadata={"strict": True},
+    )
+    view = ToolRegistry("warehouse_tools", [definition]).catalog_view("thread_a")
+
+    assert view.portable_schemas() == [
+        {
+            "type": "function",
+            "function": {
+                "name": "lookup",
+                "description": "Look up an inventory item.",
+                "parameters": definition.input_schema,
+                "strict": True,
+            },
+        }
+    ]
+    assert view.annotations == {"lookup": {"sku": str}}

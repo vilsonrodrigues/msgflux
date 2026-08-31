@@ -1177,6 +1177,13 @@ class ToolLibrary(Module, metaclass=AutoParams):
             thread_id=thread_id,
         )
 
+    @property
+    def has_deferred_tools(self) -> bool:
+        """Return whether any registered logical tool uses deferred loading."""
+        return any(
+            definition.loading.deferred for definition in self.registry.definitions()
+        )
+
     @staticmethod
     def _public_annotations(tool: Tool) -> Dict[str, Any]:
         return {
@@ -1217,9 +1224,12 @@ class ToolLibrary(Module, metaclass=AutoParams):
         if not isinstance(messages, ChatMessages):
             raise TypeError("Deferred tool loading requires `ChatMessages`.")
         deferred = {
-            tool.name
-            for tool in self.get_tool_catalog(messages).tools
-            if tool.defer_loading
+            entry.name
+            for entry in self._build_tool_catalog_view(
+                messages,
+                require_thread=False,
+            ).tool_entries()
+            if entry.deferred
         }
         unknown = set(tool_names) - deferred
         if unknown:

@@ -15,7 +15,7 @@ from msgflux.utils.msgspec import restore_transport_value
 
 if TYPE_CHECKING:
     from msgflux.nn.modules.tool import ToolResponses
-    from msgflux.tools.definitions import ToolCatalog
+    from msgflux.nn.modules.tool_runtime import ToolCatalogView
 
 REACT_SYSTEM_MESSAGE = """
 You are an Agent. In each episode, you will be given the task as input.
@@ -107,7 +107,7 @@ class ReAct(Struct, ToolFlowControl):
 
     @classmethod
     def build_provider_response_format(
-        cls, tool_catalog: Optional["ToolCatalog"] = None
+        cls, tool_catalog: Optional["ToolCatalogView"] = None
     ) -> Optional[Dict[str, Any]]:
         """Build a dynamic OpenAI transport schema from the available tools."""
         action_variants = []
@@ -166,7 +166,7 @@ class ReAct(Struct, ToolFlowControl):
     def normalize_provider_response(
         cls,
         raw_response: Mapping[str, Any],
-        tool_catalog: Optional["ToolCatalog"] = None,
+        tool_catalog: Optional["ToolCatalogView"] = None,
     ) -> Mapping[str, Any]:
         """Normalize flattened action params to the logical Action(arguments=...)."""
         normalized = {

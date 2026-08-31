@@ -3,7 +3,7 @@
 import pytest
 
 from msgflux.models.cache import ResponseCache, generate_cache_key
-from msgflux.tools import ToolCatalog
+from msgflux.tools import ToolCatalog, ToolCatalogEntry, ToolCatalogView, ToolRef
 
 
 class TestCacheKeyGeneration:
@@ -70,6 +70,32 @@ class TestCacheKeyGeneration:
             ),
         )
         assert key1 == key2
+
+    def test_tool_catalog_view_cache_key_ignores_thread_identity(self):
+        def catalog(thread_id, *, loaded=False):
+            return ToolCatalogView(
+                library_id="weather_tools",
+                thread_id=thread_id,
+                entries=(
+                    ToolCatalogEntry(
+                        ref=ToolRef(
+                            library_id="weather_tools",
+                            tool_id="get_weather",
+                        ),
+                        description="Get weather.",
+                        input_schema={"type": "object"},
+                        deferred=True,
+                        loaded=loaded,
+                    ),
+                ),
+            )
+
+        first = generate_cache_key(tool_catalog=catalog("thread_a"))
+        second = generate_cache_key(tool_catalog=catalog("thread_b"))
+        loaded = generate_cache_key(tool_catalog=catalog("thread_b", loaded=True))
+
+        assert first == second
+        assert loaded != first
 
 
 class TestResponseCache:

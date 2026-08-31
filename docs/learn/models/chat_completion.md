@@ -829,11 +829,15 @@ Generate structured data conforming to a schema:
 
 Models can suggest calling functions (tools) to gather information:
 
-`ToolCatalog` is the provider-neutral contract. It stores logical `ToolSpec`
-objects rather than a provider's wire schemas. The
-`from_function_schemas(...)` constructor is a conversion boundary for callers
-that already have OpenAI-style function definitions; each provider compiles the
-catalog to its own request format internally.
+`ToolCatalogView` is the provider-neutral contract shared by `ToolLibrary`,
+`Agent`, and `Model`. It contains logical tool definitions and thread-local
+loading state rather than provider wire schemas. Build the view through a
+`ToolLibrary`; the concrete Model provider compiles it to Chat Completions,
+Responses, or another supported protocol.
+
+`ToolCatalog` is still accepted temporarily when integrating existing code that
+already builds OpenAI-style function schemas, but new code should use the
+canonical view.
 
 ???+ example
 
@@ -841,114 +845,79 @@ catalog to its own request format internally.
 
         ```python
         import msgflux as mf
-        from msgflux.tools import ToolCatalog
 
-        # Define tool schema
-        tools = [{
-            "type": "function",
-            "function": {
-                "name": "get_weather",
-                "description": "Get current weather for a location.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "location": {
-                            "type": "string",
-                            "description": "City and country, e.g. Paris, France"
-                        },
-                        "unit": {
-                            "type": "string",
-                            "enum": ["celsius", "fahrenheit"],
-                            "description": "Temperature unit"
-                        }
-                    },
-                    "required": ["location"],
-                    "additionalProperties": False
-                }
-            }
-        }]
+        def get_weather(location: str, unit: str = "celsius") -> str:
+            """Get the current weather for a city."""
+            return f"The weather in {location} is 22 degrees {unit}."
 
-        tool_catalog = ToolCatalog.from_function_schemas(schemas=tools)
 
-        model = mf.Model.chat_completion("openai/gpt-4.1-mini")
+        library = mf.nn.ToolLibrary("weather", [get_weather])
+        messages = mf.ChatMessages(
+            [{"role": "user", "content": "What's the weather in Paris?"}],
+            thread_id="weather-demo",
+        )
+        tool_catalog = library.get_tool_catalog_view(messages)
+
+        model = mf.Model.chat_completion(
+            "openai/gpt-5.6-luna",
+            api_mode="responses",
+            store=False,
+        )
 
         response = model(
-            messages=[{"role": "user", "content": "What's the weather in Paris?"}],
+            messages=messages,
             tool_catalog=tool_catalog,
         )
 
-        # Get tool calls
-        tool_call_agg = response.consume()
-        calls = tool_call_agg.get_calls()
-
-        for call in calls:
-            print(f"Tool: {call['function']['name']}")
-            print(f"Arguments: {call['function']['arguments']}")
-        # Tool: get_weather
-        # Arguments: {'location': 'Paris, France', 'unit': 'celsius'}
+        for intent in response.get_tool_intents():
+            print(intent.name, intent.arguments)
+        # get_weather {'location': 'Paris', 'unit': 'celsius'}
         ```
+
+        `ToolLibrary` derives the schema from the callable and returns a catalog
+        view scoped to `weather-demo`. The response exposes provider-neutral
+        `ToolIntent` values regardless of the selected API mode.
 
     === "Tool Choice"
 
         ```python
         import msgflux as mf
-        from msgflux.tools import ToolCatalog
 
-        model = mf.Model.chat_completion("openai/gpt-4.1-mini")
+        def get_weather(location: str) -> str:
+            """Get the current weather for a city."""
+            return f"The weather in {location} is 22 degrees celsius."
 
-        # Auto - model decides
-        response = model(
-            messages=[{"role": "user", "content": "What's the weather?"}],
-            tool_catalog=ToolCatalog.from_function_schemas(
-                schemas=tools, choice="auto"
-            ),
+        library = mf.nn.ToolLibrary("weather", [get_weather])
+        messages = mf.ChatMessages(
+            thread_id="weather-choice-demo",
         )
+        catalog = library.get_tool_catalog_view(messages)
 
-        # Required - must call at least one tool
-        response = model(
-            messages=[{"role": "user", "content": "What's the weather?"}],
-            tool_catalog=ToolCatalog.from_function_schemas(
-                schemas=tools, choice="required"
-            ),
-        )
+        auto = catalog.with_choice("auto")
+        required = catalog.with_choice("required")
+        disabled = catalog.with_choice("none")
+        specific = catalog.with_choice("get_weather")
 
-        # Specific function - must call this exact function
-        response = model(
-            messages=[{"role": "user", "content": "Paris weather"}],
-            tool_catalog=ToolCatalog.from_function_schemas(
-                schemas=tools, choice="get_weather"
-            ),
-        )
+        print(required.choice.mode)
+        print(specific.choice.mode, specific.choice.name)
+        # required
+        # tool get_weather
         ```
+
+        `with_choice(...)` returns a new immutable view. It does not mutate the
+        library or the catalog used by another thread.
 
     === "Full Flow"
 
         ```python
         import msgflux as mf
-        from msgflux import ChatMessages
-        from msgflux.tools import ToolCatalog, ToolOutcome
 
-        def get_weather(location, unit="celsius"):
-            """Simulate weather API call."""
-            return f"The weather in {location} is 22°{unit[0].upper()}"
+        def get_weather(location: str, unit: str = "celsius") -> str:
+            """Get the current weather for a city."""
+            return f"The weather in {location} is 22 degrees {unit}."
 
-        tools = [{
-            "type": "function",
-            "function": {
-                "name": "get_weather",
-                "description": "Get weather for a location.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "location": {"type": "string"},
-                        "unit": {"type": "string", "enum": ["celsius", "fahrenheit"]}
-                    },
-                    "required": ["location"]
-                }
-            }
-        }]
 
-        tool_catalog = ToolCatalog.from_function_schemas(schemas=tools)
+        library = mf.nn.ToolLibrary("weather", [get_weather])
 
         model = mf.Model.chat_completion(
             "openai/gpt-5.6-luna",
@@ -957,59 +926,63 @@ catalog to its own request format internally.
             store=False,
         )
 
-        # Initial request
-        messages = ChatMessages(
-            [{"role": "user", "content": "What's the weather in Paris?"}]
+        messages = mf.ChatMessages(
+            [{"role": "user", "content": "What's the weather in Paris?"}],
+            thread_id="weather-loop-demo",
         )
+        tool_catalog = library.get_tool_catalog_view(messages)
 
         response = model(messages=messages, tool_catalog=tool_catalog)
-        tool_functions = {"get_weather": get_weather}
-        intents = response.get_tool_intents()
-        outcomes = [
-            ToolOutcome.completed(
-                intent,
-                tool_functions[intent.name](**intent.arguments),
-            )
-            for intent in intents
-        ]
+        outcomes = library.execute_intents(response.get_tool_intents())
 
-        # Preserve the provider response trajectory, then let the same Model
-        # encode outcomes for its selected API mode.
         messages.extend(response.history_items)
         messages.extend(response.render_tool_outcomes(outcomes))
 
-        # Final response with tool results
         final_response = model(messages=messages, tool_catalog=tool_catalog)
         print(final_response.consume())
-        # "The weather in Paris is currently 22°C."
+        # The weather in Paris is 22 degrees celsius.
         ```
 
-        `ToolIntent` and `ToolOutcome` are provider-neutral. The response owns
-        the final encoding: Chat Completions produces assistant/tool messages,
-        while Responses produces `function_call_output` items. When you use
-        `Agent`, this loop and conversion happen automatically.
+        The Library executes canonical intents and returns `ToolOutcome`
+        values. The response renders those outcomes for its selected API mode:
+        Chat Completions uses assistant/tool messages, while Responses uses
+        `function_call_output` items. `Agent` manages this loop automatically.
 
     === "Streaming"
 
         ```python
         import msgflux as mf
-        from msgflux.tools import ToolCatalog
 
-        model = mf.Model.chat_completion("openai/gpt-4.1-mini")
+        def get_weather(location: str) -> str:
+            """Get the current weather for a city."""
+            return f"The weather in {location} is 22 degrees celsius."
 
-        response = model(
-            messages=[{"role": "user", "content": "What's the weather in Tokyo?"}],
-            tool_catalog=ToolCatalog.from_function_schemas(schemas=tools),
-            stream=True
+
+        library = mf.nn.ToolLibrary("weather", [get_weather])
+        messages = mf.ChatMessages(
+            [{"role": "user", "content": "What's the weather in Tokyo?"}],
+            thread_id="weather-stream-demo",
+        )
+        catalog = library.get_tool_catalog_view(messages)
+        model = mf.Model.chat_completion(
+            "openai/gpt-5.6-luna",
+            api_mode="responses",
+            store=False,
         )
 
-        # Tool calls are aggregated during streaming
-        tool_call_agg = response.consume()
+        response = model(
+            messages=messages,
+            tool_catalog=catalog,
+            stream=True,
+        )
 
-        # After stream completes, get calls
-        calls = tool_call_agg.get_calls()
-        print(calls)
+        response.consume()
+        for intent in response.get_tool_intents():
+            print(intent.name, intent.arguments)
         ```
+
+        Tool-call deltas are accumulated into complete intents while the
+        response stream is consumed.
 
 ## 10. **Prefilling**
 

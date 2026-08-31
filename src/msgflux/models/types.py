@@ -1,6 +1,11 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 import msgspec
 
-from msgflux.tools.definitions import ToolCatalog
+if TYPE_CHECKING:
+    from msgflux.nn.modules.tool_runtime import ToolCatalogView
 
 
 class ChatCompletionModel:
@@ -21,7 +26,7 @@ class ChatCompletionModel:
         self,
         *,
         system_prompt: str | None,
-        tool_catalog: ToolCatalog | None = None,
+        tool_catalog: ToolCatalogView | None = None,
     ):
         """Warm provider prompt/tool-schema caches without producing useful output."""
         raise NotImplementedError(
@@ -32,7 +37,7 @@ class ChatCompletionModel:
         self,
         *,
         system_prompt: str | None,
-        tool_catalog: ToolCatalog | None = None,
+        tool_catalog: ToolCatalogView | None = None,
     ):
         """Async prompt warmup counterpart."""
         raise NotImplementedError(

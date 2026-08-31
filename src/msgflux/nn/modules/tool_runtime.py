@@ -527,6 +527,16 @@ class ToolCatalogEntry(msgspec.Struct, frozen=True, kw_only=True):
     def name(self) -> str:
         return self.ref.tool_id
 
+    def to_function_schema(self) -> dict[str, Any]:
+        """Return the provider-neutral nested function-tool representation."""
+        function: dict[str, Any] = {"name": self.name}
+        if self.description is not None:
+            function["description"] = self.description
+        function["parameters"] = deepcopy(dict(self.input_schema))
+        if self.strict is not None:
+            function["strict"] = self.strict
+        return {"type": "function", "function": function}
+
     @classmethod
     def from_definition(
         cls,
@@ -628,6 +638,37 @@ class ToolCatalogView(msgspec.Struct, frozen=True, kw_only=True):
         if self.has_deferred and search is not None:
             return (*visible, search)
         return visible
+
+    @property
+    def annotations(self) -> dict[str, dict[str, Any]]:
+        """Return annotations for entries visible to portable tool protocols."""
+        return {
+            entry.name: deepcopy(dict(entry.annotations))
+            for entry in self.visible_entries()
+            if entry.annotations
+        }
+
+    def portable_schemas(self) -> list[dict[str, Any]]:
+        """Return nested function schemas for function-only consumers."""
+        return [entry.to_function_schema() for entry in self.visible_entries()]
+
+    def cache_key_data(self) -> dict[str, Any]:
+        """Return request-relevant catalog state without thread identity."""
+        return {
+            "library_id": self.library_id,
+            "entries": [
+                {
+                    "schema": entry.to_function_schema(),
+                    "native_bindings": msgspec.to_builtins(entry.native_bindings),
+                    "catalog_role": entry.catalog_role,
+                    "kind": entry.kind,
+                    "deferred": entry.deferred,
+                    "loaded": entry.loaded,
+                }
+                for entry in self.entries
+            ],
+            "choice": msgspec.to_builtins(self.choice),
+        }
 
     def with_tools(self, names: Collection[str]) -> ToolCatalogView:
         """Return a view containing selected regular tools and the search entry."""

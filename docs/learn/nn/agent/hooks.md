@@ -137,8 +137,8 @@ catalog_hook = Hook(
 
 The returned view preserves stable tool references, native bindings, loading
 state, and thread identity. `with_choice(...)` can apply a provider-neutral
-selection after filtering. The Agent converts the view to a provider catalog
-only at the Model request boundary.
+selection after filtering. The Agent sends the view unchanged to the Model;
+the concrete provider adapter compiles it to its wire protocol.
 
 `transform_notifications` receives only ordinary progress and task
 notifications. Control messages such as pause and interrupt are handled before

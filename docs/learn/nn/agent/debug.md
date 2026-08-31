@@ -66,8 +66,8 @@ msgFlux provides several inspection mechanisms to help you debug and understand 
         ```
 
         This view retains thread identity, loading state, stable references,
-        and native bindings. The Model receives its protocol adapter only when
-        the request is executed.
+        and native bindings. The concrete Model provider compiles it to the
+        selected wire protocol only when the request is executed.
 
         Expected Output:
         

@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Optional, Tuple
 
 if TYPE_CHECKING:
     from msgflux.nn.modules.tool import ToolResponses
-    from msgflux.tools.definitions import ToolCatalog
+    from msgflux.nn.modules.tool_runtime import ToolCatalogView
 
 
 @dataclass
@@ -54,7 +54,7 @@ class ToolFlowControl:
 
     @classmethod
     def build_provider_response_format(
-        cls, _tool_catalog: Optional["ToolCatalog"] = None
+        cls, _tool_catalog: Optional["ToolCatalogView"] = None
     ) -> Optional[Dict[str, Any]]:
         """Build a provider-facing transport schema for structured output.
 
@@ -68,7 +68,7 @@ class ToolFlowControl:
     def normalize_provider_response(
         cls,
         raw_response: Mapping[str, Any],
-        _tool_catalog: Optional["ToolCatalog"] = None,
+        _tool_catalog: Optional["ToolCatalogView"] = None,
     ) -> Mapping[str, Any]:
         """Normalize a provider-facing transport payload to the logical shape.
 

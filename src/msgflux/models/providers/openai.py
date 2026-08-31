@@ -52,6 +52,7 @@ from msgflux.models.types import (
     TextToSpeechModel,
 )
 from msgflux.models.usage import UsageCodec, default_usage_codec
+from msgflux.nn.modules.tool_runtime import ToolCatalogEntry, ToolCatalogView
 from msgflux.runtime.context import get_execution_context
 from msgflux.tools.definitions import ToolCatalog
 from msgflux.utils.chat import ChatBlock, response_format_from_msgspec_struct
@@ -647,7 +648,7 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
         self,
         *,
         system_prompt: Optional[str],
-        tool_catalog: Optional[ToolCatalog],
+        tool_catalog: "Optional[Union[ToolCatalog, ToolCatalogView]]",
     ) -> Dict[str, Any]:
         generation_params = self._build_generation_params(
             [],
@@ -669,7 +670,7 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
         self,
         *,
         system_prompt: Optional[str],
-        tool_catalog: Optional[ToolCatalog] = None,
+        tool_catalog: "Optional[Union[ToolCatalog, ToolCatalogView]]" = None,
     ):
         params = self._build_warmup_params(
             system_prompt=system_prompt,
@@ -683,7 +684,7 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
         self,
         *,
         system_prompt: Optional[str],
-        tool_catalog: Optional[ToolCatalog] = None,
+        tool_catalog: "Optional[Union[ToolCatalog, ToolCatalogView]]" = None,
     ):
         params = self._build_warmup_params(
             system_prompt=system_prompt,
@@ -1812,7 +1813,7 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
         messages: Union[str, List[Dict[str, Any]], ChatMessages],
         system_prompt: Optional[str],
         prefilling: Optional[str],
-        tool_catalog: Optional[ToolCatalog],
+        tool_catalog: "Optional[Union[ToolCatalog, ToolCatalogView]]",
         *,
         logprobs: Optional[bool] = None,
         top_logprobs: Optional[int] = None,
@@ -1844,7 +1845,7 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
         if isinstance(system_prompt, str):
             messages.insert(0, ChatBlock.system(system_prompt))
 
-        tool_choice = tool_catalog.choice if tool_catalog else None
+        tool_choice = self._catalog_choice_value(tool_catalog)
         if isinstance(tool_choice, str):
             if tool_choice not in ["auto", "required", "none"]:
                 tool_choice = {
@@ -1870,8 +1871,9 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
         if merged_extra_body is not None:
             generation_params["extra_body"] = merged_extra_body
 
-        if tool_catalog and tool_catalog.portable_tools():
-            generation_params["tools"] = tool_catalog.portable_schemas()
+        portable_schemas = self._portable_tool_schemas(tool_catalog)
+        if portable_schemas:
+            generation_params["tools"] = portable_schemas
             generation_params["tool_choice"] = tool_choice
             generation_params["parallel_tool_calls"] = self.parallel_tool_calls
 
@@ -1882,7 +1884,7 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
         messages: Union[str, List[Dict[str, Any]], ChatMessages],
         system_prompt: Optional[str],
         prefilling: Optional[str],
-        tool_catalog: Optional[ToolCatalog],
+        tool_catalog: "Optional[Union[ToolCatalog, ToolCatalogView]]",
         *,
         logprobs: Optional[bool] = None,
         top_logprobs: Optional[int] = None,
@@ -1926,15 +1928,39 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
         if merged_extra_body is not None:
             generation_params["extra_body"] = merged_extra_body
 
-        if tool_catalog and tool_catalog.tools:
+        if tool_catalog and self._catalog_tool_entries(tool_catalog):
             generation_params["tools"] = self._tools_to_responses(tool_catalog)
             generation_params["tool_choice"] = self._tool_choice_to_responses(
-                tool_catalog.choice
+                self._catalog_choice_value(tool_catalog)
             )
             generation_params["parallel_tool_calls"] = self.parallel_tool_calls
         return generation_params
 
-    def _tools_to_responses(self, catalog: ToolCatalog) -> List[Dict[str, Any]]:
+    def _tools_to_responses(
+        self,
+        catalog: "Union[ToolCatalog, ToolCatalogView]",
+    ) -> List[Dict[str, Any]]:
+        if isinstance(catalog, ToolCatalogView):
+            entries = catalog.tool_entries()
+            if self.supports_native_tool_search() and catalog.has_deferred:
+                return [
+                    {"type": "tool_search"},
+                    *[
+                        self._entry_to_responses_tool(
+                            entry,
+                            native_deferred=(
+                                entry.deferred
+                                and not entry.loaded
+                                and catalog.choice.name != entry.name
+                            ),
+                        )
+                        for entry in entries
+                    ],
+                ]
+            return [
+                self._entry_to_responses_tool(entry)
+                for entry in catalog.visible_entries()
+            ]
         if self.supports_native_tool_search() and catalog.has_deferred_tools:
             return [
                 {"type": "tool_search"},
@@ -1946,6 +1972,50 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
                 ],
             ]
         return [tool.to_responses_tool() for tool in catalog.portable_tools()]
+
+    @staticmethod
+    def _entry_to_responses_tool(
+        entry: ToolCatalogEntry,
+        *,
+        native_deferred: bool = False,
+    ) -> Dict[str, Any]:
+        function = deepcopy(entry.to_function_schema()["function"])
+        tool = {"type": "function", **function}
+        tool.setdefault("parameters", None)
+        tool.setdefault("strict", False)
+        if native_deferred:
+            tool["defer_loading"] = True
+        return tool
+
+    @staticmethod
+    def _catalog_tool_entries(
+        catalog: "Union[ToolCatalog, ToolCatalogView]",
+    ) -> tuple[Any, ...] | list[Any]:
+        if isinstance(catalog, ToolCatalogView):
+            return catalog.tool_entries()
+        return catalog.tools
+
+    @staticmethod
+    def _portable_tool_schemas(
+        catalog: "Optional[Union[ToolCatalog, ToolCatalogView]]",
+    ) -> List[Dict[str, Any]]:
+        if catalog is None:
+            return []
+        return catalog.portable_schemas()
+
+    @staticmethod
+    def _catalog_choice_value(
+        catalog: "Optional[Union[ToolCatalog, ToolCatalogView]]",
+    ) -> Any:
+        if catalog is None:
+            return None
+        if isinstance(catalog, ToolCatalogView):
+            if catalog.choice.mode == "auto":
+                return None
+            if catalog.choice.mode == "tool":
+                return catalog.choice.name
+            return catalog.choice.mode
+        return catalog.choice
 
     @staticmethod
     def _tool_choice_to_responses(tool_choice: Any) -> Any:
@@ -2052,7 +2122,7 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
         top_logprobs: Optional[int] = None,
         stream: Optional[bool] = False,
         generation_schema: Optional[msgspec.Struct] = None,
-        tool_catalog: Optional[ToolCatalog] = None,
+        tool_catalog: "Optional[Union[ToolCatalog, ToolCatalogView]]" = None,
         typed_parser: Optional[str] = None,
         extra_body: Optional[Dict[str, Any]] = None,
         **extra_body_kwargs: Any,
@@ -2154,7 +2224,7 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
         top_logprobs: Optional[int] = None,
         stream: Optional[bool] = False,
         generation_schema: Optional[msgspec.Struct] = None,
-        tool_catalog: Optional[ToolCatalog] = None,
+        tool_catalog: "Optional[Union[ToolCatalog, ToolCatalogView]]" = None,
         typed_parser: Optional[str] = None,
         extra_body: Optional[Dict[str, Any]] = None,
         **extra_body_kwargs: Any,

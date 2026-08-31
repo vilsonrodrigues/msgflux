@@ -14,6 +14,7 @@ from msgflux.exceptions import AbortRequestedError
 from msgflux.generation.reasoning.react import ReAct
 from msgflux.runtime import AbortSignal
 from msgflux.runtime.context import execution_context
+from msgflux.tools import ToolCatalogEntry, ToolCatalogView, ToolRef
 from msgflux.tools.definitions import ToolCatalog, ToolSpec
 from msgflux.tools.runtime import ToolOutcome
 
@@ -535,18 +536,20 @@ class TestOpenAIChatCompletion:
             ],
         )
         model = OpenAIChatCompletion(model_id="gpt-5", api_mode="responses")
-        tools = ToolCatalog.from_function_schemas(
-            schemas=[
-                {
-                    "type": "function",
-                    "function": {
-                        "name": "lookup_inventory",
-                        "description": "Look up a SKU.",
-                        "parameters": {"type": "object", "properties": {}},
-                        "strict": True,
-                    },
-                }
-            ],
+        tools = ToolCatalogView(
+            library_id="warehouse_tools",
+            thread_id="thread_1",
+            entries=(
+                ToolCatalogEntry(
+                    ref=ToolRef(
+                        library_id="warehouse_tools",
+                        tool_id="lookup_inventory",
+                    ),
+                    description="Look up a SKU.",
+                    input_schema={"type": "object", "properties": {}},
+                    strict=True,
+                ),
+            ),
             choice="lookup_inventory",
         )
 
@@ -582,16 +585,20 @@ class TestOpenAIChatCompletion:
         from msgflux.models.providers.openai import OpenAIChatCompletion
 
         model = OpenAIChatCompletion(model_id="gpt-5.6", api_mode="responses")
-        catalog = ToolCatalog(
-            tools=[
-                ToolSpec(
-                    name="lookup_inventory",
+        catalog = ToolCatalogView(
+            library_id="warehouse_tools",
+            thread_id="thread_1",
+            entries=(
+                ToolCatalogEntry(
+                    ref=ToolRef(
+                        library_id="warehouse_tools",
+                        tool_id="lookup_inventory",
+                    ),
                     description="Look up a SKU.",
-                    parameters={"type": "object", "properties": {}},
-                    defer_loading=True,
-                )
-            ],
-            catalog_id="warehouse_tools",
+                    input_schema={"type": "object", "properties": {}},
+                    deferred=True,
+                ),
+            ),
         )
 
         params = model._build_generation_params(
@@ -1590,20 +1597,23 @@ class TestOpenAIChatCompletion:
             messages=[{"role": "user", "content": "What's the weather?"}],
             system_prompt=None,
             prefilling=None,
-            tool_catalog=ToolCatalog.from_function_schemas(
-                schemas=[
-                    {
-                        "type": "function",
-                        "function": {
-                            "name": "get_weather",
-                            "parameters": {
-                                "type": "object",
-                                "properties": {"location": {"type": "string"}},
-                                "required": ["location"],
-                            },
+            tool_catalog=ToolCatalogView(
+                library_id="weather_tools",
+                thread_id="thread_1",
+                entries=(
+                    ToolCatalogEntry(
+                        ref=ToolRef(
+                            library_id="weather_tools",
+                            tool_id="get_weather",
+                        ),
+                        description=None,
+                        input_schema={
+                            "type": "object",
+                            "properties": {"location": {"type": "string"}},
+                            "required": ["location"],
                         },
-                    }
-                ],
+                    ),
+                ),
                 choice="get_weather",
             ),
         )

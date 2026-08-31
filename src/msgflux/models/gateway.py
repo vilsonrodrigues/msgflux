@@ -1,13 +1,15 @@
 from datetime import datetime, time, timezone
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
 from msgflux.exceptions import ModelRouterError
 from msgflux.logger import logger
 from msgflux.models.base import BaseModel
 from msgflux.models.model import Model
 from msgflux.models.response import ModelResponse, ModelStreamResponse
-from msgflux.tools.definitions import ToolCatalog
 from msgflux.utils.time import utc_now
+
+if TYPE_CHECKING:
+    from msgflux.nn.modules.tool_runtime import ToolCatalogView
 
 
 class ModelGateway:
@@ -571,7 +573,7 @@ class ModelGateway:
         self,
         *,
         system_prompt: Optional[str],
-        tool_catalog: Optional[ToolCatalog] = None,
+        tool_catalog: Optional["ToolCatalogView"] = None,
         model_preference: Optional[str] = None,
     ) -> Any:
         """Warm the first available deployment that supports prompt warmup."""
@@ -586,7 +588,7 @@ class ModelGateway:
         self,
         *,
         system_prompt: Optional[str],
-        tool_catalog: Optional[ToolCatalog] = None,
+        tool_catalog: Optional["ToolCatalogView"] = None,
         model_preference: Optional[str] = None,
     ) -> Any:
         """Async prompt warmup for the first available deployment."""
