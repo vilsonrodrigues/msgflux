@@ -13,7 +13,7 @@ meet here.
 
 ## What It Owns
 
-`ToolLibrary` owns five responsibilities:
+`ToolLibrary` owns these responsibilities:
 
 - registering local and remote tools
 - routing tools into buckets when a bucket capture matches their configuration
@@ -24,6 +24,24 @@ meet here.
 
 It does not decide when a tool should be called. That remains the job of the
 provider response path or of a `ToolFlowControl`.
+
+## Registry And Executor Ownership
+
+`ToolRegistry` owns stable `ToolDefinition` values and produces `ToolRef` and
+`ToolCatalogView` projections. It deliberately does not register executor
+modules. Executor ownership belongs to the `ToolLibrary` facade so one module
+has exactly one place in the module tree and `state_dict`.
+
+The current facade keeps directly exposed executors in its public `ModuleDict`.
+Bucket-captured definitions are indexed by the same registry, while their
+executors remain owned by the bucket metadata as before. Consequently, public,
+deferred, and bucket-captured tools all resolve through one definition registry
+without making hidden tools appear in the model-facing module surface.
+
+`ToolLibraryV2` follows the same boundary with its own executor `ModuleDict`.
+Deep copies preserve the identity between each copied definition and its copied
+executor because both are owned by the containing facade, not independently by
+the registry.
 
 ## Two Phases
 

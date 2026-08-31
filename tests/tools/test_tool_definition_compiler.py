@@ -1,4 +1,7 @@
+from copy import deepcopy
 from types import SimpleNamespace
+
+import pytest
 
 from msgflux.chat_messages import ChatMessages
 from msgflux.nn import ContextBinding
@@ -73,6 +76,75 @@ def test_deferred_loading_uses_compiled_definition_after_config_mutation():
 
     assert outcome.result == "SKU-1"
     assert messages.get_loaded_tools(library.name) == {"lookup"}
+
+
+def test_library_registry_indexes_public_and_captured_definitions():
+    def calculate(value: int) -> int:
+        """Calculate one value."""
+        return value * 2
+
+    @tool_config(defer_loading=True)
+    def remote_lookup(query: str) -> str:
+        """Look up one remote value."""
+        return query
+
+    library = ToolLibrary(name="runtime", tools=[calculate, remote_lookup])
+    search_bucket = library.library["tool_search"].impl
+
+    assert {definition.name for definition in library.registry.definitions()} == {
+        "calculate",
+        "remote_lookup",
+        "tool_search",
+    }
+    assert library.registry.get("calculate").executor is library.library["calculate"]
+    assert (
+        library.registry.get("remote_lookup").executor
+        is search_bucket.tools["remote_lookup"].source_tool
+    )
+
+    copied = deepcopy(library)
+    copied_search = copied.library["tool_search"].impl
+
+    assert copied.registry.get("calculate").executor is copied.library["calculate"]
+    assert (
+        copied.registry.get("remote_lookup").executor
+        is copied_search.tools["remote_lookup"].source_tool
+    )
+
+    library.remove("remote_lookup")
+
+    assert not library.registry.has("remote_lookup")
+    assert not library.registry.has("tool_search")
+
+
+def test_library_catalog_view_is_scoped_to_chat_messages_thread():
+    @tool_config(defer_loading=True)
+    def lookup(query: str) -> str:
+        """Look up one value."""
+        return query
+
+    library = ToolLibrary(name="search", tools=[lookup])
+    first = ChatMessages(thread_id="thread_a")
+    second = ChatMessages(thread_id="thread_b")
+    first.load_tools(library.name, ["lookup", "removed_tool"])
+
+    first_view = library.get_tool_catalog_view(first)
+    second_view = library.get_tool_catalog_view(second)
+
+    assert first_view.thread_id == "thread_a"
+    assert [entry.name for entry in first_view.visible_entries()] == [
+        "tool_search",
+        "lookup",
+    ]
+    assert [entry.name for entry in second_view.visible_entries()] == ["tool_search"]
+    assert [entry.name for entry in second_view.entries] == ["tool_search", "lookup"]
+
+
+def test_library_catalog_view_requires_configured_thread():
+    library = ToolLibrary(name="empty", tools=[])
+
+    with pytest.raises(ValueError, match="configured thread id"):
+        library.get_tool_catalog_view(ChatMessages())
 
 
 def test_feedback_flags_compile_to_one_feedback_axis():

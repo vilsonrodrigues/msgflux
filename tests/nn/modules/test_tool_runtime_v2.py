@@ -74,7 +74,7 @@ def make_intent(name="lookup"):
     return ToolIntent(id="call_1", name=name, arguments={"sku": "SKU-1842"})
 
 
-def test_registry_owns_stable_definitions_and_executor_modules():
+def test_registry_owns_stable_definitions_without_executor_modules():
     definition = make_definition()
     registry = ToolRegistry("warehouse_tools", [definition])
 
@@ -82,7 +82,7 @@ def test_registry_owns_stable_definitions_and_executor_modules():
 
     assert ref == ToolRef(library_id="warehouse_tools", tool_id="lookup")
     assert registry.get(ref) is definition
-    assert registry.executors["lookup"] is definition.executor
+    assert not hasattr(registry, "executors")
     with pytest.raises(ValueError, match="already registered"):
         registry.add(definition)
 
@@ -100,14 +100,38 @@ def test_registry_rejects_foreign_refs():
         registry.get(foreign)
 
 
-def test_registry_deepcopy_preserves_definition_executor_identity():
+def test_registry_replace_preserves_executor_ownership():
+    definition = make_definition()
+    registry = ToolRegistry("warehouse_tools", [definition])
+    updated = msgspec.structs.replace(definition, description="Updated lookup.")
+
+    previous = registry.replace(updated)
+
+    assert previous is definition
+    assert registry.get("lookup") is updated
+    with pytest.raises(ValueError, match="cannot change its executor"):
+        registry.replace(
+            msgspec.structs.replace(updated, executor=RecordingExecutor(result="new"))
+        )
+
+
+def test_registry_deepcopy_copies_definition_executor_reference():
     registry = ToolRegistry("warehouse_tools", [make_definition()])
 
     copied = deepcopy(registry)
     definition = copied.get("lookup")
 
-    assert definition.executor is copied.executors["lookup"]
     assert definition.executor is not registry.get("lookup").executor
+
+
+def test_library_facade_owns_executors_and_deepcopy_preserves_identity():
+    library = ToolLibraryV2([make_definition()], name="warehouse_tools")
+
+    copied = deepcopy(library)
+    definition = copied.registry.get("lookup")
+
+    assert definition.executor is copied.executors["lookup"]
+    assert definition.executor is not library.registry.get("lookup").executor
 
 
 def test_catalog_views_isolate_deferred_loading_by_thread():

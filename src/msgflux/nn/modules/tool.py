@@ -44,12 +44,15 @@ from msgflux.nn.modules.tool_v2 import (
     BeforeToolPolicy,
     ContextSpec,
     DispatchRequest,
+    ToolCatalogView,
+    ToolChoice,
     ToolDefinitionCompiler,
     ToolExecutionPlan,
     ToolExtension,
     ToolExtensionHandle,
     ToolExtensionRegistry,
     ToolRef,
+    ToolRegistry,
     ToolRuntimeContext,
 )
 from msgflux.nn.modules.tool_v2 import (
@@ -631,8 +634,8 @@ class ToolLibrary(Module, metaclass=AutoParams):
         super().__init__()
         self.set_name(f"{name}_tool_library")
         self.library = ModuleDict()
+        self.registry = ToolRegistry(self.name)
         self.register_buffer("tool_configs", {})
-        self.tool_definitions: Dict[str, RuntimeToolDefinition] = {}
         self.register_buffer("mcp_clients", {})
         self._task_store = task_store
         self._agent_inbox: Optional[AgentInbox] = None
@@ -841,6 +844,12 @@ class ToolLibrary(Module, metaclass=AutoParams):
             )
         return self._agent_inbox
 
+    def _validate_new_tool_name(self, tool_name: str) -> None:
+        if tool_name in self.library:
+            raise ValueError(f"The tool name `{tool_name}` is already in tool library")
+        if self.registry.has(tool_name):
+            raise ValueError(f"Duplicate tool name `{tool_name}`")
+
     def add(self, tool: Callable) -> str:
         """Add a local tool in library."""
         if isinstance(tool, ToolMetadata):
@@ -853,10 +862,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
         metadata.tool_config = dotdict(metadata.tool_config)
         metadata.tool_config.setdefault("defer_loading", False)
 
-        if metadata.name in self.library.keys():
-            raise ValueError(
-                f"The tool name `{metadata.name}` is already in tool library"
-            )
+        self._validate_new_tool_name(metadata.name)
         if is_background_capable(metadata.tool_config):
             background = self.extensions.get("background_tasks")
             if isinstance(background, BackgroundTasksExtension):
@@ -939,12 +945,13 @@ class ToolLibrary(Module, metaclass=AutoParams):
         if tool_name in self.library:
             self.library.pop(tool_name)
         self.tool_configs.pop(tool_name, None)
-        self.tool_definitions.pop(tool_name, None)
+        if self.registry.has(tool_name):
+            self.registry.remove(tool_name)
 
     def clear(self):
         self.library.clear()
         self.tool_configs.clear()
-        self.tool_definitions.clear()
+        self.registry.clear()
         for mcp_data in self.mcp_clients.values():
             F.wait_for(mcp_data["client"].disconnect)
         self.mcp_clients.clear()
@@ -984,9 +991,8 @@ class ToolLibrary(Module, metaclass=AutoParams):
             tool.register_buffer("tool_config", tool_config)
         definition = ToolDefinitionCompiler.compile(metadata, executor=tool)
         metadata.definition = definition
-        metadata.ref = ToolRef(library_id=self.name, tool_id=metadata.name)
+        metadata.ref = self.registry.add(definition)
         self.tool_configs[tool.name] = tool_config
-        self.tool_definitions[tool.name] = definition
         self.library.update({tool.name: tool})
         if isinstance(metadata.impl, ToolBucket):
             metadata.impl.refresh()
@@ -1020,10 +1026,14 @@ class ToolLibrary(Module, metaclass=AutoParams):
             metadata,
             executor=metadata.source_tool,
         )
-        metadata.ref = ToolRef(library_id=self.name, tool_id=metadata.name)
+        metadata.ref = self.registry.add(metadata.definition)
 
         # Let the bucket validate, retain, and refresh its captured state.
-        bucket.add(metadata)
+        try:
+            bucket.add(metadata)
+        except Exception:
+            self.registry.remove(metadata.ref)
+            raise
         self._sync_bucket_presentation(bucket_name, bucket)
 
     def _remove_from_bucket(self, bucket_name: str, tool_name: str) -> ToolMetadata:
@@ -1032,6 +1042,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
         if not isinstance(bucket, ToolBucket):
             raise ValueError(f"The bucket tool `{bucket_name}` cannot release tools.")
         metadata = bucket.remove(tool_name)
+        self.registry.remove(tool_name)
         if bucket.expose_captured_names and not bucket.tools:
             self._remove_registered_tool(bucket_name)
         else:
@@ -1054,9 +1065,11 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 bucket.usage_guidance,
             )
         bucket_metadata = _metadata_from_tool(bucket_tool)
-        self.tool_definitions[bucket_name] = ToolDefinitionCompiler.compile(
-            bucket_metadata,
-            executor=bucket_tool,
+        self.registry.replace(
+            ToolDefinitionCompiler.compile(
+                bucket_metadata,
+                executor=bucket_tool,
+            )
         )
 
     def get_tools(self) -> Iterator[Dict[str, Tool]]:
@@ -1126,7 +1139,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
         for tool_name, tool in self.library.items():
             if tool_name == "tool_search":
                 search_tool = ToolSpec.from_definition(
-                    self.tool_definitions[tool_name],
+                    self.registry.get(tool_name),
                 )
                 bucket = getattr(tool, "impl", None)
                 if isinstance(bucket, ToolBucket):
@@ -1143,12 +1156,31 @@ class ToolLibrary(Module, metaclass=AutoParams):
                             )
                         )
                 continue
-            tools.append(ToolSpec.from_definition(self.tool_definitions[tool_name]))
+            tools.append(ToolSpec.from_definition(self.registry.get(tool_name)))
 
         return ToolCatalog(
             tools=tools,
             catalog_id=self.name,
             search_tool=search_tool,
+        )
+
+    def get_tool_catalog_view(
+        self,
+        messages: ChatMessages,
+        *,
+        choice: ToolChoice | str | None = None,
+    ) -> ToolCatalogView:
+        """Return an immutable definition view for one configured thread."""
+        if not isinstance(messages, ChatMessages):
+            raise TypeError("`messages` must be ChatMessages")
+        if not isinstance(messages.thread_id, str) or not messages.thread_id:
+            raise ValueError("Tool catalog views require a configured thread id")
+        registered = {definition.name for definition in self.registry.definitions()}
+        loaded = messages.get_loaded_tools(self.name) & registered
+        return self.registry.catalog_view(
+            messages.thread_id,
+            loaded_tools=loaded,
+            choice=choice,
         )
 
     @staticmethod
@@ -1214,31 +1246,17 @@ class ToolLibrary(Module, metaclass=AutoParams):
 
     def get_tool_definition(self, tool_name: str) -> RuntimeToolDefinition:
         """Return the canonical definition for a public or bucket-captured tool."""
-        definition = self.tool_definitions.get(tool_name)
-        if definition is not None:
-            return definition
-        bucket_name = ToolBucket.find_capturing_bucket(
-            tool_name,
-            self.library,
-            self.tool_configs,
-        )
-        if bucket_name is None:
-            raise ValueError(f"The tool name `{tool_name}` is not in tool library")
-        bucket = getattr(self.library[bucket_name], "impl", None)
-        if not isinstance(bucket, ToolBucket):
-            raise ValueError(f"The tool `{bucket_name}` is not a tool bucket.")
-        metadata = bucket.tools.get(tool_name)
-        if metadata is None or not isinstance(
-            metadata.definition,
-            RuntimeToolDefinition,
-        ):
-            raise RuntimeError(f"Tool `{tool_name}` has no compiled definition")
-        return metadata.definition
+        try:
+            return self.registry.get(tool_name)
+        except ValueError as exc:
+            raise ValueError(
+                f"The tool name `{tool_name}` is not in tool library"
+            ) from exc
 
     def get_tool_ref(self, tool_name: str) -> ToolRef:
         """Return a stable reference for a public or bucket-captured tool."""
         self.get_tool_definition(tool_name)
-        return ToolRef(library_id=self.name, tool_id=tool_name)
+        return self.registry.ref(tool_name)
 
     def set_agent_inbox(self, agent_inbox: AgentInbox) -> None:
         self._agent_inbox = agent_inbox

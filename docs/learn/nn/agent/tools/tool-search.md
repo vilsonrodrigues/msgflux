@@ -87,6 +87,24 @@ print(second.get_loaded_tools(agent.tool_library.name))
 # set()
 ```
 
+Use `get_tool_catalog_view(...)` to inspect the immutable definition snapshot
+for one thread without compiling a provider payload:
+
+```python
+first_view = agent.tool_library.get_tool_catalog_view(first)
+second_view = agent.tool_library.get_tool_catalog_view(second)
+
+print([entry.name for entry in first_view.visible_entries()])
+# ["tool_search", "query_finance_report"]
+print([entry.name for entry in second_view.visible_entries()])
+# ["tool_search"]
+```
+
+Both views retain `query_finance_report` in `entries`; only `loaded` and the
+derived visible projection differ. A view requires a `ChatMessages` instance
+with a configured `thread_id`, making accidental process-global activation
+explicitly invalid.
+
 The executable catalog is not mutated. This means simultaneous threads can
 share one agent safely while exposing different tool subsets. The state is also
 copied and checkpointed with `ChatMessages`.

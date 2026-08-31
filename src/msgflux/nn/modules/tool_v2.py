@@ -578,7 +578,7 @@ class ToolCatalogView(msgspec.Struct, frozen=True, kw_only=True):
 
 
 class ToolRegistry(Module):
-    """Own stable logical definitions and their executable Modules."""
+    """Own stable logical definitions without owning executor modules."""
 
     def __init__(
         self,
@@ -587,7 +587,6 @@ class ToolRegistry(Module):
     ) -> None:
         super().__init__()
         self.library_id = _require_name(library_id, "library_id")
-        self.executors = ModuleDict()
         self._definitions: dict[str, ToolDefinition] = {}
         for definition in definitions:
             self.add(definition)
@@ -599,9 +598,25 @@ class ToolRegistry(Module):
             raise ValueError(f"Tool `{definition.name}` is already registered")
         if not isinstance(definition.executor, Module):
             raise TypeError("Tool executors must inherit msgflux.nn.Module")
-        self.executors[definition.name] = definition.executor
         self._definitions[definition.name] = definition
         return self.ref(definition.name)
+
+    def replace(self, definition: ToolDefinition) -> ToolDefinition:
+        """Replace one definition while preserving its stable registry name."""
+        if not isinstance(definition, ToolDefinition):
+            raise TypeError("`definition` must be a ToolDefinition")
+        if definition.name not in self._definitions:
+            raise ValueError(f"Tool `{definition.name}` is not registered")
+        if not isinstance(definition.executor, Module):
+            raise TypeError("Tool executors must inherit msgflux.nn.Module")
+        previous = self._definitions[definition.name]
+        if definition.executor is not previous.executor:
+            raise ValueError(
+                "Replacing a definition cannot change its executor; remove and "
+                "add the tool through ToolLibrary instead"
+            )
+        self._definitions[definition.name] = definition
+        return previous
 
     def remove(self, tool: ToolRef | str) -> ToolDefinition:
         name = self._resolve_name(tool)
@@ -609,8 +624,10 @@ class ToolRegistry(Module):
             definition = self._definitions.pop(name)
         except KeyError as exc:
             raise ValueError(f"Tool `{name}` is not registered") from exc
-        del self.executors[name]
         return definition
+
+    def clear(self) -> None:
+        self._definitions.clear()
 
     def get(self, tool: ToolRef | str) -> ToolDefinition:
         name = self._resolve_name(tool)
@@ -1374,17 +1391,28 @@ class ToolLibraryV2(Module):
     ) -> None:
         super().__init__()
         self.set_name(_require_name(name, "name"))
-        self.registry = ToolRegistry(name, definitions)
+        self.registry = ToolRegistry(name)
+        self.executors = ModuleDict()
         self.extensions = ToolExtensionRegistry(
             extensions,
             install_defaults=True,
         )
+        for definition in definitions:
+            self.add(definition)
 
     def add(self, definition: ToolDefinition) -> ToolRef:
-        return self.registry.add(definition)
+        ref = self.registry.add(definition)
+        try:
+            self.executors[definition.name] = definition.executor
+        except Exception:
+            self.registry.remove(ref)
+            raise
+        return ref
 
     def remove(self, tool: ToolRef | str) -> ToolDefinition:
-        return self.registry.remove(tool)
+        definition = self.registry.remove(tool)
+        del self.executors[definition.name]
+        return definition
 
     def get_catalog_view(
         self,
