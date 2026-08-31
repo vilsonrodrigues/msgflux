@@ -76,6 +76,65 @@ This boundary exposes public arguments and normalized config, not injected
 runtime values. It may reduce background/detached execution to foreground or
 block the call; it cannot promote a foreground call into detached execution.
 
+## Custom Dispatch Modes
+
+`ToolDispatch` adds an execution mode without changing `ToolLibrary`. Its
+`dispatch_name` is selected with `@tool_config(dispatch="...")`. Dispatchers are
+asynchronous even when the legacy synchronous ToolLibrary API starts the call.
+
+This example routes a tool to an external queue instead of executing its Python
+implementation:
+
+```python
+import msgflux as mf
+import msgflux.nn as nn
+from msgflux.tools import ToolIntent, ToolOutcome
+
+
+class QueueDispatch(nn.ToolDispatch):
+    def __init__(self):
+        super().__init__("dispatch_queue", dispatch_name="queue")
+
+    async def dispatch(self, request):
+        # Replace this with an async queue or HTTP client.
+        job_id = f"job:{request.plan.intent.id}"
+        return ToolOutcome.dispatched(
+            request.plan.intent,
+            result={"job_id": job_id},
+        )
+
+
+@mf.tool_config(dispatch="queue")
+def generate_report(report_id: str) -> str:
+    """Generate a report through an external worker."""
+    raise RuntimeError("The queue dispatcher owns this execution path")
+
+
+library = nn.ToolLibrary(
+    name="reports",
+    tools=[generate_report],
+    extensions=[QueueDispatch()],
+)
+
+outcome = library.execute_intents(
+    [
+        ToolIntent(
+            id="call_1",
+            name="generate_report",
+            arguments={"report_id": "weekly"},
+        )
+    ]
+)[0]
+
+assert outcome.status == "dispatched"
+assert outcome.result == {"job_id": "job:call_1"}
+```
+
+A dispatcher that still wants local execution calls
+`await request.execute()` and may wrap or replace the resulting `ToolOutcome`.
+The request also carries `ToolRuntimeContext`, including the current abort
+signal, handle, messages, vars, task store, inbox, and activity recorder.
+
 ## Register And Remove
 
 Registration returns an ownership handle:

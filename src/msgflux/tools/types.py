@@ -149,6 +149,7 @@ class ToolBucket:
         loop_options = {
             option
             for option in (
+                "dispatch",
                 "background",
                 "allow_background",
                 "detached",

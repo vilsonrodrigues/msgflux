@@ -173,4 +173,4 @@ The real power of async is running multiple agents concurrently. `msgflux.nn.fun
 ## See Also
 
 - [Streaming](streaming.md) — Async streaming with `consume()` and `consume_reasoning()`
-- [Functional API](../functional.md) — `abcast_gather`, `amap_gather`, `ascatter_gather`, `aspawn`
+- [Functional API](../functional.md) — `abcast_gather`, `amap_gather`, `ascatter_gather`, `adetached`

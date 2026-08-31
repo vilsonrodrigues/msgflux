@@ -363,6 +363,8 @@ class ToolDefinitionCompiler:
 
     @staticmethod
     def _compile_dispatch(config: Mapping[str, Any]) -> DispatchSpec:
+        if config.get("dispatch") is not None:
+            return DispatchSpec.coerce(config["dispatch"])
         if config.get("background", False):
             return DispatchSpec(
                 name="background",
@@ -850,7 +852,10 @@ class DetachedDispatch(ToolDispatch):
         super().__init__("dispatch_detached", dispatch_name="detached")
 
     async def dispatch(self, request: DispatchRequest) -> ToolOutcome:
-        await F.aspawn(request.execute, None)
+        if request.context.get("sync_dispatch", False):
+            F.detached(F.wait_for, request.execute, None)
+        else:
+            await F.adetached(request.execute, None)
         return ToolOutcome.dispatched(
             request.plan.intent,
             metadata={"dispatch": self.dispatch_name},

@@ -69,7 +69,7 @@ async def test_agent_async_warmup_system_prompt_applies_tool_filter():
     assert model.calls[0]["tool_catalog"] is None
 
 
-def test_agent_warmup_system_prompt_can_spawn_background(monkeypatch):
+def test_agent_warmup_system_prompt_can_run_detached(monkeypatch):
     model = WarmupModel()
     agent = Agent(
         name="support_agent",
@@ -78,12 +78,12 @@ def test_agent_warmup_system_prompt_can_spawn_background(monkeypatch):
     )
     captured: dict[str, Any] = {}
 
-    def fake_spawn(to_send, *args: Any, **kwargs: Any) -> None:
+    def fake_detached(to_send, *args: Any, **kwargs: Any) -> None:
         captured["to_send"] = to_send
         captured["args"] = args
         captured["kwargs"] = kwargs
 
-    monkeypatch.setattr("msgflux.nn.modules.agent.spawn", fake_spawn)
+    monkeypatch.setattr("msgflux.nn.modules.agent.detached", fake_detached)
 
     result = agent.warmup_system_prompt(background=True)
 

@@ -60,7 +60,7 @@ from msgflux.nn.extensions.base import (
 from msgflux.nn.extensions.feedback import DefaultToolFeedbackExtension
 from msgflux.nn.extensions.prompt import ToolUsageGuidanceExtension
 from msgflux.nn.extensions.skills import SkillsExtension
-from msgflux.nn.functional import aspawn, await_for_event, spawn, wait_for_event
+from msgflux.nn.functional import adetached, await_for_event, detached, wait_for_event
 from msgflux.nn.hooks import Hook
 from msgflux.nn.hooks.events import (
     BeforeResume,
@@ -1379,7 +1379,7 @@ class Agent(Module, metaclass=AutoParams):
         content would reduce cache hits for the real request.
         """
         if background:
-            spawn(
+            detached(
                 self._warmup_system_prompt,
                 vars=vars,
                 tool_filter=tool_filter,
@@ -1402,7 +1402,7 @@ class Agent(Module, metaclass=AutoParams):
     ):
         """Async counterpart for warming the provider system prompt cache."""
         if background:
-            await aspawn(
+            await adetached(
                 self._awarmup_system_prompt,
                 vars=vars,
                 tool_filter=tool_filter,

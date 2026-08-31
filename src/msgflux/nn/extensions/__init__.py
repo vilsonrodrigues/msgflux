@@ -18,6 +18,7 @@ if TYPE_CHECKING:
         ToolLibraryExtensionHandle,
         ToolSearchExtension,
     )
+    from msgflux.nn.modules.tool_v2 import ToolDispatch
 
 __all__ = [
     "AgentExtension",
@@ -28,6 +29,7 @@ __all__ = [
     "MCPServersExtension",
     "ToolLibraryExtension",
     "ToolLibraryExtensionHandle",
+    "ToolDispatch",
     "ToolSearchExtension",
     "ToolUsageGuidanceExtension",
     "DefaultToolFeedbackExtension",
@@ -72,6 +74,7 @@ _LAZY_IMPORTS = {
         "msgflux.nn.extensions.tool_library",
         "ToolSearchExtension",
     ),
+    "ToolDispatch": ("msgflux.nn.modules.tool_v2", "ToolDispatch"),
 }
 
 

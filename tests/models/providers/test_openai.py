@@ -2218,10 +2218,10 @@ class TestOpenAITextToSpeech:
         assert stream_response.data == b"audio"
 
     @pytest.mark.asyncio
-    async def test_text_to_speech_acall_stream_uses_asyncio_spawn(
+    async def test_text_to_speech_acall_stream_uses_async_detached(
         self, mock_openai_client
     ):
-        """TTS async streaming should stay on F.aspawn, not the global Executor."""
+        """TTS async streaming should use F.adetached, not the global Executor."""
         pytest.importorskip("openai")
 
         from msgflux.models.providers.openai import OpenAITextToSpeech
@@ -2230,9 +2230,9 @@ class TestOpenAITextToSpeech:
 
         with (
             patch(
-                "msgflux.models.providers.openai.F.aspawn",
+                "msgflux.models.providers.openai.F.adetached",
                 new_callable=AsyncMock,
-            ) as aspawn,
+            ) as adetached,
             patch(
                 "msgflux.models.providers.openai.F.await_for_event",
                 new_callable=AsyncMock,
@@ -2245,7 +2245,7 @@ class TestOpenAITextToSpeech:
             stream_response = await model.acall("hello", stream=True)
 
         assert stream_response.mode == "async"
-        aspawn.assert_awaited_once()
+        adetached.assert_awaited_once()
         await_for_event.assert_awaited_once_with(stream_response.first_chunk_event)
 
 
@@ -2335,10 +2335,10 @@ class TestOpenAISpeechToText:
         assert model.sampling_run_params["temperature"] == 0.5
 
     @pytest.mark.asyncio
-    async def test_speech_to_text_acall_stream_uses_asyncio_spawn(
+    async def test_speech_to_text_acall_stream_uses_async_detached(
         self, mock_openai_client
     ):
-        """STT async streaming should stay on F.aspawn, not the global Executor."""
+        """STT async streaming should use F.adetached, not the global Executor."""
         pytest.importorskip("openai")
 
         from msgflux.models.providers.openai import OpenAISpeechToText
@@ -2351,9 +2351,9 @@ class TestOpenAISpeechToText:
                 return_value=b"audio",
             ),
             patch(
-                "msgflux.models.providers.openai.F.aspawn",
+                "msgflux.models.providers.openai.F.adetached",
                 new_callable=AsyncMock,
-            ) as aspawn,
+            ) as adetached,
             patch(
                 "msgflux.models.providers.openai.F.await_for_event",
                 new_callable=AsyncMock,
@@ -2366,7 +2366,7 @@ class TestOpenAISpeechToText:
             stream_response = await model.acall("audio.wav", stream=True)
 
         assert stream_response.mode == "async"
-        aspawn.assert_awaited_once()
+        adetached.assert_awaited_once()
         await_for_event.assert_awaited_once_with(stream_response.first_chunk_event)
 
 

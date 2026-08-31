@@ -2120,7 +2120,7 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
             self._prepare_stream_kwargs(generation_params)
             stream_response = ModelStreamResponse(mode="sync")
             request_timer = ModelRequestTimer()
-            F.spawn(
+            F.detached(
                 self._stream_generate,
                 **generation_params,
                 stream=stream,
@@ -2222,7 +2222,7 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
             self._prepare_stream_kwargs(generation_params)
             stream_response = ModelStreamResponse(mode="async")
             request_timer = ModelRequestTimer()
-            await F.aspawn(
+            await F.adetached(
                 self._astream_generate,
                 **generation_params,
                 stream=stream,
@@ -2413,7 +2413,7 @@ class OpenAITextToSpeech(_BaseOpenAI, TextToSpeechModel):
         if stream:
             stream_response = ModelStreamResponse(mode="sync")
             params.stream_response = stream_response
-            F.spawn(self._stream_generate, **params)
+            F.detached(self._stream_generate, **params)
             F.wait_for_event(stream_response.first_chunk_event)
             return stream_response
         else:
@@ -2446,7 +2446,7 @@ class OpenAITextToSpeech(_BaseOpenAI, TextToSpeechModel):
         if stream:
             stream_response = ModelStreamResponse(mode="async")
             params.stream_response = stream_response
-            await F.aspawn(self._astream_generate, **params)
+            await F.adetached(self._astream_generate, **params)
             await F.await_for_event(stream_response.first_chunk_event)
             return stream_response
         else:
@@ -2928,7 +2928,7 @@ class OpenAISpeechToText(_BaseOpenAI, SpeechToTextModel):
             stream_response = ModelStreamResponse(mode="sync")
             params["stream_response"] = stream_response
             params["stream"] = stream
-            F.spawn(self._stream_generate, **params)
+            F.detached(self._stream_generate, **params)
             F.wait_for_event(stream_response.first_chunk_event)
             return stream_response
         else:
@@ -2982,7 +2982,7 @@ class OpenAISpeechToText(_BaseOpenAI, SpeechToTextModel):
             stream_response = ModelStreamResponse(mode="async")
             params["stream_response"] = stream_response
             params["stream"] = stream
-            await F.aspawn(self._astream_generate, **params)
+            await F.adetached(self._astream_generate, **params)
             await F.await_for_event(stream_response.first_chunk_event)
             return stream_response
         else:

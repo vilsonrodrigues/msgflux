@@ -1,14 +1,16 @@
 from dataclasses import replace
+from threading import Event
 
 import pytest
 
 from msgflux.exceptions import AbortRequestedError
 from msgflux.nn.hooks import Hook
 from msgflux.nn.modules.tool import ToolLibrary
+from msgflux.nn.modules.tool_v2 import ToolDispatch
 from msgflux.runtime.abort import AbortSignal
 from msgflux.runtime.context import execution_context
 from msgflux.tools.config import tool_config
-from msgflux.tools.runtime import ToolIntent
+from msgflux.tools.runtime import ToolIntent, ToolOutcome
 
 
 def test_library_executes_canonical_intent_with_compiled_feedback():
@@ -158,8 +160,11 @@ def test_call_as_response_produces_outcome_without_running_implementation():
 
 
 def test_detached_dispatch_produces_dispatched_outcome():
+    completed = Event()
+
     @tool_config(detached=True)
     def refresh_index(name: str) -> str:
+        completed.set()
         return name
 
     library = ToolLibrary(name="test", tools=[refresh_index])
@@ -177,6 +182,7 @@ def test_detached_dispatch_produces_dispatched_outcome():
     assert outcome.status == "dispatched"
     assert outcome.feedback.name == "model"
     assert outcome.metadata["arguments"] == {"name": "products"}
+    assert completed.wait(timeout=1)
 
 
 @pytest.mark.asyncio
@@ -199,3 +205,80 @@ async def test_canonical_async_execution_propagates_abort():
         await library.aexecute_intents([ToolIntent(id="call_1", name="wait_for_work")])
 
     assert started is False
+
+
+class QueueDispatch(ToolDispatch):
+    def __init__(self):
+        super().__init__("dispatch_queue", dispatch_name="queue")
+        self.requests = []
+
+    async def dispatch(self, request):
+        self.requests.append(request)
+        return ToolOutcome.dispatched(
+            request.plan.intent,
+            result="queued externally",
+            metadata={"queue": "priority"},
+        )
+
+
+def test_custom_dispatch_extension_routes_sync_execution():
+    queue = QueueDispatch()
+
+    @tool_config(dispatch="queue")
+    def publish_report(report_id: str) -> str:
+        raise AssertionError("custom dispatcher must own execution")
+
+    library = ToolLibrary(
+        name="test",
+        tools=[publish_report],
+        extensions=[queue],
+    )
+
+    outcome = library.execute_intents(
+        [
+            ToolIntent(
+                id="call_1",
+                name="publish_report",
+                arguments={"report_id": "rpt_42"},
+            )
+        ]
+    )[0]
+
+    assert library.has_extension("dispatch_queue")
+    assert outcome.status == "dispatched"
+    assert outcome.result == "queued externally"
+    assert outcome.metadata == {
+        "queue": "priority",
+        "arguments": {"report_id": "rpt_42"},
+    }
+    assert queue.requests[0].context.get("handle") is library.get_handle()
+
+
+@pytest.mark.asyncio
+async def test_custom_dispatch_extension_routes_async_execution():
+    queue = QueueDispatch()
+
+    @tool_config(dispatch="queue")
+    async def publish_report(report_id: str) -> str:
+        raise AssertionError("custom dispatcher must own execution")
+
+    library = ToolLibrary(
+        name="test",
+        tools=[publish_report],
+        extensions=[queue],
+    )
+
+    outcome = (
+        await library.aexecute_intents(
+            [
+                ToolIntent(
+                    id="call_1",
+                    name="publish_report",
+                    arguments={"report_id": "rpt_42"},
+                )
+            ]
+        )
+    )[0]
+
+    assert outcome.status == "dispatched"
+    assert len(queue.requests) == 1

@@ -1907,7 +1907,7 @@ class TestToolLibrary:
         """Test async ToolLibrary detached execution."""
 
         async def async_tool(x: int) -> int:
-            """Spawn async tool."""
+            """Run an async tool in detached mode."""
             return x * 2
 
         async_tool.tool_config = {"detached": True}
@@ -2059,7 +2059,7 @@ class TestToolLibrary:
         """Test ToolLibrary detached execution in sync mode."""
 
         def sync_tool(x: int) -> int:
-            """Spawn sync tool."""
+            """Run a sync tool in detached mode."""
             return x * 4
 
         sync_tool.tool_config = {"detached": True}

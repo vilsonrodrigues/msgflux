@@ -40,12 +40,30 @@ def _normalize_feedback(
     return FeedbackSpec.coerce(feedback)
 
 
+def _normalize_dispatch(
+    dispatch: Optional[str],
+    *,
+    background: Optional[bool],
+    allow_background: Optional[bool],
+    detached: Optional[bool],
+) -> str | None:
+    if dispatch is not None and (not isinstance(dispatch, str) or not dispatch.strip()):
+        raise ValueError("`dispatch` must be a non-empty string or None")
+    if dispatch is not None and (background or allow_background or detached):
+        raise ValueError(
+            "`dispatch` cannot be combined with `background=True`, "
+            "`allow_background=True`, or `detached=True`."
+        )
+    return dispatch
+
+
 def tool_config(
     *,
     description: Optional[str] = None,
     display_name: Optional[str] = None,
     usage_guidance: Optional[str] = None,
     feedback: Optional[Union[str, FeedbackSpec]] = None,
+    dispatch: Optional[str] = None,
     return_direct: Optional[bool] = False,
     call_as_response: Optional[bool] = False,
     detached: Optional[bool] = False,
@@ -92,6 +110,9 @@ def tool_config(
             an application-defined mode or FeedbackSpec for a mode with options.
             It cannot be combined with the legacy return_direct, handoff, or
             call_as_response aliases.
+        dispatch:
+            Optional registered dispatch name. It cannot be combined with the
+            background, allow_background, or detached convenience options.
         call_as_response:
             If True, returns the tool call as its result. This property requires
             `return_direct = True` and will automatically change it to True if it
@@ -204,6 +225,13 @@ def tool_config(
             call_as_response=call_as_response,
         )
 
+        normalized_dispatch = _normalize_dispatch(
+            dispatch,
+            background=background,
+            allow_background=allow_background,
+            detached=detached,
+        )
+
         if call_as_response is True and _return_direct is False:
             _return_direct = True
 
@@ -249,6 +277,7 @@ def tool_config(
             "tool_config": dotdict(
                 {
                     "description": description,
+                    "dispatch": normalized_dispatch,
                     "detached": detached,
                     "background": background,
                     "allow_background": allow_background,

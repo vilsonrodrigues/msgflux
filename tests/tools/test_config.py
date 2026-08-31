@@ -499,3 +499,18 @@ class TestToolConfigEdgeCases:
         args, kwargs = sample(1, 2, 3, a=4, b=5)
         assert args == (1, 2, 3)
         assert kwargs == {"a": 4, "b": 5}
+
+    def test_custom_dispatch_is_preserved(self):
+        @tool_config(dispatch="queue")
+        def sample() -> str:
+            return "ok"
+
+        assert sample.tool_config.dispatch == "queue"
+
+    @pytest.mark.parametrize("option", ["background", "allow_background", "detached"])
+    def test_custom_dispatch_rejects_convenience_dispatch_options(self, option):
+        with pytest.raises(ValueError, match="cannot be combined"):
+
+            @tool_config(dispatch="queue", **{option: True})
+            def sample() -> str:
+                return "ok"

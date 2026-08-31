@@ -37,12 +37,17 @@ from msgflux.nn.hooks.events import AfterTool, BeforeTool, BeforeToolDispatch
 from msgflux.nn.modules.container import ModuleDict
 from msgflux.nn.modules.module import Module
 from msgflux.nn.modules.tool_v2 import (
-    ToolDefinition as RuntimeToolDefinition,
-)
-from msgflux.nn.modules.tool_v2 import (
+    DispatchRequest,
     ToolDefinitionCompiler,
     ToolExecutionPlan,
+    ToolExtension,
+    ToolExtensionHandle,
+    ToolExtensionRegistry,
     ToolRef,
+    ToolRuntimeContext,
+)
+from msgflux.nn.modules.tool_v2 import (
+    ToolDefinition as RuntimeToolDefinition,
 )
 from msgflux.protocols.mcp import (
     convert_mcp_schema_to_tool_schema,
@@ -543,6 +548,42 @@ def _metadata_from_tool(tool: Tool) -> ToolMetadata:
     )
 
 
+class _ToolBackgroundScheduler:
+    """Adapt the durable task dispatcher to the canonical dispatch contract."""
+
+    def __init__(self, library: "ToolLibrary") -> None:
+        self._library_ref = weakref.ref(library)
+
+    def dispatch(self, request: DispatchRequest) -> ToolOutcome:
+        library = self._library_ref()
+        if library is None:
+            raise RuntimeError("The ToolLibrary is no longer available")
+        plan = request.plan
+        call = library.get_background_dispatcher().dispatch(
+            tool=plan.definition.executor,
+            tool_id=plan.intent.id,
+            tool_name=plan.intent.name,
+            call_params=plan.call_arguments,
+            visible_params=plan.visible_arguments,
+            config=library._plan_config(plan),
+        )
+        if call.error is not None:
+            return library._failed_intent(
+                plan.intent,
+                status="execution_failed",
+                code="tool_dispatch_failed",
+                message=call.error,
+                feedback=plan.feedback,
+                arguments=plan.visible_arguments,
+            )
+        return library._dispatched_intent(
+            plan.intent,
+            call.result,
+            feedback=plan.feedback,
+            arguments=plan.visible_arguments,
+        )
+
+
 class ToolLibrary(Module, metaclass=AutoParams):
     """ToolLibrary is a Module type that manage tool calls over the tool library."""
 
@@ -554,7 +595,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
         tools: List[Callable],
         mcp_servers: Optional[List[Dict[str, Any]]] = None,
         task_store: Any | None = None,
-        extensions: Optional[List[ToolLibraryExtension]] = None,
+        extensions: Optional[List[ToolLibraryExtension | ToolExtension]] = None,
     ):
         """Initialize the ToolLibrary.
 
@@ -587,6 +628,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
         self._background_dispatcher: Optional[BackgroundTaskDispatcher] = None
         self._lifecycle_owner_ref: Optional[weakref.ReferenceType[Module]] = None
         self.extensions = ModuleDict()
+        self.runtime_extensions = ToolExtensionRegistry(install_defaults=True)
         self._extension_hook_handles: dict[str, list[Any]] = {}
         self._extension_tool_names: dict[str, tuple[str, ...]] = {}
         self.register_extension("background_tasks", BackgroundTasksExtension())
@@ -619,16 +661,26 @@ class ToolLibrary(Module, metaclass=AutoParams):
     def register_extension(  # noqa: C901
         self,
         name: str,
-        extension: ToolLibraryExtension,
-    ) -> ToolLibraryExtensionHandle:
+        extension: ToolLibraryExtension | ToolExtension,
+    ) -> ToolLibraryExtensionHandle | ToolExtensionHandle:
         """Install a named library extension and return its ownership handle."""
         if not isinstance(name, str) or not name.strip():
             raise ValueError("`name` must be a non-empty string")
+        if isinstance(extension, ToolExtension):
+            if name != extension.name:
+                raise ValueError(
+                    "Runtime extension registration name must match "
+                    f"`{extension.name}`."
+                )
+            if name in self.extensions or self.runtime_extensions.has(name):
+                raise ValueError(f"The extension name `{name}` is already registered")
+            return self.runtime_extensions.register(extension)
         if not isinstance(extension, ToolLibraryExtension):
             raise TypeError(
-                f"`extension` must be a ToolLibraryExtension, given `{type(extension)}`"
+                "`extension` must be a ToolLibraryExtension or ToolExtension, "
+                f"given `{type(extension)}`"
             )
-        if name in self.extensions:
+        if name in self.extensions or self.runtime_extensions.has(name):
             raise ValueError(f"The extension name `{name}` is already registered")
 
         extension_tools = tuple(extension.tools())
@@ -671,9 +723,12 @@ class ToolLibrary(Module, metaclass=AutoParams):
         return ToolLibraryExtensionHandle(self, name)
 
     def has_extension(self, name: str) -> bool:
-        return name in self.extensions
+        return name in self.extensions or self.runtime_extensions.has(name)
 
     def remove_extension(self, name: str) -> None:
+        if self.runtime_extensions.has(name):
+            self.runtime_extensions.remove(name)
+            return
         if name not in self.extensions:
             return
         extension = self.extensions[name]
@@ -691,6 +746,9 @@ class ToolLibrary(Module, metaclass=AutoParams):
             extension._unbind_library()
 
     async def aremove_extension(self, name: str) -> None:
+        if self.runtime_extensions.has(name):
+            await self.runtime_extensions.aremove(name)
+            return
         if name not in self.extensions:
             return
         extension = self.extensions[name]
@@ -1384,6 +1442,30 @@ class ToolLibrary(Module, metaclass=AutoParams):
     def _plan_config(plan: ToolExecutionPlan) -> Mapping[str, Any]:
         return getattr(plan.definition.executor, "tool_config", {})
 
+    def _tool_runtime_context(
+        self,
+        *,
+        message: Any,
+        messages: Any,
+        vars: Mapping[str, Any],
+        sync_dispatch: bool,
+    ) -> ToolRuntimeContext:
+        execution = get_execution_context()
+        return ToolRuntimeContext(
+            values={
+                "message": message,
+                "messages": messages,
+                "vars": vars,
+                "handle": self.get_handle(),
+                "abort_signal": execution.get("abort_signal"),
+                "task_store": execution.get("task_store"),
+                "agent_inbox": execution.get("agent_inbox"),
+                "activity_recorder": execution.get("task_activity_recorder"),
+                "background_dispatcher": _ToolBackgroundScheduler(self),
+                "sync_dispatch": sync_dispatch,
+            }
+        )
+
     @staticmethod
     def _emit_tool_blocked(event: BeforeTool | BeforeToolDispatch) -> None:
         with event_source(event.tool_name, "tool"):
@@ -1397,8 +1479,8 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 },
             )
 
-    @staticmethod
     def _validate_before_dispatch_event(
+        self,
         event: Any,
         initial_event: BeforeToolDispatch,
     ) -> BeforeToolDispatch:
@@ -1418,12 +1500,12 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 "before_dispatch handlers may only replace `dispatch_mode` or "
                 f"`block`; changed protected fields: {formatted}"
             )
-        if event.dispatch_mode not in {
-            "foreground",
-            "background",
-            "detached",
-        }:
-            raise ValueError(f"Unsupported tool dispatch mode: `{event.dispatch_mode}`")
+        try:
+            self.runtime_extensions.get_dispatch(event.dispatch_mode)
+        except ValueError as exc:
+            raise ValueError(
+                f"Unsupported tool dispatch mode: `{event.dispatch_mode}`"
+            ) from exc
         if event.dispatch_mode != initial_event.dispatch_mode and not (
             initial_event.dispatch_mode in {"background", "detached"}
             and event.dispatch_mode == "foreground"
@@ -2183,6 +2265,7 @@ class ToolLibrary(Module, metaclass=AutoParams):
         self,
         intent: ToolIntent,
         plan: ToolExecutionPlan,
+        context: ToolRuntimeContext,
     ) -> ToolOutcome | Callable[[], Any]:
         feedback = plan.feedback
         arguments = plan.visible_arguments
@@ -2193,50 +2276,18 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 feedback=feedback,
                 arguments=arguments,
             )
-        if plan.dispatch.name == "detached":
-            F.spawn(plan.definition.executor, **plan.call_arguments)
-            return self._dispatched_intent(
-                intent,
-                f"The `{intent.name}` tool was dispatched. "
-                "This tool will not generate a return.",
-                feedback=feedback,
-                arguments=arguments,
-            )
-        if plan.dispatch.name == "background":
-            call = self.get_background_dispatcher().dispatch(
-                tool=plan.definition.executor,
-                tool_id=intent.id,
-                tool_name=intent.name,
-                call_params=plan.call_arguments,
-                visible_params=arguments,
-                config=self._plan_config(plan),
-            )
-            if call.error is not None:
-                return self._failed_intent(
-                    intent,
-                    status="execution_failed",
-                    code="tool_dispatch_failed",
-                    message=call.error,
-                    feedback=feedback,
-                    arguments=arguments,
-                )
-            return self._dispatched_intent(
-                intent,
-                call.result,
-                feedback=feedback,
-                arguments=arguments,
-            )
         return partial(
-            self._execute_prepared_tool,
-            plan.definition.executor,
-            plan.call_arguments,
-            arguments,
+            F.wait_for,
+            self._adispatch_runtime_plan,
+            plan,
+            context,
         )
 
     async def _adispatch_intent_plan(
         self,
         intent: ToolIntent,
         plan: ToolExecutionPlan,
+        context: ToolRuntimeContext,
     ) -> ToolOutcome | Callable[[], Any]:
         feedback = plan.feedback
         arguments = plan.visible_arguments
@@ -2247,44 +2298,49 @@ class ToolLibrary(Module, metaclass=AutoParams):
                 feedback=feedback,
                 arguments=arguments,
             )
-        if plan.dispatch.name == "detached":
-            await F.aspawn(plan.definition.executor, **plan.call_arguments)
-            return self._dispatched_intent(
-                intent,
-                f"The `{intent.name}` tool was dispatched. "
-                "This tool will not generate a return.",
-                feedback=feedback,
-                arguments=arguments,
+        return partial(self._adispatch_runtime_plan, plan, context)
+
+    async def _adispatch_runtime_plan(
+        self,
+        plan: ToolExecutionPlan,
+        context: ToolRuntimeContext,
+    ) -> ToolOutcome:
+        async def execute(
+            selected_plan: ToolExecutionPlan | None = None,
+        ) -> ToolOutcome:
+            current = selected_plan or plan
+            result = await self._aexecute_prepared_tool(
+                current.definition.executor,
+                current.call_arguments,
+                current.visible_arguments,
             )
-        if plan.dispatch.name == "background":
-            call = self.get_background_dispatcher().dispatch(
-                tool=plan.definition.executor,
-                tool_id=intent.id,
-                tool_name=intent.name,
-                call_params=plan.call_arguments,
-                visible_params=arguments,
-                config=self._plan_config(plan),
+            return self._completed_intent(
+                current.intent,
+                result,
+                feedback=current.feedback,
+                arguments=current.visible_arguments,
             )
-            if call.error is not None:
-                return self._failed_intent(
-                    intent,
-                    status="execution_failed",
-                    code="tool_dispatch_failed",
-                    message=call.error,
-                    feedback=feedback,
-                    arguments=arguments,
-                )
-            return self._dispatched_intent(
-                intent,
-                call.result,
-                feedback=feedback,
-                arguments=arguments,
+
+        outcome = await self.runtime_extensions.dispatch(
+            DispatchRequest(plan=plan, context=context, execute=execute)
+        )
+        result = outcome.result
+        if plan.dispatch.name == "detached" and result is None:
+            result = (
+                f"The `{plan.intent.name}` tool was dispatched. "
+                "This tool will not generate a return."
             )
-        return partial(
-            self._aexecute_prepared_tool,
-            plan.definition.executor,
-            plan.call_arguments,
-            arguments,
+        return ToolOutcome(
+            intent_id=outcome.intent_id,
+            tool_name=outcome.tool_name,
+            status=outcome.status,
+            result=result,
+            error=outcome.error,
+            feedback=plan.feedback,
+            metadata={
+                **dict(outcome.metadata),
+                **self._outcome_metadata(plan.visible_arguments),
+            },
         )
 
     def _execute_intent_batch(
@@ -2298,6 +2354,12 @@ class ToolLibrary(Module, metaclass=AutoParams):
         messages = messages if messages is not None else ChatMessages()
         vars = vars if vars is not None else {}
         activity_recorder = get_execution_context().get("task_activity_recorder")
+        runtime_context = self._tool_runtime_context(
+            message=message,
+            messages=messages,
+            vars=vars,
+            sync_dispatch=True,
+        )
         outcomes: List[ToolOutcome | None] = [None] * len(intents)
         prepared_calls = []
         prepared_metadata = []
@@ -2313,7 +2375,11 @@ class ToolLibrary(Module, metaclass=AutoParams):
             if isinstance(prepared, ToolOutcome):
                 outcomes[index] = prepared
                 continue
-            dispatched = self._dispatch_intent_plan(intent, prepared)
+            dispatched = self._dispatch_intent_plan(
+                intent,
+                prepared,
+                runtime_context,
+            )
             if isinstance(dispatched, ToolOutcome):
                 outcomes[index] = dispatched
                 continue
@@ -2323,7 +2389,9 @@ class ToolLibrary(Module, metaclass=AutoParams):
         if prepared_calls:
             results = F.scatter_gather(prepared_calls)
             for (index, intent, plan), result in zip(prepared_metadata, results):
-                if isinstance(result, TaskError):
+                if isinstance(result, ToolOutcome):
+                    outcomes[index] = result
+                elif isinstance(result, TaskError):
                     if isinstance(
                         result.exception,
                         (AbortRequestedError, TaskInterruptRequestedError),
@@ -2357,6 +2425,12 @@ class ToolLibrary(Module, metaclass=AutoParams):
         messages = messages if messages is not None else ChatMessages()
         vars = vars if vars is not None else {}
         activity_recorder = get_execution_context().get("task_activity_recorder")
+        runtime_context = self._tool_runtime_context(
+            message=message,
+            messages=messages,
+            vars=vars,
+            sync_dispatch=False,
+        )
         outcomes: List[ToolOutcome | None] = [None] * len(intents)
         prepared_calls = []
         prepared_metadata = []
@@ -2372,7 +2446,11 @@ class ToolLibrary(Module, metaclass=AutoParams):
             if isinstance(prepared, ToolOutcome):
                 outcomes[index] = prepared
                 continue
-            dispatched = await self._adispatch_intent_plan(intent, prepared)
+            dispatched = await self._adispatch_intent_plan(
+                intent,
+                prepared,
+                runtime_context,
+            )
             if isinstance(dispatched, ToolOutcome):
                 outcomes[index] = dispatched
                 continue
@@ -2382,7 +2460,9 @@ class ToolLibrary(Module, metaclass=AutoParams):
         if prepared_calls:
             results = await F.ascatter_gather(prepared_calls)
             for (index, intent, plan), result in zip(prepared_metadata, results):
-                if isinstance(result, TaskError):
+                if isinstance(result, ToolOutcome):
+                    outcomes[index] = result
+                elif isinstance(result, TaskError):
                     if isinstance(
                         result.exception,
                         (AbortRequestedError, TaskInterruptRequestedError),

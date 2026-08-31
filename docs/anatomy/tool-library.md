@@ -129,9 +129,16 @@ reserved call arguments before dispatch.
 ## Extensions And Core Invariants
 
 `ToolLibraryExtension` owns optional packages of tools, hooks, setup, and
-cleanup. Library lifecycle hooks run before hooks inherited from an owning
-Agent. The extension mechanism powers deferred tool search, background task
-controls, and MCP server integration.
+cleanup. `ToolDispatch` owns one open dispatch name in the runtime registry.
+Library lifecycle hooks run before hooks inherited from an owning Agent. The
+extension mechanism powers deferred tool search, background task controls, MCP
+server integration, and application-defined dispatch modes.
+
+Foreground, background, and detached execution are default `ToolDispatch`
+extensions rather than branches selected by the core. A tool may select another
+registered mode through `tool_config(dispatch="name")`. Batch execution remains
+concurrent because every selected dispatcher contributes an async operation to
+the same gather boundary.
 
 The core continues to own deterministic registration and bucket routing,
 transport restoration, runtime injection, abort handling, telemetry, and plan

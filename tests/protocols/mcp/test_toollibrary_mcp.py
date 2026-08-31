@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from msgflux.chat_messages import ChatMessages
+from msgflux.nn.functional import wait_for as real_wait_for
 from msgflux.protocols.mcp.types import MCPTool
 
 
@@ -267,7 +268,7 @@ class TestToolLibraryMCPIntegration:
 
         mock_tools = [MCPTool(name="read_file", description="Read", inputSchema={})]
         mock_filter_tools.return_value = mock_tools
-        mock_F.wait_for.side_effect = [None, mock_tools]
+        mock_F.wait_for.side_effect = real_wait_for
         mock_F.scatter_gather.side_effect = lambda prepared: [
             call() for call in prepared
         ]

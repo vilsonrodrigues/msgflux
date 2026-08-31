@@ -656,6 +656,22 @@ Use cases:
     # Returns the tool call parameters without executing the function
     ```
 
+## dispatch
+
+Select a dispatch mode registered by a `ToolDispatch` extension:
+
+```python
+@mf.tool_config(dispatch="queue")
+def generate_report(report_id: str) -> str:
+    """Generate a report through an external worker."""
+    ...
+```
+
+The ToolLibrary fails the call if `queue` is not registered. `dispatch` cannot
+be combined with `background`, `allow_background`, or `detached`. See
+[ToolLibrary Extensions](tool-library-extensions.md#custom-dispatch-modes) for a
+complete dispatcher.
+
 ## detached
 
 Dispatch a tool without waiting for a result. The model receives confirmation
