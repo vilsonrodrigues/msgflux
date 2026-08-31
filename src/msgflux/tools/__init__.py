@@ -4,9 +4,13 @@ This module provides tool-related functionality including
 ToolFlowControl for managing tool execution flow.
 """
 
-from importlib import import_module
-
 from msgflux.generation.control_flow import ToolFlowControl
+from msgflux.tools.catalog import (
+    ToolCatalogEntry,
+    ToolCatalogView,
+    ToolChoice,
+    ToolRef,
+)
 from msgflux.tools.dataclasses import ToolMetadata
 from msgflux.tools.definitions import ToolCatalog, ToolSpec
 from msgflux.tools.guidance import BUILTIN_TOOL_USAGE_GUIDANCE, apply_tool_guidance
@@ -41,11 +45,3 @@ __all__ = [
     "ToolMetadata",
     "apply_tool_guidance",
 ]
-
-
-def __getattr__(name: str):
-    if name in {"ToolCatalogEntry", "ToolCatalogView", "ToolChoice", "ToolRef"}:
-        value = getattr(import_module("msgflux.nn.modules.tool_runtime"), name)
-        globals()[name] = value
-        return value
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

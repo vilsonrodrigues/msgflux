@@ -52,8 +52,8 @@ from msgflux.models.types import (
     TextToSpeechModel,
 )
 from msgflux.models.usage import UsageCodec, default_usage_codec
-from msgflux.nn.modules.tool_runtime import ToolCatalogEntry, ToolCatalogView
 from msgflux.runtime.context import get_execution_context
+from msgflux.tools.catalog import ToolCatalogEntry, ToolCatalogView
 from msgflux.tools.definitions import ToolCatalog
 from msgflux.utils.chat import ChatBlock, response_format_from_msgspec_struct
 from msgflux.utils.console import cprint

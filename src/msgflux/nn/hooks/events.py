@@ -8,8 +8,8 @@ from typing import TYPE_CHECKING, Any, Literal, Mapping
 from msgflux.runtime.context import ExecutionScope
 
 if TYPE_CHECKING:
-    from msgflux.nn.modules.tool_runtime import ToolCatalogView
     from msgflux.runtime.agent_inbox import AgentNotification
+    from msgflux.tools.catalog import ToolCatalogView
     from msgflux.tools.runtime import ToolIntent, ToolOutcome
 
 __all__ = [

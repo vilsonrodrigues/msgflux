@@ -14,7 +14,7 @@ class TestToolLibraryMCPIntegration:
 
     @patch("msgflux.nn.extensions.tool_library.MCPClient")
     @patch("msgflux.nn.extensions.tool_library.filter_tools")
-    @patch("msgflux.nn.modules.tool.F")
+    @patch("msgflux.nn.modules.tool.library.F")
     def test_initialize_stdio_mcp_clients(
         self, mock_F, mock_filter_tools, mock_mcp_client
     ):
@@ -62,7 +62,7 @@ class TestToolLibraryMCPIntegration:
 
     @patch("msgflux.nn.extensions.tool_library.MCPClient")
     @patch("msgflux.nn.extensions.tool_library.filter_tools")
-    @patch("msgflux.nn.modules.tool.F")
+    @patch("msgflux.nn.modules.tool.library.F")
     def test_initialize_http_mcp_clients(
         self, mock_F, mock_filter_tools, mock_mcp_client
     ):
@@ -97,7 +97,7 @@ class TestToolLibraryMCPIntegration:
 
     @patch("msgflux.nn.extensions.tool_library.MCPClient")
     @patch("msgflux.nn.extensions.tool_library.filter_tools")
-    @patch("msgflux.nn.modules.tool.F")
+    @patch("msgflux.nn.modules.tool.library.F")
     def test_filter_mcp_tools(self, mock_F, mock_filter_tools, mock_mcp_client):
         """Test filtering MCP tools with include_tools."""
         from msgflux.nn.modules.tool import ToolLibrary
@@ -154,7 +154,7 @@ class TestToolLibraryMCPIntegration:
 
     @patch("msgflux.nn.extensions.tool_library.MCPClient")
     @patch("msgflux.nn.extensions.tool_library.filter_tools")
-    @patch("msgflux.nn.modules.tool.F")
+    @patch("msgflux.nn.modules.tool.library.F")
     def test_tool_config_storage(self, mock_F, mock_filter_tools, mock_mcp_client):
         """Test that tool_config is stored correctly."""
         from msgflux.nn.modules.tool import ToolLibrary
@@ -187,7 +187,7 @@ class TestToolLibraryMCPIntegration:
 
     @patch("msgflux.nn.extensions.tool_library.MCPClient")
     @patch("msgflux.nn.extensions.tool_library.filter_tools")
-    @patch("msgflux.nn.modules.tool.F")
+    @patch("msgflux.nn.modules.tool.library.F")
     def test_get_mcp_tool_names(self, mock_F, mock_filter_tools, mock_mcp_client):
         """Test getting MCP tool names with namespace."""
         from msgflux.nn.modules.tool import ToolLibrary
@@ -217,8 +217,8 @@ class TestToolLibraryMCPIntegration:
 
     @patch("msgflux.nn.extensions.tool_library.MCPClient")
     @patch("msgflux.nn.extensions.tool_library.filter_tools")
-    @patch("msgflux.nn.modules.tool.F")
-    @patch("msgflux.nn.modules.tool.convert_mcp_schema_to_tool_schema")
+    @patch("msgflux.nn.modules.tool.library.F")
+    @patch("msgflux.nn.modules.tool.implementations.convert_mcp_schema_to_tool_schema")
     def test_get_tool_json_schemas_includes_mcp(
         self, mock_convert_schema, mock_F, mock_filter_tools, mock_mcp_client
     ):
@@ -253,8 +253,8 @@ class TestToolLibraryMCPIntegration:
 
     @patch("msgflux.nn.extensions.tool_library.MCPClient")
     @patch("msgflux.nn.extensions.tool_library.filter_tools")
-    @patch("msgflux.nn.modules.tool.F")
-    @patch("msgflux.nn.modules.tool.convert_mcp_schema_to_tool_schema")
+    @patch("msgflux.nn.modules.tool.library.F")
+    @patch("msgflux.nn.modules.tool.implementations.convert_mcp_schema_to_tool_schema")
     def test_deferred_mcp_tools_are_hidden_until_loaded(
         self, mock_convert_schema, mock_F, mock_filter_tools, mock_mcp_client
     ):

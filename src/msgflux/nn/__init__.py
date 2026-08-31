@@ -83,7 +83,7 @@ def __getattr__(name: str):
     elif name == "Parameter":
         value = getattr(import_module("msgflux.nn.parameter"), name)
     elif name == "ContextBinding":
-        value = getattr(import_module("msgflux.nn.modules.tool_runtime"), name)
+        value = getattr(import_module("msgflux.tools.specs"), name)
     elif name in _MODULE_EXPORTS:
         value = getattr(import_module("msgflux.nn.modules"), name)
     else:

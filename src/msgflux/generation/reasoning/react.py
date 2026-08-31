@@ -15,7 +15,7 @@ from msgflux.utils.msgspec import restore_transport_value
 
 if TYPE_CHECKING:
     from msgflux.nn.modules.tool import ToolResponses
-    from msgflux.nn.modules.tool_runtime import ToolCatalogView
+    from msgflux.tools.catalog import ToolCatalogView
 
 REACT_SYSTEM_MESSAGE = """
 You are an Agent. In each episode, you will be given the task as input.

@@ -79,11 +79,6 @@ from msgflux.nn.modules.container import ModuleDict
 from msgflux.nn.modules.generator import Generator
 from msgflux.nn.modules.module import Module
 from msgflux.nn.modules.tool import ToolLibrary, ToolResponses
-from msgflux.nn.modules.tool_runtime import (
-    ToolCatalogEntry,
-    ToolCatalogView,
-    ToolChoice,
-)
 from msgflux.nn.parameter import Parameter
 from msgflux.runtime.abort import AbortSignal, await_with_abort
 from msgflux.runtime.agent_inbox import (
@@ -101,6 +96,7 @@ from msgflux.runtime.context import (
 from msgflux.runtime.event_hub import ThreadWatcher, get_event_hub
 from msgflux.runtime.events import EventType, emit_event
 from msgflux.runtime.skills import SkillsConfig
+from msgflux.tools.catalog import ToolCatalogEntry, ToolCatalogView, ToolChoice
 from msgflux.tools.runtime import ToolIntent, ToolOutcome
 from msgflux.utils.chat import ChatBlock, response_format_from_msgspec_struct
 from msgflux.utils.common import has_format_placeholder, is_jinja_template

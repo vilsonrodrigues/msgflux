@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 import msgspec
 
 if TYPE_CHECKING:
-    from msgflux.nn.modules.tool_runtime import ToolCatalogView
+    from msgflux.tools.catalog import ToolCatalogView
 
 
 class ChatCompletionModel:

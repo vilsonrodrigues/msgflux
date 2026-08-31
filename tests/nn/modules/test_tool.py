@@ -2339,7 +2339,7 @@ class TestMCPTool:
         library = ToolLibrary(name="lib", tools=[CatalogBucket(), remote_tool])
 
         with patch(
-            "msgflux.nn.modules.tool.extract_tool_result_text",
+            "msgflux.nn.modules.tool.implementations.extract_tool_result_text",
             return_value="remote match",
         ):
             response = library(
@@ -2419,8 +2419,12 @@ class TestMCPTool:
     def test_mcp_tool_forward_success(self):
         """Test MCPTool forward execution with success."""
         with (
-            patch("msgflux.nn.modules.tool.F.wait_for") as mock_wait_for,
-            patch("msgflux.nn.modules.tool.extract_tool_result_text") as mock_extract,
+            patch(
+                "msgflux.nn.modules.tool.implementations.F.wait_for"
+            ) as mock_wait_for,
+            patch(
+                "msgflux.nn.modules.tool.implementations.extract_tool_result_text"
+            ) as mock_extract,
         ):
             mock_client = Mock()
             mock_info = Mock()
@@ -2447,8 +2451,12 @@ class TestMCPTool:
     def test_mcp_tool_forward_error(self):
         """Test MCPTool forward execution with error."""
         with (
-            patch("msgflux.nn.modules.tool.F.wait_for") as mock_wait_for,
-            patch("msgflux.nn.modules.tool.extract_tool_result_text") as mock_extract,
+            patch(
+                "msgflux.nn.modules.tool.implementations.F.wait_for"
+            ) as mock_wait_for,
+            patch(
+                "msgflux.nn.modules.tool.implementations.extract_tool_result_text"
+            ) as mock_extract,
         ):
             mock_client = Mock()
             mock_info = Mock()
@@ -2474,7 +2482,9 @@ class TestMCPTool:
     @pytest.mark.asyncio
     async def test_mcp_tool_aforward_success(self):
         """Test MCPTool aforward execution with success."""
-        with patch("msgflux.nn.modules.tool.extract_tool_result_text") as mock_extract:
+        with patch(
+            "msgflux.nn.modules.tool.implementations.extract_tool_result_text"
+        ) as mock_extract:
             mock_client = Mock()
             mock_info = Mock()
             mock_info.description = "Test tool"
@@ -2499,7 +2509,9 @@ class TestMCPTool:
     @pytest.mark.asyncio
     async def test_mcp_tool_aforward_error(self):
         """Test MCPTool aforward execution with error."""
-        with patch("msgflux.nn.modules.tool.extract_tool_result_text") as mock_extract:
+        with patch(
+            "msgflux.nn.modules.tool.implementations.extract_tool_result_text"
+        ) as mock_extract:
             mock_client = Mock()
             mock_info = Mock()
             mock_info.description = "Test tool"

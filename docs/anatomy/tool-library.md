@@ -11,6 +11,29 @@ It sits between orchestration and implementation:
 This separation is important because schema concerns and execution concerns
 meet here.
 
+## Internal Layout
+
+The implementation is split by ownership instead of keeping registration,
+provider contracts, dispatch, and execution in one module:
+
+| Module | Responsibility |
+| --- | --- |
+| `msgflux.tools.catalog` | Execution-free catalog entries, views, choices, references, and native bindings |
+| `msgflux.tools.specs` | Provider-neutral dispatch, context-binding, and loading declarations |
+| `nn.modules.tool.definitions` | Compiled executable definitions and the declaration compiler |
+| `nn.modules.tool.registry` | Stable definition ownership and catalog projection |
+| `nn.modules.tool.execution` | Plans and policy payloads passed through the runtime |
+| `nn.modules.tool.extensions` | Dispatch strategies, context providers, policies, and their registry |
+| `nn.modules.tool.implementations` | Local Python and MCP execution adapters |
+| `nn.modules.tool.execution_runtime` | Preparation, hooks, dispatch, telemetry, and outcome normalization |
+| `nn.modules.tool.library` | Public facade, registration, buckets, catalog state, and lifecycle ownership |
+
+`msgflux.nn.modules.tool` preserves the public imports for `Tool`, `LocalTool`,
+`MCPTool`, and `ToolLibrary`. The former `nn.modules.tool_runtime` path remains a
+compatibility facade, but Models import catalog contracts directly from
+`msgflux.tools.catalog`. This keeps provider imports independent from the neural
+module and executor runtime.
+
 ## What It Owns
 
 `ToolLibrary` owns these responsibilities:

@@ -9,7 +9,7 @@ from msgflux.models.response import ModelResponse, ModelStreamResponse
 from msgflux.utils.time import utc_now
 
 if TYPE_CHECKING:
-    from msgflux.nn.modules.tool_runtime import ToolCatalogView
+    from msgflux.tools.catalog import ToolCatalogView
 
 
 class ModelGateway:

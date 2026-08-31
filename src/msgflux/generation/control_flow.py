@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Optional, Tuple
 
 if TYPE_CHECKING:
     from msgflux.nn.modules.tool import ToolResponses
-    from msgflux.nn.modules.tool_runtime import ToolCatalogView
+    from msgflux.tools.catalog import ToolCatalogView
 
 
 @dataclass
