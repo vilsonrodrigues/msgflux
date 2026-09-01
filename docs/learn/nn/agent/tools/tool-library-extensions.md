@@ -268,6 +268,64 @@ A dispatcher that still wants local execution calls
 The request also carries `ToolRuntimeContext`, including the current abort
 signal, handle, messages, vars, task store, inbox, and activity recorder.
 
+## Registration Lifecycle
+
+An extension can validate compiled definitions and react to library membership
+without reading a callable's mutable `tool_config`:
+
+```python
+from msgflux.nn import ToolLibrary, ToolLibraryExtension
+
+
+events = []
+
+
+def audit(event, name):
+    events.append((event, name))
+
+
+class SafeCatalog(ToolLibraryExtension):
+    def __init__(self):
+        super().__init__("safe_catalog")
+
+    def validate_tool(self, library, definition):
+        if definition.name == "delete_home":
+            raise ValueError("delete_home is not allowed")
+
+    def on_tool_added(self, library, definition):
+        audit("added", definition.name)
+
+    def on_tool_removed(self, library, definition):
+        audit("removed", definition.name)
+
+    def on_clear(self, library):
+        audit("cleared", library.name)
+
+
+def lookup(query: str) -> str:
+    """Look up one catalog value."""
+    return query
+
+
+library = ToolLibrary("catalog", [], extensions=[SafeCatalog()])
+library.add(lookup)
+library.remove("lookup")
+library.clear()
+
+assert events == [
+    ("added", "lookup"),
+    ("removed", "lookup"),
+    ("cleared", "catalog_tool_library"),
+]
+```
+
+`validate_tool` runs sequentially in extension registration order before the
+registry or executor containers change. The other callbacks run after the
+corresponding mutation succeeds. They receive the canonical `ToolDefinition`,
+so policy, loading, schema, and presentation values are the same snapshots used
+by execution. These callbacks are synchronous registration boundaries; use
+async execution policies and hooks for network work on the tool-call path.
+
 ## Register And Remove
 
 Registration returns an ownership handle:
@@ -292,7 +350,8 @@ runtime removal as an explicit administrative operation.
 - `ToolSearchExtension` installs the deferred-tool search bucket when the first
   `defer_loading=True` tool is registered.
 - `BackgroundTasksExtension` validates background capabilities and reconciles
-  the task-control tool surface.
+  the task-control tool surface through registration lifecycle callbacks. It
+  also owns the set of controls explicitly disabled by the application.
 - `MCPServersExtension` owns MCP connection, discovery, remote tools, and
   connection cleanup. The existing `mcp_servers=` argument constructs this
   extension for compatibility and convenience.

@@ -232,10 +232,13 @@ reserved call arguments before dispatch.
 ## Extensions And Core Invariants
 
 `ToolLibraryExtension` owns optional packages of tools, hooks, setup, and
-cleanup. `ToolDispatch` owns one open dispatch name in the runtime registry.
-Library lifecycle hooks run before hooks inherited from an owning Agent. The
-extension mechanism powers deferred tool search, background task controls, MCP
-server integration, and application-defined dispatch modes.
+cleanup. It can also validate a canonical definition before registration and
+observe successful add, remove, and clear boundaries. Those callbacks run
+sequentially; the core no longer needs capability-specific branches to maintain
+extension state. `ToolDispatch` owns one open dispatch name in the runtime
+registry. Library lifecycle hooks run before hooks inherited from an owning
+Agent. The extension mechanism powers deferred tool search, background task
+controls, MCP server integration, and application-defined dispatch modes.
 
 Foreground, background, and detached execution are default `ToolDispatch`
 extensions rather than branches selected by the core. A tool may select another
@@ -305,10 +308,10 @@ The `task_status`, `task_wait`, `task_output`, `task_interrupt`,
 `task_activity`, and `task_message` tools are callable objects with
 reserved background tool kinds: the common controls use `"background"`,
 activity uses `"background_activity"`, and messaging uses
-`"background_message"`. `ToolLibrary` asks `ToolBackground` to reconcile the
-surface from currently registered tools. `ToolBackground` derives the common
-controls from background execution and the optional controls from the union of
-declared `background_capabilities`.
+`"background_message"`. `BackgroundTasksExtension` reconciles that surface from
+registration callbacks and owns the disabled-control state. `ToolBackground`
+derives the common controls from background execution and the optional controls
+from the union of declared `background_capabilities`.
 
 ## Tool Buckets
 

@@ -1,10 +1,11 @@
 import asyncio
+from copy import deepcopy
 from dataclasses import replace
 
 import pytest
 
 from msgflux.nn import ToolLibrary
-from msgflux.nn.extensions import ToolLibraryExtension
+from msgflux.nn.extensions import BackgroundTasksExtension, ToolLibraryExtension
 from msgflux.nn.hooks import Hook
 from msgflux.nn.modules.module import Module
 from msgflux.tools.config import tool_config
@@ -115,6 +116,100 @@ def test_background_controls_are_managed_by_builtin_extension():
     library = ToolLibrary("tasks", [long_job])
 
     assert library.has_extension("background_tasks")
+    assert "task_status" in library.get_tool_names()
+
+
+def test_library_extensions_receive_sequential_tool_lifecycle_callbacks():
+    events = []
+
+    class LifecycleExtension(ToolLibraryExtension):
+        def __init__(self):
+            super().__init__("lifecycle")
+
+        def tools(self):
+            def owned() -> str:
+                """Return an extension-owned value."""
+                return "owned"
+
+            return (owned,)
+
+        def validate_tool(self, _library, definition):
+            events.append(("validate", definition.name))
+
+        def on_tool_added(self, _library, definition):
+            events.append(("added", definition.name))
+
+        def on_tool_removed(self, _library, definition):
+            events.append(("removed", definition.name))
+
+        def on_clear(self, _library):
+            events.append(("clear", None))
+
+    def lookup() -> str:
+        """Look up one value."""
+        return "ok"
+
+    library = ToolLibrary("search", [], extensions=[LifecycleExtension()])
+    library.add(lookup)
+    library.remove("lookup")
+    library.add(lookup)
+    library.clear()
+
+    assert events == [
+        ("validate", "owned"),
+        ("added", "owned"),
+        ("validate", "lookup"),
+        ("added", "lookup"),
+        ("removed", "lookup"),
+        ("validate", "lookup"),
+        ("added", "lookup"),
+        ("clear", None),
+    ]
+
+
+def test_extension_validation_prevents_registration_before_state_changes():
+    class RejectDangerousTool(ToolLibraryExtension):
+        def __init__(self):
+            super().__init__("reject_dangerous")
+
+        def validate_tool(self, _library, definition):
+            if definition.name == "dangerous":
+                raise ValueError("Dangerous tool rejected.")
+
+    def dangerous() -> str:
+        """Perform a dangerous action."""
+        return "unsafe"
+
+    library = ToolLibrary("guarded", [], extensions=[RejectDangerousTool()])
+
+    with pytest.raises(ValueError, match="Dangerous tool rejected"):
+        library.add(dangerous)
+
+    assert not library.registry.has("dangerous")
+    assert "dangerous" not in library.library
+
+
+def test_background_extension_owns_disabled_controls_and_restores_on_readd():
+    def long_job() -> str:
+        """Run a background job."""
+        return "done"
+
+    long_job.tool_config = {"background": True}
+    library = ToolLibrary("tasks", [long_job])
+    background = library.extensions["background_tasks"]
+
+    library.remove("task_status")
+
+    assert "task_status" in background.disabled_tool_names
+    assert not hasattr(library, "_disabled_background_task_tool_names")
+    copied = deepcopy(library)
+    assert "task_status" in copied.extensions["background_tasks"].disabled_tool_names
+    copied.clear()
+    assert copied.extensions["background_tasks"].disabled_tool_names == set()
+
+    library.remove_extension("background_tasks")
+    library.register_extension("background_tasks", BackgroundTasksExtension())
+
     assert "task_status" in library.get_tool_names()
 
 

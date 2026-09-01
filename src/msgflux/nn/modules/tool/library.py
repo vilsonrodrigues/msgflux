@@ -53,7 +53,7 @@ from msgflux.runtime.context import get_execution_context
 from msgflux.tasks import InMemoryTaskStore
 from msgflux.tools.definitions import ToolCatalog
 from msgflux.tools.handles import ToolLibraryHandle
-from msgflux.tools.types import ToolBackground, ToolBucket, ToolBucketEntry
+from msgflux.tools.types import ToolBucket, ToolBucketEntry
 
 
 class ToolLibrary(ToolLibraryExecutionMixin, Module, metaclass=AutoParams):
@@ -95,7 +95,6 @@ class ToolLibrary(ToolLibraryExecutionMixin, Module, metaclass=AutoParams):
         self.register_buffer("mcp_clients", {})
         self._task_store = task_store
         self._agent_inbox: Optional[AgentInbox] = None
-        self._disabled_background_task_tool_names: set[str] = set()
         self._handle: Optional[ToolLibraryHandle] = None
         self._background_dispatcher: Optional[BackgroundTaskDispatcher] = None
         self._lifecycle_owner_ref: Optional[weakref.ReferenceType[Module]] = None
@@ -160,6 +159,7 @@ class ToolLibrary(ToolLibraryExecutionMixin, Module, metaclass=AutoParams):
         tool_names: list[str] = []
         hook_handles = []
         extension._bind_library(self)
+        self.extensions[name] = extension
         try:
             for tool in extension_tools:
                 tool_names.append(self.add(tool))
@@ -171,7 +171,6 @@ class ToolLibrary(ToolLibraryExecutionMixin, Module, metaclass=AutoParams):
                     )
                 target = getattr(self, hook.target) if hook.target else self
                 hook_handles.append(hook.register(target))
-            self.extensions[name] = extension
             self._extension_tool_names[name] = tuple(tool_names)
             self._extension_hook_handles[name] = hook_handles
             extension.on_register(self)
@@ -183,13 +182,13 @@ class ToolLibrary(ToolLibraryExecutionMixin, Module, metaclass=AutoParams):
                     self.remove(tool_name)
                 except ValueError:
                     pass
-            if name in self.extensions:
-                del self.extensions[name]
             self._extension_tool_names.pop(name, None)
             self._extension_hook_handles.pop(name, None)
             try:
                 extension.on_remove(self)
             finally:
+                if name in self.extensions:
+                    del self.extensions[name]
                 extension._unbind_library()
             raise
         return ToolLibraryExtensionHandle(self, name)
@@ -253,6 +252,28 @@ class ToolLibrary(ToolLibraryExecutionMixin, Module, metaclass=AutoParams):
         if self._lifecycle_owner_ref is None:
             return None
         return self._lifecycle_owner_ref()
+
+    def _library_extensions(self) -> tuple[ToolLibraryExtension, ...]:
+        return tuple(
+            extension
+            for extension in self.extensions.values()
+            if isinstance(extension, ToolLibraryExtension)
+        )
+
+    def _validate_tool_extensions(
+        self,
+        definition: RuntimeToolDefinition,
+    ) -> None:
+        for extension in self._library_extensions():
+            extension.validate_tool(self, definition)
+
+    def _notify_tool_added(self, definition: RuntimeToolDefinition) -> None:
+        for extension in self._library_extensions():
+            extension.on_tool_added(self, definition)
+
+    def _notify_tool_removed(self, definition: RuntimeToolDefinition) -> None:
+        for extension in self._library_extensions():
+            extension.on_tool_removed(self, definition)
 
     def is_bucket(self, tool_name: str) -> bool:
         """Return whether a registered public tool is a bucket."""
@@ -359,10 +380,7 @@ class ToolLibrary(ToolLibraryExecutionMixin, Module, metaclass=AutoParams):
         """Add a local tool in library."""
         definition = self._compile_tool_definition(tool)
         self._validate_new_tool_name(definition.name)
-        if ToolBackground.is_background_definition(definition):
-            background = self.extensions.get("background_tasks")
-            if isinstance(background, BackgroundTasksExtension):
-                background.validate_source(definition)
+        self._validate_tool_extensions(definition)
 
         # Deferred tools are held by the search bucket. Loading is thread-local.
         if definition.loading.deferred and "tool_search" not in self.library:
@@ -380,6 +398,7 @@ class ToolLibrary(ToolLibraryExecutionMixin, Module, metaclass=AutoParams):
         )
         if bucket_name is not None:
             self._add_to_bucket(bucket_name, definition)
+            self._notify_tool_added(definition)
             return definition.name
 
         capturing_bucket = ToolBucket.find_capturing_bucket(
@@ -394,6 +413,7 @@ class ToolLibrary(ToolLibraryExecutionMixin, Module, metaclass=AutoParams):
 
         # Normal tools become directly callable and visible according to their config.
         self._register_tool(definition)
+        self._notify_tool_added(definition)
         return definition.name
 
     def remove(self, tool_name: str):
@@ -405,24 +425,8 @@ class ToolLibrary(ToolLibraryExecutionMixin, Module, metaclass=AutoParams):
                     "be removed."
                 )
             definition = self.get_tool_definition(tool_name)
-            background = self.extensions.get("background_tasks")
-            is_task_tool = isinstance(
-                background, BackgroundTasksExtension
-            ) and background.is_active_task_tool(
-                library=self, tool_name=tool_name, definition=definition
-            )
-            was_background = not ToolBackground.is_reserved_definition(
-                definition
-            ) and ToolBackground.is_background_definition(definition)
-
             self._remove_registered_tool(tool_name)
-
-            if is_task_tool:
-                self._disabled_background_task_tool_names.add(tool_name)
-                return
-
-            if was_background:
-                self._sync_background_task_tools()
+            self._notify_tool_removed(definition)
             return
 
         bucket_name = ToolBucket.find_capturing_bucket(
@@ -432,7 +436,9 @@ class ToolLibrary(ToolLibraryExecutionMixin, Module, metaclass=AutoParams):
         )
         if bucket_name is None:
             raise ValueError(f"The tool name `{tool_name}` is not in tool library")
+        definition = self.get_tool_definition(tool_name)
         self._remove_from_bucket(bucket_name, tool_name)
+        self._notify_tool_removed(definition)
 
     def _remove_registered_tool(self, tool_name: str) -> None:
         if tool_name in self.library:
@@ -447,9 +453,10 @@ class ToolLibrary(ToolLibraryExecutionMixin, Module, metaclass=AutoParams):
         for mcp_data in self.mcp_clients.values():
             F.wait_for(mcp_data["client"].disconnect)
         self.mcp_clients.clear()
-        self._disabled_background_task_tool_names.clear()
         if self._background_dispatcher is not None:
             self._background_dispatcher.clear()
+        for extension in self._library_extensions():
+            extension.on_clear(self)
 
     def _register_tool(self, definition: RuntimeToolDefinition) -> Tool:
         if not isinstance(definition, RuntimeToolDefinition):
@@ -483,13 +490,6 @@ class ToolLibrary(ToolLibraryExecutionMixin, Module, metaclass=AutoParams):
         self.library.update({tool.name: tool})
         if isinstance(implementation, ToolBucket):
             self._sync_bucket_presentation(tool.name, implementation)
-
-        # An explicit re-add re-enables a builtin task control tool.
-        if ToolBackground.is_reserved_definition(definition):
-            self._disabled_background_task_tool_names.discard(tool.name)
-
-        # Background-capable sources determine the shared task control surface.
-        self._sync_background_task_tools_for_source(definition)
 
         # Move matching local tools into a newly registered bucket.
         for captured_name, _ in captures:
@@ -770,20 +770,5 @@ class ToolLibrary(ToolLibraryExecutionMixin, Module, metaclass=AutoParams):
         if context_task_store is not None:
             return context_task_store
         return self._get_default_task_store()
-
-    def _sync_background_task_tools_for_source(
-        self,
-        definition: RuntimeToolDefinition,
-    ) -> None:
-        if ToolBackground.is_reserved_definition(
-            definition
-        ) or not ToolBackground.is_background_definition(definition):
-            return
-        self._sync_background_task_tools()
-
-    def _sync_background_task_tools(self) -> None:
-        background = self.extensions.get("background_tasks")
-        if isinstance(background, BackgroundTasksExtension):
-            background.sync(self)
 
     # --- Tool Call Preparation ---

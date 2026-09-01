@@ -63,6 +63,18 @@ class ToolLibraryExtension(Module):
     def tools(self) -> Iterable[Any]:
         return ()
 
+    def validate_tool(self, _library: ToolLibrary, definition: Any) -> None:
+        """Validate a compiled definition before registration mutates state."""
+
+    def on_tool_added(self, library: ToolLibrary, definition: Any) -> None:
+        """React after a definition and executor are registered."""
+
+    def on_tool_removed(self, library: ToolLibrary, definition: Any) -> None:
+        """React after a definition and executor are removed."""
+
+    def on_clear(self, _library: ToolLibrary) -> None:
+        """Reset extension-owned state after the library is cleared."""
+
     def on_register(self, library: ToolLibrary) -> None:
         """Run local setup after contributions are installed."""
 
@@ -111,14 +123,43 @@ class BackgroundTasksExtension(ToolLibraryExtension):
 
     def __init__(self) -> None:
         super().__init__("background_tasks")
+        self.register_buffer("disabled_tool_names", set())
 
-    def validate_source(self, definition: Any) -> None:
-        ToolBackground.validate_background_capabilities(definition)
+    def validate_tool(self, _library: ToolLibrary, definition: Any) -> None:
+        if ToolBackground.is_background_definition(definition):
+            ToolBackground.validate_background_capabilities(definition)
+
+    def on_tool_added(self, library: ToolLibrary, definition: Any) -> None:
+        if ToolBackground.is_reserved_definition(definition):
+            self.disabled_tool_names.discard(definition.name)
+            return
+        if ToolBackground.is_background_definition(definition):
+            self.sync(library)
+
+    def on_tool_removed(self, library: ToolLibrary, definition: Any) -> None:
+        if ToolBackground.is_reserved_definition(definition):
+            if self.is_active_task_tool(
+                library=library,
+                tool_name=definition.name,
+                definition=definition,
+            ):
+                self.disabled_tool_names.add(definition.name)
+            return
+        if ToolBackground.is_background_definition(definition):
+            self.sync(library)
+
+    def on_clear(self, _library: ToolLibrary) -> None:
+        self.disabled_tool_names.clear()
+
+    def on_register(self, library: ToolLibrary) -> None:
+        for definition in library.registry.definitions():
+            self.validate_tool(library, definition)
+        self.sync(library)
 
     def sync(self, library: ToolLibrary) -> None:
         ToolBackground.sync_task_tools(
             library=library,
-            disabled_tool_names=library._disabled_background_task_tool_names,
+            disabled_tool_names=self.disabled_tool_names,
             base_tools=BASE_TASK_TOOLS,
             capability_tools=BACKGROUND_CAPABILITY_TOOLS,
             definition_factory=library.inspect_tool_definition,
@@ -152,6 +193,7 @@ class BackgroundTasksExtension(ToolLibraryExtension):
         ]
         for tool_name in task_tools:
             library.remove(tool_name)
+        self.disabled_tool_names.clear()
 
 
 class MCPServersExtension(ToolLibraryExtension):
