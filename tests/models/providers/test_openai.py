@@ -1568,15 +1568,12 @@ class TestOpenAIChatCompletion:
             entities: List[Dict[str, str]]
 
         model = OpenAIChatCompletion(model_id="gpt-4")
-        kwargs = {"typed_parser": None, "generation_schema": DictOutput}
+        kwargs = {"generation_schema": DictOutput}
 
-        (
-            typed_parser,
-            generation_schema,
-            transport_generation_schema,
-        ) = model._prepare_generate_kwargs(kwargs)
+        generation_schema, transport_generation_schema = model._prepare_generate_kwargs(
+            kwargs
+        )
 
-        assert typed_parser is None
         assert generation_schema is DictOutput
         assert transport_generation_schema is not DictOutput
         assert (
@@ -1721,8 +1718,8 @@ class TestOpenAIChatCompletion:
 
         model = OpenAIChatCompletion(model_id="gpt-4")
         transport_generation_schema = model._prepare_generate_kwargs(
-            {"typed_parser": None, "generation_schema": DictOutput}
-        )[2]
+            {"generation_schema": DictOutput}
+        )[1]
 
         model_output = SimpleNamespace(
             usage=None,
@@ -1863,7 +1860,6 @@ class TestOpenAIChatCompletion:
 
         model = OpenAIChatCompletion(model_id="gpt-4")
         kwargs = {
-            "typed_parser": None,
             "generation_schema": ReAct,
             "tool_catalog": ToolCatalog.from_function_schemas(
                 schemas=[
@@ -1906,13 +1902,10 @@ class TestOpenAIChatCompletion:
             ),
         }
 
-        (
-            typed_parser,
-            generation_schema,
-            transport_generation_schema,
-        ) = model._prepare_generate_kwargs(kwargs)
+        generation_schema, transport_generation_schema = model._prepare_generate_kwargs(
+            kwargs
+        )
 
-        assert typed_parser is None
         assert generation_schema is ReAct
         assert transport_generation_schema["decoder_schema"] is None
         action_schema = kwargs["response_format"]["json_schema"]["schema"][
@@ -1933,7 +1926,6 @@ class TestOpenAIChatCompletion:
         model = OpenAIChatCompletion(model_id="gpt-4")
         transport_generation_schema = model._prepare_generate_kwargs(
             {
-                "typed_parser": None,
                 "generation_schema": ReAct,
                 "tool_catalog": ToolCatalog.from_function_schemas(
                     schemas=[
@@ -1975,7 +1967,7 @@ class TestOpenAIChatCompletion:
                     annotations={"store_fields": {"fields": dict[str, str]}},
                 ),
             }
-        )[2]
+        )[1]
 
         model_output = SimpleNamespace(
             usage=None,
@@ -2035,7 +2027,6 @@ class TestOpenAIChatCompletion:
 
         model = OpenAIChatCompletion(model_id="gpt-4")
         kwargs = {
-            "typed_parser": None,
             "generation_schema": Output,
             "tool_catalog": ToolCatalog(tools=[]),
         }
@@ -2079,11 +2070,10 @@ class TestOpenAIChatCompletion:
         model = OpenAIChatCompletion(model_id="gpt-4")
         transport_generation_schema = model._prepare_generate_kwargs(
             {
-                "typed_parser": None,
                 "generation_schema": Output,
                 "tool_catalog": ToolCatalog(tools=[]),
             }
-        )[2]
+        )[1]
 
         model_output = SimpleNamespace(
             usage=None,

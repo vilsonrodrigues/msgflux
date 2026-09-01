@@ -728,7 +728,7 @@ class Module:
 
         Args:
             templates: Dictionary mapping template types to Jinja template strings.
-                Valid keys: "task", "response", "task_context", "system_prompt"
+                Valid keys: "task", "response", "task_context"
 
         Raises:
             TypeError: If templates is not a dict or None
@@ -739,7 +739,7 @@ class Module:
             context_cache.
         """
         # Define valid keys
-        valid_keys = {"task", "response", "task_context", "system_prompt"}
+        valid_keys = {"task", "response", "task_context"}
 
         if templates is None:
             self.templates = {}

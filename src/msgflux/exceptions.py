@@ -78,10 +78,6 @@ class UnsafeModelResponseError(Exception):
         self.data = data
 
 
-class TypedParserNotFoundError(ValueError):
-    """Raised when a requested typed parser is not registered."""
-
-
 class TaskError:
     """Wraps an exception from a failed task in a gather/scatter operation.
 

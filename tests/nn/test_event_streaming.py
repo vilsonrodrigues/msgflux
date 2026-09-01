@@ -420,7 +420,7 @@ async def test_watch_snapshot_loads_durable_messages_after_run_completion():
     assert isinstance(snapshot.messages, ChatMessages)
     assert [
         item["content"] for item in snapshot.messages if item.get("type") == "message"
-    ] == ["<task>persist me</task>", "hello"]
+    ] == ["persist me", "hello"]
 
 
 @pytest.mark.asyncio
@@ -745,7 +745,7 @@ def test_before_run_can_replace_fresh_agent_input():
     agent("original")
 
     sent_messages = model.call_args.kwargs["messages"]
-    assert sent_messages[-1]["content"] == "<task>replacement</task>"
+    assert sent_messages[-1]["content"] == "replacement"
 
 
 def test_before_run_receives_typed_payload():

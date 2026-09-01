@@ -8,6 +8,7 @@ if TYPE_CHECKING:
     from msgflux.nn.extensions.feedback import DefaultToolFeedbackExtension
     from msgflux.nn.extensions.prompt import (
         CurrentDateExtension,
+        FewShotExamplesExtension,
         ToolUsageGuidanceExtension,
     )
     from msgflux.nn.extensions.skills import SkillsExtension
@@ -29,6 +30,7 @@ __all__ = [
     "AgentExtensionHandle",
     "BackgroundTasksExtension",
     "CurrentDateExtension",
+    "FewShotExamplesExtension",
     "SkillsExtension",
     "MCPServersExtension",
     "ToolLibraryExtension",
@@ -54,6 +56,10 @@ _LAZY_IMPORTS = {
     "CurrentDateExtension": (
         "msgflux.nn.extensions.prompt",
         "CurrentDateExtension",
+    ),
+    "FewShotExamplesExtension": (
+        "msgflux.nn.extensions.prompt",
+        "FewShotExamplesExtension",
     ),
     "SkillsExtension": ("msgflux.nn.extensions.skills", "SkillsExtension"),
     "ToolUsageGuidanceExtension": (

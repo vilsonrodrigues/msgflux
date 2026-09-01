@@ -348,11 +348,11 @@ This is useful for:
     class Specialist(nn.Agent):
         """Specialist that works only from conversation context."""
 
-            model = mf.Model.chat_completion("openai/gpt-5.6-luna")
-        system_message = "You are a specialist. Use the conversation history."
+        model = mf.Model.chat_completion("openai/gpt-5.6-luna")
+        system_prompt = "You are a specialist. Use the conversation history."
 
     class Coordinator(nn.Agent):
-            model = mf.Model.chat_completion("openai/gpt-5.6-luna")
+        model = mf.Model.chat_completion("openai/gpt-5.6-luna")
         tools = [Specialist]
     ```
 
@@ -506,7 +506,7 @@ Use cases:
 
         # mf.set_envs(OPENAI_API_KEY="...")
 
-            model = mf.Model.chat_completion("openai/gpt-5.6-luna")
+        model = mf.Model.chat_completion("openai/gpt-5.6-luna")
 
         # With the messages runtime input, the specialist receives
         # the coordinator's conversation as messages
@@ -515,11 +515,11 @@ Use cases:
             """Expert that needs conversation context."""
 
             model = model
-            system_message = "You are a specialist."
+            system_prompt = "You are a specialist."
 
         class Coordinator(nn.Agent):
             model = model
-            system_message = "Route to specialists when needed."
+            system_prompt = "Route to specialists when needed."
             tools = [Specialist]
             config = {"verbose": True}
 
@@ -559,7 +559,7 @@ Use cases:
 
         class SafeAgent(nn.Agent):
             model = mf.Model.chat_completion("openai/gpt-5.6-luna")
-            instructions = "Always check safety before responding."
+            system_prompt = "Always check safety before responding."
             tools = [check_safety]
             config = {"verbose": True}
 
@@ -642,22 +642,22 @@ Unlike Agent-as-Tool, the Specialist's response bypasses the Coordinator entirel
 
     # mf.set_envs(OPENAI_API_KEY="...")
 
-            model = mf.Model.chat_completion("openai/gpt-5.6-luna")
+    model = mf.Model.chat_completion("openai/gpt-5.6-luna")
 
     # Tool is now "transfer_to_TechnicalSupport" with no parameters
     @mf.tool_config(handoff=True)
     class TechnicalSupport(nn.Agent):
         """Specialist for technical issues, debugging, and troubleshooting."""
         model = model
-        system_message = "You are a technical support specialist."
-        instructions = "Help users solve technical problems step by step."
+        system_prompt = """You are a technical support specialist.
+        Help users solve technical problems step by step."""
         config = {"verbose": True}
 
     class Coordinator(nn.Agent):
         """Routes user queries to the appropriate specialist."""
         model = model
-        system_message = "You are a support coordinator."
-        instructions = "Transfer users to technical support for technical issues."
+        system_prompt = """You are a support coordinator.
+        Transfer users to technical support for technical issues."""
         tools = [TechnicalSupport]
         config = {"verbose": True}
 
@@ -684,7 +684,7 @@ Use cases:
 
     # mf.set_envs(OPENAI_API_KEY="...")
 
-            model = mf.Model.chat_completion("openai/gpt-5.6-luna")
+    model = mf.Model.chat_completion("openai/gpt-5.6-luna")
 
     @mf.tool_config(call_as_response=True)
     def generate_sales_report(
@@ -705,7 +705,7 @@ Use cases:
 
     class BIAnalyst(nn.Agent):
         model = model
-        system_message = """You're a BI analyst. When a user requests sales reports,
+        system_prompt = """You're a BI analyst. When a user requests sales reports,
         you should simply complete the generate_sales_report tool call,
         extracting the requested metrics, dates, and groupings."""
         tools = [generate_sales_report]
@@ -764,7 +764,7 @@ Use cases:
         print(f"Notification sent to {user_id}: {message}")
 
     class Notifier(nn.Agent):
-            model = mf.Model.chat_completion("openai/gpt-5.6-luna")
+        model = mf.Model.chat_completion("openai/gpt-5.6-luna")
         tools = [send_notification]
         config = {"verbose": True}
 

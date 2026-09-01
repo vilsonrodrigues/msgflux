@@ -87,12 +87,12 @@ class ToolCatalogContext(AgentContext):
 class ModelContext(AgentContext):
     """Model-facing prompt and read-only catalog exposed to prompt extensions.
 
-    ``transform_system_prompt`` consumes only ``prompt``. The catalog provides
+    ``transform_system_prompt`` consumes only ``system_prompt``. The catalog provides
     request context to prompt extensions and is not a catalog transformation
     boundary.
     """
 
-    prompt: str
+    system_prompt: str
     tool_catalog: ToolCatalogView | None = None
 
     @property
@@ -112,7 +112,6 @@ class ModelRequestContext(AgentContext):
     prefilling: str | None = None
     stream: bool = False
     generation_schema: Any = None
-    typed_parser: Any = None
     model_preference: str | None = None
     extra: Mapping[str, Any] = field(default_factory=dict)
 
@@ -132,7 +131,6 @@ class ModelRequestContext(AgentContext):
             "prefilling",
             "stream",
             "generation_schema",
-            "typed_parser",
             "model_preference",
         }
         return cls(
@@ -144,7 +142,6 @@ class ModelRequestContext(AgentContext):
             prefilling=parameters.get("prefilling"),
             stream=bool(parameters.get("stream", False)),
             generation_schema=parameters.get("generation_schema"),
-            typed_parser=parameters.get("typed_parser"),
             model_preference=parameters.get("model_preference"),
             extra={key: value for key, value in parameters.items() if key not in known},
         )
@@ -159,7 +156,6 @@ class ModelRequestContext(AgentContext):
             "stream": self.stream,
             "tool_catalog": self.tool_catalog,
             "generation_schema": self.generation_schema,
-            "typed_parser": self.typed_parser,
         }
         if self.model_preference is not None:
             parameters["model_preference"] = self.model_preference

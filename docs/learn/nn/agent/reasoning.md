@@ -46,7 +46,7 @@ import msgflux.nn as nn
 
 class Solver(nn.Agent):
     model = model
-    instructions = "Solve the problem step by step."
+    system_prompt = "Solve the problem step by step."
     config = {"reasoning_in_response": True}
 ```
 
@@ -77,7 +77,7 @@ In non-streaming mode, the model completes its full response before returning. R
 
         class Solver(nn.Agent):
             model = model
-            instructions = "Solve the problem. Answer with just the result."
+            system_prompt = "Solve the problem. Answer with just the result."
 
         agent = Solver()
         response = agent("What is 15 * 7 + 3?")
@@ -102,7 +102,7 @@ In non-streaming mode, the model completes its full response before returning. R
 
         class Solver(nn.Agent):
             model = model
-            instructions = "Solve the problem. Answer with just the result."
+            system_prompt = "Solve the problem. Answer with just the result."
             config = {"reasoning_in_response": True}
 
         agent = Solver()
@@ -127,7 +127,7 @@ In non-streaming mode, the model completes its full response before returning. R
 
         class Solver(nn.Agent):
             model = model
-            instructions = "Solve the problem."
+            system_prompt = "Solve the problem."
             config = {"reasoning_in_response": True}
 
         agent = Solver()
@@ -154,7 +154,7 @@ In non-streaming mode, the model completes its full response before returning. R
 
         class Solver(nn.Agent):
             model = model
-            instructions = "Solve the problem. Answer with just the result."
+            system_prompt = "Solve the problem. Answer with just the result."
             config = {"reasoning_in_response": True}
 
         agent = Solver()
@@ -218,7 +218,7 @@ When `stream=True`, the Agent returns a `ModelStreamResponse`. Both `consume()` 
 
         class Assistant(nn.Agent):
             model = model
-            instructions = "Answer concisely."
+            system_prompt = "Answer concisely."
             config = {"stream": True}
 
         agent = Assistant()
@@ -315,7 +315,7 @@ When `stream=True`, the Agent returns a `ModelStreamResponse`. Both `consume()` 
 
         class Assistant(nn.Agent):
             model = model
-            instructions = "Answer concisely."
+            system_prompt = "Answer concisely."
             config = {"stream": True}
 
         agent = Assistant()
@@ -368,8 +368,10 @@ if isinstance(model_response, ModelStreamResponse):
 # Now response_type is guaranteed to be set
 if "tool_call" in model_response.response_type:
     # enter tool call loop...
+    ...
 else:
     # return stream response to caller
+    ...
 ```
 
 ### How the dual-queue works internally
@@ -496,7 +498,7 @@ second copy in history.
 
         class Calculator(nn.Agent):
             model = model
-            instructions = "Use the tools to compute the result. Answer with just the number."
+            system_prompt = "Use the tools to compute the result. Answer with just the number."
             tools = [add, multiply]
 
         agent = Calculator()
@@ -509,7 +511,7 @@ second copy in history.
         ```python
         class Calculator(nn.Agent):
             model = model
-            instructions = "Use the tools to compute the result. Answer with just the number."
+            system_prompt = "Use the tools to compute the result. Answer with just the number."
             tools = [add, multiply]
             config = {"reasoning_in_response": True}
 
@@ -564,7 +566,7 @@ Model-level reasoning and schema-level reasoning serve different purposes and ca
 
         class Solver(nn.Agent):
             model = model
-            instructions = "Solve the problem."
+            system_prompt = "Solve the problem."
             config = {"reasoning_in_response": True}
 
         agent = Solver()
@@ -630,7 +632,7 @@ When `verbose=True`, the Agent prints both the reasoning trace and the response 
 ```python
 class Solver(nn.Agent):
     model = model
-    instructions = "Solve the problem."
+    system_prompt = "Solve the problem."
     config = {"verbose": True}
 
 agent = Solver()

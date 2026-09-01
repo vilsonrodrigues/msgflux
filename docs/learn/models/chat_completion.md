@@ -74,8 +74,7 @@ Chat completion models are stateless - they don't maintain conversation history 
         logprobs=True,                 # Include token logprobs in metadata
         top_logprobs=2,                # Return 2 alternatives per token
         parallel_tool_calls=True,      # Allow model to call multiple tools in parallel
-        validate_typed_parser_output=False,  # Validate typed parser output with schema
-        verbose=False,                 # Print raw output before transformation
+                verbose=False,                 # Print raw output before transformation
         # --- Search ---
         web_search_options={},         # Web search config (OpenAI / OpenRouter only)
         extra_body={},                 # Provider-specific OpenAI-compatible extensions

@@ -89,7 +89,7 @@ async def validate_basic(model_path: str) -> None:
     agent = Agent(
         name="event_probe",
         model=make_model(model_path),
-        instructions="Reply with exactly EVENT_STREAM_OK.",
+        system_prompt="Reply with exactly EVENT_STREAM_OK.",
         config={"stream": True},
     )
 
@@ -124,7 +124,7 @@ async def validate_reasoning_order(model_path: str) -> None:
     agent = Agent(
         name="reasoning_probe",
         model=make_model(model_path),
-        instructions="Solve the arithmetic carefully, then answer briefly.",
+        system_prompt="Solve the arithmetic carefully, then answer briefly.",
         config={"stream": True},
     )
 
@@ -158,7 +158,7 @@ async def validate_tool_loop(model_path: str) -> None:
         name="tool_probe",
         model=make_model(model_path),
         tools=[lookup_incident],
-        instructions=(
+        system_prompt=(
             "For incident questions, call lookup_incident exactly once before "
             "answering. Include the returned status in the final answer."
         ),
@@ -195,7 +195,7 @@ async def validate_output_transform(model_path: str) -> None:
     agent = Agent(
         name="transform_probe",
         model=make_model(model_path),
-        instructions=f"Reply with exactly {reference} and nothing else.",
+        system_prompt=f"Reply with exactly {reference} and nothing else.",
         hooks=[Hook(event="transform_output", handler=expand_reference)],
         config={"stream": True},
     )
@@ -228,13 +228,13 @@ async def validate_nested_agent(model_path: str) -> None:
         name="reviewer",
         description="Reviews one short statement.",
         model=make_model(model_path),
-        instructions="Review the statement briefly and include REVIEW_COMPLETE.",
+        system_prompt="Review the statement briefly and include REVIEW_COMPLETE.",
     )
     root = Agent(
         name="root_probe",
         model=make_model(model_path),
         tools=[AgentTool(), reviewer],
-        instructions=(
+        system_prompt=(
             "Delegate the requested review to the reviewer agent exactly once. "
             "After it returns, answer with its conclusion."
         ),
@@ -332,7 +332,7 @@ After loading this skill, reply with exactly EXTENSION_SKILL_OK.
             name="extension_probe",
             model=make_model(model_path),
             extensions=[mf.SkillsExtension({"paths": [skill_directory]})],
-            instructions=(
+            system_prompt=(
                 "Load incident-validation with the skill tool, then follow its "
                 "instructions exactly."
             ),

@@ -283,5 +283,5 @@ class ReAct(Struct, ToolFlowControl):
         return messages
 
 
-ReAct.system_message = REACT_SYSTEM_MESSAGE
+ReAct.system_prompt = REACT_SYSTEM_MESSAGE
 ReAct.tools_template = REACT_TOOLS_TEMPLATE

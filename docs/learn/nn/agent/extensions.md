@@ -20,7 +20,12 @@ class TenantContext(nn.AgentExtension):
 
     async def add_context(self, ctx: ModelContext):
         profile = await self.tenant_client.get_profile(ctx.vars["tenant_id"])
-        return replace(ctx, prompt=f"{ctx.prompt}\nTenant profile: {profile}")
+        return replace(
+            ctx,
+            system_prompt=(
+                f"{ctx.system_prompt}\n\nTenant profile: {profile}".strip()
+            ),
+        )
 
     def hooks(self):
         return (
@@ -135,9 +140,9 @@ guidance inconsistent; `transform_tool_catalog` updates both surfaces together.
 Optional prompt capabilities use the same removable contract as application
 extensions. Add `CurrentDateExtension` when the model needs the current UTC
 date; tool usage guidance is supplied by `ToolUsageGuidanceExtension`. Both
-append their sections through `transform_system_prompt`, so the core Jinja
-template contains only the Agent's stable message, instructions, examples,
-expected output, and extra message.
+append their sections through `transform_system_prompt`, leaving the Agent's
+canonical `system_prompt` unchanged. Passing `examples=` installs the same kind
+of removable capability through `FewShotExamplesExtension`.
 
 You can install or replace them explicitly:
 

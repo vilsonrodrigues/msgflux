@@ -23,14 +23,14 @@ def build_agent(model_name: str) -> nn.Agent:
     return nn.Agent(
         name="notification_assistant",
         model=model,
-        system_message="You are a precise assistant.",
-        config={"verbose": True},
-        instructions=(
+        system_prompt=(
+            "You are a precise assistant.\n\n"
             "If the user explicitly asks to only dispatch background work, "
             "call the background tool and stop after confirming the dispatch. "
             "On later turns, if you receive a completed task notification, "
             "call task_output(task_id=...) before answering."
         ),
+        config={"verbose": True},
         tools=[slow_lookup],
     )
 

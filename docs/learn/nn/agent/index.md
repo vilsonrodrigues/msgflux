@@ -17,7 +17,7 @@ task to be treated in isolation.
 - **Generation Schemas**: Guides the model to generate typed responses, with support for reasoning strategies: Chain of Thought, ReAct, Self-Consistency
 - **Flexible Configuration**: Customize behavior through message fields and config options
 - **Template System**: Use Jinja templates for prompts and responses
-- **Modular System Prompt**: Compose system prompts from independent components
+- **Extensible System Prompt**: Keep one canonical prompt and add context through extensions
 - **Task Decomposition**: Break down complex tasks into manageable parts
 
 ## 1. **Contents**
@@ -31,7 +31,7 @@ task to be treated in isolation.
 | [Prompt Cache Warmup](prompt-cache.md) | Warm provider prompt caches with the system prompt and tool schemas |
 | [Reasoning](reasoning.md) | Model-level reasoning, `reasoning_in_response`, dual-queue streaming |
 | [How to Debug an Agent](debug.md) | Inspection and debugging tools |
-| [System Prompt Components](system-prompt.md) | Compose system prompts from components |
+| [System Prompt](system-prompt.md) | Define one canonical prompt and extend it at runtime |
 | [Generation Schemas](generation-schemas.md) | Structured outputs and reasoning strategies |
 | [Task and Context](task-and-context.md) | Input handling, templates, multimodal, chat history |
 | [Runtime](runtime.md) | Threads, runs, checkpoints, inbox controls, and abort signals |

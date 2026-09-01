@@ -1019,7 +1019,7 @@ def test_agent_keeps_canonical_messages_until_model_boundary():
     params = agent.inspect_model_execution_params("Continue.", messages=messages)
 
     assert isinstance(params["messages"], ChatMessages)
-    assert params["messages"].to_chatml()[-1]["content"] == "<task>Continue.</task>"
+    assert params["messages"].to_chatml()[-1]["content"] == "Continue."
 
 
 def test_agent_control_interrupts_before_model_call():

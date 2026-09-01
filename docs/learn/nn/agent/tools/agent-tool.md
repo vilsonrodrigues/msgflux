@@ -3,7 +3,7 @@
 `AgentTool` is a built-in tool for exposing a group of agents through one
 callable model tool:
 
-```python
+```text
 agent(name: str, message: str, model: str | None = None) -> str
 ```
 
@@ -33,16 +33,16 @@ model = mf.Model.chat_completion("openai/gpt-5.6-luna")
 
 class Researcher(nn.Agent):
     model = model
-    instructions = "Research the user's question and return concise findings."
+    system_prompt = "Research the user's question and return concise findings."
 
 class Reviewer(nn.Agent):
     model = model
-    instructions = "Review the answer for correctness and missing details."
+    system_prompt = "Review the answer for correctness and missing details."
 
 coordinator = nn.Agent(
     name="coordinator",
     model=model,
-    instructions="Delegate specialized work to the agent tool when useful.",
+    system_prompt="Delegate specialized work to the agent tool when useful.",
     tools=[AgentTool(), Researcher(), Reviewer()],
 )
 ```
@@ -87,13 +87,13 @@ reviewer = nn.Agent(
     name="reviewer",
     model=review_models,
     description="Reviews code changes for correctness and maintainability.",
-    instructions="Review the delegated change and return concise findings.",
+    system_prompt="Review the delegated change and return concise findings.",
 )
 
 coordinator = nn.Agent(
     name="coordinator",
     model="openai/gpt-5.6-sol",
-    instructions=(
+    system_prompt=(
         "Delegate code reviews to reviewer. Choose fast for mechanical changes "
         "and deep for ambiguous or architectural changes."
     ),
@@ -240,7 +240,7 @@ def create_specialist(
         name=agent_name,
         model=model,
         description=description,
-        instructions=instructions,
+        system_prompt=instructions,
     )
 
     registered_name = handle.add(specialist)
@@ -253,7 +253,7 @@ def create_specialist(
 coordinator = nn.Agent(
     name="coordinator",
     model=model,
-    instructions=(
+    system_prompt=(
         "When a missing specialist would help, call create_specialist with a "
         "clear name, description, and instructions. Then delegate through the "
         "agent tool."
@@ -348,8 +348,8 @@ top-level tool.
             description="""Specialist in nutrition, diet planning, and healthy
             eating habits. Use for meal plans, dietary recommendations, and
             nutritional advice.""",
-            system_message="You are a certified nutritionist.",
-            instructions="""Create clear and practical meal plans tailored to
+            system_prompt="""You are a certified nutritionist.
+            Create clear and practical meal plans tailored to
             the user's goals. Be objective, technical, and structured.""",
         )
 
@@ -359,16 +359,16 @@ top-level tool.
             description="""Specialist in fitness, exercise routines, and
             physical training. Use for workout plans, training schedules, and
             exercise guidance.""",
-            system_message="You are a certified personal trainer.",
-            instructions="""Design workout routines based on the user's fitness
+            system_prompt="""You are a certified personal trainer.
+            Design workout routines based on the user's fitness
             level and goals. Focus on safety and sustainable progression.""",
         )
 
         coordinator = nn.Agent(
             name="health_coordinator",
             model=model,
-            system_message="You coordinate a team of health specialists.",
-            instructions="""Use the agent tool when a specialist should handle
+            system_prompt="""You coordinate a team of health specialists.
+            Use the agent tool when a specialist should handle
             the request. Choose `nutritionist` for diet questions and
             `fitness_trainer` for workout questions.""",
             tools=[AgentTool(), nutritionist, fitness_trainer],
@@ -400,20 +400,20 @@ top-level tool.
             name="reviewer",
             model=model,
             description="Review answers for correctness and missing details.",
-            instructions="Return a concise review with concrete corrections.",
+            system_prompt="Return a concise review with concrete corrections.",
         )
 
         planner = nn.Agent(
             name="planner",
             model=model,
             description="Break complex requests into ordered implementation steps.",
-            instructions="Return a practical plan with risks and validation steps.",
+            system_prompt="Return a practical plan with risks and validation steps.",
         )
 
         coordinator = nn.Agent(
             name="coordinator",
             model=model,
-            instructions="Delegate planning and review work through the agent tool.",
+            system_prompt="Delegate planning and review work through the agent tool.",
             tools=[AgentTool(), reviewer, planner],
         )
 

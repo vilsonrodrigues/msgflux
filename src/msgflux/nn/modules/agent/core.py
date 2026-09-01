@@ -12,7 +12,6 @@ from typing import (
 import msgspec
 
 from msgflux.auto import AutoParams
-from msgflux.core.dotdict import dotdict
 from msgflux.core.examples import Example
 from msgflux.core.message import Message
 from msgflux.dsl.signature import (
@@ -31,7 +30,10 @@ from msgflux.nn.extensions.base import (
     AgentExtension,
 )
 from msgflux.nn.extensions.feedback import DefaultToolFeedbackExtension
-from msgflux.nn.extensions.prompt import ToolUsageGuidanceExtension
+from msgflux.nn.extensions.prompt import (
+    FewShotExamplesExtension,
+    ToolUsageGuidanceExtension,
+)
 from msgflux.nn.extensions.skills import SkillsExtension
 from msgflux.nn.hooks import Hook
 from msgflux.nn.hooks.events import (
@@ -107,11 +109,8 @@ class Agent(
         name: str,
         model: Union[ChatCompletionModel, ModelGateway, "Generator", str],
         *,
-        system_message: Optional[str] = None,
-        instructions: Optional[str] = None,
-        expected_output: Optional[str] = None,
+        system_prompt: Optional[str] = None,
         examples: Optional[Union[str, List[Union[Example, Mapping[str, Any]]]]] = None,
-        system_extra_message: Optional[str] = None,
         hooks: Optional[List["Hook"]] = None,
         message_fields: Optional[Dict[str, Any]] = None,
         config: Optional[Dict[str, Any]] = None,
@@ -119,7 +118,6 @@ class Agent(
         context_cache: Optional[str] = None,
         prefilling: Optional[str] = None,
         generation_schema: Optional[msgspec.Struct] = None,
-        typed_parser: Optional[str] = None,
         response_mode: Optional[str] = None,
         tools: Optional[List[Callable]] = None,
         skills: Optional[SkillsConfig] = None,
@@ -144,16 +142,11 @@ class Agent(
             ``"provider/model-id"`` (e.g. ``"openai/gpt-4.1-mini"``).
             When a string is provided, `Model.chat_completion` is called
             internally with no extra configuration.
-        system_message:
-            The Agent behaviour.
-        instructions:
-            What the Agent should do.
-        expected_output:
-            What the response should be like.
+        system_prompt:
+            Instructions and stable context for the model. Runtime extensions
+            may add request-specific sections without mutating this parameter.
         examples:
-            Examples of inputs, reasoning and outputs.
-        system_extra_message:
-            An extra message in system prompt.
+            Few-shot examples installed through ``FewShotExamplesExtension``.
         hooks:
             List of Hook instances (e.g. Guard) to register on the model.
             !!! example
@@ -210,24 +203,18 @@ class Agent(
               schema before calling the model (bool).
         templates:
             Dictionary mapping template types to Jinja template strings.
-            Valid keys: "task", "response", "task_context", "system_prompt"
+            Valid keys: "task", "response", "task_context"
             !!! example
                 templates={
                     "task": "Who was {{person}}?",
                     "response": "{{final_answer}}",
-                    "task_context": "Context: {{context}}",
-                    "system_prompt": "Custom system prompt: ..."
+                    "task_context": "Context: {{context}}"
                 }
 
             Template descriptions:
             - task: Formats the task/prompt sent to the model
             - response: Formats the model's response
             - task_context: Formats task context (does NOT apply to context_cache)
-            - system_prompt: Overrides the default system prompt
-              template. If not provided, uses SYSTEM_PROMPT_TEMPLATE.
-              Available variables: system_message, instructions,
-              expected_output, examples, and system_extra_message. Extensions
-              may append capability-specific sections after rendering.
         context_cache:
             A fixed context.
         prefilling:
@@ -235,9 +222,6 @@ class Agent(
             will continue its response from there.
         generation_schema:
             Schema that defines how the output should be structured.
-        typed_parser:
-            Converts the model raw output into a typed-dict. Supported parser:
-            `typed_xml`.
         response_mode:
             Controls how the response is returned.
             * ``None`` (default): Returns the response directly.
@@ -279,10 +263,10 @@ class Agent(
                     }
                 }]
         signature:
-            A DSPy-based signature. A signature creates a task_template,
-            a generation_schema, instructions and examples (both if passed).
+            A DSPy-based signature. A signature creates a task template,
+            generation schema, system-prompt guidance and optional examples.
             Can be combined with standard generation_schemas like `ReAct` and
-            `ChainOfThought`. Can also be combined with `typed_parser`.
+            `ChainOfThought`.
         description:
             The Agent description. It's useful when using an agent-as-tool.
         annotations
@@ -313,14 +297,6 @@ class Agent(
                     f"Agent kwargs. Reserved names: {_RESERVED_KWARGS}. "
                     f"Rename these inputs to avoid conflicts."
                 )
-
-        # Validate that signature and expected_output are not both provided
-        if signature is not None and expected_output is not None:
-            raise ValueError(
-                "Cannot specify both 'signature' and 'expected_output'. "
-                "When using a signature, expected_output is generated automatically "
-                "from the signature outputs. Remove the 'expected_output' parameter."
-            )
 
         # Validate that signature and task template are not both provided
         if signature is not None and templates is not None and "task" in templates:
@@ -371,9 +347,6 @@ class Agent(
                     "`templates['response']` is not `stream=True` compatible"
                 )
 
-            if typed_parser is not None:
-                raise ValueError("`typed_parser` is not `stream=True` compatible")
-
         self._set_context_cache(context_cache)
         self._set_message_fields(message_fields)
         self._set_model(model)
@@ -385,37 +358,43 @@ class Agent(
             },
         )
         self._set_prefilling(prefilling)
-        self._set_system_extra_message(system_extra_message)
-
         self._set_response_mode(response_mode)
         self._set_templates(templates)
         self._set_tools(tools, mcp_servers)
 
         if signature is not None:
-            signature_params = dotdict(
-                signature=signature,
-                examples=examples,
-                instructions=instructions,
-                system_message=system_message,
-                typed_parser=typed_parser,
-            )
+            signature_params = {
+                "signature": signature,
+                "examples": examples,
+                "system_prompt": system_prompt,
+            }
             if generation_schema is not None:
-                signature_params.generation_schema = generation_schema
-            self._set_signature(**signature_params)
+                signature_params["generation_schema"] = generation_schema
+            examples = self._set_signature(**signature_params)
         else:
-            self._set_typed_parser(typed_parser)
-            self._set_examples(examples)
             self._set_generation_schema(generation_schema)
-            self._set_expected_output(expected_output)
-            self._set_instructions(instructions)
-            self._set_system_message(system_message)
+            self._set_system_prompt(system_prompt)
 
         self._initialize_extensions()
-        configured_extension_names = (
-            set(extensions)
-            if isinstance(extensions, Mapping)
-            else {extension.name for extension in extensions or ()}
-        )
+        if isinstance(extensions, Mapping):
+            configured_extension_names = set(extensions)
+            configured_extension_names.update(
+                extension.name for extension in extensions.values()
+            )
+        else:
+            configured_extension_names = {
+                extension.name for extension in extensions or ()
+            }
+        if examples is not None:
+            if "few_shot_examples" in configured_extension_names:
+                raise ValueError(
+                    "`examples` cannot be combined with a `few_shot_examples` "
+                    "extension."
+                )
+            self.register_extension(
+                "few_shot_examples",
+                FewShotExamplesExtension(examples),
+            )
         if "tool_usage_guidance" not in configured_extension_names:
             self.register_extension(
                 "tool_usage_guidance",

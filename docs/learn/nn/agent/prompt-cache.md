@@ -18,7 +18,7 @@ def lookup_ticket(ticket_id: str) -> str:
 
 class SupportAgent(nn.Agent):
     model = mf.Model.chat_completion("openai/gpt-4.1-mini")
-    system_message = """
+    system_prompt = """
     You are a support agent.
     Follow the escalation policy and use tools when needed.
     """

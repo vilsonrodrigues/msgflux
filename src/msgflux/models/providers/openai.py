@@ -26,8 +26,7 @@ except ImportError:
 import msgflux.nn.functional as F
 from msgflux.chat_messages import ChatMessages
 from msgflux.core.dotdict import dotdict
-from msgflux.dsl.typed_parsers import typed_parser_registry
-from msgflux.exceptions import AbortRequestedError, TypedParserNotFoundError
+from msgflux.exceptions import AbortRequestedError
 from msgflux.generation.control_flow import ToolFlowControl
 from msgflux.models.base import BaseModel
 from msgflux.models.cache import ResponseCache, generate_cache_key
@@ -209,7 +208,6 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
         enable_thinking: Optional[Union[bool, Literal["low", "medium", "high"]]] = None,
         return_reasoning: Optional[bool] = True,
         reasoning_in_tool_call: Optional[bool] = True,
-        validate_typed_parser_output: Optional[bool] = False,
         temperature: Optional[float] = None,
         top_p: Optional[float] = None,
         stop: Optional[Union[str, List[str]]] = None,
@@ -261,8 +259,6 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
             along with the response.
         reasoning_in_tool_call:
             If True, maintains the reasoning for using the tool call.
-        validate_typed_parser_output:
-            If True, use the generation_schema to validate typed parser output.
         temperature:
             What sampling temperature to use, between 0 and 2.
             Higher values like 0.8 will make the output more random,
@@ -419,7 +415,6 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
         self.enable_thinking = enable_thinking
         self.parallel_tool_calls = parallel_tool_calls
         self.reasoning_in_tool_call = reasoning_in_tool_call
-        self.validate_typed_parser_output = validate_typed_parser_output
         self.return_reasoning = return_reasoning
         self.verbose = verbose
         self.retry = retry
@@ -658,7 +653,7 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
         )
         generation_params["max_tokens"] = self.warmup_max_tokens
         generation_params.pop("prefilling", None)
-        # Warmup intentionally bypasses typed parsers, checkpoint stores, chat history
+        # Warmup intentionally bypasses checkpoint stores, chat history
         # and response caching. The request only contains the stable system prompt
         # plus tool schemas so provider-side prompt caches can prefill that prefix.
         params = {**self.sampling_run_params, **generation_params}
@@ -697,7 +692,6 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
     def _process_completion_model_output(  # noqa: C901
         self,
         model_output,
-        typed_parser=None,
         generation_schema=None,
         transport_generation_schema=None,
     ):
@@ -741,17 +735,10 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
                 aggregator.process(call_index, tool_id, name, arguments)
             response_content = aggregator
         elif choice.message.content:
-            if (typed_parser or generation_schema) and self.verbose:
+            if generation_schema is not None and self.verbose:
                 repr_str = f"[{self.model_id}][raw_response] {choice.message.content}"
                 cprint(repr_str, lc="r", ls="b")
-            if typed_parser is not None:
-                response.set_response_type("structured")
-                parser = typed_parser_registry[typed_parser]
-                response_content = dotdict(parser.decode(choice.message.content))
-                if generation_schema and self.validate_typed_parser_output:
-                    decoder = self._get_decoder(generation_schema)
-                    decoder.decode(self._encoder.encode(response_content))
-            elif generation_schema is not None:
+            if generation_schema is not None:
                 response.set_response_type("structured")
                 # The raw payload follows the OpenAI transport schema, which may be
                 # a lowered or dynamically generated version of the logical msgflux
@@ -821,20 +808,17 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
     def _process_model_output(
         self,
         model_output,
-        typed_parser=None,
         generation_schema=None,
         transport_generation_schema=None,
     ):
         if self.api_mode == "responses":
             return self._process_responses_model_output(
                 model_output,
-                typed_parser,
                 generation_schema,
                 transport_generation_schema,
             )
         return self._process_completion_model_output(
             model_output,
-            typed_parser,
             generation_schema,
             transport_generation_schema,
         )
@@ -848,7 +832,6 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
     def _process_responses_model_output(  # noqa: C901
         self,
         model_output,
-        typed_parser=None,
         generation_schema=None,
         transport_generation_schema=None,
     ) -> ModelResponse:
@@ -1010,7 +993,6 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
         else:
             response = self._process_completion_model_output(
                 synthetic_output,
-                typed_parser,
                 generation_schema,
                 transport_generation_schema,
             )
@@ -1099,12 +1081,11 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
         `response_format`; it may be the same type or a lowered variant that only
         exists to satisfy OpenAI Structured Outputs restrictions.
         """
-        typed_parser = kwargs.pop("typed_parser", None)
         generation_schema = kwargs.pop("generation_schema", None)
         tool_catalog = kwargs.pop("tool_catalog", None)
         transport_generation_schema = None
 
-        if generation_schema is not None and typed_parser is None:
+        if generation_schema is not None:
             if issubclass(generation_schema, ToolFlowControl):
                 response_format = generation_schema.build_provider_response_format(
                     tool_catalog
@@ -1140,11 +1121,10 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
                     decoder_schema
                 )
 
-        return typed_parser, generation_schema, transport_generation_schema
+        return generation_schema, transport_generation_schema
 
     def _prepare_stream_kwargs(self, kwargs: Dict[str, Any]) -> Dict[str, Any]:
         """Strip internal generation-only args before raw streaming requests."""
-        kwargs.pop("typed_parser", None)
         kwargs.pop("generation_schema", None)
         kwargs.pop("tool_catalog", None)
         return kwargs
@@ -1158,17 +1138,14 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
             response.metadata.timing = cache_timer.finish()
             return response
 
-        (
-            typed_parser,
-            generation_schema,
-            transport_generation_schema,
-        ) = self._prepare_generate_kwargs(kwargs)
+        generation_schema, transport_generation_schema = self._prepare_generate_kwargs(
+            kwargs
+        )
 
         request_timer = ModelRequestTimer()
         model_output = self._execute_model(**kwargs)
         response = self._process_model_output(
             model_output,
-            typed_parser,
             generation_schema,
             transport_generation_schema,
         )
@@ -1177,7 +1154,6 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
         self._store_cache(
             response,
             **kwargs,
-            typed_parser=typed_parser,
             generation_schema=generation_schema,
         )
         return response
@@ -1191,17 +1167,14 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
             response.metadata.timing = cache_timer.finish()
             return response
 
-        (
-            typed_parser,
-            generation_schema,
-            transport_generation_schema,
-        ) = self._prepare_generate_kwargs(kwargs)
+        generation_schema, transport_generation_schema = self._prepare_generate_kwargs(
+            kwargs
+        )
 
         request_timer = ModelRequestTimer()
         model_output = await self._aexecute_model(**kwargs)
         response = self._process_model_output(
             model_output,
-            typed_parser,
             generation_schema,
             transport_generation_schema,
         )
@@ -1210,7 +1183,6 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
         self._store_cache(
             response,
             **kwargs,
-            typed_parser=typed_parser,
             generation_schema=generation_schema,
         )
         return response
@@ -2099,8 +2071,6 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
         logprobs: Optional[bool],
         top_logprobs: Optional[int],
         generation_schema: Optional[msgspec.Struct],
-        typed_parser: Optional[str],
-        stream: Optional[bool],
     ) -> None:
         if prefilling is not None and generation_schema is not None:
             raise ValueError(
@@ -2109,8 +2079,6 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
             )
         if top_logprobs is not None and logprobs is not True:
             raise ValueError("`top_logprobs` requires `logprobs=True`")
-        if stream is True and typed_parser is not None:
-            raise ValueError("`typed_parser` is not `stream=True` compatible")
 
     def __call__(
         self,
@@ -2123,7 +2091,6 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
         stream: Optional[bool] = False,
         generation_schema: Optional[msgspec.Struct] = None,
         tool_catalog: "Optional[Union[ToolCatalog, ToolCatalogView]]" = None,
-        typed_parser: Optional[str] = None,
         extra_body: Optional[Dict[str, Any]] = None,
         **extra_body_kwargs: Any,
     ) -> Union[ModelResponse, ModelStreamResponse]:
@@ -2149,9 +2116,6 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
                 Optional container with tool schemas, annotations, and
                 tool-choice metadata. This is the single tool-calling entrypoint
                 for the provider.
-            typed_parser:
-                Converts the model raw output into a typed-dict. Supported parser:
-                `typed_xml`.
             extra_body:
                 Provider-specific request body extensions for this request.
             extra_body_kwargs:
@@ -2161,16 +2125,12 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
         Raises:
             ValueError:
                 Raised if `generation_schema` and `stream=True`.
-            ValueError:
-                Raised if `typed_xml=True` and `stream=True`.
         """
         self._validate_chat_completion_options(
             prefilling=prefilling,
             logprobs=logprobs,
             top_logprobs=top_logprobs,
             generation_schema=generation_schema,
-            typed_parser=typed_parser,
-            stream=stream,
         )
         is_flow_control = is_subclass_of(generation_schema, ToolFlowControl)
         generation_params = self._build_generation_params(
@@ -2201,15 +2161,8 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
             F.wait_for_event(stream_response.first_chunk_event)
             return stream_response
         else:
-            if typed_parser and typed_parser not in typed_parser_registry:
-                available = ", ".join(typed_parser_registry.keys())
-                raise TypedParserNotFoundError(
-                    f"Typed parser `{typed_parser}` not found. "
-                    f"Available parsers: {available}"
-                )
             response = self._generate(
                 **generation_params,
-                typed_parser=typed_parser,
                 generation_schema=generation_schema,
             )
             return response
@@ -2225,7 +2178,6 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
         stream: Optional[bool] = False,
         generation_schema: Optional[msgspec.Struct] = None,
         tool_catalog: "Optional[Union[ToolCatalog, ToolCatalogView]]" = None,
-        typed_parser: Optional[str] = None,
         extra_body: Optional[Dict[str, Any]] = None,
         **extra_body_kwargs: Any,
     ) -> Union[ModelResponse, ModelStreamResponse]:
@@ -2251,9 +2203,6 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
                 Optional container with tool schemas, annotations, and
                 tool-choice metadata. This is the single tool-calling entrypoint
                 for the provider.
-            typed_parser:
-                Converts the model raw output into a typed-dict. Supported parser:
-                `typed_xml`.
             extra_body:
                 Provider-specific request body extensions for this request.
             extra_body_kwargs:
@@ -2263,16 +2212,12 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
         Raises:
             ValueError:
                 Raised if `generation_schema` and `stream=True`.
-            ValueError:
-                Raised if `typed_xml=True` and `stream=True`.
         """
         self._validate_chat_completion_options(
             prefilling=prefilling,
             logprobs=logprobs,
             top_logprobs=top_logprobs,
             generation_schema=generation_schema,
-            typed_parser=typed_parser,
-            stream=stream,
         )
         is_flow_control = is_subclass_of(generation_schema, ToolFlowControl)
         generation_params = self._build_generation_params(
@@ -2303,15 +2248,8 @@ class OpenAICompatibleChatCompletion(_BaseOpenAI, ChatCompletionModel):
             await F.await_for_event(stream_response.first_chunk_event)
             return stream_response
         else:
-            if typed_parser and typed_parser not in typed_parser_registry:
-                available = ", ".join(typed_parser_registry.keys())
-                raise TypedParserNotFoundError(
-                    f"Typed parser `{typed_parser}` not found. "
-                    f"Available parsers: {available}"
-                )
             response = await self._agenerate(
                 **generation_params,
-                typed_parser=typed_parser,
                 generation_schema=generation_schema,
             )
             return response

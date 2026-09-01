@@ -3,18 +3,57 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import Callable
+from inspect import cleandoc
+from typing import Any, Callable, List, Mapping, Union
 
+from msgflux.core.examples import Example, ExampleCollection
 from msgflux.nn.extensions.base import AgentExtension
 from msgflux.nn.hooks import Hook, ModelContext
+from msgflux.utils.msgspec import msgspec_dumps
 from msgflux.utils.time import utc_current_date
 
-__all__ = ["CurrentDateExtension", "ToolUsageGuidanceExtension"]
+__all__ = [
+    "CurrentDateExtension",
+    "FewShotExamplesExtension",
+    "ToolUsageGuidanceExtension",
+]
 
 
 def _append_section(ctx: ModelContext, section: str) -> ModelContext:
-    prompt = f"{ctx.prompt}\n{section}" if ctx.prompt else section
-    return replace(ctx, prompt=prompt)
+    prompt = f"{ctx.system_prompt}\n\n{section}" if ctx.system_prompt else section
+    return replace(ctx, system_prompt=prompt)
+
+
+class FewShotExamplesExtension(AgentExtension):
+    """Add stable few-shot examples to the model-facing system prompt."""
+
+    def __init__(
+        self,
+        examples: Union[str, List[Union[Example, Mapping[str, Any]]]],
+    ) -> None:
+        super().__init__("few_shot_examples")
+        if isinstance(examples, str):
+            rendered = cleandoc(examples)
+        elif isinstance(examples, list):
+            rendered = ExampleCollection(examples).get_formatted(
+                msgspec_dumps,
+                msgspec_dumps,
+            )
+        else:
+            raise TypeError(
+                "`examples` must be a string or list of Example mappings, "
+                f"given `{type(examples)}`"
+            )
+        if not rendered:
+            raise ValueError("`examples` must not be empty")
+        self.rendered_examples = rendered
+
+    def hooks(self):
+        return (Hook(event="transform_system_prompt", handler=self._add_examples),)
+
+    def _add_examples(self, ctx: ModelContext) -> ModelContext:
+        section = f"<examples>\n{self.rendered_examples}\n</examples>"
+        return _append_section(ctx, section)
 
 
 class CurrentDateExtension(AgentExtension):

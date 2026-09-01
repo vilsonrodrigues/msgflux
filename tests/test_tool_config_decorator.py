@@ -170,7 +170,7 @@ def test_tool_config_with_autoparams():
 
         name = "AutoParamsAgent"
         model = mock_model
-        system_message = "You are a helpful assistant"
+        system_prompt = "You are a helpful assistant"
 
     # Class-level access
     assert AutoParamsAgent.tool_config.return_direct is True
@@ -179,9 +179,8 @@ def test_tool_config_with_autoparams():
     instance = AutoParamsAgent()
     assert instance.tool_config.return_direct is True
 
-    # Verify system_message works (related bug fix)
-    assert hasattr(instance.system_message, "data")
-    assert instance.system_message.data == "You are a helpful assistant"
+    assert hasattr(instance.system_prompt, "data")
+    assert instance.system_prompt.data == "You are a helpful assistant"
 
     print("✓ Test 6 passed: tool_config compatible with AutoParams")
 

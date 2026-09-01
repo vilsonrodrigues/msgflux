@@ -116,7 +116,7 @@ def main() -> None:
                     }
                 )
             ],
-            instructions="Use Agent Skills when they match the user's request.",
+            system_prompt="Use Agent Skills when they match the user's request.",
         )
 
         print("Available skills:", agent.agent_skill_manager.names())

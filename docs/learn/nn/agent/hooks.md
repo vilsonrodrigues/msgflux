@@ -223,7 +223,7 @@ async def main():
             api_mode="responses",
             store=False,
         ),
-        instructions=f"Reply with exactly {REFERENCE} and nothing else.",
+        system_prompt=f"Reply with exactly {REFERENCE} and nothing else.",
         hooks=[Hook(event="transform_output", handler=expand_artifact_reference)],
         config={"stream": True},
     )

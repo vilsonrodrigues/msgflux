@@ -309,7 +309,7 @@ Use `Image`, `Audio`, `Video`, or `File` for multimodal inputs:
 
         class Classifier(nn.Agent):
             model = mf.Model.chat_completion("openai/gpt-4.1")
-            instructions = "Classify the content of an image and describe what you see."
+            system_prompt = "Classify the content of an image and describe what you see."
             signature = "photo: Image -> label, description, confidence: float"
 
         agent = Classifier()
@@ -406,10 +406,8 @@ Signatures can be combined with other Agent components. Here's how they interact
 
 | Component | Behavior with Signature |
 |-----------|------------------------|
-| `system_message` | **Additive** - Included in the system prompt alongside signature-generated content |
-| `instructions` | **Override** - If provided, takes precedence over the signature's docstring |
-| `examples` | **Additive** - Combined with any examples defined in the signature |
-| `system_extra_message` | **Additive** - Appended to the system prompt |
+| `system_prompt` | **Additive** - Combined with the signature docstring and generated output guidance |
+| `examples` | **Additive** - Installed through the few-shot examples extension |
 | `generation_schema` | **Fused** - Merged with signature outputs (e.g., ChainOfThought + Signature) |
 
 #### What the Signature Controls
@@ -417,12 +415,12 @@ Signatures can be combined with other Agent components. Here's how they interact
 | Component | Behavior |
 |-----------|----------|
 | `task` template | **Generated** - Created from input fields, overwrites any existing task template |
-| `expected_output` | **Generated** - Created from output fields |
+| output guidance | **Generated** - Compiled into `system_prompt` from output fields |
 | `annotations` | **Generated** - Created from input fields for tool integration |
 
 ???+ example "Combining Signature with System Components"
 
-    === "With system_message"
+    === "With system_prompt"
 
         Add context that applies to all requests:
 
@@ -442,15 +440,15 @@ Signatures can be combined with other Agent components. Here's how they interact
         class Translator(nn.Agent):
             model = mf.Model.chat_completion("openai/gpt-4.1-mini")
             signature = Translate
-            system_message = "You are a professional translator specialized in technical documents."
+            system_prompt = "You are a professional translator specialized in technical documents."
 
         agent = Translator()
         print(agent.get_system_prompt())
         ```
 
-    === "With instructions (Override)"
+    === "With a custom system prompt"
 
-        Override the signature's docstring:
+        Add constraints alongside the signature's docstring:
 
         ```python
         # pip install msgflux[openai]
@@ -460,14 +458,14 @@ Signatures can be combined with other Agent components. Here's how they interact
         # mf.set_envs(OPENAI_API_KEY="...")
 
         class Summarize(mf.Signature):
-            """Summarize the given text."""  # This will be ignored
+            """Summarize the given text."""
             text: str = mf.InputField()
             summary: str = mf.OutputField()
 
         class Summarizer(nn.Agent):
             model = mf.Model.chat_completion("openai/gpt-4.1-mini")
             signature = Summarize
-            instructions = "Create a bullet-point summary with exactly 3 key points."
+            system_prompt = "Create a bullet-point summary with exactly 3 key points."
 
         agent = Summarizer()
         print(agent.get_system_prompt())
@@ -492,18 +490,19 @@ Signatures can be combined with other Agent components. Here's how they interact
         class Classifier(nn.Agent):
             model = mf.Model.chat_completion("openai/gpt-4.1-mini")
             signature = Classify
-            # These examples are *combined* with any examples in the signature
+            # These examples are combined with any examples in the signature.
             examples = [
                 mf.Example(
                     inputs={"text": "I love it!"},
-                    outputs={"sentiment": "positive"}
+                    labels={"sentiment": "positive"},
                 ),
                 mf.Example(
                     inputs={"text": "Terrible product."},
-                    outputs={"sentiment": "negative"}
+                    labels={"sentiment": "negative"},
                 ),
             ]
 
+        agent = Classifier()
         print(agent.get_system_prompt())
         ```
 
@@ -571,7 +570,7 @@ When an agent has a signature, its annotations are automatically configured base
     class Coordinator(nn.Agent):
         model = model
         tools = [SentimentAnalyzer]
-        system_message = "You help analyze customer feedback."
+        system_prompt = "You help analyze customer feedback."
         config = {"verbose": True}
 
     coordinator = Coordinator()

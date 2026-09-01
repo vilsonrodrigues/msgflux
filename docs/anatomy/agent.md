@@ -40,7 +40,8 @@ export instead of importing `core.py` or the mixins directly.
 ```text
 input/message
   -> Agent
-     -> templates and task preparation
+     -> task preparation and model-facing projection
+     -> canonical system prompt + extension contributions
      -> ToolLibrary schemas
      -> provider call
      -> response processing
@@ -78,12 +79,74 @@ message / kwargs
 The async path mirrors the same structure through `aforward`, `_aexecute_model`,
 and `_aprocess_model_response`.
 
+## Canonical System Prompt
+
+`Agent` has one persistent prompt source: `system_prompt`. It is stored as a
+`Parameter`, which gives optimizers one stable value to inspect or update rather
+than requiring them to coordinate separate instruction and output-guidance
+fields.
+
+Signatures and generation schemas may contribute guidance while the Agent is
+configured, but their text is compiled into that same canonical parameter.
+Request-specific capabilities do not mutate it. Instead, extensions receive a
+`ModelContext` through `transform_system_prompt` and return a model-facing
+prompt for that execution.
+
+For example, the convenient `examples=` argument installs a
+`FewShotExamplesExtension`. The extension appends an `<examples>` section when
+the prompt is rendered; the examples do not become a second prompt parameter.
+Users can register that extension directly when they need explicit lifecycle
+control.
+
+Conceptually:
+
+```text
+canonical system_prompt Parameter
+  -> render runtime vars
+  -> transform_system_prompt extensions
+     -> examples
+     -> current date or other optional context
+     -> tool usage guidance
+  -> model-facing system prompt
+```
+
+This separation also means repeated executions do not accumulate extension
+output in the stored prompt.
+
+## Stored Messages And Model Projection
+
+User messages are stored with their original content. `Agent` does not wrap
+them in `<task>` tags. The `user` role already expresses that the content is a
+user request, and keeping the content unchanged makes checkpoints and future UI
+rendering independent of prompt markup.
+
+Task context follows a different path. When present, it is stored as
+`metadata.task_context` on the user item. Immediately before a model call,
+`Agent` creates a model-facing projection and prefixes that message with a
+`<context>` section. The persisted message remains unchanged:
+
+```text
+stored item
+  role: user
+  content: "Summarize the scanner outage."
+  metadata.task_context: "Scanner A serves warehouse inventory."
+
+model-facing projection
+  <context>
+  Scanner A serves warehouse inventory.
+  </context>
+
+  Summarize the scanner outage.
+```
+
+The same rule applies to `ChatMessages` and plain message lists. For multimodal
+content, the context is added to a text block without rewriting the stored
+media payload.
+
 ## Generation Schema And Signature
 
-One of the easiest ways to misunderstand `Agent` is to treat
-`generation_schema`, `typed_parser`, and `signature` as unrelated features.
-
-They are different entry points into the same contract-building phase.
+`generation_schema` and `signature` are different entry points into the same
+contract-building phase.
 
 ### Direct `generation_schema`
 
@@ -96,21 +159,6 @@ Typical cases:
 - a reasoning schema such as `ChainOfThought`
 - a custom flow control schema such as `ReAct`
 
-### `typed_parser`
-
-`typed_parser` is not the same thing as `generation_schema`.
-
-It influences how the expected output is described and parsed, but it does not
-replace the role of `generation_schema` as the runtime output contract.
-
-In practice:
-
-- `generation_schema` defines the shape of structured output
-- `typed_parser` defines a parser-oriented output strategy
-
-That is why these features appear together in the preparation path, but they
-should not be mentally merged into one mechanism.
-
 ### `signature`
 
 A signature is a higher-level configuration source.
@@ -119,9 +167,12 @@ When `signature` is provided, `Agent` compiles several internal pieces from it:
 
 - input annotations
 - task template
-- instructions
-- expected output
+- system-prompt guidance
 - output struct used as generation schema
+
+Signature instructions and expected-output guidance are folded into the
+canonical `system_prompt`; they are not retained as independent prompt
+attributes.
 
 So, from the perspective of `Agent` anatomy, a signature is not just a prompt
 shortcut. It is a contract compiler.
@@ -169,7 +220,6 @@ That step is where `Agent` combines:
 - rendered `system_prompt`
 - `prefilling`
 - `stream`
-- `typed_parser`
 - `generation_schema`
 - tool schemas from `ToolLibrary`
 
@@ -201,12 +251,13 @@ A useful way to read the module is to separate two stages:
 configuration stage
   -> signature
   -> generation_schema
-  -> typed_parser
-  -> templates / instructions / annotations
+  -> canonical system_prompt / task templates / annotations
+  -> optional prompt extensions
 
 execution stage
-  -> messages
-  -> system prompt
+  -> raw stored messages
+  -> model-facing message projection
+  -> rendered system prompt
   -> provider params
   -> model output
   -> loops / normalization / final response

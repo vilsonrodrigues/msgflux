@@ -39,8 +39,8 @@ class SkillsExtension(AgentExtension):
         section = self._render_prompt_section()
         if not section:
             return ctx
-        prompt = f"{ctx.prompt}\n{section}" if ctx.prompt else section
-        return replace(ctx, prompt=prompt)
+        prompt = f"{ctx.system_prompt}\n\n{section}" if ctx.system_prompt else section
+        return replace(ctx, system_prompt=prompt)
 
     def _render_prompt_section(self) -> str:
         manager = self.manager

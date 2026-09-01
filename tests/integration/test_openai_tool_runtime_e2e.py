@@ -49,7 +49,7 @@ def test_openai_agent_executes_canonical_tool_loop(api_mode: str):
         ),
         tools=[lookup_status],
         checkpoint_store=store,
-        instructions=(
+        system_prompt=(
             "Always call lookup_status exactly once with the incident code from "
             "the user. Then report the returned status verbatim."
         ),
@@ -110,7 +110,7 @@ def test_openai_agent_executes_captured_tool_through_bucket_handle():
             store=False,
         ),
         tools=[IncidentBucket(), lookup_status],
-        instructions=(
+        system_prompt=(
             "Always call incident exactly once with name lookup_status and the "
             "incident code from the user. Then report the returned status verbatim."
         ),

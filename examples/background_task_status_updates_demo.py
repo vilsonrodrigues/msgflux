@@ -35,14 +35,14 @@ def build_agent(model_name: str) -> nn.Agent:
     return nn.Agent(
         name="status_updates_assistant",
         model=model,
-        system_message="You are a precise assistant.",
-        config={"verbose": True},
-        instructions=(
+        system_prompt=(
+            "You are a precise assistant.\n\n"
             "If you receive a notification with source=tool_status, summarize the "
             "latest background status update briefly. "
             "If you receive a task notification with status=completed, call "
             "task_output(task_id=...) before answering."
         ),
+        config={"verbose": True},
         tools=[slow_pipeline],
     )
 

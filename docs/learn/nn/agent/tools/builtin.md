@@ -13,7 +13,7 @@ from msgflux.tools.builtin import WebFetchTool
 
 class WebReader(nn.Agent):
     model = mf.Model.chat_completion("openai/gpt-4.1-mini")
-    system_message = "You help users understand web content."
+    system_prompt = "You help users understand web content."
     tools = [WebFetchTool]
     config = {"verbose": True}
 
@@ -42,7 +42,7 @@ env_search = WebSearchTool()
 
 class Researcher(nn.Agent):
     model = mf.Model.chat_completion("openai/gpt-4.1-mini")
-    system_message = "You help users find up-to-date information."
+    system_prompt = "You help users find up-to-date information."
     tools = [retriever_search, model_search, env_search]
     config = {"verbose": True}
 
@@ -97,7 +97,7 @@ weather = WeatherTool()
 
 class WeatherAssistant(nn.Agent):
     model = mf.Model.chat_completion("openai/gpt-4.1-mini")
-    system_message = "You help users understand weather conditions."
+    system_prompt = "You help users understand weather conditions."
     tools = [weather]
     config = {"verbose": True}
 
@@ -154,7 +154,7 @@ The tool returns a structured `dotdict` with:
 
         class WebReader(nn.Agent):
             model = mf.Model.chat_completion("openai/gpt-4.1-mini")
-            system_message = "You help users understand web content."
+            system_prompt = "You help users understand web content."
             tools = [WebFetchTool]
             config = {"verbose": True}
 
@@ -195,7 +195,7 @@ The tool returns a structured `dotdict` with:
 
         class Researcher(nn.Agent):
             model = mf.Model.chat_completion("openai/gpt-4.1-mini")
-            system_message = "You help users find up-to-date information."
+            system_prompt = "You help users find up-to-date information."
             tools = [wikipedia_search, openai_search, env_search]
             config = {"verbose": True}
 
@@ -240,7 +240,7 @@ The tool returns a structured `dotdict` with:
 
         class WeatherAssistant(nn.Agent):
             model = mf.Model.chat_completion("openai/gpt-4.1-mini")
-            system_message = "You help users understand weather conditions."
+            system_prompt = "You help users understand weather conditions."
             tools = [weather]
             config = {"verbose": True}
 
@@ -275,9 +275,9 @@ The tool returns a structured `dotdict` with:
         # Create Wikipedia search tool from built-in retriever
         wikipedia = mf.Retriever.web_search("wikipedia")
 
-        class Researcher(nn.Module):
+        class Researcher(nn.Agent):
             model = mf.Model.chat_completion("openai/gpt-4.1-mini")
-            system_message = "You are a research assistant with access to Wikipedia.",
+            system_prompt = "You are a research assistant with access to Wikipedia."
             tools = [wikipedia]
             config = {"verbose": True}
 

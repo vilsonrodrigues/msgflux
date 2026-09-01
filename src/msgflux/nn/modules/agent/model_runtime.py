@@ -323,7 +323,7 @@ class AgentModelRuntimeMixin:
         prompt_ctx = await self._arun_lifecycle_hooks(
             "transform_system_prompt",
             ModelContext(
-                prompt=model_execution_params.system_prompt or "",
+                system_prompt=model_execution_params.system_prompt or "",
                 scope=scope or get_execution_context()["scope"],
                 vars=vars,
                 tool_catalog=model_execution_params.tool_catalog,
@@ -332,7 +332,7 @@ class AgentModelRuntimeMixin:
         prompt_ctx = _require_lifecycle_payload(
             "transform_system_prompt", prompt_ctx, ModelContext
         )
-        model_execution_params.system_prompt = prompt_ctx.prompt or None
+        model_execution_params.system_prompt = prompt_ctx.system_prompt or None
         return model_execution_params
 
     def _prepare_warmup_execution(
@@ -504,7 +504,6 @@ class AgentModelRuntimeMixin:
             stream=self.config.get("stream", False),
             tool_catalog=tool_catalog,
             generation_schema=self.generation_schema,
-            typed_parser=self.typed_parser,
         )
 
         if model_preference:

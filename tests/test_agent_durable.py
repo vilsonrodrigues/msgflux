@@ -915,7 +915,7 @@ def test_agent_continues_latest_thread_with_new_run_id():
     assert [item["content"] for item in chatml] == [
         "Open a support ticket",
         "Ticket opened.",
-        "<task>Add note: customer called back</task>",
+        "Add note: customer called back",
         "Added note.",
     ]
 

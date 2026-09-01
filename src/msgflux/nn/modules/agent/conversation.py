@@ -1,5 +1,6 @@
 # ruff: noqa: A001, A002
 
+from copy import deepcopy
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -36,6 +37,7 @@ from msgflux.runtime.context import (
 from msgflux.tools.runtime import ToolOutcome
 from msgflux.utils.console import cprint
 from msgflux.utils.time import utc_now_isoformat
+from msgflux.utils.xml import apply_xml_tags
 
 if TYPE_CHECKING:
     pass
@@ -230,7 +232,7 @@ class AgentConversationMixin:
             scope=scope,
             drain_notifications=drain_notifications,
         )
-        return working_messages
+        return self._project_task_context(working_messages)
 
     async def _abuild_model_messages(
         self,
@@ -253,7 +255,57 @@ class AgentConversationMixin:
             scope=scope,
             drain_notifications=drain_notifications,
         )
-        return working_messages
+        return self._project_task_context(working_messages)
+
+    def _project_task_context(
+        self,
+        messages: Union[ChatMessages, List[Mapping[str, Any]]],
+    ) -> Union[ChatMessages, List[Mapping[str, Any]]]:
+        """Render stored task context only in the model-facing projection."""
+        has_context = any(
+            isinstance(item.get("metadata"), Mapping)
+            and item["metadata"].get("task_context")
+            for item in messages
+        )
+        if not has_context:
+            return messages
+
+        projected = (
+            messages.copy()
+            if isinstance(messages, ChatMessages)
+            else [deepcopy(dict(item)) for item in messages]
+        )
+        for item in projected:
+            metadata = item.get("metadata")
+            if not isinstance(metadata, Mapping):
+                continue
+            task_context = metadata.get("task_context")
+            if not task_context:
+                continue
+            projected_metadata = dict(metadata)
+            projected_metadata.pop("task_context", None)
+            if projected_metadata:
+                item["metadata"] = projected_metadata
+            else:
+                item.pop("metadata", None)
+            prefix = apply_xml_tags("context", str(task_context)) + "\n\n"
+            content = item.get("content")
+            if isinstance(content, str):
+                item["content"] = prefix + content
+                continue
+            if isinstance(content, list):
+                text_parts = [
+                    part
+                    for part in content
+                    if isinstance(part, dict) and part.get("type") == "text"
+                ]
+                if text_parts:
+                    text_parts[-1]["text"] = prefix + str(
+                        text_parts[-1].get("text", "")
+                    )
+                else:
+                    content.append({"type": "text", "text": prefix.rstrip()})
+        return projected
 
     def _persist_notification_message(
         self,

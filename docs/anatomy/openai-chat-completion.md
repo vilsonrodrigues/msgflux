@@ -26,7 +26,6 @@ provider semantics.
 Upstream code thinks in terms such as:
 
 - `generation_schema`
-- `typed_parser`
 - `ToolFlowControl`
 - `prefilling`
 - `tool_catalog`
@@ -90,6 +89,13 @@ Chat Completions produces `messages`. Responses produces `input`, flattens
 function definitions, and converts the remaining frontend parameters later in
 `_adapt_responses_params(...)`.
 
+The messages received here are already the Agent's model-facing projection.
+The provider does not add `<task>` wrappers or interpret checkpoint metadata.
+If a user item has task context, the Agent has rendered it as `<context>` in a
+temporary projection before this boundary; the raw user content remains in the
+conversation history. The provider only converts that projection to the
+selected wire protocol.
+
 ### 2. `_prepare_generate_kwargs(...)`
 
 This is where schema logic becomes provider-specific while the logical schema
@@ -99,7 +105,6 @@ It decides how msgFlux output contracts should be exposed to OpenAI.
 
 That includes:
 
-- `typed_parser`
 - canonical `generation_schema`
 - flow-control metadata carried through `ToolCatalog`
 - the OpenAI `response_format`, later mapped to `text.format` for Responses
@@ -139,24 +144,10 @@ This keeps provider constraints from leaking into the runtime contract.
 
 ## Structured Output Branches
 
-`_prepare_generate_kwargs(...)` has three main branches for non-streaming
+`_prepare_generate_kwargs(...)` has two main branches for non-streaming
 structured output.
 
-### 1. Typed Parser
-
-If `typed_parser` is set, the provider does not build an OpenAI structured
-output schema from `generation_schema`.
-
-Instead:
-
-- raw text is returned by the model
-- the parser decodes that text
-- optionally, msgFlux validates the parsed output against
-  `generation_schema`
-
-This branch is parser-oriented rather than provider-schema-oriented.
-
-### 2. Plain `generation_schema`
+### 1. Plain `generation_schema`
 
 If `generation_schema` is present and is not a `ToolFlowControl`, the provider
 derives an OpenAI `response_format` from it.
@@ -164,7 +155,7 @@ derives an OpenAI `response_format` from it.
 If necessary, the schema is lowered first. This is where cases such as
 `dict[K, V]` become provider-compatible transport shapes.
 
-### 3. `ToolFlowControl`
+### 2. `ToolFlowControl`
 
 If `generation_schema` is a `ToolFlowControl`, the provider asks the flow
 control whether it wants to override the provider-facing schema.
@@ -253,7 +244,6 @@ combinations before an OpenAI request is made.
 Today that includes:
 
 - `prefilling` + `generation_schema`
-- `stream=True` + `typed_parser`
 
 The first rule is especially important because `prefilling` appends an
 assistant message into the prompt, while `generation_schema` expects the model
@@ -283,8 +273,7 @@ In streaming mode, the selected API adapter:
 - aggregates text, reasoning, and native tool call deltas
 - sets response metadata as the stream completes
 
-It does not combine `stream=True` with typed-parser decoding, and structured
-schema-heavy normalization is not the primary path there.
+Structured schema-heavy normalization is not the primary streaming path.
 
 ## ASCII Diagram
 
@@ -296,8 +285,6 @@ Agent params
   -> validate options
   -> build generation params
   -> prepare generate kwargs
-       |
-       +--> typed_parser branch
        |
        +--> generation_schema branch
        |      |

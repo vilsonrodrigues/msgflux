@@ -16,7 +16,7 @@ def test_current_date_extension_includes_weekday():
     agent = Agent(
         name="test_agent",
         model=mock_model,
-        system_message="You are a helpful assistant",
+        system_prompt="You are a helpful assistant",
         extensions=[CurrentDateExtension()],
     )
 
@@ -49,7 +49,7 @@ def test_agent_without_current_date_extension():
     agent = Agent(
         name="test_agent",
         model=mock_model,
-        system_message="You are a helpful assistant",
+        system_prompt="You are a helpful assistant",
     )
 
     # Get the system prompt
@@ -68,7 +68,7 @@ def test_current_date_extension_is_removable():
     agent = Agent(
         name="test_agent",
         model=mock_model,
-        system_message="You are a helpful assistant",
+        system_prompt="You are a helpful assistant",
         extensions=[CurrentDateExtension()],
     )
 
@@ -91,7 +91,7 @@ def test_current_date_extension_format_consistency():
     agent = Agent(
         name="test_agent",
         model=mock_model,
-        system_message="You are a helpful assistant",
+        system_prompt="You are a helpful assistant",
         extensions=[CurrentDateExtension()],
     )
 

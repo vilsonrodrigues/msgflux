@@ -1592,7 +1592,6 @@ class LLMAsVerifier:
             "stream",
             "tool_catalog",
             "top_logprobs",
-            "typed_parser",
         }
         overlapping = forbidden_keys.intersection(self.model_request_kwargs)
         if overlapping:

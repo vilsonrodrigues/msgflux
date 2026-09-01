@@ -45,11 +45,11 @@ class ToolFlowControl:
         - abuild_history(raw_response, messages): Async version
 
     Class attributes:
-        system_message: Optional system message template
+        system_prompt: Optional system prompt
         tools_template: Optional Jinja template for tool schemas
     """
 
-    system_message: Optional[str] = None
+    system_prompt: Optional[str] = None
     tools_template: Optional[str] = None
 
     @classmethod

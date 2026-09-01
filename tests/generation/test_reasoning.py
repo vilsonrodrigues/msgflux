@@ -44,8 +44,8 @@ class TestReActToolFlowControl:
         assert issubclass(ReAct, ToolFlowControl)
 
     def test_react_has_class_attributes(self):
-        """Test that ReAct has system_message and tools_template."""
-        assert ReAct.system_message == REACT_SYSTEM_MESSAGE
+        """Test that ReAct has system_prompt and tools_template."""
+        assert ReAct.system_prompt == REACT_SYSTEM_MESSAGE
         assert ReAct.tools_template == REACT_TOOLS_TEMPLATE
 
     def test_action_struct(self):

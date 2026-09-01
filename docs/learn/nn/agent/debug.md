@@ -76,15 +76,14 @@ msgFlux provides several inspection mechanisms to help you debug and understand 
             "messages": [
                 {
                     "role": "user",
-                    "content": "<task>Hello</task>"
+                    "content": "Hello"
                 }
             ],
             "system_prompt": None,
             "prefilling": None,
             "stream": False,
             "tool_catalog": None,
-            "generation_schema": None,
-            "typed_parser": None
+            "generation_schema": None
         }
         ```
 
@@ -118,7 +117,7 @@ msgFlux provides several inspection mechanisms to help you debug and understand 
         Hello! How can I assist you today?
         [dotdict({
         'role': 'user'
-        'content': '<task>Hello</task>'
+        'content': 'Hello'
         })]
         ```
 
@@ -135,64 +134,15 @@ msgFlux provides several inspection mechanisms to help you debug and understand 
 
         class Assistant(nn.Agent):
             model = mf.Model.chat_completion("openai/gpt-4.1-mini")
-            system_message  = "You are a helpful assistant."
-            instructions    = "Treat the user well."
-            expected_output = "Correct responses."
+            system_prompt = """
+            You are a helpful assistant. Treat the user well and return a
+            correct, concise response.
+            """
 
         agent = Assistant()
         print(agent.state_dict())
         ```
 
-        Expected Output:
-        
-        ```bash
-        {
-            "examples": None,
-            "expected_output": "Correct responses.",
-            "instructions": "Treat the user well.",
-            "system_message": "You are a helpful assistant.",
-            "name": "Assistant",
-            "description": None,
-            "config": {},
-            "context_cache": None,
-            "task": None,
-            "task_multimodal": None,
-            "model_preference": None,
-            "task_context": None,
-            "messages": None,
-            "vars": None,
-            "prefilling": None,
-            "system_extra_message": None,
-            "response_mode": None,
-            "typed_parser": None,
-            "generation_schema": None,
-            "lm.model": {
-                "msgflux_type": "model",
-                "provider": "openai",
-                "model_type": "chat_completion",
-                "state": {
-                    "model_id": "gpt-4.1-mini",
-                    "context_length": None,
-                    "reasoning_max_tokens": None,
-                    "enable_cache": False,
-                    "cache_size": 128,
-                    "sampling_params": {
-                        "base_url": None
-                    },
-                    "sampling_run_params": {
-                        "max_tokens": None
-                    },
-                    "enable_thinking": None,
-                    "parallel_tool_calls": true,
-                    "reasoning_in_tool_call": true,
-                    "validate_typed_parser_output": False,
-                    "return_reasoning": False,
-                    "verbose": False,
-                    "current_key_index": 0
-                }
-            },
-            "tool_library.name": "Assistant_tool_library",
-            "tool_library.tool_configs": {},
-            "tool_library.mcp_clients": {}
-        }
-        ```
+        The returned mapping includes the canonical `system_prompt`, registered
+        buffers, model state, and child modules. Runtime prompt contributions
+        from extensions are visible through `agent.get_system_prompt()`.

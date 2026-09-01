@@ -17,19 +17,15 @@ from typing import (
 import msgspec
 
 from msgflux.core.dotdict import dotdict
-from msgflux.core.examples import Example, ExampleCollection
+from msgflux.core.examples import Example
 from msgflux.core.message import Message
 from msgflux.dsl.signature import (
     Signature,
+    SignatureExamples,
     SignatureFactory,
     generate_annotations_from_signature,
 )
-from msgflux.dsl.typed_parsers.registry import typed_parser_registry
-from msgflux.generation.templates import (
-    EXPECTED_OUTPUTS_TEMPLATE,
-    SYSTEM_PROMPT_TEMPLATE,
-    PromptSpec,
-)
+from msgflux.generation.templates import PromptSpec
 from msgflux.models import Model
 from msgflux.models.gateway import ModelGateway
 from msgflux.models.types import ChatCompletionModel
@@ -43,8 +39,7 @@ from msgflux.runtime.context import (
     get_execution_context,
 )
 from msgflux.tools.catalog import ToolCatalogView
-from msgflux.utils.chat import response_format_from_msgspec_struct
-from msgflux.utils.msgspec import StructFactory, is_optional_field, msgspec_dumps
+from msgflux.utils.msgspec import StructFactory, is_optional_field
 from msgflux.utils.validation import is_subclass_of
 
 if TYPE_CHECKING:
@@ -55,6 +50,33 @@ from msgflux.nn.modules.agent.context import (
     ToolFilter,
     _require_lifecycle_payload,
 )
+
+
+def _merge_signature_examples(
+    configured_examples: Optional[Union[str, List[Union[Example, Mapping[str, Any]]]]],
+    signature_examples: Any,
+) -> Optional[Union[str, List[Union[Example, Mapping[str, Any]]]]]:
+    if not signature_examples:
+        return configured_examples
+    if isinstance(configured_examples, str):
+        raise ValueError(
+            "String `examples` cannot be combined with examples declared by a "
+            "Signature. Pass a list instead."
+        )
+    if isinstance(signature_examples, SignatureExamples):
+        normalized = [
+            Example(
+                inputs=signature_examples.inputs,
+                labels=signature_examples.outputs,
+            )
+        ]
+    elif isinstance(signature_examples, Example):
+        normalized = [signature_examples]
+    else:
+        normalized = list(signature_examples)
+    merged = list(configured_examples or ())
+    merged.extend(normalized)
+    return merged
 
 
 class AgentConfigurationMixin:
@@ -147,87 +169,23 @@ class AgentConfigurationMixin:
     def model(self, value: Union[ChatCompletionModel, ModelGateway, "Generator", str]):
         self._set_model(value)
 
-    def _set_system_message(self, system_message: Optional[str] = None):
-        if isinstance(system_message, str) or system_message is None:
-            if isinstance(system_message, str):
-                system_message = cleandoc(system_message)
-            if (
-                hasattr(self.generation_schema, "system_message")
-                and self.generation_schema.system_message is not None
-            ):
-                if system_message is None:
-                    system_message = self.generation_schema.system_message
-                else:
-                    system_message = (
-                        self.generation_schema.system_message + system_message
-                    )
-            self.system_message = Parameter(system_message, PromptSpec.SYSTEM_MESSAGE)
-        else:
+    def _set_system_prompt(self, system_prompt: Optional[str] = None):
+        if not isinstance(system_prompt, (str, type(None))):
             raise TypeError(
-                "`system_message` requires a string or None "
-                f"given `{type(system_message)}`"
+                "`system_prompt` requires a string or None "
+                f"given `{type(system_prompt)}`"
             )
 
-    def _set_instructions(self, instructions: Optional[str] = None):
-        if isinstance(instructions, str) or instructions is None:
-            if isinstance(instructions, str):
-                instructions = cleandoc(instructions)
-            typed_parser_cls = typed_parser_registry.get(self.typed_parser, None)
-            if typed_parser_cls is not None:
-                instructions = self._format_template(
-                    {"instructions": instructions}, typed_parser_cls.template
-                )
-            self.instructions = Parameter(instructions, PromptSpec.INSTRUCTIONS)
-        else:
-            raise TypeError(
-                f"`instructions` requires a string or None given `{type(instructions)}`"
-            )
-
-    def _set_expected_output(self, expected_output: Optional[str] = None):
-        if isinstance(expected_output, str) or expected_output is None:  # TODO
-            if isinstance(expected_output, str):
-                expected_output = cleandoc(expected_output)
-            expected_output_temp = ""
-            if expected_output:
-                expected_output_temp += expected_output
-            typed_parser_cls = typed_parser_registry.get(self.typed_parser, None)
-            if typed_parser_cls is not None:  # Schema as expected output
-                response_format = response_format_from_msgspec_struct(
-                    self.generation_schema
-                )
-                schema = typed_parser_cls.schema_from_response_format(response_format)
-                content = {"expected_outputs": schema}
-                rendered = self._format_template(content, EXPECTED_OUTPUTS_TEMPLATE)
-                expected_output_temp += rendered
-            self.expected_output = Parameter(
-                expected_output_temp or None, PromptSpec.EXPECTED_OUTPUT
-            )
-        else:
-            raise TypeError(
-                "`expected_output` requires a string or None "
-                f"given `{type(expected_output)}`"
-            )
-
-    def _set_examples(
-        self,
-        examples: Optional[Union[str, List[Union[Example, Mapping[str, Any]]]]] = None,
-    ):
-        if isinstance(examples, (str, list)) or examples is None:
-            if isinstance(examples, str):
-                examples = cleandoc(examples)
-            if isinstance(examples, list):
-                typed_parser_cls = typed_parser_registry.get(self.typed_parser, None)
-                collection = ExampleCollection(examples)
-                if typed_parser_cls is not None:
-                    serialize_func = typed_parser_cls.encode
-                else:
-                    serialize_func = msgspec_dumps
-                examples = collection.get_formatted(serialize_func, serialize_func)
-            self.examples = Parameter(examples, PromptSpec.EXAMPLES)
-        else:
-            raise TypeError(
-                f"`examples` requires a List[Example] or None given `{type(examples)}`"
-            )
+        prompt_parts = []
+        schema_prompt = getattr(self.generation_schema, "system_prompt", None)
+        if isinstance(schema_prompt, str) and schema_prompt.strip():
+            prompt_parts.append(cleandoc(schema_prompt))
+        if isinstance(system_prompt, str) and system_prompt.strip():
+            prompt_parts.append(cleandoc(system_prompt))
+        self.system_prompt = Parameter(
+            "\n\n".join(prompt_parts) or None,
+            PromptSpec.SYSTEM_PROMPT,
+        )
 
     def _set_messages(self, messages: Optional[str] = None):
         if isinstance(messages, str) or messages is None:
@@ -307,17 +265,6 @@ class AgentConfigurationMixin:
                 f"given `{type(config['validate_inputs'])}`"
             )
 
-    def _set_system_extra_message(self, system_extra_message: Optional[str] = None):
-        if isinstance(system_extra_message, str) or system_extra_message is None:
-            if isinstance(system_extra_message, str):
-                system_extra_message = cleandoc(system_extra_message)
-            self.register_buffer("system_extra_message", system_extra_message)
-        else:
-            raise TypeError(
-                "`system_extra_message` requires a string or None "
-                f"given `{type(system_extra_message)}`"
-            )
-
     def _set_vars(self, vars: Optional[str] = None):
         if isinstance(vars, str) or vars is None:
             self.register_buffer("vars", vars)
@@ -395,36 +342,16 @@ class AgentConfigurationMixin:
             return cast(Optional[ToolFilter], message.get(self.tool_filter))
         return None
 
-    def _set_typed_parser(self, typed_parser: Optional[str] = None):
-        if isinstance(typed_parser, str) or typed_parser is None:
-            if (
-                isinstance(typed_parser, str)
-                and typed_parser not in typed_parser_registry
-            ):
-                raise ValueError(
-                    f"`typed_parser` supports only `{typed_parser_registry.keys()}`"
-                    f" given `{typed_parser}`"
-                )
-            self.register_buffer("typed_parser", typed_parser)
-        else:
-            raise TypeError(
-                f"`typed_parser` requires a str given `{type(typed_parser)}`"
-            )
-
     def _set_signature(
         self,
         *,
         signature: Optional[Union[str, Signature]] = None,
-        examples: Optional[List[Example]] = None,
+        examples: Optional[Union[str, List[Union[Example, Mapping[str, Any]]]]] = None,
         generation_schema: Optional[msgspec.Struct] = None,
-        instructions: Optional[str] = None,
-        system_message: Optional[str] = None,
-        typed_parser: Optional[str] = None,
+        system_prompt: Optional[str] = None,
     ):
         if signature is not None:
-            typed_parser_cls = typed_parser_registry.get(typed_parser, None)
-
-            examples = examples or []
+            configured_examples = examples
             output_descriptions = None
             signature_instructions = None
 
@@ -441,8 +368,10 @@ class AgentConfigurationMixin:
                 signature_examples = SignatureFactory.get_examples_from_signature(
                     signature
                 )
-                if signature_examples:
-                    examples.extend(signature_examples)
+                configured_examples = _merge_signature_examples(
+                    configured_examples,
+                    signature_examples,
+                )
             else:
                 raise TypeError(
                     "`signature` requires a string, `Signature` or None "
@@ -459,17 +388,11 @@ class AgentConfigurationMixin:
                     f"Rename these inputs to avoid conflicts."
                 )
 
-            # typed_parser
-            self._set_typed_parser(typed_parser)
-
             # task template - add to templates dict, overriding if present
             task_template = SignatureFactory.get_task_template_from_signature(
                 inputs_info
             )
             self.templates["task"] = task_template
-
-            # instructions
-            self._set_instructions(instructions or signature_instructions)
 
             # generation schema
             signature_output_struct = StructFactory.from_signature(
@@ -494,17 +417,13 @@ class AgentConfigurationMixin:
                 )
             self._set_generation_schema(fused_output_struct or signature_output_struct)
 
-            # system message
-            self._set_system_message(system_message)
-
-            # expected output
             expected_output = SignatureFactory.get_expected_output_from_signature(
-                inputs_info, outputs_info, typed_parser_cls
+                inputs_info, outputs_info
             )
-            self._set_expected_output(expected_output)
-
-            # examples
-            self._set_examples(examples)
+            prompt_parts = (system_prompt, signature_instructions, expected_output)
+            self._set_system_prompt(
+                "\n\n".join(part for part in prompt_parts if part) or None
+            )
 
             # Generate and set annotations from signature inputs
             generated_annotations = generate_annotations_from_signature(
@@ -522,6 +441,7 @@ class AgentConfigurationMixin:
             else:
                 self._input_encoder = None
                 self._input_decoder = None
+            return configured_examples or None
 
     def _get_validation_inputs(
         self,
@@ -580,20 +500,8 @@ class AgentConfigurationMixin:
         *,
         _apply_hooks: bool = True,
     ) -> str:
-        """Render the system prompt using the Jinja template.
-        Returns an empty string if no segments are provided.
-        """
-        template_inputs = dotdict(
-            system_message=self.system_message.data,
-            instructions=self.instructions.data,
-            expected_output=self.expected_output.data,
-            examples=self.examples.data,
-            system_extra_message=self.system_extra_message,
-        )
-
-        system_prompt = self._format_template(
-            template_inputs, self.system_prompt_template
-        )
+        """Render the canonical system prompt and extension contributions."""
+        system_prompt = self.system_prompt.data or ""
 
         if vars:  # Runtime inputs to system template
             system_prompt = self._format_template(vars, system_prompt)
@@ -607,20 +515,11 @@ class AgentConfigurationMixin:
         ctx = self._run_lifecycle_hooks(
             "transform_system_prompt",
             ModelContext(
-                prompt=system_prompt,
+                system_prompt=system_prompt,
                 scope=get_execution_context()["scope"],
                 vars=vars or {},
                 tool_catalog=tool_catalog,
             ),
         )
         ctx = _require_lifecycle_payload("transform_system_prompt", ctx, ModelContext)
-        return ctx.prompt
-
-    @property
-    def system_prompt_template(self) -> str:
-        """Get the system prompt template.
-
-        Returns the custom template if provided in templates dict,
-        otherwise returns the default SYSTEM_PROMPT_TEMPLATE.
-        """
-        return self.templates.get("system_prompt", SYSTEM_PROMPT_TEMPLATE)
+        return ctx.system_prompt

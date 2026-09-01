@@ -111,7 +111,7 @@ model = mf.Model.chat_completion(
 
 class Solver(nn.Agent):
     model = model
-    instructions = "Solve the problem."
+    system_prompt = "Solve the problem."
     config = {"stream": True}
 
 agent = Solver()

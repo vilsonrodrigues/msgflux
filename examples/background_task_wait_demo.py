@@ -23,13 +23,13 @@ def build_agent(model_name: str) -> nn.Agent:
     return nn.Agent(
         name="wait_assistant",
         model=model,
-        system_message="You are a precise assistant.",
-        config={"verbose": True},
-        instructions=(
+        system_prompt=(
+            "You are a precise assistant.\n\n"
             "When a background task result is required to answer the user, "
             "call task_wait(task_id=...) immediately after dispatch. "
             "Do not answer until you have the final result."
         ),
+        config={"verbose": True},
         tools=[slow_square],
     )
 

@@ -134,7 +134,7 @@ Configure MCP servers using the `mcp_servers` attribute:
 
         class MyAgent(nn.Agent):
             model = mf.Model.chat_completion("openai/gpt-4.1-mini")
-            instructions = "You are a helpful assistant."
+            system_prompt = "You are a helpful assistant."
             mcp_servers = [{
                 "name": "my",
                 "transport": "stdio",

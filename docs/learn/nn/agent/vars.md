@@ -23,7 +23,7 @@ Three use cases drive its design:
 
         class SupportAgent(nn.Agent):
             model = mf.Model.chat_completion("openai/gpt-4.1-mini")
-            instructions = """
+            system_prompt = """
             You are assisting {{ customer_name }}.
             {% if is_premium %}This is a premium customer — prioritize their request.{% endif %}
             """
@@ -148,8 +148,8 @@ Three use cases drive its design:
 
         class TaskAgent(nn.Agent):
             model = mf.Model.chat_completion("openai/gpt-4.1-mini")
-            system_message = "You are a sharp, versatile assistant."
-            instructions = """
+            system_prompt = """
+            You are a sharp, versatile assistant.
             You have the following skills:
 
             {% for name, meta in skills.items() %}
@@ -300,7 +300,7 @@ Three use cases drive its design:
 
         class SupportAgent(nn.Agent):
             model = mf.Model.chat_completion("openai/gpt-4.1-mini")
-            instructions = "You are assisting {{ customer_name }}."
+            system_prompt = "You are assisting {{ customer_name }}."
             tools = [get_discount]
             message_fields = {"task": "query", "vars": "variables"}  # (1)!
             response_mode = "answer"

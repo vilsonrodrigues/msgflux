@@ -36,7 +36,7 @@ def test_agent_warmup_system_prompt_uses_only_system_prompt_and_tools():
     agent = Agent(
         name="support_agent",
         model=model,
-        system_message="You are a support agent for {{ product }}.",
+        system_prompt="You are a support agent for {{ product }}.",
         tools=[lookup_ticket],
     )
 
@@ -58,7 +58,7 @@ async def test_agent_async_warmup_system_prompt_applies_tool_filter():
     agent = Agent(
         name="support_agent",
         model=model,
-        system_message="You are a support agent.",
+        system_prompt="You are a support agent.",
         tools=[lookup_ticket],
     )
 
@@ -74,7 +74,7 @@ def test_agent_warmup_system_prompt_can_run_detached(monkeypatch):
     agent = Agent(
         name="support_agent",
         model=model,
-        system_message="You are a support agent.",
+        system_prompt="You are a support agent.",
     )
     captured: dict[str, Any] = {}
 

@@ -1,8 +1,8 @@
 # Task and Context
 
 The agent receives input through **task** (what to do) and **task_context**
-(background information). When both are provided, they're combined using
-XML-like tags in the final prompt.
+(background information). The canonical user message stores the task unchanged;
+the model-facing projection adds a tagged context section when one is present.
 
 ## Imperative vs Declarative
 
@@ -28,7 +28,7 @@ The **declarative approach** with `message_fields` shines when designing complex
 
 ## How Task and Context are Combined
 
-When you pass `task_context`, the context is injected **inside the task** using XML-like tags:
+When you pass `task_context`, only the context is tagged:
 
 ```xml
 <context>
@@ -37,13 +37,13 @@ Industry: FinTech
 Product: AI-powered risk analysis
 </context>
 
-<task>
 Create a pitch for this client
-</task>
 ```
 
-This structure helps the model clearly distinguish between background
-information (task context) and what it needs to do (task).
+The `user` role already identifies the task. The context is stored as metadata
+on that history item, so checkpoints and TUIs retain the original user text.
+`inspect_model_execution_params()` shows the tagged projection sent to the
+Model.
 
 ???+ example
 
@@ -276,7 +276,7 @@ Templates use **Jinja2** syntax to format inputs and outputs. There are three te
 
         class Assistant(nn.Agent):
             model = mf.Model.chat_completion("openai/gpt-4.1-mini")
-            instructions = "Only respond if the question is safe."
+            system_prompt = "Only respond if the question is safe."
             generation_schema = SafetyCheck
             templates={
                 "response": """
@@ -320,8 +320,8 @@ Templates use **Jinja2** syntax to format inputs and outputs. There are three te
 
         class Extractor(nn.Agent):
             model = mf.Model.chat_completion("openai/gpt-4.1-mini")
-            system_message = "You are an information extractor."
-            instructions = "Extract information from the customer's message."
+            system_prompt = """You are an information extractor.
+            Extract information from the customer's message."""
             generation_schema = ClientInfo
             templates = {
                 "response": """
@@ -707,7 +707,7 @@ The final assistant response is **never added automatically** — append it manu
 
         class Advisor(nn.Agent):
             model = mf.Model.chat_completion("openai/gpt-4.1-mini")
-            system_message = "You are a helpful camera advisor."
+            system_prompt = "You are a helpful camera advisor."
 
         agent = Advisor()
         history = []
@@ -776,7 +776,7 @@ The final assistant response is **never added automatically** — append it manu
 
         class ChatBot(nn.Agent):
             model = mf.Model.chat_completion("openai/gpt-4.1-mini")
-            system_message = "You are a helpful assistant."
+            system_prompt = "You are a helpful assistant."
             config = {"stream": True, "return_messages": True}
 
         agent = ChatBot()
@@ -866,7 +866,7 @@ class VisionAgent(nn.Agent):
 
     class Refiner(nn.Agent):
         model = mf.Model.chat_completion("openai/gpt-4.1-mini")
-        instructions = "Rewrite the question to be clearer and more specific."
+        system_prompt = "Rewrite the question to be clearer and more specific."
         message_fields = {"task": "user.question"}
         response_mode = "refined.question"
 

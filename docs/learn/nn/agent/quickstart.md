@@ -25,22 +25,25 @@ The agent sends the input to the model and returns the response as a plain strin
 
 ## Adding Behavior
 
-Use `system_message` and `instructions` to shape how the agent responds:
+Use one `system_prompt` to define the agent's role, task, and output contract:
 
 ```python
 agent = nn.Agent(
     "translator",
     model,
-    system_message="You are a professional translator.",
-    instructions="Translate the user's message to Brazilian Portuguese.",
-    expected_output="Return only the translation, nothing else.",
+    system_prompt="""
+    You are a professional translator.
+    Translate the user's message to Brazilian Portuguese.
+    Return only the translation.
+    """,
 )
 
 response = agent("The weather is beautiful today.")
 print(response)  # "O clima está lindo hoje."
 ```
 
-These components are assembled into a system prompt sent to the model. See [System Prompt Components](system-prompt.md) for the full list.
+Extensions may add runtime context without modifying this canonical parameter.
+See [System Prompt](system-prompt.md).
 
 ## Class-based Definition (AutoParams)
 
@@ -51,9 +54,11 @@ class Translator(nn.Agent):
     """Professional translator for Brazilian Portuguese."""
 
     model = mf.Model.chat_completion("openai/gpt-4.1-mini")
-    system_message = "You are a professional translator."
-    instructions = "Translate the user's message to Brazilian Portuguese."
-    expected_output = "Return only the translation, nothing else."
+    system_prompt = """
+    You are a professional translator.
+    Translate the user's message to Brazilian Portuguese.
+    Return only the translation.
+    """
 
 agent = Translator()
 
@@ -64,7 +69,9 @@ response = agent("The weather is beautiful today.")
 print(response)  # "O clima está lindo hoje."
 ```
 
-Any `__init__` parameter can be set as a class attribute: `model`, `system_message`, `instructions`, `expected_output`, `examples`, `tools`, `config`, `templates`, `generation_schema`, `signature`, and others.
+Any `__init__` parameter can be set as a class attribute, including `model`,
+`system_prompt`, `examples`, `tools`, `config`, `templates`,
+`generation_schema`, and `signature`.
 
 The `description` is especially useful when using an [agent as a tool](tools/agent-tool.md) — the calling agent uses it to understand what the tool-agent does.
 
@@ -115,7 +122,7 @@ def run_shell(command: str) -> str:
 
 class DevAssistant(nn.Agent):
     model = mf.Model.chat_completion("openai/gpt-4.1-mini")
-    instructions = "Help the user with system tasks using the shell."
+    system_prompt = "Help the user with system tasks using the shell."
     tools = [run_shell]
 
 agent = DevAssistant()
@@ -130,7 +137,7 @@ The model decides when and how to call the tool. The Agent handles the full loop
 
 | Topic | Description |
 |-------|-------------|
-| [System Prompt Components](system-prompt.md) | Customize behavior with system_message, instructions, examples |
+| [System Prompt](system-prompt.md) | Customize stable behavior and add examples |
 | [Async](async.md) | Non-blocking execution with `acall` |
 | [Streaming](streaming.md) | Real-time token-by-token output |
 | [Tools](tools/index.md) | Function calling, MCP, agent-as-tool |

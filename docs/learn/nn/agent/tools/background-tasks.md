@@ -126,7 +126,7 @@ def long_sum(a: int, b: int) -> int:
 agent = nn.Agent(
     name="math_assistant",
     model=mf.Model.chat_completion("openai/gpt-5.6-luna"),
-    instructions="Use tools when needed.",
+    system_prompt="Use tools when needed.",
     tools=[long_sum],
 )
 
@@ -337,7 +337,7 @@ provider calls.
 agent = nn.Agent(
     name="assistant",
     model=mf.Model.chat_completion("openai/gpt-5.6-luna"),
-    instructions=(
+    system_prompt=(
         "When a task notification has status=completed, use its ref as the "
         "task_id in task_output before answering. For failed or interrupted "
         "tasks, inspect task_status instead."

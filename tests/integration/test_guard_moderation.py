@@ -22,7 +22,7 @@ BLOCKED_MESSAGE = "This message cannot be processed."
 
 class Assistant(nn.Agent):
     model = chat_model
-    system_message = "You are a helpful assistant."
+    system_prompt = "You are a helpful assistant."
     message_fields = {"task": "user.text"}
     hooks = [Guard(validator=moderation_model, on="pre", message=BLOCKED_MESSAGE)]
 

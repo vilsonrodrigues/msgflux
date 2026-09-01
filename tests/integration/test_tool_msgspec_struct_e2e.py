@@ -46,8 +46,8 @@ class TodoAgent(nn.Agent):
         max_tokens=300,
         reasoning_effort="low",
     )
-    system_message = "You are a TODO extraction assistant."
-    instructions = (
+    system_prompt = (
+        "You are a TODO extraction assistant.\n\n"
         "Extract TODO items from the user message and call store_todos exactly once. "
         "Use status='pending' for new TODOs and active_form as the action phrase."
     )

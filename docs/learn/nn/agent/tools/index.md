@@ -122,7 +122,7 @@ When the model decides to use a tool, the Agent intercepts the response, execute
 
         class GithubAssistant(nn.Agent):
             model = mf.Model.chat_completion("openai/gpt-4.1-mini")
-            system_message = "You help users explore GitHub repositories."
+            system_prompt = "You help users explore GitHub repositories."
             tools = [get_github_repo]
             config = {"verbose": True}
 
@@ -202,7 +202,7 @@ When the model decides to use a tool, the Agent intercepts the response, execute
 
         class FileAssistant(nn.Agent):
             model = mf.Model.chat_completion("openai/gpt-4.1-mini")
-            system_message = "You help users explore files on their system."
+            system_prompt = "You help users explore files on their system."
             tools = [list_files, read_file]
             config = {"verbose": True}
 
@@ -523,19 +523,19 @@ Control how the model selects tools.
             """Expert in Python programming."""
 
             model = model
-            system_message = "You are a Python expert."
+            system_prompt = "You are a Python expert."
 
         @mf.tool_config(return_direct=True)
         class RustExpert(nn.Agent):
             """Expert in Rust programming."""
 
             model = model
-            system_message = "You are a Rust expert."
+            system_prompt = "You are a Rust expert."
 
         class Router(nn.Agent):
             """Routes programming questions to the right expert."""
             model = model
-            system_message = "Route questions to the appropriate expert."
+            system_prompt = "Route questions to the appropriate expert."
             tools = [PythonExpert, RustExpert]
             config = {"tool_choice": "required", "verbose": True}
 
@@ -759,7 +759,7 @@ This is useful to avoid runaway tool loops while still allowing a graceful final
 
     class Researcher(nn.Agent):
         model = mf.Model.chat_completion("openai/gpt-4.1-mini")
-        system_message = "Use tools when needed, but finish with a concise answer."
+        system_prompt = "Use tools when needed, but finish with a concise answer."
         tools = [wikipedia]
         config = {
             "tool_choice": "auto",
@@ -960,8 +960,8 @@ agents directly. If you want the model to see only one public
             Consult for meal plans, dietary recommendations, and nutritional advice."""
 
             model = model
-            system_message = "You are a certified nutritionist."
-            instructions = """Create clear and practical meal plans tailored to the user's goals.
+            system_prompt = """You are a certified nutritionist.
+            Create clear and practical meal plans tailored to the user's goals.
             Be objective, technical, and structured."""
 
         class FitnessTrainer(nn.Agent):
@@ -969,16 +969,16 @@ agents directly. If you want the model to see only one public
             Consult for workout plans, training schedules, and exercise guidance."""
 
             model = model
-            system_message = "You are a certified personal trainer."
-            instructions = """Design workout routines based on the user's fitness level and goals.
+            system_prompt = """You are a certified personal trainer.
+            Design workout routines based on the user's fitness level and goals.
             Focus on safety, progression, and sustainability."""
 
         class HealthCoordinator(nn.Agent):
             """Coordinates health specialists to provide comprehensive wellness advice."""
 
             model = model
-            system_message = "You coordinate a team of health specialists."
-            instructions = "Delegate user requests to the appropriate specialist."
+            system_prompt = """You coordinate a team of health specialists.
+            Delegate user requests to the appropriate specialist."""
             tools = [Nutritionist, FitnessTrainer]
             config = {"verbose": True}
 
@@ -1007,11 +1007,11 @@ agents directly. If you want the model to see only one public
             Use for growth strategies, metrics, and funding."""
 
             model = model
-            system_message = "You are a startup scaling expert."
+            system_prompt = "You are a startup scaling expert."
 
         class BusinessConsultant(nn.Agent):
             model = model
-            system_message = """You are a business consultant.
+            system_prompt = """You are a business consultant.
             If the context is a startup, transfer to the specialist."""
             tools = [StartupSpecialist]
             config = {"verbose": True}

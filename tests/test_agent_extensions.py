@@ -57,7 +57,10 @@ class _PromptExtension(AgentExtension):
 
     def hooks(self):
         def add_prompt(ctx: ModelContext):
-            return replace(ctx, prompt=f"{ctx.prompt}\nextension prompt".strip())
+            return replace(
+                ctx,
+                system_prompt=f"{ctx.system_prompt}\nextension prompt".strip(),
+            )
 
         return (Hook(event="transform_system_prompt", handler=add_prompt),)
 
@@ -231,7 +234,10 @@ async def test_extension_removal_preserves_active_run_snapshot():
         async def add_prompt(self, ctx: ModelContext):
             started.set()
             await release.wait()
-            return replace(ctx, prompt=f"{ctx.prompt}\nactive snapshot".strip())
+            return replace(
+                ctx,
+                system_prompt=f"{ctx.system_prompt}\nactive snapshot".strip(),
+            )
 
         def hooks(self):
             return (Hook(event="transform_system_prompt", handler=self.add_prompt),)
@@ -595,7 +601,10 @@ async def test_extension_state_is_shared_within_run_and_isolated_between_runs():
 
         def add_prompt(self, ctx: ModelContext):
             message = self.state()["message"]
-            return replace(ctx, prompt=f"{ctx.prompt}\nrun:{message}".strip())
+            return replace(
+                ctx,
+                system_prompt=f"{ctx.system_prompt}\nrun:{message}".strip(),
+            )
 
         def hooks(self):
             return (

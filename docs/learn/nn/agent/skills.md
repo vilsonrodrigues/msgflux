@@ -97,7 +97,7 @@ prompt.
 
 When deferred skills exist, the extension contributes one loader:
 
-```python
+```text
 skill(name: str) -> str
 ```
 
@@ -122,7 +122,7 @@ visible for the rest of the trajectory.
 With `discovery="tool"`, the extension contributes `skill_search` when the
 prompt omits any deferred skills:
 
-```python
+```text
 skill_search(query: str, top_k: int | None = None) -> str
 ```
 

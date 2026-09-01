@@ -21,7 +21,6 @@ from msgflux.tools.catalog import ToolCatalogEntry, ToolChoice
 from msgflux.utils.chat import ChatBlock
 from msgflux.utils.common import has_format_placeholder, is_jinja_template
 from msgflux.utils.console import cprint
-from msgflux.utils.xml import apply_xml_tags
 
 if TYPE_CHECKING:
     pass
@@ -128,6 +127,7 @@ class AgentInputMixin:
             run_id=effective_run_id,
         )
 
+        task_context = self._context_manager(message, vars=vars, **kwargs)
         content = self._render_task(message, task=task, vars=vars, **kwargs)
 
         if content is None and not messages:
@@ -151,9 +151,15 @@ class AgentInputMixin:
                     turn_id=effective_run_id,
                 )
             if content is not None:
-                messages.add_user(content)
+                user_item = {"role": "user", "content": content}
+                if task_context:
+                    user_item["metadata"] = {"task_context": task_context}
+                messages.append(user_item)
         elif content is not None:
-            chat_content = [ChatBlock.user(content)]
+            user_item = ChatBlock.user(content)
+            if task_context:
+                user_item["metadata"] = {"task_context": task_context}
+            chat_content = [user_item]
             if messages is None:
                 messages = chat_content
             else:
@@ -268,6 +274,7 @@ class AgentInputMixin:
             run_id=effective_run_id,
         )
 
+        task_context = self._context_manager(message, vars=vars, **kwargs)
         content = await self._arender_task(message, task=task, vars=vars, **kwargs)
 
         if content is None and not messages:
@@ -291,9 +298,15 @@ class AgentInputMixin:
                     turn_id=effective_run_id,
                 )
             if content is not None:
-                messages.add_user(content)
+                user_item = {"role": "user", "content": content}
+                if task_context:
+                    user_item["metadata"] = {"task_context": task_context}
+                messages.append(user_item)
         elif content is not None:
-            chat_content = [ChatBlock.user(content)]
+            user_item = ChatBlock.user(content)
+            if task_context:
+                user_item["metadata"] = {"task_context": task_context}
+            chat_content = [user_item]
             if messages is None:
                 messages = chat_content
             else:
@@ -321,12 +334,6 @@ class AgentInputMixin:
         task: Any = _UNSET,
         **kwargs,
     ) -> Optional[Union[str, Mapping[str, Any]]]:
-        content = ""
-
-        context_content = self._context_manager(message, vars=vars, **kwargs)
-        if context_content:
-            content += context_content
-
         if task is _UNSET:
             if isinstance(message, dotdict):
                 task = self._extract_message_values(self.task, message)
@@ -375,9 +382,7 @@ class AgentInputMixin:
             if task_content is not None and not isinstance(task_content, str):
                 task_content = str(task_content)
 
-        task_content = apply_xml_tags("task", task_content)
-        content += task_content
-        content = content.strip()  # Remove whitespace
+        content = task_content.strip()
 
         multimodal_content = self._render_task_multimodal(message, **kwargs)
         if multimodal_content:
@@ -393,12 +398,6 @@ class AgentInputMixin:
         **kwargs,
     ) -> Optional[Union[str, Mapping[str, Any]]]:
         """Async version of _render_task."""
-        content = ""
-
-        context_content = self._context_manager(message, vars=vars, **kwargs)
-        if context_content:
-            content += context_content
-
         if task is _UNSET:
             if isinstance(message, dotdict):
                 task = self._extract_message_values(self.task, message)
@@ -447,9 +446,7 @@ class AgentInputMixin:
             if task_content is not None and not isinstance(task_content, str):
                 task_content = str(task_content)
 
-        task_content = apply_xml_tags("task", task_content)
-        content += task_content
-        content = content.strip()  # Remove whitespace
+        content = task_content.strip()
 
         multimodal_content = await self._arender_task_multimodal(message, **kwargs)
         if multimodal_content:
@@ -479,9 +476,10 @@ class AgentInputMixin:
         if context is not None:
             if self.templates.get("task_context"):
                 if isinstance(context, Mapping):
-                    context.update(vars)
+                    context_vars = dict(context)
+                    context_vars.update(vars)
                     msg_context = self._format_template(
-                        context, self.templates.get("task_context")
+                        context_vars, self.templates.get("task_context")
                     )
                 else:
                     pre_msg_context = self._format_template(
@@ -492,7 +490,7 @@ class AgentInputMixin:
                 msg_context = context
             elif isinstance(context, list):
                 msg_context = " ".join(str(v) for v in context if v is not None)
-            elif isinstance(context, dict):
+            elif isinstance(context, Mapping):
                 msg_context = "\n".join(
                     f"{k}: {v if not isinstance(v, list) else ', '.join(v)}"
                     for k, v in context.items()
@@ -502,7 +500,7 @@ class AgentInputMixin:
         if context_content:
             if vars:
                 context_content = self._format_template(vars, context_content)
-            return apply_xml_tags("context", context_content) + "\n\n"
+            return context_content
         return None
 
     # --- Multimodal Inputs ---

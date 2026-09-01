@@ -38,8 +38,8 @@ def store_fields(fields: dict[str, str]) -> dict:
 
 class StoreAgent(nn.Agent):
     model = model
-    system_message = "You are a data entry assistant."
-    instructions = (
+    system_prompt = (
+        "You are a data entry assistant.\n\n"
         "When the user gives you key-value pairs, call store_fields once "
         "with all the pairs together."
     )
@@ -50,8 +50,8 @@ class StoreAgent(nn.Agent):
 
 class StoreReActAgent(nn.Agent):
     model = react_model
-    system_message = "You are a data entry assistant."
-    instructions = (
+    system_prompt = (
+        "You are a data entry assistant.\n\n"
         "When the user gives you key-value pairs, call store_fields once "
         "with all the pairs together. After the tool call, answer briefly."
     )
