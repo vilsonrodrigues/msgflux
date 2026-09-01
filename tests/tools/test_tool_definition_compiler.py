@@ -52,8 +52,8 @@ def test_library_compiles_legacy_config_once_into_canonical_definition():
     assert definition.declaration["allow_background"] is True
 
     inspect_inventory.tool_config.background = True
-    captured = library.library["tool_search"].impl.tools["inspect_inventory"]
-    captured.source_tool.tool_config.allow_background = False
+    captured = library.captured_executors["inspect_inventory"]
+    captured.tool_config.allow_background = False
 
     assert definition.dispatch.name == "optional_background"
     assert definition.declaration["allow_background"] is True
@@ -66,8 +66,7 @@ def test_deferred_loading_uses_compiled_definition_after_config_mutation():
         return query
 
     library = ToolLibrary(name="search", tools=[lookup])
-    search_bucket = library.library["tool_search"].impl
-    search_bucket.tools["lookup"].tool_config["defer_loading"] = False
+    library.captured_executors["lookup"].tool_config["defer_loading"] = False
     messages = ChatMessages(thread_id="thread_1")
 
     outcome = library.execute_intents(
@@ -161,8 +160,9 @@ def test_library_registry_indexes_public_and_captured_definitions():
     assert library.registry.get("calculate").executor is library.library["calculate"]
     assert (
         library.registry.get("remote_lookup").executor
-        is search_bucket.tools["remote_lookup"].source_tool
+        is library.captured_executors["remote_lookup"]
     )
+    assert search_bucket.tools["remote_lookup"] == library.get_tool_ref("remote_lookup")
 
     copied = deepcopy(library)
     copied_search = copied.library["tool_search"].impl
@@ -170,8 +170,9 @@ def test_library_registry_indexes_public_and_captured_definitions():
     assert copied.registry.get("calculate").executor is copied.library["calculate"]
     assert (
         copied.registry.get("remote_lookup").executor
-        is copied_search.tools["remote_lookup"].source_tool
+        is copied.captured_executors["remote_lookup"]
     )
+    assert copied_search.tools["remote_lookup"] == copied.get_tool_ref("remote_lookup")
 
     library.remove("remote_lookup")
 

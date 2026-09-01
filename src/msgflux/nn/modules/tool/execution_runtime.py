@@ -712,8 +712,7 @@ class ToolLibraryExecutionMixin:
         bucket = getattr(self.library[bucket_name], "impl", None)
         if not isinstance(bucket, ToolBucket):
             raise ValueError(f"The tool `{bucket_name}` is not a tool bucket.")
-        metadata = bucket.tools.get(tool_name)
-        if metadata is None:
+        if tool_name not in bucket.tools:
             available = ", ".join(sorted(bucket.tools)) or "none"
             raise ValueError(
                 f"Tool `{tool_name}` is not captured by `{bucket_name}`. "

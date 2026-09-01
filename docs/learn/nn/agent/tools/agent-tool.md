@@ -166,7 +166,11 @@ print(library.get_tool_names())
 # ["agent"]
 ```
 
-The bucket description is a compact list of the available agents. Explicit
+The bucket stores only stable references to those agents. The library projects
+their names, descriptions, usage guidance, and selectable gateway model aliases
+into execution-free entries whenever membership changes. The bucket description
+is therefore a compact list of the available agents without retaining or
+calling agent implementations. Explicit
 `usage_guidance` on individual agents is aggregated separately, so the model
 gets delegation guidance without inflating the tool description.
 

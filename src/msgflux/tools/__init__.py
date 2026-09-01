@@ -20,6 +20,7 @@ from msgflux.tools.types import (
     Hidden,
     ToolBackground,
     ToolBucket,
+    ToolBucketEntry,
     ToolLibraryOperator,
 )
 
@@ -38,6 +39,7 @@ __all__ = [
     "ToolRef",
     "ToolSpec",
     "ToolBucket",
+    "ToolBucketEntry",
     "ToolBucketHandle",
     "ToolFlowControl",
     "ToolLibraryHandle",

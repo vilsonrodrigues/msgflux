@@ -285,7 +285,8 @@ expose `tool_search` automatically if needed.
 
 `ToolSearchExtension` installs `tool_search`, which is both a builtin operator
 and a `ToolBucket` with
-`capture={"defer_loading": True}`. It owns the searchable metadata, while the
+`capture={"defer_loading": True}`. It owns stable references to the searchable
+tools and receives their presentation as execution-free entries, while the
 thread's `ChatMessages` owns which names have been loaded. The shared library is
 never mutated by a selection, so concurrent threads can expose different tool
 subsets safely.
@@ -313,10 +314,10 @@ class ToolBucket:
     tool_kind = "bucket"
     capture: Mapping[str, Any]
 
-    def add(self, tool: ToolMetadata) -> None:
+    def add(self, ref: ToolRef) -> None:
         ...
 
-    def refresh(self) -> None:
+    def refresh(self, entries: tuple[ToolBucketEntry, ...] = ()) -> None:
         ...
 ```
 
@@ -336,11 +337,16 @@ public bucket. `ToolSearchTool` overrides this validation because it catalogs
 deferred tools rather than proxy-executing them behind its own call.
 
 `ToolLibrary` routes matching tools to `ToolBucket.add(...)`. The base method
-keeps metadata in `bucket.tools`, rejects duplicate names, and calls
-`bucket.refresh()`. The base refresh hook does nothing; a subclass can rebuild
-derived presentation data such as its description and usage guidance.
+keeps only stable `ToolRef` values in `bucket.tools` and rejects duplicate
+names. Executors remain registered on the library, while canonical definitions
+remain in `ToolRegistry`. After membership changes, the library projects each
+definition to an immutable, execution-free `ToolBucketEntry` and calls
+`bucket.refresh(entries)`. A subclass can rebuild derived presentation data
+such as its description and usage guidance without reaching into a child
+implementation.
 
-Buckets do not call `ToolMetadata.impl` to execute a child. An injected
+Buckets cannot obtain a child executor from either `bucket.tools` or a
+`ToolBucketEntry`. An injected
 `ToolBucketHandle` accepts `handle(tool_name, **arguments)` and
 `handle.acall(...)`, validates membership, resolves the captured `LocalTool` or
 `MCPTool`, and creates a canonical `ToolIntent`. The intent re-enters the same
@@ -348,7 +354,9 @@ policy, hook, argument-preparation, dispatch, abort, event, and telemetry path
 used by a top-level tool call. The handle unwraps a successful `ToolOutcome`
 back to the plain value expected by bucket implementations; a failed outcome is
 raised at the proxy boundary and becomes the public bucket call's error. The
-bucket never executes `ToolMetadata.impl` directly.
+bucket never executes a child implementation directly. The handle also exposes
+`list_entries()` and `get_entry(name)` when a runtime decision needs captured
+presentation metadata.
 
 The registration rule is:
 

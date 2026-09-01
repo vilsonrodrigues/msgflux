@@ -125,12 +125,15 @@ class ToolDefinitionCompiler:
             "catalog_role": getattr(metadata.impl, "catalog_role", None),
             "execution_namespace": metadata.execution_namespace,
             "declared_usage_guidance": metadata.usage_guidance,
+            "bucket": cls._compile_bucket_presentation(metadata.impl),
             "background_capabilities": config.get("background_capabilities"),
             "disable_input": bool(config.get("disable_input", False)),
             "hidden_params": config.get("_hidden_params"),
         }
         runtime_metadata = {
-            key: value for key, value in runtime_metadata.items() if value is not None
+            key: value
+            for key, value in runtime_metadata.items()
+            if value is not None and value != {}
         }
         native_bindings = tuple(getattr(executor, "native_bindings", ()))
         return ToolDefinition(
@@ -151,6 +154,22 @@ class ToolDefinitionCompiler:
             declaration=config,
             metadata=runtime_metadata,
         )
+
+    @staticmethod
+    def _compile_bucket_presentation(impl: Any) -> dict[str, Any]:
+        """Project executor-owned details required by execution-free buckets."""
+        model = getattr(impl, "model", None)
+        if getattr(model, "msgflux_type", None) != "model_gateway":
+            return {}
+        return {
+            "models": tuple(
+                {
+                    "name": model_name,
+                    "description": model.get_model_description(model_name),
+                }
+                for model_name in model.model_names
+            )
+        }
 
     @classmethod
     def refresh_presentation(

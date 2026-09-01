@@ -13,6 +13,9 @@ from typing import (
     get_origin,
 )
 
+import msgspec
+
+from msgflux.tools.catalog import ToolRef
 from msgflux.tools.dataclasses import ToolMetadata
 from msgflux.tools.helpers import (
     BACKGROUND_TASK_TOOL_KIND,
@@ -22,8 +25,51 @@ from msgflux.tools.helpers import (
     is_agent_tool_impl,
     normalize_background_capabilities,
 )
+from msgflux.tools.runtime import _copy_mapping
 
 T = TypeVar("T")
+
+
+class ToolBucketEntry(msgspec.Struct, frozen=True, kw_only=True):
+    """Execution-free captured-tool projection retained by bucket interfaces."""
+
+    ref: ToolRef
+    description: str | None = None
+    display_name: str | None = None
+    usage_guidance: str | None = None
+    kind: str = "tool"
+    namespace: str | None = None
+    metadata: Mapping[str, Any] = msgspec.field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.ref, ToolRef):
+            raise TypeError("ref must be a ToolRef")
+        msgspec.structs.force_setattr(
+            self,
+            "metadata",
+            _copy_mapping(self.metadata, "bucket_entry.metadata"),
+        )
+
+    @property
+    def name(self) -> str:
+        return self.ref.tool_id
+
+    @classmethod
+    def from_definition(
+        cls,
+        definition: Any,
+        *,
+        ref: ToolRef,
+    ) -> ToolBucketEntry:
+        return cls(
+            ref=ref,
+            description=definition.description,
+            display_name=definition.display_name,
+            usage_guidance=definition.usage_guidance,
+            kind=definition.kind,
+            namespace=definition.metadata.get("execution_namespace"),
+            metadata=definition.metadata.get("bucket", {}),
+        )
 
 
 class Hidden(Generic[T]):
@@ -63,52 +109,39 @@ class ToolBucket:
         """Combine stable declaration guidance with dynamic bucket guidance."""
         return getattr(self, "usage_guidance", None) or declared
 
-    def add(self, tool: ToolMetadata) -> None:
-        """Store a captured tool and refresh metadata derived from its contents."""
-        self.validate_capture(tool)
-        if tool.name in self.tools:
-            raise ValueError(f"Duplicate tool name `{tool.name}` in bucket.")
-        self.tools[tool.name] = tool
-        try:
-            self.refresh()
-        except Exception:
-            self.tools.pop(tool.name, None)
-            raise
+    def add(self, ref: ToolRef) -> None:
+        """Retain one captured tool reference without owning its executor."""
+        if not isinstance(ref, ToolRef):
+            raise TypeError("Buckets can only retain ToolRef values.")
+        if ref.tool_id in self.tools:
+            raise ValueError(f"Duplicate tool name `{ref.tool_id}` in bucket.")
+        self.tools[ref.tool_id] = ref
 
-    def remove(self, tool_name: str) -> ToolMetadata:
-        """Release a captured tool and refresh metadata derived from its contents."""
+    def remove(self, tool_name: str) -> ToolRef:
+        """Release and return one captured tool reference."""
         try:
-            tool = self.tools.pop(tool_name)
+            return self.tools.pop(tool_name)
         except KeyError as exc:
             raise ValueError(
                 f"Tool `{tool_name}` is not captured by this bucket."
             ) from exc
-        try:
-            self.refresh()
-        except Exception:
-            self.tools[tool_name] = tool
-            raise
-        return tool
 
     @property
-    def tools(self) -> Dict[str, ToolMetadata]:
+    def tools(self) -> Dict[str, ToolRef]:
         if not hasattr(self, "_tools"):
             self._tools = {}
         return self._tools
 
-    def get_ref(self, tool_name: str) -> Any:
+    def get_ref(self, tool_name: str) -> ToolRef:
         """Return a captured tool reference without exposing its implementation."""
         try:
-            metadata = self.tools[tool_name]
+            return self.tools[tool_name]
         except KeyError as exc:
             raise ValueError(
                 f"Tool `{tool_name}` is not captured by this bucket."
             ) from exc
-        if metadata.ref is None:
-            raise RuntimeError(f"Tool `{tool_name}` has no runtime reference")
-        return metadata.ref
 
-    def refresh(self) -> None:
+    def refresh(self, entries: tuple[ToolBucketEntry, ...] = ()) -> None:
         """Refresh presentation metadata after the library captures a tool."""
 
     @property
@@ -145,21 +178,10 @@ class ToolBucket:
             for key, value in self.capture_rules.items()
         )
 
-    def captures(self, metadata: ToolMetadata) -> bool:
-        definition = self._definition_from_metadata(metadata)
+    def captures(self, definition: Any) -> bool:
         return self.captures_config(definition.declaration)
 
-    @staticmethod
-    def _definition_from_metadata(metadata: ToolMetadata) -> Any:
-        definition = metadata.definition
-        if definition is None:
-            raise RuntimeError(
-                f"Tool `{metadata.name}` must be compiled before bucket routing."
-            )
-        return definition
-
-    def validate_capture(self, metadata: ToolMetadata) -> None:
-        definition = self._definition_from_metadata(metadata)
+    def validate_capture(self, definition: Any) -> None:
         declaration = definition.declaration
         loop_options = {
             option
@@ -181,21 +203,20 @@ class ToolBucket:
             raise ValueError(
                 "Bucket-captured tools cannot define model-loop behavior "
                 f"({formatted_options}). Configure that behavior on the public "
-                f"bucket instead. Tool `{metadata.name}` cannot be captured."
+                f"bucket instead. Tool `{definition.name}` cannot be captured."
             )
-        if not self.captures(metadata):
+        if not self.captures(definition):
             raise ValueError(
-                f"Tool `{metadata.name}` does not match this bucket's capture rule."
+                f"Tool `{definition.name}` does not match this bucket's capture rule."
             )
 
     @classmethod
     def find_bucket(
         cls,
-        metadata: ToolMetadata,
+        definition: Any,
         tools: Mapping[str, Any],
         get_definition: Callable[[str], Any],
     ) -> str | None:
-        definition = cls._definition_from_metadata(metadata)
         if definition.kind == cls.tool_kind:
             return None
         for bucket_name, tool in tools.items():
@@ -203,7 +224,7 @@ class ToolBucket:
             if bucket_definition.kind != cls.tool_kind:
                 continue
             bucket = getattr(tool, "impl", tool)
-            if isinstance(bucket, cls) and bucket.captures(metadata):
+            if isinstance(bucket, cls) and bucket.captures(definition):
                 return bucket_name
         return None
 
@@ -241,15 +262,13 @@ class ToolBucket:
     @classmethod
     def validate_registration(
         cls,
-        metadata: ToolMetadata,
+        name: str,
+        bucket: ToolBucket,
         tools: Mapping[str, Any],
         get_definition: Callable[[str], Any],
     ) -> None:
-        bucket = metadata.impl
         if not isinstance(bucket, cls):
-            raise ValueError(
-                f"The bucket tool `{metadata.name}` must inherit ToolBucket."
-            )
+            raise ValueError(f"The bucket tool `{name}` must inherit ToolBucket.")
         capture = bucket.capture_rules
         for bucket_name, tool in tools.items():
             if get_definition(bucket_name).kind != cls.tool_kind:
@@ -259,8 +278,7 @@ class ToolBucket:
                 continue
             if cls._captures_overlap(capture, registered_bucket.capture_rules):
                 raise ValueError(
-                    f"The bucket capture for `{metadata.name}` overlaps with "
-                    f"`{bucket_name}`."
+                    f"The bucket capture for `{name}` overlaps with `{bucket_name}`."
                 )
 
     @classmethod

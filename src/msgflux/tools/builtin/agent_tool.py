@@ -2,14 +2,13 @@ from __future__ import annotations
 
 from typing import Any, List, Mapping, Optional
 
-from msgflux.models.gateway import ModelGateway
 from msgflux.runtime.context import (
     ExecutionScope,
     get_execution_context,
     new_thread_id,
 )
 from msgflux.tools.handles import ToolBucketHandle
-from msgflux.tools.types import ToolBucket, ToolLibraryOperator
+from msgflux.tools.types import ToolBucket, ToolBucketEntry, ToolLibraryOperator
 
 
 class AgentTool(ToolBucket, ToolLibraryOperator):
@@ -28,9 +27,11 @@ class AgentTool(ToolBucket, ToolLibraryOperator):
 
     def __init__(self):
         self._base_description = type(self).description
+        self._entries: tuple[ToolBucketEntry, ...] = ()
         self.refresh()
 
-    def refresh(self) -> None:
+    def refresh(self, entries: tuple[ToolBucketEntry, ...] = ()) -> None:
+        self._entries = entries
         self.description = self._build_description()
         self.usage_guidance = self._build_usage_guidance()
 
@@ -55,7 +56,7 @@ class AgentTool(ToolBucket, ToolLibraryOperator):
         scope: ExecutionScope | None = None,
     ) -> str:
         self._validate_agent(name, handle)
-        model_preference = self._resolve_model_preference(name, model)
+        model_preference = self._resolve_model_preference(name, model, handle)
         namespace = handle.get_execution_namespace(name)
         runtime_arguments = {"scope": scope or self._build_scope(namespace)}
         if model_preference is not None:
@@ -76,7 +77,7 @@ class AgentTool(ToolBucket, ToolLibraryOperator):
         scope: ExecutionScope | None = None,
     ) -> str:
         self._validate_agent(name, handle)
-        model_preference = self._resolve_model_preference(name, model)
+        model_preference = self._resolve_model_preference(name, model, handle)
         namespace = handle.get_execution_namespace(name)
         runtime_arguments = {"scope": scope or self._build_scope(namespace)}
         if model_preference is not None:
@@ -98,13 +99,19 @@ class AgentTool(ToolBucket, ToolLibraryOperator):
         self,
         agent_name: str,
         model: str | None,
+        handle: ToolBucketHandle,
     ) -> str | None:
         if model is None:
             return None
-        gateway = self._get_agent_gateway(agent_name)
-        if gateway is None:
+        deployments = handle.get_entry(agent_name).metadata.get("models", ())
+        if not deployments:
             return None
-        gateway.validate_model_name(model)
+        available = tuple(deployment["name"] for deployment in deployments)
+        if not isinstance(model, str) or not model:
+            raise TypeError("`model` must be a non-empty string")
+        if model not in available:
+            choices = ", ".join(available)
+            raise ValueError(f"Unknown model `{model}`. Available models: {choices}.")
         return model
 
     def _build_scope(self, agent_name: str) -> ExecutionScope:
@@ -131,18 +138,20 @@ class AgentTool(ToolBucket, ToolLibraryOperator):
 
     def _build_description(self) -> str:
         agent_lines: List[str] = []
-        for agent_name, metadata in sorted(self.tools.items()):
-            description = metadata.description
+        for entry in sorted(self._entries, key=lambda item: item.name):
+            agent_name = entry.name
+            description = entry.description
             if description:
                 agent_lines.append(f"- {agent_name}: {description}")
             else:
                 agent_lines.append(f"- {agent_name}")
-            gateway = self._get_agent_gateway(agent_name)
-            if gateway is not None:
+            deployments = entry.metadata.get("models", ())
+            if deployments:
                 agent_lines.append("  Models:")
-                for model_name in gateway.model_names:
-                    model_description = gateway.get_model_description(model_name)
-                    if model_description is None:
+                for deployment in deployments:
+                    model_name = deployment["name"]
+                    model_description = deployment.get("description")
+                    if not isinstance(model_description, str) or not model_description:
                         raise ValueError(
                             f"Agent `{agent_name}` uses ModelGateway model "
                             f"`{model_name}` without a description. Add a non-empty "
@@ -153,22 +162,14 @@ class AgentTool(ToolBucket, ToolLibraryOperator):
             agent_lines.append("- none")
         return f"{self._base_description}\n" + "\n".join(agent_lines)
 
-    def _get_agent_gateway(self, agent_name: str) -> ModelGateway | None:
-        metadata = self.tools.get(agent_name)
-        if metadata is None:
-            return None
-        model = getattr(metadata.impl, "model", None)
-        return model if isinstance(model, ModelGateway) else None
-
     def _has_gateway_agents(self) -> bool:
-        return any(
-            self._get_agent_gateway(agent_name) is not None for agent_name in self.tools
-        )
+        return any(entry.metadata.get("models") for entry in self._entries)
 
     def _build_usage_guidance(self) -> str | None:
         guidance_lines: List[str] = []
-        for agent_name, metadata in sorted(self.tools.items()):
-            guidance = metadata.usage_guidance
+        for entry in sorted(self._entries, key=lambda item: item.name):
+            agent_name = entry.name
+            guidance = entry.usage_guidance
             if isinstance(guidance, str) and guidance.strip():
                 guidance_lines.append(f"- {agent_name}: {' '.join(guidance.split())}")
         if guidance_lines:

@@ -10,6 +10,7 @@ if TYPE_CHECKING:
     from msgflux.nn.modules.tool import ToolLibrary
     from msgflux.runtime.agent_inbox import AgentInbox
     from msgflux.tools.catalog import ToolRef
+    from msgflux.tools.types import ToolBucketEntry
 
 
 class ToolLibraryHandle:
@@ -247,6 +248,14 @@ class ToolBucketHandle(ToolLibraryHandle):
 
     def list_captured_tools(self) -> List[str]:
         return self._library.get_bucket_tool_names(self._bucket_name)
+
+    def list_entries(self) -> tuple[ToolBucketEntry, ...]:
+        """Return captured-tool presentation without exposing executors."""
+        return self._library.get_bucket_entries(self._bucket_name)
+
+    def get_entry(self, tool_name: str) -> ToolBucketEntry:
+        """Return one captured tool's execution-free presentation."""
+        return self._library.get_bucket_entry(self._bucket_name, tool_name)
 
     def get_execution_namespace(self, tool_name: str) -> str:
         return self._library.get_bucket_execution_namespace(

@@ -2,8 +2,12 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-from msgflux.tools.dataclasses import ToolMetadata
-from msgflux.tools.types import Hidden, ToolBucket, ToolLibraryOperator
+from msgflux.tools.types import (
+    Hidden,
+    ToolBucket,
+    ToolBucketEntry,
+    ToolLibraryOperator,
+)
 
 
 class ToolSearchTool(ToolBucket, ToolLibraryOperator):
@@ -50,14 +54,19 @@ class ToolSearchTool(ToolBucket, ToolLibraryOperator):
         if max_results <= 0:
             raise ValueError("`max_results` must be greater than 0.")
 
-        total = len(self.tools)
+        entries = handle.list_entries()
+        total = len(entries)
         if select is not None:
-            matches = self._select(select)
-            descriptions = self._describe_matches(matches) if description else []
+            matches = self._select(select, entries)
+            descriptions = (
+                self._describe_matches(matches, entries) if description else []
+            )
             loaded = handle.load_tools(messages, matches)
         else:
-            matches = self._search(query or "", max_results)
-            descriptions = self._describe_matches(matches) if description else []
+            matches = self._search(query or "", max_results, entries)
+            descriptions = (
+                self._describe_matches(matches, entries) if description else []
+            )
             loaded = []
 
         return {
@@ -68,22 +77,28 @@ class ToolSearchTool(ToolBucket, ToolLibraryOperator):
             "total_deferred_tools": total,
         }
 
-    def validate_capture(self, metadata: ToolMetadata) -> None:
-        if not self.captures(metadata):
+    def validate_capture(self, definition: Any) -> None:
+        if not self.captures(definition):
             raise ValueError(
-                f"Tool `{metadata.name}` does not match this bucket's capture rule."
+                f"Tool `{definition.name}` does not match this bucket's capture rule."
             )
 
-    def _search(self, query: str, max_results: int) -> List[str]:
+    @staticmethod
+    def _search(
+        query: str,
+        max_results: int,
+        entries: tuple[ToolBucketEntry, ...],
+    ) -> List[str]:
         query_lower = query.strip().lower()
         terms = [term for term in query_lower.split() if term]
         if not terms:
             return []
 
         matches = []
-        for tool_name, metadata in self.tools.items():
+        for entry in entries:
+            tool_name = entry.name
             name_parts = tool_name.lower().replace("__", " ").replace("_", " ")
-            description = (metadata.description or "").lower()
+            description = (entry.description or "").lower()
             score = 0
             if query_lower == tool_name.lower():
                 score += 100
@@ -100,29 +115,38 @@ class ToolSearchTool(ToolBucket, ToolLibraryOperator):
         matches.sort(key=lambda item: (-item[0], item[1]))
         return [tool_name for _, tool_name in matches[:max_results]]
 
-    def _select(self, requested: List[str]) -> List[str]:
+    @staticmethod
+    def _select(
+        requested: List[str],
+        entries: tuple[ToolBucketEntry, ...],
+    ) -> List[str]:
         resolved = []
-        normalized = {tool_name.lower(): tool_name for tool_name in self.tools}
+        normalized = {entry.name.lower(): entry.name for entry in entries}
         for tool_name in requested:
             match = normalized.get(tool_name.lower())
             if match is not None and match not in resolved:
                 resolved.append(match)
         return resolved
 
-    def _describe_matches(self, tool_names: List[str]) -> List[dict[str, Any]]:
+    @classmethod
+    def _describe_matches(
+        cls,
+        tool_names: List[str],
+        entries: tuple[ToolBucketEntry, ...],
+    ) -> List[dict[str, Any]]:
+        entries_by_name = {entry.name: entry for entry in entries}
         return [
-            self._describe_metadata(self.tools[tool_name]) for tool_name in tool_names
+            cls._describe_entry(entries_by_name[tool_name]) for tool_name in tool_names
         ]
 
     @staticmethod
-    def _describe_metadata(metadata: ToolMetadata) -> dict[str, Any]:
-        definition = ToolBucket._definition_from_metadata(metadata)
+    def _describe_entry(entry: ToolBucketEntry) -> dict[str, Any]:
         return {
-            "name": definition.name,
-            "display_name": definition.display_name or definition.name,
-            "description": definition.description,
-            "usage_guidance": definition.usage_guidance,
-            "tool_kind": definition.kind,
+            "name": entry.name,
+            "display_name": entry.display_name or entry.name,
+            "description": entry.description,
+            "usage_guidance": entry.usage_guidance,
+            "tool_kind": entry.kind,
         }
 
     @staticmethod

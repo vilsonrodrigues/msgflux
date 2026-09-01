@@ -75,9 +75,11 @@ print(library.get_tool_names())
 Registration order is deliberately irrelevant. `ToolLibrary` routes a new
 matching tool into an existing bucket, and a newly registered bucket captures
 matching tools already in the library. Captured tools are removed from the
-top-level callable surface. A bucket may read their metadata to build its
-presentation, but should execute them only through `handle(...)` or
-`handle.acall(...)`. The handle carries the original `messages` and `vars`
+top-level callable surface. The bucket retains stable `ToolRef` values rather
+than implementations or mutable tool metadata. The library supplies immutable
+`ToolBucketEntry` projections when the bucket needs names, descriptions, or
+guidance for its presentation. Execute a captured tool only through
+`handle(...)` or `handle.acall(...)`. The handle carries the original `messages` and `vars`
 objects. The selected child's own injection policy decides whether messages are
 shared or copied; agent children receive an isolated history, while ordinary
 tools retain reference semantics. Add and remove tools through the library or
@@ -123,25 +125,31 @@ runtime injection, retry, errors, and telemetry—but cannot independently chang
 the parent loop. Configure model-loop options on the bucket itself.
 
 A specialized catalog bucket may override `validate_capture`. The built-in
-`ToolSearchTool` does this because it stores deferred tool metadata and later
+`ToolSearchTool` does this because it catalogs deferred tool references and later
 exposes the selected tool as a normal public call; it does not proxy-execute
 that child behind `tool_search(...)`.
 
 ## Refreshing The Public Tool
 
-`ToolBucket.add(...)` and `remove(...)` call `refresh()`. Override that hook
-when the public description or usage guidance depends on the current contents:
+The library calls `refresh(entries)` after bucket membership changes. Override
+that hook when the public description or usage guidance depends on the current
+contents:
 
 ```python
+from msgflux.tools import ToolBucketEntry
+
+
 class NamedOperationsTool(OperationsTool):
-    def refresh(self) -> None:
-        names = ", ".join(sorted(self.tools)) or "none"
+    def refresh(self, entries: tuple[ToolBucketEntry, ...] = ()) -> None:
+        names = ", ".join(sorted(entry.name for entry in entries)) or "none"
         self.description = f"Dispatch an operations query. Available: {names}."
 ```
 
 After the hook runs, `ToolLibrary` copies the updated description and
 `usage_guidance` to the model-facing bucket tool. `AgentTool` uses this to keep
-its compact agent list current.
+its compact agent list current. An entry intentionally contains no executor;
+inside a bucket call, use `handle.get_entry(name)` for presentation metadata
+and `handle(name, ...)` or `await handle.acall(name, ...)` for execution.
 
 ## Membership And Concurrency
 

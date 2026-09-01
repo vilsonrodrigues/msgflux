@@ -54,7 +54,7 @@ from msgflux.tasks import InMemoryTaskStore
 from msgflux.tools.dataclasses import ToolMetadata
 from msgflux.tools.definitions import ToolCatalog
 from msgflux.tools.handles import ToolLibraryHandle
-from msgflux.tools.types import ToolBackground, ToolBucket
+from msgflux.tools.types import ToolBackground, ToolBucket, ToolBucketEntry
 
 
 class ToolLibrary(ToolLibraryExecutionMixin, Module, metaclass=AutoParams):
@@ -91,6 +91,7 @@ class ToolLibrary(ToolLibraryExecutionMixin, Module, metaclass=AutoParams):
         super().__init__()
         self.set_name(f"{name}_tool_library")
         self.library = ModuleDict()
+        self.captured_executors = ModuleDict()
         self.registry = ToolRegistry(self.name)
         self.register_buffer("mcp_clients", {})
         self._task_store = task_store
@@ -277,11 +278,43 @@ class ToolLibrary(ToolLibraryExecutionMixin, Module, metaclass=AutoParams):
         bucket = getattr(self.library.get(bucket_name), "impl", None)
         if not isinstance(bucket, ToolBucket):
             raise ValueError(f"The tool `{bucket_name}` is not a tool bucket.")
-        metadata = bucket.tools.get(tool_name)
-        if metadata is None:
+        if tool_name not in bucket.tools:
             raise ValueError(f"Tool `{tool_name}` is not captured by `{bucket_name}`.")
         definition = self.get_tool_definition(tool_name)
         return definition.metadata.get("execution_namespace") or definition.name
+
+    def get_bucket_entries(self, bucket_name: str) -> tuple[ToolBucketEntry, ...]:
+        """Return immutable, execution-free projections for one bucket."""
+        bucket = getattr(self.library.get(bucket_name), "impl", None)
+        if not isinstance(bucket, ToolBucket):
+            raise ValueError(f"The tool `{bucket_name}` is not a tool bucket.")
+        return tuple(
+            ToolBucketEntry.from_definition(
+                self.get_tool_definition(ref.tool_id),
+                ref=ref,
+            )
+            for ref in bucket.tools.values()
+        )
+
+    def get_bucket_entry(
+        self,
+        bucket_name: str,
+        tool_name: str,
+    ) -> ToolBucketEntry:
+        """Return one captured tool's execution-free presentation."""
+        bucket = getattr(self.library.get(bucket_name), "impl", None)
+        if not isinstance(bucket, ToolBucket):
+            raise ValueError(f"The tool `{bucket_name}` is not a tool bucket.")
+        try:
+            ref = bucket.tools[tool_name]
+        except KeyError as exc:
+            raise ValueError(
+                f"Tool `{tool_name}` is not captured by `{bucket_name}`."
+            ) from exc
+        return ToolBucketEntry.from_definition(
+            self.get_tool_definition(tool_name),
+            ref=ref,
+        )
 
     def get_background_dispatcher(self) -> BackgroundTaskDispatcher:
         if self._background_dispatcher is None:
@@ -350,7 +383,7 @@ class ToolLibrary(ToolLibraryExecutionMixin, Module, metaclass=AutoParams):
 
         # A matching registered bucket owns the tool instead of direct registration.
         bucket_name = ToolBucket.find_bucket(
-            metadata,
+            definition,
             self.library,
             self.get_tool_definition,
         )
@@ -418,6 +451,7 @@ class ToolLibrary(ToolLibraryExecutionMixin, Module, metaclass=AutoParams):
 
     def clear(self):
         self.library.clear()
+        self.captured_executors.clear()
         self.registry.clear()
         for mcp_data in self.mcp_clients.values():
             F.wait_for(mcp_data["client"].disconnect)
@@ -438,7 +472,8 @@ class ToolLibrary(ToolLibraryExecutionMixin, Module, metaclass=AutoParams):
         captures = []
         if definition.kind == ToolBucket.tool_kind:
             ToolBucket.validate_registration(
-                metadata,
+                metadata.name,
+                metadata.impl,
                 self.library,
                 self.get_tool_definition,
             )
@@ -449,16 +484,13 @@ class ToolLibrary(ToolLibraryExecutionMixin, Module, metaclass=AutoParams):
             )
 
             # Check every pending capture before changing the current library state.
-            for captured_name, captured_tool in captures:
-                captured_metadata = _metadata_from_tool(captured_tool)
-                captured_metadata.definition = self.get_tool_definition(captured_name)
-                metadata.impl.validate_capture(captured_metadata)
+            for captured_name, _ in captures:
+                metadata.impl.validate_capture(self.get_tool_definition(captured_name))
 
         # Register the public executor and its immutable definition together.
         metadata.ref = self.registry.add(definition)
         self.library.update({tool.name: tool})
         if isinstance(metadata.impl, ToolBucket):
-            metadata.impl.refresh()
             self._sync_bucket_presentation(tool.name, metadata.impl)
 
         # An explicit re-add re-enables a builtin task control tool.
@@ -469,11 +501,8 @@ class ToolLibrary(ToolLibraryExecutionMixin, Module, metaclass=AutoParams):
         self._sync_background_task_tools_for_source(definition)
 
         # Move matching local tools into a newly registered bucket.
-        for captured_name, captured_tool in captures:
-            captured_metadata = _metadata_from_tool(captured_tool)
-            captured_metadata.definition = self.get_tool_definition(captured_name)
-            self.remove(captured_name)
-            self._add_to_bucket(tool.name, captured_metadata)
+        for captured_name, _ in captures:
+            self._capture_registered_tool(tool.name, captured_name)
         return tool
 
     def _add_to_bucket(self, bucket_name: str, metadata: ToolMetadata) -> None:
@@ -485,32 +514,68 @@ class ToolLibrary(ToolLibraryExecutionMixin, Module, metaclass=AutoParams):
 
         if not isinstance(metadata.definition, RuntimeToolDefinition):
             metadata = self._compile_tool_metadata(metadata)
+        bucket.validate_capture(metadata.definition)
         metadata.ref = self.registry.add(metadata.definition)
+        self.captured_executors[metadata.name] = metadata.source_tool
 
-        # Let the bucket validate, retain, and refresh its captured state.
+        # Buckets retain only stable references; the library owns the executor.
         try:
-            bucket.add(metadata)
+            bucket.add(metadata.ref)
+            self._sync_bucket_presentation(bucket_name, bucket)
         except Exception:
+            if metadata.name in bucket.tools:
+                bucket.remove(metadata.name)
+            if metadata.name in self.captured_executors:
+                self.captured_executors.pop(metadata.name)
             self.registry.remove(metadata.ref)
             raise
-        self._sync_bucket_presentation(bucket_name, bucket)
 
-    def _remove_from_bucket(self, bucket_name: str, tool_name: str) -> ToolMetadata:
+    def _capture_registered_tool(self, bucket_name: str, tool_name: str) -> None:
+        """Move a public executor behind a bucket without replacing its definition."""
+        bucket_tool = self.library[bucket_name]
+        bucket = getattr(bucket_tool, "impl", None)
+        if not isinstance(bucket, ToolBucket):
+            raise ValueError(f"The bucket tool `{bucket_name}` cannot capture tools.")
+        definition = self.get_tool_definition(tool_name)
+        bucket.validate_capture(definition)
+        ref = self.registry.ref(tool_name)
+        executor = self.library.pop(tool_name)
+        self.captured_executors[tool_name] = executor
+        try:
+            bucket.add(ref)
+            self._sync_bucket_presentation(bucket_name, bucket)
+        except Exception:
+            if tool_name in bucket.tools:
+                bucket.remove(tool_name)
+            self.captured_executors.pop(tool_name)
+            self.library[tool_name] = executor
+            raise
+
+    def _remove_from_bucket(self, bucket_name: str, tool_name: str) -> Tool:
         bucket_tool = self.library[bucket_name]
         bucket = getattr(bucket_tool, "impl", None)
         if not isinstance(bucket, ToolBucket):
             raise ValueError(f"The bucket tool `{bucket_name}` cannot release tools.")
-        metadata = bucket.remove(tool_name)
-        self.registry.remove(tool_name)
+        ref = bucket.remove(tool_name)
+        executor = self.captured_executors.pop(tool_name)
+        definition = self.registry.remove(ref)
         if bucket.expose_captured_names and not bucket.tools:
             self._remove_registered_tool(bucket_name)
         else:
-            self._sync_bucket_presentation(bucket_name, bucket)
-        return metadata
+            try:
+                self._sync_bucket_presentation(bucket_name, bucket)
+            except Exception:
+                self.registry.add(definition)
+                self.captured_executors[tool_name] = executor
+                bucket.add(ref)
+                self._sync_bucket_presentation(bucket_name, bucket)
+                raise
+        return executor
 
     def _sync_bucket_presentation(self, bucket_name: str, bucket: ToolBucket) -> None:
         bucket_tool = self.library[bucket_name]
         current = self.get_tool_definition(bucket_name)
+        bucket.refresh(self.get_bucket_entries(bucket_name))
         if isinstance(getattr(bucket, "description", None), str):
             bucket_tool.set_description(bucket.description)
         annotations = bucket.patch_schema_annotations(
