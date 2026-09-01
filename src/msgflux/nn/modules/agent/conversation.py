@@ -1,0 +1,943 @@
+# ruff: noqa: A001, A002
+
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    List,
+    Mapping,
+    Optional,
+    Tuple,
+    Union,
+)
+
+import msgspec
+
+from msgflux._private.response_metadata import attach_response_metadata
+from msgflux.chat_messages import ChatMessages
+from msgflux.exceptions import (
+    AbortRequestedError,
+    TaskInterruptRequestedError,
+    TaskPauseRequestedError,
+)
+from msgflux.models.response import ModelResponse, ModelStreamResponse
+from msgflux.nn.hooks.events import (
+    NotificationContext,
+)
+from msgflux.runtime.agent_inbox import (
+    AgentInbox,
+    AgentNotification,
+)
+from msgflux.runtime.context import (
+    ExecutionScope,
+    get_execution_context,
+    new_run_id,
+    new_thread_id,
+)
+from msgflux.tools.runtime import ToolOutcome
+from msgflux.utils.console import cprint
+from msgflux.utils.time import utc_now_isoformat
+
+if TYPE_CHECKING:
+    pass
+from msgflux.nn.modules.agent.context import (
+    _require_lifecycle_payload,
+)
+
+
+class AgentConversationMixin:
+    """Conversation state, inbox, checkpoint, and durable-resume behavior."""
+
+    def _coerce_chat_messages(
+        self,
+        messages: Optional[Union[ChatMessages, List[Mapping[str, Any]]]] = None,
+    ) -> ChatMessages:
+        if messages is None:
+            return ChatMessages()
+        if isinstance(messages, ChatMessages):
+            return messages
+        if isinstance(messages, list):
+            return ChatMessages(messages)
+        raise TypeError(
+            "`messages` must be a `ChatMessages`, a list of mappings or None, "
+            f"given `{type(messages)}`"
+        )
+
+    # --- Execution Context Resolution ---
+
+    def _get_effective_checkpoint_store(self):
+        checkpoint_store = getattr(self, "checkpoint_store", None)
+        if checkpoint_store is not None:
+            return checkpoint_store
+        return get_execution_context().get("checkpoint_store")
+
+    def _get_effective_task_store(self):
+        return get_execution_context().get("task_store")
+
+    def _get_effective_agent_inbox(self):
+        inherited = get_execution_context().get("agent_inbox")
+        if inherited is not None:
+            return inherited
+        return getattr(self, "agent_inbox", None)
+
+    def set_agent_inbox(self, agent_inbox: AgentInbox) -> None:
+        self.agent_inbox = agent_inbox
+        self.tool_library.set_agent_inbox(agent_inbox)
+
+    def _raise_if_background_task_interrupted(self) -> None:
+        task_handle = get_execution_context().get("task_handle")
+        if task_handle is None:
+            return
+        if task_handle.is_interrupt_requested():
+            if self.config.get("verbose", False):
+                cprint(
+                    f"[{self.name}][task_interrupt] task_id={task_handle.task_id}",
+                    bc="b",
+                    ls="b",
+                )
+            raise TaskInterruptRequestedError(task_handle.task_id)
+
+    def _handle_control_notifications(
+        self,
+        notifications: List[AgentNotification],
+    ) -> List[AgentNotification]:
+        remaining = []
+        for notification in notifications:
+            if notification.source != "control":
+                remaining.append(notification)
+                continue
+
+            command = (notification.status or "").lower()
+            reason = notification.metadata.get("reason")
+            task_handle = get_execution_context().get("task_handle")
+            task_id = getattr(task_handle, "task_id", None)
+
+            if command == "interrupt":
+                raise TaskInterruptRequestedError(
+                    task_id or get_execution_context().get("run_id") or "unknown",
+                    str(reason) if reason else None,
+                )
+            if command == "pause":
+                raise TaskPauseRequestedError(
+                    task_id if isinstance(task_id, str) else None,
+                    str(reason) if reason else None,
+                )
+
+            remaining.append(notification)
+        return remaining
+
+    def _drain_inbox_into_messages(
+        self,
+        messages: Union[ChatMessages, List[Mapping[str, Any]]],
+        *,
+        vars: Optional[Mapping[str, Any]] = None,
+        scope: Optional[ExecutionScope] = None,
+        drain_notifications: bool = True,
+    ) -> bool:
+        inbox = self._get_effective_agent_inbox()
+        if inbox is None:
+            return False
+
+        notifications = inbox.drain() if drain_notifications else inbox.peek()
+        notifications = self._handle_control_notifications(notifications)
+        if not notifications:
+            return False
+
+        notification_context = self._run_lifecycle_hooks(
+            "transform_notifications",
+            NotificationContext(
+                scope=scope or get_execution_context()["scope"],
+                vars=vars or {},
+                notifications=tuple(notifications),
+                messages=messages,
+            ),
+        )
+        notification_context = _require_lifecycle_payload(
+            "transform_notifications", notification_context, NotificationContext
+        )
+        notifications = list(notification_context.notifications)
+        if not all(isinstance(item, AgentNotification) for item in notifications):
+            raise TypeError(
+                "NotificationContext.notifications must contain AgentNotification"
+            )
+        if not notifications:
+            return False
+
+        notification_messages = inbox.render_messages(notifications)
+        self._persist_notification_messages(messages, notification_messages)
+        return bool(notification_messages)
+
+    async def _adrain_inbox_into_messages(
+        self,
+        messages: Union[ChatMessages, List[Mapping[str, Any]]],
+        *,
+        vars: Optional[Mapping[str, Any]] = None,
+        scope: Optional[ExecutionScope] = None,
+        drain_notifications: bool = True,
+    ) -> bool:
+        inbox = self._get_effective_agent_inbox()
+        if inbox is None:
+            return False
+
+        notifications = inbox.drain() if drain_notifications else inbox.peek()
+        notifications = self._handle_control_notifications(notifications)
+        if not notifications:
+            return False
+
+        notification_context = await self._arun_lifecycle_hooks(
+            "transform_notifications",
+            NotificationContext(
+                scope=scope or get_execution_context()["scope"],
+                vars=vars or {},
+                notifications=tuple(notifications),
+                messages=messages,
+            ),
+        )
+        notification_context = _require_lifecycle_payload(
+            "transform_notifications", notification_context, NotificationContext
+        )
+        notifications = list(notification_context.notifications)
+        if not all(isinstance(item, AgentNotification) for item in notifications):
+            raise TypeError(
+                "NotificationContext.notifications must contain AgentNotification"
+            )
+        if not notifications:
+            return False
+
+        notification_messages = inbox.render_messages(notifications)
+        self._persist_notification_messages(messages, notification_messages)
+        return bool(notification_messages)
+
+    # --- Inbox Delivery ---
+
+    def _build_model_messages(
+        self,
+        messages: Union[ChatMessages, List[Mapping[str, Any]]],
+        *,
+        vars: Optional[Mapping[str, Any]] = None,
+        scope: Optional[ExecutionScope] = None,
+        drain_notifications: bool = True,
+    ) -> Union[ChatMessages, List[Mapping[str, Any]]]:
+        if isinstance(messages, ChatMessages):
+            working_messages: Union[ChatMessages, List[Mapping[str, Any]]] = (
+                messages if drain_notifications else messages.copy()
+            )
+        else:
+            working_messages = messages if drain_notifications else list(messages)
+
+        self._drain_inbox_into_messages(
+            working_messages,
+            vars=vars,
+            scope=scope,
+            drain_notifications=drain_notifications,
+        )
+        return working_messages
+
+    async def _abuild_model_messages(
+        self,
+        messages: Union[ChatMessages, List[Mapping[str, Any]]],
+        *,
+        vars: Optional[Mapping[str, Any]] = None,
+        scope: Optional[ExecutionScope] = None,
+        drain_notifications: bool = True,
+    ) -> Union[ChatMessages, List[Mapping[str, Any]]]:
+        if isinstance(messages, ChatMessages):
+            working_messages: Union[ChatMessages, List[Mapping[str, Any]]] = (
+                messages if drain_notifications else messages.copy()
+            )
+        else:
+            working_messages = messages if drain_notifications else list(messages)
+
+        await self._adrain_inbox_into_messages(
+            working_messages,
+            vars=vars,
+            scope=scope,
+            drain_notifications=drain_notifications,
+        )
+        return working_messages
+
+    def _persist_notification_message(
+        self,
+        messages: Union[ChatMessages, List[Mapping[str, Any]]],
+        notification_message: Optional[Mapping[str, Any]],
+    ) -> None:
+        if notification_message is None:
+            return
+        if isinstance(messages, ChatMessages):
+            if messages.get_active_turn_size() <= 2:
+                messages.insert_before_active_turn(notification_message)
+            else:
+                messages.append(notification_message)
+            return
+        messages.append(notification_message)
+
+    def _persist_notification_messages(
+        self,
+        messages: Union[ChatMessages, List[Mapping[str, Any]]],
+        notification_messages: List[Mapping[str, Any]],
+    ) -> None:
+        for notification_message in notification_messages:
+            self._persist_notification_message(messages, notification_message)
+
+    # --- Thread And Run Resolution ---
+
+    def _prepare_messages_scope(
+        self,
+        *,
+        messages: Optional[Union[ChatMessages, List[Mapping[str, Any]]]],
+        scope: Optional[ExecutionScope],
+    ) -> Tuple[
+        Optional[Union[ChatMessages, List[Mapping[str, Any]]]],
+        ExecutionScope,
+        str,
+        str,
+    ]:
+        effective_checkpoint_store = self._get_effective_checkpoint_store()
+        should_use_chat_messages = (
+            effective_checkpoint_store is not None
+            or isinstance(messages, ChatMessages)
+            or scope is not None
+            or self.tool_library.has_deferred_tools
+        )
+        if should_use_chat_messages:
+            messages = self._coerce_chat_messages(messages)
+
+        effective_thread_id = self._resolve_thread_id(
+            messages=messages,
+            thread_id=scope.thread_id if scope is not None else None,
+        )
+        effective_run_id = self._resolve_run_id(
+            messages=messages,
+            run_id=scope.run_id if scope is not None else None,
+        )
+        effective_scope = (scope or get_execution_context()["scope"]).with_overrides(
+            thread_id=effective_thread_id,
+            namespace=self.get_module_name(),
+            run_id=effective_run_id,
+        )
+        return messages, effective_scope, effective_thread_id, effective_run_id
+
+    def _resolve_thread_id(
+        self,
+        *,
+        messages: Optional[Union[ChatMessages, List[Mapping[str, Any]]]],
+        thread_id: Optional[str],
+    ) -> str:
+        if isinstance(thread_id, str) and thread_id:
+            return thread_id
+        if isinstance(messages, ChatMessages) and messages.thread_id:
+            return messages.thread_id
+        inherited = get_execution_context().get("thread_id")
+        if isinstance(inherited, str) and inherited:
+            return inherited
+        return new_thread_id()
+
+    def _resolve_run_id(
+        self,
+        *,
+        messages: Optional[Union[ChatMessages, List[Mapping[str, Any]]]],
+        run_id: Optional[str],
+    ) -> str:
+        if isinstance(run_id, str) and run_id:
+            return run_id
+        if isinstance(messages, ChatMessages):
+            active_turn = messages.get_active_turn()
+            if active_turn and isinstance(active_turn.get("turn_id"), str):
+                return active_turn["turn_id"]
+        inherited = get_execution_context().get("run_id")
+        if isinstance(inherited, str) and inherited:
+            return inherited
+        return new_run_id()
+
+    # --- Chat Turn Tracking ---
+
+    def _start_chat_turn_if_needed(
+        self,
+        *,
+        messages: ChatMessages,
+        turn_id: str,
+    ) -> None:
+        active_turn = messages.get_active_turn()
+        if active_turn is not None:
+            if active_turn.get("turn_id") == turn_id:
+                return
+            messages.end_turn(event="interrupt")
+
+        messages.begin_turn(
+            namespace=self.get_module_name(),
+            turn_id=turn_id,
+        )
+
+    def _append_response_to_chat_messages(  # noqa: C901
+        self,
+        messages: Union[ChatMessages, List[Mapping[str, Any]]],
+        raw_response: Union[str, Mapping[str, Any], ModelStreamResponse],
+        response_type: str,
+        metadata: Optional[Mapping[str, Any]],  # noqa: ARG002
+        *,
+        reasoning: str | None = None,
+        history_items: Optional[List[Mapping[str, Any]]] = None,
+    ) -> None:
+        if not isinstance(messages, ChatMessages):
+            return
+        if isinstance(raw_response, ModelStreamResponse):
+            return
+        if response_type != "text_generation" and "structured" not in response_type:
+            return
+
+        if history_items:
+            messages.extend(history_items)
+            if any(item.get("type") == "reasoning" for item in history_items):
+                reasoning = None
+            if any(
+                item.get("type") == "message" and item.get("role") == "assistant"
+                for item in history_items
+            ):
+                return
+
+        answer = None
+        reasoning_content = reasoning
+        if isinstance(raw_response, str):
+            answer = raw_response
+        elif isinstance(raw_response, Mapping):
+            answer = raw_response.get("answer")
+            if answer is None and "answer" not in raw_response:
+                answer = raw_response.get("text")
+            reasoning_content = (
+                self._extract_reasoning_content(raw_response) or reasoning_content
+            )
+        elif raw_response is not None:
+            answer = str(raw_response)
+
+        if reasoning_content is not None or answer is not None:
+            messages.add_assistant_response(
+                content=answer,
+                reasoning_content=reasoning_content,
+            )
+
+    # --- Response Extraction Helpers ---
+
+    def _append_tool_model_history(
+        self,
+        messages: Union[ChatMessages, List[Mapping[str, Any]]],
+        model_response: Union[ModelResponse, ModelStreamResponse],
+    ) -> set[str]:
+        uses_canonical_history = isinstance(
+            messages, ChatMessages
+        ) or self._model_uses_canonical_history(messages)
+        if not uses_canonical_history:
+            return set()
+        if isinstance(model_response, ModelStreamResponse):
+            items = model_response.chat_accumulator.snapshot(
+                fallback_reasoning=model_response.reasoning
+            )
+        else:
+            items = getattr(model_response, "history_items", [])
+        if not isinstance(items, list):
+            return set()
+        trajectory_items = [
+            item
+            for item in items
+            if item.get("type")
+            in {
+                "reasoning",
+                "tool_search_call",
+                "tool_search_output",
+                "function_call",
+            }
+        ]
+        messages.extend(trajectory_items)
+
+        existing_call_ids = {
+            item.get("call_id") or item.get("id")
+            for item in messages
+            if item.get("type") == "function_call"
+        }
+        get_tool_intents = getattr(model_response, "get_tool_intents", None)
+        if callable(get_tool_intents):
+            missing_calls = []
+            for intent in get_tool_intents():
+                if intent.id in existing_call_ids:
+                    continue
+                arguments = intent.arguments
+                if isinstance(arguments, str):
+                    serialized_arguments = arguments
+                else:
+                    serialized_arguments = msgspec.json.encode(
+                        arguments if arguments is not None else {}
+                    ).decode()
+                missing_calls.append(
+                    {
+                        "type": "function_call",
+                        "call_id": intent.id,
+                        "name": intent.name,
+                        "arguments": serialized_arguments,
+                    }
+                )
+                existing_call_ids.add(intent.id)
+            messages.extend(missing_calls)
+            trajectory_items.extend(missing_calls)
+
+        return {item["type"] for item in trajectory_items}
+
+    def _extend_tool_response_history(
+        self,
+        messages: Union[ChatMessages, List[Mapping[str, Any]]],
+        tool_response_messages: List[Mapping[str, Any]],
+    ) -> None:
+        uses_canonical_history = isinstance(
+            messages, ChatMessages
+        ) or self._model_uses_canonical_history(messages)
+        if not uses_canonical_history:
+            messages.extend(tool_response_messages)
+            return
+
+        existing_call_ids = {
+            item.get("call_id")
+            for item in messages
+            if item.get("type") == "function_call"
+        }
+        normalized = ChatMessages(tool_response_messages).to_items()
+        messages.extend(
+            item
+            for item in normalized
+            if not (
+                item.get("type") == "function_call"
+                and item.get("call_id") in existing_call_ids
+            )
+        )
+
+    def _model_uses_canonical_history(self, messages) -> bool:
+        if not isinstance(messages, list):
+            return False
+        try:
+            model = self.model
+        except AttributeError:
+            return False
+        return bool(getattr(model, "_uses_canonical_history", False))
+
+    def _extract_reasoning_content(
+        self,
+        payload: Mapping[str, Any],
+    ) -> Optional[str]:
+        for field in ("reasoning_content", "reasoning_text", "think", "reasoning"):
+            value = payload.get(field)
+            if isinstance(value, str) and value:
+                return value
+        return None
+
+    def _finalize_chat_turn(
+        self,
+        messages: Union[ChatMessages, List[Mapping[str, Any]]],
+        raw_response: Union[str, Mapping[str, Any], ModelStreamResponse],
+    ) -> None:
+        if not isinstance(messages, ChatMessages):
+            return
+
+        if isinstance(raw_response, ModelStreamResponse):
+            return
+        messages.end_turn(event="complete")
+
+    def _attach_stream_checkpoint_finalizer(
+        self,
+        model_response: ModelStreamResponse,
+        messages: Union[ChatMessages, List[Mapping[str, Any]]],
+        vars: Mapping[str, Any],
+    ) -> None:
+        if not isinstance(messages, ChatMessages):
+            return
+
+        stream_messages = messages.copy()
+
+        def finalize_stream(final_state) -> None:
+            response_item_start = len(stream_messages)
+            stream_messages.extend(final_state.items)
+            attach_response_metadata(
+                stream_messages,
+                final_state.metadata,
+                after_index=response_item_start,
+            )
+            try:
+                if final_state.status == "completed":
+                    stream_messages.end_turn(event="complete")
+                    self._checkpoint_save(stream_messages, vars, status="completed")
+                    return
+
+                reason = (
+                    str(final_state.error) if final_state.error is not None else None
+                )
+                if final_state.status == "interrupted":
+                    self._close_interrupted_tool_calls(stream_messages, reason=reason)
+                    self._checkpoint_save(stream_messages, vars, status="interrupted")
+                    return
+
+                if stream_messages.get_active_turn() is not None:
+                    stream_messages.end_turn(
+                        event="fail",
+                        metadata={"error": reason} if reason is not None else None,
+                    )
+                self._checkpoint_save(stream_messages, vars, status="failed")
+            finally:
+                messages._hydrate_state(stream_messages._to_state())
+
+        model_response.add_finalizer(finalize_stream)
+
+    def _close_interrupted_tool_calls(
+        self,
+        messages: Union[ChatMessages, List[Mapping[str, Any]], None],
+        *,
+        reason: str | None = None,
+    ) -> None:
+        if not isinstance(messages, ChatMessages):
+            return
+        messages.close_interrupted_tool_calls(reason=reason)
+        if messages.get_active_turn() is not None:
+            messages.end_turn(
+                event="interrupt",
+                metadata={"reason": reason} if reason else None,
+            )
+
+    def _append_interrupted_tool_response_messages(
+        self,
+        messages: Union[ChatMessages, List[Mapping[str, Any]]],
+        model_response: Union[ModelResponse, ModelStreamResponse],
+        *,
+        reason: str | None = None,
+    ) -> None:
+        intents = model_response.get_tool_intents()
+        if not intents:
+            self._close_interrupted_tool_calls(messages, reason=reason)
+            return
+
+        interrupted_outcomes = tuple(
+            ToolOutcome.failed(
+                intent,
+                status="interrupted",
+                code="tool_interrupted",
+                message=reason or "Tool call interrupted.",
+            )
+            for intent in intents
+        )
+        tool_response_messages = model_response.render_tool_outcomes(
+            interrupted_outcomes
+        )
+        self._extend_tool_response_history(messages, tool_response_messages)
+        self._close_interrupted_tool_calls(messages, reason=reason)
+
+    # --- Checkpoint Persistence ---
+
+    def _checkpoint_save(
+        self,
+        messages: Union[ChatMessages, List[Mapping[str, Any]], None],
+        _vars: Mapping[str, Any],
+        status: str = "running",
+    ) -> None:
+        checkpoint_store = self._get_effective_checkpoint_store()
+        if checkpoint_store is None or not isinstance(messages, ChatMessages):
+            return
+
+        turns = messages.turns
+        if not turns:
+            return
+
+        thread_id = messages.thread_id or new_thread_id()
+        run_id = turns[-1]["turn_id"]
+        state = self._build_checkpoint_state(messages, status=status)
+        checkpoint_store.save_state(self.get_module_name(), thread_id, run_id, state)
+
+    async def _acheckpoint_save(
+        self,
+        messages: Union[ChatMessages, List[Mapping[str, Any]], None],
+        _vars: Mapping[str, Any],
+        status: str = "running",
+    ) -> None:
+        checkpoint_store = self._get_effective_checkpoint_store()
+        if checkpoint_store is None or not isinstance(messages, ChatMessages):
+            return
+
+        turns = messages.turns
+        if not turns:
+            return
+
+        thread_id = messages.thread_id or new_thread_id()
+        run_id = turns[-1]["turn_id"]
+        state = self._build_checkpoint_state(messages, status=status)
+        if hasattr(checkpoint_store, "asave_state"):
+            await checkpoint_store.asave_state(
+                self.get_module_name(),
+                thread_id,
+                run_id,
+                state,
+            )
+        else:
+            checkpoint_store.save_state(
+                self.get_module_name(), thread_id, run_id, state
+            )
+
+    def _checkpoint_interrupted(
+        self,
+        inputs: Mapping[str, Any],
+        exc: BaseException,
+    ) -> None:
+        self._close_interrupted_tool_calls(
+            inputs.get("messages"),
+            reason=str(exc),
+        )
+        self._checkpoint_save(
+            inputs.get("messages"),
+            inputs.get("vars", {}),
+            status="interrupted",
+        )
+
+    async def _acheckpoint_interrupted(
+        self,
+        inputs: Mapping[str, Any],
+        exc: BaseException,
+    ) -> None:
+        self._close_interrupted_tool_calls(
+            inputs.get("messages"),
+            reason=str(exc),
+        )
+        await self._acheckpoint_save(
+            inputs.get("messages"),
+            inputs.get("vars", {}),
+            status="interrupted",
+        )
+
+    @staticmethod
+    def _raise_interrupted_from_abort(
+        inputs: Mapping[str, Any],
+        exc: BaseException,
+    ) -> None:
+        if isinstance(exc, AbortRequestedError):
+            scope = inputs.get("scope")
+            raise TaskInterruptRequestedError(
+                scope.run_id if scope is not None else "unknown",
+                str(exc),
+            ) from exc
+        raise exc
+
+    def _build_checkpoint_state(
+        self,
+        messages: ChatMessages,
+        *,
+        status: str,
+    ) -> Mapping[str, Any]:
+        return {
+            "status": status,
+            "messages": messages._to_state(),
+            "metadata": {
+                "namespace": self.get_module_name(),
+                "saved_at": utc_now_isoformat(),
+            },
+        }
+
+    def _checkpoint_save_on_error(self, inputs: Mapping[str, Any]) -> None:
+        if self._get_effective_checkpoint_store() is None:
+            return
+        messages = inputs.get("messages")
+        vars = inputs.get("vars", {})
+        if (
+            isinstance(messages, ChatMessages)
+            and messages.get_active_turn() is not None
+        ):
+            messages.end_turn(event="fail")
+        self._checkpoint_save(messages, vars, status="failed")
+
+    async def _acheckpoint_save_on_error(self, inputs: Mapping[str, Any]) -> None:
+        if self._get_effective_checkpoint_store() is None:
+            return
+        messages = inputs.get("messages")
+        vars = inputs.get("vars", {})
+        if (
+            isinstance(messages, ChatMessages)
+            and messages.get_active_turn() is not None
+        ):
+            messages.end_turn(event="fail")
+        await self._acheckpoint_save(messages, vars, status="failed")
+
+    # --- Checkpoint Resume ---
+
+    def _continue_thread_from_checkpoint(
+        self,
+        *,
+        messages: Optional[Union[ChatMessages, List[Mapping[str, Any]]]],
+        vars: Mapping[str, Any],
+        model_preference: Optional[Union[str, List[str]]],
+        thread_id: str,
+        run_id: str,
+    ) -> Tuple[
+        Optional[Union[ChatMessages, List[Mapping[str, Any]]]],
+        Mapping[str, Any],
+        Optional[Union[str, List[str]]],
+    ]:
+        checkpoint_store = self._get_effective_checkpoint_store()
+        if checkpoint_store is None or not isinstance(messages, ChatMessages):
+            return messages, vars, model_preference
+        if messages:
+            return messages, vars, model_preference
+
+        namespace = self.get_module_name()
+        if checkpoint_store.load_state(namespace, thread_id, run_id) is not None:
+            return messages, vars, model_preference
+
+        latest = checkpoint_store.load_latest_run(namespace, thread_id)
+        if latest is None:
+            return messages, vars, model_preference
+
+        restored = ChatMessages()
+        restored._hydrate_state(latest.get("messages", {}))
+        restored.configure_thread(thread_id=thread_id, namespace=namespace)
+
+        restored_model_preference = (
+            model_preference
+            if model_preference is not None
+            else latest.get("model_preference")
+        )
+        return restored, vars, restored_model_preference
+
+    async def _acontinue_thread_from_checkpoint(
+        self,
+        *,
+        messages: Optional[Union[ChatMessages, List[Mapping[str, Any]]]],
+        vars: Mapping[str, Any],
+        model_preference: Optional[Union[str, List[str]]],
+        thread_id: str,
+        run_id: str,
+    ) -> Tuple[
+        Optional[Union[ChatMessages, List[Mapping[str, Any]]]],
+        Mapping[str, Any],
+        Optional[Union[str, List[str]]],
+    ]:
+        checkpoint_store = self._get_effective_checkpoint_store()
+        if checkpoint_store is None or not isinstance(messages, ChatMessages):
+            return messages, vars, model_preference
+        if messages:
+            return messages, vars, model_preference
+
+        namespace = self.get_module_name()
+        if hasattr(checkpoint_store, "aload_state"):
+            current = await checkpoint_store.aload_state(namespace, thread_id, run_id)
+        else:
+            current = checkpoint_store.load_state(namespace, thread_id, run_id)
+        if current is not None:
+            return messages, vars, model_preference
+
+        if hasattr(checkpoint_store, "aload_latest_run"):
+            latest = await checkpoint_store.aload_latest_run(namespace, thread_id)
+        else:
+            latest = checkpoint_store.load_latest_run(namespace, thread_id)
+        if latest is None:
+            return messages, vars, model_preference
+
+        restored = ChatMessages()
+        restored._hydrate_state(latest.get("messages", {}))
+        restored.configure_thread(thread_id=thread_id, namespace=namespace)
+
+        restored_model_preference = (
+            model_preference
+            if model_preference is not None
+            else latest.get("model_preference")
+        )
+        return restored, vars, restored_model_preference
+
+    def _try_resume_from_checkpoint(
+        self,
+        messages_kwarg: Optional[Union[ChatMessages, List[Mapping[str, Any]]]],
+        *,
+        scope: Optional[ExecutionScope] = None,
+    ) -> Optional[Mapping[str, Any]]:
+        checkpoint_store = self._get_effective_checkpoint_store()
+        if checkpoint_store is None:
+            return None
+        run_id = scope.run_id if scope is not None else None
+        if not isinstance(run_id, str) or not run_id:
+            return None
+
+        effective_thread_id = self._resolve_thread_id(
+            messages=messages_kwarg,
+            thread_id=scope.thread_id if scope is not None else None,
+        )
+        state = checkpoint_store.load_state(
+            self.get_module_name(),
+            effective_thread_id,
+            run_id,
+        )
+        if state is None:
+            return None
+        if state.get("status") in {"completed", "interrupted"}:
+            raise ValueError(
+                f"Run `{run_id}` already reached terminal status "
+                f"`{state.get('status')}`. Use a new run_id to continue thread "
+                f"`{effective_thread_id}`."
+            )
+
+        restored = ChatMessages()
+        restored._hydrate_state(state.get("messages", {}))
+        if restored.get_active_turn() is None and restored.turns:
+            restored.resume_turn(run_id, metadata={"source": "checkpoint"})
+        effective_scope = (scope or get_execution_context()["scope"]).with_overrides(
+            thread_id=effective_thread_id,
+            namespace=self.get_module_name(),
+            run_id=run_id,
+        )
+        return {
+            "messages": restored,
+            "model_preference": state.get("model_preference"),
+            "scope": effective_scope,
+        }
+
+    async def _atry_resume_from_checkpoint(
+        self,
+        messages_kwarg: Optional[Union[ChatMessages, List[Mapping[str, Any]]]],
+        *,
+        scope: Optional[ExecutionScope] = None,
+    ) -> Optional[Mapping[str, Any]]:
+        checkpoint_store = self._get_effective_checkpoint_store()
+        if checkpoint_store is None:
+            return None
+        run_id = scope.run_id if scope is not None else None
+        if not isinstance(run_id, str) or not run_id:
+            return None
+
+        effective_thread_id = self._resolve_thread_id(
+            messages=messages_kwarg,
+            thread_id=scope.thread_id if scope is not None else None,
+        )
+        if hasattr(checkpoint_store, "aload_state"):
+            state = await checkpoint_store.aload_state(
+                self.get_module_name(),
+                effective_thread_id,
+                run_id,
+            )
+        else:
+            state = checkpoint_store.load_state(
+                self.get_module_name(),
+                effective_thread_id,
+                run_id,
+            )
+
+        if state is None:
+            return None
+        if state.get("status") in {"completed", "interrupted"}:
+            raise ValueError(
+                f"Run `{run_id}` already reached terminal status "
+                f"`{state.get('status')}`. Use a new run_id to continue thread "
+                f"`{effective_thread_id}`."
+            )
+
+        restored = ChatMessages()
+        restored._hydrate_state(state.get("messages", {}))
+        if restored.get_active_turn() is None and restored.turns:
+            restored.resume_turn(run_id, metadata={"source": "checkpoint"})
+        effective_scope = (scope or get_execution_context()["scope"]).with_overrides(
+            thread_id=effective_thread_id,
+            namespace=self.get_module_name(),
+            run_id=run_id,
+        )
+        return {
+            "messages": restored,
+            "model_preference": state.get("model_preference"),
+            "scope": effective_scope,
+        }
+
+    # --- Configuration ---

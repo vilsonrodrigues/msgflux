@@ -14,6 +14,25 @@ Most of the library's higher-level behavior passes through it:
 
 If you only draw one module to understand the runtime, draw `Agent` first.
 
+## Internal Layout
+
+The public import remains `from msgflux.nn.modules.agent import Agent`, but the
+implementation is split by runtime responsibility. `core.py` contains the
+public class and composes the remaining behavior through internal mixins.
+
+| Module | Responsibility |
+| --- | --- |
+| `core.py` | Initialization and the public `forward` and `aforward` entry points |
+| `context.py` | Shared execution context, constants, guards, and lifecycle helpers |
+| `lifecycle.py` | Extensions, hooks, event streaming, and thread watching |
+| `model_runtime.py` | Model request preparation, response processing, and tool loops |
+| `inputs.py` | Task rendering, multimodal inputs, filtering, and input validation |
+| `conversation.py` | Messages, inboxes, checkpoints, and resume behavior |
+| `configuration.py` | Setters, signatures, schemas, and system-prompt configuration |
+
+This separation is internal. Callers should use the package-level `Agent`
+export instead of importing `core.py` or the mixins directly.
+
 ## Mental Model
 
 `Agent` does not own every detail. It coordinates specialized subsystems.

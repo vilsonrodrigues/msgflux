@@ -83,7 +83,10 @@ def test_agent_warmup_system_prompt_can_run_detached(monkeypatch):
         captured["args"] = args
         captured["kwargs"] = kwargs
 
-    monkeypatch.setattr("msgflux.nn.modules.agent.detached", fake_detached)
+    monkeypatch.setattr(
+        "msgflux.nn.modules.agent.model_runtime.detached",
+        fake_detached,
+    )
 
     result = agent.warmup_system_prompt(background=True)
 

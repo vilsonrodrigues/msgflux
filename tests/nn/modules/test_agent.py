@@ -1387,7 +1387,8 @@ class TestAgentModelStringShorthand:
         mock_model.model_type = "chat_completion"
 
         with patch(
-            "msgflux.nn.modules.agent.Model.chat_completion", return_value=mock_model
+            "msgflux.nn.modules.agent.configuration.Model.chat_completion",
+            return_value=mock_model,
         ) as mock_factory:
             agent = Agent(name="agent", model="openai/gpt-4.1-mini")
 
@@ -1405,7 +1406,8 @@ class TestAgentModelStringShorthand:
         new_mock.model_type = "chat_completion"
 
         with patch(
-            "msgflux.nn.modules.agent.Model.chat_completion", return_value=new_mock
+            "msgflux.nn.modules.agent.configuration.Model.chat_completion",
+            return_value=new_mock,
         ) as mock_factory:
             agent.model = "groq/llama-3.1-8b-instant"
 
