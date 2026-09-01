@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
     Dict,
@@ -16,7 +17,6 @@ from typing import (
 import msgspec
 
 from msgflux.tools.catalog import ToolRef
-from msgflux.tools.dataclasses import ToolMetadata
 from msgflux.tools.helpers import (
     BACKGROUND_TASK_TOOL_KIND,
     DEFAULT_AGENT_BACKGROUND_CAPABILITIES,
@@ -28,6 +28,9 @@ from msgflux.tools.helpers import (
 from msgflux.tools.runtime import _copy_mapping
 
 T = TypeVar("T")
+
+if TYPE_CHECKING:
+    from msgflux.nn.modules.tool.definitions import ToolDefinition
 
 
 class ToolBucketEntry(msgspec.Struct, frozen=True, kw_only=True):
@@ -327,7 +330,7 @@ class ToolBackground(ToolLibraryOperator):
         definition: Any,
         base_tools: Iterable[Callable],
         capability_tools: Mapping[str, Iterable[Callable]],
-        metadata_factory: Callable[[Callable], ToolMetadata],
+        definition_factory: Callable[[Callable], ToolDefinition],
     ) -> bool:
         if not cls.is_reserved_definition(definition):
             return False
@@ -344,10 +347,10 @@ class ToolBackground(ToolLibraryOperator):
             base_tools=base_tools,
             capability_tools=capability_tools,
             capabilities=capabilities,
-            metadata_factory=metadata_factory,
+            definition_factory=definition_factory,
         )
         return tool_name in {
-            metadata_factory(task_tool).name for task_tool in task_tools
+            definition_factory(task_tool).name for task_tool in task_tools
         }
 
     @staticmethod
@@ -400,13 +403,13 @@ class ToolBackground(ToolLibraryOperator):
         disabled_tool_names: set[str],
         base_tools: Iterable[Callable],
         capability_tools: Mapping[str, Iterable[Callable]],
-        metadata_factory: Callable[[Callable], ToolMetadata],
+        definition_factory: Callable[[Callable], ToolDefinition],
     ) -> None:
         background_tools = list(cls._iter_background_tools(library))
         all_task_tools = cls._all_task_tools(
             base_tools=base_tools,
             capability_tools=capability_tools,
-            metadata_factory=metadata_factory,
+            definition_factory=definition_factory,
         )
         if background_tools:
             capabilities = {
@@ -418,32 +421,32 @@ class ToolBackground(ToolLibraryOperator):
                 base_tools=base_tools,
                 capability_tools=capability_tools,
                 capabilities=capabilities,
-                metadata_factory=metadata_factory,
+                definition_factory=definition_factory,
             )
             cls._ensure_task_tools(
                 library=library,
                 disabled_tool_names=disabled_tool_names,
                 tools=required_task_tools,
-                metadata_factory=metadata_factory,
+                definition_factory=definition_factory,
             )
             required_names = {
-                metadata_factory(task_tool).name for task_tool in required_task_tools
+                definition_factory(task_tool).name for task_tool in required_task_tools
             }
             cls._remove_task_tools(
                 library=library,
                 tools=(
                     task_tool
                     for task_tool in all_task_tools
-                    if metadata_factory(task_tool).name not in required_names
+                    if definition_factory(task_tool).name not in required_names
                 ),
-                metadata_factory=metadata_factory,
+                definition_factory=definition_factory,
             )
             return
 
         cls._remove_task_tools(
             library=library,
             tools=all_task_tools,
-            metadata_factory=metadata_factory,
+            definition_factory=definition_factory,
         )
         disabled_tool_names.clear()
 
@@ -465,13 +468,13 @@ class ToolBackground(ToolLibraryOperator):
         *,
         base_tools: Iterable[Callable],
         capability_tools: Mapping[str, Iterable[Callable]],
-        metadata_factory: Callable[[Callable], ToolMetadata],
+        definition_factory: Callable[[Callable], ToolDefinition],
     ) -> tuple[Callable, ...]:
         return cls._task_tools_for_capabilities(
             base_tools=base_tools,
             capability_tools=capability_tools,
             capabilities=capability_tools.keys(),
-            metadata_factory=metadata_factory,
+            definition_factory=definition_factory,
         )
 
     @classmethod
@@ -481,7 +484,7 @@ class ToolBackground(ToolLibraryOperator):
         base_tools: Iterable[Callable],
         capability_tools: Mapping[str, Iterable[Callable]],
         capabilities: Iterable[str],
-        metadata_factory: Callable[[Callable], ToolMetadata],
+        definition_factory: Callable[[Callable], ToolDefinition],
     ) -> tuple[Callable, ...]:
         selected_tools = list(base_tools)
         capability_names = set(capabilities)
@@ -491,8 +494,8 @@ class ToolBackground(ToolLibraryOperator):
 
         unique_tools: Dict[str, Callable] = {}
         for task_tool in selected_tools:
-            metadata = metadata_factory(task_tool)
-            unique_tools.setdefault(metadata.name, task_tool)
+            definition = definition_factory(task_tool)
+            unique_tools.setdefault(definition.name, task_tool)
         return tuple(unique_tools.values())
 
     @classmethod
@@ -502,11 +505,11 @@ class ToolBackground(ToolLibraryOperator):
         library: Any,
         disabled_tool_names: set[str],
         tools: Iterable[Callable],
-        metadata_factory: Callable[[Callable], ToolMetadata],
+        definition_factory: Callable[[Callable], ToolDefinition],
     ) -> None:
         for tool in tools:
-            metadata = metadata_factory(tool)
-            tool_name = metadata.name
+            definition = definition_factory(tool)
+            tool_name = definition.name
             if tool_name in disabled_tool_names:
                 continue
             if tool_name in library.library:
@@ -517,7 +520,7 @@ class ToolBackground(ToolLibraryOperator):
                         "an existing tool."
                     )
                 continue
-            library.add(metadata)
+            library.add(definition)
 
     @classmethod
     def _remove_task_tools(
@@ -525,10 +528,10 @@ class ToolBackground(ToolLibraryOperator):
         *,
         library: Any,
         tools: Iterable[Callable],
-        metadata_factory: Callable[[Callable], ToolMetadata],
+        definition_factory: Callable[[Callable], ToolDefinition],
     ) -> None:
         for tool in tools:
-            tool_name = metadata_factory(tool).name
+            tool_name = definition_factory(tool).name
             if tool_name in library.library and cls.is_reserved_definition(
                 library.get_tool_definition(tool_name)
             ):

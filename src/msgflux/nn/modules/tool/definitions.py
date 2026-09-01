@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from typing import Any, Collection, Mapping, Protocol, runtime_checkable
+from typing import Any, Callable, Collection, Mapping, Protocol, runtime_checkable
 
 import msgspec
 
 from msgflux.tools.catalog import NativeToolBinding
-from msgflux.tools.dataclasses import ToolMetadata
 from msgflux.tools.helpers import RUNTIME_BACKGROUND_PARAM
 from msgflux.tools.runtime import FeedbackSpec, _copy_mapping, _require_name
 from msgflux.tools.specs import ContextBinding, ContextSpec, DispatchSpec, LoadingSpec
@@ -26,6 +25,36 @@ class ToolExecutor(Protocol):
     def __call__(self, **arguments: Any) -> Any: ...
 
     async def acall(self, **arguments: Any) -> Any: ...
+
+
+class ToolDeclaration(msgspec.Struct, frozen=True, kw_only=True):
+    """Normalized frontend declaration compiled into a ToolDefinition."""
+
+    name: str
+    description: str
+    annotations: Mapping[str, Any]
+    config: Mapping[str, Any]
+    implementation: Callable[..., Any]
+    display_name: str | None = None
+    usage_guidance: str | None = None
+    execution_namespace: str | None = None
+
+    def __post_init__(self) -> None:
+        msgspec.structs.force_setattr(self, "name", _require_name(self.name, "name"))
+        if not isinstance(self.description, str):
+            raise TypeError("`description` must be a string")
+        msgspec.structs.force_setattr(
+            self,
+            "annotations",
+            _copy_mapping(self.annotations, "annotations"),
+        )
+        msgspec.structs.force_setattr(
+            self,
+            "config",
+            _copy_mapping(self.config, "config"),
+        )
+        if not callable(self.implementation):
+            raise TypeError("`implementation` must be callable")
 
 
 class ToolDefinition(msgspec.Struct, frozen=True, kw_only=True):
@@ -110,22 +139,27 @@ class ToolDefinitionCompiler:
     @classmethod
     def compile(
         cls,
-        metadata: ToolMetadata,
+        declaration: ToolDeclaration,
         *,
         executor: ToolExecutor,
     ) -> ToolDefinition:
-        if not isinstance(metadata, ToolMetadata):
-            raise TypeError("`metadata` must be ToolMetadata")
+        if not isinstance(declaration, ToolDeclaration):
+            raise TypeError("`declaration` must be a ToolDeclaration")
         if not isinstance(executor, ToolExecutor):
             raise TypeError("`executor` must implement ToolExecutor")
-        config = dict(metadata.tool_config)
+        config = dict(declaration.config)
+        config.setdefault("defer_loading", False)
+        config.setdefault(
+            "tool_kind",
+            getattr(declaration.implementation, "tool_kind", "tool"),
+        )
         input_schema, schema_metadata = cls._extract_executor_schema(executor)
         runtime_metadata = {
             **schema_metadata,
-            "catalog_role": getattr(metadata.impl, "catalog_role", None),
-            "execution_namespace": metadata.execution_namespace,
-            "declared_usage_guidance": metadata.usage_guidance,
-            "bucket": cls._compile_bucket_presentation(metadata.impl),
+            "catalog_role": getattr(declaration.implementation, "catalog_role", None),
+            "execution_namespace": declaration.execution_namespace,
+            "declared_usage_guidance": declaration.usage_guidance,
+            "bucket": cls._compile_bucket_presentation(declaration.implementation),
             "background_capabilities": config.get("background_capabilities"),
             "disable_input": bool(config.get("disable_input", False)),
             "hidden_params": config.get("_hidden_params"),
@@ -137,11 +171,11 @@ class ToolDefinitionCompiler:
         }
         native_bindings = tuple(getattr(executor, "native_bindings", ()))
         return ToolDefinition(
-            name=metadata.name,
+            name=declaration.name,
             executor=executor,
             input_schema=input_schema,
-            description=metadata.description,
-            annotations=metadata.annotations,
+            description=declaration.description,
+            annotations=declaration.annotations,
             dispatch=cls._compile_dispatch(config),
             feedback=cls._compile_feedback(config),
             context=cls._compile_context(config),
@@ -149,8 +183,8 @@ class ToolDefinitionCompiler:
             retry=config.get("retry"),
             native_bindings=native_bindings,
             kind=config.get("tool_kind", "tool"),
-            display_name=metadata.display_name,
-            usage_guidance=metadata.usage_guidance,
+            display_name=declaration.display_name,
+            usage_guidance=declaration.usage_guidance,
             declaration=config,
             metadata=runtime_metadata,
         )
@@ -175,15 +209,16 @@ class ToolDefinitionCompiler:
     def refresh_presentation(
         cls,
         definition: ToolDefinition,
-        metadata: ToolMetadata,
+        declaration: ToolDeclaration,
     ) -> ToolDefinition:
         """Refresh mutable bucket presentation without recompiling policies."""
         if not isinstance(definition, ToolDefinition):
             raise TypeError("`definition` must be a ToolDefinition")
-        if not isinstance(metadata, ToolMetadata):
-            raise TypeError("`metadata` must be ToolMetadata")
-        if metadata.source_tool is not definition.executor:
-            raise ValueError("Presentation refresh cannot change the tool executor")
+        if not isinstance(declaration, ToolDeclaration):
+            raise TypeError("`declaration` must be a ToolDeclaration")
+        executor_impl = getattr(definition.executor, "impl", definition.executor)
+        if declaration.implementation is not executor_impl:
+            raise ValueError("Presentation refresh cannot change the implementation")
 
         input_schema, schema_metadata = cls._extract_executor_schema(
             definition.executor
@@ -194,10 +229,10 @@ class ToolDefinitionCompiler:
         return msgspec.structs.replace(
             definition,
             input_schema=input_schema,
-            description=metadata.description,
-            annotations=metadata.annotations,
-            display_name=metadata.display_name,
-            usage_guidance=metadata.usage_guidance,
+            description=declaration.description,
+            annotations=declaration.annotations,
+            display_name=declaration.display_name,
+            usage_guidance=declaration.usage_guidance,
             metadata=runtime_metadata,
         )
 

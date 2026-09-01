@@ -27,9 +27,9 @@ from msgflux.nn.modules.tool.execution_runtime import ToolLibraryExecutionMixin
 from msgflux.nn.modules.tool.implementations import (
     MCPTool,
     Tool,
-    _convert_metadata_to_local_tool,
-    _inspect_tool_metadata,
-    _metadata_from_tool,
+    _convert_declaration_to_local_tool,
+    _declaration_from_tool,
+    _inspect_tool_declaration,
 )
 from msgflux.nn.modules.tool.runtime import (
     ToolCatalogView,
@@ -51,7 +51,6 @@ from msgflux.runtime.agent_inbox import (
 from msgflux.runtime.background import BackgroundTaskDispatcher
 from msgflux.runtime.context import get_execution_context
 from msgflux.tasks import InMemoryTaskStore
-from msgflux.tools.dataclasses import ToolMetadata
 from msgflux.tools.definitions import ToolCatalog
 from msgflux.tools.handles import ToolLibraryHandle
 from msgflux.tools.types import ToolBackground, ToolBucket, ToolBucketEntry
@@ -65,7 +64,7 @@ class ToolLibrary(ToolLibraryExecutionMixin, Module, metaclass=AutoParams):
     def __init__(
         self,
         name: str,
-        tools: List[Callable],
+        tools: List[Callable | RuntimeToolDefinition],
         mcp_servers: Optional[List[Dict[str, Any]]] = None,
         task_store: Any | None = None,
         extensions: Optional[List[ToolLibraryExtension | ToolExtension]] = None,
@@ -122,9 +121,9 @@ class ToolLibrary(ToolLibraryExecutionMixin, Module, metaclass=AutoParams):
         self._lifecycle_owner_ref = weakref.ref(owner)
 
     @staticmethod
-    def inspect_tool_metadata(tool: Callable) -> ToolMetadata:
-        """Normalize one callable for extension-managed registration."""
-        return _inspect_tool_metadata(tool)
+    def inspect_tool_definition(tool: Callable) -> RuntimeToolDefinition:
+        """Compile one callable for extension-managed registration."""
+        return ToolLibrary._compile_tool_definition(tool)
 
     @staticmethod
     def create_mcp_tool(**kwargs: Any) -> MCPTool:
@@ -341,33 +340,25 @@ class ToolLibrary(ToolLibraryExecutionMixin, Module, metaclass=AutoParams):
             raise ValueError(f"Duplicate tool name `{tool_name}`")
 
     @staticmethod
-    def _compile_tool_metadata(metadata: ToolMetadata) -> ToolMetadata:
-        """Compile one normalized declaration before any registration decision."""
-        metadata.tool_config = dotdict(metadata.tool_config)
-        metadata.tool_config.setdefault("defer_loading", False)
-        tool = (
-            metadata.source_tool
-            if isinstance(metadata.source_tool, Tool)
-            else _convert_metadata_to_local_tool(metadata)
-        )
-        if isinstance(metadata.source_tool, Tool):
-            tool.register_buffer("tool_config", dotdict(metadata.tool_config))
-        metadata.source_tool = tool
-        metadata.definition = ToolDefinitionCompiler.compile(metadata, executor=tool)
-        return metadata
-
-    def add(self, tool: Callable) -> str:
-        """Add a local tool in library."""
-        if isinstance(tool, ToolMetadata):
-            metadata = tool
-        elif isinstance(tool, Tool):
-            metadata = _metadata_from_tool(tool)
+    def _compile_tool_definition(
+        tool: Callable | RuntimeToolDefinition,
+    ) -> RuntimeToolDefinition:
+        """Compile one frontend value before any registration decision."""
+        if isinstance(tool, RuntimeToolDefinition):
+            return tool
+        if isinstance(tool, Tool):
+            executor = tool
+            declaration = _declaration_from_tool(tool)
+            executor.register_buffer("tool_config", dotdict(declaration.config))
         else:
-            metadata = _inspect_tool_metadata(tool)
+            declaration = _inspect_tool_declaration(tool)
+            executor = _convert_declaration_to_local_tool(declaration)
+        return ToolDefinitionCompiler.compile(declaration, executor=executor)
 
-        self._validate_new_tool_name(metadata.name)
-        metadata = self._compile_tool_metadata(metadata)
-        definition = metadata.definition
+    def add(self, tool: Callable | RuntimeToolDefinition) -> str:
+        """Add a local tool in library."""
+        definition = self._compile_tool_definition(tool)
+        self._validate_new_tool_name(definition.name)
         if ToolBackground.is_background_definition(definition):
             background = self.extensions.get("background_tasks")
             if isinstance(background, BackgroundTasksExtension):
@@ -388,22 +379,22 @@ class ToolLibrary(ToolLibraryExecutionMixin, Module, metaclass=AutoParams):
             self.get_tool_definition,
         )
         if bucket_name is not None:
-            self._add_to_bucket(bucket_name, metadata)
-            return metadata.name
+            self._add_to_bucket(bucket_name, definition)
+            return definition.name
 
         capturing_bucket = ToolBucket.find_capturing_bucket(
-            metadata.name,
+            definition.name,
             self.library,
             self.get_tool_definition,
         )
         if capturing_bucket is not None:
             raise ValueError(
-                f"The tool name `{metadata.name}` is already in tool library"
+                f"The tool name `{definition.name}` is already in tool library"
             )
 
         # Normal tools become directly callable and visible according to their config.
-        self._register_tool(metadata)
-        return metadata.name
+        self._register_tool(definition)
+        return definition.name
 
     def remove(self, tool_name: str):
         if tool_name in self.library.keys():
@@ -460,38 +451,38 @@ class ToolLibrary(ToolLibraryExecutionMixin, Module, metaclass=AutoParams):
         if self._background_dispatcher is not None:
             self._background_dispatcher.clear()
 
-    def _register_tool(self, metadata: ToolMetadata) -> Tool:
-        definition = metadata.definition
+    def _register_tool(self, definition: RuntimeToolDefinition) -> Tool:
         if not isinstance(definition, RuntimeToolDefinition):
-            raise RuntimeError(f"Tool `{metadata.name}` has not been compiled")
-        tool = metadata.source_tool
+            raise TypeError("`definition` must be a ToolDefinition")
+        tool = definition.executor
         if not isinstance(tool, Tool):
-            raise RuntimeError(f"Tool `{metadata.name}` has no compiled executor")
+            raise RuntimeError(f"Tool `{definition.name}` has no compiled executor")
+        implementation = getattr(tool, "impl", tool)
 
         # A bucket must be valid before it becomes visible in the library.
         captures = []
         if definition.kind == ToolBucket.tool_kind:
             ToolBucket.validate_registration(
-                metadata.name,
-                metadata.impl,
+                definition.name,
+                implementation,
                 self.library,
                 self.get_tool_definition,
             )
             captures = ToolBucket.find_capture_candidates(
-                metadata.impl,
+                implementation,
                 self.library,
                 self.get_tool_definition,
             )
 
             # Check every pending capture before changing the current library state.
             for captured_name, _ in captures:
-                metadata.impl.validate_capture(self.get_tool_definition(captured_name))
+                implementation.validate_capture(self.get_tool_definition(captured_name))
 
         # Register the public executor and its immutable definition together.
-        metadata.ref = self.registry.add(definition)
+        self.registry.add(definition)
         self.library.update({tool.name: tool})
-        if isinstance(metadata.impl, ToolBucket):
-            self._sync_bucket_presentation(tool.name, metadata.impl)
+        if isinstance(implementation, ToolBucket):
+            self._sync_bucket_presentation(tool.name, implementation)
 
         # An explicit re-add re-enables a builtin task control tool.
         if ToolBackground.is_reserved_definition(definition):
@@ -505,29 +496,36 @@ class ToolLibrary(ToolLibraryExecutionMixin, Module, metaclass=AutoParams):
             self._capture_registered_tool(tool.name, captured_name)
         return tool
 
-    def _add_to_bucket(self, bucket_name: str, metadata: ToolMetadata) -> None:
+    def _add_to_bucket(
+        self,
+        bucket_name: str,
+        definition: RuntimeToolDefinition,
+    ) -> None:
         # Resolve the bucket implementation before changing its captured tools.
         bucket_tool = self.library[bucket_name]
         bucket = getattr(bucket_tool, "impl", None)
         if not isinstance(bucket, ToolBucket):
             raise ValueError(f"The bucket tool `{bucket_name}` cannot capture tools.")
 
-        if not isinstance(metadata.definition, RuntimeToolDefinition):
-            metadata = self._compile_tool_metadata(metadata)
-        bucket.validate_capture(metadata.definition)
-        metadata.ref = self.registry.add(metadata.definition)
-        self.captured_executors[metadata.name] = metadata.source_tool
+        if not isinstance(definition, RuntimeToolDefinition):
+            raise TypeError("`definition` must be a ToolDefinition")
+        executor = definition.executor
+        if not isinstance(executor, Tool):
+            raise RuntimeError(f"Tool `{definition.name}` has no compiled executor")
+        bucket.validate_capture(definition)
+        ref = self.registry.add(definition)
+        self.captured_executors[definition.name] = executor
 
         # Buckets retain only stable references; the library owns the executor.
         try:
-            bucket.add(metadata.ref)
+            bucket.add(ref)
             self._sync_bucket_presentation(bucket_name, bucket)
         except Exception:
-            if metadata.name in bucket.tools:
-                bucket.remove(metadata.name)
-            if metadata.name in self.captured_executors:
-                self.captured_executors.pop(metadata.name)
-            self.registry.remove(metadata.ref)
+            if definition.name in bucket.tools:
+                bucket.remove(definition.name)
+            if definition.name in self.captured_executors:
+                self.captured_executors.pop(definition.name)
+            self.registry.remove(ref)
             raise
 
     def _capture_registered_tool(self, bucket_name: str, tool_name: str) -> None:
@@ -588,11 +586,11 @@ class ToolLibrary(ToolLibraryExecutionMixin, Module, metaclass=AutoParams):
             current.metadata.get("declared_usage_guidance")
         )
         bucket_tool.register_buffer("usage_guidance", usage_guidance)
-        bucket_metadata = _metadata_from_tool(bucket_tool)
+        bucket_declaration = _declaration_from_tool(bucket_tool)
         self.registry.replace(
             ToolDefinitionCompiler.refresh_presentation(
                 current,
-                bucket_metadata,
+                bucket_declaration,
             )
         )
 

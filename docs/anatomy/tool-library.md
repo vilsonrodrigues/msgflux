@@ -57,9 +57,10 @@ has exactly one place in the module tree and `state_dict`.
 
 The current facade keeps directly exposed executors in its public `ModuleDict`.
 Bucket-captured definitions are indexed by the same registry, while their
-executors remain owned by the bucket metadata as before. Consequently, public,
-deferred, and bucket-captured tools all resolve through one definition registry
-without making hidden tools appear in the model-facing module surface.
+executors move to a separate library-owned `ModuleDict`. Buckets retain only
+`ToolRef` values. Consequently, public, deferred, and bucket-captured tools all
+resolve through one definition registry without making hidden tools appear in
+the model-facing module surface or giving a bucket direct executor access.
 
 Deep copies preserve the identity between each copied definition and its copied
 executor because both are owned by the `ToolLibrary` facade, not independently
@@ -76,6 +77,13 @@ dispatch policy, feedback policy, context bindings, loading policy, and
 normalized declaration into one immutable `ToolDefinition`. Registration,
 bucket routing, background capability discovery, catalog projection, and
 runtime execution all read that definition.
+
+Callables and `Tool` adapters pass through a short-lived `ToolDeclaration`
+during normalization. It exists only long enough to build the executor and
+compile the definition; the library does not retain a mutable registration
+metadata object. `ToolLibrary.add(...)` can also receive an already compiled
+`ToolDefinition`, which lets extensions contribute the same canonical contract
+without reopening `tool_config` interpretation.
 
 `tool_config` remains a declaration frontend on the incoming callable. The
 library no longer keeps a parallel `tool_configs` registry after compilation.

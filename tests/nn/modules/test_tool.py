@@ -20,7 +20,7 @@ from msgflux.nn.modules.tool import (
 )
 from msgflux.runtime.context import execution_context
 from msgflux.tasks import InMemoryTaskStore, TaskActivityRecorder
-from msgflux.tools import ToolBackground, ToolBucket, ToolLibraryOperator, ToolMetadata
+from msgflux.tools import ToolBackground, ToolBucket, ToolLibraryOperator
 from msgflux.tools.helpers import (
     build_call_parameters_for_response,
     should_copy_injected_messages,
@@ -568,22 +568,15 @@ class TestToolLibrary:
         assert parameters == {"query": "hello"}
         assert build_call_parameters_for_response(None) is None
 
-    def test_tool_library_skips_background_validation_for_regular_metadata(self):
+    def test_tool_library_skips_background_validation_for_regular_tool(self):
         def regular_tool() -> str:
+            """Return a regular value."""
             return "ok"
-
-        metadata = ToolMetadata(
-            name="regular_tool",
-            description="A regular tool.",
-            annotations={"return": str},
-            tool_config={"tool_kind": "tool"},
-            impl=regular_tool,
-        )
 
         with patch.object(
             ToolBackground, "validate_background_capabilities"
         ) as validate:
-            library = ToolLibrary(name="test_library", tools=[metadata])
+            library = ToolLibrary(name="test_library", tools=[regular_tool])
 
         assert "regular_tool" in library.library
         validate.assert_not_called()
@@ -1163,15 +1156,9 @@ class TestToolLibrary:
             """Render a preview."""
             return "preview"
 
-        metadata = ToolMetadata(
-            name="render_preview",
-            description="Render a preview.",
-            annotations={"return": str},
-            tool_config={"tool_kind": "tool", "preview": True},
-            impl=render_preview,
-        )
+        render_preview.tool_config = {"preview": True}
         bucket = PreviewBucket()
-        library = ToolLibrary(name="lib", tools=[metadata, bucket])
+        library = ToolLibrary(name="lib", tools=[render_preview, bucket])
 
         assert list(library.library) == ["preview"]
         assert set(bucket.tools) == {"render_preview"}

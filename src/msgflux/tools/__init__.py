@@ -11,7 +11,6 @@ from msgflux.tools.catalog import (
     ToolChoice,
     ToolRef,
 )
-from msgflux.tools.dataclasses import ToolMetadata
 from msgflux.tools.definitions import ToolCatalog, ToolSpec
 from msgflux.tools.guidance import BUILTIN_TOOL_USAGE_GUIDANCE, apply_tool_guidance
 from msgflux.tools.handles import ToolBucketHandle, ToolLibraryHandle
@@ -44,6 +43,5 @@ __all__ = [
     "ToolFlowControl",
     "ToolLibraryHandle",
     "ToolLibraryOperator",
-    "ToolMetadata",
     "apply_tool_guidance",
 ]

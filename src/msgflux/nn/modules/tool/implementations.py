@@ -8,13 +8,12 @@ from typing import Any, Callable, Dict, Mapping, Optional, get_type_hints
 import msgflux.nn.functional as F
 from msgflux.core.dotdict import dotdict
 from msgflux.nn.modules.module import Module
-from msgflux.nn.modules.tool.definitions import ContextSpec
+from msgflux.nn.modules.tool.definitions import ContextSpec, ToolDeclaration
 from msgflux.protocols.mcp import (
     convert_mcp_schema_to_tool_schema,
     extract_tool_result_text,
 )
 from msgflux.telemetry.span import aset_tool_attributes, set_tool_attributes
-from msgflux.tools.dataclasses import ToolMetadata
 from msgflux.tools.helpers import (
     RUNTIME_BACKGROUND_PARAM,
     is_background_capable,
@@ -237,8 +236,8 @@ class LocalTool(Tool):
         return await loop.run_in_executor(None, lambda: self.impl(*args, **kwargs))
 
 
-def _inspect_tool_metadata(impl: Callable) -> ToolMetadata:  # noqa: C901
-    """Extract normalized metadata from a callable tool."""
+def _inspect_tool_declaration(impl: Callable) -> ToolDeclaration:  # noqa: C901
+    """Normalize a callable into the frontend declaration contract."""
     tool_config = dotdict(deepcopy(getattr(impl, "tool_config", dotdict())))
     if "spawn" in tool_config:
         raise ValueError("The `spawn` tool option was removed; use `detached`.")
@@ -415,12 +414,12 @@ def _inspect_tool_metadata(impl: Callable) -> ToolMetadata:  # noqa: C901
             f"`{RUNTIME_BACKGROUND_PARAM}=true`; otherwise it runs normally. \n" + doc
         )
 
-    return ToolMetadata(
+    return ToolDeclaration(
         name=name,
         description=doc,
         annotations=annotations,
-        tool_config=tool_config,
-        impl=impl,
+        config=tool_config,
+        implementation=impl,
         display_name=display_name or name,
         usage_guidance=usage_guidance,
         execution_namespace=(
@@ -431,16 +430,16 @@ def _inspect_tool_metadata(impl: Callable) -> ToolMetadata:  # noqa: C901
     )
 
 
-def _convert_metadata_to_local_tool(metadata: ToolMetadata) -> LocalTool:
+def _convert_declaration_to_local_tool(declaration: ToolDeclaration) -> LocalTool:
     return LocalTool(
-        name=metadata.name,
-        description=metadata.description,
-        annotations=metadata.annotations,
-        tool_config=metadata.tool_config,
-        impl=metadata.impl,
-        display_name=metadata.display_name,
-        usage_guidance=metadata.usage_guidance,
-        execution_namespace=metadata.execution_namespace,
+        name=declaration.name,
+        description=declaration.description,
+        annotations=dict(declaration.annotations),
+        tool_config=dotdict(declaration.config),
+        impl=declaration.implementation,
+        display_name=declaration.display_name,
+        usage_guidance=declaration.usage_guidance,
+        execution_namespace=declaration.execution_namespace,
     )
 
 
@@ -479,19 +478,18 @@ def _split_hidden_annotations(
 
 def _convert_module_to_nn_tool(impl: Callable) -> Tool:
     """Convert a callable in nn.Tool."""
-    return _convert_metadata_to_local_tool(_inspect_tool_metadata(impl))
+    return _convert_declaration_to_local_tool(_inspect_tool_declaration(impl))
 
 
-def _metadata_from_tool(tool: Tool) -> ToolMetadata:
-    return ToolMetadata(
+def _declaration_from_tool(tool: Tool) -> ToolDeclaration:
+    return ToolDeclaration(
         name=tool.name,
         description=tool.get_module_description() or "",
         annotations=tool.get_module_annotations(),
-        tool_config=getattr(tool, "tool_config", {}),
-        impl=getattr(tool, "impl", tool),
+        config=getattr(tool, "tool_config", {}),
+        implementation=getattr(tool, "impl", tool),
         display_name=getattr(tool, "display_name", None) or tool.name,
         usage_guidance=getattr(tool, "usage_guidance", None),
-        source_tool=tool,
         execution_namespace=getattr(tool, "execution_namespace", None),
     )
 

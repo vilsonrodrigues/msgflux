@@ -121,7 +121,7 @@ class BackgroundTasksExtension(ToolLibraryExtension):
             disabled_tool_names=library._disabled_background_task_tool_names,
             base_tools=BASE_TASK_TOOLS,
             capability_tools=BACKGROUND_CAPABILITY_TOOLS,
-            metadata_factory=library.inspect_tool_metadata,
+            definition_factory=library.inspect_tool_definition,
         )
 
     def is_active_task_tool(
@@ -137,7 +137,7 @@ class BackgroundTasksExtension(ToolLibraryExtension):
             definition=definition,
             base_tools=BASE_TASK_TOOLS,
             capability_tools=BACKGROUND_CAPABILITY_TOOLS,
-            metadata_factory=library.inspect_tool_metadata,
+            definition_factory=library.inspect_tool_definition,
         )
 
     def on_remove(self, library: ToolLibrary) -> None:

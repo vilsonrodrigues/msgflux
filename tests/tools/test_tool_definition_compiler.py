@@ -5,8 +5,7 @@ import pytest
 
 from msgflux.chat_messages import ChatMessages
 from msgflux.nn import ContextBinding
-from msgflux.nn.modules.tool import LocalTool, ToolLibrary
-from msgflux.nn.modules.tool_runtime import ToolDefinitionCompiler
+from msgflux.nn.modules.tool import ToolLibrary
 from msgflux.tools.config import tool_config
 from msgflux.tools.runtime import ToolIntent
 from msgflux.tools.types import ToolBucket
@@ -87,6 +86,18 @@ def test_library_has_no_parallel_tool_config_registry():
 
     assert not hasattr(library, "tool_configs")
     assert library.get_tool_definition("lookup").declaration["tool_kind"] == "tool"
+
+
+def test_library_accepts_a_precompiled_tool_definition():
+    def lookup(query: str) -> str:
+        """Look up one value."""
+        return query
+
+    definition = ToolLibrary.inspect_tool_definition(lookup)
+    library = ToolLibrary(name="search", tools=[definition])
+
+    assert library.get_tool_definition("lookup") is definition
+    assert library.library["lookup"] is definition.executor
 
 
 def test_bucket_routing_uses_registered_definition_after_executor_mutation():
@@ -219,27 +230,19 @@ def test_library_catalog_view_accepts_explicit_thread_without_chat_messages():
 
 
 def test_feedback_flags_compile_to_one_feedback_axis():
-    def implementation() -> str:
-        """Return a value."""
-        return "ok"
-
-    executor = LocalTool(
-        name="implementation",
-        description="Return a value.",
-        annotations={"return": str},
-        tool_config={},
-        impl=implementation,
-    )
-    metadata = ToolLibrary.inspect_tool_metadata(implementation)
-
     expected = {
         "return_direct": "direct",
         "handoff": "handoff",
         "call_as_response": "call_as_response",
     }
     for flag, feedback in expected.items():
-        metadata.tool_config = {flag: True, "tool_kind": "tool"}
-        definition = ToolDefinitionCompiler.compile(metadata, executor=executor)
+
+        def implementation() -> str:
+            """Return a value."""
+            return "ok"
+
+        configured = tool_config(**{flag: True})(implementation)
+        definition = ToolLibrary.inspect_tool_definition(configured)
         assert definition.feedback.name == feedback
 
 

@@ -23,7 +23,7 @@ def search_products(query: str) -> str:
 ```
 
 Configure the description before adding the tool to `ToolLibrary`. Do not edit
-captured `ToolMetadata` directly; use `handle.remove(name)` and
+the compiled definition directly; use `handle.remove(name)` and
 `handle.add(configured_tool)` when replacing a dynamically registered tool.
 
 ## defer_loading
