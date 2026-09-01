@@ -166,18 +166,19 @@ class AgentTool(ToolBucket, ToolLibraryOperator):
         )
 
     def _build_usage_guidance(self) -> str | None:
-        guidance_sections: List[str] = []
-        configured_guidance = self.tool_config.get("usage_guidance")
-        if isinstance(configured_guidance, str) and configured_guidance.strip():
-            guidance_sections.append(" ".join(configured_guidance.split()))
-
         guidance_lines: List[str] = []
         for agent_name, metadata in sorted(self.tools.items()):
             guidance = metadata.usage_guidance
             if isinstance(guidance, str) and guidance.strip():
                 guidance_lines.append(f"- {agent_name}: {' '.join(guidance.split())}")
         if guidance_lines:
-            guidance_sections.append(
-                "Agent-specific guidance:\n" + "\n".join(guidance_lines)
-            )
-        return "\n\n".join(guidance_sections) or None
+            return "Agent-specific guidance:\n" + "\n".join(guidance_lines)
+        return None
+
+    def compose_usage_guidance(self, declared: str | None) -> str | None:
+        sections = []
+        if isinstance(declared, str) and declared.strip():
+            sections.append(" ".join(declared.split()))
+        if isinstance(self.usage_guidance, str) and self.usage_guidance.strip():
+            sections.append(self.usage_guidance)
+        return "\n\n".join(sections) or None

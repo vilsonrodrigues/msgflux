@@ -9,6 +9,7 @@ from msgflux.nn.modules.tool import LocalTool, ToolLibrary
 from msgflux.nn.modules.tool_runtime import ToolDefinitionCompiler
 from msgflux.tools.config import tool_config
 from msgflux.tools.runtime import ToolIntent
+from msgflux.tools.types import ToolBucket
 
 
 def test_library_compiles_legacy_config_once_into_canonical_definition():
@@ -48,14 +49,14 @@ def test_library_compiles_legacy_config_once_into_canonical_definition():
     assert definition.loading.deferred
     assert definition.kind == "tool"
     assert "run_in_background" in definition.input_schema["properties"]
-    assert definition.metadata["declaration"]["allow_background"] is True
+    assert definition.declaration["allow_background"] is True
 
     inspect_inventory.tool_config.background = True
     captured = library.library["tool_search"].impl.tools["inspect_inventory"]
     captured.source_tool.tool_config.allow_background = False
 
     assert definition.dispatch.name == "optional_background"
-    assert definition.metadata["declaration"]["allow_background"] is True
+    assert definition.declaration["allow_background"] is True
 
 
 def test_deferred_loading_uses_compiled_definition_after_config_mutation():
@@ -76,6 +77,67 @@ def test_deferred_loading_uses_compiled_definition_after_config_mutation():
 
     assert outcome.result == "SKU-1"
     assert messages.get_loaded_tools(library.name) == {"lookup"}
+
+
+def test_library_has_no_parallel_tool_config_registry():
+    def lookup(query: str) -> str:
+        """Look up one value."""
+        return query
+
+    library = ToolLibrary(name="search", tools=[lookup])
+
+    assert not hasattr(library, "tool_configs")
+    assert library.get_tool_definition("lookup").declaration["tool_kind"] == "tool"
+
+
+def test_bucket_routing_uses_registered_definition_after_executor_mutation():
+    @tool_config(tool_kind="catalog")
+    def lookup(query: str) -> str:
+        """Look up one catalog value."""
+        return query
+
+    class CatalogBucket(ToolBucket):
+        """Group catalog tools."""
+
+        name = "catalog"
+        capture = {"tool_kind": "catalog", "defer_loading": False}
+        annotations = {"return": str}
+
+        def __call__(self) -> str:
+            return "catalog"
+
+    library = ToolLibrary(name="search", tools=[lookup])
+    library.library["lookup"].tool_config["tool_kind"] = "orders"
+
+    library.add(CatalogBucket())
+
+    assert "lookup" not in library.library
+    assert library.bucket_has_tool("catalog", "lookup")
+    assert library.get_tool_definition("lookup").kind == "catalog"
+
+
+def test_presentation_helpers_use_definition_after_executor_mutation():
+    @tool_config(
+        display_name="Inventory Lookup",
+        usage_guidance="Use for inventory questions.",
+    )
+    def lookup(query: str) -> str:
+        """Look up one inventory value."""
+        return query
+
+    library = ToolLibrary(name="search", tools=[lookup])
+    executor = library.library["lookup"]
+    executor.display_name = "Changed"
+    executor.usage_guidance = "Changed guidance."
+
+    assert library.get_tool_display_names() == {"lookup": "Inventory Lookup"}
+    assert library.get_tool_usage_guidance() == [
+        {
+            "name": "lookup",
+            "display_name": "Inventory Lookup",
+            "guidance": "Use for inventory questions.",
+        }
+    ]
 
 
 def test_library_registry_indexes_public_and_captured_definitions():

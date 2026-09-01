@@ -323,14 +323,14 @@ class BackgroundTaskDispatcher:
         self,
         *,
         tool: Any,
+        definition: Any,
         tool_id: str,
         tool_name: str,
         call_params: Dict[str, Any],
         visible_params: Mapping[str, Any],
-        config: Mapping[str, Any],
     ) -> Any:
-        task_kind = config.get("tool_kind", "tool")
-        task_capabilities = ToolBackground.get_background_capabilities(tool, config)
+        task_kind = definition.kind
+        task_capabilities = ToolBackground.get_background_capabilities(definition)
         task_store = self.library_handle.get_task_store()
         task_resume_params = self._get_task_resume_params(
             tool=tool,

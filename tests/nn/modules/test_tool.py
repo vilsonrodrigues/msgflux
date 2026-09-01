@@ -655,8 +655,8 @@ class TestToolLibrary:
 
         assert "tool_to_remove" not in library.library
 
-    def test_tool_library_with_config(self):
-        """Test ToolLibrary stores tool configs."""
+    def test_tool_library_compiles_config_into_definition(self):
+        """Test ToolLibrary stores declarations in canonical definitions."""
 
         def my_tool(x: int) -> int:
             """Tool."""
@@ -665,8 +665,9 @@ class TestToolLibrary:
         my_tool.tool_config = {"return_direct": True}
         library = ToolLibrary(name="lib", tools=[my_tool])
 
-        assert "my_tool" in library.tool_configs
-        assert library.tool_configs["my_tool"]["return_direct"] is True
+        definition = library.get_tool_definition("my_tool")
+        assert definition.declaration["return_direct"] is True
+        assert definition.feedback.name == "direct"
 
     def test_tool_library_remove_nonexistent_raises_error(self):
         """Test that removing non-existent tool raises error."""
@@ -907,8 +908,8 @@ class TestToolLibrary:
 
         assert list(library.library) == ["commerce"]
         assert set(bucket.tools) == {"find_product", "list_products", "get_order"}
-        assert library.tool_configs["commerce"]["tool_kind"] == "bucket"
-        assert bucket.tools["find_product"].tool_config["tool_kind"] == "catalog"
+        assert library.get_tool_definition("commerce").kind == "bucket"
+        assert library.get_tool_definition("find_product").kind == "catalog"
 
         with pytest.raises(ValueError, match="Duplicate tool name `find_product`"):
             library.add(find_product)
@@ -2373,8 +2374,7 @@ class TestMCPTool:
                 "usage_guidance": "Use for documentation questions.",
             },
         )
-        library = ToolLibrary(name="lib", tools=[])
-        library.library[tool.name] = tool
+        library = ToolLibrary(name="lib", tools=[tool])
         library.mcp_clients["docs"] = {
             "client": mock_client,
             "tools": [mock_info],
@@ -2410,8 +2410,7 @@ class TestMCPTool:
             namespace="docs",
             config={"display_name": None},
         )
-        library = ToolLibrary(name="lib", tools=[])
-        library.library[tool.name] = tool
+        library = ToolLibrary(name="lib", tools=[tool])
 
         assert tool.display_name == "docs__edit"
         assert library.get_tool_display_names() == {"docs__edit": "docs__edit"}

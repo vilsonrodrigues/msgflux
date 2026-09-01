@@ -47,6 +47,7 @@ class ToolDefinition(msgspec.Struct, frozen=True, kw_only=True):
     kind: str = "tool"
     display_name: str | None = None
     usage_guidance: str | None = None
+    declaration: Mapping[str, Any] = msgspec.field(default_factory=dict)
     metadata: Mapping[str, Any] = msgspec.field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -93,6 +94,11 @@ class ToolDefinition(msgspec.Struct, frozen=True, kw_only=True):
         )
         msgspec.structs.force_setattr(
             self,
+            "declaration",
+            _copy_mapping(self.declaration, "declaration"),
+        )
+        msgspec.structs.force_setattr(
+            self,
             "metadata",
             _copy_mapping(self.metadata, "metadata"),
         )
@@ -116,9 +122,9 @@ class ToolDefinitionCompiler:
         input_schema, schema_metadata = cls._extract_executor_schema(executor)
         runtime_metadata = {
             **schema_metadata,
-            "declaration": config,
             "catalog_role": getattr(metadata.impl, "catalog_role", None),
             "execution_namespace": metadata.execution_namespace,
+            "declared_usage_guidance": metadata.usage_guidance,
             "background_capabilities": config.get("background_capabilities"),
             "disable_input": bool(config.get("disable_input", False)),
             "hidden_params": config.get("_hidden_params"),
@@ -140,6 +146,37 @@ class ToolDefinitionCompiler:
             retry=config.get("retry"),
             native_bindings=native_bindings,
             kind=config.get("tool_kind", "tool"),
+            display_name=metadata.display_name,
+            usage_guidance=metadata.usage_guidance,
+            declaration=config,
+            metadata=runtime_metadata,
+        )
+
+    @classmethod
+    def refresh_presentation(
+        cls,
+        definition: ToolDefinition,
+        metadata: ToolMetadata,
+    ) -> ToolDefinition:
+        """Refresh mutable bucket presentation without recompiling policies."""
+        if not isinstance(definition, ToolDefinition):
+            raise TypeError("`definition` must be a ToolDefinition")
+        if not isinstance(metadata, ToolMetadata):
+            raise TypeError("`metadata` must be ToolMetadata")
+        if metadata.source_tool is not definition.executor:
+            raise ValueError("Presentation refresh cannot change the tool executor")
+
+        input_schema, schema_metadata = cls._extract_executor_schema(
+            definition.executor
+        )
+        runtime_metadata = dict(definition.metadata)
+        runtime_metadata.pop("strict", None)
+        runtime_metadata.update(schema_metadata)
+        return msgspec.structs.replace(
+            definition,
+            input_schema=input_schema,
+            description=metadata.description,
+            annotations=metadata.annotations,
             display_name=metadata.display_name,
             usage_guidance=metadata.usage_guidance,
             metadata=runtime_metadata,
@@ -170,7 +207,7 @@ class ToolDefinitionCompiler:
             return DispatchSpec(
                 name="background",
                 options={
-                    "capabilities": config.get("background_capabilities", ()),
+                    "capabilities": config.get("background_capabilities"),
                 },
             )
         if config.get("detached", False):
@@ -180,7 +217,7 @@ class ToolDefinitionCompiler:
                 name="optional_background",
                 options={
                     "argument": RUNTIME_BACKGROUND_PARAM,
-                    "capabilities": config.get("background_capabilities", ()),
+                    "capabilities": config.get("background_capabilities"),
                 },
             )
         return DispatchSpec(name="foreground")

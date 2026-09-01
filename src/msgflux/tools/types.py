@@ -17,10 +17,9 @@ from msgflux.tools.dataclasses import ToolMetadata
 from msgflux.tools.helpers import (
     BACKGROUND_TASK_TOOL_KIND,
     DEFAULT_AGENT_BACKGROUND_CAPABILITIES,
+    RESERVED_TOOL_KINDS,
     TOOL_BUCKET_KIND,
     is_agent_tool_impl,
-    is_background_capable,
-    is_reserved_tool_kind,
     normalize_background_capabilities,
 )
 
@@ -59,6 +58,10 @@ class ToolBucket:
     ) -> Mapping[str, Any]:
         """Patch the normalized public annotations after bucket changes."""
         return annotations
+
+    def compose_usage_guidance(self, declared: str | None) -> str | None:
+        """Combine stable declaration guidance with dynamic bucket guidance."""
+        return getattr(self, "usage_guidance", None) or declared
 
     def add(self, tool: ToolMetadata) -> None:
         """Store a captured tool and refresh metadata derived from its contents."""
@@ -143,9 +146,21 @@ class ToolBucket:
         )
 
     def captures(self, metadata: ToolMetadata) -> bool:
-        return self.captures_config(metadata.tool_config)
+        definition = self._definition_from_metadata(metadata)
+        return self.captures_config(definition.declaration)
+
+    @staticmethod
+    def _definition_from_metadata(metadata: ToolMetadata) -> Any:
+        definition = metadata.definition
+        if definition is None:
+            raise RuntimeError(
+                f"Tool `{metadata.name}` must be compiled before bucket routing."
+            )
+        return definition
 
     def validate_capture(self, metadata: ToolMetadata) -> None:
+        definition = self._definition_from_metadata(metadata)
+        declaration = definition.declaration
         loop_options = {
             option
             for option in (
@@ -157,7 +172,7 @@ class ToolBucket:
                 "return_direct",
                 "handoff",
             )
-            if metadata.tool_config.get(option, False)
+            if declaration.get(option, False)
         }
         if loop_options:
             formatted_options = ", ".join(
@@ -178,13 +193,14 @@ class ToolBucket:
         cls,
         metadata: ToolMetadata,
         tools: Mapping[str, Any],
-        tool_configs: Mapping[str, Mapping[str, Any]],
+        get_definition: Callable[[str], Any],
     ) -> str | None:
-        if metadata.tool_config.get("tool_kind") == cls.tool_kind:
+        definition = cls._definition_from_metadata(metadata)
+        if definition.kind == cls.tool_kind:
             return None
         for bucket_name, tool in tools.items():
-            config = tool_configs.get(bucket_name, {})
-            if config.get("tool_kind") != cls.tool_kind:
+            bucket_definition = get_definition(bucket_name)
+            if bucket_definition.kind != cls.tool_kind:
                 continue
             bucket = getattr(tool, "impl", tool)
             if isinstance(bucket, cls) and bucket.captures(metadata):
@@ -196,11 +212,10 @@ class ToolBucket:
         cls,
         tool_name: str,
         tools: Mapping[str, Any],
-        tool_configs: Mapping[str, Mapping[str, Any]],
+        get_definition: Callable[[str], Any],
     ) -> str | None:
         for bucket_name, tool in tools.items():
-            config = tool_configs.get(bucket_name, {})
-            if config.get("tool_kind") != cls.tool_kind:
+            if get_definition(bucket_name).kind != cls.tool_kind:
                 continue
             bucket = getattr(tool, "impl", tool)
             if isinstance(bucket, cls) and tool_name in bucket.tools:
@@ -212,14 +227,14 @@ class ToolBucket:
         cls,
         bucket: ToolBucket,
         tools: Mapping[str, Any],
-        tool_configs: Mapping[str, Mapping[str, Any]],
+        get_definition: Callable[[str], Any],
     ) -> list[tuple[str, Any]]:
         candidates = []
         for tool_name, tool in tools.items():
-            config = tool_configs.get(tool_name, {})
-            if config.get("tool_kind") == cls.tool_kind:
+            definition = get_definition(tool_name)
+            if definition.kind == cls.tool_kind:
                 continue
-            if bucket.captures_config(config):
+            if bucket.captures_config(definition.declaration):
                 candidates.append((tool_name, tool))
         return candidates
 
@@ -228,7 +243,7 @@ class ToolBucket:
         cls,
         metadata: ToolMetadata,
         tools: Mapping[str, Any],
-        tool_configs: Mapping[str, Mapping[str, Any]],
+        get_definition: Callable[[str], Any],
     ) -> None:
         bucket = metadata.impl
         if not isinstance(bucket, cls):
@@ -237,8 +252,7 @@ class ToolBucket:
             )
         capture = bucket.capture_rules
         for bucket_name, tool in tools.items():
-            config = tool_configs.get(bucket_name, {})
-            if config.get("tool_kind") != cls.tool_kind:
+            if get_definition(bucket_name).kind != cls.tool_kind:
                 continue
             registered_bucket = getattr(tool, "impl", tool)
             if not isinstance(registered_bucket, cls):
@@ -292,12 +306,12 @@ class ToolBackground(ToolLibraryOperator):
         *,
         library: Any,
         tool_name: str,
-        config: Mapping[str, Any],
+        definition: Any,
         base_tools: Iterable[Callable],
         capability_tools: Mapping[str, Iterable[Callable]],
         metadata_factory: Callable[[Callable], ToolMetadata],
     ) -> bool:
-        if not is_reserved_tool_kind(config):
+        if not cls.is_reserved_definition(definition):
             return False
         background_tools = list(cls._iter_background_tools(library))
         if not background_tools:
@@ -305,8 +319,8 @@ class ToolBackground(ToolLibraryOperator):
 
         capabilities = {
             capability
-            for tool, source_config in background_tools
-            for capability in cls.get_background_capabilities(tool, source_config)
+            for source_definition in background_tools
+            for capability in cls.get_background_capabilities(source_definition)
         }
         task_tools = cls._task_tools_for_capabilities(
             base_tools=base_tools,
@@ -322,28 +336,30 @@ class ToolBackground(ToolLibraryOperator):
     def is_agent_source(tool: Any | None) -> bool:
         return is_agent_tool_impl(getattr(tool, "impl", tool))
 
+    @staticmethod
+    def is_reserved_definition(definition: Any) -> bool:
+        return definition.kind in RESERVED_TOOL_KINDS
+
+    @staticmethod
+    def is_background_definition(definition: Any) -> bool:
+        return definition.dispatch.name in {"background", "optional_background"}
+
     @classmethod
     def get_background_capabilities(
         cls,
-        tool: Any | None,
-        config: Mapping[str, Any],
+        definition: Any,
     ) -> tuple[str, ...]:
-        declared_capabilities = config.get("background_capabilities")
-        if declared_capabilities is not None and not is_background_capable(config):
-            raise ValueError(
-                "`background_capabilities` requires `background=True` or "
-                "`allow_background=True`."
-            )
-        if not is_background_capable(config):
+        if not cls.is_background_definition(definition):
             return ()
+        declared_capabilities = definition.dispatch.options.get("capabilities")
         if declared_capabilities is None:
-            if cls.is_agent_source(tool):
+            if cls.is_agent_source(definition.executor):
                 return DEFAULT_AGENT_BACKGROUND_CAPABILITIES
             return ()
         capabilities = normalize_background_capabilities(declared_capabilities)
         agent_capabilities = {"message"}
         if agent_capabilities.intersection(capabilities) and not cls.is_agent_source(
-            tool
+            definition.executor
         ):
             raise ValueError(
                 "`message` background capability is currently only supported by "
@@ -354,10 +370,9 @@ class ToolBackground(ToolLibraryOperator):
     @classmethod
     def validate_background_capabilities(
         cls,
-        tool: Any | None,
-        config: Mapping[str, Any],
+        definition: Any,
     ) -> None:
-        cls.get_background_capabilities(tool, config)
+        cls.get_background_capabilities(definition)
 
     @classmethod
     def sync_task_tools(
@@ -378,8 +393,8 @@ class ToolBackground(ToolLibraryOperator):
         if background_tools:
             capabilities = {
                 capability
-                for tool, config in background_tools
-                for capability in cls.get_background_capabilities(tool, config)
+                for definition in background_tools
+                for capability in cls.get_background_capabilities(definition)
             }
             required_task_tools = cls._task_tools_for_capabilities(
                 base_tools=base_tools,
@@ -418,13 +433,13 @@ class ToolBackground(ToolLibraryOperator):
     def _iter_background_tools(
         cls,
         library: Any,
-    ) -> Iterator[tuple[Any, Mapping[str, Any]]]:
-        for tool_name, tool in library.library.items():
-            config = library.tool_configs.get(tool_name, {})
-            if is_reserved_tool_kind(config):
+    ) -> Iterator[Any]:
+        for tool_name in library.library:
+            definition = library.get_tool_definition(tool_name)
+            if cls.is_reserved_definition(definition):
                 continue
-            if is_background_capable(config):
-                yield tool, config
+            if cls.is_background_definition(definition):
+                yield definition
 
     @classmethod
     def _all_task_tools(
@@ -477,8 +492,8 @@ class ToolBackground(ToolLibraryOperator):
             if tool_name in disabled_tool_names:
                 continue
             if tool_name in library.library:
-                existing_config = library.tool_configs.get(tool_name, {})
-                if not is_reserved_tool_kind(existing_config):
+                existing = library.get_tool_definition(tool_name)
+                if not cls.is_reserved_definition(existing):
                     raise ValueError(
                         f"The background task tool `{tool_name}` conflicts with "
                         "an existing tool."
@@ -496,6 +511,7 @@ class ToolBackground(ToolLibraryOperator):
     ) -> None:
         for tool in tools:
             tool_name = metadata_factory(tool).name
-            config = library.tool_configs.get(tool_name, {})
-            if tool_name in library.library and is_reserved_tool_kind(config):
+            if tool_name in library.library and cls.is_reserved_definition(
+                library.get_tool_definition(tool_name)
+            ):
                 library._remove_registered_tool(tool_name)

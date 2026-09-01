@@ -54,11 +54,7 @@ from msgflux.tasks import InMemoryTaskStore
 from msgflux.tools.dataclasses import ToolMetadata
 from msgflux.tools.definitions import ToolCatalog
 from msgflux.tools.handles import ToolLibraryHandle
-from msgflux.tools.helpers import (
-    is_background_capable,
-    is_reserved_tool_kind,
-)
-from msgflux.tools.types import ToolBucket
+from msgflux.tools.types import ToolBackground, ToolBucket
 
 
 class ToolLibrary(ToolLibraryExecutionMixin, Module, metaclass=AutoParams):
@@ -96,7 +92,6 @@ class ToolLibrary(ToolLibraryExecutionMixin, Module, metaclass=AutoParams):
         self.set_name(f"{name}_tool_library")
         self.library = ModuleDict()
         self.registry = ToolRegistry(self.name)
-        self.register_buffer("tool_configs", {})
         self.register_buffer("mcp_clients", {})
         self._task_store = task_store
         self._agent_inbox: Optional[AgentInbox] = None
@@ -285,7 +280,8 @@ class ToolLibrary(ToolLibraryExecutionMixin, Module, metaclass=AutoParams):
         metadata = bucket.tools.get(tool_name)
         if metadata is None:
             raise ValueError(f"Tool `{tool_name}` is not captured by `{bucket_name}`.")
-        return metadata.execution_namespace or metadata.name
+        definition = self.get_tool_definition(tool_name)
+        return definition.metadata.get("execution_namespace") or definition.name
 
     def get_background_dispatcher(self) -> BackgroundTaskDispatcher:
         if self._background_dispatcher is None:
@@ -311,6 +307,22 @@ class ToolLibrary(ToolLibraryExecutionMixin, Module, metaclass=AutoParams):
         if self.registry.has(tool_name):
             raise ValueError(f"Duplicate tool name `{tool_name}`")
 
+    @staticmethod
+    def _compile_tool_metadata(metadata: ToolMetadata) -> ToolMetadata:
+        """Compile one normalized declaration before any registration decision."""
+        metadata.tool_config = dotdict(metadata.tool_config)
+        metadata.tool_config.setdefault("defer_loading", False)
+        tool = (
+            metadata.source_tool
+            if isinstance(metadata.source_tool, Tool)
+            else _convert_metadata_to_local_tool(metadata)
+        )
+        if isinstance(metadata.source_tool, Tool):
+            tool.register_buffer("tool_config", dotdict(metadata.tool_config))
+        metadata.source_tool = tool
+        metadata.definition = ToolDefinitionCompiler.compile(metadata, executor=tool)
+        return metadata
+
     def add(self, tool: Callable) -> str:
         """Add a local tool in library."""
         if isinstance(tool, ToolMetadata):
@@ -320,20 +332,16 @@ class ToolLibrary(ToolLibraryExecutionMixin, Module, metaclass=AutoParams):
         else:
             metadata = _inspect_tool_metadata(tool)
 
-        metadata.tool_config = dotdict(metadata.tool_config)
-        metadata.tool_config.setdefault("defer_loading", False)
-
         self._validate_new_tool_name(metadata.name)
-        if is_background_capable(metadata.tool_config):
+        metadata = self._compile_tool_metadata(metadata)
+        definition = metadata.definition
+        if ToolBackground.is_background_definition(definition):
             background = self.extensions.get("background_tasks")
             if isinstance(background, BackgroundTasksExtension):
-                background.validate_source(metadata.impl, metadata.tool_config)
+                background.validate_source(definition)
 
         # Deferred tools are held by the search bucket. Loading is thread-local.
-        if (
-            metadata.tool_config.get("defer_loading", False)
-            and "tool_search" not in self.library
-        ):
+        if definition.loading.deferred and "tool_search" not in self.library:
             if not self.has_extension("tool_search"):
                 self.register_extension("tool_search", ToolSearchExtension())
             else:
@@ -344,7 +352,7 @@ class ToolLibrary(ToolLibraryExecutionMixin, Module, metaclass=AutoParams):
         bucket_name = ToolBucket.find_bucket(
             metadata,
             self.library,
-            self.tool_configs,
+            self.get_tool_definition,
         )
         if bucket_name is not None:
             self._add_to_bucket(bucket_name, metadata)
@@ -353,7 +361,7 @@ class ToolLibrary(ToolLibraryExecutionMixin, Module, metaclass=AutoParams):
         capturing_bucket = ToolBucket.find_capturing_bucket(
             metadata.name,
             self.library,
-            self.tool_configs,
+            self.get_tool_definition,
         )
         if capturing_bucket is not None:
             raise ValueError(
@@ -372,16 +380,16 @@ class ToolLibrary(ToolLibraryExecutionMixin, Module, metaclass=AutoParams):
                     f"The bucket tool `{tool_name}` still captures tools and cannot "
                     "be removed."
                 )
-            config = self.tool_configs.get(tool_name, {})
+            definition = self.get_tool_definition(tool_name)
             background = self.extensions.get("background_tasks")
             is_task_tool = isinstance(
                 background, BackgroundTasksExtension
             ) and background.is_active_task_tool(
-                library=self, tool_name=tool_name, config=config
+                library=self, tool_name=tool_name, definition=definition
             )
-            was_background = not is_reserved_tool_kind(
-                config
-            ) and is_background_capable(config)
+            was_background = not ToolBackground.is_reserved_definition(
+                definition
+            ) and ToolBackground.is_background_definition(definition)
 
             self._remove_registered_tool(tool_name)
 
@@ -396,7 +404,7 @@ class ToolLibrary(ToolLibraryExecutionMixin, Module, metaclass=AutoParams):
         bucket_name = ToolBucket.find_capturing_bucket(
             tool_name,
             self.library,
-            self.tool_configs,
+            self.get_tool_definition,
         )
         if bucket_name is None:
             raise ValueError(f"The tool name `{tool_name}` is not in tool library")
@@ -405,13 +413,11 @@ class ToolLibrary(ToolLibraryExecutionMixin, Module, metaclass=AutoParams):
     def _remove_registered_tool(self, tool_name: str) -> None:
         if tool_name in self.library:
             self.library.pop(tool_name)
-        self.tool_configs.pop(tool_name, None)
         if self.registry.has(tool_name):
             self.registry.remove(tool_name)
 
     def clear(self):
         self.library.clear()
-        self.tool_configs.clear()
         self.registry.clear()
         for mcp_data in self.mcp_clients.values():
             F.wait_for(mcp_data["client"].disconnect)
@@ -421,55 +427,51 @@ class ToolLibrary(ToolLibraryExecutionMixin, Module, metaclass=AutoParams):
             self._background_dispatcher.clear()
 
     def _register_tool(self, metadata: ToolMetadata) -> Tool:
+        definition = metadata.definition
+        if not isinstance(definition, RuntimeToolDefinition):
+            raise RuntimeError(f"Tool `{metadata.name}` has not been compiled")
+        tool = metadata.source_tool
+        if not isinstance(tool, Tool):
+            raise RuntimeError(f"Tool `{metadata.name}` has no compiled executor")
+
         # A bucket must be valid before it becomes visible in the library.
         captures = []
-        if metadata.tool_config.get("tool_kind") == ToolBucket.tool_kind:
+        if definition.kind == ToolBucket.tool_kind:
             ToolBucket.validate_registration(
                 metadata,
                 self.library,
-                self.tool_configs,
+                self.get_tool_definition,
             )
             captures = ToolBucket.find_capture_candidates(
                 metadata.impl,
                 self.library,
-                self.tool_configs,
+                self.get_tool_definition,
             )
 
             # Check every pending capture before changing the current library state.
-            for _, captured_tool in captures:
-                metadata.impl.validate_capture(_metadata_from_tool(captured_tool))
+            for captured_name, captured_tool in captures:
+                captured_metadata = _metadata_from_tool(captured_tool)
+                captured_metadata.definition = self.get_tool_definition(captured_name)
+                metadata.impl.validate_capture(captured_metadata)
 
-        # Convert callable metadata to the local executable representation when needed.
-        tool = (
-            metadata.source_tool
-            if isinstance(metadata.source_tool, Tool)
-            else _convert_metadata_to_local_tool(metadata)
-        )
-
-        # Register the public tool and its normalized configuration together.
-        tool_config = dotdict(metadata.tool_config)
-        if isinstance(metadata.source_tool, Tool):
-            tool.register_buffer("tool_config", tool_config)
-        definition = ToolDefinitionCompiler.compile(metadata, executor=tool)
-        metadata.definition = definition
+        # Register the public executor and its immutable definition together.
         metadata.ref = self.registry.add(definition)
-        self.tool_configs[tool.name] = tool_config
         self.library.update({tool.name: tool})
         if isinstance(metadata.impl, ToolBucket):
             metadata.impl.refresh()
             self._sync_bucket_presentation(tool.name, metadata.impl)
 
         # An explicit re-add re-enables a builtin task control tool.
-        config = tool_config
-        if is_reserved_tool_kind(config):
+        if ToolBackground.is_reserved_definition(definition):
             self._disabled_background_task_tool_names.discard(tool.name)
 
         # Background-capable sources determine the shared task control surface.
-        self._sync_background_task_tools_for_source(config)
+        self._sync_background_task_tools_for_source(definition)
 
         # Move matching local tools into a newly registered bucket.
         for captured_name, captured_tool in captures:
             captured_metadata = _metadata_from_tool(captured_tool)
+            captured_metadata.definition = self.get_tool_definition(captured_name)
             self.remove(captured_name)
             self._add_to_bucket(tool.name, captured_metadata)
         return tool
@@ -481,12 +483,8 @@ class ToolLibrary(ToolLibraryExecutionMixin, Module, metaclass=AutoParams):
         if not isinstance(bucket, ToolBucket):
             raise ValueError(f"The bucket tool `{bucket_name}` cannot capture tools.")
 
-        if not isinstance(metadata.source_tool, Tool):
-            metadata.source_tool = _convert_metadata_to_local_tool(metadata)
-        metadata.definition = ToolDefinitionCompiler.compile(
-            metadata,
-            executor=metadata.source_tool,
-        )
+        if not isinstance(metadata.definition, RuntimeToolDefinition):
+            metadata = self._compile_tool_metadata(metadata)
         metadata.ref = self.registry.add(metadata.definition)
 
         # Let the bucket validate, retain, and refresh its captured state.
@@ -512,6 +510,7 @@ class ToolLibrary(ToolLibraryExecutionMixin, Module, metaclass=AutoParams):
 
     def _sync_bucket_presentation(self, bucket_name: str, bucket: ToolBucket) -> None:
         bucket_tool = self.library[bucket_name]
+        current = self.get_tool_definition(bucket_name)
         if isinstance(getattr(bucket, "description", None), str):
             bucket_tool.set_description(bucket.description)
         annotations = bucket.patch_schema_annotations(
@@ -520,16 +519,15 @@ class ToolLibrary(ToolLibraryExecutionMixin, Module, metaclass=AutoParams):
         if not isinstance(annotations, Mapping):
             raise TypeError("Bucket schema annotation patches must return a mapping.")
         bucket_tool.set_annotations(dict(annotations))
-        if hasattr(bucket, "usage_guidance"):
-            bucket_tool.register_buffer(
-                "usage_guidance",
-                bucket.usage_guidance,
-            )
+        usage_guidance = bucket.compose_usage_guidance(
+            current.metadata.get("declared_usage_guidance")
+        )
+        bucket_tool.register_buffer("usage_guidance", usage_guidance)
         bucket_metadata = _metadata_from_tool(bucket_tool)
         self.registry.replace(
-            ToolDefinitionCompiler.compile(
+            ToolDefinitionCompiler.refresh_presentation(
+                current,
                 bucket_metadata,
-                executor=bucket_tool,
             )
         )
 
@@ -547,11 +545,10 @@ class ToolLibrary(ToolLibraryExecutionMixin, Module, metaclass=AutoParams):
 
     def get_tool_display_names(self) -> Dict[str, str]:
         """Return human-readable display names keyed by registered tool name."""
-        display_names = {}
-        for tool_name, tool in self.library.items():
-            display_names[tool_name] = getattr(tool, "display_name", None) or tool_name
-
-        return display_names
+        return {
+            tool_name: self.get_tool_definition(tool_name).display_name or tool_name
+            for tool_name in self.library
+        }
 
     def get_tool_usage_guidance(
         self, tool_names: Optional[set[str]] = None
@@ -560,10 +557,10 @@ class ToolLibrary(ToolLibraryExecutionMixin, Module, metaclass=AutoParams):
         guidance = []
         display_names = self.get_tool_display_names()
 
-        for tool_name, tool in self.library.items():
+        for tool_name in self.library:
             if tool_names is not None and tool_name not in tool_names:
                 continue
-            usage_guidance = getattr(tool, "usage_guidance", None)
+            usage_guidance = self.get_tool_definition(tool_name).usage_guidance
             if usage_guidance:
                 guidance.append(
                     {
@@ -585,7 +582,10 @@ class ToolLibrary(ToolLibraryExecutionMixin, Module, metaclass=AutoParams):
 
     def get_tool_json_schemas(self) -> List[Dict[str, Any]]:
         """Returns a list of JSON schemas from local and MCP tools."""
-        return [tool.get_json_schema() for tool in self.library.values()]
+        return self._build_tool_catalog_view(
+            None,
+            require_thread=False,
+        ).portable_schemas()
 
     def get_tool_catalog(self, messages: ChatMessages | None = None) -> ToolCatalog:
         """Build the logical tool surface for one conversation thread."""
@@ -645,37 +645,11 @@ class ToolLibrary(ToolLibraryExecutionMixin, Module, metaclass=AutoParams):
             definition.loading.deferred for definition in self.registry.definitions()
         )
 
-    @staticmethod
-    def _public_annotations(tool: Tool) -> Dict[str, Any]:
-        return {
-            name: hint
-            for name, hint in tool.get_module_annotations().items()
-            if name != "return"
-        }
-
-    @staticmethod
-    def _tool_from_metadata(metadata: ToolMetadata) -> Tool:
-        if isinstance(metadata.source_tool, Tool):
-            return metadata.source_tool
-        return _convert_metadata_to_local_tool(metadata)
-
     def _resolve_tool(self, tool_name: str) -> Tool | None:
-        if tool_name in self.library:
-            return self.library[tool_name]
-        bucket_name = ToolBucket.find_capturing_bucket(
-            tool_name,
-            self.library,
-            self.tool_configs,
-        )
-        if bucket_name is None:
+        if not self.registry.has(tool_name):
             return None
-        bucket = getattr(self.library[bucket_name], "impl", None)
-        if not isinstance(bucket, ToolBucket):
-            return None
-        metadata = bucket.tools.get(tool_name)
-        if metadata is None:
-            return None
-        return self._tool_from_metadata(metadata)
+        executor = self.registry.get(tool_name).executor
+        return executor if isinstance(executor, Tool) else None
 
     def load_tools(
         self,
@@ -700,14 +674,10 @@ class ToolLibrary(ToolLibraryExecutionMixin, Module, metaclass=AutoParams):
 
     def get_tool_annotations(self) -> Dict[str, Dict[str, Any]]:
         """Return local tool annotations keyed by tool name."""
-        annotations = {}
-        for tool_name, tool in self.library.items():
-            annotations[tool_name] = {
-                name: hint
-                for name, hint in tool.get_module_annotations().items()
-                if name != "return"
-            }
-        return annotations
+        return self._build_tool_catalog_view(
+            None,
+            require_thread=False,
+        ).annotations
 
     def get_tool_definition(self, tool_name: str) -> RuntimeToolDefinition:
         """Return the canonical definition for a public or bucket-captured tool."""
@@ -740,9 +710,11 @@ class ToolLibrary(ToolLibraryExecutionMixin, Module, metaclass=AutoParams):
 
     def _sync_background_task_tools_for_source(
         self,
-        config: Mapping[str, Any],
+        definition: RuntimeToolDefinition,
     ) -> None:
-        if is_reserved_tool_kind(config) or not is_background_capable(config):
+        if ToolBackground.is_reserved_definition(
+            definition
+        ) or not ToolBackground.is_background_definition(definition):
             return
         self._sync_background_task_tools()
 

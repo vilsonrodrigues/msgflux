@@ -56,11 +56,11 @@ class _ToolBackgroundScheduler:
         plan = request.plan
         call = library.get_background_dispatcher().dispatch(
             tool=plan.definition.executor,
+            definition=plan.definition,
             tool_id=plan.intent.id,
             tool_name=plan.intent.name,
             call_params=plan.call_arguments,
             visible_params=plan.visible_arguments,
-            config=library._plan_config(plan),
         )
         if call.error is not None:
             return library._failed_intent(
@@ -310,8 +310,7 @@ class ToolLibraryExecutionMixin:
     def _definition_config(
         definition: RuntimeToolDefinition,
     ) -> Mapping[str, Any]:
-        declaration = definition.metadata.get("declaration", {})
-        return declaration if isinstance(declaration, Mapping) else {}
+        return definition.declaration
 
     @classmethod
     def _plan_config(cls, plan: ToolExecutionPlan) -> Mapping[str, Any]:
@@ -720,7 +719,11 @@ class ToolLibraryExecutionMixin:
                 f"Tool `{tool_name}` is not captured by `{bucket_name}`. "
                 f"Available tools: {available}."
             )
-        return self._tool_from_metadata(metadata)
+        definition = self.get_tool_definition(tool_name)
+        executor = definition.executor
+        if not isinstance(executor, Tool):
+            raise TypeError(f"Tool `{tool_name}` has an invalid executor")
+        return executor
 
     def _execute_prepared_tool(
         self,

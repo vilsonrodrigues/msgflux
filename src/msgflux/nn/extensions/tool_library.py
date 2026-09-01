@@ -112,8 +112,8 @@ class BackgroundTasksExtension(ToolLibraryExtension):
     def __init__(self) -> None:
         super().__init__("background_tasks")
 
-    def validate_source(self, impl: Any, config: Mapping[str, Any]) -> None:
-        ToolBackground.validate_background_capabilities(impl, config)
+    def validate_source(self, definition: Any) -> None:
+        ToolBackground.validate_background_capabilities(definition)
 
     def sync(self, library: ToolLibrary) -> None:
         ToolBackground.sync_task_tools(
@@ -129,12 +129,12 @@ class BackgroundTasksExtension(ToolLibraryExtension):
         *,
         library: ToolLibrary,
         tool_name: str,
-        config: Mapping[str, Any],
+        definition: Any,
     ) -> bool:
         return ToolBackground.is_active_task_tool(
             library=library,
             tool_name=tool_name,
-            config=config,
+            definition=definition,
             base_tools=BASE_TASK_TOOLS,
             capability_tools=BACKGROUND_CAPABILITY_TOOLS,
             metadata_factory=library.inspect_tool_metadata,
@@ -143,11 +143,11 @@ class BackgroundTasksExtension(ToolLibraryExtension):
     def on_remove(self, library: ToolLibrary) -> None:
         task_tools = [
             tool_name
-            for tool_name, config in tuple(library.tool_configs.items())
+            for tool_name in tuple(library.library)
             if self.is_active_task_tool(
                 library=library,
                 tool_name=tool_name,
-                config=config,
+                definition=library.get_tool_definition(tool_name),
             )
         ]
         for tool_name in task_tools:

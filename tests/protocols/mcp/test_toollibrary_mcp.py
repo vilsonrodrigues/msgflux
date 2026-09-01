@@ -218,9 +218,8 @@ class TestToolLibraryMCPIntegration:
     @patch("msgflux.nn.extensions.tool_library.MCPClient")
     @patch("msgflux.nn.extensions.tool_library.filter_tools")
     @patch("msgflux.nn.modules.tool.library.F")
-    @patch("msgflux.nn.modules.tool.implementations.convert_mcp_schema_to_tool_schema")
     def test_get_tool_json_schemas_includes_mcp(
-        self, mock_convert_schema, mock_F, mock_filter_tools, mock_mcp_client
+        self, mock_F, mock_filter_tools, mock_mcp_client
     ):
         """Test that get_tool_json_schemas includes MCP tools."""
         from msgflux.nn.modules.tool import ToolLibrary
@@ -235,21 +234,16 @@ class TestToolLibraryMCPIntegration:
 
         mock_F.wait_for.side_effect = [None, mock_tools]
 
-        # Mock schema conversion
-        mock_convert_schema.return_value = {
-            "type": "function",
-            "function": {"name": "fs__read_file", "description": "Read"},
-        }
-
         mcp_servers = [{"name": "fs", "transport": "stdio", "command": "mcp-server-fs"}]
 
         library = ToolLibrary(name="test", tools=[], mcp_servers=mcp_servers)
 
         schemas = library.get_tool_json_schemas()
 
-        # Should include MCP tool schema
-        assert len(schemas) >= 1
-        mock_convert_schema.assert_called()
+        # The schema is compiled once during registration and projected thereafter.
+        assert len(schemas) == 1
+        assert schemas[0]["function"]["name"] == "fs__read_file"
+        assert schemas[0]["function"]["parameters"] == {}
 
     @patch("msgflux.nn.extensions.tool_library.MCPClient")
     @patch("msgflux.nn.extensions.tool_library.filter_tools")

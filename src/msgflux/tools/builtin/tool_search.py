@@ -116,12 +116,13 @@ class ToolSearchTool(ToolBucket, ToolLibraryOperator):
 
     @staticmethod
     def _describe_metadata(metadata: ToolMetadata) -> dict[str, Any]:
+        definition = ToolBucket._definition_from_metadata(metadata)
         return {
-            "name": metadata.name,
-            "display_name": metadata.display_name or metadata.name,
-            "description": metadata.description,
-            "usage_guidance": metadata.usage_guidance,
-            "tool_kind": metadata.tool_config.get("tool_kind", "tool"),
+            "name": definition.name,
+            "display_name": definition.display_name or definition.name,
+            "description": definition.description,
+            "usage_guidance": definition.usage_guidance,
+            "tool_kind": definition.kind,
         }
 
     @staticmethod
