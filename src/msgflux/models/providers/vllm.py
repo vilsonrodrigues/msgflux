@@ -2,10 +2,10 @@ from os import getenv
 from typing import Any, Dict, List, Optional, Union
 
 from msgflux.models.httpx import HTTPXModelClient
+from msgflux.models.openai_compatible import OpenAICompatibleChatCompletion
 from msgflux.models.profiles import get_model_profile
 from msgflux.models.providers.jinaai import JinaAITextReranker
 from msgflux.models.providers.openai import (
-    OpenAICompatibleChatCompletion,
     OpenAISpeechToText,
     OpenAITextEmbedder,
 )

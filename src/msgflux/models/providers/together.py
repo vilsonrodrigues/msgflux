@@ -1,8 +1,8 @@
 from os import getenv
 from typing import Any, Dict
 
+from msgflux.models.openai_compatible import OpenAICompatibleChatCompletion
 from msgflux.models.providers.openai import (
-    OpenAICompatibleChatCompletion,
     OpenAITextEmbedder,
     OpenAITextToSpeech,
 )

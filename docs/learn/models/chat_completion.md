@@ -2170,7 +2170,7 @@ When the target API is fully OpenAI-compatible and only requires a different bas
 
     ```python
     from os import getenv
-    from msgflux.models.providers.openai import OpenAICompatibleChatCompletion
+    from msgflux.models.openai_compatible import OpenAICompatibleChatCompletion
     from msgflux.models.registry import register_model
 
 
@@ -2223,7 +2223,7 @@ The built-in OpenRouter provider is a real-world example:
     from os import getenv
     from typing import Any, Dict
 
-    from msgflux.models.providers.openai import OpenAICompatibleChatCompletion
+    from msgflux.models.openai_compatible import OpenAICompatibleChatCompletion
     from msgflux.models.registry import register_model
 
 
@@ -2298,7 +2298,7 @@ Completions field for replaying reasoning. A provider with a documented
 convention declares that behavior in its codec:
 
 ```python
-from msgflux.models.providers.openai import OpenAICompatibleChatCompletion
+from msgflux.models.openai_compatible import OpenAICompatibleChatCompletion
 from msgflux.models.reasoning import OpenAICompatibleReasoningCodec
 from msgflux.models.registry import register_model
 
@@ -2358,7 +2358,7 @@ The response object returned by `.chat.completions.create()` must be OpenAI-comp
     from os import getenv
 
     from msgflux.models.cache import ResponseCache
-    from msgflux.models.providers.openai import OpenAICompatibleChatCompletion
+    from msgflux.models.openai_compatible import OpenAICompatibleChatCompletion
     from msgflux.models.registry import register_model
     from msgflux.utils.tenacity import apply_retry, default_model_retry
 
@@ -2416,6 +2416,69 @@ The pattern above keeps caching and retry behaviour identical to every other bui
 
 !!! note
     The response returned by `.chat.completions.create()` is consumed by `_process_model_output`. That method reads `model_output.choices[0].message` and `model_output.usage.to_dict()`. If your SDK returns a different structure, also override `_process_model_output` to adapt it.
+
+### 18.5 **Adding another API protocol**
+
+Client transport and wire protocol are separate extension points. Override
+`_initialize` when only the SDK or HTTP client changes. Register a
+`ChatAPIAdapter` when the request envelope, endpoint, response items, or stream
+events form a different protocol.
+
+An adapter owns these operations:
+
+| Method | Responsibility |
+|---|---|
+| `prepare_request` | Convert shared generation parameters into the wire request |
+| `build_generation_params` | Build the protocol input envelope |
+| `process_output` | Decode a complete response into `ModelResponse` |
+| `stream` / `astream` | Decode the protocol's stream events |
+
+`ChatTransport.create` and `ChatTransport.acreate` send the prepared request.
+This separation lets the same API adapter use an SDK-backed transport or a
+direct HTTP transport without changing conversation semantics.
+
+The model class declares the available adapters by mode. Adapter instances are
+stateless and can be shared. This example registers a provider whose endpoint
+implements the Responses protocol:
+
+```python
+from os import getenv
+
+from msgflux.models.openai_compatible import (
+    OpenAICompatibleChatCompletion,
+    OpenAIResponsesAPI,
+)
+from msgflux.models.registry import register_model
+
+
+class _BaseMyProvider:
+    provider = "myprovider"
+
+    def _get_base_url(self):
+        return getenv("MYPROVIDER_BASE_URL", "https://api.example.com/v1")
+
+    def _get_api_key(self):
+        key = getenv("MYPROVIDER_API_KEY")
+        if not key:
+            raise ValueError("Please set `MYPROVIDER_API_KEY`")
+        return key
+
+
+@register_model
+class MyProviderChatCompletion(
+    _BaseMyProvider,
+    OpenAICompatibleChatCompletion,
+):
+    default_api_mode = "responses"
+    supported_api_modes = ("responses",)
+    api_adapters = {"responses": OpenAIResponsesAPI()}
+```
+
+Construction fails immediately if a provider lists a supported mode without a
+matching adapter. `Model.chat_completion("myprovider/model-name")` remains the
+frontend after the provider class is registered. A genuinely new protocol,
+such as Google Interactions, implements the same `ChatAPIAdapter` methods
+instead of adding another conditional branch to the shared model lifecycle.
 
 ## 19. OpenAI SSL Verification
 

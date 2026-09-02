@@ -1,9 +1,14 @@
 # OpenAI Chat Completion
 
-`src/msgflux/models/providers/openai.py` contains several OpenAI-backed model
-classes, but the chat architecture is split between
-`OpenAICompatibleChatCompletion` and the concrete `OpenAIChatCompletion`
-provider.
+The chat architecture is split across two modules:
+
+- `src/msgflux/models/openai_compatible.py` owns the shared runtime used by
+  OpenAI-compatible providers.
+- `src/msgflux/models/providers/openai.py` contains the concrete OpenAI model
+  classes and OpenAI-only capabilities.
+
+`OpenAICompatibleChatCompletion` is the shared runtime, while
+`OpenAIChatCompletion` is the concrete OpenAI provider.
 
 The compatible class owns the shared transport lifecycle. The concrete OpenAI
 class declares OpenAI-only capabilities, supported API modes, and reasoning
@@ -297,9 +302,12 @@ Agent params
               +--> keep normalize_provider_response(...)
   -> select api_mode
        |
+       +--> ChatAPIAdapter
+       |
        +--> chat_completions -> messages / response_format
        |
        +--> responses -> input / text.format
+  -> ChatTransport
   -> execute OpenAI request
   -> process completion or Responses output
        |
@@ -328,6 +336,10 @@ The design line is:
 
 - `Agent` assembles the runtime contract
 - `OpenAICompatibleChatCompletion` owns the common frontend and lifecycle
+- `ChatAPIAdapter` owns request preparation, endpoint selection, output
+  decoding, and streaming for one wire protocol
+- `ChatTransport` sends the prepared request; it does not interpret messages
+  or provider responses
 - `OpenAIChatCompletion` declares OpenAI modes and codecs
 - the provider returns normalized output back to the runtime contract
 
@@ -336,10 +348,11 @@ The design line is:
 Without this adapter layer, provider restrictions would leak into signatures,
 generation schemas, flow controls, and tool execution.
 
-This module keeps those concerns localized:
+These modules keep those concerns localized:
 
-- OpenAI-specific request formatting stays here
-- OpenAI-specific transport schemas stay here
+- common lifecycle behavior stays in `models/openai_compatible.py`
+- wire-protocol selection stays behind `ChatAPIAdapter`
+- OpenAI-only capabilities stay in `models/providers/openai.py`
 - final runtime validation still points back to msgFlux contracts
 
 That balance is the main reason the newer transport-schema work is sustainable.

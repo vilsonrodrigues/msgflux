@@ -17,8 +17,8 @@ def groq_env(monkeypatch):
 @pytest.fixture
 def mock_openai_client():
     with (
-        patch("msgflux.models.providers.openai.OpenAI") as client,
-        patch("msgflux.models.providers.openai.AsyncOpenAI"),
+        patch("msgflux.models.openai_compatible.OpenAI") as client,
+        patch("msgflux.models.openai_compatible.AsyncOpenAI"),
     ):
         yield client
 

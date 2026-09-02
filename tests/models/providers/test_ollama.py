@@ -17,8 +17,8 @@ def ollama_env(monkeypatch):
 @pytest.fixture
 def mock_openai_client():
     with (
-        patch("msgflux.models.providers.openai.OpenAI"),
-        patch("msgflux.models.providers.openai.AsyncOpenAI"),
+        patch("msgflux.models.openai_compatible.OpenAI"),
+        patch("msgflux.models.openai_compatible.AsyncOpenAI"),
     ):
         yield
 

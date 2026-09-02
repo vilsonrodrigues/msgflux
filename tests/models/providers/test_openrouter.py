@@ -21,8 +21,8 @@ class TestOpenRouterChatCompletion:
     def mock_openai_client(self):
         """Mock OpenAI client."""
         with (
-            patch("msgflux.models.providers.openai.OpenAI") as mock_client,
-            patch("msgflux.models.providers.openai.AsyncOpenAI") as mock_async_client,
+            patch("msgflux.models.openai_compatible.OpenAI") as mock_client,
+            patch("msgflux.models.openai_compatible.AsyncOpenAI") as mock_async_client,
         ):
             yield mock_client, mock_async_client
 

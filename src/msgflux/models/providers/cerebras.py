@@ -1,6 +1,6 @@
 from os import getenv
 
-from msgflux.models.providers.openai import OpenAICompatibleChatCompletion
+from msgflux.models.openai_compatible import OpenAICompatibleChatCompletion
 from msgflux.models.registry import register_model
 
 

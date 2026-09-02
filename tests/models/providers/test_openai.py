@@ -65,8 +65,8 @@ class TestOpenAIChatCompletion:
     def mock_openai_client(self):
         """Mock OpenAI client."""
         with (
-            patch("msgflux.models.providers.openai.OpenAI") as mock_client,
-            patch("msgflux.models.providers.openai.AsyncOpenAI") as mock_async_client,
+            patch("msgflux.models.openai_compatible.OpenAI") as mock_client,
+            patch("msgflux.models.openai_compatible.AsyncOpenAI") as mock_async_client,
         ):
             yield mock_client, mock_async_client
 
@@ -87,10 +87,8 @@ class TestOpenAIChatCompletion:
     def test_openai_is_a_concrete_compatible_provider(self, mock_openai_client):
         pytest.importorskip("openai")
 
-        from msgflux.models.providers.openai import (
-            OpenAIChatCompletion,
-            OpenAICompatibleChatCompletion,
-        )
+        from msgflux.models.openai_compatible import OpenAICompatibleChatCompletion
+        from msgflux.models.providers.openai import OpenAIChatCompletion
 
         assert issubclass(OpenAIChatCompletion, OpenAICompatibleChatCompletion)
         assert OpenAIChatCompletion is not OpenAICompatibleChatCompletion
@@ -2225,8 +2223,8 @@ class TestOpenAITextToSpeech:
     def mock_openai_client(self):
         """Mock OpenAI client."""
         with (
-            patch("msgflux.models.providers.openai.OpenAI") as mock_client,
-            patch("msgflux.models.providers.openai.AsyncOpenAI") as mock_async_client,
+            patch("msgflux.models.openai_compatible.OpenAI") as mock_client,
+            patch("msgflux.models.openai_compatible.AsyncOpenAI") as mock_async_client,
         ):
             yield mock_client, mock_async_client
 
@@ -2367,8 +2365,8 @@ class TestOpenAITextToImage:
     def mock_openai_client(self):
         """Mock OpenAI client."""
         with (
-            patch("msgflux.models.providers.openai.OpenAI") as mock_client,
-            patch("msgflux.models.providers.openai.AsyncOpenAI") as mock_async_client,
+            patch("msgflux.models.openai_compatible.OpenAI") as mock_client,
+            patch("msgflux.models.openai_compatible.AsyncOpenAI") as mock_async_client,
         ):
             yield mock_client, mock_async_client
 
@@ -2410,8 +2408,8 @@ class TestOpenAISpeechToText:
     def mock_openai_client(self):
         """Mock OpenAI client."""
         with (
-            patch("msgflux.models.providers.openai.OpenAI") as mock_client,
-            patch("msgflux.models.providers.openai.AsyncOpenAI") as mock_async_client,
+            patch("msgflux.models.openai_compatible.OpenAI") as mock_client,
+            patch("msgflux.models.openai_compatible.AsyncOpenAI") as mock_async_client,
         ):
             yield mock_client, mock_async_client
 
@@ -2488,8 +2486,8 @@ class TestOpenAITextEmbedder:
     def mock_openai_client(self):
         """Mock OpenAI client."""
         with (
-            patch("msgflux.models.providers.openai.OpenAI") as mock_client,
-            patch("msgflux.models.providers.openai.AsyncOpenAI") as mock_async_client,
+            patch("msgflux.models.openai_compatible.OpenAI") as mock_client,
+            patch("msgflux.models.openai_compatible.AsyncOpenAI") as mock_async_client,
         ):
             yield mock_client, mock_async_client
 
@@ -2531,8 +2529,8 @@ class TestOpenAIModeration:
     def mock_openai_client(self):
         """Mock OpenAI client."""
         with (
-            patch("msgflux.models.providers.openai.OpenAI") as mock_client,
-            patch("msgflux.models.providers.openai.AsyncOpenAI") as mock_async_client,
+            patch("msgflux.models.openai_compatible.OpenAI") as mock_client,
+            patch("msgflux.models.openai_compatible.AsyncOpenAI") as mock_async_client,
         ):
             yield mock_client, mock_async_client
 
@@ -2561,8 +2559,8 @@ class TestOpenAIBaseURL:
     def mock_openai_client(self):
         """Mock OpenAI client."""
         with (
-            patch("msgflux.models.providers.openai.OpenAI") as mock_client,
-            patch("msgflux.models.providers.openai.AsyncOpenAI") as mock_async_client,
+            patch("msgflux.models.openai_compatible.OpenAI") as mock_client,
+            patch("msgflux.models.openai_compatible.AsyncOpenAI") as mock_async_client,
         ):
             yield mock_client, mock_async_client
 

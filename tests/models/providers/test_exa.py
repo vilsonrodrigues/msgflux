@@ -11,10 +11,10 @@ def mock_openai_client():
     mock_httpx = MagicMock()
 
     with (
-        patch("msgflux.models.providers.openai.openai", mock_openai),
-        patch("msgflux.models.providers.openai.httpx", mock_httpx),
-        patch("msgflux.models.providers.openai.OpenAI") as mock_client,
-        patch("msgflux.models.providers.openai.AsyncOpenAI") as mock_async_client,
+        patch("msgflux.models.openai_compatible.openai", mock_openai),
+        patch("msgflux.models.openai_compatible.httpx", mock_httpx),
+        patch("msgflux.models.openai_compatible.OpenAI") as mock_client,
+        patch("msgflux.models.openai_compatible.AsyncOpenAI") as mock_async_client,
     ):
         yield mock_client, mock_async_client
 

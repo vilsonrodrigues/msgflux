@@ -53,8 +53,8 @@ class TestVLLMChatCompletion:
     def mock_openai_client(self):
         """Mock OpenAI client."""
         with (
-            patch("msgflux.models.providers.openai.OpenAI") as mock_client,
-            patch("msgflux.models.providers.openai.AsyncOpenAI") as mock_async_client,
+            patch("msgflux.models.openai_compatible.OpenAI") as mock_client,
+            patch("msgflux.models.openai_compatible.AsyncOpenAI") as mock_async_client,
         ):
             yield mock_client, mock_async_client
 
@@ -225,8 +225,8 @@ class TestVLLMTextEmbedder:
     def mock_openai_client(self):
         """Mock OpenAI client."""
         with (
-            patch("msgflux.models.providers.openai.OpenAI") as mock_client,
-            patch("msgflux.models.providers.openai.AsyncOpenAI") as mock_async_client,
+            patch("msgflux.models.openai_compatible.OpenAI") as mock_client,
+            patch("msgflux.models.openai_compatible.AsyncOpenAI") as mock_async_client,
         ):
             yield mock_client, mock_async_client
 
@@ -267,8 +267,8 @@ class TestVLLMSpeechToText:
     def mock_openai_client(self):
         """Mock OpenAI client."""
         with (
-            patch("msgflux.models.providers.openai.OpenAI") as mock_client,
-            patch("msgflux.models.providers.openai.AsyncOpenAI") as mock_async_client,
+            patch("msgflux.models.openai_compatible.OpenAI") as mock_client,
+            patch("msgflux.models.openai_compatible.AsyncOpenAI") as mock_async_client,
         ):
             yield mock_client, mock_async_client
 
@@ -360,8 +360,8 @@ class TestVLLMBaseURL:
     def mock_openai_client(self):
         """Mock OpenAI client."""
         with (
-            patch("msgflux.models.providers.openai.OpenAI") as mock_client,
-            patch("msgflux.models.providers.openai.AsyncOpenAI") as mock_async_client,
+            patch("msgflux.models.openai_compatible.OpenAI") as mock_client,
+            patch("msgflux.models.openai_compatible.AsyncOpenAI") as mock_async_client,
         ):
             yield mock_client, mock_async_client
 
