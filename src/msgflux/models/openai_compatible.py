@@ -7,21 +7,7 @@ from inspect import isawaitable
 from os import getenv
 from typing import Any, Dict, List, Literal, Mapping, Optional, Union
 
-import httpx2
 import msgspec
-
-try:
-    import openai
-    from openai import AsyncOpenAI, OpenAI
-    from opentelemetry.instrumentation.openai import OpenAIInstrumentor
-
-    if not getattr(openai, "_otel_instrumented", False):
-        OpenAIInstrumentor().instrument()
-        openai._otel_instrumented = True
-except ImportError:
-    openai = None
-    OpenAI = None
-    AsyncOpenAI = None
 
 import msgflux.nn.functional as F
 from msgflux.chat_messages import ChatMessages
@@ -37,6 +23,7 @@ from msgflux.models.chat_api import (
     ChatTransport,
     PreparedChatRequest,
 )
+from msgflux.models.chat_transport import HTTPChatTransport
 from msgflux.models.profiles import get_model_profile
 from msgflux.models.reasoning import (
     OpenAICompatibleReasoningCodec,
@@ -159,82 +146,17 @@ class OpenAIResponsesAPI(ChatAPIAdapter):
         return await owner._astream_responses_generate(**kwargs)
 
 
-class OpenAISDKChatTransport(ChatTransport):
-    """Temporary transport backed by the OpenAI Python SDK."""
-
-    def create(self, owner, request):
-        if request.endpoint == "/responses":
-            return owner.client.responses.create(**request.params)
-        if request.endpoint == "/chat/completions":
-            return owner.client.chat.completions.create(**request.params)
-        raise ValueError(f"OpenAI SDK transport does not support {request.endpoint!r}")
-
-    async def acreate(self, owner, request):
-        if request.endpoint == "/responses":
-            return await owner.aclient.responses.create(**request.params)
-        if request.endpoint == "/chat/completions":
-            return await owner.aclient.chat.completions.create(**request.params)
-        raise ValueError(f"OpenAI SDK transport does not support {request.endpoint!r}")
-
-    def close(self, owner):
-        owner.client.close()
-
-    async def aclose(self, owner):
-        await owner.aclient.close()
-
-
 class OpenAICompatibleModel(BaseModel):
     provider: str = "openai"
 
-    def _initialize(self):
-        """Initialize the OpenAI client with empty API key."""
-        if openai is None or OpenAI is None:
-            raise ImportError(
-                "`openai` client is not available. "
-                "Install with `pip install msgflux[openai]`."
-            )
+    def _initialize_runtime(self):
+        """Initialize state shared by HTTP and SDK-backed models."""
         self.current_key_index = 0
-        max_retries = getenv("OPENAI_MAX_RETRIES", openai.DEFAULT_MAX_RETRIES)
-        timeout = getenv("OPENAI_TIMEOUT", None)
-        verify_ssl = getenv("OPENAI_SSL_VERIFY", "true").lower() not in {
-            "0",
-            "false",
-            "no",
-        }
-        self.client = OpenAI(
-            **self.sampling_params,
-            api_key=self._get_api_key(),
-            timeout=timeout,
-            max_retries=max_retries,
-            http_client=httpx2.Client(
-                limits=httpx2.Limits(
-                    max_connections=1000,
-                    max_keepalive_connections=100,
-                ),
-                verify=verify_ssl,
-            ),
-        )
-        self.aclient = AsyncOpenAI(
-            **self.sampling_params,
-            api_key=self._get_api_key(),
-            timeout=timeout,
-            max_retries=max_retries,
-            http_client=httpx2.AsyncClient(
-                limits=httpx2.Limits(
-                    max_connections=1000,
-                    max_keepalive_connections=100,
-                ),
-                verify=verify_ssl,
-            ),
-        )
-        # Initialize response cache
         cache_size = getattr(self, "cache_size", 128)
         enable_cache = getattr(self, "enable_cache", None)
         self._response_cache = (
             ResponseCache(maxsize=cache_size) if enable_cache else None
         )
-
-        # Apply retry
         retry_config = getattr(self, "retry", None)
         self.__call__ = apply_retry(
             self.__call__, retry_config, default=default_model_retry
@@ -274,7 +196,7 @@ class OpenAICompatibleChatCompletion(OpenAICompatibleModel, ChatCompletionModel)
         "responses": OpenAIResponsesAPI(),
     }
     api_mode_aliases: Mapping[str, str] = {}
-    chat_transport: ChatTransport | type[ChatTransport] = OpenAISDKChatTransport
+    chat_transport: ChatTransport | type[ChatTransport] = HTTPChatTransport
     credential_resolver: ChatCredentialResolver = BearerTokenCredentialResolver()
     reasoning_codecs: Mapping[str, ReasoningCodec] = {}
     default_reasoning_codec: ReasoningCodec = OpenAICompatibleReasoningCodec()
@@ -285,6 +207,9 @@ class OpenAICompatibleChatCompletion(OpenAICompatibleModel, ChatCompletionModel)
     uses_max_completion_tokens = False
     responses_supports_reasoning_summary = False
     responses_supports_encrypted_reasoning = False
+
+    def _initialize(self):
+        self._initialize_runtime()
 
     def supports_native_tool_search(self) -> bool:
         """Return whether this model/API pair supports hosted tool search."""
@@ -811,20 +736,18 @@ class OpenAICompatibleChatCompletion(OpenAICompatibleModel, ChatCompletionModel)
     def close(self) -> None:
         """Close synchronous resources owned by the chat transport."""
         self.chat_transport.close(self)
-        if not isinstance(self.chat_transport, OpenAISDKChatTransport):
-            close = getattr(getattr(self, "client", None), "close", None)
-            if callable(close):
-                close()
+        close = getattr(getattr(self, "client", None), "close", None)
+        if callable(close):
+            close()
 
     async def aclose(self) -> None:
         """Close asynchronous resources owned by the chat transport."""
         await self.chat_transport.aclose(self)
-        if not isinstance(self.chat_transport, OpenAISDKChatTransport):
-            close = getattr(getattr(self, "aclient", None), "close", None)
-            if callable(close):
-                result = close()
-                if isawaitable(result):
-                    await result
+        close = getattr(getattr(self, "aclient", None), "close", None)
+        if callable(close):
+            result = close()
+            if isawaitable(result):
+                await result
 
     def _process_completion_model_output(  # noqa: C901
         self,

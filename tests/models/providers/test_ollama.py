@@ -15,15 +15,6 @@ def ollama_env(monkeypatch):
 
 
 @pytest.fixture
-def mock_openai_client():
-    with (
-        patch("msgflux.models.openai_compatible.OpenAI"),
-        patch("msgflux.models.openai_compatible.AsyncOpenAI"),
-    ):
-        yield
-
-
-@pytest.fixture
 def mock_native_clients():
     client = MagicMock()
     aclient = MagicMock()
@@ -273,7 +264,7 @@ def test_native_execute_posts_to_api_chat(mock_native_clients):
     ]
 
 
-def test_openai_compatible_chat_does_not_replay_thinking(mock_openai_client):
+def test_openai_compatible_chat_does_not_replay_thinking():
     from msgflux.models.providers.ollama import OllamaChatCompletion
 
     model = OllamaChatCompletion(
@@ -299,9 +290,7 @@ def test_openai_compatible_chat_does_not_replay_thinking(mock_openai_client):
     ]
 
 
-def test_openai_compatible_chat_keeps_thinking_request_control(
-    mock_openai_client,
-):
+def test_openai_compatible_chat_keeps_thinking_request_control():
     from msgflux.models.providers.ollama import OllamaChatCompletion
 
     model = OllamaChatCompletion(

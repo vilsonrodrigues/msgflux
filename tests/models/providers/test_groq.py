@@ -1,11 +1,12 @@
 """Tests for the Groq OpenAI-compatible model provider."""
 
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from msgflux.chat_messages import ChatMessages
+from tests.models._chat_transport import EndpointMockTransport
 
 
 @pytest.fixture(autouse=True)
@@ -16,14 +17,12 @@ def groq_env(monkeypatch):
 
 @pytest.fixture
 def mock_openai_client():
-    from msgflux.models.openai_compatible import OpenAISDKChatTransport
     from msgflux.models.providers.groq import GroqChatCompletion
 
-    with (
-        patch("msgflux.models.openai_compatible.OpenAI") as client,
-        patch("msgflux.models.openai_compatible.AsyncOpenAI"),
-        patch.object(GroqChatCompletion, "chat_transport", OpenAISDKChatTransport),
-    ):
+    client = MagicMock()
+    async_client = MagicMock()
+    transport = EndpointMockTransport(client.return_value, async_client.return_value)
+    with patch.object(GroqChatCompletion, "chat_transport", transport):
         yield client
 
 

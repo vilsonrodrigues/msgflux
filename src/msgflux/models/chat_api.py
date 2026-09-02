@@ -12,9 +12,9 @@ from msgflux.core.dotdict import dotdict
 class PreparedChatRequest(msgspec.Struct, frozen=True):
     """A protocol request ready to be sent by a chat transport.
 
-    ``params`` retains SDK-specific extension containers. Direct HTTP
-    transports use :attr:`json` and :attr:`headers`, which expand those
-    containers into their wire representation.
+    ``params`` retains provider extension containers. HTTP transports use
+    :attr:`json` and :attr:`headers`, which expand those containers into their
+    wire representation.
     """
 
     api: str
@@ -95,7 +95,7 @@ class ChatAPIAdapter:
         raise NotImplementedError
 
     def decode_response(self, payload: Any) -> Any:
-        """Decode one JSON response into the SDK-compatible internal view."""
+        """Decode one JSON response into the attribute-compatible internal view."""
         return dotdict(payload) if isinstance(payload, dict) else payload
 
     def decode_stream_event(self, payload: Any) -> Any:

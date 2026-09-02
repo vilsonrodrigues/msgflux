@@ -3,26 +3,24 @@
 The `chat_completion` model is the most versatile model type for natural language interactions. It processes messages in conversational format and supports advanced features like multimodal input/output, structured generation, and tool calling.
 
 !!! info "Dependencies"
-    Most providers use the OpenAI Python client under the hood, so a single extra covers all of them:
+    Chat completion providers use the HTTPX2 transport included with msgFlux:
 
     === "uv"
         ```bash
-        uv add msgflux[openai]
+        uv add msgflux
         ```
 
     === "pip"
         ```bash
-        pip install msgflux[openai]
+        pip install msgflux
         ```
 
     See [Dependency Management](../../dependency-management.md) for the complete provider matrix.
 
-    Ollama's default native `/api/chat` mode only needs the base package because
-    HTTPX2 is a core dependency:
-
-    ```bash
-    uv add msgflux
-    ```
+    Install `msgflux[openai]` only for SDK-backed capabilities such as OpenAI
+    audio, images, embeddings, moderation, and native Responses compaction.
+    Ordinary Chat Completions and Responses generation do not initialize the
+    OpenAI SDK.
 
 ## ✦₊⁺ Overview
 
@@ -92,9 +90,8 @@ Chat completion models are stateless - they don't maintain conversation history 
     ```
 
 Use `extra_body` for provider-specific request body fields supported by
-OpenAI-compatible APIs but not modeled directly by msgFlux. SDK transports
-forward the container to the client; direct HTTP transports expand it into the
-JSON request body.
+OpenAI-compatible APIs but not modeled directly by msgFlux. The HTTP transport
+expands this container into the JSON request body.
 
 You can also pass provider-specific fields directly as keyword arguments
 in the model constructor, or per request with `model(...)` / `model.acall(...)`.
@@ -1015,16 +1012,16 @@ The `web_search_options` parameter enables real-time web search, letting the mod
 OpenAI-compatible search providers can also expose chat completion models that search the web before answering. Brave uses `BRAVE_SEARCH_API_KEY` with the `brave/brave` model id, and Exa uses `EXA_API_KEY` with the `exa/exa` model id.
 
 !!! info "Dependencies"
-    Install the OpenAI extra if you haven't already:
+    Web-search chat models use the base HTTPX2 transport:
 
     === "uv"
         ```bash
-        uv add msgflux[openai]
+        uv add msgflux
         ```
 
     === "pip"
         ```bash
-        pip install msgflux[openai]
+        pip install msgflux
         ```
 
 ???+ example
@@ -2338,91 +2335,22 @@ You can also pass a `ReasoningCodec` instance through `reasoning_codec=` when
 constructing a model. Declaring `default_reasoning_codec` on the provider is
 preferred when the wire convention is stable for every model on that API.
 
-### 18.4 **Stage 3 — Using a different client**
+### 18.4 **Using a different transport**
 
-The two previous stages assume the service is reached through the `openai` Python package. If you want to use a completely different HTTP client or SDK — one that is **not** the `openai` package but still exposes a compatible interface — override `_initialize` instead.
+OpenAI-compatible chat providers use `HTTPChatTransport` by default. Do not
+override `_initialize` to replace HTTP clients: that method owns shared cache
+and retry setup. When a service requires different request mechanics, implement
+`ChatTransport.create()` and `ChatTransport.acreate()` and pass the transport
+class or an instance through `chat_transport=`.
 
-`_initialize` is called once at construction time. Its job is to populate three things on `self`:
-
-| Attribute | Type | Purpose |
-|---|---|---|
-| `self.client` | any object | Sync client; must expose `.chat.completions.create(**params)` |
-| `self.aclient` | any object | Async client; must expose `await .chat.completions.create(**params)` |
-| `self._response_cache` | `ResponseCache \| None` | In-memory response cache (set to `None` to disable) |
-
-It must also wrap `self.__call__` and `self.acall` with the retry decorator so that the model's retry logic still works.
-
-The response object returned by `.chat.completions.create()` must be OpenAI-compatible: it needs `.choices[0].message` and `.usage` attributes. Any SDK that advertises OpenAI compatibility will satisfy this contract.
-
-???+ example "Custom provider — with a different client"
-
-    ```python
-    from os import getenv
-
-    from msgflux.models.cache import ResponseCache
-    from msgflux.models.openai_compatible import OpenAICompatibleChatCompletion
-    from msgflux.models.registry import register_model
-    from msgflux.utils.tenacity import apply_retry, default_model_retry
-
-    # Replace with the SDK you actually want to use.
-    # It must expose client.chat.completions.create() / aclient.chat.completions.create().
-    import my_sdk
-
-
-    class _BaseMyProvider:
-        provider: str = "myprovider"
-
-        def _get_base_url(self):
-            return getenv("MYPROVIDER_BASE_URL", "https://api.myprovider.com/v1")
-
-        def _get_api_key(self):
-            key = getenv("MYPROVIDER_API_KEY")
-            if not key:
-                raise ValueError("Please set `MYPROVIDER_API_KEY`")
-            return key
-
-        def _initialize(self):
-            base_url = self._get_base_url()
-            api_key = self._get_api_key()
-
-            # Sync and async clients from your chosen SDK.
-            self.client = my_sdk.Client(base_url=base_url, api_key=api_key)
-            self.aclient = my_sdk.AsyncClient(base_url=base_url, api_key=api_key)
-
-            # Preserve response caching (reads enable_cache / cache_size set by __init__).
-            cache_size = getattr(self, "cache_size", 128)
-            enable_cache = getattr(self, "enable_cache", None)
-            self._response_cache = (
-                ResponseCache(maxsize=cache_size) if enable_cache else None
-            )
-
-            # Preserve retry logic.
-            retry_config = getattr(self, "retry", None)
-            self.__call__ = apply_retry(
-                self.__call__, retry_config, default=default_model_retry
-            )
-            self.acall = apply_retry(
-                self.acall, retry_config, default=default_model_retry
-            )
-
-
-    @register_model
-    class MyProviderChatCompletion(
-        _BaseMyProvider,
-        OpenAICompatibleChatCompletion,
-    ):
-        """MyProvider Chat Completion using a custom SDK."""
-    ```
-
-The pattern above keeps caching and retry behaviour identical to every other built-in provider. The only thing that changes is the objects assigned to `self.client` and `self.aclient`.
-
-!!! note
-    The response returned by `.chat.completions.create()` is consumed by `_process_model_output`. That method reads `model_output.choices[0].message` and `model_output.usage.to_dict()`. If your SDK returns a different structure, also override `_process_model_output` to adapt it.
+The transport receives a `PreparedChatRequest`. Protocol-specific envelope and
+response conversion remain in `ChatAPIAdapter`, while authentication remains in
+`ChatCredentialResolver`. This keeps alternative networking code independent
+from conversation history, tools, reasoning, caching, and model output.
 
 ### 18.5 **Adding another API protocol**
 
-Client transport and wire protocol are separate extension points. Override
-`_initialize` when only the SDK or HTTP client changes. Register a
+Client transport and wire protocol are separate extension points. Register a
 `ChatAPIAdapter` when the request envelope, endpoint, response items, or stream
 events form a different protocol.
 
@@ -2436,10 +2364,9 @@ An adapter owns these operations:
 | `stream` / `astream` | Decode the protocol's stream events |
 
 `prepare_request` returns a `PreparedChatRequest`. It retains `extra_body` and
-`extra_headers` for SDK transports while exposing their expanded HTTP wire
-representation. `ChatTransport.create` and `ChatTransport.acreate` send that
-request. This lets the same API adapter use an SDK-backed transport or direct
-HTTP without changing conversation semantics.
+`extra_headers` while exposing their expanded HTTP wire representation.
+`ChatTransport.create` and `ChatTransport.acreate` send that request without
+changing conversation semantics.
 
 The model class declares the available adapters by mode. Adapter instances are
 stateless and can be shared. This example registers a provider whose endpoint
@@ -2486,10 +2413,10 @@ instead of adding another conditional branch to the shared model lifecycle.
 
 ### 18.6 **Selecting a transport and credentials**
 
-OpenAI, Groq, and OpenRouter use direct HTTP by default for their supported chat
-protocols. Other OpenAI-compatible providers retain their declared transport
-until individually validated. To opt a compatible provider into the same
-transport, declare it on the provider class:
+`OpenAICompatibleChatCompletion` uses direct HTTP by default for every declared
+chat protocol. Providers only need to override the transport when the remote
+service requires behavior that cannot be represented by the shared JSON/SSE
+transport:
 
 ```python
 from msgflux.models.chat_transport import HTTPChatTransport

@@ -12,6 +12,8 @@ class BaseModel(BaseClient):
         "processor",
         "client",
         "aclient",
+        "_native_client",
+        "_native_aclient",
         "chat_transport",
         "credential_resolver",
         "_response_cache",

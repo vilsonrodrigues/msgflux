@@ -71,11 +71,7 @@ def _build_recording_model():
         def _get_api_key(self):
             return "test"
 
-    with (
-        patch("msgflux.models.openai_compatible.OpenAI"),
-        patch("msgflux.models.openai_compatible.AsyncOpenAI"),
-    ):
-        model = RecordingChatCompletion(model_id="test-model")
+    model = RecordingChatCompletion(model_id="test-model")
     return model, adapter
 
 
@@ -116,6 +112,24 @@ async def test_custom_api_adapter_supports_async_transport_and_streaming():
         "acreate",
         "astream",
     ]
+
+
+def test_chat_runtime_does_not_load_or_create_openai_sdk_clients():
+    from msgflux.models.chat_transport import HTTPChatTransport
+
+    class DirectChatCompletion(OpenAICompatibleChatCompletion):
+        provider = "direct"
+
+        def _get_api_key(self):
+            return "test"
+
+    with patch("msgflux.models.openai_sdk._load_openai_sdk") as load_sdk:
+        model = DirectChatCompletion(model_id="test-model")
+
+    load_sdk.assert_not_called()
+    assert isinstance(model.chat_transport, HTTPChatTransport)
+    assert not hasattr(model, "client")
+    assert not hasattr(model, "aclient")
 
 
 def test_declared_api_mode_requires_an_adapter():

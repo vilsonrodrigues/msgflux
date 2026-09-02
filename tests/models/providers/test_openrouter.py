@@ -1,11 +1,12 @@
 """Tests for msgflux.models.providers.openrouter module."""
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 from types import SimpleNamespace
 
 import pytest
 
 from msgflux.chat_messages import ChatMessages
+from tests.models._chat_transport import EndpointMockTransport
 
 
 class TestOpenRouterChatCompletion:
@@ -19,19 +20,16 @@ class TestOpenRouterChatCompletion:
 
     @pytest.fixture
     def mock_openai_client(self):
-        """Mock OpenAI client."""
-        from msgflux.models.openai_compatible import OpenAISDKChatTransport
+        """Mock provider chat endpoints."""
         from msgflux.models.providers.openrouter import OpenRouterChatCompletion
 
-        with (
-            patch("msgflux.models.openai_compatible.OpenAI") as mock_client,
-            patch("msgflux.models.openai_compatible.AsyncOpenAI") as mock_async_client,
-            patch.object(
-                OpenRouterChatCompletion,
-                "chat_transport",
-                OpenAISDKChatTransport,
-            ),
-        ):
+        mock_client = MagicMock()
+        mock_async_client = MagicMock()
+        transport = EndpointMockTransport(
+            mock_client.return_value,
+            mock_async_client.return_value,
+        )
+        with patch.object(OpenRouterChatCompletion, "chat_transport", transport):
             yield mock_client, mock_async_client
 
     def test_openrouter_defaults_to_direct_chat_transport(self):

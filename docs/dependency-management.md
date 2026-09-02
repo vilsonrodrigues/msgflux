@@ -10,17 +10,17 @@ hide:
 
 ### Chat Completion
 
-| Provider    | Dependency        | Auth Env               |
-|-------------|-------------------|------------------------|
-| Brave       | `msgflux[openai]` | `BRAVE_SEARCH_API_KEY` |
-| Cerebras    | `msgflux[openai]` | `CEREBRAS_API_KEY`     |
-| Groq        | `msgflux[openai]` | `GROQ_API_KEY`         |
-| Ollama      | `msgflux[openai]` |                        |
-| OpenAI      | `msgflux[openai]` | `OPENAI_API_KEY`       |
-| OpenRouter  | `msgflux[openai]` | `OPENROUTER_API_KEY`   |
-| SambaNova   | `msgflux[openai]` | `SAMBANOVA_API_KEY`    |
-| Together    | `msgflux[openai]` | `TOGETHER_API_KEY`     |
-| vLLM        | `msgflux[openai]` |                        |
+| Provider    | Dependency | Auth Env               |
+|-------------|------------|------------------------|
+| Brave       | `msgflux`  | `BRAVE_SEARCH_API_KEY` |
+| Cerebras    | `msgflux`  | `CEREBRAS_API_KEY`     |
+| Groq        | `msgflux`  | `GROQ_API_KEY`         |
+| Ollama      | `msgflux`  |                        |
+| OpenAI      | `msgflux`  | `OPENAI_API_KEY`       |
+| OpenRouter  | `msgflux`  | `OPENROUTER_API_KEY`   |
+| SambaNova   | `msgflux`  | `SAMBANOVA_API_KEY`    |
+| Together    | `msgflux`  | `TOGETHER_API_KEY`     |
+| vLLM        | `msgflux`  |                        |
 
 ### Image Embedder
 

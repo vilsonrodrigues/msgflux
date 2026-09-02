@@ -340,7 +340,7 @@ The design line is:
 - `OpenAICompatibleChatCompletion` owns the common frontend and lifecycle
 - `ChatAPIAdapter` owns request preparation, endpoint selection, output
   decoding, and streaming for one wire protocol
-- `PreparedChatRequest` preserves SDK parameters and exposes the expanded HTTP
+- `PreparedChatRequest` preserves provider parameters and exposes the expanded HTTP
   body and headers without containing resolved credentials
 - `ChatTransport` sends the prepared request; it does not interpret messages
   or provider responses
@@ -360,6 +360,7 @@ These modules keep those concerns localized:
 - common lifecycle behavior stays in `models/openai_compatible.py`
 - wire-protocol selection stays behind `ChatAPIAdapter`
 - direct JSON/SSE transport stays in `models/chat_transport.py`
+- SDK-backed non-chat initialization stays in `models/openai_sdk.py`
 - OpenAI-only capabilities stay in `models/providers/openai.py`
 - final runtime validation still points back to msgFlux contracts
 

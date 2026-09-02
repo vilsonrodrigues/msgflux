@@ -6,13 +6,13 @@ import msgflux.nn.functional as F
 from msgflux.chat_messages import ChatMessages
 from msgflux.core.dotdict import dotdict
 from msgflux.models.cache import generate_cache_key
-from msgflux.models.chat_transport import HTTPChatTransport
 from msgflux.models.compaction import ContextTokenEstimate, ModelCompaction
 from msgflux.models.openai_compatible import (
     OpenAICompatibleChatCompletion as _OpenAICompatibleChatCompletion,
 )
-from msgflux.models.openai_compatible import (
-    OpenAICompatibleModel,
+from msgflux.models.openai_sdk import (
+    OpenAISDKModel,
+    create_openai_sdk_client,
 )
 from msgflux.models.reasoning import (
     OpenAIReasoningCodec,
@@ -43,7 +43,6 @@ class OpenAIChatCompletion(_OpenAICompatibleChatCompletion):
         "gpt-5.6-luna",
     )
     provider = "openai"
-    chat_transport = HTTPChatTransport
     default_api_mode = "responses"
     default_reasoning_codec = OpenAIReasoningCodec()
     supported_api_modes = ("responses", "chat_completions")
@@ -53,6 +52,28 @@ class OpenAIChatCompletion(_OpenAICompatibleChatCompletion):
     uses_max_completion_tokens = True
     responses_supports_reasoning_summary = True
     responses_supports_encrypted_reasoning = True
+
+    def _native_sdk_client(self, *, async_client: bool = False):
+        attribute = "_native_aclient" if async_client else "_native_client"
+        client = getattr(self, attribute, None)
+        if client is None:
+            client = create_openai_sdk_client(self, async_client=async_client)
+            setattr(self, attribute, client)
+        return client
+
+    def close(self) -> None:
+        super().close()
+        client = getattr(self, "_native_client", None)
+        if client is not None:
+            client.close()
+            self._native_client = None
+
+    async def aclose(self) -> None:
+        await super().aclose()
+        client = getattr(self, "_native_aclient", None)
+        if client is not None:
+            await client.close()
+            self._native_aclient = None
 
     def supports_native_compaction(self) -> bool:
         return self.api_mode == "responses"
@@ -91,7 +112,8 @@ class OpenAIChatCompletion(_OpenAICompatibleChatCompletion):
         }
         if tool_catalog and self._catalog_tool_entries(tool_catalog):
             params["tools"] = self._tools_to_responses(tool_catalog)
-        result = self.client.responses.input_tokens.count(**params)
+        client = self._native_sdk_client()
+        result = client.responses.input_tokens.count(**params)
         return ContextTokenEstimate(
             input_tokens=int(result.input_tokens),
             source="provider",
@@ -117,7 +139,8 @@ class OpenAIChatCompletion(_OpenAICompatibleChatCompletion):
         }
         if tool_catalog and self._catalog_tool_entries(tool_catalog):
             params["tools"] = self._tools_to_responses(tool_catalog)
-        result = await self.aclient.responses.input_tokens.count(**params)
+        client = self._native_sdk_client(async_client=True)
+        result = await client.responses.input_tokens.count(**params)
         return ContextTokenEstimate(
             input_tokens=int(result.input_tokens),
             source="provider",
@@ -136,7 +159,8 @@ class OpenAIChatCompletion(_OpenAICompatibleChatCompletion):
                 system_prompt=system_prompt,
                 native=False,
             )
-        output = self.client.responses.compact(
+        client = self._native_sdk_client()
+        output = client.responses.compact(
             model=self.model_id,
             input=self._responses_compaction_input(messages),
             instructions=system_prompt,
@@ -156,7 +180,8 @@ class OpenAIChatCompletion(_OpenAICompatibleChatCompletion):
                 system_prompt=system_prompt,
                 native=False,
             )
-        output = await self.aclient.responses.compact(
+        client = self._native_sdk_client(async_client=True)
+        output = await client.responses.compact(
             model=self.model_id,
             input=self._responses_compaction_input(messages),
             instructions=system_prompt,
@@ -177,7 +202,7 @@ class OpenAIChatCompletion(_OpenAICompatibleChatCompletion):
 
 
 @register_model
-class OpenAITextToSpeech(OpenAICompatibleModel, TextToSpeechModel):
+class OpenAITextToSpeech(OpenAISDKModel, TextToSpeechModel):
     """OpenAI Text to Speech."""
 
     def __init__(
@@ -362,7 +387,7 @@ class OpenAITextToSpeech(OpenAICompatibleModel, TextToSpeechModel):
 
 
 @register_model
-class OpenAITextToImage(OpenAICompatibleModel, TextToImageModel):
+class OpenAITextToImage(OpenAISDKModel, TextToImageModel):
     """OpenAI Image Generation."""
 
     def __init__(
@@ -640,7 +665,7 @@ class OpenAIImageTextToImage(ImageTextToImageModel, OpenAITextToImage):
 
 
 @register_model
-class OpenAISpeechToText(OpenAICompatibleModel, SpeechToTextModel):
+class OpenAISpeechToText(OpenAISDKModel, SpeechToTextModel):
     """OpenAI Speech to Text."""
 
     def __init__(
@@ -898,7 +923,7 @@ class OpenAISpeechToText(OpenAICompatibleModel, SpeechToTextModel):
 
 
 @register_model
-class OpenAITextEmbedder(OpenAICompatibleModel, TextEmbedderModel):
+class OpenAITextEmbedder(OpenAISDKModel, TextEmbedderModel):
     """OpenAI Text Embedder."""
 
     batch_support: bool = True
@@ -1021,7 +1046,7 @@ class OpenAITextEmbedder(OpenAICompatibleModel, TextEmbedderModel):
 
 
 @register_model
-class OpenAIModeration(OpenAICompatibleModel, ModerationModel):
+class OpenAIModeration(OpenAISDKModel, ModerationModel):
     """OpenAI Moderation."""
 
     def __init__(

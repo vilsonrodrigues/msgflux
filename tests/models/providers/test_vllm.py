@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, Mock, patch
 import pytest
 
 from msgflux.chat_messages import ChatMessages
+from tests.models._chat_transport import mock_openai_sdk_clients
 
 
 class TestVLLMProviderImport:
@@ -52,11 +53,8 @@ class TestVLLMChatCompletion:
     @pytest.fixture
     def mock_openai_client(self):
         """Mock OpenAI client."""
-        with (
-            patch("msgflux.models.openai_compatible.OpenAI") as mock_client,
-            patch("msgflux.models.openai_compatible.AsyncOpenAI") as mock_async_client,
-        ):
-            yield mock_client, mock_async_client
+        with mock_openai_sdk_clients() as clients:
+            yield clients
 
     def test_chat_completion_initialization(self, mock_openai_client):
         """Test VLLMChatCompletion initialization."""
@@ -224,11 +222,8 @@ class TestVLLMTextEmbedder:
     @pytest.fixture
     def mock_openai_client(self):
         """Mock OpenAI client."""
-        with (
-            patch("msgflux.models.openai_compatible.OpenAI") as mock_client,
-            patch("msgflux.models.openai_compatible.AsyncOpenAI") as mock_async_client,
-        ):
-            yield mock_client, mock_async_client
+        with mock_openai_sdk_clients() as clients:
+            yield clients
 
     def test_text_embedder_initialization(self, mock_openai_client):
         """Test VLLMTextEmbedder initialization."""
@@ -266,11 +261,8 @@ class TestVLLMSpeechToText:
     @pytest.fixture
     def mock_openai_client(self):
         """Mock OpenAI client."""
-        with (
-            patch("msgflux.models.openai_compatible.OpenAI") as mock_client,
-            patch("msgflux.models.openai_compatible.AsyncOpenAI") as mock_async_client,
-        ):
-            yield mock_client, mock_async_client
+        with mock_openai_sdk_clients() as clients:
+            yield clients
 
     def test_speech_to_text_initialization(self, mock_openai_client):
         """Test VLLMSpeechToText initialization."""
@@ -359,11 +351,8 @@ class TestVLLMBaseURL:
     @pytest.fixture
     def mock_openai_client(self):
         """Mock OpenAI client."""
-        with (
-            patch("msgflux.models.openai_compatible.OpenAI") as mock_client,
-            patch("msgflux.models.openai_compatible.AsyncOpenAI") as mock_async_client,
-        ):
-            yield mock_client, mock_async_client
+        with mock_openai_sdk_clients() as clients:
+            yield clients
 
     def test_default_base_url(self, mock_openai_client, monkeypatch):
         """Test default VLLM base URL when not set."""

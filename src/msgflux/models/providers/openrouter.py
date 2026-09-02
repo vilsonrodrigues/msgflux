@@ -1,7 +1,6 @@
 from os import getenv
 from typing import Any, Dict
 
-from msgflux.models.chat_transport import HTTPChatTransport
 from msgflux.models.openai_compatible import OpenAICompatibleChatCompletion
 from msgflux.models.reasoning import OpenRouterReasoningCodec
 from msgflux.models.registry import register_model
@@ -33,7 +32,6 @@ class _BaseOpenRouter:
 class OpenRouterChatCompletion(_BaseOpenRouter, OpenAICompatibleChatCompletion):
     """OpenRouter Chat Completion."""
 
-    chat_transport = HTTPChatTransport
     default_reasoning_codec = OpenRouterReasoningCodec()
     supports_reasoning_max_tokens = True
 

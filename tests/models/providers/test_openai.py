@@ -17,6 +17,10 @@ from msgflux.runtime.context import execution_context
 from msgflux.tools import ToolCatalogEntry, ToolCatalogView, ToolRef
 from msgflux.tools.definitions import ToolCatalog, ToolSpec
 from msgflux.tools.runtime import ToolOutcome
+from tests.models._chat_transport import (
+    EndpointMockTransport,
+    mock_openai_sdk_clients,
+)
 
 
 class TestOpenAIProviderImport:
@@ -63,17 +67,29 @@ class TestOpenAIChatCompletion:
 
     @pytest.fixture
     def mock_openai_client(self):
-        """Mock OpenAI client."""
-        from msgflux.models.openai_compatible import OpenAISDKChatTransport
+        """Mock direct chat endpoints and lazy native SDK operations."""
         from msgflux.models.providers.openai import OpenAIChatCompletion
 
+        mock_client = MagicMock()
+        mock_async_client = MagicMock()
+        mock_async_client.return_value.close = AsyncMock()
+        transport = EndpointMockTransport(
+            mock_client.return_value,
+            mock_async_client.return_value,
+        )
+
+        def create_sdk_client(owner, *, async_client=False):
+            return (
+                mock_async_client.return_value
+                if async_client
+                else mock_client.return_value
+            )
+
         with (
-            patch("msgflux.models.openai_compatible.OpenAI") as mock_client,
-            patch("msgflux.models.openai_compatible.AsyncOpenAI") as mock_async_client,
-            patch.object(
-                OpenAIChatCompletion,
-                "chat_transport",
-                OpenAISDKChatTransport,
+            patch.object(OpenAIChatCompletion, "chat_transport", transport),
+            patch(
+                "msgflux.models.providers.openai.create_openai_sdk_client",
+                side_effect=create_sdk_client,
             ),
         ):
             yield mock_client, mock_async_client
@@ -99,6 +115,8 @@ class TestOpenAIChatCompletion:
         assert model.model_type == "chat_completion"
         assert model.api_mode == "responses"
         assert model.reasoning_codec.name == "openai_responses"
+        assert not hasattr(model, "_native_client")
+        assert not hasattr(model, "_native_aclient")
 
     def test_openai_is_a_concrete_compatible_provider(self, mock_openai_client):
         pytest.importorskip("openai")
@@ -197,6 +215,10 @@ class TestOpenAIChatCompletion:
         assert "store" not in kwargs
         assert "reasoning" not in kwargs
         assert "max_output_tokens" not in kwargs
+        assert "_native_client" not in model.serialize()["state"]
+        model.close()
+        mock_client.return_value.close.assert_called_once()
+        assert model._native_client is None
 
     @pytest.mark.asyncio
     async def test_responses_async_compaction_uses_async_endpoint(
@@ -222,6 +244,10 @@ class TestOpenAIChatCompletion:
             {"type": "compaction", "encrypted_content": "opaque"}
         ]
         mock_async_client.return_value.responses.compact.assert_awaited_once()
+        assert "_native_aclient" not in model.serialize()["state"]
+        await model.aclose()
+        mock_async_client.return_value.close.assert_awaited_once()
+        assert model._native_aclient is None
 
     @pytest.mark.parametrize(
         "effort", ["none", "low", "medium", "high", "xhigh", "max"]
@@ -1494,10 +1520,10 @@ class TestOpenAIChatCompletion:
             model("Hello", top_logprobs=2)
 
     @pytest.mark.asyncio
-    async def test_acall_stream_strips_tool_catalog_before_async_client(
+    async def test_acall_stream_strips_tool_catalog_before_transport(
         self, mock_openai_client
     ):
-        """Streaming async calls should not pass tool_catalog to the OpenAI SDK."""
+        """Streaming async calls should not pass tool_catalog to the transport."""
         pytest.importorskip("openai")
 
         from msgflux.models.providers.openai import OpenAIChatCompletion
@@ -2238,11 +2264,8 @@ class TestOpenAITextToSpeech:
     @pytest.fixture
     def mock_openai_client(self):
         """Mock OpenAI client."""
-        with (
-            patch("msgflux.models.openai_compatible.OpenAI") as mock_client,
-            patch("msgflux.models.openai_compatible.AsyncOpenAI") as mock_async_client,
-        ):
-            yield mock_client, mock_async_client
+        with mock_openai_sdk_clients() as clients:
+            yield clients
 
     def test_text_to_speech_initialization(self, mock_openai_client):
         """Test OpenAITextToSpeech initialization."""
@@ -2380,11 +2403,8 @@ class TestOpenAITextToImage:
     @pytest.fixture
     def mock_openai_client(self):
         """Mock OpenAI client."""
-        with (
-            patch("msgflux.models.openai_compatible.OpenAI") as mock_client,
-            patch("msgflux.models.openai_compatible.AsyncOpenAI") as mock_async_client,
-        ):
-            yield mock_client, mock_async_client
+        with mock_openai_sdk_clients() as clients:
+            yield clients
 
     def test_text_to_image_initialization(self, mock_openai_client):
         """Test OpenAITextToImage initialization."""
@@ -2423,11 +2443,8 @@ class TestOpenAISpeechToText:
     @pytest.fixture
     def mock_openai_client(self):
         """Mock OpenAI client."""
-        with (
-            patch("msgflux.models.openai_compatible.OpenAI") as mock_client,
-            patch("msgflux.models.openai_compatible.AsyncOpenAI") as mock_async_client,
-        ):
-            yield mock_client, mock_async_client
+        with mock_openai_sdk_clients() as clients:
+            yield clients
 
     def test_speech_to_text_initialization(self, mock_openai_client):
         """Test OpenAISpeechToText initialization."""
@@ -2501,11 +2518,8 @@ class TestOpenAITextEmbedder:
     @pytest.fixture
     def mock_openai_client(self):
         """Mock OpenAI client."""
-        with (
-            patch("msgflux.models.openai_compatible.OpenAI") as mock_client,
-            patch("msgflux.models.openai_compatible.AsyncOpenAI") as mock_async_client,
-        ):
-            yield mock_client, mock_async_client
+        with mock_openai_sdk_clients() as clients:
+            yield clients
 
     def test_text_embedder_initialization(self, mock_openai_client):
         """Test OpenAITextEmbedder initialization."""
@@ -2544,11 +2558,8 @@ class TestOpenAIModeration:
     @pytest.fixture
     def mock_openai_client(self):
         """Mock OpenAI client."""
-        with (
-            patch("msgflux.models.openai_compatible.OpenAI") as mock_client,
-            patch("msgflux.models.openai_compatible.AsyncOpenAI") as mock_async_client,
-        ):
-            yield mock_client, mock_async_client
+        with mock_openai_sdk_clients() as clients:
+            yield clients
 
     def test_moderation_initialization(self, mock_openai_client):
         """Test OpenAIModeration initialization."""
@@ -2574,11 +2585,8 @@ class TestOpenAIBaseURL:
     @pytest.fixture
     def mock_openai_client(self):
         """Mock OpenAI client."""
-        with (
-            patch("msgflux.models.openai_compatible.OpenAI") as mock_client,
-            patch("msgflux.models.openai_compatible.AsyncOpenAI") as mock_async_client,
-        ):
-            yield mock_client, mock_async_client
+        with mock_openai_sdk_clients() as clients:
+            yield clients
 
     def test_chat_completion_custom_base_url(self, mock_openai_client):
         """Test OpenAIChatCompletion with custom base_url."""
