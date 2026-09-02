@@ -17,10 +17,11 @@ The `chat_completion` model is the most versatile model type for natural languag
 
     See [Dependency Management](../../dependency-management.md) for the complete provider matrix.
 
-    Ollama's default native `/api/chat` mode uses the HTTP extra instead:
+    Ollama's default native `/api/chat` mode only needs the base package because
+    HTTPX2 is a core dependency:
 
     ```bash
-    uv add msgflux[httpx]
+    uv add msgflux
     ```
 
 ## ✦₊⁺ Overview
@@ -237,7 +238,7 @@ endpoints through `provider.zdr=true`. `store=True` removes that per-request
 restriction but cannot override a stricter account or guardrail policy.
 
 Ollama defaults to its native `api_mode="ollama_chat"`, sent directly to
-`/api/chat` with `httpx`. This mode supports Ollama's `thinking` history,
+`/api/chat` with `httpx2`. This mode supports Ollama's `thinking` history,
 native tools, images, structured `format`, and streaming. Select
 `api_mode="chat_completions"` to retain the OpenAI-compatible `/v1` transport:
 
@@ -2501,19 +2502,20 @@ class MyProviderChatCompletion(
     chat_transport = HTTPChatTransport
 ```
 
-The transport prefers HTTPX2 when it is installed by OpenAI SDK v3. It keeps a
-temporary legacy HTTPX fallback for environments still using OpenAI SDK v2.
+The transport uses HTTPX2, which is installed with the base msgFlux package.
+Injected clients must therefore implement the HTTPX2 client interface; legacy
+HTTPX v1 clients are not supported.
 
 Passing the class creates an independent transport for every model. For tests,
 proxies, or custom networking, pass an instance with injected clients through
 the model constructor:
 
 ```python
-import httpx
+import httpx2
 
 from msgflux.models.chat_transport import HTTPChatTransport
 
-client = httpx.Client(proxy="http://127.0.0.1:8080")
+client = httpx2.Client(proxy="http://127.0.0.1:8080")
 model = MyProviderChatCompletion(
     "model-name",
     chat_transport=HTTPChatTransport(client=client),

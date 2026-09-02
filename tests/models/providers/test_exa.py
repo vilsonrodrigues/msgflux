@@ -12,7 +12,7 @@ def mock_openai_client():
 
     with (
         patch("msgflux.models.openai_compatible.openai", mock_openai),
-        patch("msgflux.models.openai_compatible.httpx", mock_httpx),
+        patch("msgflux.models.openai_compatible.httpx2", mock_httpx),
         patch("msgflux.models.openai_compatible.OpenAI") as mock_client,
         patch("msgflux.models.openai_compatible.AsyncOpenAI") as mock_async_client,
     ):

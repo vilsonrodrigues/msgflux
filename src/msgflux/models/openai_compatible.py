@@ -7,10 +7,10 @@ from inspect import isawaitable
 from os import getenv
 from typing import Any, Dict, List, Literal, Mapping, Optional, Union
 
+import httpx2
 import msgspec
 
 try:
-    import httpx
     import openai
     from openai import AsyncOpenAI, OpenAI
     from opentelemetry.instrumentation.openai import OpenAIInstrumentor
@@ -19,7 +19,6 @@ try:
         OpenAIInstrumentor().instrument()
         openai._otel_instrumented = True
 except ImportError:
-    httpx = None
     openai = None
     OpenAI = None
     AsyncOpenAI = None
@@ -207,8 +206,8 @@ class OpenAICompatibleModel(BaseModel):
             api_key=self._get_api_key(),
             timeout=timeout,
             max_retries=max_retries,
-            http_client=httpx.Client(
-                limits=httpx.Limits(
+            http_client=httpx2.Client(
+                limits=httpx2.Limits(
                     max_connections=1000,
                     max_keepalive_connections=100,
                 ),
@@ -220,8 +219,8 @@ class OpenAICompatibleModel(BaseModel):
             api_key=self._get_api_key(),
             timeout=timeout,
             max_retries=max_retries,
-            http_client=httpx.AsyncClient(
-                limits=httpx.Limits(
+            http_client=httpx2.AsyncClient(
+                limits=httpx2.Limits(
                     max_connections=1000,
                     max_keepalive_connections=100,
                 ),

@@ -142,7 +142,7 @@ The tool returns a structured `dotdict` with:
 
     === "Web Fetch"
 
-        Extract text content from web pages using `httpx`:
+        Extract text content from web pages using `httpx2`:
 
         ```python
         # pip install msgflux[openai] beautifulsoup4
@@ -224,7 +224,7 @@ The tool returns a structured `dotdict` with:
         Get current, forecast, or historical weather data:
 
         ```python
-        # pip install msgflux[openai] httpx
+        # pip install msgflux[openai]
         import msgflux as mf
         import msgflux.nn as nn
         from msgflux.tools.builtin import WeatherTool

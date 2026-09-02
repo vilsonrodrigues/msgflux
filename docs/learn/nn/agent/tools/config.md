@@ -779,13 +779,13 @@ Use cases:
 Assign a custom name to a tool:
 
 ```python
-import httpx
+import httpx2
 
 @mf.tool_config(name_override="search_repos")
 def github_repository_search_v2_extended(query: str) -> str:
     """Search GitHub repositories."""
     url = "https://api.github.com/search/repositories"
-    resp = httpx.get(url, params={"q": query, "per_page": 3})
+    resp = httpx2.get(url, params={"q": query, "per_page": 3})
     repos = resp.json().get("items", [])
     return "\n".join(f"- {r['full_name']}" for r in repos)
 
@@ -992,8 +992,8 @@ By default, all tools have automatic retry enabled using environment variables (
         )
         def call_external_api(query: str) -> str:
             """Call an unreliable external API."""
-            import httpx
-            resp = httpx.get("https://api.example.com/search", params={"q": query})
+            import httpx2
+            resp = httpx2.get("https://api.example.com/search", params={"q": query})
             resp.raise_for_status()
             return resp.json()["result"]
         ```

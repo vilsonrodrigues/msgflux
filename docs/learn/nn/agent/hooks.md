@@ -581,7 +581,7 @@ Both pre and post hooks share the same signature. For pre hooks, `output` is alw
     === "Async Custom Hook"
 
         ```python
-        import httpx
+        import httpx2
         from msgflux.nn.hooks import Hook
 
         class AsyncWebhookHook(Hook):
@@ -595,7 +595,7 @@ Both pre and post hooks share the same signature. For pre hooks, `output` is alw
                 pass  # sync fallback — no-op
 
             async def acall(self, module, args, kwargs, output=None):                
-                async with httpx.AsyncClient() as client:
+                async with httpx2.AsyncClient() as client:
                     await client.post(self.webhook_url, json={"status": "ok"})
         ```
 

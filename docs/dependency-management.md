@@ -24,9 +24,9 @@ hide:
 
 ### Image Embedder
 
-| Provider    | Dependency       | Auth Env           |
-|-------------|------------------|--------------------|
-| JinaAI      | `msgflux[httpx]` | `JINAAI_API_KEY`   |
+| Provider    | Dependency | Auth Env         |
+|-------------|------------|------------------|
+| JinaAI      | `msgflux`  | `JINAAI_API_KEY` |
 
 ### Text To Image
 
@@ -63,7 +63,7 @@ hide:
 
 | Provider    | Dependency        | Auth Env           |
 |-------------|-------------------|--------------------|
-| JinaAI      | `msgflux[httpx]`  | `JINAAI_API_KEY`   |
+| JinaAI      | `msgflux`          | `JINAAI_API_KEY`   |
 | Ollama      | `msgflux[openai]` |                    |
 | OpenAI      | `msgflux[openai]` | `OPENAI_API_KEY`   |
 | Together    | `msgflux[openai]` | `TOGETHER_API_KEY` |
@@ -73,7 +73,7 @@ hide:
 
 | Provider    | Dependency        | Auth Env           |
 |-------------|-------------------|--------------------|
-| JinaAI      | `msgflux[httpx]`  | `JINAAI_API_KEY`   |
+| JinaAI      | `msgflux`          | `JINAAI_API_KEY`   |
 | vLLM        | `msgflux[openai]` |                    |
 
 ### Text To Speech
@@ -145,12 +145,15 @@ hide:
 
 ### Web Search
 
+HTTPX2 is a base msgFlux dependency; providers listing it below require no
+additional HTTP client installation.
+
 | Provider    | Installation                     | Auth Env                         |
 |-------------|----------------------------------|-----------------------------------|
-| Trafilatura | `httpx`, `trafilatura`           |                                   |
-| SearXNG     | `httpx`                          |                                   |
-| SerpApi     | `httpx`                          | `SERPAPI_KEY`                     |
-| Ceramic     | `httpx`                          | `CERAMIC_API_KEY`                 |
+| Trafilatura | `httpx2`, `trafilatura`           |                                   |
+| SearXNG     | `httpx2`                          |                                   |
+| SerpApi     | `httpx2`                          | `SERPAPI_KEY`                     |
+| Ceramic     | `httpx2`                          | `CERAMIC_API_KEY`                 |
 | Linkup      | `linkup-sdk`                     | `LINKUP_API_KEY`                  |
 | Tavily      | `tavily-python`                  | `TAVILY_API_KEY`                  |
 | Exa         | `exa-py`                         | `EXA_API_KEY`                     |

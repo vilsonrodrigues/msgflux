@@ -298,14 +298,14 @@ class TestVLLMTextClassifier:
     def mock_httpx_client(self):
         """Mock HTTPX client."""
         with (
-            patch("msgflux.models.httpx.httpx.Client") as mock_client,
-            patch("msgflux.models.httpx.httpx.AsyncClient") as mock_async_client,
+            patch("msgflux.models.httpx.httpx2.Client") as mock_client,
+            patch("msgflux.models.httpx.httpx2.AsyncClient") as mock_async_client,
         ):
             yield mock_client, mock_async_client
 
     def test_text_classifier_initialization(self, mock_httpx_client):
         """Test VLLMTextClassifier initialization."""
-        pytest.importorskip("httpx")
+        pytest.importorskip("httpx2")
 
         from msgflux.models.providers.vllm import VLLMTextClassifier
 
@@ -317,7 +317,7 @@ class TestVLLMTextClassifier:
 
     def test_text_classifier_base_url(self, mock_httpx_client):
         """Test VLLMTextClassifier uses VLLM_BASE_URL."""
-        pytest.importorskip("httpx")
+        pytest.importorskip("httpx2")
 
         from msgflux.models.providers.vllm import VLLMTextClassifier
 
@@ -328,7 +328,7 @@ class TestVLLMTextClassifier:
 
     def test_text_classifier_custom_base_url(self, mock_httpx_client):
         """Test VLLMTextClassifier with custom base_url."""
-        pytest.importorskip("httpx")
+        pytest.importorskip("httpx2")
 
         from msgflux.models.providers.vllm import VLLMTextClassifier
 
@@ -339,7 +339,7 @@ class TestVLLMTextClassifier:
 
     def test_text_classifier_endpoint(self, mock_httpx_client):
         """Test VLLMTextClassifier has correct endpoint."""
-        pytest.importorskip("httpx")
+        pytest.importorskip("httpx2")
 
         from msgflux.models.providers.vllm import VLLMTextClassifier
 

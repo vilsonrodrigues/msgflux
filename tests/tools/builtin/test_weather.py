@@ -3,7 +3,7 @@
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
-import httpx
+import httpx2
 import pytest
 
 from msgflux.core.dotdict import dotdict
@@ -142,7 +142,7 @@ class TestWeatherToolCall:
             response(forecast_payload()),
         ]
         mocker.patch(
-            "msgflux.data.retrievers.providers.open_meteo.httpx.Client",
+            "msgflux.data.retrievers.providers.open_meteo.httpx2.Client",
             return_value=mock_client,
         )
 
@@ -171,7 +171,7 @@ class TestWeatherToolCall:
         mock_client = MagicMock()
         mock_client.get.return_value = response(forecast_payload())
         mocker.patch(
-            "msgflux.data.retrievers.providers.open_meteo.httpx.Client",
+            "msgflux.data.retrievers.providers.open_meteo.httpx2.Client",
             return_value=mock_client,
         )
 
@@ -186,7 +186,7 @@ class TestWeatherToolCall:
         mock_client = MagicMock()
         mock_client.get.return_value = response(archive_payload())
         mocker.patch(
-            "msgflux.data.retrievers.providers.open_meteo.httpx.Client",
+            "msgflux.data.retrievers.providers.open_meteo.httpx2.Client",
             return_value=mock_client,
         )
 
@@ -209,7 +209,7 @@ class TestWeatherToolCall:
         mock_client = MagicMock()
         mock_client.get.return_value = response(forecast_payload())
         mocker.patch(
-            "msgflux.data.retrievers.providers.open_meteo.httpx.Client",
+            "msgflux.data.retrievers.providers.open_meteo.httpx2.Client",
             return_value=mock_client,
         )
 
@@ -228,9 +228,9 @@ class TestWeatherToolCall:
 
     def test_location_resolution_errors_have_context(self, mocker):
         mock_client = MagicMock()
-        mock_client.get.side_effect = httpx.HTTPError("timeout")
+        mock_client.get.side_effect = httpx2.HTTPError("timeout")
         mocker.patch(
-            "msgflux.data.retrievers.providers.open_meteo.httpx.Client",
+            "msgflux.data.retrievers.providers.open_meteo.httpx2.Client",
             return_value=mock_client,
         )
 
@@ -280,7 +280,7 @@ async def test_weather_async_call_with_coordinates(mocker):
     mock_client = MagicMock()
     mock_client.get = AsyncMock(return_value=response(forecast_payload()))
     mocker.patch(
-        "msgflux.data.retrievers.providers.open_meteo.httpx.AsyncClient",
+        "msgflux.data.retrievers.providers.open_meteo.httpx2.AsyncClient",
         return_value=mock_client,
     )
 

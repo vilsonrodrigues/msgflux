@@ -5,10 +5,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterator, Mapping
 from uuid import uuid4
 
-try:
-    import httpx
-except ImportError:
-    httpx = None
+import httpx2
 
 from msgflux.chat_messages import ChatMessages
 from msgflux.core.dotdict import dotdict
@@ -101,16 +98,11 @@ class OllamaChatCompletion(_BaseOllama, OpenAICompatibleChatCompletion):
     def _initialize(self):
         if self.api_mode == "chat_completions":
             return super()._initialize()
-        if httpx is None:
-            raise ImportError(
-                "`httpx` is required for native Ollama chat. "
-                "Install it with `pip install msgflux[httpx]`."
-            )
         self.current_key_index = 0
         timeout_value = getenv("OLLAMA_TIMEOUT")
         timeout = float(timeout_value) if timeout_value else None
-        self.client = httpx.Client(timeout=timeout)
-        self.aclient = httpx.AsyncClient(timeout=timeout)
+        self.client = httpx2.Client(timeout=timeout)
+        self.aclient = httpx2.AsyncClient(timeout=timeout)
         self._response_cache = (
             ResponseCache(maxsize=self.cache_size) if self.enable_cache else None
         )

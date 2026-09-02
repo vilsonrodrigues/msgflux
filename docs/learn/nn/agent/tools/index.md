@@ -84,7 +84,7 @@ When the model decides to use a tool, the Agent intercepts the response, execute
 
         ```python
         # pip install msgflux[openai]
-        import httpx
+        import httpx2
         import msgflux as mf
         import msgflux.nn as nn
 
@@ -101,7 +101,7 @@ When the model decides to use a tool, the Agent intercepts the response, execute
                 Repository details including stars, forks, and description.
             """
             url = f"https://api.github.com/repos/{owner}/{repo}"
-            response = httpx.get(url, timeout=10)
+            response = httpx2.get(url, timeout=10)
 
             if response.status_code == 404:
                 return f"Repository {owner}/{repo} not found."
@@ -457,7 +457,7 @@ Control how the model selects tools.
 
         ```python
         # pip install msgflux[openai] wikipedia
-        import httpx
+        import httpx2
         import msgflux as mf
         import msgflux.nn as nn
 
@@ -467,7 +467,7 @@ Control how the model selects tools.
 
         def search_github(query: str) -> str:
             """Search GitHub repositories."""
-            resp = httpx.get(
+            resp = httpx2.get(
                 "https://api.github.com/search/repositories",
                 params={"q": query, "per_page": 5}
             )
@@ -788,11 +788,11 @@ When your agent runs asynchronously with `acall()`, prefer writing async tools a
     === "Async Tool (Recommended)"
 
         ```python
-        import httpx
+        import httpx2
 
         async def fetch_data(url: str) -> str:
             """Fetch data from a URL asynchronously."""
-            async with httpx.AsyncClient() as client:
+            async with httpx2.AsyncClient() as client:
                 response = await client.get(url)
                 return response.text
         ```
@@ -800,11 +800,11 @@ When your agent runs asynchronously with `acall()`, prefer writing async tools a
     === "Sync Tool"
 
         ```python
-        import httpx
+        import httpx2
 
         def fetch_data(url: str) -> str:
             """Fetch data from a URL."""
-            response = httpx.get(url, follow_redirects=True)
+            response = httpx2.get(url, follow_redirects=True)
             return response.text
         ```
 
@@ -813,7 +813,7 @@ You can also implement a class-based async tool using the `acall` method:
 ???+ example
 
     ```python
-    import httpx
+    import httpx2
 
     class WebFetcher:
         """Fetch content from web pages."""
@@ -823,7 +823,7 @@ You can also implement a class-based async tool using the `acall` method:
 
         async def acall(self, url: str) -> str:
             """Fetch content from URL asynchronously."""
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
+            async with httpx2.AsyncClient(timeout=self.timeout) as client:
                 response = await client.get(url)
                 return response.text
     ```
@@ -838,7 +838,7 @@ Tools can be implemented as classes with `__call__` or `acall` methods. This is 
 
         ```python
         from typing import Optional
-        import httpx
+        import httpx2
 
         class GitHubSearch:
             """Search GitHub repositories."""
@@ -854,7 +854,7 @@ Tools can be implemented as classes with `__call__` or `acall` methods. This is 
                 """
                 url = "https://api.github.com/search/repositories"
                 params = {"q": query, "per_page": self.max_results}
-                response = httpx.get(url, params=params, timeout=10)
+                response = httpx2.get(url, params=params, timeout=10)
 
                 if response.status_code != 200:
                     return f"Error: {response.status_code}"
@@ -872,7 +872,7 @@ Tools can be implemented as classes with `__call__` or `acall` methods. This is 
         Use the `name` attribute to override the class name:
 
         ```python
-        import httpx
+        import httpx2
 
         class GitHubRepoSearchV2:
             name = "search_repos"  # Exposed as "search_repos" instead of class name
@@ -883,7 +883,7 @@ Tools can be implemented as classes with `__call__` or `acall` methods. This is 
             def __call__(self, query: str) -> str:
                 """Search GitHub for repositories."""
                 url = "https://api.github.com/search/repositories"
-                resp = httpx.get(url, params={"q": query, "per_page": self.max_results})
+                resp = httpx2.get(url, params={"q": query, "per_page": self.max_results})
                 repos = resp.json().get("items", [])
                 return "\n".join(f"- {r['full_name']}" for r in repos) or "No results."
         ```

@@ -4,14 +4,13 @@ import io
 import os
 from typing import Optional, Union
 
+import httpx2
 import requests
 
 try:
     import anyio
-    import httpx
 except ImportError:
     anyio = None
-    httpx = None
 
 
 _HEADERS = {"User-Agent": "Mozilla/5.0"}
@@ -44,18 +43,13 @@ def encode_data_to_base64(path: Union[str, bytes]) -> str:
 
 # Async versions
 async def aencode_base64_from_url(url: str) -> str:
-    """Async version of encode_base64_from_url using httpx."""
-    if httpx is None:
-        # Fallback to sync version using run_in_executor
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, encode_base64_from_url, url)
-
+    """Async version of encode_base64_from_url using httpx2."""
     try:
-        async with httpx.AsyncClient(timeout=300.0) as client:
+        async with httpx2.AsyncClient(timeout=300.0) as client:
             response = await client.get(url, headers=_HEADERS)
             response.raise_for_status()
             return base64.b64encode(response.content).decode("utf-8")
-    except (httpx.HTTPError, UnicodeDecodeError):
+    except (httpx2.HTTPError, UnicodeDecodeError):
         return url  # Fallback
 
 

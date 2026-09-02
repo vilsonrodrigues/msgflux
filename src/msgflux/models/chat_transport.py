@@ -12,26 +12,10 @@ from json import JSONDecodeError, loads
 from os import getenv
 from typing import Any
 
+import httpx2
+
 from msgflux.exceptions import ModelProviderHTTPError
 from msgflux.models.chat_api import ChatTransport, PreparedChatRequest
-
-try:
-    import httpx2 as _httpx2
-except ImportError:
-    _httpx2 = None
-
-try:
-    import httpx as _legacy_httpx
-except ImportError:
-    _legacy_httpx = None
-
-httpx = _httpx2 or _legacy_httpx
-_HTTP_STATUS_ERRORS = tuple(
-    module.HTTPStatusError for module in (_httpx2, _legacy_httpx) if module is not None
-)
-_REQUEST_ERRORS = tuple(
-    module.RequestError for module in (_httpx2, _legacy_httpx) if module is not None
-)
 
 _RETRYABLE_STATUS_CODES = {408, 409, 425, 429, *range(500, 600)}
 
@@ -102,9 +86,9 @@ class HTTPChatTransport(ChatTransport):
                     _raise_for_status(response, owner)
                     return response
                 self._wait(owner, self._retry_delay(attempt, response.headers))
-            except _HTTP_STATUS_ERRORS:
+            except httpx2.HTTPStatusError:
                 raise
-            except _REQUEST_ERRORS:
+            except httpx2.RequestError:
                 if attempt == attempts:
                     raise
                 self._wait(owner, self._retry_delay(attempt))
@@ -132,9 +116,9 @@ class HTTPChatTransport(ChatTransport):
                     owner,
                     self._retry_delay(attempt, response.headers),
                 )
-            except _HTTP_STATUS_ERRORS:
+            except httpx2.HTTPStatusError:
                 raise
-            except _REQUEST_ERRORS:
+            except httpx2.RequestError:
                 if attempt == attempts:
                     raise
                 await self._await(owner, self._retry_delay(attempt))
@@ -165,9 +149,9 @@ class HTTPChatTransport(ChatTransport):
                         emitted = True
                         yield owner.api_adapter.decode_stream_event(payload)
                     return
-            except _HTTP_STATUS_ERRORS:
+            except httpx2.HTTPStatusError:
                 raise
-            except _REQUEST_ERRORS:
+            except httpx2.RequestError:
                 if emitted or attempt == attempts:
                     raise
                 self._wait(owner, self._retry_delay(attempt))
@@ -199,9 +183,9 @@ class HTTPChatTransport(ChatTransport):
                         emitted = True
                         yield owner.api_adapter.decode_stream_event(payload)
                     return
-            except _HTTP_STATUS_ERRORS:
+            except httpx2.HTTPStatusError:
                 raise
-            except _REQUEST_ERRORS:
+            except httpx2.RequestError:
                 if emitted or attempt == attempts:
                     raise
                 await self._await(owner, self._retry_delay(attempt))
@@ -231,11 +215,10 @@ class HTTPChatTransport(ChatTransport):
         return f"{str(base_url).rstrip('/')}/{request.endpoint.lstrip('/')}"
 
     def _get_client(self):
-        self._require_httpx()
         if self._client is None:
-            self._client = httpx.Client(
+            self._client = httpx2.Client(
                 timeout=self._timeout(),
-                limits=httpx.Limits(
+                limits=httpx2.Limits(
                     max_connections=1000,
                     max_keepalive_connections=100,
                 ),
@@ -244,25 +227,16 @@ class HTTPChatTransport(ChatTransport):
         return self._client
 
     def _get_async_client(self):
-        self._require_httpx()
         if self._async_client is None:
-            self._async_client = httpx.AsyncClient(
+            self._async_client = httpx2.AsyncClient(
                 timeout=self._timeout(),
-                limits=httpx.Limits(
+                limits=httpx2.Limits(
                     max_connections=1000,
                     max_keepalive_connections=100,
                 ),
                 verify=self._verify_ssl(),
             )
         return self._async_client
-
-    @staticmethod
-    def _require_httpx() -> None:
-        if httpx is None:
-            raise ImportError(
-                "`httpx` is required for direct chat transport. "
-                "Install it with `pip install msgflux[httpx]`."
-            )
 
     def _timeout(self) -> float | None:
         if self.timeout is not None:
@@ -349,7 +323,7 @@ def _retry_after_seconds(headers: Any) -> float | None:
 def _raise_for_status(response: Any, owner: Any) -> None:
     try:
         response.raise_for_status()
-    except _HTTP_STATUS_ERRORS as exc:
+    except httpx2.HTTPStatusError as exc:
         error = _structured_error(response)
         raise ModelProviderHTTPError(
             status_code=response.status_code,

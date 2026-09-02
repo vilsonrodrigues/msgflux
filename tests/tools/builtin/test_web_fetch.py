@@ -1,9 +1,8 @@
 """Unit tests for msgflux.tools.builtin.web_fetch."""
 
-import httpx
+import httpx2
 import pytest
 
-import msgflux.tools.builtin.web_fetch as web_fetch_module
 from msgflux.tools.builtin.web_fetch import WebFetchTool
 from msgflux.nn.modules.tool import ToolLibrary
 
@@ -89,7 +88,7 @@ class TestWebFetchToolCall:
         mock_response = mocker.Mock()
         mock_response.text = "# Markdown content"
         mock_get = mocker.patch(
-            "msgflux.tools.builtin.web_fetch.httpx.get",
+            "msgflux.tools.builtin.web_fetch.httpx2.get",
             return_value=mock_response,
         )
 
@@ -107,7 +106,7 @@ class TestWebFetchToolCall:
         mock_response = mocker.Mock()
         mock_response.text = "content"
         mock_get = mocker.patch(
-            "msgflux.tools.builtin.web_fetch.httpx.get",
+            "msgflux.tools.builtin.web_fetch.httpx2.get",
             return_value=mock_response,
         )
 
@@ -125,7 +124,7 @@ class TestWebFetchToolCall:
         mock_response = mocker.Mock()
         mock_response.text = "content"
         mock_get = mocker.patch(
-            "msgflux.tools.builtin.web_fetch.httpx.get",
+            "msgflux.tools.builtin.web_fetch.httpx2.get",
             return_value=mock_response,
         )
 
@@ -139,7 +138,7 @@ class TestWebFetchToolCall:
         mock_response = mocker.Mock()
         mock_response.text = "content"
         mock_get = mocker.patch(
-            "msgflux.tools.builtin.web_fetch.httpx.get",
+            "msgflux.tools.builtin.web_fetch.httpx2.get",
             return_value=mock_response,
         )
 
@@ -151,8 +150,8 @@ class TestWebFetchToolCall:
 
     def test_http_error_raises_runtime_error(self, mocker):
         mocker.patch(
-            "msgflux.tools.builtin.web_fetch.httpx.get",
-            side_effect=httpx.HTTPError("connection refused"),
+            "msgflux.tools.builtin.web_fetch.httpx2.get",
+            side_effect=httpx2.HTTPError("connection refused"),
         )
 
         tool = WebFetchTool()
@@ -161,26 +160,12 @@ class TestWebFetchToolCall:
 
     def test_runtime_error_message_contains_url(self, mocker):
         mocker.patch(
-            "msgflux.tools.builtin.web_fetch.httpx.get",
-            side_effect=httpx.HTTPError("timeout"),
+            "msgflux.tools.builtin.web_fetch.httpx2.get",
+            side_effect=httpx2.HTTPError("timeout"),
         )
 
         tool = WebFetchTool()
         with pytest.raises(RuntimeError, match=r"https://example\.com"):
-            tool("https://example.com")
-
-    def test_raises_import_error_when_httpx_unavailable(self, mocker):
-        mocker.patch.object(web_fetch_module, "httpx", None)
-
-        tool = WebFetchTool()
-        with pytest.raises(ImportError, match="httpx is required"):
-            tool("https://example.com")
-
-    def test_import_error_message_contains_install_hint(self, mocker):
-        mocker.patch.object(web_fetch_module, "httpx", None)
-
-        tool = WebFetchTool()
-        with pytest.raises(ImportError, match="pip install msgflux"):
             tool("https://example.com")
 
 
@@ -192,8 +177,8 @@ class TestWebFetchToolFallback:
         mock_response = mocker.Mock()
         mock_response.text = raw_html
         mocker.patch(
-            "msgflux.tools.builtin.web_fetch.httpx.get",
-            side_effect=[httpx.HTTPError("parser down"), mock_response],
+            "msgflux.tools.builtin.web_fetch.httpx2.get",
+            side_effect=[httpx2.HTTPError("parser down"), mock_response],
         )
         mock_html_to_text = mocker.patch(
             "msgflux.tools.builtin.web_fetch.html_to_text",
@@ -210,8 +195,8 @@ class TestWebFetchToolFallback:
         mock_response = mocker.Mock()
         mock_response.text = "<html></html>"
         mock_get = mocker.patch(
-            "msgflux.tools.builtin.web_fetch.httpx.get",
-            side_effect=[httpx.HTTPError("parser down"), mock_response],
+            "msgflux.tools.builtin.web_fetch.httpx2.get",
+            side_effect=[httpx2.HTTPError("parser down"), mock_response],
         )
         mocker.patch("msgflux.tools.builtin.web_fetch.html_to_text", return_value="ok")
 
@@ -227,8 +212,8 @@ class TestWebFetchToolFallback:
         mock_response = mocker.Mock()
         mock_response.text = "<html></html>"
         mock_get = mocker.patch(
-            "msgflux.tools.builtin.web_fetch.httpx.get",
-            side_effect=[httpx.HTTPError("parser down"), mock_response],
+            "msgflux.tools.builtin.web_fetch.httpx2.get",
+            side_effect=[httpx2.HTTPError("parser down"), mock_response],
         )
         mocker.patch("msgflux.tools.builtin.web_fetch.html_to_text", return_value="ok")
 
@@ -240,8 +225,8 @@ class TestWebFetchToolFallback:
 
     def test_fallback_failure_raises_runtime_error(self, mocker):
         mocker.patch(
-            "msgflux.tools.builtin.web_fetch.httpx.get",
-            side_effect=httpx.HTTPError("all down"),
+            "msgflux.tools.builtin.web_fetch.httpx2.get",
+            side_effect=httpx2.HTTPError("all down"),
         )
 
         tool = WebFetchTool()
@@ -256,12 +241,12 @@ class TestWebFetchToolFallback:
 
         mock_client = mocker.AsyncMock()
         mock_client.get = mocker.AsyncMock(
-            side_effect=[httpx.HTTPError("parser down"), ok_response]
+            side_effect=[httpx2.HTTPError("parser down"), ok_response]
         )
         mock_client.__aenter__ = mocker.AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = mocker.AsyncMock(return_value=None)
         mocker.patch(
-            "msgflux.tools.builtin.web_fetch.httpx.AsyncClient",
+            "msgflux.tools.builtin.web_fetch.httpx2.AsyncClient",
             return_value=mock_client,
         )
         mock_html_to_text = mocker.patch(
@@ -282,12 +267,12 @@ class TestWebFetchToolFallback:
 
         mock_client = mocker.AsyncMock()
         mock_client.get = mocker.AsyncMock(
-            side_effect=[httpx.HTTPError("parser down"), ok_response]
+            side_effect=[httpx2.HTTPError("parser down"), ok_response]
         )
         mock_client.__aenter__ = mocker.AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = mocker.AsyncMock(return_value=None)
         mocker.patch(
-            "msgflux.tools.builtin.web_fetch.httpx.AsyncClient",
+            "msgflux.tools.builtin.web_fetch.httpx2.AsyncClient",
             return_value=mock_client,
         )
         mocker.patch("msgflux.tools.builtin.web_fetch.html_to_text", return_value="ok")
@@ -303,11 +288,11 @@ class TestWebFetchToolFallback:
     @pytest.mark.asyncio
     async def test_async_fallback_failure_raises_runtime_error(self, mocker):
         mock_client = mocker.AsyncMock()
-        mock_client.get = mocker.AsyncMock(side_effect=httpx.HTTPError("all down"))
+        mock_client.get = mocker.AsyncMock(side_effect=httpx2.HTTPError("all down"))
         mock_client.__aenter__ = mocker.AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = mocker.AsyncMock(return_value=None)
         mocker.patch(
-            "msgflux.tools.builtin.web_fetch.httpx.AsyncClient",
+            "msgflux.tools.builtin.web_fetch.httpx2.AsyncClient",
             return_value=mock_client,
         )
 
@@ -330,7 +315,7 @@ class TestWebFetchToolAcall:
         mock_client.__aexit__ = mocker.AsyncMock(return_value=None)
 
         mocker.patch(
-            "msgflux.tools.builtin.web_fetch.httpx.AsyncClient",
+            "msgflux.tools.builtin.web_fetch.httpx2.AsyncClient",
             return_value=mock_client,
         )
 
@@ -354,7 +339,7 @@ class TestWebFetchToolAcall:
         mock_client.__aexit__ = mocker.AsyncMock(return_value=None)
 
         mocker.patch(
-            "msgflux.tools.builtin.web_fetch.httpx.AsyncClient",
+            "msgflux.tools.builtin.web_fetch.httpx2.AsyncClient",
             return_value=mock_client,
         )
 
@@ -378,7 +363,7 @@ class TestWebFetchToolAcall:
         mock_client.__aexit__ = mocker.AsyncMock(return_value=None)
 
         mock_async_client_cls = mocker.patch(
-            "msgflux.tools.builtin.web_fetch.httpx.AsyncClient",
+            "msgflux.tools.builtin.web_fetch.httpx2.AsyncClient",
             return_value=mock_client,
         )
 
@@ -391,24 +376,16 @@ class TestWebFetchToolAcall:
     async def test_http_error_raises_runtime_error(self, mocker):
         mock_client = mocker.AsyncMock()
         mock_client.get = mocker.AsyncMock(
-            side_effect=httpx.HTTPError("connection refused")
+            side_effect=httpx2.HTTPError("connection refused")
         )
         mock_client.__aenter__ = mocker.AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = mocker.AsyncMock(return_value=None)
 
         mocker.patch(
-            "msgflux.tools.builtin.web_fetch.httpx.AsyncClient",
+            "msgflux.tools.builtin.web_fetch.httpx2.AsyncClient",
             return_value=mock_client,
         )
 
         tool = WebFetchTool()
         with pytest.raises(RuntimeError, match="Failed to fetch"):
-            await tool.acall("https://example.com")
-
-    @pytest.mark.asyncio
-    async def test_raises_import_error_when_httpx_unavailable(self, mocker):
-        mocker.patch.object(web_fetch_module, "httpx", None)
-
-        tool = WebFetchTool()
-        with pytest.raises(ImportError, match="httpx is required"):
             await tool.acall("https://example.com")

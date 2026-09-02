@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
+import httpx2
 import pytest
 
 from msgflux.exceptions import ModelProviderHTTPError
@@ -11,7 +12,7 @@ from msgflux.models.chat_api import (
     PreparedChatRequest,
     ResolvedChatCredentials,
 )
-from msgflux.models.chat_transport import HTTPChatTransport, httpx
+from msgflux.models.chat_transport import HTTPChatTransport
 from msgflux.models.openai_compatible import OpenAIChatCompletionsAPI
 
 
@@ -64,12 +65,12 @@ def test_direct_transport_sends_expanded_json_and_request_time_credentials():
 
     def handler(request):
         captured.append(request)
-        return httpx.Response(
+        return httpx2.Response(
             200,
             json={"id": "resp_1", "output": [], "usage": None},
         )
 
-    client = httpx.Client(transport=httpx.MockTransport(handler))
+    client = httpx2.Client(transport=httpx2.MockTransport(handler))
     owner = _Owner()
     transport = HTTPChatTransport(client=client)
 
@@ -98,10 +99,10 @@ def test_direct_transport_retries_retryable_status_before_returning():
         nonlocal calls
         calls += 1
         if calls == 1:
-            return httpx.Response(429, headers={"Retry-After": "0"})
-        return httpx.Response(200, json={"output": []})
+            return httpx2.Response(429, headers={"Retry-After": "0"})
+        return httpx2.Response(200, json={"output": []})
 
-    client = httpx.Client(transport=httpx.MockTransport(handler))
+    client = httpx2.Client(transport=httpx2.MockTransport(handler))
     transport = HTTPChatTransport(client=client, max_retries=1)
 
     response = transport.create(_Owner(), _request())
@@ -113,7 +114,7 @@ def test_direct_transport_retries_retryable_status_before_returning():
 
 def test_direct_transport_surfaces_structured_http_error_without_headers():
     def handler(request):
-        return httpx.Response(
+        return httpx2.Response(
             404,
             headers={"x-request-id": "req_test_123"},
             json={
@@ -126,7 +127,7 @@ def test_direct_transport_surfaces_structured_http_error_without_headers():
             },
         )
 
-    client = httpx.Client(transport=httpx.MockTransport(handler))
+    client = httpx2.Client(transport=httpx2.MockTransport(handler))
     transport = HTTPChatTransport(client=client, max_retries=0)
 
     with pytest.raises(ModelProviderHTTPError) as exc_info:
@@ -149,28 +150,6 @@ def test_direct_transport_surfaces_structured_http_error_without_headers():
     client.close()
 
 
-def test_httpx2_transport_accepts_an_injected_legacy_httpx_client():
-    legacy_httpx = pytest.importorskip("httpx")
-    if legacy_httpx is httpx:
-        pytest.skip("HTTPX2 is not installed in this environment")
-
-    def handler(request):
-        return legacy_httpx.Response(
-            429,
-            json={"error": {"message": "Quota exhausted", "code": "quota"}},
-        )
-
-    client = legacy_httpx.Client(transport=legacy_httpx.MockTransport(handler))
-    transport = HTTPChatTransport(client=client, max_retries=0)
-
-    with pytest.raises(ModelProviderHTTPError) as exc_info:
-        transport.create(_Owner(), _request())
-
-    assert exc_info.value.status_code == 429
-    assert exc_info.value.description == "Quota exhausted"
-    client.close()
-
-
 def test_direct_transport_decodes_multiline_sse_events():
     payload = (
         b": keepalive\n"
@@ -181,13 +160,13 @@ def test_direct_transport_decodes_multiline_sse_events():
     )
 
     def handler(request):
-        return httpx.Response(
+        return httpx2.Response(
             200,
             headers={"content-type": "text/event-stream"},
             content=payload,
         )
 
-    client = httpx.Client(transport=httpx.MockTransport(handler))
+    client = httpx2.Client(transport=httpx2.MockTransport(handler))
     transport = HTTPChatTransport(client=client)
 
     events = list(transport.create(_Owner(), _request(stream=True)))
@@ -201,27 +180,27 @@ def test_direct_transport_decodes_multiline_sse_events():
 def test_direct_transport_does_not_retry_after_stream_output():
     calls = 0
 
-    class BrokenStream(httpx.SyncByteStream):
+    class BrokenStream(httpx2.SyncByteStream):
         def __iter__(self):
             yield b'data: {"type":"response.output_text.delta","delta":"hello"}\n\n'
-            raise httpx.ReadError("stream failed")
+            raise httpx2.ReadError("stream failed")
 
     def handler(request):
         nonlocal calls
         calls += 1
-        return httpx.Response(
+        return httpx2.Response(
             200,
             headers={"content-type": "text/event-stream"},
             stream=BrokenStream(),
         )
 
-    client = httpx.Client(transport=httpx.MockTransport(handler))
+    client = httpx2.Client(transport=httpx2.MockTransport(handler))
     transport = HTTPChatTransport(client=client, max_retries=2)
     iterator = transport.create(_Owner(), _request(stream=True))
 
     first = next(iterator)
     assert first.delta == "hello"
-    with pytest.raises(httpx.ReadError, match="stream failed"):
+    with pytest.raises(httpx2.ReadError, match="stream failed"):
         next(iterator)
     assert calls == 1
     client.close()
@@ -229,13 +208,13 @@ def test_direct_transport_does_not_retry_after_stream_output():
 
 @pytest.mark.asyncio
 async def test_direct_transport_supports_async_json_and_credentials():
-    captured: list[httpx.Request] = []
+    captured: list[httpx2.Request] = []
 
     async def handler(request):
         captured.append(request)
-        return httpx.Response(200, json={"output": [], "usage": {"input_tokens": 2}})
+        return httpx2.Response(200, json={"output": [], "usage": {"input_tokens": 2}})
 
-    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    client = httpx2.AsyncClient(transport=httpx2.MockTransport(handler))
     credentials = _RotatingCredentials()
     owner = _Owner(credentials)
     transport = HTTPChatTransport(async_client=client)
@@ -260,13 +239,13 @@ async def test_direct_transport_supports_async_sse():
     )
 
     async def handler(request):
-        return httpx.Response(
+        return httpx2.Response(
             200,
             headers={"content-type": "text/event-stream"},
             content=payload,
         )
 
-    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    client = httpx2.AsyncClient(transport=httpx2.MockTransport(handler))
     transport = HTTPChatTransport(async_client=client)
 
     stream = await transport.acreate(_Owner(), _request(stream=True))
@@ -281,7 +260,7 @@ def test_chat_completions_stream_surfaces_provider_error_event():
     payload = b'data: {"error":{"message":"request rejected"}}\n\n'
 
     def handler(request):
-        return httpx.Response(
+        return httpx2.Response(
             200,
             headers={"content-type": "text/event-stream"},
             content=payload,
@@ -289,7 +268,7 @@ def test_chat_completions_stream_surfaces_provider_error_event():
 
     owner = _Owner()
     owner.api_adapter = OpenAIChatCompletionsAPI()
-    client = httpx.Client(transport=httpx.MockTransport(handler))
+    client = httpx2.Client(transport=httpx2.MockTransport(handler))
     transport = HTTPChatTransport(client=client)
     stream = transport.create(owner, _request(stream=True))
 

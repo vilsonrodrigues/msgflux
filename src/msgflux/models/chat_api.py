@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from typing import Any
+
+import msgspec
 
 from msgflux.core.dotdict import dotdict
 
 
-@dataclass(frozen=True, slots=True)
-class PreparedChatRequest:
+class PreparedChatRequest(msgspec.Struct, frozen=True):
     """A protocol request ready to be sent by a chat transport.
 
     ``params`` retains SDK-specific extension containers. Direct HTTP
@@ -19,8 +19,14 @@ class PreparedChatRequest:
 
     api: str
     endpoint: str
-    params: dict[str, Any] = field(repr=False)
+    params: dict[str, Any]
     method: str = "POST"
+
+    def __repr__(self) -> str:
+        return (
+            f"{self.__class__.__name__}(api={self.api!r}, "
+            f"endpoint={self.endpoint!r}, method={self.method!r})"
+        )
 
     @property
     def json(self) -> dict[str, Any]:
@@ -37,11 +43,13 @@ class PreparedChatRequest:
         return dict(extra_headers) if extra_headers is not None else {}
 
 
-@dataclass(frozen=True, slots=True)
-class ResolvedChatCredentials:
+class ResolvedChatCredentials(msgspec.Struct, frozen=True):
     """Secret request material produced immediately before transport."""
 
-    headers: dict[str, str] = field(default_factory=dict, repr=False)
+    headers: dict[str, str] = msgspec.field(default_factory=dict)
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}()"
 
 
 class ChatCredentialResolver:

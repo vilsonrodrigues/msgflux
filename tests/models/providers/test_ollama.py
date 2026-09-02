@@ -28,9 +28,9 @@ def mock_native_clients():
     client = MagicMock()
     aclient = MagicMock()
     with (
-        patch("msgflux.models.providers.ollama.httpx.Client", return_value=client),
+        patch("msgflux.models.providers.ollama.httpx2.Client", return_value=client),
         patch(
-            "msgflux.models.providers.ollama.httpx.AsyncClient",
+            "msgflux.models.providers.ollama.httpx2.AsyncClient",
             return_value=aclient,
         ),
     ):
