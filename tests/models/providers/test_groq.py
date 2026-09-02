@@ -16,11 +16,24 @@ def groq_env(monkeypatch):
 
 @pytest.fixture
 def mock_openai_client():
+    from msgflux.models.openai_compatible import OpenAISDKChatTransport
+    from msgflux.models.providers.groq import GroqChatCompletion
+
     with (
         patch("msgflux.models.openai_compatible.OpenAI") as client,
         patch("msgflux.models.openai_compatible.AsyncOpenAI"),
+        patch.object(GroqChatCompletion, "chat_transport", OpenAISDKChatTransport),
     ):
         yield client
+
+
+def test_groq_defaults_to_direct_chat_transport():
+    from msgflux.models.chat_transport import HTTPChatTransport
+    from msgflux.models.providers.groq import GroqChatCompletion
+
+    model = GroqChatCompletion(model_id="openai/gpt-oss-20b")
+
+    assert isinstance(model.chat_transport, HTTPChatTransport)
 
 
 def test_chat_completions_extracts_but_does_not_replay_reasoning(

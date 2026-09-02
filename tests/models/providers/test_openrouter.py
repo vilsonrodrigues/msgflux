@@ -20,11 +20,27 @@ class TestOpenRouterChatCompletion:
     @pytest.fixture
     def mock_openai_client(self):
         """Mock OpenAI client."""
+        from msgflux.models.openai_compatible import OpenAISDKChatTransport
+        from msgflux.models.providers.openrouter import OpenRouterChatCompletion
+
         with (
             patch("msgflux.models.openai_compatible.OpenAI") as mock_client,
             patch("msgflux.models.openai_compatible.AsyncOpenAI") as mock_async_client,
+            patch.object(
+                OpenRouterChatCompletion,
+                "chat_transport",
+                OpenAISDKChatTransport,
+            ),
         ):
             yield mock_client, mock_async_client
+
+    def test_openrouter_defaults_to_direct_chat_transport(self):
+        from msgflux.models.chat_transport import HTTPChatTransport
+        from msgflux.models.providers.openrouter import OpenRouterChatCompletion
+
+        model = OpenRouterChatCompletion(model_id="nvidia/nemotron-3.5-lightning:free")
+
+        assert isinstance(model.chat_transport, HTTPChatTransport)
 
     def test_chat_completion_with_reasoning_max_tokens(self, mock_openai_client):
         """Test OpenRouter forwards reasoning_max_tokens as reasoning.max_tokens."""

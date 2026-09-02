@@ -6,6 +6,7 @@ import msgflux.nn.functional as F
 from msgflux.chat_messages import ChatMessages
 from msgflux.core.dotdict import dotdict
 from msgflux.models.cache import generate_cache_key
+from msgflux.models.chat_transport import HTTPChatTransport
 from msgflux.models.compaction import ContextTokenEstimate, ModelCompaction
 from msgflux.models.openai_compatible import (
     OpenAICompatibleChatCompletion as _OpenAICompatibleChatCompletion,
@@ -42,6 +43,7 @@ class OpenAIChatCompletion(_OpenAICompatibleChatCompletion):
         "gpt-5.6-luna",
     )
     provider = "openai"
+    chat_transport = HTTPChatTransport
     default_api_mode = "responses"
     default_reasoning_codec = OpenAIReasoningCodec()
     supported_api_modes = ("responses", "chat_completions")

@@ -39,7 +39,7 @@ Chat completion models are stateless - they don't maintain conversation history 
     # mf.set_envs(OPENAI_API_KEY="...")
 
     # Create model
-    model = mf.Model.chat_completion("openai/gpt-4.1-mini")
+    model = mf.Model.chat_completion("openai/gpt-5.6-luna")
 
     response = model("Hello!")
     print(response.consume())
@@ -55,7 +55,7 @@ Chat completion models are stateless - they don't maintain conversation history 
     import msgflux as mf
 
     model = mf.Model.chat_completion(
-        "openai/gpt-4.1-mini",
+        "openai/gpt-5.6-luna",
         # --- Generation ---
         temperature=0.7,               # Randomness (0-2)
         max_tokens=1000,               # Max output tokens (includes reasoning tokens)
@@ -91,8 +91,9 @@ Chat completion models are stateless - they don't maintain conversation history 
     ```
 
 Use `extra_body` for provider-specific request body fields supported by
-OpenAI-compatible APIs but not modeled directly by msgFlux. The dict is
-forwarded to the underlying OpenAI SDK client.
+OpenAI-compatible APIs but not modeled directly by msgFlux. SDK transports
+forward the container to the client; direct HTTP transports expand it into the
+JSON request body.
 
 You can also pass provider-specific fields directly as keyword arguments
 in the model constructor, or per request with `model(...)` / `model.acall(...)`.
@@ -2433,9 +2434,11 @@ An adapter owns these operations:
 | `process_output` | Decode a complete response into `ModelResponse` |
 | `stream` / `astream` | Decode the protocol's stream events |
 
-`ChatTransport.create` and `ChatTransport.acreate` send the prepared request.
-This separation lets the same API adapter use an SDK-backed transport or a
-direct HTTP transport without changing conversation semantics.
+`prepare_request` returns a `PreparedChatRequest`. It retains `extra_body` and
+`extra_headers` for SDK transports while exposing their expanded HTTP wire
+representation. `ChatTransport.create` and `ChatTransport.acreate` send that
+request. This lets the same API adapter use an SDK-backed transport or direct
+HTTP without changing conversation semantics.
 
 The model class declares the available adapters by mode. Adapter instances are
 stateless and can be shared. This example registers a provider whose endpoint
@@ -2479,6 +2482,77 @@ matching adapter. `Model.chat_completion("myprovider/model-name")` remains the
 frontend after the provider class is registered. A genuinely new protocol,
 such as Google Interactions, implements the same `ChatAPIAdapter` methods
 instead of adding another conditional branch to the shared model lifecycle.
+
+### 18.6 **Selecting a transport and credentials**
+
+OpenAI, Groq, and OpenRouter use direct HTTP by default for their supported chat
+protocols. Other OpenAI-compatible providers retain their declared transport
+until individually validated. To opt a compatible provider into the same
+transport, declare it on the provider class:
+
+```python
+from msgflux.models.chat_transport import HTTPChatTransport
+
+
+class MyProviderChatCompletion(
+    _BaseMyProvider,
+    OpenAICompatibleChatCompletion,
+):
+    chat_transport = HTTPChatTransport
+```
+
+The transport prefers HTTPX2 when it is installed by OpenAI SDK v3. It keeps a
+temporary legacy HTTPX fallback for environments still using OpenAI SDK v2.
+
+Passing the class creates an independent transport for every model. For tests,
+proxies, or custom networking, pass an instance with injected clients through
+the model constructor:
+
+```python
+import httpx
+
+from msgflux.models.chat_transport import HTTPChatTransport
+
+client = httpx.Client(proxy="http://127.0.0.1:8080")
+model = MyProviderChatCompletion(
+    "model-name",
+    chat_transport=HTTPChatTransport(client=client),
+)
+```
+
+Injected clients remain owned by the caller. Call `model.close()` and
+`await model.aclose()` to release clients created by the model.
+
+Authentication is resolved immediately before each request through
+`ChatCredentialResolver`. The default resolver calls the provider's
+`_get_api_key()` and produces a Bearer header. Providers with refreshable or
+file-backed credentials can supply another resolver without changing their API
+adapter or transport. Resolved credentials are excluded from model
+serialization.
+
+### 18.7 **Inspecting provider HTTP errors**
+
+Direct transports raise `ModelProviderHTTPError` after retries are exhausted or
+for a non-retryable response. The exception always contains the HTTP status and
+a provider description. Structured provider fields remain available for quota,
+context-window, authentication, routing, and data-policy handling:
+
+```python
+from msgflux.exceptions import ModelProviderHTTPError
+
+try:
+    response = model("Summarize the attached report.")
+except ModelProviderHTTPError as error:
+    print(error.status_code)
+    print(error.description)
+    print(error.code, error.error_type, error.param)
+    print(error.request_id)
+```
+
+OpenAI-style `{ "error": { ... } }` payloads and generic top-level `message`
+or `detail` payloads are normalized. Arbitrary response bodies and request
+headers are not copied into the exception message, so authentication material
+does not appear in normal logs.
 
 ## 19. OpenAI SSL Verification
 

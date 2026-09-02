@@ -64,11 +64,27 @@ class TestOpenAIChatCompletion:
     @pytest.fixture
     def mock_openai_client(self):
         """Mock OpenAI client."""
+        from msgflux.models.openai_compatible import OpenAISDKChatTransport
+        from msgflux.models.providers.openai import OpenAIChatCompletion
+
         with (
             patch("msgflux.models.openai_compatible.OpenAI") as mock_client,
             patch("msgflux.models.openai_compatible.AsyncOpenAI") as mock_async_client,
+            patch.object(
+                OpenAIChatCompletion,
+                "chat_transport",
+                OpenAISDKChatTransport,
+            ),
         ):
             yield mock_client, mock_async_client
+
+    def test_openai_defaults_to_direct_chat_transport(self):
+        from msgflux.models.chat_transport import HTTPChatTransport
+        from msgflux.models.providers.openai import OpenAIChatCompletion
+
+        model = OpenAIChatCompletion(model_id="gpt-5.6-luna")
+
+        assert isinstance(model.chat_transport, HTTPChatTransport)
 
     def test_chat_completion_initialization(self, mock_openai_client):
         """Test OpenAIChatCompletion initialization."""

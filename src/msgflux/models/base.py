@@ -12,6 +12,8 @@ class BaseModel(BaseClient):
         "processor",
         "client",
         "aclient",
+        "chat_transport",
+        "credential_resolver",
         "_response_cache",
     ]
     batch_support: bool = False  # Whether model supports batch processing

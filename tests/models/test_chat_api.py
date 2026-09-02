@@ -2,7 +2,12 @@ from unittest.mock import patch
 
 import pytest
 
-from msgflux.models.chat_api import ChatAPIAdapter, ChatTransport
+from msgflux.models.chat_api import (
+    ChatAPIAdapter,
+    ChatTransport,
+    PreparedChatRequest,
+    ResolvedChatCredentials,
+)
 from msgflux.models.openai_compatible import OpenAICompatibleChatCompletion
 
 
@@ -16,7 +21,11 @@ class RecordingAPI(ChatAPIAdapter):
 
     def prepare_request(self, owner, params):
         self.calls.append(("prepare", dict(params)))
-        return {**params, "prepared": True}
+        return PreparedChatRequest(
+            api=self.name,
+            endpoint=self.endpoint,
+            params={**params, "prepared": True},
+        )
 
     def build_generation_params(self, owner, messages, *args, **kwargs):
         self.calls.append(("build", messages))
@@ -39,13 +48,13 @@ class RecordingTransport(ChatTransport):
     def __init__(self, calls):
         self.calls = calls
 
-    def create(self, owner, api, params):
-        self.calls.append(("create", dict(params)))
-        return {"raw": params, "endpoint": api.endpoint}
+    def create(self, owner, request):
+        self.calls.append(("create", dict(request.params)))
+        return {"raw": request.params, "endpoint": request.endpoint}
 
-    async def acreate(self, owner, api, params):
-        self.calls.append(("acreate", dict(params)))
-        return {"raw": params, "endpoint": api.endpoint}
+    async def acreate(self, owner, request):
+        self.calls.append(("acreate", dict(request.params)))
+        return {"raw": request.params, "endpoint": request.endpoint}
 
 
 def _build_recording_model():
@@ -116,3 +125,33 @@ def test_declared_api_mode_requires_an_adapter():
 
     with pytest.raises(ValueError, match="without a ChatAPIAdapter"):
         InvalidChatCompletion(model_id="test-model")
+
+
+def test_prepared_request_expands_sdk_extensions_for_direct_http():
+    request = PreparedChatRequest(
+        api="chat_completions",
+        endpoint="/chat/completions",
+        params={
+            "model": "test-model",
+            "messages": [],
+            "extra_body": {"reasoning": {"effort": "high"}},
+            "extra_headers": {"X-Test": "value"},
+        },
+    )
+
+    assert request.params["extra_body"] == {"reasoning": {"effort": "high"}}
+    assert request.json == {
+        "model": "test-model",
+        "messages": [],
+        "reasoning": {"effort": "high"},
+    }
+    assert request.headers == {"X-Test": "value"}
+    assert "test-model" not in repr(request)
+
+
+def test_resolved_credentials_do_not_expose_headers_in_repr():
+    credentials = ResolvedChatCredentials(
+        headers={"Authorization": "Bearer secret-token"}
+    )
+
+    assert "secret-token" not in repr(credentials)

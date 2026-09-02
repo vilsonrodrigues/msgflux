@@ -2,7 +2,65 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from typing import Any
+
+from msgflux.core.dotdict import dotdict
+
+
+@dataclass(frozen=True, slots=True)
+class PreparedChatRequest:
+    """A protocol request ready to be sent by a chat transport.
+
+    ``params`` retains SDK-specific extension containers. Direct HTTP
+    transports use :attr:`json` and :attr:`headers`, which expand those
+    containers into their wire representation.
+    """
+
+    api: str
+    endpoint: str
+    params: dict[str, Any] = field(repr=False)
+    method: str = "POST"
+
+    @property
+    def json(self) -> dict[str, Any]:
+        body = dict(self.params)
+        extra_body = body.pop("extra_body", None)
+        body.pop("extra_headers", None)
+        if extra_body is not None:
+            body.update(extra_body)
+        return body
+
+    @property
+    def headers(self) -> dict[str, str]:
+        extra_headers = self.params.get("extra_headers")
+        return dict(extra_headers) if extra_headers is not None else {}
+
+
+@dataclass(frozen=True, slots=True)
+class ResolvedChatCredentials:
+    """Secret request material produced immediately before transport."""
+
+    headers: dict[str, str] = field(default_factory=dict, repr=False)
+
+
+class ChatCredentialResolver:
+    """Resolve request authentication without exposing its storage format."""
+
+    def resolve(self, owner: Any) -> ResolvedChatCredentials:
+        raise NotImplementedError
+
+    async def aresolve(self, owner: Any) -> ResolvedChatCredentials:
+        return self.resolve(owner)
+
+
+class BearerTokenCredentialResolver(ChatCredentialResolver):
+    """Resolve the existing provider API key as a Bearer token."""
+
+    def resolve(self, owner: Any) -> ResolvedChatCredentials:
+        return ResolvedChatCredentials(
+            headers={"Authorization": f"Bearer {owner._get_api_key()}"}
+        )
 
 
 class ChatAPIAdapter:
@@ -17,7 +75,9 @@ class ChatAPIAdapter:
     endpoint: str
     canonical_history: bool = False
 
-    def prepare_request(self, owner: Any, params: dict[str, Any]) -> dict[str, Any]:
+    def prepare_request(
+        self, owner: Any, params: dict[str, Any]
+    ) -> PreparedChatRequest:
         raise NotImplementedError
 
     def build_generation_params(self, owner: Any, *args: Any, **kwargs: Any):
@@ -25,6 +85,14 @@ class ChatAPIAdapter:
 
     def process_output(self, owner: Any, *args: Any, **kwargs: Any):
         raise NotImplementedError
+
+    def decode_response(self, payload: Any) -> Any:
+        """Decode one JSON response into the SDK-compatible internal view."""
+        return dotdict(payload) if isinstance(payload, dict) else payload
+
+    def decode_stream_event(self, payload: Any) -> Any:
+        """Decode one streamed JSON object into the internal wire view."""
+        return dotdict(payload) if isinstance(payload, dict) else payload
 
     def stream(self, owner: Any, **kwargs: Any):
         raise NotImplementedError
@@ -39,15 +107,20 @@ class ChatTransport:
     def create(
         self,
         owner: Any,
-        api: ChatAPIAdapter,
-        params: dict[str, Any],
+        request: PreparedChatRequest,
     ) -> Any:
         raise NotImplementedError
 
     async def acreate(
         self,
         owner: Any,
-        api: ChatAPIAdapter,
-        params: dict[str, Any],
+        request: PreparedChatRequest,
     ) -> Any:
         raise NotImplementedError
+
+    def close(self, owner: Any) -> None:
+        """Close transport resources owned by one model instance."""
+
+    async def aclose(self, owner: Any) -> None:
+        """Close async transport resources owned by one model instance."""
+        self.close(owner)

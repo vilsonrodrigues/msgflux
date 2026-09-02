@@ -1,6 +1,7 @@
 from os import getenv
 from typing import Any, Dict
 
+from msgflux.models.chat_transport import HTTPChatTransport
 from msgflux.models.openai_compatible import OpenAICompatibleChatCompletion
 from msgflux.models.reasoning import TextResponsesReasoningCodec
 from msgflux.models.registry import register_model
@@ -31,6 +32,7 @@ class _BaseGroq:
 class GroqChatCompletion(_BaseGroq, OpenAICompatibleChatCompletion):
     """Groq Chat Completion."""
 
+    chat_transport = HTTPChatTransport
     supported_api_modes = ("chat_completions", "responses")
     reasoning_codecs = {"responses": TextResponsesReasoningCodec()}
 

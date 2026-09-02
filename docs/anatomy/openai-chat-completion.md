@@ -307,6 +307,8 @@ Agent params
        +--> chat_completions -> messages / response_format
        |
        +--> responses -> input / text.format
+  -> PreparedChatRequest
+  -> resolve request credentials
   -> ChatTransport
   -> execute OpenAI request
   -> process completion or Responses output
@@ -338,8 +340,13 @@ The design line is:
 - `OpenAICompatibleChatCompletion` owns the common frontend and lifecycle
 - `ChatAPIAdapter` owns request preparation, endpoint selection, output
   decoding, and streaming for one wire protocol
+- `PreparedChatRequest` preserves SDK parameters and exposes the expanded HTTP
+  body and headers without containing resolved credentials
 - `ChatTransport` sends the prepared request; it does not interpret messages
   or provider responses
+- `ChatCredentialResolver` resolves authentication immediately before sending
+- `ModelProviderHTTPError` preserves status, provider description, categorical
+  error fields, and request ID without logging request headers
 - `OpenAIChatCompletion` declares OpenAI modes and codecs
 - the provider returns normalized output back to the runtime contract
 
@@ -352,6 +359,7 @@ These modules keep those concerns localized:
 
 - common lifecycle behavior stays in `models/openai_compatible.py`
 - wire-protocol selection stays behind `ChatAPIAdapter`
+- direct JSON/SSE transport stays in `models/chat_transport.py`
 - OpenAI-only capabilities stay in `models/providers/openai.py`
 - final runtime validation still points back to msgFlux contracts
 

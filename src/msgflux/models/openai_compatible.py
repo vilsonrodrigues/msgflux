@@ -3,6 +3,7 @@
 import base64
 from copy import copy, deepcopy
 from functools import partial
+from inspect import isawaitable
 from os import getenv
 from typing import Any, Dict, List, Literal, Mapping, Optional, Union
 
@@ -30,7 +31,13 @@ from msgflux.exceptions import AbortRequestedError
 from msgflux.generation.control_flow import ToolFlowControl
 from msgflux.models.base import BaseModel
 from msgflux.models.cache import ResponseCache, generate_cache_key
-from msgflux.models.chat_api import ChatAPIAdapter, ChatTransport
+from msgflux.models.chat_api import (
+    BearerTokenCredentialResolver,
+    ChatAPIAdapter,
+    ChatCredentialResolver,
+    ChatTransport,
+    PreparedChatRequest,
+)
 from msgflux.models.profiles import get_model_profile
 from msgflux.models.reasoning import (
     OpenAICompatibleReasoningCodec,
@@ -68,13 +75,49 @@ class OpenAIChatCompletionsAPI(ChatAPIAdapter):
                 *params["messages"],
                 {"role": "assistant", "content": prefilling},
             ]
-        return owner._adapt_params(params)
+        return PreparedChatRequest(
+            api=self.name,
+            endpoint=self.endpoint,
+            params=owner._adapt_params(params),
+        )
 
     def build_generation_params(self, owner, *args, **kwargs):
         return owner._build_chat_completions_generation_params(*args, **kwargs)
 
     def process_output(self, owner, *args, **kwargs):
         return owner._process_completion_model_output(*args, **kwargs)
+
+    def decode_response(self, payload):
+        payload = self._normalize_choices(payload, stream=False)
+        return super().decode_response(payload)
+
+    def decode_stream_event(self, payload):
+        error = payload.get("error")
+        if isinstance(error, Mapping):
+            message = error.get("message") or "Chat Completions stream failed"
+            raise RuntimeError(str(message))
+        payload = self._normalize_choices(payload, stream=True)
+        return super().decode_stream_event(payload)
+
+    @staticmethod
+    def _normalize_choices(payload, *, stream):
+        normalized = dict(payload)
+        normalized.setdefault("usage", None)
+        choices = []
+        for source in normalized.get("choices") or []:
+            choice = dict(source)
+            choice.setdefault("finish_reason", None)
+            choice.setdefault("logprobs", None)
+            message_key = "delta" if stream else "message"
+            message = dict(choice.get(message_key) or {})
+            message.setdefault("content", None)
+            message.setdefault("tool_calls", None)
+            message.setdefault("audio", None)
+            message.setdefault("annotations", None)
+            choice[message_key] = message
+            choices.append(choice)
+        normalized["choices"] = choices
+        return normalized
 
     def stream(self, owner, **kwargs):
         return owner._stream_chat_completions_generate(**kwargs)
@@ -91,13 +134,24 @@ class OpenAIResponsesAPI(ChatAPIAdapter):
     canonical_history = True
 
     def prepare_request(self, owner, params):
-        return owner._adapt_responses_params(params)
+        return PreparedChatRequest(
+            api=self.name,
+            endpoint=self.endpoint,
+            params=owner._adapt_responses_params(params),
+        )
 
     def build_generation_params(self, owner, *args, **kwargs):
         return owner._build_responses_generation_params(*args, **kwargs)
 
     def process_output(self, owner, *args, **kwargs):
         return owner._process_responses_model_output(*args, **kwargs)
+
+    def decode_stream_event(self, payload):
+        if payload.get("type") == "error" and not payload.get("message"):
+            error = payload.get("error")
+            if isinstance(error, Mapping) and error.get("message"):
+                payload = {**payload, "message": error["message"]}
+        return super().decode_stream_event(payload)
 
     def stream(self, owner, **kwargs):
         return owner._stream_responses_generate(**kwargs)
@@ -109,19 +163,25 @@ class OpenAIResponsesAPI(ChatAPIAdapter):
 class OpenAISDKChatTransport(ChatTransport):
     """Temporary transport backed by the OpenAI Python SDK."""
 
-    def create(self, owner, api, params):
-        if api.endpoint == "/responses":
-            return owner.client.responses.create(**params)
-        if api.endpoint == "/chat/completions":
-            return owner.client.chat.completions.create(**params)
-        raise ValueError(f"OpenAI SDK transport does not support {api.endpoint!r}")
+    def create(self, owner, request):
+        if request.endpoint == "/responses":
+            return owner.client.responses.create(**request.params)
+        if request.endpoint == "/chat/completions":
+            return owner.client.chat.completions.create(**request.params)
+        raise ValueError(f"OpenAI SDK transport does not support {request.endpoint!r}")
 
-    async def acreate(self, owner, api, params):
-        if api.endpoint == "/responses":
-            return await owner.aclient.responses.create(**params)
-        if api.endpoint == "/chat/completions":
-            return await owner.aclient.chat.completions.create(**params)
-        raise ValueError(f"OpenAI SDK transport does not support {api.endpoint!r}")
+    async def acreate(self, owner, request):
+        if request.endpoint == "/responses":
+            return await owner.aclient.responses.create(**request.params)
+        if request.endpoint == "/chat/completions":
+            return await owner.aclient.chat.completions.create(**request.params)
+        raise ValueError(f"OpenAI SDK transport does not support {request.endpoint!r}")
+
+    def close(self, owner):
+        owner.client.close()
+
+    async def aclose(self, owner):
+        await owner.aclient.close()
 
 
 class OpenAICompatibleModel(BaseModel):
@@ -215,7 +275,8 @@ class OpenAICompatibleChatCompletion(OpenAICompatibleModel, ChatCompletionModel)
         "responses": OpenAIResponsesAPI(),
     }
     api_mode_aliases: Mapping[str, str] = {}
-    chat_transport: ChatTransport = OpenAISDKChatTransport()
+    chat_transport: ChatTransport | type[ChatTransport] = OpenAISDKChatTransport
+    credential_resolver: ChatCredentialResolver = BearerTokenCredentialResolver()
     reasoning_codecs: Mapping[str, ReasoningCodec] = {}
     default_reasoning_codec: ReasoningCodec = OpenAICompatibleReasoningCodec()
     usage_codec: UsageCodec = default_usage_codec
@@ -295,6 +356,8 @@ class OpenAICompatibleChatCompletion(OpenAICompatibleModel, ChatCompletionModel)
             Literal["chat_completions", "responses", "ollama_chat"]
         ] = None,
         reasoning_codec: Optional[ReasoningCodec] = None,
+        chat_transport: Optional[Union[ChatTransport, type[ChatTransport]]] = None,
+        credential_resolver: Optional[ChatCredentialResolver] = None,
         **extra_body_kwargs: Any,
     ):
         """Args:
@@ -392,8 +455,31 @@ class OpenAICompatibleChatCompletion(OpenAICompatibleModel, ChatCompletionModel)
         reasoning_codec:
             Codec responsible for extracting reasoning and encoding it back
             into provider history. Uses the provider class default when omitted.
+        chat_transport:
+            Transport used to send prepared protocol requests. Transport classes
+            are instantiated per model; instances may be supplied to inject
+            custom HTTP clients.
+        credential_resolver:
+            Request-time authentication resolver. The default resolves the
+            provider API key as a Bearer token.
         """
         super().__init__()
+        selected_transport = chat_transport or self.chat_transport
+        self.chat_transport = (
+            selected_transport()
+            if isinstance(selected_transport, type)
+            else selected_transport
+        )
+        if not isinstance(self.chat_transport, ChatTransport):
+            raise TypeError(
+                "`chat_transport` must be a ChatTransport instance or class"
+            )
+        if credential_resolver is not None:
+            if not isinstance(credential_resolver, ChatCredentialResolver):
+                raise TypeError(
+                    "`credential_resolver` must be a ChatCredentialResolver instance"
+                )
+            self.credential_resolver = credential_resolver
         selected_api_mode = api_mode or self.default_api_mode
         if selected_api_mode not in self.supported_api_modes:
             raise ValueError(
@@ -663,19 +749,18 @@ class OpenAICompatibleChatCompletion(OpenAICompatibleModel, ChatCompletionModel)
     def _execute_model(self, **kwargs):
         self._raise_if_aborted()
         params = {**self.sampling_run_params, **kwargs}
-        params = self.api_adapter.prepare_request(self, params)
-        model_output = self.chat_transport.create(self, self.api_adapter, params)
+        request = self.api_adapter.prepare_request(self, params)
+        model_output = self.chat_transport.create(self, request)
         self._raise_if_aborted()
         return model_output
 
     async def _aexecute_model(self, **kwargs):
         self._raise_if_aborted()
         params = {**self.sampling_run_params, **kwargs}
-        params = self.api_adapter.prepare_request(self, params)
+        request = self.api_adapter.prepare_request(self, params)
         model_output = await self.chat_transport.acreate(
             self,
-            self.api_adapter,
-            params,
+            request,
         )
         self._raise_if_aborted()
         return model_output
@@ -685,7 +770,7 @@ class OpenAICompatibleChatCompletion(OpenAICompatibleModel, ChatCompletionModel)
         *,
         system_prompt: Optional[str],
         tool_catalog: "Optional[Union[ToolCatalog, ToolCatalogView]]",
-    ) -> Dict[str, Any]:
+    ) -> PreparedChatRequest:
         generation_params = self._build_generation_params(
             [],
             system_prompt,
@@ -710,7 +795,7 @@ class OpenAICompatibleChatCompletion(OpenAICompatibleModel, ChatCompletionModel)
             system_prompt=system_prompt,
             tool_catalog=tool_catalog,
         )
-        return self.chat_transport.create(self, self.api_adapter, params)
+        return self.chat_transport.create(self, params)
 
     async def awarmup_system_prompt(
         self,
@@ -722,7 +807,25 @@ class OpenAICompatibleChatCompletion(OpenAICompatibleModel, ChatCompletionModel)
             system_prompt=system_prompt,
             tool_catalog=tool_catalog,
         )
-        return await self.chat_transport.acreate(self, self.api_adapter, params)
+        return await self.chat_transport.acreate(self, params)
+
+    def close(self) -> None:
+        """Close synchronous resources owned by the chat transport."""
+        self.chat_transport.close(self)
+        if not isinstance(self.chat_transport, OpenAISDKChatTransport):
+            close = getattr(getattr(self, "client", None), "close", None)
+            if callable(close):
+                close()
+
+    async def aclose(self) -> None:
+        """Close asynchronous resources owned by the chat transport."""
+        await self.chat_transport.aclose(self)
+        if not isinstance(self.chat_transport, OpenAISDKChatTransport):
+            close = getattr(getattr(self, "aclient", None), "close", None)
+            if callable(close):
+                result = close()
+                if isawaitable(result):
+                    await result
 
     def _process_completion_model_output(  # noqa: C901
         self,

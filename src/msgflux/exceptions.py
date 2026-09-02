@@ -41,6 +41,48 @@ class AbortRequestedError(Exception):
         super().__init__(message or "Execution abort requested.")
 
 
+class ModelProviderHTTPError(RuntimeError):
+    """Structured HTTP failure returned by a model provider."""
+
+    def __init__(
+        self,
+        *,
+        status_code: int,
+        description: str,
+        provider: Optional[str] = None,
+        model_id: Optional[str] = None,
+        code: Any = None,
+        error_type: Optional[str] = None,
+        param: Optional[str] = None,
+        request_id: Optional[str] = None,
+        response: Any = None,
+    ):
+        self.status_code = status_code
+        self.description = description
+        self.provider = provider
+        self.model_id = model_id
+        self.code = code
+        self.error_type = error_type
+        self.param = param
+        self.request_id = request_id
+        self.response = response
+
+        source = provider or "Model provider"
+        message = f"{source} request failed with HTTP {status_code}: {description}"
+        details = []
+        if code is not None:
+            details.append(f"code={code}")
+        if error_type:
+            details.append(f"type={error_type}")
+        if param:
+            details.append(f"param={param}")
+        if request_id:
+            details.append(f"request_id={request_id}")
+        if details:
+            message = f"{message} ({', '.join(details)})"
+        super().__init__(message)
+
+
 class TaskInterruptRequestedError(Exception):
     """Raised when a cooperative background task receives an interrupt request."""
 
