@@ -5,6 +5,7 @@ if TYPE_CHECKING:
     from msgflux.nn.hooks.events import (
         AfterTool,
         AgentContext,
+        BeforeCompaction,
         BeforeResume,
         BeforeRun,
         BeforeTool,
@@ -26,6 +27,7 @@ __all__ = [
     "AgentContext",
     "AfterTool",
     "BeforeResume",
+    "BeforeCompaction",
     "BeforeRun",
     "BeforeTool",
     "BeforeToolDispatch",
@@ -47,6 +49,7 @@ _LAZY_IMPORTS = {
     "AgentContext": ("msgflux.nn.hooks.events", "AgentContext"),
     "AfterTool": ("msgflux.nn.hooks.events", "AfterTool"),
     "BeforeResume": ("msgflux.nn.hooks.events", "BeforeResume"),
+    "BeforeCompaction": ("msgflux.nn.hooks.events", "BeforeCompaction"),
     "BeforeRun": ("msgflux.nn.hooks.events", "BeforeRun"),
     "BeforeTool": ("msgflux.nn.hooks.events", "BeforeTool"),
     "BeforeToolDispatch": ("msgflux.nn.hooks.events", "BeforeToolDispatch"),

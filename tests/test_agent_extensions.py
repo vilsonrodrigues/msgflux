@@ -7,8 +7,14 @@ from msgflux.exceptions import AbortRequestedError
 from msgflux.data.stores import InMemoryCheckpointStore
 from msgflux.chat_messages import ChatMessages
 from msgflux.models.response import ModelResponse
+from msgflux.models.compaction import ContextTokenEstimate, ModelCompaction
 from msgflux.models.tool_call_agg import ToolCallAggregator
-from msgflux.nn import Agent, AgentExtension
+from msgflux.nn import (
+    Agent,
+    AgentExtension,
+    CompactionExtension,
+    CompactionPolicy,
+)
 from msgflux.nn.hooks import (
     ConversationContext,
     Hook,
@@ -51,6 +57,47 @@ class _RecordingModel:
         return _text_response("ok")
 
 
+class _CompactingModel(_RecordingModel):
+    context_capacity = 100
+    provider = "test"
+    api_mode = "messages"
+    model_id = "test-model"
+
+    def __init__(self):
+        super().__init__()
+        self.compaction_calls = []
+
+    def count_context_tokens(self, messages, *, system_prompt=None, tool_catalog=None):
+        return ContextTokenEstimate(input_tokens=90, source="heuristic")
+
+    async def acount_context_tokens(
+        self, messages, *, system_prompt=None, tool_catalog=None
+    ):
+        return self.count_context_tokens(
+            messages,
+            system_prompt=system_prompt,
+            tool_catalog=tool_catalog,
+        )
+
+    def compact_context(self, messages, *, system_prompt=None, native=True):
+        self.compaction_calls.append((messages.to_items(), system_prompt))
+        return ModelCompaction(
+            format="messages",
+            items=[{"role": "system", "content": "SUMMARY"}],
+            provider=self.provider,
+            api_mode=self.api_mode,
+            model_id=self.model_id,
+            usage={"input_tokens": 40, "output_tokens": 5},
+        )
+
+    async def acompact_context(self, messages, *, system_prompt=None, native=True):
+        return self.compact_context(
+            messages,
+            system_prompt=system_prompt,
+            native=native,
+        )
+
+
 class _PromptExtension(AgentExtension):
     def __init__(self):
         super().__init__("prompt")
@@ -86,6 +133,118 @@ def _tool_feedback_values(*modes: str):
         for index, (intent, mode) in enumerate(zip(intents, modes))
     )
     return intents, outcomes
+
+
+def _history_with_completed_turn() -> ChatMessages:
+    messages = ChatMessages(thread_id="thread_1", namespace="agent")
+    messages.begin_turn(turn_id="old_turn")
+    messages.add_user("Old question")
+    messages.add_assistant("Old answer")
+    messages.end_turn()
+    return messages
+
+
+def test_compaction_extension_appends_view_and_rebuilds_model_context():
+    model = _CompactingModel()
+    store = InMemoryCheckpointStore()
+    messages = _history_with_completed_turn()
+    agent = Agent(
+        name="agent",
+        model=model,
+        system_prompt="Keep facts.",
+        checkpoint_store=store,
+        extensions=[
+            CompactionExtension(
+                CompactionPolicy(
+                    trigger_ratio=0.8,
+                    reserved_output_tokens=0,
+                    safety_margin_tokens=0,
+                )
+            )
+        ],
+    )
+
+    output = agent(
+        "New question",
+        messages=messages,
+        scope=ExecutionScope(
+            thread_id="thread_1",
+            namespace="agent",
+            run_id="new_turn",
+        ),
+    )
+
+    assert output == "ok"
+    assert len(model.compaction_calls) == 1
+    assert model.calls[0]["messages"].to_chatml() == [
+        {"role": "system", "content": "SUMMARY"},
+        {"role": "user", "content": "New question"},
+    ]
+    operation = messages.latest_compaction()
+    assert (
+        operation["compacted_through_item_id"]
+        == messages.turns[0]["events"][-1]["item_id"]
+    )
+    assert operation["metadata"]["input_tokens_before"] == 90
+    assert operation["metadata"]["usage"] == {
+        "input_tokens": 40,
+        "output_tokens": 5,
+    }
+    state = store.load_state("agent", "thread_1", "new_turn")
+    assert any(item.get("type") == "compaction" for item in state["messages"]["items"])
+
+
+@pytest.mark.asyncio
+async def test_compaction_extension_async_path_compacts_once():
+    model = _CompactingModel()
+    messages = _history_with_completed_turn()
+    agent = Agent(
+        name="agent",
+        model=model,
+        extensions=[
+            CompactionExtension(
+                CompactionPolicy(
+                    trigger_ratio=0.8,
+                    reserved_output_tokens=0,
+                    safety_margin_tokens=0,
+                )
+            )
+        ],
+    )
+
+    output = await agent.acall(
+        "New question",
+        messages=messages,
+        scope=ExecutionScope(
+            thread_id="thread_1",
+            namespace="agent",
+            run_id="new_turn",
+        ),
+    )
+
+    assert output == "ok"
+    assert len(model.compaction_calls) == 1
+
+
+def test_compaction_extension_skips_when_threshold_is_not_reached():
+    model = _CompactingModel()
+    agent = Agent(
+        name="agent",
+        model=model,
+        extensions=[
+            CompactionExtension(
+                CompactionPolicy(
+                    trigger_ratio=1,
+                    reserved_output_tokens=0,
+                    safety_margin_tokens=0,
+                )
+            )
+        ],
+    )
+
+    agent("New question", messages=_history_with_completed_turn())
+
+    assert model.compaction_calls == []
 
 
 def test_builtin_tool_feedback_extension_resolves_direct_output():

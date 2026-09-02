@@ -459,6 +459,82 @@ class ModelGateway:
         """Return capability descriptions keyed by deployment alias."""
         return dict(self._model_descriptions)
 
+    @property
+    def context_capacity(self) -> int | None:
+        """Return the smallest known context window across all deployments."""
+        capacities = [getattr(model, "context_capacity", None) for model in self.models]
+        if not capacities or any(capacity is None for capacity in capacities):
+            return None
+        return min(capacities)
+
+    def count_context_tokens(
+        self,
+        messages,
+        *,
+        system_prompt: str | None = None,
+        tool_catalog: "ToolCatalogView | None" = None,
+        model_preference: str | None = None,
+    ):
+        return self._execute_model_method(
+            "count_context_tokens",
+            model_preference=model_preference,
+            messages=messages,
+            system_prompt=system_prompt,
+            tool_catalog=tool_catalog,
+        )
+
+    async def acount_context_tokens(
+        self,
+        messages,
+        *,
+        system_prompt: str | None = None,
+        tool_catalog: "ToolCatalogView | None" = None,
+        model_preference: str | None = None,
+    ):
+        return await self._aexecute_model_method(
+            "acount_context_tokens",
+            model_preference=model_preference,
+            messages=messages,
+            system_prompt=system_prompt,
+            tool_catalog=tool_catalog,
+        )
+
+    def compact_context(
+        self,
+        messages,
+        *,
+        system_prompt: str | None = None,
+        model_preference: str | None = None,
+        native: bool = True,
+    ):
+        # A gateway can fall back across providers after compaction. Force a
+        # portable view so opaque provider state never pins a future request.
+        _ = native
+        return self._execute_model_method(
+            "compact_context",
+            model_preference=model_preference,
+            messages=messages,
+            system_prompt=system_prompt,
+            native=False,
+        )
+
+    async def acompact_context(
+        self,
+        messages,
+        *,
+        system_prompt: str | None = None,
+        model_preference: str | None = None,
+        native: bool = True,
+    ):
+        _ = native
+        return await self._aexecute_model_method(
+            "acompact_context",
+            model_preference=model_preference,
+            messages=messages,
+            system_prompt=system_prompt,
+            native=False,
+        )
+
     def _execute_model_method(
         self,
         method_name: str,

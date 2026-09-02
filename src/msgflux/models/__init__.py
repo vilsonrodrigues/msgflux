@@ -2,12 +2,17 @@ from importlib import import_module
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from msgflux.models.compaction import ContextTokenEstimate, ModelCompaction
     from msgflux.models.model import Model
 
-__all__ = ["Model"]
+__all__ = ["ContextTokenEstimate", "Model", "ModelCompaction"]
 
 
 def __getattr__(name: str):
+    if name in {"ContextTokenEstimate", "ModelCompaction"}:
+        value = getattr(import_module("msgflux.models.compaction"), name)
+        globals()[name] = value
+        return value
     if name != "Model":
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 

@@ -9,6 +9,7 @@ from msgflux.exceptions import ModelRouterError
 from msgflux.models.base import BaseModel
 from msgflux.models.gateway import ModelGateway
 from msgflux.models.response import ModelResponse
+from msgflux.models.compaction import ModelCompaction
 
 
 class MockModel(BaseModel):
@@ -53,6 +54,34 @@ class MockModel(BaseModel):
             "model_type": self.model_type,
             "provider": self.provider,
         }
+
+
+class CompactingMockModel(MockModel):
+    def __init__(self, model_id: str, *, capacity: int | None, provider: str):
+        super().__init__(model_id, provider=provider)
+        self._capacity = capacity
+        self.compaction_native_values = []
+
+    @property
+    def context_capacity(self):
+        return self._capacity
+
+    def compact_context(self, messages, *, system_prompt=None, native=True):
+        self.compaction_native_values.append(native)
+        return ModelCompaction(
+            format="provider" if native else "messages",
+            items=[{"role": "system", "content": self.model_id}],
+            provider=self.provider,
+            api_mode="responses",
+            model_id=self.model_id,
+        )
+
+    async def acompact_context(self, messages, *, system_prompt=None, native=True):
+        return self.compact_context(
+            messages,
+            system_prompt=system_prompt,
+            native=native,
+        )
 
 
 def _deployment(
@@ -262,6 +291,62 @@ class TestModelGatewayInitialization:
         assert gateway.model_names == ["weak", "strong"]
         assert gateway.models[0].model_id == "gpt-4.1-mini"
         assert gateway.models[1].model_id == "gpt-4.1"
+
+    def test_gateway_uses_smallest_known_context_capacity(self):
+        gateway = ModelGateway(
+            models=[
+                {
+                    "model_name": "large",
+                    "model": CompactingMockModel(
+                        "large", capacity=200_000, provider="openai"
+                    ),
+                },
+                {
+                    "model_name": "small",
+                    "model": CompactingMockModel(
+                        "small", capacity=100_000, provider="openrouter"
+                    ),
+                },
+            ]
+        )
+
+        assert gateway.context_capacity == 100_000
+
+    def test_gateway_context_capacity_is_unknown_if_one_model_is_unknown(self):
+        gateway = ModelGateway(
+            models=[
+                {
+                    "model_name": "known",
+                    "model": CompactingMockModel(
+                        "known", capacity=100_000, provider="openai"
+                    ),
+                },
+                {
+                    "model_name": "unknown",
+                    "model": CompactingMockModel(
+                        "unknown", capacity=None, provider="openrouter"
+                    ),
+                },
+            ]
+        )
+
+        assert gateway.context_capacity is None
+
+    def test_gateway_forces_portable_compaction_across_providers(self):
+        first = CompactingMockModel("first", capacity=100_000, provider="openai")
+        second = CompactingMockModel("second", capacity=100_000, provider="openrouter")
+        gateway = ModelGateway(
+            models=[
+                {"model_name": "first", "model": first},
+                {"model_name": "second", "model": second},
+            ]
+        )
+
+        compacted = gateway.compact_context([])
+
+        assert compacted.format == "messages"
+        assert first.compaction_native_values == [False]
+        assert second.compaction_native_values == []
 
 
 class TestTimeConstraintParsing:

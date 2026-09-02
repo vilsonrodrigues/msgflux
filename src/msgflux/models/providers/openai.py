@@ -30,6 +30,7 @@ from msgflux.exceptions import AbortRequestedError
 from msgflux.generation.control_flow import ToolFlowControl
 from msgflux.models.base import BaseModel
 from msgflux.models.cache import ResponseCache, generate_cache_key
+from msgflux.models.compaction import ContextTokenEstimate, ModelCompaction
 from msgflux.models.profiles import get_model_profile
 from msgflux.models.reasoning import (
     OpenAICompatibleReasoningCodec,
@@ -2275,6 +2276,127 @@ class OpenAIChatCompletion(OpenAICompatibleChatCompletion):
     uses_max_completion_tokens = True
     responses_supports_reasoning_summary = True
     responses_supports_encrypted_reasoning = True
+
+    def supports_native_compaction(self) -> bool:
+        return self.api_mode == "responses"
+
+    def _responses_compaction_input(
+        self,
+        messages: Union[str, List[Dict[str, Any]], ChatMessages],
+    ) -> Union[str, List[Dict[str, Any]]]:
+        if isinstance(messages, str):
+            return messages
+        if not isinstance(messages, ChatMessages):
+            messages = ChatMessages(messages)
+        return messages.to_responses_input(
+            provider=self.provider,
+            api_mode=self.api_mode,
+            reasoning_codec=self.reasoning_codec,
+        )
+
+    def count_context_tokens(
+        self,
+        messages: Union[ChatMessages, List[Mapping[str, Any]]],
+        *,
+        system_prompt: str | None = None,
+        tool_catalog: ToolCatalogView | None = None,
+    ) -> ContextTokenEstimate:
+        if self.api_mode != "responses":
+            return super().count_context_tokens(
+                messages,
+                system_prompt=system_prompt,
+                tool_catalog=tool_catalog,
+            )
+        params = {
+            "model": self.model_id,
+            "input": self._responses_compaction_input(messages),
+            "instructions": system_prompt,
+        }
+        if tool_catalog and self._catalog_tool_entries(tool_catalog):
+            params["tools"] = self._tools_to_responses(tool_catalog)
+        result = self.client.responses.input_tokens.count(**params)
+        return ContextTokenEstimate(
+            input_tokens=int(result.input_tokens),
+            source="provider",
+        )
+
+    async def acount_context_tokens(
+        self,
+        messages: Union[ChatMessages, List[Mapping[str, Any]]],
+        *,
+        system_prompt: str | None = None,
+        tool_catalog: ToolCatalogView | None = None,
+    ) -> ContextTokenEstimate:
+        if self.api_mode != "responses":
+            return await super().acount_context_tokens(
+                messages,
+                system_prompt=system_prompt,
+                tool_catalog=tool_catalog,
+            )
+        params = {
+            "model": self.model_id,
+            "input": self._responses_compaction_input(messages),
+            "instructions": system_prompt,
+        }
+        if tool_catalog and self._catalog_tool_entries(tool_catalog):
+            params["tools"] = self._tools_to_responses(tool_catalog)
+        result = await self.aclient.responses.input_tokens.count(**params)
+        return ContextTokenEstimate(
+            input_tokens=int(result.input_tokens),
+            source="provider",
+        )
+
+    def compact_context(
+        self,
+        messages: Union[ChatMessages, List[Mapping[str, Any]]],
+        *,
+        system_prompt: str | None = None,
+        native: bool = True,
+    ) -> ModelCompaction:
+        if self.api_mode != "responses" or not native:
+            return super().compact_context(
+                messages,
+                system_prompt=system_prompt,
+                native=False,
+            )
+        output = self.client.responses.compact(
+            model=self.model_id,
+            input=self._responses_compaction_input(messages),
+            instructions=system_prompt,
+        )
+        return self._native_model_compaction(output)
+
+    async def acompact_context(
+        self,
+        messages: Union[ChatMessages, List[Mapping[str, Any]]],
+        *,
+        system_prompt: str | None = None,
+        native: bool = True,
+    ) -> ModelCompaction:
+        if self.api_mode != "responses" or not native:
+            return await super().acompact_context(
+                messages,
+                system_prompt=system_prompt,
+                native=False,
+            )
+        output = await self.aclient.responses.compact(
+            model=self.model_id,
+            input=self._responses_compaction_input(messages),
+            instructions=system_prompt,
+        )
+        return self._native_model_compaction(output)
+
+    def _native_model_compaction(self, output: Any) -> ModelCompaction:
+        serialized_items = self._serialize_openai_value(output.output)
+        usage = self.usage_codec.normalize(getattr(output, "usage", None))
+        return ModelCompaction(
+            format="provider",
+            items=serialized_items,
+            provider=self.provider,
+            api_mode=self.api_mode,
+            model_id=self.model_id,
+            usage=dict(usage) if isinstance(usage, Mapping) else None,
+        )
 
 
 @register_model

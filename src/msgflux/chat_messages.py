@@ -298,6 +298,187 @@ class ChatMessages:
             return 0
         return len(self._items) - start_item_index
 
+    def latest_completed_turn_boundary(self) -> Mapping[str, Any] | None:
+        """Return the latest completed turn that can safely end a compacted prefix."""
+        for turn in reversed(self.turns):
+            if turn.get("status") != "completed":
+                continue
+            end_item_index = turn.get("end_item_index")
+            if not isinstance(end_item_index, int):
+                continue
+            boundary = self._items[end_item_index]
+            item_id = boundary.get("item_id")
+            if isinstance(item_id, str) and item_id:
+                return {
+                    "item_id": item_id,
+                    "item_index": end_item_index,
+                    "turn_id": turn.get("turn_id"),
+                }
+        return None
+
+    def latest_compaction(self) -> Mapping[str, Any] | None:
+        """Return the newest append-only compaction operation, if present."""
+        for item in reversed(self._items):
+            if self._is_compaction_operation(item):
+                return deepcopy(item)
+        return None
+
+    def through_item(self, item_id: str) -> ChatMessages:
+        """Copy the canonical timeline through one inclusive item boundary."""
+        index = self._item_index(item_id)
+        copied = ChatMessages(
+            self._items[: index + 1],
+            thread_id=self.thread_id,
+            namespace=self.namespace,
+        )
+        copied.metadata = deepcopy(self.metadata)
+        return copied
+
+    def add_compaction(
+        self,
+        *,
+        compacted_through_item_id: str,
+        views: Iterable[Mapping[str, Any]],
+        reason: str = "threshold",
+        metadata: Mapping[str, Any] | None = None,
+    ) -> Mapping[str, Any]:
+        """Append a complete context-view operation without rewriting history."""
+        if (
+            not isinstance(compacted_through_item_id, str)
+            or not compacted_through_item_id
+        ):
+            raise ValueError("`compacted_through_item_id` must be a non-empty string")
+        boundary_index = self._item_index(compacted_through_item_id)
+        boundary = self._items[boundary_index]
+        if boundary.get("type") != "turn" or boundary.get("event") != "complete":
+            raise ValueError("Compaction must end at a completed turn boundary")
+
+        normalized_views = []
+        for view in views:
+            if not isinstance(view, Mapping):
+                raise TypeError("Compaction views must be mappings")
+            view_format = view.get("format")
+            items = view.get("items")
+            if view_format not in {"messages", "provider"}:
+                raise ValueError(
+                    "Compaction view format must be `messages` or `provider`"
+                )
+            if not isinstance(items, list):
+                raise TypeError("Compaction view `items` must be a list")
+            if view_format == "provider" and (
+                not isinstance(view.get("provider"), str)
+                or not isinstance(view.get("api_mode"), str)
+            ):
+                raise ValueError(
+                    "Provider compaction views require `provider` and `api_mode`"
+                )
+            normalized_views.append(self._safe_copy(dict(view)))
+        if not normalized_views:
+            raise ValueError("Compaction requires at least one complete view")
+
+        operation = {
+            "type": "compaction",
+            "reason": reason,
+            "compacted_through_item_id": compacted_through_item_id,
+            "views": normalized_views,
+            "metadata": self._safe_copy(dict(metadata or {})),
+            "timestamp": utc_now_isoformat(),
+        }
+        self.append(operation)
+        return deepcopy(self._items[-1])
+
+    def materialize_context(
+        self,
+        *,
+        provider: str | None = None,
+        api_mode: str | None = None,
+    ) -> ChatMessages:
+        """Build the effective model context from the newest compatible view."""
+        items = self._materialized_items(provider=provider, api_mode=api_mode)
+        materialized = ChatMessages(
+            thread_id=self.thread_id,
+            namespace=self.namespace,
+        )
+        # A materialized provider view may contain wire items whose identifiers
+        # are meaningful to the provider. Do not normalize or replace them here.
+        materialized._items = self._safe_copy(items)
+        materialized.metadata = deepcopy(self.metadata)
+        return materialized
+
+    def _materialized_items(
+        self,
+        *,
+        provider: str | None,
+        api_mode: str | None,
+    ) -> List[dict[str, Any]]:
+        operations = [
+            item
+            for item in self._items
+            if item.get("type") == "compaction" and isinstance(item.get("views"), list)
+        ]
+        if not operations:
+            return [
+                self._safe_copy(item)
+                for item in self._items
+                if not self._is_compaction_operation(item)
+            ]
+
+        operation = operations[-1]
+        selected_view = self._select_compaction_view(
+            operation,
+            provider=provider,
+            api_mode=api_mode,
+        )
+        boundary_id = operation.get("compacted_through_item_id")
+        if not isinstance(boundary_id, str):
+            raise ValueError("Compaction operation has no valid boundary")
+        boundary_index = self._item_index(boundary_id)
+        suffix = [
+            self._safe_copy(item)
+            for item in self._items[boundary_index + 1 :]
+            if not self._is_compaction_operation(item)
+        ]
+        return [
+            *self._safe_copy(selected_view["items"]),
+            *suffix,
+        ]
+
+    @staticmethod
+    def _is_compaction_operation(item: Mapping[str, Any]) -> bool:
+        return item.get("type") == "compaction" and isinstance(item.get("views"), list)
+
+    def _select_compaction_view(
+        self,
+        operation: Mapping[str, Any],
+        *,
+        provider: str | None,
+        api_mode: str | None,
+    ) -> Mapping[str, Any]:
+        views = operation.get("views") or []
+        if provider is not None and api_mode is not None:
+            for view in views:
+                if (
+                    isinstance(view, Mapping)
+                    and view.get("format") == "provider"
+                    and view.get("provider") == provider
+                    and view.get("api_mode") == api_mode
+                ):
+                    return view
+        for view in views:
+            if isinstance(view, Mapping) and view.get("format") == "messages":
+                return view
+        target = f"{provider or 'unknown'}/{api_mode or 'unknown'}"
+        raise ValueError(
+            "The newest compaction has no portable view or provider view "
+            f"compatible with `{target}`. Compact again before switching models."
+        )
+
+    def _item_index(self, item_id: str) -> int:
+        for index, item in enumerate(self._items):
+            if item.get("item_id") == item_id:
+                return index
+        raise ValueError(f"Unknown ChatMessages item_id `{item_id}`")
+
     def fork(self, *, upto_turn: int | None = None) -> ChatMessages:
         if upto_turn is None:
             return self.copy()
@@ -349,6 +530,7 @@ class ChatMessages:
                     if key not in {"item_id", "metadata"}
                 }
                 for item in trajectory
+                if not self._is_compaction_operation(item)
             ]
             split = next(
                 (
@@ -626,7 +808,7 @@ class ChatMessages:
     ) -> List[dict[str, Any]]:
         messages: List[dict[str, Any]] = []
         pending_reasoning: list[Mapping[str, Any]] = []
-        for item in self._items:
+        for item in self._materialized_items(provider=provider, api_mode=api_mode):
             item_type = item.get("type")
             if item_type == "turn":
                 continue
@@ -770,7 +952,7 @@ class ChatMessages:
         reasoning_codec: ReasoningCodec | None = None,
     ) -> List[dict[str, Any]]:
         result: List[dict[str, Any]] = []
-        for item in self._items:
+        for item in self._materialized_items(provider=provider, api_mode=api_mode):
             item_type = item.get("type")
             if item_type == "turn":
                 continue
@@ -905,7 +1087,9 @@ class ChatMessages:
                 continue
 
             if item_type:
-                result.append(deepcopy(item))
+                converted = deepcopy(item)
+                converted.pop("item_id", None)
+                result.append(converted)
                 continue
 
             result.append(self._chatml_message_to_response(item))

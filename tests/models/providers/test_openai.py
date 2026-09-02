@@ -94,6 +94,14 @@ class TestOpenAIChatCompletion:
 
         assert issubclass(OpenAIChatCompletion, OpenAICompatibleChatCompletion)
         assert OpenAIChatCompletion is not OpenAICompatibleChatCompletion
+        compatible = OpenAICompatibleChatCompletion(model_id="compatible")
+        openai_responses = OpenAIChatCompletion(model_id="gpt-5.6-luna")
+        openai_chat = OpenAIChatCompletion(
+            model_id="gpt-5.6-luna", api_mode="chat_completions"
+        )
+        assert compatible.supports_native_compaction() is False
+        assert openai_responses.supports_native_compaction() is True
+        assert openai_chat.supports_native_compaction() is False
 
     def test_chat_completion_rejects_unsupported_api_mode(self, mock_openai_client):
         pytest.importorskip("openai")
@@ -102,6 +110,104 @@ class TestOpenAIChatCompletion:
 
         with pytest.raises(ValueError, match="does not support"):
             OpenAIChatCompletion(model_id="gpt-4", api_mode="messages")
+
+    def test_responses_counts_input_tokens_with_provider_endpoint(
+        self, mock_openai_client
+    ):
+        pytest.importorskip("openai")
+        from msgflux.models.providers.openai import OpenAIChatCompletion
+
+        mock_client, _ = mock_openai_client
+        mock_client.return_value.responses.input_tokens.count.return_value = (
+            SimpleNamespace(input_tokens=321)
+        )
+        model = OpenAIChatCompletion(
+            model_id="gpt-5.6-luna",
+            context_length=400_000,
+        )
+        messages = ChatMessages([{"role": "user", "content": "Hello"}])
+
+        estimate = model.count_context_tokens(
+            messages,
+            system_prompt="Be concise.",
+        )
+
+        assert estimate.input_tokens == 321
+        assert estimate.source == "provider"
+        assert model.context_capacity == 400_000
+        kwargs = mock_client.return_value.responses.input_tokens.count.call_args.kwargs
+        assert kwargs == {
+            "model": "gpt-5.6-luna",
+            "input": [{"type": "message", "role": "user", "content": "Hello"}],
+            "instructions": "Be concise.",
+        }
+
+    def test_responses_native_compaction_preserves_opaque_output(
+        self, mock_openai_client
+    ):
+        pytest.importorskip("openai")
+        from msgflux.models.providers.openai import OpenAIChatCompletion
+
+        mock_client, _ = mock_openai_client
+        compacted_output = [
+            {"type": "message", "role": "user", "content": "retained"},
+            {"type": "compaction", "encrypted_content": "opaque"},
+        ]
+        mock_client.return_value.responses.compact.return_value = SimpleNamespace(
+            output=compacted_output,
+            usage={"input_tokens": 100, "output_tokens": 20},
+        )
+        model = OpenAIChatCompletion(
+            model_id="gpt-5.6-luna",
+            max_tokens=999,
+            reasoning_effort="high",
+            store=False,
+        )
+
+        compacted = model.compact_context(
+            ChatMessages([{"role": "user", "content": "Long history"}]),
+            system_prompt="Preserve facts.",
+        )
+
+        assert compacted.format == "provider"
+        assert compacted.items == compacted_output
+        assert compacted.provider == "openai"
+        assert compacted.api_mode == "responses"
+        assert compacted.usage["input_tokens"] == 100
+        kwargs = mock_client.return_value.responses.compact.call_args.kwargs
+        assert kwargs == {
+            "model": "gpt-5.6-luna",
+            "input": [{"type": "message", "role": "user", "content": "Long history"}],
+            "instructions": "Preserve facts.",
+        }
+        assert "store" not in kwargs
+        assert "reasoning" not in kwargs
+        assert "max_output_tokens" not in kwargs
+
+    @pytest.mark.asyncio
+    async def test_responses_async_compaction_uses_async_endpoint(
+        self, mock_openai_client
+    ):
+        pytest.importorskip("openai")
+        from msgflux.models.providers.openai import OpenAIChatCompletion
+
+        _, mock_async_client = mock_openai_client
+        mock_async_client.return_value.responses.compact = AsyncMock(
+            return_value=SimpleNamespace(
+                output=[{"type": "compaction", "encrypted_content": "opaque"}],
+                usage=None,
+            )
+        )
+        model = OpenAIChatCompletion(model_id="gpt-5.6-luna")
+
+        compacted = await model.acompact_context(
+            ChatMessages([{"role": "user", "content": "History"}])
+        )
+
+        assert compacted.items == [
+            {"type": "compaction", "encrypted_content": "opaque"}
+        ]
+        mock_async_client.return_value.responses.compact.assert_awaited_once()
 
     @pytest.mark.parametrize(
         "effort", ["none", "low", "medium", "high", "xhigh", "max"]

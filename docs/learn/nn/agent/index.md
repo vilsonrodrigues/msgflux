@@ -35,6 +35,7 @@ task to be treated in isolation.
 | [Generation Schemas](generation-schemas.md) | Structured outputs and reasoning strategies |
 | [Task and Context](task-and-context.md) | Input handling, templates, multimodal, chat history |
 | [Runtime](runtime.md) | Threads, runs, checkpoints, inbox controls, and abort signals |
+| [Conversation Compaction](compaction.md) | Bound model context with append-only, replayable context views |
 | [Vars](vars.md) | Unified execution variable space |
 | [Tools](tools/index.md) | Tool calling overview |
 | [Builtin Tools](tools/builtin.md) | Built-in web, weather, agent, skill, and runtime tools |

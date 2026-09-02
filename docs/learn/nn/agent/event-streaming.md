@@ -246,6 +246,8 @@ them. All following events remain correlatable through `run_id` and
 | `task.start` | A background task was dispatched |
 | `task.update` | Background task status or progress changed |
 | `task.end` | A background task completed, failed, paused, or was interrupted |
+| `compaction.start` | Context compaction started after the threshold policy approved it |
+| `compaction.end` | Compaction completed or failed; includes compact usage when available but never the context view |
 | `turn.end` | The turn reached a terminal boundary; it has no output payload |
 | `run.end` | The run completed and reports its outcome |
 | `run.error` | Execution failed; the iterator raises after this event |

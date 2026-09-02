@@ -21,6 +21,7 @@ __all__ = [
     "BeforeToolDispatch",
     "AfterTool",
     "BeforeResume",
+    "BeforeCompaction",
     "OutputContext",
     "ModelContext",
     "ModelRequestContext",
@@ -58,6 +59,20 @@ class AgentContext:
 
     scope: ExecutionScope
     vars: Mapping[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True, kw_only=True)
+class BeforeCompaction(AgentContext):
+    """Automatic compaction decision before a Model creates a context view."""
+
+    messages: Any
+    estimated_input_tokens: int
+    estimate_source: Literal["provider", "heuristic"]
+    context_capacity: int | None
+    compacted_through_item_id: str
+    reason: Literal["threshold", "manual", "overflow"] = "threshold"
+    action: Literal["compact", "skip"] = "skip"
+    trigger_tokens: int | None = None
 
 
 @dataclass(frozen=True, kw_only=True)

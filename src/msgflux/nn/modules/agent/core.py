@@ -53,6 +53,7 @@ from msgflux.runtime.skills import SkillsConfig
 
 if TYPE_CHECKING:
     from msgflux.data.stores import CheckpointStore
+from msgflux.nn.modules.agent.compaction import AgentCompactionMixin
 from msgflux.nn.modules.agent.configuration import AgentConfigurationMixin
 from msgflux.nn.modules.agent.context import (
     _DEFAULT_AGENT_ANNOTATIONS,
@@ -70,6 +71,7 @@ from msgflux.nn.modules.agent.model_runtime import AgentModelRuntimeMixin
 class Agent(
     AgentLifecycleMixin,
     AgentModelRuntimeMixin,
+    AgentCompactionMixin,
     AgentInputMixin,
     AgentConversationMixin,
     AgentConfigurationMixin,

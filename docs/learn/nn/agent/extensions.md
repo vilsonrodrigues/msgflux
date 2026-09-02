@@ -107,7 +107,7 @@ handle when ownership is temporary, or remove by name with
 
 `hooks=` remains a public low-level API. Extensions compose that API; they do
 not replace it. This separation keeps stable lifecycle boundaries reusable by
-application hooks, guards, skills, and future features such as compaction.
+application hooks, guards, skills, and conversation compaction.
 
 Agent-specific lifecycle payloads derive from `AgentContext`, which carries the
 active execution `scope` and runtime `vars`. `ModelContext` adds the rendered
@@ -160,6 +160,29 @@ agent = nn.Agent(
 If an explicitly supplied extension uses one of those names, the Agent does not
 also install the matching built-in. Their names are `current_date` and
 `tool_usage_guidance`, so they can be removed like any other extension.
+
+## Conversation Compaction
+
+`CompactionExtension` is opt-in. It contributes a `before_compaction` hook that
+compares the Model's input-token estimate with `CompactionPolicy`, then approves
+or skips creation of a complete context view. The Agent owns the completed-turn
+boundary and checkpoint; the Model owns token counting and provider-specific
+compaction.
+
+```python
+agent = nn.Agent(
+    name="support",
+    model=model,
+    extensions=[
+        nn.CompactionExtension(
+            nn.CompactionPolicy(trigger_ratio=0.8)
+        )
+    ],
+)
+```
+
+See [Conversation Compaction](compaction.md) for threshold configuration,
+portable versus provider views, replay behavior, and execution events.
 
 ## Tool Feedback Extensions
 

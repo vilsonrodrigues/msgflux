@@ -82,6 +82,22 @@ class AgentModelRuntimeMixin:
             tool_filter=tool_filter,
             scope=effective_scope,
         )
+        compacted = self._maybe_compact_model_context(
+            conversation.messages,
+            model_execution_params.messages,
+            system_prompt=model_execution_params.system_prompt,
+            tool_catalog=model_execution_params.tool_catalog,
+            model_preference=model_preference,
+            vars=vars,
+            scope=effective_scope,
+        )
+        if compacted:
+            model_execution_params.messages = self._build_model_messages(
+                conversation.messages,
+                vars=vars,
+                scope=effective_scope,
+                drain_notifications=False,
+            )
         request = ModelRequestContext.from_parameters(
             model_execution_params,
             scope=effective_scope,
@@ -169,6 +185,22 @@ class AgentModelRuntimeMixin:
             vars=vars,
             scope=effective_scope,
         )
+        compacted = await self._amaybe_compact_model_context(
+            conversation.messages,
+            model_execution_params.messages,
+            system_prompt=model_execution_params.system_prompt,
+            tool_catalog=model_execution_params.tool_catalog,
+            model_preference=model_preference,
+            vars=vars,
+            scope=effective_scope,
+        )
+        if compacted:
+            model_execution_params.messages = await self._abuild_model_messages(
+                conversation.messages,
+                vars=vars,
+                scope=effective_scope,
+                drain_notifications=False,
+            )
         request = ModelRequestContext.from_parameters(
             model_execution_params,
             scope=effective_scope,

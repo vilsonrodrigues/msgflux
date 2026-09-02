@@ -10,10 +10,12 @@ from unittest.mock import AsyncMock, Mock
 from msgflux.chat_messages import ChatMessages
 from msgflux.data.stores import InMemoryCheckpointStore
 from msgflux.models.response import ModelResponse, ModelStreamResponse
+from msgflux.models.compaction import ContextTokenEstimate, ModelCompaction
 from msgflux.models.tool_call_agg import ToolCallAggregator
 from msgflux.nn.hooks import Hook
 from msgflux.nn.hooks.events import BeforeRun
 from msgflux.nn.modules.agent import Agent
+from msgflux.nn.extensions import CompactionExtension, CompactionPolicy
 from msgflux.nn.modules.module import Module
 from msgflux.nn.modules.tool import ToolLibrary
 from msgflux.runtime.events import EventType, emit_event, event_source
@@ -195,6 +197,82 @@ async def test_agent_run_start_carries_execution_context_and_model_boundaries():
     assert "parent_run_id" not in run_start.data
     assert EventType.MODEL_REQUEST in [event.type for event in events]
     assert EventType.MODEL_RESPONSE in [event.type for event in events]
+
+
+@pytest.mark.asyncio
+async def test_agent_stream_events_reports_compaction_without_summary_content():
+    class CompactingModel:
+        model_type = "chat_completion"
+        context_capacity = 100
+        provider = "test"
+        api_mode = "messages"
+        model_id = "test-model"
+
+        async def acount_context_tokens(self, messages, **_kwargs):
+            return ContextTokenEstimate(input_tokens=90, source="heuristic")
+
+        async def acompact_context(self, messages, **_kwargs):
+            return ModelCompaction(
+                format="messages",
+                items=[{"role": "system", "content": "SECRET SUMMARY"}],
+                provider=self.provider,
+                api_mode=self.api_mode,
+                model_id=self.model_id,
+                usage={"input_tokens": 40, "output_tokens": 5},
+            )
+
+        async def acall(self, **_kwargs):
+            response = ModelResponse()
+            response.set_response_type("text_generation")
+            response.add("done")
+            response.metadata = {}
+            return response
+
+    messages = ChatMessages(thread_id="thread_compact", namespace="agent")
+    messages.begin_turn(turn_id="old_turn")
+    messages.add_user("old question")
+    messages.add_assistant("old answer")
+    messages.end_turn()
+    agent = Agent(
+        name="agent",
+        model=CompactingModel(),
+        extensions=[
+            CompactionExtension(
+                CompactionPolicy(
+                    trigger_ratio=0.8,
+                    reserved_output_tokens=0,
+                    safety_margin_tokens=0,
+                )
+            )
+        ],
+    )
+
+    events = [
+        event
+        async for event in agent.stream_events(
+            "new question",
+            messages=messages,
+            scope=ExecutionScope(
+                thread_id="thread_compact",
+                namespace="agent",
+                run_id="new_turn",
+            ),
+        )
+    ]
+    event_types = [event.type for event in events]
+    start = next(event for event in events if event.type == EventType.COMPACTION_START)
+    end = next(event for event in events if event.type == EventType.COMPACTION_END)
+
+    assert (
+        event_types.index(EventType.COMPACTION_START)
+        < event_types.index(EventType.COMPACTION_END)
+        < event_types.index(EventType.MODEL_REQUEST)
+    )
+    assert start.data["input_tokens_before"] == 90
+    assert end.data["status"] == "completed"
+    assert end.data["usage"] == {"input_tokens": 40, "output_tokens": 5}
+    assert "SECRET SUMMARY" not in repr(start.data)
+    assert "SECRET SUMMARY" not in repr(end.data)
 
 
 @pytest.mark.asyncio

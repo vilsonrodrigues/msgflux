@@ -345,3 +345,136 @@ def test_chat_messages_close_interrupted_tool_calls():
     assert items[-1]["output"]["status"] == "interrupted"
     assert items[-1]["output"]["details"] == "user pressed interrupt"
     assert chat.to_responses_input()[-1]["status"] == "incomplete"
+
+
+def _completed_turn(chat: ChatMessages, user: str, assistant: str) -> str:
+    chat.begin_turn()
+    chat.add_user(user)
+    chat.add_assistant(assistant)
+    chat.end_turn()
+    return chat.latest_completed_turn_boundary()["item_id"]
+
+
+def test_compaction_materializes_portable_view_and_preserves_canonical_history():
+    chat = ChatMessages(thread_id="thread_1", namespace="agent:test")
+    boundary = _completed_turn(chat, "old question", "old answer")
+    canonical_before = chat.to_items()
+    chat.begin_turn()
+    chat.add_user("new question")
+    chat.add_compaction(
+        compacted_through_item_id=boundary,
+        views=[
+            {
+                "format": "messages",
+                "items": [
+                    {
+                        "role": "system",
+                        "content": "<conversation_summary>old facts</conversation_summary>",
+                    }
+                ],
+            }
+        ],
+    )
+
+    projected = chat.to_chatml(provider="anthropic", api_mode="messages")
+
+    assert projected == [
+        {
+            "role": "system",
+            "content": "<conversation_summary>old facts</conversation_summary>",
+        },
+        {"role": "user", "content": "new question"},
+    ]
+    assert chat.to_items()[: len(canonical_before)] == canonical_before
+    assert chat.to_items()[-1]["type"] == "compaction"
+
+
+def test_newest_compaction_view_wins_without_stacking_summaries():
+    chat = ChatMessages()
+    first_boundary = _completed_turn(chat, "first", "one")
+    chat.add_compaction(
+        compacted_through_item_id=first_boundary,
+        views=[{"format": "messages", "items": [{"role": "system", "content": "S1"}]}],
+    )
+    second_boundary = _completed_turn(chat, "second", "two")
+    chat.add_compaction(
+        compacted_through_item_id=second_boundary,
+        views=[{"format": "messages", "items": [{"role": "system", "content": "S2"}]}],
+    )
+    chat.begin_turn()
+    chat.add_user("third")
+
+    assert chat.to_chatml() == [
+        {"role": "system", "content": "S2"},
+        {"role": "user", "content": "third"},
+    ]
+
+
+def test_compaction_prefers_exact_provider_view_and_keeps_wire_item_opaque():
+    chat = ChatMessages()
+    boundary = _completed_turn(chat, "question", "answer")
+    chat.add_compaction(
+        compacted_through_item_id=boundary,
+        views=[
+            {
+                "format": "messages",
+                "items": [{"role": "system", "content": "portable"}],
+            },
+            {
+                "format": "provider",
+                "provider": "openai",
+                "api_mode": "responses",
+                "items": [{"type": "compaction", "encrypted_content": "opaque"}],
+            },
+        ],
+    )
+    chat.begin_turn()
+    chat.add_user("next")
+
+    assert chat.to_responses_input() == [
+        {"type": "compaction", "encrypted_content": "opaque"},
+        {"type": "message", "role": "user", "content": "next"},
+    ]
+    assert chat.to_chatml(provider="anthropic", api_mode="messages")[0] == {
+        "role": "system",
+        "content": "portable",
+    }
+
+
+def test_provider_only_compaction_rejects_incompatible_projection():
+    chat = ChatMessages()
+    boundary = _completed_turn(chat, "question", "answer")
+    chat.add_compaction(
+        compacted_through_item_id=boundary,
+        views=[
+            {
+                "format": "provider",
+                "provider": "openai",
+                "api_mode": "responses",
+                "items": [{"type": "compaction", "encrypted_content": "opaque"}],
+            }
+        ],
+    )
+
+    try:
+        chat.to_chatml(provider="openrouter", api_mode="chat_completions")
+    except ValueError as error:
+        assert "no portable view" in str(error)
+    else:
+        raise AssertionError("Expected an incompatible compaction error")
+
+
+def test_compaction_state_roundtrip_and_examples_ignore_operation():
+    chat = ChatMessages(thread_id="thread_1", namespace="agent:test")
+    boundary = _completed_turn(chat, "question", "answer")
+    chat.add_compaction(
+        compacted_through_item_id=boundary,
+        views=[{"format": "messages", "items": [{"role": "system", "content": "S"}]}],
+    )
+    restored = ChatMessages()
+    restored._hydrate_state(chat._to_state())
+
+    assert restored.to_chatml() == [{"role": "system", "content": "S"}]
+    assert restored.to_examples()[0].labels == {
+        "trajectory": [{"type": "message", "role": "assistant", "content": "answer"}]
+    }

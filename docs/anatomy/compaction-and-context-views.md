@@ -1,197 +1,210 @@
 # Compaction And Context Views
 
-This page defines the proposed durability boundary for conversation compaction.
-It is an architectural contract, not a released public API.
+This page describes the implemented durability and projection contract for
+conversation compaction.
 
 ## Ownership
 
-Compaction crosses three layers, but each layer has one responsibility:
+Compaction crosses three layers, with one responsibility in each:
 
-- `Agent` decides **when** to check context pressure and coordinates the
-  operation at a safe turn boundary.
-- lifecycle hooks decide policy, such as declining a compaction or supplying a
-  custom portable summary.
-- `Model` decides **how** to count, prepare, and compact model-visible context.
-  Provider-native endpoints and wire formats stay below this boundary.
+- `Agent` coordinates the safe history boundary, lifecycle hook, checkpoint,
+  and execution events.
+- `CompactionExtension` applies the default threshold policy through
+  `before_compaction`; applications may replace that policy.
+- `Model` owns token counting and creates the complete compacted context view.
+  Provider endpoints and wire formats remain below this boundary.
 
-The checkpoint store only persists the resulting operation. It does not call a
-model, choose a strategy, or mutate old history.
+The checkpoint store only persists the resulting timeline. It does not count
+tokens, call a model, or mutate earlier history.
 
-## Context Capacity
+## Request Boundary
 
-Every chat model should expose an effective context capacity:
+The Agent checks compaction after it has prepared the upcoming model request.
+The estimate therefore includes the current user message, rendered system
+prompt, tool catalog, task context, and drained notifications.
+
+Only a completed turn can end a compacted prefix. At the start of a new turn,
+the latest completed turn becomes the source boundary and the current user
+message remains in the suffix. A conversation with no completed turn cannot be
+compacted automatically.
+
+Compaction is not repeated inside the same turn or tool loop. If the newest
+operation already refers to the selected completed-turn boundary, the Agent
+continues without another count or compaction call.
+
+## Context Capacity And Counting
+
+Every chat model exposes:
 
 ```text
 context_capacity: int | None
 ```
 
-Resolution should follow this order:
+The base contract first uses an explicit positive `context_length`, then the
+model profile's context limit. `None` means unknown, not unlimited. A
+`CompactionPolicy.context_capacity` override takes precedence; without either
+source, the default extension skips automatic compaction.
 
-1. explicit model configuration
-2. provider/model profile, including `models.dev`
-3. provider metadata
-4. unknown (`None`)
-
-Unknown must remain distinct from unlimited. Automatic compaction is disabled
-when capacity cannot be established, unless the caller supplies an override.
-
-The trigger must reserve room for output and protocol overhead:
+The default policy computes:
 
 ```text
-estimated_input + reserved_output + safety_margin >= context_capacity
+ratio_limit = int(context_capacity * trigger_ratio)
+reserve_limit = context_capacity - reserved_output_tokens - safety_margin_tokens
+trigger_tokens = max(1, min(ratio_limit, reserve_limit))
 ```
 
-Token estimation belongs to `Model` because tokenizers and provider payloads
-differ. The Agent asks for the estimate at a checkpoint; it does not count
-`ChatMessages` itself.
-
-Compaction must run before the model-visible window exceeds the limit. This is
-also required by OpenAI's standalone endpoint: the input sent to
-`/responses/compact` must still fit in the model context window.
+Compaction starts when the estimated input is greater than or equal to this
+trigger. Token counting belongs to `Model`: OpenAI Responses uses its native
+input-token count endpoint, while the base model contract provides a
+provider-neutral heuristic. A `ModelGateway` counts with the selected model and
+passes through the active `model_preference`.
 
 ## Append-Only Operation
 
-Compaction appends one operation to the interaction timeline. It never changes
+Compaction appends one operation to `ChatMessages`. It never changes, removes,
 or disables earlier items:
 
 ```python
 {
     "type": "compaction",
-    "item_id": "cmp_01...",
-    "reason": "threshold",  # manual | threshold | overflow
-    "compacted_through_item_id": "itm_01...",
+    "item_id": "itm_01...",
+    "reason": "threshold",
+    "compacted_through_item_id": "itm_00...",
     "views": [
         {
             "format": "messages",
             "items": [
-                {"role": "system", "content": "Portable summary ..."},
-                {"role": "user", "content": "Retained recent input"},
+                {
+                    "role": "system",
+                    "content": (
+                        "<conversation_summary>\n"
+                        "Portable continuation state\n"
+                        "</conversation_summary>"
+                    ),
+                }
             ],
         }
     ],
     "metadata": {
         "provider": "openai",
-        "model_id": "gpt-5.6",
+        "model_id": "gpt-5.6-luna",
         "api_mode": "responses",
         "input_tokens_before": 118400,
+        "estimate_source": "provider",
+        "usage": {"input_tokens": 118400, "output_tokens": 920},
     },
+    "timestamp": "...",
 }
 ```
 
-`views` is a small list of complete model-visible windows, not a list of
-patches. A generic compactor normally writes one `messages` view. A native
-provider compactor may write a provider-bound view instead:
+Each operation currently contains the single complete view returned by
+`Model.compact_context()` or `Model.acompact_context()`. A view is not a patch
+against an older summary.
+
+`ChatMessages.add_compaction()` validates that the source item is a completed
+turn event, that at least one view exists, and that provider views declare both
+their provider and API mode.
+
+## View Formats
+
+A portable compactor returns a `messages` view. The base implementation asks
+the model for a continuation summary and stores it as a system message wrapped
+in `<conversation_summary>`.
+
+A native compactor can return a provider-bound view:
 
 ```python
 {
     "format": "provider",
     "provider": "openai",
     "api_mode": "responses",
-    "items": [...],  # exact /responses/compact output
+    "items": [...],
 }
 ```
 
-Provider items are opaque. The framework must preserve their order and content
-without pruning or trying to extract a human summary. OpenAI documents the
-returned output as the canonical next context window and notes that it may
-contain retained prior items in addition to an encrypted compaction item.
+Provider items are opaque. `ChatMessages` preserves their order and content
+without trying to extract a portable summary.
 
-A compaction operation may contain both a portable `messages` view and a native
-view when a strategy can produce both without a second lossy conversion. It
-must not invent a portable summary by decoding opaque provider state.
+OpenAI Responses uses the standalone compact endpoint and stores its complete
+output this way. OpenAI Chat Completions uses the portable fallback. A
+`ModelGateway` always disables native compaction because its normal fallback
+behavior may select another provider for a later request.
 
-## More Than One Compaction
+## Materialization And Repeated Compaction
 
-Only the newest compatible compaction on the selected branch defines the base
-context. Context projection is:
+The newest compaction operation defines the context base. Projection is:
 
 ```text
-newest compatible compaction view
+newest compatible complete view
   + timeline items appended after compacted_through_item_id
 ```
 
-Older compaction operations remain available for audit and forks, but they do
-not stack into the active prompt. This keeps the prompt bounded even after many
+Earlier operations remain available for audit and forks, but their views do
+not stack into the prompt. This keeps model context bounded after repeated
 compactions and removes the need for an `active` flag.
 
-The operation stores a complete view so projection never needs to read through
-an earlier compaction. Retained head or tail items are materialized inside that
-view. This mirrors the useful property of Pi's `retainedTail`: every compaction
-is a self-contained context checkpoint rather than a pointer into mutable
-history.
+Materialization first looks for a provider view matching the active provider
+and API mode, then for a portable `messages` view. If neither is available, it
+raises an actionable error instead of dropping the compacted prefix. The
+canonical append-only timeline remains unchanged by materialization.
 
-Logical self-containment can duplicate retained payloads in serialized
-snapshots. Physical payload deduplication by immutable item identity may be
-added inside a store later; it must not change this logical contract.
+## Hook And Event Boundaries
 
-## Portability
+Before creating a view, the Agent sends `BeforeCompaction` through the
+`before_compaction` lifecycle hooks. Its payload contains:
 
-The model selects the newest view compatible with its provider and API mode. A
-`messages` view is the portable fallback. A provider view is usable only by the
-same provider protocol that produced it.
+- canonical messages and runtime `scope`/`vars`;
+- estimated input tokens and whether the estimate is provider-native or
+  heuristic;
+- context capacity and computed trigger;
+- reason, source item boundary, and `compact`/`skip` action.
 
-If no compatible view exists, the runtime must not silently drop the
-compaction. It should either:
+The built-in extension replaces the capacity, trigger, and action according to
+its policy. If the final action is `skip`, the Agent emits no compaction events.
 
-- build a portable view from the append-only source history before switching
-  providers;
-- fork before the provider-bound compaction; or
-- reject the switch with an actionable error.
-
-This makes the real portability limit explicit. In particular, OpenAI's
-encrypted compaction item is continuation state, not provider-neutral summary
-text.
-
-## Operation Boundaries
-
-The future operation should emit:
+For an approved operation, the order is:
 
 ```text
 compaction.start
-compaction.end
+Model.compact_context() or Model.acompact_context()
+append compaction operation
+checkpoint save, when configured
+compaction.end(status="completed")
+model.request
 ```
 
-and accept a typed `before_compaction` hook containing at least:
+If counting or the policy hook fails, no operation has started. If view
+creation, append, or checkpoint persistence fails after `compaction.start`, the
+Agent emits `compaction.end` with `status="failed"` and re-raises the error.
 
-```text
-reason
-model identity
-estimated input tokens
-context capacity
-source boundary
-```
+Event payloads contain boundary, capacity, estimate, trigger, format, model id,
+and compact usage when available. They deliberately omit summary text and
+opaque provider items. Publication uses the ordinary execution event hub, so
+both `stream_events()` and `watch()` observe the same operation.
 
-The hook may decline or provide a complete portable view. Provider-native
-compaction still executes inside `Model`; the Agent only coordinates the
-operation and persists its result.
+## Durability
 
-For automatic compaction, the operation belongs to the current run and occurs
-between turns. Manual compaction can later become its own resumable operation.
-In both cases, the durable sequence is:
+The Agent appends the operation before saving a running checkpoint. If the
+checkpoint succeeds but event delivery is interrupted, replay sees that the
+latest operation already covers the selected boundary and does not compact it
+again.
 
-```text
-compaction.start
-prepare or request compacted view
-append compaction item
-checkpoint save
-compaction.end
-```
-
-If generation fails before the compaction item is appended, the previous view
-remains authoritative. If persistence succeeds but event delivery is
-interrupted, replay discovers the appended item and does not compact the same
-boundary again.
+Without a checkpoint store, the same operation remains in the caller's
+in-memory `ChatMessages`. Checkpoint state contains the complete canonical
+timeline, including old source items and all compaction operations; only the
+model-facing projection is bounded.
 
 ## OpenAI Endpoint Constraint
 
-OpenAI supports automatic server-managed compaction for stored response chains
-and a stateless, ZDR-friendly `/responses/compact` endpoint. msgFlux manages its
-own provider-neutral timeline, so the standalone endpoint is the relevant
-native primitive. Its complete returned output must be stored as one provider
-view and sent back as-is on the next Responses request.
+The standalone Responses compact endpoint is stateless and compatible with a
+locally managed, ZDR-oriented timeline. Its input must still fit the model
+context window, so the threshold reserves output and safety space and must
+trigger before overflow.
 
-This endpoint does not remove the need for threshold estimation: calling it
-after the current window already exceeds the context capacity is too late.
+OpenAI parameters used for ordinary generation, such as `store`, reasoning
+effort, and maximum output tokens, are not forwarded to the compact endpoint.
+The returned output is continuation state for Responses, not a
+provider-neutral summary.
 
 ## Design References
 

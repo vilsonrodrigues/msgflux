@@ -243,8 +243,10 @@ forked = checkpoint_store.fork_run(
 
 Use `position="before"` to exclude the selected item itself. The store rejects
 a boundary inside an active turn or between a tool call and its output. History
-alternatives use explicit forks; compaction will use append-only operations that
-define a new view without rewriting existing items.
+alternatives use explicit forks. Conversation compaction also remains
+append-only: it records a complete model-visible view at a completed-turn
+boundary without rewriting existing items. See
+[Conversation Compaction](compaction.md) for configuration and replay behavior.
 
 For background subagents, the task id is used as the subagent `run_id`. Reusing
 that task id resumes or continues the same subagent. Creating a new task id

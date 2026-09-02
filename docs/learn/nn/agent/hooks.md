@@ -39,6 +39,7 @@ The Agent currently exposes these lifecycle boundaries:
 | `before_run` | `BeforeRun` | May replace the message or call arguments before a fresh run is prepared. |
 | `before_resume` | `BeforeResume` | May replace restored messages, model preference, or non-identity scope fields before execution resumes. |
 | `transform_context` | `ConversationContext` | May replace the model-visible messages for the current request. |
+| `before_compaction` | `BeforeCompaction` | May approve or skip automatic compaction after token estimation and before the Model creates a complete context view. |
 | `transform_notifications` | `NotificationContext` | May filter or replace non-control notifications before they enter model context. |
 | `transform_tool_catalog` | `ToolCatalogContext` | May replace the logical tool catalog before prompt rendering and provider compilation. |
 | `transform_system_prompt` | `ModelContext` | May replace the rendered prompt; includes `scope`, `vars`, and a read-only view of the active tool catalog. |
@@ -51,6 +52,13 @@ The Agent currently exposes these lifecycle boundaries:
 | `before_run_end` | `RunEndContext` | May inspect or replace the terminal outcome immediately before the final checkpoint. |
 | `after_run_end` | `RunEndContext` | Runs after the final checkpoint is committed. |
 | `transform_output` | `OutputContext` for Agents; settled value for other Modules | May replace only the value presented to the caller. |
+
+`before_compaction` is inactive unless an extension or application hook is
+registered for it. The built-in `CompactionExtension` uses this boundary to
+apply `CompactionPolicy`; returning `action="skip"` prevents both the
+compaction call and its execution events. The hook controls the decision, while
+the Model remains responsible for counting tokens and producing the compacted
+view. See [Conversation Compaction](compaction.md).
 
 Import typed payloads from `msgflux.nn.hooks`. Dataclass replacement keeps a
 handler explicit and preserves fields added to the contract later:
