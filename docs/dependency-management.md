@@ -30,9 +30,10 @@ hide:
 
 ### Text To Image
 
-| Provider    | Dependency        | Auth Env           |
-|-------------|-------------------|--------------------|
-| OpenAI      | `msgflux[openai]` | `OPENAI_API_KEY`   |
+| Provider    | Dependency | Auth Env             |
+|-------------|------------|----------------------|
+| ImageRouter | `msgflux`  | `IMAGEROUTER_API_KEY` |
+| OpenAI      | `msgflux`  | `OPENAI_API_KEY`      |
 
 ### Image Text To Image
 

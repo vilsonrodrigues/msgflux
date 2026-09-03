@@ -35,6 +35,7 @@ from msgflux.models.types import (
     TextToImageModel,
     TextToSpeechModel,
 )
+from msgflux.models.usage import default_usage_codec
 from msgflux.utils.encode import encode_data_to_bytes
 
 
@@ -257,9 +258,79 @@ class OpenAITextToSpeech(OpenAISDKModel, TextToSpeechModel):
             return response
 
 
+class _OpenAIImageResponseMixin:
+    """Decode image responses independently from their request transport."""
+
+    usage_codec = default_usage_codec
+
+    def _set_image_config(
+        self,
+        *,
+        model_id: str,
+        moderation: Optional[Literal["auto", "low"]],
+        base_url: Optional[str],
+        retry: Optional[Any],
+    ) -> None:
+        self.model_id = model_id
+        self.sampling_params = {"base_url": base_url or self._get_base_url()}
+        self.sampling_run_params = {}
+        if moderation:
+            self.sampling_run_params["moderation"] = moderation
+        self.retry = retry
+
+    @staticmethod
+    def _response_field(model_output, name: str, default=None):
+        if isinstance(model_output, dict):
+            return model_output.get(name, default)
+        return getattr(model_output, name, default)
+
+    def _get_metadata(self, model_output):
+        return dotdict(
+            usage=self.usage_codec.normalize(
+                self._response_field(model_output, "usage")
+            ),
+            details={
+                "created": self._response_field(model_output, "created"),
+                "size": self._response_field(model_output, "size"),
+                "quality": self._response_field(model_output, "quality"),
+                "output_format": self._response_field(model_output, "output_format"),
+                "background": self._response_field(model_output, "background"),
+            },
+        )
+
+    def _process_model_output(self, model_output) -> ModelResponse:
+        response = ModelResponse()
+        response.set_response_type("image_generation")
+
+        images = []
+        for item in self._response_field(model_output, "data", ()) or ():
+            url = self._response_field(item, "url")
+            b64_json = self._response_field(item, "b64_json")
+            if url:
+                images.append(url)
+            if b64_json:
+                images.append(b64_json)
+
+        response.add(images[0] if len(images) == 1 else images)
+        response.set_metadata(self._get_metadata(model_output))
+        return response
+
+    def _generate(self, **kwargs):
+        return self._process_model_output(self._execute_model(**kwargs))
+
+    async def _agenerate(self, **kwargs):
+        return self._process_model_output(await self._aexecute_model(**kwargs))
+
+
 @register_model
-class OpenAITextToImage(OpenAISDKModel, TextToImageModel):
+class OpenAITextToImage(
+    _OpenAIImageResponseMixin,
+    OpenAICompatibleHTTPModel,
+    TextToImageModel,
+):
     """OpenAI Image Generation."""
+
+    endpoint = "/images/generations"
 
     def __init__(
         self,
@@ -268,6 +339,8 @@ class OpenAITextToImage(OpenAISDKModel, TextToImageModel):
         moderation: Optional[Literal["auto", "low"]] = None,
         base_url: Optional[str] = None,
         retry: Optional[Any] = None,
+        http_transport: Optional[Union[HTTPTransport, type[HTTPTransport]]] = None,
+        credential_resolver: Optional[ModelCredentialResolver] = None,
     ):
         """Args:
         model_id:
@@ -278,87 +351,38 @@ class OpenAITextToImage(OpenAISDKModel, TextToImageModel):
             URL to model provider.
         retry:
             Retry config. A tenacity decorator, False to disable, or None for default.
+        http_transport:
+            Direct HTTP transport. Instances may inject custom sync and async clients.
+        credential_resolver:
+            Request-time authentication resolver.
         """
         super().__init__()
-        self.model_id = model_id
-        self.sampling_params = {"base_url": base_url or self._get_base_url()}
-        sampling_run_params = {}
-        if moderation:
-            sampling_run_params["moderation"] = moderation
-        self.sampling_run_params = sampling_run_params
-        self.retry = retry
+        self._set_image_config(
+            model_id=model_id,
+            moderation=moderation,
+            base_url=base_url,
+            retry=retry,
+        )
+        if http_transport is not None:
+            self.http_transport = http_transport
+        self._set_credential_resolver(credential_resolver)
         self._initialize()
-        self._get_api_key()
 
     def _execute_model(self, **kwargs):
-        model_output = self.client.images.generate(**kwargs, **self.sampling_run_params)
-        return model_output
+        return dotdict(
+            self._request_json(
+                self.endpoint,
+                {**kwargs, **self.sampling_run_params},
+            )
+        )
 
     async def _aexecute_model(self, **kwargs):
-        model_output = await self.aclient.images.generate(
-            **kwargs, **self.sampling_run_params
+        return dotdict(
+            await self._arequest_json(
+                self.endpoint,
+                {**kwargs, **self.sampling_run_params},
+            )
         )
-        return model_output
-
-    def _get_metadata(self, model_output):
-        metadata = dotdict(
-            usage=(
-                model_output.usage.to_dict() if model_output.usage is not None else {}
-            ),
-            details={
-                "size": getattr(model_output, "size", None),
-                "quality": getattr(model_output, "quality", None),
-                "output_format": getattr(model_output, "output_format", None),
-                "background": getattr(model_output, "background", None),
-            },
-        )
-        return metadata
-
-    def _generate(self, **kwargs):
-        response = ModelResponse()
-        response.set_response_type("image_generation")
-
-        model_output = self._execute_model(**kwargs)
-
-        metadata = self._get_metadata(model_output)
-
-        images = []
-        for item in model_output.data:
-            if item.url:
-                images.append(item.url)
-            if item.b64_json:
-                images.append(item.b64_json)
-
-        if len(images) == 1:
-            images = images[0]
-
-        response.add(images)
-        response.set_metadata(metadata)
-
-        return response
-
-    async def _agenerate(self, **kwargs):
-        response = ModelResponse()
-        response.set_response_type("image_generation")
-
-        model_output = await self._aexecute_model(**kwargs)
-
-        metadata = self._get_metadata(model_output)
-
-        images = []
-        for item in model_output.data:
-            if item.url:
-                images.append(item.url)
-            if item.b64_json:
-                images.append(item.b64_json)
-
-        if len(images) == 1:
-            images = images[0]
-
-        response.add(images)
-        response.set_metadata(metadata)
-
-        return response
 
     def __call__(
         self,
@@ -442,8 +466,39 @@ class OpenAITextToImage(OpenAISDKModel, TextToImageModel):
 
 
 @register_model
-class OpenAIImageTextToImage(ImageTextToImageModel, OpenAITextToImage):
+class OpenAIImageTextToImage(
+    _OpenAIImageResponseMixin,
+    OpenAISDKModel,
+    ImageTextToImageModel,
+):
     """OpenAI Image Edit."""
+
+    def __init__(
+        self,
+        *,
+        model_id: str,
+        moderation: Optional[Literal["auto", "low"]] = None,
+        base_url: Optional[str] = None,
+        retry: Optional[Any] = None,
+    ):
+        """Args:
+        model_id:
+            Model ID in provider.
+        moderation:
+            Control the content-moderation level for edited images.
+        base_url:
+            URL to model provider.
+        retry:
+            Retry config. A tenacity decorator, False to disable, or None for default.
+        """
+        super().__init__()
+        self._set_image_config(
+            model_id=model_id,
+            moderation=moderation,
+            base_url=base_url,
+            retry=retry,
+        )
+        self._initialize()
 
     def _execute_model(self, **kwargs):
         model_output = self.client.images.edit(**kwargs, **self.sampling_run_params)

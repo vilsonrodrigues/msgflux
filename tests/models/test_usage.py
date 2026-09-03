@@ -48,6 +48,23 @@ def test_usage_codec_normalizes_responses_and_calculates_total():
     assert usage.output_tokens_details.reasoning_tokens == 5
 
 
+def test_usage_codec_preserves_image_token_details():
+    usage = UsageCodec().normalize(
+        {
+            "input_tokens": 12,
+            "output_tokens": 20,
+            "total_tokens": 32,
+            "input_tokens_details": {"text_tokens": 4, "image_tokens": 8},
+            "output_tokens_details": {"text_tokens": 0, "image_tokens": 20},
+        }
+    )
+
+    assert usage.input_tokens_details.text_tokens == 4
+    assert usage.input_tokens_details.image_tokens == 8
+    assert usage.output_tokens_details.text_tokens == 0
+    assert usage.output_tokens_details.image_tokens == 20
+
+
 def test_usage_codec_normalizes_anthropic_and_google_aliases():
     anthropic = UsageCodec().normalize(
         {

@@ -77,6 +77,12 @@ class UsageCodec:
                         "video_tokens": self._detail_int(
                             raw, input_details, ("video_tokens",)
                         ),
+                        "image_tokens": self._detail_int(
+                            raw, input_details, ("image_tokens",)
+                        ),
+                        "text_tokens": self._detail_int(
+                            raw, input_details, ("text_tokens",)
+                        ),
                     }
                 ),
                 "output_tokens_details": dotdict(
@@ -88,6 +94,12 @@ class UsageCodec:
                         ),
                         "audio_tokens": self._detail_int(
                             raw, output_details, ("audio_tokens",)
+                        ),
+                        "image_tokens": self._detail_int(
+                            raw, output_details, ("image_tokens",)
+                        ),
+                        "text_tokens": self._detail_int(
+                            raw, output_details, ("text_tokens",)
                         ),
                         "accepted_prediction_tokens": self._detail_int(
                             raw, output_details, ("accepted_prediction_tokens",)
