@@ -3,14 +3,21 @@ from unittest.mock import patch
 import msgspec
 import pytest
 
-from msgflux.models import ChatAPIModeCapabilities, ChatProviderCapabilities
+from msgflux.models import (
+    ChatAPIModeCapabilities,
+    ChatProviderCapabilities,
+    OpenAIResponsesContextAdapter,
+)
 from msgflux.models.chat_api import (
     ChatAPIAdapter,
     ChatTransport,
     PreparedChatRequest,
     ResolvedChatCredentials,
 )
-from msgflux.models.openai_compatible import OpenAICompatibleChatCompletion
+from msgflux.models.openai_compatible import (
+    OpenAICompatibleChatCompletion,
+    OpenAIResponsesAPI,
+)
 from msgflux.models.reasoning import OpenAICompatibleReasoningCodec
 
 
@@ -178,6 +185,77 @@ def test_chat_capabilities_reject_duplicate_api_modes():
             ),
             default_reasoning_codec=OpenAICompatibleReasoningCodec(),
         )
+
+
+def test_chat_capabilities_require_a_typed_context_adapter():
+    with pytest.raises(TypeError, match="ChatContextAdapter instance"):
+        ChatAPIModeCapabilities(
+            name="recording",
+            adapter=RecordingAPI(),
+            context_adapter=object(),
+        )
+
+
+def test_chat_capabilities_reject_context_adapter_for_another_api_mode():
+    with pytest.raises(ValueError, match="cannot be attached"):
+        ChatAPIModeCapabilities(
+            name="chat_completions",
+            adapter=RecordingAPI(),
+            context_adapter=OpenAIResponsesContextAdapter(),
+        )
+
+
+def test_responses_context_adapter_is_reusable_by_compatible_providers():
+    calls = []
+
+    class ContextTransport(ChatTransport):
+        def create(self, owner, request):
+            calls.append(request)
+            if request.endpoint == "/responses/input_tokens":
+                return {"input_tokens": 37}
+            return {
+                "output": [{"type": "compaction", "encrypted_content": "opaque"}],
+                "usage": {"input_tokens": 37, "output_tokens": 4},
+            }
+
+    class CompatibleResponsesModel(OpenAICompatibleChatCompletion):
+        provider = "compatible_context"
+        capabilities = ChatProviderCapabilities(
+            default_api_mode="responses",
+            api_modes=(
+                ChatAPIModeCapabilities(
+                    name="responses",
+                    adapter=OpenAIResponsesAPI(),
+                    context_adapter=OpenAIResponsesContextAdapter(),
+                ),
+            ),
+            default_reasoning_codec=OpenAICompatibleReasoningCodec(),
+        )
+        chat_transport = ContextTransport()
+
+        def _get_api_key(self):
+            return "test"
+
+    model = CompatibleResponsesModel(model_id="compatible-model")
+    estimate = model.count_context_tokens(
+        [{"role": "user", "content": "Remember this"}],
+        system_prompt="Preserve facts.",
+    )
+    compacted = model.compact_context(
+        [{"role": "user", "content": "Remember this"}],
+        system_prompt="Preserve facts.",
+    )
+
+    assert model.supports_native_compaction() is True
+    assert estimate.input_tokens == 37
+    assert compacted.provider == "compatible_context"
+    assert compacted.model_id == "compatible-model"
+    assert compacted.items == [{"type": "compaction", "encrypted_content": "opaque"}]
+    assert [request.endpoint for request in calls] == [
+        "/responses/input_tokens",
+        "/responses/compact",
+    ]
+    assert all(request.api == "responses" for request in calls)
 
 
 def test_chat_model_requires_typed_capabilities():

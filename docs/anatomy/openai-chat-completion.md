@@ -349,7 +349,7 @@ The design line is:
 - `ChatProviderCapabilities` validates provider-wide parameter behavior and
   the declared API modes
 - `ChatAPIModeCapabilities` binds each mode to its adapter, reasoning codec,
-  compaction support, and hosted-tool behavior
+  context adapter, and hosted-tool behavior
 - `ModelProviderHTTPError` preserves status, provider description, categorical
   error fields, and request ID without logging request headers
 - `OpenAIChatCompletion` declares OpenAI modes and codecs
@@ -365,6 +365,8 @@ These modules keep those concerns localized:
 - common lifecycle behavior stays in `models/openai_compatible.py`
 - wire-protocol selection stays behind `ChatAPIAdapter`
 - provider and mode capabilities stay in `models/chat_capabilities.py`
+- optional token-count and compaction protocol conversion stays in
+  `models/chat_context.py`
 - direct JSON/SSE transport, including Responses input-token counting and
   native compaction, stays in `models/chat_transport.py`
 - SDK-backed non-chat initialization stays in `models/openai_sdk.py`

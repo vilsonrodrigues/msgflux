@@ -60,6 +60,13 @@ input-token count endpoint, while the base model contract provides a
 provider-neutral heuristic. A `ModelGateway` counts with the selected model and
 passes through the active `model_preference`.
 
+Native context operations are declared per API mode through a context adapter.
+`OpenAIResponsesContextAdapter` prepares and decodes the compatible
+`/responses/input_tokens` and `/responses/compact` operations. Credentials,
+base URL construction, retry, abort handling, and HTTP errors remain transport
+responsibilities. Providers must opt in explicitly; sharing the Responses
+generation protocol alone does not imply native compaction support.
+
 ## Append-Only Operation
 
 Compaction appends one operation to `ChatMessages`. It never changes, removes,

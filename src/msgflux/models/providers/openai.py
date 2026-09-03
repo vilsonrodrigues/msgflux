@@ -1,17 +1,15 @@
 import tempfile
 from contextlib import asynccontextmanager, contextmanager
-from typing import Any, Dict, List, Literal, Mapping, Optional, Union
+from typing import Any, Dict, List, Literal, Optional, Union
 
 import msgflux.nn.functional as F
-from msgflux.chat_messages import ChatMessages
 from msgflux.core.dotdict import dotdict
 from msgflux.models.cache import generate_cache_key
-from msgflux.models.chat_api import PreparedChatRequest
 from msgflux.models.chat_capabilities import (
     ChatAPIModeCapabilities,
     ChatProviderCapabilities,
 )
-from msgflux.models.compaction import ContextTokenEstimate, ModelCompaction
+from msgflux.models.chat_context import OpenAIResponsesContextAdapter
 from msgflux.models.openai_compatible import (
     OpenAIChatCompletionsAPI,
     OpenAIResponsesAPI,
@@ -34,7 +32,6 @@ from msgflux.models.types import (
     TextToImageModel,
     TextToSpeechModel,
 )
-from msgflux.tools.catalog import ToolCatalogView
 from msgflux.utils.encode import encode_data_to_bytes
 
 
@@ -52,7 +49,7 @@ class OpenAIChatCompletion(_OpenAICompatibleChatCompletion):
                 reasoning_codec=OpenAIResponsesReasoningCodec(),
                 reasoning_summary=True,
                 encrypted_reasoning=True,
-                native_compaction=True,
+                context_adapter=OpenAIResponsesContextAdapter(),
                 hosted_tool_search_model_families=(
                     "gpt-5.6",
                     "gpt-5.6-sol",
@@ -70,145 +67,6 @@ class OpenAIChatCompletion(_OpenAICompatibleChatCompletion):
         prompt_cache_retention=True,
         uses_max_completion_tokens=True,
     )
-
-    def _responses_compaction_input(
-        self,
-        messages: Union[str, List[Dict[str, Any]], ChatMessages],
-    ) -> Union[str, List[Dict[str, Any]]]:
-        if isinstance(messages, str):
-            return messages
-        if not isinstance(messages, ChatMessages):
-            messages = ChatMessages(messages)
-        return messages.to_responses_input(
-            provider=self.provider,
-            api_mode=self.api_mode,
-            reasoning_codec=self.reasoning_codec,
-        )
-
-    @staticmethod
-    def _responses_operation(
-        endpoint: str,
-        params: dict[str, Any],
-    ) -> PreparedChatRequest:
-        return PreparedChatRequest(
-            api="responses",
-            endpoint=endpoint,
-            params=params,
-        )
-
-    def count_context_tokens(
-        self,
-        messages: Union[ChatMessages, List[Mapping[str, Any]]],
-        *,
-        system_prompt: str | None = None,
-        tool_catalog: ToolCatalogView | None = None,
-    ) -> ContextTokenEstimate:
-        if self.api_mode != "responses":
-            return super().count_context_tokens(
-                messages,
-                system_prompt=system_prompt,
-                tool_catalog=tool_catalog,
-            )
-        params = {
-            "model": self.model_id,
-            "input": self._responses_compaction_input(messages),
-            "instructions": system_prompt,
-        }
-        if tool_catalog and self._catalog_tool_entries(tool_catalog):
-            params["tools"] = self._tools_to_responses(tool_catalog)
-        request = self._responses_operation("/responses/input_tokens", params)
-        result = self.chat_transport.create(self, request)
-        return ContextTokenEstimate(
-            input_tokens=int(result.input_tokens),
-            source="provider",
-        )
-
-    async def acount_context_tokens(
-        self,
-        messages: Union[ChatMessages, List[Mapping[str, Any]]],
-        *,
-        system_prompt: str | None = None,
-        tool_catalog: ToolCatalogView | None = None,
-    ) -> ContextTokenEstimate:
-        if self.api_mode != "responses":
-            return await super().acount_context_tokens(
-                messages,
-                system_prompt=system_prompt,
-                tool_catalog=tool_catalog,
-            )
-        params = {
-            "model": self.model_id,
-            "input": self._responses_compaction_input(messages),
-            "instructions": system_prompt,
-        }
-        if tool_catalog and self._catalog_tool_entries(tool_catalog):
-            params["tools"] = self._tools_to_responses(tool_catalog)
-        request = self._responses_operation("/responses/input_tokens", params)
-        result = await self.chat_transport.acreate(self, request)
-        return ContextTokenEstimate(
-            input_tokens=int(result.input_tokens),
-            source="provider",
-        )
-
-    def compact_context(
-        self,
-        messages: Union[ChatMessages, List[Mapping[str, Any]]],
-        *,
-        system_prompt: str | None = None,
-        native: bool = True,
-    ) -> ModelCompaction:
-        if self.api_mode != "responses" or not native:
-            return super().compact_context(
-                messages,
-                system_prompt=system_prompt,
-                native=False,
-            )
-        request = self._responses_operation(
-            "/responses/compact",
-            {
-                "model": self.model_id,
-                "input": self._responses_compaction_input(messages),
-                "instructions": system_prompt,
-            },
-        )
-        output = self.chat_transport.create(self, request)
-        return self._native_model_compaction(output)
-
-    async def acompact_context(
-        self,
-        messages: Union[ChatMessages, List[Mapping[str, Any]]],
-        *,
-        system_prompt: str | None = None,
-        native: bool = True,
-    ) -> ModelCompaction:
-        if self.api_mode != "responses" or not native:
-            return await super().acompact_context(
-                messages,
-                system_prompt=system_prompt,
-                native=False,
-            )
-        request = self._responses_operation(
-            "/responses/compact",
-            {
-                "model": self.model_id,
-                "input": self._responses_compaction_input(messages),
-                "instructions": system_prompt,
-            },
-        )
-        output = await self.chat_transport.acreate(self, request)
-        return self._native_model_compaction(output)
-
-    def _native_model_compaction(self, output: Any) -> ModelCompaction:
-        serialized_items = self._serialize_openai_value(output.output)
-        usage = self.usage_codec.normalize(getattr(output, "usage", None))
-        return ModelCompaction(
-            format="provider",
-            items=serialized_items,
-            provider=self.provider,
-            api_mode=self.api_mode,
-            model_id=self.model_id,
-            usage=dict(usage) if isinstance(usage, Mapping) else None,
-        )
 
 
 @register_model

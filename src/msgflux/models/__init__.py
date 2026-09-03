@@ -6,21 +6,31 @@ if TYPE_CHECKING:
         ChatAPIModeCapabilities,
         ChatProviderCapabilities,
     )
+    from msgflux.models.chat_context import (
+        ChatContextAdapter,
+        OpenAIResponsesContextAdapter,
+    )
     from msgflux.models.compaction import ContextTokenEstimate, ModelCompaction
     from msgflux.models.model import Model
 
 __all__ = [
     "ChatAPIModeCapabilities",
+    "ChatContextAdapter",
     "ChatProviderCapabilities",
     "ContextTokenEstimate",
     "Model",
     "ModelCompaction",
+    "OpenAIResponsesContextAdapter",
 ]
 
 
 def __getattr__(name: str):
     if name in {"ChatAPIModeCapabilities", "ChatProviderCapabilities"}:
         value = getattr(import_module("msgflux.models.chat_capabilities"), name)
+        globals()[name] = value
+        return value
+    if name in {"ChatContextAdapter", "OpenAIResponsesContextAdapter"}:
+        value = getattr(import_module("msgflux.models.chat_context"), name)
         globals()[name] = value
         return value
     if name in {"ContextTokenEstimate", "ModelCompaction"}:

@@ -2297,7 +2297,11 @@ Completions field for replaying reasoning. A provider with a documented
 convention declares that behavior in its codec:
 
 ```python
-from msgflux.models import ChatAPIModeCapabilities, ChatProviderCapabilities
+from msgflux.models import (
+    ChatAPIModeCapabilities,
+    ChatProviderCapabilities,
+    OpenAIResponsesContextAdapter,
+)
 from msgflux.models.openai_compatible import (
     OpenAIChatCompletionsAPI,
     OpenAICompatibleChatCompletion,
@@ -2423,6 +2427,7 @@ class MyProviderChatCompletion(
             ChatAPIModeCapabilities(
                 name="responses",
                 adapter=OpenAIResponsesAPI(),
+                context_adapter=OpenAIResponsesContextAdapter(),
             ),
         ),
         default_reasoning_codec=OpenAICompatibleReasoningCodec(),
@@ -2435,6 +2440,13 @@ must be unique, the default must exist, and every mode must contain a
 tool search support also belong to the corresponding mode. Provider-wide
 parameter behavior, such as logprobs or prompt-cache retention, belongs to
 `ChatProviderCapabilities`.
+
+`context_adapter` is an explicit opt-in. In this example the remote provider
+implements OpenAI-compatible `POST /responses/input_tokens` and
+`POST /responses/compact` endpoints, so it can reuse
+`OpenAIResponsesContextAdapter`. A provider that only implements response
+generation omits it and keeps the provider-neutral token estimate and portable
+summary fallback.
 
 `Model.chat_completion("myprovider/model-name")` remains the frontend after the
 provider class is registered. A genuinely new protocol, such as Google

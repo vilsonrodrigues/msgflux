@@ -5,6 +5,7 @@ from typing import Any
 import msgspec
 
 from msgflux.models.chat_api import ChatAPIAdapter
+from msgflux.models.chat_context import ChatContextAdapter
 from msgflux.models.reasoning import ReasoningCodec
 
 
@@ -16,7 +17,7 @@ class ChatAPIModeCapabilities(msgspec.Struct, frozen=True, kw_only=True):
     reasoning_codec: ReasoningCodec | None = None
     reasoning_summary: bool = False
     encrypted_reasoning: bool = False
-    native_compaction: bool = False
+    context_adapter: ChatContextAdapter | None = None
     hosted_tool_search_model_families: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
@@ -28,6 +29,19 @@ class ChatAPIModeCapabilities(msgspec.Struct, frozen=True, kw_only=True):
             self.reasoning_codec, ReasoningCodec
         ):
             raise TypeError("`reasoning_codec` must be a ReasoningCodec instance")
+        if self.context_adapter is not None and not isinstance(
+            self.context_adapter, ChatContextAdapter
+        ):
+            raise TypeError("`context_adapter` must be a ChatContextAdapter instance")
+        if (
+            self.context_adapter is not None
+            and self.context_adapter.api_mode is not None
+            and self.context_adapter.api_mode != self.name
+        ):
+            raise ValueError(
+                f"Context adapter for {self.context_adapter.api_mode!r} cannot be "
+                f"attached to API mode {self.name!r}"
+            )
 
 
 class ChatProviderCapabilities(msgspec.Struct, frozen=True, kw_only=True):

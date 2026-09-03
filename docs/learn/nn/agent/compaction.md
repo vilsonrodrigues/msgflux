@@ -94,6 +94,9 @@ automatic compaction remains disabled: unknown does not mean unlimited.
 
 Models own token counting. OpenAI Responses uses the provider input-token count
 endpoint; models without an exact counter use msgFlux's conservative heuristic.
+Compatible providers can opt into the same server-side behavior by attaching an
+`OpenAIResponsesContextAdapter` to the corresponding API mode. Merely supporting
+Responses generation does not enable native context operations.
 
 ## Portable And Provider Views
 

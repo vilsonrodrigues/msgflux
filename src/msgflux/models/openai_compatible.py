@@ -28,6 +28,7 @@ from msgflux.models.chat_capabilities import (
     ChatProviderCapabilities,
 )
 from msgflux.models.chat_transport import HTTPChatTransport
+from msgflux.models.compaction import ContextTokenEstimate, ModelCompaction
 from msgflux.models.profiles import get_model_profile
 from msgflux.models.reasoning import (
     OpenAICompatibleReasoningCodec,
@@ -221,7 +222,97 @@ class OpenAICompatibleChatCompletion(OpenAICompatibleModel, ChatCompletionModel)
         )
 
     def supports_native_compaction(self) -> bool:
-        return self.api_mode_capabilities.native_compaction
+        return self.api_mode_capabilities.context_adapter is not None
+
+    def count_context_tokens(
+        self,
+        messages: ChatMessages | list[Mapping[str, Any]],
+        *,
+        system_prompt: str | None = None,
+        tool_catalog: ToolCatalogView | None = None,
+    ) -> ContextTokenEstimate:
+        adapter = self.api_mode_capabilities.context_adapter
+        if adapter is None:
+            return super().count_context_tokens(
+                messages,
+                system_prompt=system_prompt,
+                tool_catalog=tool_catalog,
+            )
+        request = adapter.prepare_token_count(
+            self,
+            messages,
+            system_prompt=system_prompt,
+            tool_catalog=tool_catalog,
+        )
+        payload = self.chat_transport.create(self, request)
+        return adapter.decode_token_count(self, payload)
+
+    async def acount_context_tokens(
+        self,
+        messages: ChatMessages | list[Mapping[str, Any]],
+        *,
+        system_prompt: str | None = None,
+        tool_catalog: ToolCatalogView | None = None,
+    ) -> ContextTokenEstimate:
+        adapter = self.api_mode_capabilities.context_adapter
+        if adapter is None:
+            return await super().acount_context_tokens(
+                messages,
+                system_prompt=system_prompt,
+                tool_catalog=tool_catalog,
+            )
+        request = adapter.prepare_token_count(
+            self,
+            messages,
+            system_prompt=system_prompt,
+            tool_catalog=tool_catalog,
+        )
+        payload = await self.chat_transport.acreate(self, request)
+        return adapter.decode_token_count(self, payload)
+
+    def compact_context(
+        self,
+        messages: ChatMessages | list[Mapping[str, Any]],
+        *,
+        system_prompt: str | None = None,
+        native: bool = True,
+    ) -> ModelCompaction:
+        adapter = self.api_mode_capabilities.context_adapter
+        if adapter is None or not native:
+            return super().compact_context(
+                messages,
+                system_prompt=system_prompt,
+                native=False,
+            )
+        request = adapter.prepare_compaction(
+            self,
+            messages,
+            system_prompt=system_prompt,
+        )
+        payload = self.chat_transport.create(self, request)
+        return adapter.decode_compaction(self, payload)
+
+    async def acompact_context(
+        self,
+        messages: ChatMessages | list[Mapping[str, Any]],
+        *,
+        system_prompt: str | None = None,
+        native: bool = True,
+    ) -> ModelCompaction:
+        adapter = self.api_mode_capabilities.context_adapter
+        if adapter is None or not native:
+            return await super().acompact_context(
+                messages,
+                system_prompt=system_prompt,
+                native=False,
+            )
+        request = adapter.prepare_compaction(
+            self,
+            messages,
+            system_prompt=system_prompt,
+        )
+        payload = await self.chat_transport.acreate(self, request)
+        return adapter.decode_compaction(self, payload)
 
     @property
     def supported_api_modes(self) -> tuple[str, ...]:
