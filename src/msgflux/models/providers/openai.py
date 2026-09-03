@@ -6,7 +6,15 @@ import msgflux.nn.functional as F
 from msgflux.chat_messages import ChatMessages
 from msgflux.core.dotdict import dotdict
 from msgflux.models.cache import generate_cache_key
+from msgflux.models.chat_capabilities import (
+    ChatAPIModeCapabilities,
+    ChatProviderCapabilities,
+)
 from msgflux.models.compaction import ContextTokenEstimate, ModelCompaction
+from msgflux.models.openai_compatible import (
+    OpenAIChatCompletionsAPI,
+    OpenAIResponsesAPI,
+)
 from msgflux.models.openai_compatible import (
     OpenAICompatibleChatCompletion as _OpenAICompatibleChatCompletion,
 )
@@ -36,22 +44,34 @@ from msgflux.utils.encode import encode_data_to_bytes
 class OpenAIChatCompletion(_OpenAICompatibleChatCompletion):
     """OpenAI Chat Completions provider."""
 
-    hosted_tool_search_model_families = (
-        "gpt-5.6",
-        "gpt-5.6-sol",
-        "gpt-5.6-terra",
-        "gpt-5.6-luna",
-    )
     provider = "openai"
-    default_api_mode = "responses"
-    default_reasoning_codec = OpenAIReasoningCodec()
-    supported_api_modes = ("responses", "chat_completions")
-    reasoning_codecs = {"responses": OpenAIResponsesReasoningCodec()}
-    supports_init_logprobs = True
-    supports_prompt_cache_retention = True
-    uses_max_completion_tokens = True
-    responses_supports_reasoning_summary = True
-    responses_supports_encrypted_reasoning = True
+    capabilities = ChatProviderCapabilities(
+        default_api_mode="responses",
+        api_modes=(
+            ChatAPIModeCapabilities(
+                name="responses",
+                adapter=OpenAIResponsesAPI(),
+                reasoning_codec=OpenAIResponsesReasoningCodec(),
+                reasoning_summary=True,
+                encrypted_reasoning=True,
+                native_compaction=True,
+                hosted_tool_search_model_families=(
+                    "gpt-5.6",
+                    "gpt-5.6-sol",
+                    "gpt-5.6-terra",
+                    "gpt-5.6-luna",
+                ),
+            ),
+            ChatAPIModeCapabilities(
+                name="chat_completions",
+                adapter=OpenAIChatCompletionsAPI(),
+            ),
+        ),
+        default_reasoning_codec=OpenAIReasoningCodec(),
+        init_logprobs=True,
+        prompt_cache_retention=True,
+        uses_max_completion_tokens=True,
+    )
 
     def _native_sdk_client(self, *, async_client: bool = False):
         attribute = "_native_aclient" if async_client else "_native_client"
@@ -74,9 +94,6 @@ class OpenAIChatCompletion(_OpenAICompatibleChatCompletion):
         if client is not None:
             await client.close()
             self._native_aclient = None
-
-    def supports_native_compaction(self) -> bool:
-        return self.api_mode == "responses"
 
     def _responses_compaction_input(
         self,

@@ -345,6 +345,10 @@ The design line is:
 - `ChatTransport` sends the prepared request; it does not interpret messages
   or provider responses
 - `ChatCredentialResolver` resolves authentication immediately before sending
+- `ChatProviderCapabilities` validates provider-wide parameter behavior and
+  the declared API modes
+- `ChatAPIModeCapabilities` binds each mode to its adapter, reasoning codec,
+  compaction support, and hosted-tool behavior
 - `ModelProviderHTTPError` preserves status, provider description, categorical
   error fields, and request ID without logging request headers
 - `OpenAIChatCompletion` declares OpenAI modes and codecs
@@ -359,6 +363,7 @@ These modules keep those concerns localized:
 
 - common lifecycle behavior stays in `models/openai_compatible.py`
 - wire-protocol selection stays behind `ChatAPIAdapter`
+- provider and mode capabilities stay in `models/chat_capabilities.py`
 - direct JSON/SSE transport stays in `models/chat_transport.py`
 - SDK-backed non-chat initialization stays in `models/openai_sdk.py`
 - OpenAI-only capabilities stay in `models/providers/openai.py`

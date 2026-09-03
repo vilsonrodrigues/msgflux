@@ -2297,7 +2297,11 @@ Completions field for replaying reasoning. A provider with a documented
 convention declares that behavior in its codec:
 
 ```python
-from msgflux.models.openai_compatible import OpenAICompatibleChatCompletion
+from msgflux.models import ChatAPIModeCapabilities, ChatProviderCapabilities
+from msgflux.models.openai_compatible import (
+    OpenAIChatCompletionsAPI,
+    OpenAICompatibleChatCompletion,
+)
 from msgflux.models.reasoning import OpenAICompatibleReasoningCodec
 from msgflux.models.registry import register_model
 
@@ -2319,7 +2323,16 @@ class MyProviderChatCompletion(
     _BaseMyProvider,
     OpenAICompatibleChatCompletion,
 ):
-    default_reasoning_codec = MyProviderReasoningCodec()
+    capabilities = ChatProviderCapabilities(
+        default_api_mode="chat_completions",
+        api_modes=(
+            ChatAPIModeCapabilities(
+                name="chat_completions",
+                adapter=OpenAIChatCompletionsAPI(),
+            ),
+        ),
+        default_reasoning_codec=MyProviderReasoningCodec(),
+    )
 ```
 
 The codec runs inside the Model for normal responses, streaming deltas, and
@@ -2332,8 +2345,10 @@ values under `provider_state`; reconstruction only occurs for a matching
 built-in examples of both patterns.
 
 You can also pass a `ReasoningCodec` instance through `reasoning_codec=` when
-constructing a model. Declaring `default_reasoning_codec` on the provider is
-preferred when the wire convention is stable for every model on that API.
+constructing a model. Declare `default_reasoning_codec` in the provider's
+`ChatProviderCapabilities` when the wire convention is stable across its API
+modes. Put a codec on one `ChatAPIModeCapabilities` when only that protocol
+supports the convention.
 
 ### 18.4 **Using a different transport**
 
@@ -2375,6 +2390,8 @@ implements the Responses protocol:
 ```python
 from os import getenv
 
+from msgflux.models import ChatAPIModeCapabilities, ChatProviderCapabilities
+from msgflux.models.reasoning import OpenAICompatibleReasoningCodec
 from msgflux.models.openai_compatible import (
     OpenAICompatibleChatCompletion,
     OpenAIResponsesAPI,
@@ -2400,16 +2417,29 @@ class MyProviderChatCompletion(
     _BaseMyProvider,
     OpenAICompatibleChatCompletion,
 ):
-    default_api_mode = "responses"
-    supported_api_modes = ("responses",)
-    api_adapters = {"responses": OpenAIResponsesAPI()}
+    capabilities = ChatProviderCapabilities(
+        default_api_mode="responses",
+        api_modes=(
+            ChatAPIModeCapabilities(
+                name="responses",
+                adapter=OpenAIResponsesAPI(),
+            ),
+        ),
+        default_reasoning_codec=OpenAICompatibleReasoningCodec(),
+    )
 ```
 
-Construction fails immediately if a provider lists a supported mode without a
-matching adapter. `Model.chat_completion("myprovider/model-name")` remains the
-frontend after the provider class is registered. A genuinely new protocol,
-such as Google Interactions, implements the same `ChatAPIAdapter` methods
-instead of adding another conditional branch to the shared model lifecycle.
+The capability declaration is validated when the class is imported: mode names
+must be unique, the default must exist, and every mode must contain a
+`ChatAPIAdapter`. Protocol-specific reasoning, native compaction, and hosted
+tool search support also belong to the corresponding mode. Provider-wide
+parameter behavior, such as logprobs or prompt-cache retention, belongs to
+`ChatProviderCapabilities`.
+
+`Model.chat_completion("myprovider/model-name")` remains the frontend after the
+provider class is registered. A genuinely new protocol, such as Google
+Interactions, implements the same `ChatAPIAdapter` methods instead of adding
+another conditional branch to the shared model lifecycle.
 
 ### 18.6 **Selecting a transport and credentials**
 

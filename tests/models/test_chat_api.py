@@ -1,7 +1,9 @@
 from unittest.mock import patch
 
+import msgspec
 import pytest
 
+from msgflux.models import ChatAPIModeCapabilities, ChatProviderCapabilities
 from msgflux.models.chat_api import (
     ChatAPIAdapter,
     ChatTransport,
@@ -9,6 +11,7 @@ from msgflux.models.chat_api import (
     ResolvedChatCredentials,
 )
 from msgflux.models.openai_compatible import OpenAICompatibleChatCompletion
+from msgflux.models.reasoning import OpenAICompatibleReasoningCodec
 
 
 class RecordingAPI(ChatAPIAdapter):
@@ -63,9 +66,11 @@ def _build_recording_model():
 
     class RecordingChatCompletion(OpenAICompatibleChatCompletion):
         provider = "recording"
-        default_api_mode = "recording"
-        supported_api_modes = ("recording",)
-        api_adapters = {"recording": adapter}
+        capabilities = ChatProviderCapabilities(
+            default_api_mode="recording",
+            api_modes=(ChatAPIModeCapabilities(name="recording", adapter=adapter),),
+            default_reasoning_codec=OpenAICompatibleReasoningCodec(),
+        )
         chat_transport = transport
 
         def _get_api_key(self):
@@ -132,12 +137,54 @@ def test_chat_runtime_does_not_load_or_create_openai_sdk_clients():
     assert not hasattr(model, "aclient")
 
 
-def test_declared_api_mode_requires_an_adapter():
-    class InvalidChatCompletion(OpenAICompatibleChatCompletion):
-        default_api_mode = "missing"
-        supported_api_modes = ("missing",)
+def test_chat_runtime_strategies_are_not_serialized():
+    model, _ = _build_recording_model()
 
-    with pytest.raises(ValueError, match="without a ChatAPIAdapter"):
+    state = model.serialize()["state"]
+
+    assert "api_adapter" not in state
+    assert "api_mode_capabilities" not in state
+    assert "reasoning_codec" not in state
+    msgspec.json.encode(model.serialize())
+
+
+def test_chat_capabilities_require_a_declared_default_mode():
+    with pytest.raises(ValueError, match="Default API mode 'missing'"):
+        ChatProviderCapabilities(
+            default_api_mode="missing",
+            api_modes=(
+                ChatAPIModeCapabilities(
+                    name="recording",
+                    adapter=RecordingAPI(),
+                ),
+            ),
+            default_reasoning_codec=OpenAICompatibleReasoningCodec(),
+        )
+
+
+def test_chat_capabilities_reject_duplicate_api_modes():
+    with pytest.raises(ValueError, match="API mode names must be unique"):
+        ChatProviderCapabilities(
+            default_api_mode="recording",
+            api_modes=(
+                ChatAPIModeCapabilities(
+                    name="recording",
+                    adapter=RecordingAPI(),
+                ),
+                ChatAPIModeCapabilities(
+                    name="recording",
+                    adapter=RecordingAPI(),
+                ),
+            ),
+            default_reasoning_codec=OpenAICompatibleReasoningCodec(),
+        )
+
+
+def test_chat_model_requires_typed_capabilities():
+    class InvalidChatCompletion(OpenAICompatibleChatCompletion):
+        capabilities = {"default_api_mode": "chat_completions"}
+
+    with pytest.raises(TypeError, match="ChatProviderCapabilities instance"):
         InvalidChatCompletion(model_id="test-model")
 
 

@@ -32,8 +32,10 @@ class _BaseOpenRouter:
 class OpenRouterChatCompletion(_BaseOpenRouter, OpenAICompatibleChatCompletion):
     """OpenRouter Chat Completion."""
 
-    default_reasoning_codec = OpenRouterReasoningCodec()
-    supports_reasoning_max_tokens = True
+    capabilities = OpenAICompatibleChatCompletion.capabilities.replace(
+        default_reasoning_codec=OpenRouterReasoningCodec(),
+        reasoning_max_tokens=True,
+    )
 
     def _adapt_params(self, params: Dict[str, Any]) -> Dict[str, Any]:
         extra_body = dict(params.get("extra_body") or {})

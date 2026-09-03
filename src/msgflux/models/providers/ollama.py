@@ -10,6 +10,10 @@ import httpx2
 from msgflux.chat_messages import ChatMessages
 from msgflux.core.dotdict import dotdict
 from msgflux.models.cache import ResponseCache
+from msgflux.models.chat_capabilities import (
+    ChatAPIModeCapabilities,
+    ChatProviderCapabilities,
+)
 from msgflux.models.openai_compatible import (
     OpenAIChatCompletionsAPI,
     OpenAICompatibleChatCompletion,
@@ -18,7 +22,10 @@ from msgflux.models.profiles import get_model_profile
 from msgflux.models.providers.openai import (
     OpenAITextEmbedder,
 )
-from msgflux.models.reasoning import OllamaReasoningCodec
+from msgflux.models.reasoning import (
+    OllamaReasoningCodec,
+    OpenAICompatibleReasoningCodec,
+)
 from msgflux.models.registry import register_model
 from msgflux.utils.tenacity import apply_retry, default_model_retry
 
@@ -60,13 +67,21 @@ class OllamaChatAPI(OpenAIChatCompletionsAPI):
 class OllamaChatCompletion(_BaseOllama, OpenAICompatibleChatCompletion):
     """Ollama chat model with native and OpenAI-compatible transports."""
 
-    default_api_mode = "ollama_chat"
-    supported_api_modes = ("ollama_chat", "chat_completions")
-    api_adapters = {
-        **OpenAICompatibleChatCompletion.api_adapters,
-        "ollama_chat": OllamaChatAPI(),
-    }
-    reasoning_codecs = {"ollama_chat": OllamaReasoningCodec()}
+    capabilities = ChatProviderCapabilities(
+        default_api_mode="ollama_chat",
+        api_modes=(
+            ChatAPIModeCapabilities(
+                name="ollama_chat",
+                adapter=OllamaChatAPI(),
+                reasoning_codec=OllamaReasoningCodec(),
+            ),
+            ChatAPIModeCapabilities(
+                name="chat_completions",
+                adapter=OpenAIChatCompletionsAPI(),
+            ),
+        ),
+        default_reasoning_codec=OpenAICompatibleReasoningCodec(),
+    )
 
     def _get_reasoning_effort_metadata(self) -> None:
         return None

@@ -1,8 +1,19 @@
 from os import getenv
 from typing import Any, Dict
 
-from msgflux.models.openai_compatible import OpenAICompatibleChatCompletion
-from msgflux.models.reasoning import TextResponsesReasoningCodec
+from msgflux.models.chat_capabilities import (
+    ChatAPIModeCapabilities,
+    ChatProviderCapabilities,
+)
+from msgflux.models.openai_compatible import (
+    OpenAIChatCompletionsAPI,
+    OpenAICompatibleChatCompletion,
+    OpenAIResponsesAPI,
+)
+from msgflux.models.reasoning import (
+    OpenAICompatibleReasoningCodec,
+    TextResponsesReasoningCodec,
+)
 from msgflux.models.registry import register_model
 
 
@@ -31,8 +42,21 @@ class _BaseGroq:
 class GroqChatCompletion(_BaseGroq, OpenAICompatibleChatCompletion):
     """Groq Chat Completion."""
 
-    supported_api_modes = ("chat_completions", "responses")
-    reasoning_codecs = {"responses": TextResponsesReasoningCodec()}
+    capabilities = ChatProviderCapabilities(
+        default_api_mode="chat_completions",
+        api_modes=(
+            ChatAPIModeCapabilities(
+                name="chat_completions",
+                adapter=OpenAIChatCompletionsAPI(),
+            ),
+            ChatAPIModeCapabilities(
+                name="responses",
+                adapter=OpenAIResponsesAPI(),
+                reasoning_codec=TextResponsesReasoningCodec(),
+            ),
+        ),
+        default_reasoning_codec=OpenAICompatibleReasoningCodec(),
+    )
 
     def _adapt_params(self, params: Dict[str, Any]) -> Dict[str, Any]:
         extra_body = dict(params.get("extra_body") or {})

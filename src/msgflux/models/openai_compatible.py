@@ -23,6 +23,10 @@ from msgflux.models.chat_api import (
     ChatTransport,
     PreparedChatRequest,
 )
+from msgflux.models.chat_capabilities import (
+    ChatAPIModeCapabilities,
+    ChatProviderCapabilities,
+)
 from msgflux.models.chat_transport import HTTPChatTransport
 from msgflux.models.profiles import get_model_profile
 from msgflux.models.reasoning import (
@@ -188,38 +192,40 @@ class OpenAICompatibleModel(BaseModel):
 class OpenAICompatibleChatCompletion(OpenAICompatibleModel, ChatCompletionModel):
     """Shared implementation for OpenAI-compatible Chat Completions APIs."""
 
-    hosted_tool_search_model_families: tuple[str, ...] = ()
-    default_api_mode = "chat_completions"
-    supported_api_modes = ("chat_completions",)
-    api_adapters: Mapping[str, ChatAPIAdapter] = {
-        "chat_completions": OpenAIChatCompletionsAPI(),
-        "responses": OpenAIResponsesAPI(),
-    }
-    api_mode_aliases: Mapping[str, str] = {}
+    capabilities = ChatProviderCapabilities(
+        default_api_mode="chat_completions",
+        api_modes=(
+            ChatAPIModeCapabilities(
+                name="chat_completions",
+                adapter=OpenAIChatCompletionsAPI(),
+            ),
+        ),
+        default_reasoning_codec=OpenAICompatibleReasoningCodec(),
+    )
     chat_transport: ChatTransport | type[ChatTransport] = HTTPChatTransport
     credential_resolver: ChatCredentialResolver = BearerTokenCredentialResolver()
-    reasoning_codecs: Mapping[str, ReasoningCodec] = {}
-    default_reasoning_codec: ReasoningCodec = OpenAICompatibleReasoningCodec()
     usage_codec: UsageCodec = default_usage_codec
-    supports_init_logprobs = False
-    supports_prompt_cache_retention = False
-    supports_reasoning_max_tokens = False
-    uses_max_completion_tokens = False
-    responses_supports_reasoning_summary = False
-    responses_supports_encrypted_reasoning = False
 
     def _initialize(self):
         self._initialize_runtime()
 
     def supports_native_tool_search(self) -> bool:
         """Return whether this model/API pair supports hosted tool search."""
-        if self.api_mode != "responses":
+        families = self.api_mode_capabilities.hosted_tool_search_model_families
+        if not families:
             return False
         model_id = self.model_id.rsplit("/", maxsplit=1)[-1]
         return any(
             model_id == family or model_id.startswith(f"{family}-20")
-            for family in self.hosted_tool_search_model_families
+            for family in families
         )
+
+    def supports_native_compaction(self) -> bool:
+        return self.api_mode_capabilities.native_compaction
+
+    @property
+    def supported_api_modes(self) -> tuple[str, ...]:
+        return self.capabilities.supported_api_modes
 
     @staticmethod
     def _merge_extra_body(
@@ -388,6 +394,10 @@ class OpenAICompatibleChatCompletion(OpenAICompatibleModel, ChatCompletionModel)
             provider API key as a Bearer token.
         """
         super().__init__()
+        if not isinstance(self.capabilities, ChatProviderCapabilities):
+            raise TypeError(
+                "`capabilities` must be a ChatProviderCapabilities instance"
+            )
         selected_transport = chat_transport or self.chat_transport
         self.chat_transport = (
             selected_transport()
@@ -404,30 +414,25 @@ class OpenAICompatibleChatCompletion(OpenAICompatibleModel, ChatCompletionModel)
                     "`credential_resolver` must be a ChatCredentialResolver instance"
                 )
             self.credential_resolver = credential_resolver
-        selected_api_mode = api_mode or self.default_api_mode
-        if selected_api_mode not in self.supported_api_modes:
+        selected_api_mode = api_mode or self.capabilities.default_api_mode
+        if selected_api_mode not in self.capabilities.supported_api_modes:
             raise ValueError(
                 f"{self.__class__.__name__} does not support "
                 f"`api_mode={selected_api_mode!r}`; supported modes: "
-                f"{', '.join(self.supported_api_modes)}."
+                f"{', '.join(self.capabilities.supported_api_modes)}."
             )
         if reasoning_codec is not None and not isinstance(
             reasoning_codec, ReasoningCodec
         ):
             raise TypeError("`reasoning_codec` must be a ReasoningCodec instance")
         self.api_mode = selected_api_mode
-        adapter_mode = self.api_mode_aliases.get(selected_api_mode, selected_api_mode)
-        try:
-            self.api_adapter = self.api_adapters[adapter_mode]
-        except KeyError as exc:
-            raise ValueError(
-                f"{self.__class__.__name__} declares `api_mode="
-                f"{selected_api_mode!r}` without a ChatAPIAdapter."
-            ) from exc
+        self.api_mode_capabilities = self.capabilities.mode(selected_api_mode)
+        self.api_adapter = self.api_mode_capabilities.adapter
         self._uses_canonical_history = self.api_adapter.canonical_history
-        self.reasoning_codec = reasoning_codec or self.reasoning_codecs.get(
-            selected_api_mode,
-            self.default_reasoning_codec,
+        self.reasoning_codec = (
+            reasoning_codec
+            or self.api_mode_capabilities.reasoning_codec
+            or self.capabilities.default_reasoning_codec
         )
         if selected_api_mode == "responses":
             unsupported = [
@@ -461,9 +466,9 @@ class OpenAICompatibleChatCompletion(OpenAICompatibleModel, ChatCompletionModel)
             sampling_run_params["top_p"] = top_p
         if stop:
             sampling_run_params["stop"] = stop
-        if self.supports_init_logprobs and logprobs is not None:
+        if self.capabilities.init_logprobs and logprobs is not None:
             sampling_run_params["logprobs"] = logprobs
-        if self.supports_init_logprobs and top_logprobs is not None:
+        if self.capabilities.init_logprobs and top_logprobs is not None:
             sampling_run_params["top_logprobs"] = top_logprobs
         if verbosity:
             sampling_run_params["verbosity"] = verbosity
@@ -481,14 +486,17 @@ class OpenAICompatibleChatCompletion(OpenAICompatibleModel, ChatCompletionModel)
             sampling_run_params["audio"] = audio
         if reasoning_effort:
             sampling_run_params["reasoning_effort"] = reasoning_effort
-        if self.supports_reasoning_max_tokens and reasoning_max_tokens is not None:
+        if self.capabilities.reasoning_max_tokens and reasoning_max_tokens is not None:
             if reasoning_effort is not None:
                 raise ValueError(
                     "`reasoning_max_tokens` cannot be used together with "
                     "`reasoning_effort` for OpenRouter."
                 )
             sampling_run_params["reasoning_max_tokens"] = reasoning_max_tokens
-        if self.supports_prompt_cache_retention and prompt_cache_retention is not None:
+        if (
+            self.capabilities.prompt_cache_retention
+            and prompt_cache_retention is not None
+        ):
             sampling_run_params["prompt_cache_retention"] = prompt_cache_retention
         self.sampling_run_params = sampling_run_params
         self.enable_thinking = enable_thinking
@@ -503,7 +511,7 @@ class OpenAICompatibleChatCompletion(OpenAICompatibleModel, ChatCompletionModel)
 
     def _adapt_params(self, params: Dict[str, Any]) -> Dict[str, Any]:
         params.pop("provider_tools", None)
-        if self.uses_max_completion_tokens:
+        if self.capabilities.uses_max_completion_tokens:
             max_tokens = params.pop("max_tokens", None)
             if max_tokens is not None:
                 params["max_completion_tokens"] = max_tokens
@@ -2100,13 +2108,13 @@ class OpenAICompatibleChatCompletion(OpenAICompatibleModel, ChatCompletionModel)
         reasoning_effort = params.pop("reasoning_effort", None)
         if reasoning_effort is not None:
             reasoning = {"effort": reasoning_effort}
-            if self.responses_supports_reasoning_summary and (
+            if self.api_mode_capabilities.reasoning_summary and (
                 self.return_reasoning or self.reasoning_in_tool_call
             ):
                 reasoning["summary"] = "auto"
             params["reasoning"] = reasoning
             if (
-                self.responses_supports_encrypted_reasoning
+                self.api_mode_capabilities.encrypted_reasoning
                 and self.reasoning_in_tool_call
             ):
                 include = list(params.get("include") or [])

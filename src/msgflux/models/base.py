@@ -16,7 +16,12 @@ class BaseModel(BaseClient):
         "_native_aclient",
         "chat_transport",
         "credential_resolver",
+        "api_adapter",
+        "api_mode_capabilities",
+        "reasoning_codec",
         "_response_cache",
+        "__call__",
+        "acall",
     ]
     batch_support: bool = False  # Whether model supports batch processing
 
