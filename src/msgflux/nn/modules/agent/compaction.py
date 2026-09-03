@@ -9,6 +9,7 @@ from typing import Any, Mapping
 from msgflux._private.response_metadata import minimal_usage_metadata
 from msgflux.chat_messages import ChatMessages
 from msgflux.models.gateway import ModelGateway
+from msgflux.nn.extensions.compaction import CONTEXT_COMPACTION_CAPABILITY
 from msgflux.nn.hooks.events import BeforeCompaction
 from msgflux.nn.modules.agent.context import _require_lifecycle_payload
 from msgflux.runtime.abort import await_with_abort
@@ -30,8 +31,10 @@ class AgentCompactionMixin:
         vars: Mapping[str, Any],
         scope: ExecutionScope,
     ) -> bool:
-        if not isinstance(messages, ChatMessages) or not self.has_lifecycle_hooks(
-            "before_compaction"
+        if (
+            not isinstance(messages, ChatMessages)
+            or not self.has_extension_capability(CONTEXT_COMPACTION_CAPABILITY)
+            or not self.has_lifecycle_hooks("before_compaction")
         ):
             return False
         boundary = messages.latest_completed_turn_boundary()
@@ -119,8 +122,10 @@ class AgentCompactionMixin:
         vars: Mapping[str, Any],
         scope: ExecutionScope,
     ) -> bool:
-        if not isinstance(messages, ChatMessages) or not self.has_lifecycle_hooks(
-            "before_compaction"
+        if (
+            not isinstance(messages, ChatMessages)
+            or not self.has_extension_capability(CONTEXT_COMPACTION_CAPABILITY)
+            or not self.has_lifecycle_hooks("before_compaction")
         ):
             return False
         boundary = messages.latest_completed_turn_boundary()

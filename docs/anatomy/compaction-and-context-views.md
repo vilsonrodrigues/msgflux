@@ -10,7 +10,8 @@ Compaction crosses three layers, with one responsibility in each:
 - `Agent` coordinates the safe history boundary, lifecycle hook, checkpoint,
   and execution events.
 - `CompactionExtension` applies the default threshold policy through
-  `before_compaction`; applications may replace that policy.
+  `before_compaction` and explicitly enables the `context_compaction`
+  capability; applications may replace that policy.
 - `Model` owns token counting and creates the complete compacted context view.
   Provider endpoints and wire formats remain below this boundary.
 
@@ -68,6 +69,7 @@ or disables earlier items:
 {
     "type": "compaction",
     "item_id": "itm_01...",
+    "parent_compaction_id": "itm_previous...",  # omitted for the first one
     "reason": "threshold",
     "compacted_through_item_id": "itm_00...",
     "views": [
@@ -100,6 +102,10 @@ or disables earlier items:
 Each operation currently contains the single complete view returned by
 `Model.compact_context()` or `Model.acompact_context()`. A view is not a patch
 against an older summary.
+
+`parent_compaction_id` links successive projections. It is an audit and future
+ancestry reference only: materialization still selects the newest operation,
+and no mutable Scope head is introduced by compaction v1.
 
 `ChatMessages.add_compaction()` validates that the source item is a completed
 turn event, that at least one view exists, and that provider views declare both
@@ -150,7 +156,8 @@ canonical append-only timeline remains unchanged by materialization.
 
 ## Hook And Event Boundaries
 
-Before creating a view, the Agent sends `BeforeCompaction` through the
+Before creating a view, the Agent first requires an installed extension with
+the `context_compaction` capability, then sends `BeforeCompaction` through the
 `before_compaction` lifecycle hooks. Its payload contains:
 
 - canonical messages and runtime `scope`/`vars`;

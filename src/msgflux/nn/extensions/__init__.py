@@ -5,7 +5,11 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from msgflux.nn.extensions.base import AgentExtension, AgentExtensionHandle
-    from msgflux.nn.extensions.compaction import CompactionExtension, CompactionPolicy
+    from msgflux.nn.extensions.compaction import (
+        CONTEXT_COMPACTION_CAPABILITY,
+        CompactionExtension,
+        CompactionPolicy,
+    )
     from msgflux.nn.extensions.feedback import DefaultToolFeedbackExtension
     from msgflux.nn.extensions.prompt import (
         CurrentDateExtension,
@@ -31,6 +35,7 @@ __all__ = [
     "AgentExtensionHandle",
     "CompactionExtension",
     "CompactionPolicy",
+    "CONTEXT_COMPACTION_CAPABILITY",
     "BackgroundTasksExtension",
     "CurrentDateExtension",
     "FewShotExamplesExtension",
@@ -51,6 +56,10 @@ _LAZY_IMPORTS = {
     "AgentExtensionHandle": (
         "msgflux.nn.extensions.base",
         "AgentExtensionHandle",
+    ),
+    "CONTEXT_COMPACTION_CAPABILITY": (
+        "msgflux.nn.extensions.compaction",
+        "CONTEXT_COMPACTION_CAPABILITY",
     ),
     "CompactionExtension": (
         "msgflux.nn.extensions.compaction",

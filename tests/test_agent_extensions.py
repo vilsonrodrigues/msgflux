@@ -1,6 +1,7 @@
 import asyncio
 from dataclasses import replace
 
+import msgspec
 import pytest
 
 from msgflux.exceptions import AbortRequestedError
@@ -245,6 +246,75 @@ def test_compaction_extension_skips_when_threshold_is_not_reached():
     agent("New question", messages=_history_with_completed_turn())
 
     assert model.compaction_calls == []
+
+
+def test_compaction_policy_is_an_encodable_immutable_struct():
+    policy = CompactionPolicy(
+        trigger_ratio=0.75,
+        reserved_output_tokens=2048,
+        safety_margin_tokens=512,
+    )
+
+    assert msgspec.json.decode(msgspec.json.encode(policy)) == {
+        "trigger_ratio": 0.75,
+        "reserved_output_tokens": 2048,
+        "safety_margin_tokens": 512,
+        "context_capacity": None,
+    }
+    with pytest.raises(AttributeError):
+        policy.trigger_ratio = 0.5
+
+
+def test_compaction_hook_without_capability_does_not_enable_compaction():
+    model = _CompactingModel()
+
+    def force_compaction(ctx):
+        return replace(ctx, action="compact")
+
+    agent = Agent(
+        name="agent",
+        model=model,
+        hooks=[Hook(event="before_compaction", handler=force_compaction)],
+    )
+
+    agent("New question", messages=_history_with_completed_turn())
+
+    assert model.compaction_calls == []
+
+
+def test_extension_capability_follows_active_run_snapshot():
+    agent = Agent(name="agent", model=_RecordingModel())
+    handle = agent.register_extension("compaction", CompactionExtension())
+
+    with agent._extension_run_snapshot():
+        handle.remove()
+        assert agent.has_extension_capability("context_compaction") is True
+
+    assert agent.has_extension_capability("context_compaction") is False
+
+
+@pytest.mark.parametrize(
+    ("capabilities", "error", "match"),
+    [
+        ("context_compaction", TypeError, "not a single string"),
+        (("duplicate", "duplicate"), ValueError, "duplicate capabilities"),
+        (("",), ValueError, "non-empty strings"),
+    ],
+)
+def test_extension_capabilities_are_validated(capabilities, error, match):
+    class InvalidCapabilitiesExtension(AgentExtension):
+        def __init__(self):
+            super().__init__("invalid")
+
+        def capabilities(self):
+            return capabilities
+
+    agent = Agent(name="agent", model=_RecordingModel())
+
+    with pytest.raises(error, match=match):
+        agent.register_extension("invalid", InvalidCapabilitiesExtension())
+
+    assert not agent.has_extension("invalid")
 
 
 def test_builtin_tool_feedback_extension_resolves_direct_output():

@@ -54,6 +54,7 @@ class AgentLifecycleMixin:
         self.extensions = ModuleDict()
         self._extension_hook_handles: dict[str, list[Any]] = {}
         self._extension_library_handles: dict[str, Any] = {}
+        self._extension_capabilities: dict[str, frozenset[str]] = {}
         self._extension_refcounts: dict[str, int] = {}
         self._pending_extensions: dict[str, AgentExtension] = {}
         self._extension_async_cleanup_waiters: dict[str, Any] = {}
@@ -79,6 +80,10 @@ class AgentLifecycleMixin:
         self._validate_extension_registration(name, extension)
         extension_hooks = tuple(extension.hooks())
         extension_tools = tuple(extension.tools())
+        extension_capabilities = self._validate_extension_capabilities(
+            name,
+            extension.capabilities(),
+        )
         hook_handles = []
         library_handle = None
         try:
@@ -92,6 +97,7 @@ class AgentLifecycleMixin:
                 hook_handles.append(self._register_extension_hook(name, hook))
             self.extensions[name] = extension
             self._extension_hook_handles[name] = hook_handles
+            self._extension_capabilities[name] = extension_capabilities
             if library_handle is not None:
                 self._extension_library_handles[name] = library_handle
             self._extension_refcounts[name] = 0
@@ -101,12 +107,41 @@ class AgentLifecycleMixin:
             extension._unbind_agent()
             if name in self.extensions:
                 del self.extensions[name]
+            self._extension_capabilities.pop(name, None)
             for handle in reversed(hook_handles):
                 handle.remove()
             if library_handle is not None:
                 library_handle.remove()
             raise
         return AgentExtensionHandle(self, name)
+
+    @staticmethod
+    def _validate_extension_capabilities(
+        extension_name: str,
+        capabilities: Any,
+    ) -> frozenset[str]:
+        if isinstance(capabilities, (str, bytes)):
+            raise TypeError(
+                f"Extension `{extension_name}` capabilities must be an iterable "
+                "of names, not a single string"
+            )
+        try:
+            values = tuple(capabilities)
+        except TypeError as error:
+            raise TypeError(
+                f"Extension `{extension_name}` capabilities must be iterable"
+            ) from error
+        for capability in values:
+            if not isinstance(capability, str) or not capability.strip():
+                raise ValueError(
+                    f"Extension `{extension_name}` capability names must be "
+                    "non-empty strings"
+                )
+        if len(values) != len(set(values)):
+            raise ValueError(
+                f"Extension `{extension_name}` declares duplicate capabilities"
+            )
+        return frozenset(values)
 
     def _validate_extension_registration(
         self,
@@ -136,6 +171,16 @@ class AgentLifecycleMixin:
     def has_extension(self, name: str) -> bool:
         """Return whether an extension is enabled for new runs."""
         return name in self.extensions
+
+    def has_extension_capability(self, capability: str) -> bool:
+        """Return whether the current run exposes an extension capability."""
+        if not isinstance(capability, str) or not capability.strip():
+            raise ValueError("`capability` must be a non-empty string")
+        snapshot = _get_extension_snapshot(self)
+        names = snapshot if snapshot is not None else frozenset(self.extensions)
+        return any(
+            capability in self._extension_capabilities.get(name, ()) for name in names
+        )
 
     def remove_extension(self, name: str) -> None:
         """Disable an extension for new runs and remove it when no run uses it."""
@@ -180,6 +225,7 @@ class AgentLifecycleMixin:
         library_handle = self._extension_library_handles.pop(name, None)
         if library_handle is not None:
             library_handle.remove()
+        self._extension_capabilities.pop(name, None)
 
     def _cleanup_extension(self, name: str) -> None:
         extension = self._pending_extensions.pop(name, None)

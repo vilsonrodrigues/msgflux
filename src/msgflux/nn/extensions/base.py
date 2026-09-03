@@ -101,6 +101,10 @@ class AgentExtension(Module):
         """Return tools contributed by this extension."""
         return ()
 
+    def capabilities(self) -> Iterable[str]:
+        """Return stable runtime capabilities enabled by this extension."""
+        return ()
+
     def on_register(self, agent: Agent) -> None:
         """Run synchronous local setup after all contributions are installed."""
 

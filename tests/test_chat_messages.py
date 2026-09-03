@@ -392,12 +392,12 @@ def test_compaction_materializes_portable_view_and_preserves_canonical_history()
 def test_newest_compaction_view_wins_without_stacking_summaries():
     chat = ChatMessages()
     first_boundary = _completed_turn(chat, "first", "one")
-    chat.add_compaction(
+    first_operation = chat.add_compaction(
         compacted_through_item_id=first_boundary,
         views=[{"format": "messages", "items": [{"role": "system", "content": "S1"}]}],
     )
     second_boundary = _completed_turn(chat, "second", "two")
-    chat.add_compaction(
+    second_operation = chat.add_compaction(
         compacted_through_item_id=second_boundary,
         views=[{"format": "messages", "items": [{"role": "system", "content": "S2"}]}],
     )
@@ -408,6 +408,15 @@ def test_newest_compaction_view_wins_without_stacking_summaries():
         {"role": "system", "content": "S2"},
         {"role": "user", "content": "third"},
     ]
+    assert "parent_compaction_id" not in first_operation
+    assert second_operation["parent_compaction_id"] == first_operation["item_id"]
+
+    restored = ChatMessages()
+    restored._hydrate_state(chat._to_state())
+    assert (
+        restored.latest_compaction()["parent_compaction_id"]
+        == first_operation["item_id"]
+    )
 
 
 def test_compaction_prefers_exact_provider_view_and_keeps_wire_item_opaque():

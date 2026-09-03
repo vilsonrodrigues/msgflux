@@ -184,6 +184,47 @@ agent = nn.Agent(
 See [Conversation Compaction](compaction.md) for threshold configuration,
 portable versus provider views, replay behavior, and execution events.
 
+Unlike observation or transformation hooks, compaction also declares the
+`context_compaction` runtime capability. Capabilities explicitly activate an
+Agent coordination path; a hook with a matching event name alone cannot turn
+that path on. Custom extensions can declare it with:
+
+```python
+from dataclasses import replace
+
+import msgflux.nn as nn
+from msgflux.nn.hooks import BeforeCompaction, Hook
+
+
+class CustomCompactionExtension(nn.AgentExtension):
+    def __init__(self):
+        super().__init__("custom_compaction")
+
+    def capabilities(self):
+        return (nn.CONTEXT_COMPACTION_CAPABILITY,)
+
+    def decide(self, ctx: BeforeCompaction):
+        if ctx.context_capacity is None:
+            return replace(ctx, action="skip")
+        trigger = int(ctx.context_capacity * 0.7)
+        return replace(
+            ctx,
+            trigger_tokens=trigger,
+            action=(
+                "compact"
+                if ctx.estimated_input_tokens >= trigger
+                else "skip"
+            ),
+        )
+
+    def hooks(self):
+        return (Hook(event="before_compaction", handler=self.decide),)
+```
+
+Capability names are validated at registration and remain visible to runs that
+already captured the extension snapshot, even if the extension is concurrently
+removed for newer runs.
+
 ## Tool Feedback Extensions
 
 After the ToolLibrary returns canonical outcomes, the Agent runs

@@ -121,6 +121,10 @@ old messages inactive. The operation records:
 - one complete model-visible view;
 - provider, model, API mode, token estimate, and compaction usage metadata.
 
+From the second operation onward, `parent_compaction_id` points to the previous
+compaction operation. This records projection ancestry without duplicating
+messages or changing the active thread head.
+
 For a request, msgFlux materializes the newest compatible view and appends only
 timeline items after that operation's boundary. Older compactions remain in
 canonical history for audit and forks, but their views are not stacked into the
@@ -144,10 +148,15 @@ event contract.
 
 ## Customize The Decision
 
-`CompactionExtension` implements the `before_compaction` lifecycle hook. An
-application can replace it with an extension or hook that returns a modified
-`BeforeCompaction`, for example to skip compaction for a particular tenant.
-The Model still owns token counting and creation of the compacted view; the
-hook controls only the decision and threshold metadata.
+`CompactionExtension` explicitly enables the `context_compaction` capability
+and implements the `before_compaction` lifecycle hook. Additional hooks may
+modify its `BeforeCompaction` decision sequentially, for example to skip
+compaction for a particular tenant.
+
+A standalone hook does not enable compacting by accident. A replacement
+extension must return `nn.CONTEXT_COMPACTION_CAPABILITY` from its
+`capabilities()` method and contribute a `before_compaction` hook. The Model
+still owns token counting and creation of the compacted view; hooks control only
+the decision and threshold metadata.
 
 See [Hooks](hooks.md) for lifecycle-hook registration and replacement rules.

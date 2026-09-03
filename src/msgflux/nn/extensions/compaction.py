@@ -2,16 +2,23 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import replace
+
+import msgspec
 
 from msgflux.nn.extensions.base import AgentExtension
 from msgflux.nn.hooks import BeforeCompaction, Hook
 
-__all__ = ["CompactionExtension", "CompactionPolicy"]
+CONTEXT_COMPACTION_CAPABILITY = "context_compaction"
+
+__all__ = [
+    "CompactionExtension",
+    "CompactionPolicy",
+    "CONTEXT_COMPACTION_CAPABILITY",
+]
 
 
-@dataclass(frozen=True, kw_only=True)
-class CompactionPolicy:
+class CompactionPolicy(msgspec.Struct, frozen=True, kw_only=True):
     """Threshold policy used by :class:`CompactionExtension`."""
 
     trigger_ratio: float = 0.8
@@ -41,6 +48,9 @@ class CompactionExtension(AgentExtension):
 
     def hooks(self):
         return (Hook(event="before_compaction", handler=self._decide),)
+
+    def capabilities(self):
+        return (CONTEXT_COMPACTION_CAPABILITY,)
 
     def _decide(self, ctx: BeforeCompaction) -> BeforeCompaction:
         capacity = self.policy.context_capacity or ctx.context_capacity

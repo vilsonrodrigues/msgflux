@@ -376,6 +376,7 @@ class ChatMessages:
         if not normalized_views:
             raise ValueError("Compaction requires at least one complete view")
 
+        previous = self.latest_compaction()
         operation = {
             "type": "compaction",
             "reason": reason,
@@ -384,6 +385,8 @@ class ChatMessages:
             "metadata": self._safe_copy(dict(metadata or {})),
             "timestamp": utc_now_isoformat(),
         }
+        if previous is not None and isinstance(previous.get("item_id"), str):
+            operation["parent_compaction_id"] = previous["item_id"]
         self.append(operation)
         return deepcopy(self._items[-1])
 
