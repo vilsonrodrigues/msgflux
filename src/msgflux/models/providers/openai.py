@@ -6,6 +6,7 @@ import msgflux.nn.functional as F
 from msgflux.chat_messages import ChatMessages
 from msgflux.core.dotdict import dotdict
 from msgflux.models.cache import generate_cache_key
+from msgflux.models.chat_api import PreparedChatRequest
 from msgflux.models.chat_capabilities import (
     ChatAPIModeCapabilities,
     ChatProviderCapabilities,
@@ -18,10 +19,7 @@ from msgflux.models.openai_compatible import (
 from msgflux.models.openai_compatible import (
     OpenAICompatibleChatCompletion as _OpenAICompatibleChatCompletion,
 )
-from msgflux.models.openai_sdk import (
-    OpenAISDKModel,
-    create_openai_sdk_client,
-)
+from msgflux.models.openai_sdk import OpenAISDKModel
 from msgflux.models.reasoning import (
     OpenAIReasoningCodec,
     OpenAIResponsesReasoningCodec,
@@ -73,28 +71,6 @@ class OpenAIChatCompletion(_OpenAICompatibleChatCompletion):
         uses_max_completion_tokens=True,
     )
 
-    def _native_sdk_client(self, *, async_client: bool = False):
-        attribute = "_native_aclient" if async_client else "_native_client"
-        client = getattr(self, attribute, None)
-        if client is None:
-            client = create_openai_sdk_client(self, async_client=async_client)
-            setattr(self, attribute, client)
-        return client
-
-    def close(self) -> None:
-        super().close()
-        client = getattr(self, "_native_client", None)
-        if client is not None:
-            client.close()
-            self._native_client = None
-
-    async def aclose(self) -> None:
-        await super().aclose()
-        client = getattr(self, "_native_aclient", None)
-        if client is not None:
-            await client.close()
-            self._native_aclient = None
-
     def _responses_compaction_input(
         self,
         messages: Union[str, List[Dict[str, Any]], ChatMessages],
@@ -107,6 +83,17 @@ class OpenAIChatCompletion(_OpenAICompatibleChatCompletion):
             provider=self.provider,
             api_mode=self.api_mode,
             reasoning_codec=self.reasoning_codec,
+        )
+
+    @staticmethod
+    def _responses_operation(
+        endpoint: str,
+        params: dict[str, Any],
+    ) -> PreparedChatRequest:
+        return PreparedChatRequest(
+            api="responses",
+            endpoint=endpoint,
+            params=params,
         )
 
     def count_context_tokens(
@@ -129,8 +116,8 @@ class OpenAIChatCompletion(_OpenAICompatibleChatCompletion):
         }
         if tool_catalog and self._catalog_tool_entries(tool_catalog):
             params["tools"] = self._tools_to_responses(tool_catalog)
-        client = self._native_sdk_client()
-        result = client.responses.input_tokens.count(**params)
+        request = self._responses_operation("/responses/input_tokens", params)
+        result = self.chat_transport.create(self, request)
         return ContextTokenEstimate(
             input_tokens=int(result.input_tokens),
             source="provider",
@@ -156,8 +143,8 @@ class OpenAIChatCompletion(_OpenAICompatibleChatCompletion):
         }
         if tool_catalog and self._catalog_tool_entries(tool_catalog):
             params["tools"] = self._tools_to_responses(tool_catalog)
-        client = self._native_sdk_client(async_client=True)
-        result = await client.responses.input_tokens.count(**params)
+        request = self._responses_operation("/responses/input_tokens", params)
+        result = await self.chat_transport.acreate(self, request)
         return ContextTokenEstimate(
             input_tokens=int(result.input_tokens),
             source="provider",
@@ -176,12 +163,15 @@ class OpenAIChatCompletion(_OpenAICompatibleChatCompletion):
                 system_prompt=system_prompt,
                 native=False,
             )
-        client = self._native_sdk_client()
-        output = client.responses.compact(
-            model=self.model_id,
-            input=self._responses_compaction_input(messages),
-            instructions=system_prompt,
+        request = self._responses_operation(
+            "/responses/compact",
+            {
+                "model": self.model_id,
+                "input": self._responses_compaction_input(messages),
+                "instructions": system_prompt,
+            },
         )
+        output = self.chat_transport.create(self, request)
         return self._native_model_compaction(output)
 
     async def acompact_context(
@@ -197,12 +187,15 @@ class OpenAIChatCompletion(_OpenAICompatibleChatCompletion):
                 system_prompt=system_prompt,
                 native=False,
             )
-        client = self._native_sdk_client(async_client=True)
-        output = await client.responses.compact(
-            model=self.model_id,
-            input=self._responses_compaction_input(messages),
-            instructions=system_prompt,
+        request = self._responses_operation(
+            "/responses/compact",
+            {
+                "model": self.model_id,
+                "input": self._responses_compaction_input(messages),
+                "instructions": system_prompt,
+            },
         )
+        output = await self.chat_transport.acreate(self, request)
         return self._native_model_compaction(output)
 
     def _native_model_compaction(self, output: Any) -> ModelCompaction:

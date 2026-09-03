@@ -16,6 +16,10 @@ class EndpointMockTransport(ChatTransport):
     def create(self, owner, request):
         if request.endpoint == "/responses":
             return self.client.responses.create(**request.params)
+        if request.endpoint == "/responses/input_tokens":
+            return self.client.responses.input_tokens.count(**request.params)
+        if request.endpoint == "/responses/compact":
+            return self.client.responses.compact(**request.params)
         if request.endpoint == "/chat/completions":
             return self.client.chat.completions.create(**request.params)
         raise ValueError(f"Unsupported test endpoint: {request.endpoint!r}")
@@ -23,6 +27,12 @@ class EndpointMockTransport(ChatTransport):
     async def acreate(self, owner, request):
         if request.endpoint == "/responses":
             return await self.async_client.responses.create(**request.params)
+        if request.endpoint == "/responses/input_tokens":
+            return await self.async_client.responses.input_tokens.count(
+                **request.params
+            )
+        if request.endpoint == "/responses/compact":
+            return await self.async_client.responses.compact(**request.params)
         if request.endpoint == "/chat/completions":
             return await self.async_client.chat.completions.create(**request.params)
         raise ValueError(f"Unsupported test endpoint: {request.endpoint!r}")

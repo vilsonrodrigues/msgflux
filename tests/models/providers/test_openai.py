@@ -67,7 +67,7 @@ class TestOpenAIChatCompletion:
 
     @pytest.fixture
     def mock_openai_client(self):
-        """Mock direct chat endpoints and lazy native SDK operations."""
+        """Mock direct OpenAI chat and Responses endpoints."""
         from msgflux.models.providers.openai import OpenAIChatCompletion
 
         mock_client = MagicMock()
@@ -78,18 +78,13 @@ class TestOpenAIChatCompletion:
             mock_async_client.return_value,
         )
 
-        def create_sdk_client(owner, *, async_client=False):
-            return (
-                mock_async_client.return_value
-                if async_client
-                else mock_client.return_value
-            )
-
         with (
             patch.object(OpenAIChatCompletion, "chat_transport", transport),
             patch(
-                "msgflux.models.providers.openai.create_openai_sdk_client",
-                side_effect=create_sdk_client,
+                "msgflux.models.openai_sdk._load_openai_sdk",
+                side_effect=AssertionError(
+                    "chat operations must not initialize the OpenAI SDK"
+                ),
             ),
         ):
             yield mock_client, mock_async_client
@@ -217,8 +212,6 @@ class TestOpenAIChatCompletion:
         assert "max_output_tokens" not in kwargs
         assert "_native_client" not in model.serialize()["state"]
         model.close()
-        mock_client.return_value.close.assert_called_once()
-        assert model._native_client is None
 
     @pytest.mark.asyncio
     async def test_responses_async_compaction_uses_async_endpoint(
@@ -246,8 +239,6 @@ class TestOpenAIChatCompletion:
         mock_async_client.return_value.responses.compact.assert_awaited_once()
         assert "_native_aclient" not in model.serialize()["state"]
         await model.aclose()
-        mock_async_client.return_value.close.assert_awaited_once()
-        assert model._native_aclient is None
 
     @pytest.mark.parametrize(
         "effort", ["none", "low", "medium", "high", "xhigh", "max"]

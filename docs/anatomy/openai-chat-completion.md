@@ -365,7 +365,8 @@ These modules keep those concerns localized:
 - common lifecycle behavior stays in `models/openai_compatible.py`
 - wire-protocol selection stays behind `ChatAPIAdapter`
 - provider and mode capabilities stay in `models/chat_capabilities.py`
-- direct JSON/SSE transport stays in `models/chat_transport.py`
+- direct JSON/SSE transport, including Responses input-token counting and
+  native compaction, stays in `models/chat_transport.py`
 - SDK-backed non-chat initialization stays in `models/openai_sdk.py`
 - OpenAI-only capabilities stay in `models/providers/openai.py`
 - final runtime validation still points back to msgFlux contracts
