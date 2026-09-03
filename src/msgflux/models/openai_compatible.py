@@ -165,7 +165,7 @@ class OpenAICompatibleModel(BaseModel):
             abort_signal.raise_if_aborted()
 
     def _initialize_runtime(self):
-        """Initialize state shared by HTTP and SDK-backed models."""
+        """Initialize state shared by OpenAI-compatible model runtimes."""
         self.current_key_index = 0
         cache_size = getattr(self, "cache_size", 128)
         enable_cache = getattr(self, "enable_cache", None)

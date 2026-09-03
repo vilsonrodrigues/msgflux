@@ -17,7 +17,7 @@ Configure MCP servers using the `mcp_servers` attribute:
         Connect to an MCP server via standard I/O:
 
         ```python
-        # pip install msgflux[openai]
+        # pip install msgflux
         import msgflux as mf
         import msgflux.nn as nn
 
@@ -42,7 +42,7 @@ Configure MCP servers using the `mcp_servers` attribute:
         Connect to an MCP server via HTTP:
 
         ```python
-        # pip install msgflux[openai]
+        # pip install msgflux
         import msgflux as mf
         import msgflux.nn as nn
 
@@ -65,7 +65,7 @@ Configure MCP servers using the `mcp_servers` attribute:
         Apply `tool_config` options to MCP tools:
 
         ```python
-        # pip install msgflux[openai]
+        # pip install msgflux
         import msgflux as mf
         import msgflux.nn as nn
 
@@ -126,7 +126,7 @@ Configure MCP servers using the `mcp_servers` attribute:
         **2. Connect via Agent** (`main.py`):
 
         ```python
-        # pip install msgflux[openai]
+        # pip install msgflux
         import msgflux as mf
         import msgflux.nn as nn
 

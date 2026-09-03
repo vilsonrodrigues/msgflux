@@ -1,8 +1,5 @@
 """Test transports for provider-independent chat model tests."""
 
-from contextlib import contextmanager
-from unittest.mock import MagicMock, patch
-
 from msgflux.models.chat_api import ChatTransport
 
 
@@ -36,19 +33,3 @@ class EndpointMockTransport(ChatTransport):
         if request.endpoint == "/chat/completions":
             return await self.async_client.chat.completions.create(**request.params)
         raise ValueError(f"Unsupported test endpoint: {request.endpoint!r}")
-
-
-@contextmanager
-def mock_openai_sdk_clients():
-    """Replace lazy SDK client creation with synchronous and async mocks."""
-    sync_factory = MagicMock()
-    async_factory = MagicMock()
-
-    def create_client(owner, *, async_client=False):
-        return async_factory.return_value if async_client else sync_factory.return_value
-
-    with patch(
-        "msgflux.models.openai_sdk.create_openai_sdk_client",
-        side_effect=create_client,
-    ):
-        yield sync_factory, async_factory

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from unittest.mock import patch
-
 import httpx2
 import msgspec
 import pytest
@@ -48,16 +46,12 @@ def test_openai_moderation_uses_direct_http_and_preserves_result(monkeypatch):
 
     from msgflux.models.providers.openai import OpenAIModeration
 
-    with patch(
-        "msgflux.models.openai_sdk._load_openai_sdk",
-        side_effect=AssertionError("moderation must not initialize the OpenAI SDK"),
-    ):
-        model = OpenAIModeration(
-            model_id="omni-moderation-latest",
-            http_transport=transport,
-            retry=False,
-        )
-        response = model("test input")
+    model = OpenAIModeration(
+        model_id="omni-moderation-latest",
+        http_transport=transport,
+        retry=False,
+    )
+    response = model("test input")
 
     result = response.consume()
     assert response.response_type == "moderation"

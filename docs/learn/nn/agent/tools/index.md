@@ -83,7 +83,7 @@ When the model decides to use a tool, the Agent intercepts the response, execute
         Query GitHub's public API for repository information:
 
         ```python
-        # pip install msgflux[openai]
+        # pip install msgflux
         import httpx2
         import msgflux as mf
         import msgflux.nn as nn
@@ -134,7 +134,7 @@ When the model decides to use a tool, the Agent intercepts the response, execute
         Real file system operation:
 
         ```python
-        # pip install msgflux[openai]
+        # pip install msgflux
         import os
         from pathlib import Path
         import msgflux as mf
@@ -407,7 +407,7 @@ Control how the model selects tools.
         Model decides when to use tools:
 
         ```python
-        # pip install msgflux[openai] wikipedia
+        # pip install msgflux wikipedia
         import msgflux as mf
         import msgflux.nn as nn
 
@@ -432,7 +432,7 @@ Control how the model selects tools.
         Force the model to always use a tool:
 
         ```python
-        # pip install msgflux[openai] wikipedia
+        # pip install msgflux wikipedia
         import msgflux as mf
         import msgflux.nn as nn
 
@@ -456,7 +456,7 @@ Control how the model selects tools.
         Force a specific tool to be called:
 
         ```python
-        # pip install msgflux[openai] wikipedia
+        # pip install msgflux wikipedia
         import httpx2
         import msgflux as mf
         import msgflux.nn as nn
@@ -489,7 +489,7 @@ Control how the model selects tools.
         Disable tool usage temporarily:
 
         ```python
-        # pip install msgflux[openai]
+        # pip install msgflux
         import msgflux as mf
         import msgflux.nn as nn
 
@@ -510,7 +510,7 @@ Control how the model selects tools.
         Use `required` for routing agents:
 
         ```python
-        # pip install msgflux[openai]
+        # pip install msgflux
         import msgflux as mf
         import msgflux.nn as nn
 
@@ -635,7 +635,7 @@ Use `tool_filter` when you need to change which tools are exposed on a **per-req
     === "Allow Only Specific Tools"
 
         ```python
-        # pip install msgflux[openai]
+        # pip install msgflux
         import msgflux as mf
         import msgflux.nn as nn
 
@@ -693,7 +693,7 @@ This is useful when another module or router decides which tools should be avail
 ???+ example
 
     ```python
-    # pip install msgflux[openai]
+    # pip install msgflux
     import msgflux as mf
     import msgflux.nn as nn
 
@@ -749,7 +749,7 @@ This is useful to avoid runaway tool loops while still allowing a graceful final
 ???+ example
 
     ```python
-    # pip install msgflux[openai] wikipedia
+    # pip install msgflux wikipedia
     import msgflux as mf
     import msgflux.nn as nn
 
@@ -947,7 +947,7 @@ agents directly. If you want the model to see only one public
         A coordinator agent delegates to specialist agents:
 
         ```python
-        # pip install msgflux[openai]
+        # pip install msgflux
         import msgflux as mf
         import msgflux.nn as nn
 
@@ -992,7 +992,7 @@ agents directly. If you want the model to see only one public
         Seamless conversation handoff between agents:
 
         ```python
-        # pip install msgflux[openai]
+        # pip install msgflux
         import msgflux as mf
         import msgflux.nn as nn
 

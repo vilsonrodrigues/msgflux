@@ -11,7 +11,7 @@ Enable streaming with `config={"stream": True}`. The agent returns a `ModelStrea
     === "Async"
 
         ```python
-        # pip install msgflux[openai]
+        # pip install msgflux
         import msgflux as mf
         import msgflux.nn as nn
 

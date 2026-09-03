@@ -38,7 +38,6 @@ def test_groq_defaults_to_direct_chat_transport():
 def test_chat_completions_extracts_but_does_not_replay_reasoning(
     mock_openai_client,
 ):
-    pytest.importorskip("openai")
 
     from msgflux.models.providers.groq import GroqChatCompletion
 
@@ -62,7 +61,6 @@ def test_chat_completions_extracts_but_does_not_replay_reasoning(
 
 
 def test_responses_mode_uses_clear_text_reasoning_contract(mock_openai_client):
-    pytest.importorskip("openai")
 
     from msgflux.models.providers.groq import GroqChatCompletion
 

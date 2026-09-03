@@ -126,7 +126,7 @@ async def test_custom_api_adapter_supports_async_transport_and_streaming():
     ]
 
 
-def test_chat_runtime_does_not_load_or_create_openai_sdk_clients():
+def test_chat_runtime_does_not_create_sdk_clients():
     from msgflux.models.chat_transport import HTTPChatTransport
 
     class DirectChatCompletion(OpenAICompatibleChatCompletion):
@@ -135,10 +135,8 @@ def test_chat_runtime_does_not_load_or_create_openai_sdk_clients():
         def _get_api_key(self):
             return "test"
 
-    with patch("msgflux.models.openai_sdk._load_openai_sdk") as load_sdk:
-        model = DirectChatCompletion(model_id="test-model")
+    model = DirectChatCompletion(model_id="test-model")
 
-    load_sdk.assert_not_called()
     assert isinstance(model.chat_transport, HTTPChatTransport)
     assert not hasattr(model, "client")
     assert not hasattr(model, "aclient")

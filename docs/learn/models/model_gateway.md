@@ -18,7 +18,7 @@ It's ideal for production-grade model orchestration where reliability and contro
 ## 1. **Usage**
 
 ```bash
-pip install msgflux[openai]
+pip install msgflux
 ```
 
 All you need is:

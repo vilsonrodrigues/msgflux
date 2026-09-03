@@ -1,7 +1,6 @@
 """Tests for msgflux.models.providers.openai module."""
 
 import os
-from contextlib import contextmanager
 from types import SimpleNamespace
 from typing import Dict, List, Optional
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
@@ -17,10 +16,7 @@ from msgflux.runtime.context import execution_context
 from msgflux.tools import ToolCatalogEntry, ToolCatalogView, ToolRef
 from msgflux.tools.definitions import ToolCatalog, ToolSpec
 from msgflux.tools.runtime import ToolOutcome
-from tests.models._chat_transport import (
-    EndpointMockTransport,
-    mock_openai_sdk_clients,
-)
+from tests.models._chat_transport import EndpointMockTransport
 
 
 class TestOpenAIProviderImport:
@@ -45,7 +41,6 @@ class TestOpenAIProviderImport:
 
     def test_openai_models_registered(self):
         """Test that OpenAI models are registered with @register_model."""
-        pytest.importorskip("openai", reason="openai not installed")
 
         from msgflux.models.registry import model_registry
 
@@ -78,15 +73,7 @@ class TestOpenAIChatCompletion:
             mock_async_client.return_value,
         )
 
-        with (
-            patch.object(OpenAIChatCompletion, "chat_transport", transport),
-            patch(
-                "msgflux.models.openai_sdk._load_openai_sdk",
-                side_effect=AssertionError(
-                    "chat operations must not initialize the OpenAI SDK"
-                ),
-            ),
-        ):
+        with patch.object(OpenAIChatCompletion, "chat_transport", transport):
             yield mock_client, mock_async_client
 
     def test_openai_defaults_to_direct_chat_transport(self):
@@ -99,7 +86,6 @@ class TestOpenAIChatCompletion:
 
     def test_chat_completion_initialization(self, mock_openai_client):
         """Test OpenAIChatCompletion initialization."""
-        pytest.importorskip("openai")
 
         from msgflux.models.providers.openai import OpenAIChatCompletion
 
@@ -114,7 +100,6 @@ class TestOpenAIChatCompletion:
         assert not hasattr(model, "_native_aclient")
 
     def test_openai_is_a_concrete_compatible_provider(self, mock_openai_client):
-        pytest.importorskip("openai")
 
         from msgflux.models.openai_compatible import OpenAICompatibleChatCompletion
         from msgflux.models.providers.openai import OpenAIChatCompletion
@@ -131,7 +116,6 @@ class TestOpenAIChatCompletion:
         assert openai_chat.supports_native_compaction() is False
 
     def test_chat_completion_rejects_unsupported_api_mode(self, mock_openai_client):
-        pytest.importorskip("openai")
 
         from msgflux.models.providers.openai import OpenAIChatCompletion
 
@@ -141,7 +125,6 @@ class TestOpenAIChatCompletion:
     def test_responses_counts_input_tokens_with_provider_endpoint(
         self, mock_openai_client
     ):
-        pytest.importorskip("openai")
         from msgflux.models.providers.openai import OpenAIChatCompletion
 
         mock_client, _ = mock_openai_client
@@ -172,7 +155,6 @@ class TestOpenAIChatCompletion:
     def test_responses_native_compaction_preserves_opaque_output(
         self, mock_openai_client
     ):
-        pytest.importorskip("openai")
         from msgflux.models.providers.openai import OpenAIChatCompletion
 
         mock_client, _ = mock_openai_client
@@ -217,7 +199,6 @@ class TestOpenAIChatCompletion:
     async def test_responses_async_compaction_uses_async_endpoint(
         self, mock_openai_client
     ):
-        pytest.importorskip("openai")
         from msgflux.models.providers.openai import OpenAIChatCompletion
 
         _, mock_async_client = mock_openai_client
@@ -244,7 +225,6 @@ class TestOpenAIChatCompletion:
         "effort", ["none", "low", "medium", "high", "xhigh", "max"]
     )
     def test_gpt_5_6_reasoning_efforts_are_forwarded(self, mock_openai_client, effort):
-        pytest.importorskip("openai")
 
         from msgflux.models.providers.openai import OpenAIChatCompletion
 
@@ -259,7 +239,6 @@ class TestOpenAIChatCompletion:
     def test_responses_reasoning_state_without_text_replays_empty_summary(
         self, mock_openai_client
     ):
-        pytest.importorskip("openai")
 
         from msgflux.models.providers.openai import OpenAIChatCompletion
 
@@ -302,7 +281,6 @@ class TestOpenAIChatCompletion:
     def test_responses_structured_tool_flow_prefers_commentary_phase(
         self, mock_openai_client
     ):
-        pytest.importorskip("openai")
 
         from msgflux.models.providers.openai import OpenAIChatCompletion
 
@@ -352,7 +330,6 @@ class TestOpenAIChatCompletion:
     def test_responses_mode_converts_frontend_and_preserves_reasoning_state(
         self, mock_openai_client
     ):
-        pytest.importorskip("openai")
 
         from msgflux.models.providers.openai import OpenAIChatCompletion
 
@@ -445,7 +422,6 @@ class TestOpenAIChatCompletion:
         ]
 
     def test_non_stream_response_reports_provider_latency(self, mock_openai_client):
-        pytest.importorskip("openai")
 
         from msgflux.models.providers.openai import OpenAIChatCompletion
 
@@ -474,7 +450,6 @@ class TestOpenAIChatCompletion:
     def test_cache_hit_reports_lookup_latency_without_mutating_cached_metadata(
         self, mock_openai_client
     ):
-        pytest.importorskip("openai")
 
         from msgflux.models.providers.openai import OpenAIChatCompletion
 
@@ -511,7 +486,6 @@ class TestOpenAIChatCompletion:
     def test_responses_stream_reports_ttft_for_first_text_delta(
         self, mock_openai_client
     ):
-        pytest.importorskip("openai")
 
         from msgflux.models.providers.openai import OpenAIChatCompletion
         from msgflux.models.response import ModelStreamResponse
@@ -558,7 +532,6 @@ class TestOpenAIChatCompletion:
     def test_responses_stream_omits_ttft_for_empty_protocol_events(
         self, mock_openai_client
     ):
-        pytest.importorskip("openai")
 
         from msgflux.models.providers.openai import OpenAIChatCompletion
         from msgflux.models.response import ModelStreamResponse
@@ -596,7 +569,6 @@ class TestOpenAIChatCompletion:
     def test_responses_mode_rejects_parameters_without_equivalent(
         self, mock_openai_client, parameter, value
     ):
-        pytest.importorskip("openai")
 
         from msgflux.models.providers.openai import OpenAIChatCompletion
 
@@ -611,7 +583,6 @@ class TestOpenAIChatCompletion:
     def test_responses_mode_forwards_explicit_store_preference(
         self, mock_openai_client, store
     ):
-        pytest.importorskip("openai")
 
         from msgflux.models.providers.openai import OpenAIChatCompletion
 
@@ -628,7 +599,6 @@ class TestOpenAIChatCompletion:
         assert params["store"] is store
 
     def test_responses_mode_omits_store_when_not_configured(self, mock_openai_client):
-        pytest.importorskip("openai")
 
         from msgflux.models.providers.openai import OpenAIChatCompletion
 
@@ -641,7 +611,6 @@ class TestOpenAIChatCompletion:
         assert "store" not in params
 
     def test_store_rejects_non_boolean_value(self, mock_openai_client):
-        pytest.importorskip("openai")
 
         from msgflux.models.providers.openai import OpenAIChatCompletion
 
@@ -651,7 +620,6 @@ class TestOpenAIChatCompletion:
     def test_responses_mode_converts_tools_and_structured_output(
         self, mock_openai_client
     ):
-        pytest.importorskip("openai")
 
         from msgflux.models.providers.openai import OpenAIChatCompletion
 
@@ -717,7 +685,6 @@ class TestOpenAIChatCompletion:
     def test_responses_mode_compiles_deferred_tools_for_hosted_search(
         self, mock_openai_client
     ):
-        pytest.importorskip("openai")
 
         from msgflux.models.providers.openai import OpenAIChatCompletion
 
@@ -771,7 +738,6 @@ class TestOpenAIChatCompletion:
         model_id,
         api_mode,
     ):
-        pytest.importorskip("openai")
 
         from msgflux.models.providers.openai import OpenAIChatCompletion
 
@@ -806,7 +772,6 @@ class TestOpenAIChatCompletion:
     def test_responses_mode_preserves_hosted_tool_search_items(
         self, mock_openai_client
     ):
-        pytest.importorskip("openai")
 
         from msgflux.models.providers.openai import OpenAIChatCompletion
 
@@ -867,7 +832,6 @@ class TestOpenAIChatCompletion:
     async def test_responses_stream_accumulates_summary_text_and_tool_call(
         self, mock_openai_client
     ):
-        pytest.importorskip("openai")
 
         from msgflux.models.providers.openai import OpenAIChatCompletion
         from msgflux.models.response import ModelStreamResponse
@@ -997,7 +961,6 @@ class TestOpenAIChatCompletion:
     def test_responses_stream_preserves_message_phase_and_native_identity(
         self, mock_openai_client
     ):
-        pytest.importorskip("openai")
 
         from msgflux.models.providers.openai import OpenAIChatCompletion
         from msgflux.models.response import ModelStreamResponse
@@ -1060,7 +1023,6 @@ class TestOpenAIChatCompletion:
 
     def test_chat_completion_with_parameters(self, mock_openai_client):
         """Test OpenAIChatCompletion with custom parameters."""
-        pytest.importorskip("openai")
 
         from msgflux.models.providers.openai import OpenAIChatCompletion
 
@@ -1077,7 +1039,6 @@ class TestOpenAIChatCompletion:
 
     def test_chat_completion_with_extra_body(self, mock_openai_client):
         """Test provider-specific OpenAI-compatible request extensions."""
-        pytest.importorskip("openai")
 
         from msgflux.models.providers.openai import OpenAIChatCompletion
 
@@ -1089,7 +1050,6 @@ class TestOpenAIChatCompletion:
 
     def test_chat_completion_with_extra_body_kwargs(self, mock_openai_client):
         """Test provider-specific fields passed directly as kwargs."""
-        pytest.importorskip("openai")
 
         from msgflux.models.providers.openai import OpenAIChatCompletion
 
@@ -1106,7 +1066,6 @@ class TestOpenAIChatCompletion:
 
     def test_chat_completion_aborts_from_execution_context(self, mock_openai_client):
         """AbortSignal is ambient runtime control, not request payload."""
-        pytest.importorskip("openai")
 
         from msgflux.models.providers.openai import OpenAIChatCompletion
 
@@ -1123,7 +1082,6 @@ class TestOpenAIChatCompletion:
 
     def test_chat_completion_merges_extra_body_and_kwargs(self, mock_openai_client):
         """Test init merges extra_body dict with direct provider kwargs."""
-        pytest.importorskip("openai")
 
         from msgflux.models.providers.openai import OpenAIChatCompletion
 
@@ -1142,7 +1100,6 @@ class TestOpenAIChatCompletion:
         self, mock_openai_client
     ):
         """Test duplicated keys between extra_body and kwargs raise error."""
-        pytest.importorskip("openai")
 
         from msgflux.models.providers.openai import OpenAIChatCompletion
 
@@ -1158,7 +1115,6 @@ class TestOpenAIChatCompletion:
 
     def test_chat_completion_forwards_extra_body(self, mock_openai_client):
         """Test extra_body is forwarded to the OpenAI-compatible client."""
-        pytest.importorskip("openai")
 
         from msgflux.models.providers.openai import OpenAIChatCompletion
 
@@ -1193,7 +1149,6 @@ class TestOpenAIChatCompletion:
     def test_tool_call_reasoning_is_kept_in_history_when_not_returned(
         self, mock_openai_client
     ):
-        pytest.importorskip("openai")
 
         from msgflux.models.providers.openai import OpenAIChatCompletion
 
@@ -1233,7 +1188,6 @@ class TestOpenAIChatCompletion:
 
     def test_chat_completion_forwards_extra_body_kwargs(self, mock_openai_client):
         """Test direct provider kwargs are forwarded through extra_body."""
-        pytest.importorskip("openai")
 
         from msgflux.models.providers.openai import OpenAIChatCompletion
 
@@ -1268,7 +1222,6 @@ class TestOpenAIChatCompletion:
 
     def test_chat_completion_call_merges_extra_body_kwargs(self, mock_openai_client):
         """Test runtime provider kwargs merge with init extra_body."""
-        pytest.importorskip("openai")
 
         from msgflux.models.providers.openai import OpenAIChatCompletion
 
@@ -1309,7 +1262,6 @@ class TestOpenAIChatCompletion:
         self, mock_openai_client
     ):
         """Test runtime extra_body and direct provider kwargs cannot duplicate keys."""
-        pytest.importorskip("openai")
 
         from msgflux.models.providers.openai import OpenAIChatCompletion
 
@@ -1327,7 +1279,6 @@ class TestOpenAIChatCompletion:
 
     def test_chat_completion_missing_api_key(self, monkeypatch):
         """Test that missing API key raises ValueError."""
-        pytest.importorskip("openai")
 
         # Remove API key
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
@@ -1339,7 +1290,6 @@ class TestOpenAIChatCompletion:
 
     def test_chat_completion_with_reasoning_params(self, mock_openai_client):
         """Test OpenAIChatCompletion with reasoning parameters."""
-        pytest.importorskip("openai")
 
         from msgflux.models.providers.openai import OpenAIChatCompletion
 
@@ -1356,7 +1306,6 @@ class TestOpenAIChatCompletion:
 
     def test_chat_completion_with_prompt_cache_retention(self, mock_openai_client):
         """Test OpenAIChatCompletion with OpenAI-only prompt cache retention."""
-        pytest.importorskip("openai")
 
         from msgflux.models.providers.openai import OpenAIChatCompletion
 
@@ -1369,7 +1318,6 @@ class TestOpenAIChatCompletion:
 
     def test_chat_completion_with_logprobs_params(self, mock_openai_client):
         """Test OpenAIChatCompletion with logprobs parameters."""
-        pytest.importorskip("openai")
 
         from msgflux.models.providers.openai import OpenAIChatCompletion
 
@@ -1384,7 +1332,6 @@ class TestOpenAIChatCompletion:
 
     def test_chat_completion_call_forwards_logprobs_params(self, mock_openai_client):
         """Test runtime logprobs parameters are forwarded on sync calls."""
-        pytest.importorskip("openai")
 
         from msgflux.models.providers.openai import OpenAIChatCompletion
 
@@ -1413,7 +1360,6 @@ class TestOpenAIChatCompletion:
     @pytest.mark.asyncio
     async def test_acall_forwards_logprobs_params(self, mock_openai_client):
         """Test runtime logprobs parameters are forwarded on async calls."""
-        pytest.importorskip("openai")
 
         from msgflux.models.providers.openai import OpenAIChatCompletion
 
@@ -1446,7 +1392,6 @@ class TestOpenAIChatCompletion:
     @pytest.mark.asyncio
     async def test_acall_forwards_extra_body_kwargs(self, mock_openai_client):
         """Test runtime provider kwargs are forwarded on async calls."""
-        pytest.importorskip("openai")
 
         from msgflux.models.providers.openai import OpenAIChatCompletion
 
@@ -1484,7 +1429,6 @@ class TestOpenAIChatCompletion:
 
     def test_chat_completion_adapt_params(self, mock_openai_client):
         """Test parameter adaptation for OpenAI."""
-        pytest.importorskip("openai")
 
         from msgflux.models.providers.openai import OpenAIChatCompletion
 
@@ -1501,7 +1445,6 @@ class TestOpenAIChatCompletion:
         self, mock_openai_client
     ):
         """Test top_logprobs requires logprobs=True at call time."""
-        pytest.importorskip("openai")
 
         from msgflux.models.providers.openai import OpenAIChatCompletion
 
@@ -1515,7 +1458,6 @@ class TestOpenAIChatCompletion:
         self, mock_openai_client
     ):
         """Streaming async calls should not pass tool_catalog to the transport."""
-        pytest.importorskip("openai")
 
         from msgflux.models.providers.openai import OpenAIChatCompletion
 
@@ -1565,7 +1507,6 @@ class TestOpenAIChatCompletion:
         self, mock_openai_client
     ):
         """Streaming async calls should expose provider failures to consumers."""
-        pytest.importorskip("openai")
 
         from msgflux.models.providers.openai import OpenAIChatCompletion
 
@@ -1611,7 +1552,6 @@ class TestOpenAIChatCompletion:
     @pytest.mark.asyncio
     async def test_acall_stream_accumulates_response_data(self, mock_openai_client):
         """Streaming async text responses should leave the full payload in response.data."""
-        pytest.importorskip("openai")
 
         from msgflux.models.providers.openai import OpenAIChatCompletion
 
@@ -1697,7 +1637,6 @@ class TestOpenAIChatCompletion:
 
     def test_prepare_generate_kwargs_lowers_dict_schema(self, mock_openai_client):
         """Test OpenAI transport schema lowering for dict-based structured outputs."""
-        pytest.importorskip("openai")
 
         from msgflux.models.providers.openai import OpenAIChatCompletion
 
@@ -1722,7 +1661,6 @@ class TestOpenAIChatCompletion:
 
     def test_build_generation_params_uses_tool_catalog(self, mock_openai_client):
         """Test native tool calling is derived from ToolCatalog."""
-        pytest.importorskip("openai")
 
         from msgflux.models.providers.openai import OpenAIChatCompletion
 
@@ -1761,7 +1699,6 @@ class TestOpenAIChatCompletion:
 
     def test_build_generation_params_does_not_mutate_messages(self, mock_openai_client):
         """Provider-side system prompt injection must not mutate caller history."""
-        pytest.importorskip("openai")
 
         from msgflux.models.providers.openai import OpenAIChatCompletion
 
@@ -1781,7 +1718,6 @@ class TestOpenAIChatCompletion:
 
     def test_call_prefilling_does_not_mutate_messages(self, mock_openai_client):
         """Provider-side prefilling must not mutate caller history."""
-        pytest.importorskip("openai")
 
         from msgflux.models.providers.openai import OpenAIChatCompletion
 
@@ -1812,7 +1748,6 @@ class TestOpenAIChatCompletion:
     @pytest.mark.asyncio
     async def test_acall_prefilling_does_not_mutate_messages(self, mock_openai_client):
         """Async provider-side prefilling must not mutate caller history."""
-        pytest.importorskip("openai")
 
         from msgflux.models.providers.openai import OpenAIChatCompletion
 
@@ -1846,7 +1781,6 @@ class TestOpenAIChatCompletion:
         self, mock_openai_client
     ):
         """Test transport-schema decoding is restored to the logical dict shape."""
-        pytest.importorskip("openai")
 
         from msgflux.models.providers.openai import OpenAIChatCompletion
 
@@ -1888,7 +1822,6 @@ class TestOpenAIChatCompletion:
         self, mock_openai_client
     ):
         """Test logprobs are surfaced in response metadata."""
-        pytest.importorskip("openai")
 
         from msgflux.models.providers.openai import OpenAIChatCompletion
 
@@ -1944,7 +1877,6 @@ class TestOpenAIChatCompletion:
         self, mock_openai_client
     ):
         """Test prefilling is rejected with structured outputs."""
-        pytest.importorskip("openai")
 
         from msgflux.models.providers.openai import OpenAIChatCompletion
 
@@ -1968,7 +1900,6 @@ class TestOpenAIChatCompletion:
         self, mock_openai_client
     ):
         """Test async prefilling is rejected with structured outputs."""
-        pytest.importorskip("openai")
 
         from msgflux.models.providers.openai import OpenAIChatCompletion
 
@@ -1991,7 +1922,6 @@ class TestOpenAIChatCompletion:
         self, mock_openai_client
     ):
         """Test ToolFlowControl schemas can expose a dynamic transport schema."""
-        pytest.importorskip("openai")
 
         from msgflux.models.providers.openai import OpenAIChatCompletion
 
@@ -2056,7 +1986,6 @@ class TestOpenAIChatCompletion:
         self, mock_openai_client
     ):
         """Test ToolFlowControl transport payloads are normalized to Action(arguments=...)."""
-        pytest.importorskip("openai")
 
         from msgflux.models.providers.openai import OpenAIChatCompletion
 
@@ -2143,7 +2072,6 @@ class TestOpenAIChatCompletion:
         self, mock_openai_client
     ):
         """ToolFlowControl transport schema should follow the subclass final_answer type."""
-        pytest.importorskip("openai")
 
         from msgflux.models.providers.openai import OpenAIChatCompletion
 
@@ -2185,7 +2113,6 @@ class TestOpenAIChatCompletion:
         self, mock_openai_client
     ):
         """Decoded ReAct payload should respect the fused final_answer struct type."""
-        pytest.importorskip("openai")
 
         from msgflux.models.providers.openai import OpenAIChatCompletion
 
@@ -2354,15 +2281,8 @@ class TestOpenAITextToImage:
         """Setup environment variables for tests."""
         monkeypatch.setenv("OPENAI_API_KEY", "test-key-12345")
 
-    @pytest.fixture
-    def mock_openai_client(self):
-        """Mock OpenAI client."""
-        with mock_openai_sdk_clients() as clients:
-            yield clients
-
-    def test_text_to_image_initialization(self, mock_openai_client):
+    def test_text_to_image_initialization(self):
         """Test OpenAITextToImage initialization."""
-        pytest.importorskip("openai")
 
         from msgflux.models.providers.openai import OpenAITextToImage
 
@@ -2372,9 +2292,8 @@ class TestOpenAITextToImage:
         assert model.provider == "openai"
         assert model.model_type == "text_to_image"
 
-    def test_text_to_image_with_moderation(self, mock_openai_client):
+    def test_text_to_image_with_moderation(self):
         """Test OpenAITextToImage with moderation parameter."""
-        pytest.importorskip("openai")
 
         from msgflux.models.providers.openai import OpenAITextToImage
 
@@ -2456,15 +2375,8 @@ class TestOpenAITextEmbedder:
         """Setup environment variables for tests."""
         monkeypatch.setenv("OPENAI_API_KEY", "test-key-12345")
 
-    @pytest.fixture
-    def mock_openai_client(self):
-        """Mock OpenAI client."""
-        with mock_openai_sdk_clients() as clients:
-            yield clients
-
-    def test_text_embedder_initialization(self, mock_openai_client):
+    def test_text_embedder_initialization(self):
         """Test OpenAITextEmbedder initialization."""
-        pytest.importorskip("openai")
 
         from msgflux.models.providers.openai import OpenAITextEmbedder
 
@@ -2474,9 +2386,8 @@ class TestOpenAITextEmbedder:
         assert model.provider == "openai"
         assert model.model_type == "text_embedder"
 
-    def test_text_embedder_with_dimensions(self, mock_openai_client):
+    def test_text_embedder_with_dimensions(self):
         """Test OpenAITextEmbedder with dimensions parameter."""
-        pytest.importorskip("openai")
 
         from msgflux.models.providers.openai import OpenAITextEmbedder
 
@@ -2496,15 +2407,8 @@ class TestOpenAIModeration:
         """Setup environment variables for tests."""
         monkeypatch.setenv("OPENAI_API_KEY", "test-key-12345")
 
-    @pytest.fixture
-    def mock_openai_client(self):
-        """Mock OpenAI client."""
-        with mock_openai_sdk_clients() as clients:
-            yield clients
-
-    def test_moderation_initialization(self, mock_openai_client):
+    def test_moderation_initialization(self):
         """Test OpenAIModeration initialization."""
-        pytest.importorskip("openai")
 
         from msgflux.models.providers.openai import OpenAIModeration
 
@@ -2523,15 +2427,8 @@ class TestOpenAIBaseURL:
         """Setup environment variables for tests."""
         monkeypatch.setenv("OPENAI_API_KEY", "test-key-12345")
 
-    @pytest.fixture
-    def mock_openai_client(self):
-        """Mock OpenAI client."""
-        with mock_openai_sdk_clients() as clients:
-            yield clients
-
-    def test_chat_completion_custom_base_url(self, mock_openai_client):
+    def test_chat_completion_custom_base_url(self):
         """Test OpenAIChatCompletion with custom base_url."""
-        pytest.importorskip("openai")
 
         from msgflux.models.providers.openai import OpenAIChatCompletion
 
@@ -2543,9 +2440,8 @@ class TestOpenAIBaseURL:
 
         assert model.sampling_params["base_url"] == custom_url
 
-    def test_text_embedder_custom_base_url(self, mock_openai_client):
+    def test_text_embedder_custom_base_url(self):
         """Test OpenAITextEmbedder with custom base_url."""
-        pytest.importorskip("openai")
 
         from msgflux.models.providers.openai import OpenAITextEmbedder
 

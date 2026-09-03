@@ -16,7 +16,7 @@ msgFlux provides several inspection mechanisms to help you debug and understand 
         Verbose mode will print the model call steps, tool calls and their return values ​​to the console.
 
         ```python
-        # pip install msgflux[openai]
+        # pip install msgflux
         import msgflux as mf
         import msgflux.nn as nn
 
@@ -42,7 +42,7 @@ msgFlux provides several inspection mechanisms to help you debug and understand 
         This inspection allows you to view the exact values ​​that will be passed to the LM call.
 
         ```python
-        # pip install msgflux[openai]
+        # pip install msgflux
         import msgflux as mf
         import msgflux.nn as nn
 
@@ -95,7 +95,7 @@ msgFlux provides several inspection mechanisms to help you debug and understand 
         When the configuration `config={"return_messages": True}` is passed, the agent returns a dict containing the keys `response` and `messages`.
 
         ```python
-        # pip install msgflux[openai]
+        # pip install msgflux
         import msgflux as mf
         import msgflux.nn as nn
 
@@ -126,7 +126,7 @@ msgFlux provides several inspection mechanisms to help you debug and understand 
         To inspect the agent's buffers and parameters, simply call its *.state_dict()* method.
 
         ```python
-        # pip install msgflux[openai]
+        # pip install msgflux
         import msgflux as mf
         import msgflux.nn as nn
 

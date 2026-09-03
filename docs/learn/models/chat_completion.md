@@ -17,10 +17,8 @@ The `chat_completion` model is the most versatile model type for natural languag
 
     See [Dependency Management](../../dependency-management.md) for the complete provider matrix.
 
-    Install `msgflux[openai]` only for SDK-backed capabilities such as OpenAI
-    audio, images, embeddings, and moderation. Chat Completions, Responses,
-    input-token counting, and native Responses compaction use the included
-    HTTPX2 transport and do not initialize the OpenAI SDK.
+    OpenAI chat, audio, image, embedding, and moderation models all use the
+    included HTTPX2 transport. The OpenAI Python SDK is not required.
 
 ## ✦₊⁺ Overview
 

@@ -34,11 +34,8 @@ pip install msgflux
 
 ### OpenAI and OpenAI-compatible providers
 
-```bash
-uv add "msgflux[openai]"
-# or
-pip install "msgflux[openai]"
-```
+They use the core installation above. Set the provider's API key before making
+a request; no provider SDK is required.
 
 More setup details: https://msgflux.com/dependency-management/
 

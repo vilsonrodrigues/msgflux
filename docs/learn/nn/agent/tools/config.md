@@ -81,7 +81,7 @@ Use cases:
     === "Basic Usage"
 
         ```python
-        # pip install msgflux[openai]
+        # pip install msgflux
         import msgflux as mf
         import msgflux.nn as nn
 
@@ -106,7 +106,7 @@ Use cases:
         Combine `return_direct` with reasoning models to optimize tool calls. The model reasons about which tool to use, but the result bypasses additional processing:
 
         ```python
-        # pip install msgflux[openai]
+        # pip install msgflux
         import msgflux as mf
         import msgflux.nn as nn
 
@@ -135,7 +135,7 @@ Use cases:
         Combine with the `vars` runtime input for external processing:
 
         ```python
-        # pip install msgflux[openai]
+        # pip install msgflux
         import msgflux as mf
         import msgflux.nn as nn
 
@@ -228,7 +228,7 @@ Use cases:
     === "External Credentials"
 
         ```python
-        # pip install msgflux[openai]
+        # pip install msgflux
         import msgflux as mf
         import msgflux.nn as nn
 
@@ -255,7 +255,7 @@ Use cases:
         Inject specific vars as named parameters:
 
         ```python
-        # pip install msgflux[openai]
+        # pip install msgflux
         import msgflux as mf
         import msgflux.nn as nn
 
@@ -294,7 +294,7 @@ Use cases:
         Tools can modify vars for persistent state:
 
         ```python
-        # pip install msgflux[openai]
+        # pip install msgflux
         import msgflux as mf
         import msgflux.nn as nn
 
@@ -500,7 +500,7 @@ Use cases:
         When an agent is used as a tool, the `messages` runtime input passes the conversation history so the specialist has full context:
 
         ```python
-        # pip install msgflux[openai]
+        # pip install msgflux
         import msgflux as mf
         import msgflux.nn as nn
 
@@ -535,7 +535,7 @@ Use cases:
         Check conversation safety before responding:
 
         ```python
-        # pip install msgflux[openai]
+        # pip install msgflux
         import msgflux as mf
         import msgflux.nn as nn
 
@@ -572,7 +572,7 @@ Use cases:
         Access images or other multimodal content from conversation:
 
         ```python
-        # pip install msgflux[openai]
+        # pip install msgflux
         import msgflux as mf
         import msgflux.nn as nn
 
@@ -636,7 +636,7 @@ Unlike Agent-as-Tool, the Specialist's response bypasses the Coordinator entirel
 ???+ example
 
     ```python
-    # pip install msgflux[openai]
+    # pip install msgflux
     import msgflux as mf
     import msgflux.nn as nn
 
@@ -678,7 +678,7 @@ Use cases:
 ???+ example
 
     ```python
-    # pip install msgflux[openai]
+    # pip install msgflux
     import msgflux as mf
     import msgflux.nn as nn
 
@@ -749,7 +749,7 @@ Use cases:
 ???+ example
 
     ```python
-    # pip install msgflux[openai]
+    # pip install msgflux
     import asyncio
     import msgflux as mf
     import msgflux.nn as nn

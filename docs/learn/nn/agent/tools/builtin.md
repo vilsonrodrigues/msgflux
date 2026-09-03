@@ -145,7 +145,7 @@ The tool returns a structured `dotdict` with:
         Extract text content from web pages using `httpx2`:
 
         ```python
-        # pip install msgflux[openai] beautifulsoup4
+        # pip install msgflux beautifulsoup4
         import msgflux as mf
         import msgflux.nn as nn
         from msgflux.tools.builtin import WebFetchTool
@@ -168,7 +168,7 @@ The tool returns a structured `dotdict` with:
         Use a built-in web search tool backed by either a retriever or a model:
 
         ```python
-        # pip install msgflux[openai]
+        # pip install msgflux
         import msgflux as mf
         import msgflux.nn as nn
         from msgflux.tools.builtin import WebSearchTool
@@ -224,7 +224,7 @@ The tool returns a structured `dotdict` with:
         Get current, forecast, or historical weather data:
 
         ```python
-        # pip install msgflux[openai]
+        # pip install msgflux
         import msgflux as mf
         import msgflux.nn as nn
         from msgflux.tools.builtin import WeatherTool
@@ -266,7 +266,7 @@ The tool returns a structured `dotdict` with:
         Use msgflux's built-in Wikipedia retriever as a tool:
 
         ```python
-        # pip install msgflux[openai] wikipedia
+        # pip install msgflux wikipedia
         import msgflux as mf
         import msgflux.nn as nn
 

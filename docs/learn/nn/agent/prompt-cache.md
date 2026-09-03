@@ -7,7 +7,7 @@ Use warmup when your agent has a large static system prompt, many tools, or load
 ## Basic Usage
 
 ```python
-# pip install msgflux[openai]
+# pip install msgflux
 import msgflux as mf
 import msgflux.nn as nn
 

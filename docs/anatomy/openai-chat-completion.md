@@ -370,7 +370,7 @@ These modules keep those concerns localized:
 - optional token-count and compaction protocol conversion stays in
   `models/chat_context.py`
 - chat JSON/SSE decoding stays in `models/chat_transport.py`
-- SDK-backed non-chat initialization stays in `models/openai_sdk.py`
+- shared non-chat HTTP lifecycle stays in `models/http_transport.py`
 - OpenAI-only capabilities stay in `models/providers/openai.py`
 - final runtime validation still points back to msgFlux contracts
 

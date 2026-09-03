@@ -42,7 +42,6 @@ class TestOpenRouterChatCompletion:
 
     def test_chat_completion_with_reasoning_max_tokens(self, mock_openai_client):
         """Test OpenRouter forwards reasoning_max_tokens as reasoning.max_tokens."""
-        pytest.importorskip("openai")
 
         from msgflux.models.providers.openrouter import OpenRouterChatCompletion
 
@@ -69,7 +68,6 @@ class TestOpenRouterChatCompletion:
         assert adapted["extra_body"]["reasoning"]["max_tokens"] == 2000
 
     def test_adapt_params_accepts_requests_without_tool_keys(self, mock_openai_client):
-        pytest.importorskip("openai")
 
         from msgflux.models.providers.openrouter import OpenRouterChatCompletion
 
@@ -89,7 +87,6 @@ class TestOpenRouterChatCompletion:
         [(False, True), (True, False)],
     )
     def test_store_maps_to_openrouter_zdr(self, mock_openai_client, store, zdr):
-        pytest.importorskip("openai")
 
         from msgflux.models.providers.openrouter import OpenRouterChatCompletion
 
@@ -115,7 +112,6 @@ class TestOpenRouterChatCompletion:
     def test_openrouter_omits_zdr_when_store_is_not_configured(
         self, mock_openai_client
     ):
-        pytest.importorskip("openai")
 
         from msgflux.models.providers.openrouter import OpenRouterChatCompletion
 
@@ -131,7 +127,6 @@ class TestOpenRouterChatCompletion:
         assert "provider" not in params["extra_body"]
 
     def test_responses_api_mode_is_not_inherited_implicitly(self, mock_openai_client):
-        pytest.importorskip("openai")
 
         from msgflux.models.providers.openrouter import OpenRouterChatCompletion
 
@@ -143,7 +138,6 @@ class TestOpenRouterChatCompletion:
 
     def test_chat_completion_with_reasoning_effort(self, mock_openai_client):
         """Test OpenRouter still forwards reasoning_effort."""
-        pytest.importorskip("openai")
 
         from msgflux.models.providers.openrouter import OpenRouterChatCompletion
 
@@ -170,7 +164,6 @@ class TestOpenRouterChatCompletion:
     def test_model_converts_canonical_messages_for_selected_provider(
         self, mock_openai_client
     ):
-        pytest.importorskip("openai")
 
         from msgflux.models.providers.openrouter import OpenRouterChatCompletion
 
@@ -203,7 +196,6 @@ class TestOpenRouterChatCompletion:
         ]
 
     def test_response_state_records_provider_api_and_codec(self, mock_openai_client):
-        pytest.importorskip("openai")
 
         from msgflux.models.providers.openrouter import OpenRouterChatCompletion
 
@@ -240,7 +232,6 @@ class TestOpenRouterChatCompletion:
         self, mock_openai_client
     ):
         """Test OpenRouter rejects reasoning_effort and reasoning_max_tokens together."""
-        pytest.importorskip("openai")
 
         from msgflux.models.providers.openrouter import OpenRouterChatCompletion
 

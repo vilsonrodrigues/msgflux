@@ -7,7 +7,7 @@ An Agent combines a language model with instructions and tools to accomplish tas
 The simplest agent needs only a name and a model:
 
 ```python
-# pip install msgflux[openai]
+# pip install msgflux
 import msgflux as mf
 import msgflux.nn as nn
 

@@ -15,7 +15,7 @@ Three use cases drive its design:
         Render runtime values into the agent's Jinja2 templates. The model sees the rendered text — not the variable names:
 
         ```python
-        # pip install msgflux[openai]
+        # pip install msgflux
         import msgflux as mf
         import msgflux.nn as nn
 
@@ -45,7 +45,7 @@ Three use cases drive its design:
         - **`["field1", "field2"]`** — only the listed fields are injected as direct named arguments; raises an error if any field is missing
 
         ```python
-        # pip install msgflux[openai]
+        # pip install msgflux
         import msgflux as mf
         import msgflux.nn as nn
 
@@ -94,7 +94,7 @@ Three use cases drive its design:
         Load agent skills dynamically from `vars`. Each skill has a `description` (shown in the prompt) and `content` (the full instructions). The model sees only the names and descriptions — it calls the `skill` tool to retrieve the content before acting.
 
         ```python
-        # pip install msgflux[openai]
+        # pip install msgflux
         import msgflux as mf
         import msgflux.nn as nn
 
@@ -177,7 +177,7 @@ Three use cases drive its design:
         A tool can write data back into `vars` instead of returning it to the model. This is useful when a tool retrieves internal records that your application needs downstream, but that would only add noise to the model's context.
 
         ```python
-        # pip install msgflux[openai]
+        # pip install msgflux
         import msgflux as mf
         import msgflux.nn as nn
 
@@ -227,7 +227,7 @@ Three use cases drive its design:
         supplied as a named argument.
 
         ```python
-        # pip install msgflux[openai]
+        # pip install msgflux
         import msgflux as mf
         import msgflux.nn as nn
 
@@ -279,7 +279,7 @@ Three use cases drive its design:
         Inside a pipeline, vars live on the `Message` object. Use `message_fields={"vars": "field_name"}` to tell the agent where to read them — no need to pass `vars=` explicitly on every call.
 
         ```python
-        # pip install msgflux[openai]
+        # pip install msgflux
         import msgflux as mf
         import msgflux.nn as nn
 

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from unittest.mock import patch
-
 import httpx2
 import msgspec
 import pytest
@@ -45,23 +43,19 @@ def test_openai_image_generation_uses_direct_http_and_normalizes_metadata(
 
     from msgflux.models.providers.openai import OpenAITextToImage
 
-    with patch(
-        "msgflux.models.openai_sdk._load_openai_sdk",
-        side_effect=AssertionError("image generation must not initialize the SDK"),
-    ):
-        model = OpenAITextToImage(
-            model_id="gpt-image-1-mini",
-            moderation="low",
-            http_transport=HTTPTransport(client=client),
-            retry=False,
-        )
-        response = model(
-            "A blue circle",
-            response_format="base64",
-            size="1024x1024",
-            quality="low",
-            background="opaque",
-        )
+    model = OpenAITextToImage(
+        model_id="gpt-image-1-mini",
+        moderation="low",
+        http_transport=HTTPTransport(client=client),
+        retry=False,
+    )
+    response = model(
+        "A blue circle",
+        response_format="base64",
+        size="1024x1024",
+        quality="low",
+        background="opaque",
+    )
 
     assert response.response_type == "image_generation"
     assert response.consume() == "encoded-image"

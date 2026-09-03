@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from unittest.mock import patch
-
 import httpx2
 import msgspec
 import pytest
@@ -39,16 +37,12 @@ def test_openai_embedder_uses_direct_http_and_normalizes_usage(monkeypatch):
 
     from msgflux.models.providers.openai import OpenAITextEmbedder
 
-    with patch(
-        "msgflux.models.openai_sdk._load_openai_sdk",
-        side_effect=AssertionError("embeddings must not initialize the OpenAI SDK"),
-    ):
-        model = OpenAITextEmbedder(
-            model_id="text-embedding-3-small",
-            http_transport=transport,
-            retry=False,
-        )
-        response = model("hello")
+    model = OpenAITextEmbedder(
+        model_id="text-embedding-3-small",
+        http_transport=transport,
+        retry=False,
+    )
+    response = model("hello")
 
     assert response.consume() == [[0.1, 0.1, 0.1]]
     assert response.metadata.usage.input_tokens == 2

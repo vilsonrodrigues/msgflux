@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from unittest.mock import patch
-
 import httpx2
 import pytest
 
@@ -40,28 +38,24 @@ def test_openai_image_edit_uses_replayable_multipart(monkeypatch):
 
     from msgflux.models.providers.openai import OpenAIImageTextToImage
 
-    with patch(
-        "msgflux.models.openai_sdk._load_openai_sdk",
-        side_effect=AssertionError("image editing must not initialize the SDK"),
-    ):
-        model = OpenAIImageTextToImage(
-            model_id="gpt-image-2",
-            http_transport=HTTPTransport(client=client),
-            retry=False,
-        )
-        response = model(
-            "Add a blue circle",
-            [b"first-image", b"second-image"],
-            mask=b"mask-image",
-            response_format="base64",
-            n=2,
-            background="opaque",
-            input_fidelity="high",
-            output_compression=80,
-            output_format="webp",
-            quality="low",
-            size="1024x1024",
-        )
+    model = OpenAIImageTextToImage(
+        model_id="gpt-image-2",
+        http_transport=HTTPTransport(client=client),
+        retry=False,
+    )
+    response = model(
+        "Add a blue circle",
+        [b"first-image", b"second-image"],
+        mask=b"mask-image",
+        response_format="base64",
+        n=2,
+        background="opaque",
+        input_fidelity="high",
+        output_compression=80,
+        output_format="webp",
+        quality="low",
+        size="1024x1024",
+    )
 
     request = requests[0]
     body = request.content

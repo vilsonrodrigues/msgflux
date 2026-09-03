@@ -5,7 +5,7 @@ fallback, or time-based availability rules. The Agent accepts the Gateway as
 its normal `model` and routes `model_preference` to it.
 
 ```python
-# pip install msgflux[openai]
+# pip install msgflux
 import msgflux as mf
 import msgflux.nn as nn
 

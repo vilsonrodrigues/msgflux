@@ -8,7 +8,7 @@
 ???+ example
 
     ```python
-    # pip install msgflux[openai]
+    # pip install msgflux
     from msgspec import Struct
     import msgflux as mf
     import msgflux.nn as nn
@@ -70,7 +70,7 @@ The schema adds a single `reasoning` field whose description hint (`"Let's think
 | `final_answer` | `str` | The concluded response based on the reasoning chain   |
 
 ```python
-# pip install msgflux[openai]
+# pip install msgflux
 import msgflux as mf
 import msgflux.nn as nn
 from msgflux.generation.reasoning import ChainOfThought
@@ -153,7 +153,7 @@ Each `Action` contains:
     Unlike standard tool calling, ReAct injects tool schemas into the system prompt as text descriptions rather than passing function definitions to the model's native `tools` parameter. This makes the loop more portable across models and providers, but changes how tools are represented internally.
 
 ```python
-# pip install msgflux[openai]
+# pip install msgflux
 import msgflux as mf
 import msgflux.nn as nn
 from msgflux.generation.reasoning import ReAct
@@ -223,7 +223,7 @@ Each `ReasoningPath` contains:
 | `answer`    | `str` | The answer derived from this path       |
 
 ```python
-# pip install msgflux[openai]
+# pip install msgflux
 import msgflux as mf
 import msgflux.nn as nn
 from msgflux.generation.reasoning import SelfConsistency
@@ -285,7 +285,7 @@ You can extend any reasoning schema by inheriting from it and redefining the `fi
     === "Python Type"
 
         ```python
-        # pip install msgflux[openai]
+        # pip install msgflux
         import msgflux as mf
         import msgflux.nn as nn
         from msgflux.generation.reasoning import ChainOfThought
@@ -308,7 +308,7 @@ You can extend any reasoning schema by inheriting from it and redefining the `fi
     === "Struct Type"
 
         ```python
-        # pip install msgflux[openai]
+        # pip install msgflux
         import msgflux as mf
         import msgflux.nn as nn
         from msgspec import Struct

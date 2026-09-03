@@ -35,7 +35,7 @@ The default type is `str` when unspecified.
     === "Translation"
 
         ```python
-        # pip install msgflux[openai]
+        # pip install msgflux
         import msgflux as mf
         import msgflux.nn as nn
 
@@ -56,7 +56,7 @@ The default type is `str` when unspecified.
     === "Sentiment Classification"
 
         ```python
-        # pip install msgflux[openai]
+        # pip install msgflux
         import msgflux as mf
         import msgflux.nn as nn
 
@@ -79,7 +79,7 @@ The default type is `str` when unspecified.
     === "Calculator"
 
         ```python
-        # pip install msgflux[openai]
+        # pip install msgflux
         import msgflux as mf
         import msgflux.nn as nn
 
@@ -117,7 +117,7 @@ The docstrings of a class-based Signature become the Agent instructions.
     === "Basic Classification"
 
         ```python
-        # pip install msgflux[openai]
+        # pip install msgflux
         from typing import Literal
         import msgflux as mf
         import msgflux.nn as nn
@@ -147,7 +147,7 @@ The docstrings of a class-based Signature become the Agent instructions.
     === "Complex Extraction"
 
         ```python
-        # pip install msgflux[openai]
+        # pip install msgflux
         from typing import List, Optional
         import msgflux as mf
         import msgflux.nn as nn
@@ -183,7 +183,7 @@ The docstrings of a class-based Signature become the Agent instructions.
     === "With Detailed Instructions"
 
         ```python
-        # pip install msgflux[openai]
+        # pip install msgflux
         import msgflux as mf
         import msgflux.nn as nn
 
@@ -268,7 +268,7 @@ Use `Image`, `Audio`, `Video`, or `File` for multimodal inputs:
     === "Class-based"
 
         ```python
-        # pip install msgflux[openai]
+        # pip install msgflux
         import msgflux as mf
         import msgflux.nn as nn
 
@@ -301,7 +301,7 @@ Use `Image`, `Audio`, `Video`, or `File` for multimodal inputs:
     === "Str-based"
 
         ```python
-        # pip install msgflux[openai]
+        # pip install msgflux
         import msgflux as mf
         import msgflux.nn as nn
 
@@ -336,7 +336,7 @@ When using signatures, you can pass inputs in multiple ways:
         Pass inputs as keyword arguments (recommended):
 
         ```python
-        # pip install msgflux[openai]
+        # pip install msgflux
         import msgflux as mf
         import msgflux.nn as nn
 
@@ -355,7 +355,7 @@ When using signatures, you can pass inputs in multiple ways:
         Pass all inputs as a dictionary:
 
         ```python
-        # pip install msgflux[openai]
+        # pip install msgflux
         import msgflux as mf
         import msgflux.nn as nn
 
@@ -374,7 +374,7 @@ When using signatures, you can pass inputs in multiple ways:
         Combine with `task_context`:
 
         ```python
-        # pip install msgflux[openai]
+        # pip install msgflux
         import msgflux as mf
         import msgflux.nn as nn
 
@@ -425,7 +425,7 @@ Signatures can be combined with other Agent components. Here's how they interact
         Add context that applies to all requests:
 
         ```python
-        # pip install msgflux[openai]
+        # pip install msgflux
         import msgflux as mf
         import msgflux.nn as nn
 
@@ -451,7 +451,7 @@ Signatures can be combined with other Agent components. Here's how they interact
         Add constraints alongside the signature's docstring:
 
         ```python
-        # pip install msgflux[openai]
+        # pip install msgflux
         import msgflux as mf
         import msgflux.nn as nn
 
@@ -476,7 +476,7 @@ Signatures can be combined with other Agent components. Here's how they interact
         Combine examples from multiple sources:
 
         ```python
-        # pip install msgflux[openai]
+        # pip install msgflux
         import msgflux as mf
         import msgflux.nn as nn
 
@@ -511,7 +511,7 @@ Signatures can be combined with other Agent components. Here's how they interact
         Fuse reasoning strategies with typed outputs:
 
         ```python
-        # pip install msgflux[openai]
+        # pip install msgflux
         import msgflux as mf
         import msgflux.nn as nn
         from msgflux.generation.reasoning import ChainOfThought
@@ -600,7 +600,7 @@ If either condition is missing, validation is silently skipped.
     === "Catching Type Errors"
 
         ```python
-        # pip install msgflux[openai]
+        # pip install msgflux
         import msgflux as mf
         import msgflux.nn as nn
 
@@ -624,7 +624,7 @@ If either condition is missing, validation is silently skipped.
     === "Catching Missing Fields"
 
         ```python
-        # pip install msgflux[openai]
+        # pip install msgflux
         import msgflux as mf
         import msgflux.nn as nn
 
@@ -644,7 +644,7 @@ If either condition is missing, validation is silently skipped.
     === "With Optional Fields"
 
         ```python
-        # pip install msgflux[openai]
+        # pip install msgflux
         from typing import Optional
         import msgflux as mf
         import msgflux.nn as nn

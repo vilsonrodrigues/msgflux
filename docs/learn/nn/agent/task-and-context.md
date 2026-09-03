@@ -52,7 +52,7 @@ Model.
         Pass task as first argument and task context via `task_context`:
 
         ```python
-        # pip install msgflux[openai]
+        # pip install msgflux
         import msgflux as mf
         import msgflux.nn as nn
 
@@ -81,7 +81,7 @@ Model.
         Use `context_cache` for context that doesn't change between calls:
 
         ```python
-        # pip install msgflux[openai]
+        # pip install msgflux
         import msgflux as mf
         import msgflux.nn as nn
 
@@ -110,7 +110,7 @@ Model.
         The same agent logic can be used imperatively or declaratively:
 
         ```python
-        # pip install msgflux[openai]
+        # pip install msgflux
         import msgflux as mf
         import msgflux.nn as nn
 
@@ -162,7 +162,7 @@ Templates use **Jinja2** syntax to format inputs and outputs. There are three te
         Use `templates={"task": ...}` to format the task input:
 
         ```python
-        # pip install msgflux[openai]
+        # pip install msgflux
         import msgflux as mf
         import msgflux.nn as nn
 
@@ -193,7 +193,7 @@ Templates use **Jinja2** syntax to format inputs and outputs. There are three te
         Use `templates={"task_context": ...}` to format structured task context:
 
         ```python
-        # pip install msgflux[openai]
+        # pip install msgflux
         import msgflux as mf
         import msgflux.nn as nn
 
@@ -230,7 +230,7 @@ Templates use **Jinja2** syntax to format inputs and outputs. There are three te
         For plain text outputs, use `{}` as placeholder for the model response:
 
         ```python
-        # pip install msgflux[openai]
+        # pip install msgflux
         import msgflux as mf
         import msgflux.nn as nn
 
@@ -262,7 +262,7 @@ Templates use **Jinja2** syntax to format inputs and outputs. There are three te
         When using `generation_schema`, access output fields directly in the template:
 
         ```python
-        # pip install msgflux[openai]
+        # pip install msgflux
         import msgflux as mf
         import msgflux.nn as nn
         from msgspec import Struct
@@ -305,7 +305,7 @@ Templates use **Jinja2** syntax to format inputs and outputs. There are three te
         Extract structured data and format a personalized response:
 
         ```python
-        # pip install msgflux[openai]
+        # pip install msgflux
         import msgflux as mf
         import msgflux.nn as nn
         from msgspec import Struct
@@ -360,7 +360,7 @@ Templates use **Jinja2** syntax to format inputs and outputs. There are three te
         Extract only `final_answer` from reasoning schemas like ReAct:
 
         ```python
-        # pip install msgflux[openai]
+        # pip install msgflux
         import msgflux as mf
         import msgflux.nn as nn
         from msgflux.generation.reasoning import ReAct
@@ -394,7 +394,7 @@ Templates use **Jinja2** syntax to format inputs and outputs. There are three te
         Combine signature with response template for clean tool outputs:
 
         ```python
-        # pip install msgflux[openai]
+        # pip install msgflux
         import msgflux as mf
         import msgflux.nn as nn
         from typing import Literal
@@ -456,7 +456,7 @@ Pass images, audio, or files via `task_multimodal`. Requires a multimodal model 
         Single image or multiple images for comparison:
 
         ```python
-        # pip install msgflux[openai]
+        # pip install msgflux
         import msgflux as mf
         import msgflux.nn as nn
 
@@ -521,7 +521,7 @@ Pass images, audio, or files via `task_multimodal`. Requires a multimodal model 
             If an image cannot be retrieved from the declarative mapping (e.g., the field doesn't exist or is empty), the task will still be assembled normally — the missing image simply won't be included. This allows flexible pipelines where multimodal inputs are optional.
 
         ```python
-        # pip install msgflux[openai]
+        # pip install msgflux
         import msgflux as mf
         import msgflux.nn as nn
 
@@ -569,7 +569,7 @@ Pass images, audio, or files via `task_multimodal`. Requires a multimodal model 
         Transcribe or analyze audio files:
 
         ```python
-        # pip install msgflux[openai]
+        # pip install msgflux
         import msgflux as mf
         import msgflux.nn as nn
 
@@ -591,7 +591,7 @@ Pass images, audio, or files via `task_multimodal`. Requires a multimodal model 
         Analyze PDF documents:
 
         ```python
-        # pip install msgflux[openai]
+        # pip install msgflux
         import msgflux as mf
         import msgflux.nn as nn
 
@@ -632,7 +632,7 @@ Use `image_block_kwargs` and `video_block_kwargs` in `config` to pass extra para
     === "image_block_kwargs"
 
         ```python
-        # pip install msgflux[openai]
+        # pip install msgflux
         import msgflux as mf
         import msgflux.nn as nn
 
@@ -657,7 +657,7 @@ Use `image_block_kwargs` and `video_block_kwargs` in `config` to pass extra para
     === "video_block_kwargs"
 
         ```python
-        # pip install msgflux[openai]
+        # pip install msgflux
         import msgflux as mf
         import msgflux.nn as nn
 
@@ -699,7 +699,7 @@ The final assistant response is **never added automatically** — append it manu
         Only append the assistant reply manually after each turn:
 
         ```python
-        # pip install msgflux[openai]
+        # pip install msgflux
         import msgflux as mf
         import msgflux.nn as nn
 
@@ -734,7 +734,7 @@ The final assistant response is **never added automatically** — append it manu
         message list returned alongside the response (e.g., for logging or inspection):
 
         ```python
-        # pip install msgflux[openai]
+        # pip install msgflux
         import msgflux as mf
         import msgflux.nn as nn
 
@@ -768,7 +768,7 @@ The final assistant response is **never added automatically** — append it manu
         means ephemeral — no list is needed until history starts accumulating:
 
         ```python
-        # pip install msgflux[openai]
+        # pip install msgflux
         import msgflux as mf
         import msgflux.nn as nn
 
@@ -858,7 +858,7 @@ class VisionAgent(nn.Agent):
     A `Refiner` agent is an optional step that rewrites the user's question. The `Answerer` uses OR inputs so it works correctly whether or not the refiner ran:
 
     ```python
-    # pip install msgflux[openai]
+    # pip install msgflux
     import msgflux as mf
     import msgflux.nn as nn
 

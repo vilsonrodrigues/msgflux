@@ -58,7 +58,7 @@ hide:
 
 | Provider    | Dependency        | Auth Env           |
 |-------------|-------------------|--------------------|
-| vLLM        | `msgflux[openai]` |                    |
+| vLLM        | `msgflux`         |                    |
 
 ### Text Embedder
 
@@ -75,7 +75,7 @@ hide:
 | Provider    | Dependency        | Auth Env           |
 |-------------|-------------------|--------------------|
 | JinaAI      | `msgflux`          | `JINAAI_API_KEY`   |
-| vLLM        | `msgflux[openai]` |                    |
+| vLLM        | `msgflux`         |                    |
 
 ### Text To Speech
 

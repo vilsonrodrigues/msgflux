@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from unittest.mock import patch
-
 import httpx2
 import pytest
 
@@ -25,22 +23,18 @@ def test_openai_speech_writes_binary_response_and_sends_parameters(monkeypatch):
 
     from msgflux.models.providers.openai import OpenAITextToSpeech
 
-    with patch(
-        "msgflux.models.openai_sdk._load_openai_sdk",
-        side_effect=AssertionError("speech generation must not initialize the SDK"),
-    ):
-        model = OpenAITextToSpeech(
-            model_id="gpt-4o-mini-tts",
-            voice="nova",
-            speed=1.25,
-            http_transport=HTTPTransport(client=client),
-            retry=False,
-        )
-        response = model(
-            "Hello from msgFlux.",
-            prompt="Speak clearly.",
-            response_format="wav",
-        )
+    model = OpenAITextToSpeech(
+        model_id="gpt-4o-mini-tts",
+        voice="nova",
+        speed=1.25,
+        http_transport=HTTPTransport(client=client),
+        retry=False,
+    )
+    response = model(
+        "Hello from msgFlux.",
+        prompt="Speak clearly.",
+        response_format="wav",
+    )
 
     audio_path = Path(response.consume())
     try:

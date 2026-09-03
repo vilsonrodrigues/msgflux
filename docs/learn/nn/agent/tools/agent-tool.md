@@ -59,7 +59,7 @@ choose the model for a delegated task. Each deployment needs a concise
 description so the coordinator can make an informed choice.
 
 ```python
-# pip install msgflux[openai]
+# pip install msgflux
 import msgflux as mf
 import msgflux.nn as nn
 from msgflux.tools.builtin import AgentTool
@@ -218,7 +218,7 @@ uses `tool_kind="agent"`, the existing `AgentTool` bucket captures the new
 agent instead of exposing it as another top-level tool.
 
 ```python
-# pip install msgflux[openai]
+# pip install msgflux
 import msgflux as mf
 import msgflux.nn as nn
 from msgflux.tools.builtin import AgentTool
@@ -333,7 +333,7 @@ top-level tool.
         A coordinator exposes one `agent` tool backed by multiple specialists:
 
         ```python
-        # pip install msgflux[openai]
+        # pip install msgflux
         import msgflux as mf
         import msgflux.nn as nn
         from msgflux.tools.builtin import AgentTool
@@ -387,7 +387,7 @@ top-level tool.
         to the same tool library:
 
         ```python
-        # pip install msgflux[openai]
+        # pip install msgflux
         import msgflux as mf
         import msgflux.nn as nn
         from msgflux.tools.builtin import AgentTool
