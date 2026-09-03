@@ -44,7 +44,7 @@ hide:
 
 | Provider    | Dependency        | Auth Env           |
 |-------------|-------------------|--------------------|
-| OpenAI      | `msgflux[openai]` | `OPENAI_API_KEY`   |
+| OpenAI      | `msgflux`         | `OPENAI_API_KEY`   |
 
 ### Speech To Text
 

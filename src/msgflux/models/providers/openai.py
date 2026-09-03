@@ -934,8 +934,10 @@ class OpenAITextEmbedder(OpenAICompatibleHTTPModel, TextEmbedderModel):
 
 
 @register_model
-class OpenAIModeration(OpenAISDKModel, ModerationModel):
+class OpenAIModeration(OpenAICompatibleHTTPModel, ModerationModel):
     """OpenAI Moderation."""
+
+    endpoint = "/moderations"
 
     def __init__(
         self,
@@ -945,6 +947,8 @@ class OpenAIModeration(OpenAISDKModel, ModerationModel):
         enable_cache: Optional[bool] = False,
         cache_size: Optional[int] = 128,
         retry: Optional[Any] = None,
+        http_transport: Optional[Union[HTTPTransport, type[HTTPTransport]]] = None,
+        credential_resolver: Optional[ModelCredentialResolver] = None,
     ):
         """Args:
         model_id:
@@ -957,6 +961,10 @@ class OpenAIModeration(OpenAISDKModel, ModerationModel):
             Maximum number of responses to cache (default: 128).
         retry:
             Retry config. A tenacity decorator, False to disable, or None for default.
+        http_transport:
+            Direct HTTP transport. Instances may inject custom sync and async clients.
+        credential_resolver:
+            Request-time authentication resolver.
         """
         super().__init__()
         self.model_id = model_id
@@ -964,16 +972,25 @@ class OpenAIModeration(OpenAISDKModel, ModerationModel):
         self.enable_cache = enable_cache
         self.cache_size = cache_size
         self.retry = retry
+        if http_transport is not None:
+            self.http_transport = http_transport
+        self._set_credential_resolver(credential_resolver)
         self._initialize()
-        self._get_api_key()
 
     def _execute_model(self, **kwargs):
-        model_output = self.client.moderations.create(**kwargs)
-        return model_output
+        return dotdict(self._request_json(self.endpoint, kwargs))
 
     async def _aexecute_model(self, **kwargs):
-        model_output = await self.aclient.moderations.create(**kwargs)
-        return model_output
+        return dotdict(await self._arequest_json(self.endpoint, kwargs))
+
+    @staticmethod
+    def _process_model_output(model_output: dotdict) -> dotdict:
+        results = model_output.get("results") or []
+        if not results:
+            raise ValueError("OpenAI moderation response did not contain results")
+        moderation = dotdict({"results": results[0]})
+        moderation.safe = not moderation.results.flagged
+        return moderation
 
     def _generate(self, **kwargs):
         # Check cache if enabled
@@ -986,9 +1003,7 @@ class OpenAIModeration(OpenAISDKModel, ModerationModel):
         response = ModelResponse()
         response.set_response_type("moderation")
         model_output = self._execute_model(**kwargs)
-        moderation = dotdict({"results": model_output.results[0].model_dump()})
-        moderation.safe = not moderation.results.flagged
-        response.add(moderation)
+        response.add(self._process_model_output(model_output))
 
         # Store in cache if enabled
         if self.enable_cache and self._response_cache:
@@ -1008,9 +1023,7 @@ class OpenAIModeration(OpenAISDKModel, ModerationModel):
         response = ModelResponse()
         response.set_response_type("moderation")
         model_output = await self._aexecute_model(**kwargs)
-        moderation = dotdict({"results": model_output.results[0].model_dump()})
-        moderation.safe = not moderation.results.flagged
-        response.add(moderation)
+        response.add(self._process_model_output(model_output))
 
         # Store in cache if enabled
         if self.enable_cache and self._response_cache:
@@ -1021,7 +1034,7 @@ class OpenAIModeration(OpenAISDKModel, ModerationModel):
 
     def __call__(
         self,
-        data: Union[str, List[Dict[str, Any]]],
+        data: Union[str, List[str], List[Dict[str, Any]]],
     ) -> ModelResponse:
         """Args:
         data:
@@ -1034,7 +1047,7 @@ class OpenAIModeration(OpenAISDKModel, ModerationModel):
 
     async def acall(
         self,
-        data: Union[str, List[Dict[str, Any]]],
+        data: Union[str, List[str], List[Dict[str, Any]]],
     ) -> ModelResponse:
         """Async version of __call__. Args:
         data:
