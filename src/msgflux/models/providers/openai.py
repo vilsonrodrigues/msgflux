@@ -12,6 +12,11 @@ from msgflux.models.chat_capabilities import (
 from msgflux.models.chat_context import OpenAIResponsesContextAdapter
 from msgflux.models.http_transport import HTTPTransport
 from msgflux.models.model_credentials import ModelCredentialResolver
+from msgflux.models.multipart import (
+    aprepare_multipart_file,
+    prepare_multipart_data,
+    prepare_multipart_file,
+)
 from msgflux.models.openai_compatible import (
     OpenAIChatCompletionsAPI,
     OpenAICompatibleHTTPModel,
@@ -468,65 +473,122 @@ class OpenAITextToImage(
 @register_model
 class OpenAIImageTextToImage(
     _OpenAIImageResponseMixin,
-    OpenAISDKModel,
+    OpenAICompatibleHTTPModel,
     ImageTextToImageModel,
 ):
     """OpenAI Image Edit."""
+
+    endpoint = "/images/edits"
 
     def __init__(
         self,
         *,
         model_id: str,
-        moderation: Optional[Literal["auto", "low"]] = None,
         base_url: Optional[str] = None,
         retry: Optional[Any] = None,
+        http_transport: Optional[Union[HTTPTransport, type[HTTPTransport]]] = None,
+        credential_resolver: Optional[ModelCredentialResolver] = None,
     ):
         """Args:
         model_id:
             Model ID in provider.
-        moderation:
-            Control the content-moderation level for edited images.
         base_url:
             URL to model provider.
         retry:
             Retry config. A tenacity decorator, False to disable, or None for default.
+        http_transport:
+            Direct HTTP transport. Instances may inject custom sync and async clients.
+        credential_resolver:
+            Request-time authentication resolver.
         """
         super().__init__()
         self._set_image_config(
             model_id=model_id,
-            moderation=moderation,
+            moderation=None,
             base_url=base_url,
             retry=retry,
         )
+        if http_transport is not None:
+            self.http_transport = http_transport
+        self._set_credential_resolver(credential_resolver)
         self._initialize()
 
-    def _execute_model(self, **kwargs):
-        model_output = self.client.images.edit(**kwargs, **self.sampling_run_params)
-        return model_output
-
-    async def _aexecute_model(self, **kwargs):
-        model_output = await self.aclient.images.edit(
-            **kwargs, **self.sampling_run_params
+    def _execute_model(self, *, files, **kwargs):
+        response = self.http_transport.request(
+            self,
+            self.endpoint,
+            data=prepare_multipart_data({**kwargs, **self.sampling_run_params}),
+            files=files,
         )
-        return model_output
+        return dotdict(response.json())
 
-    def _prepare_inputs(self, image, mask):
-        inputs = {}
+    async def _aexecute_model(self, *, files, **kwargs):
+        response = await self.http_transport.arequest(
+            self,
+            self.endpoint,
+            data=prepare_multipart_data({**kwargs, **self.sampling_run_params}),
+            files=files,
+        )
+        return dotdict(response.json())
+
+    def _prepare_files(self, image, mask):
         if isinstance(image, (str, bytes)):
             image = [image]
-        inputs["image"] = [encode_data_to_bytes(item) for item in image]
+        files = [
+            (
+                "image[]",
+                prepare_multipart_file(
+                    item,
+                    default_filename=f"image-{index}.png",
+                ),
+            )
+            for index, item in enumerate(image)
+        ]
         if mask:
-            inputs["mask"] = encode_data_to_bytes(mask)
-        return inputs
+            files.append(
+                (
+                    "mask",
+                    prepare_multipart_file(mask, default_filename="mask.png"),
+                )
+            )
+        return files
+
+    async def _aprepare_files(self, image, mask):
+        if isinstance(image, (str, bytes)):
+            image = [image]
+        files = [
+            (
+                "image[]",
+                await aprepare_multipart_file(
+                    item,
+                    default_filename=f"image-{index}.png",
+                ),
+            )
+            for index, item in enumerate(image)
+        ]
+        if mask:
+            files.append(
+                (
+                    "mask",
+                    await aprepare_multipart_file(mask, default_filename="mask.png"),
+                )
+            )
+        return files
 
     def __call__(
         self,
         prompt: str,
-        image: Union[str, List[str]],
+        image: Union[bytes, str, List[Union[bytes, str]]],
         *,
-        mask: Optional[str] = None,
+        mask: Optional[Union[bytes, str]] = None,
         response_format: Optional[Literal["url", "base64"]] = None,
         n: Optional[int] = 1,
+        background: Optional[Literal["transparent", "opaque", "auto"]] = None,
+        input_fidelity: Optional[Literal["high", "low"]] = None,
+        output_compression: Optional[int] = None,
+        output_format: Optional[Literal["png", "jpeg", "webp"]] = None,
+        quality: Optional[Literal["standard", "low", "medium", "high", "auto"]] = None,
+        size: Optional[str] = None,
     ) -> ModelResponse:
         """Args:
         prompt:
@@ -542,6 +604,18 @@ class OpenAIImageTextToImage(
             Format in which images are returned.
         n:
             The number of images to generate.
+        background:
+            Background mode for the edited image.
+        input_fidelity:
+            How strongly the edit should preserve details from input images.
+        output_compression:
+            Compression level from 0 to 100 for JPEG or WebP output.
+        output_format:
+            Format of the generated image.
+        quality:
+            Quality of the generated image.
+        size:
+            Size of the generated image.
         """
         generation_params = dotdict(prompt=prompt, n=n, model=self.model_id)
 
@@ -549,19 +623,35 @@ class OpenAIImageTextToImage(
             if response_format == "base64":
                 response_format = "b64_json"
             generation_params.response_format = response_format
+        for name, value in (
+            ("background", background),
+            ("input_fidelity", input_fidelity),
+            ("output_compression", output_compression),
+            ("output_format", output_format),
+            ("quality", quality),
+            ("size", size),
+        ):
+            if value is not None:
+                generation_params[name] = value
 
-        inputs = self._prepare_inputs(image, mask)
-        response = self._generate(**generation_params, **inputs)
+        files = self._prepare_files(image, mask)
+        response = self._generate(**generation_params, files=files)
         return response
 
     async def acall(
         self,
         prompt: str,
-        image: Union[str, List[str]],
+        image: Union[bytes, str, List[Union[bytes, str]]],
         *,
-        mask: Optional[str] = None,
+        mask: Optional[Union[bytes, str]] = None,
         response_format: Optional[Literal["url", "base64"]] = None,
         n: Optional[int] = 1,
+        background: Optional[Literal["transparent", "opaque", "auto"]] = None,
+        input_fidelity: Optional[Literal["high", "low"]] = None,
+        output_compression: Optional[int] = None,
+        output_format: Optional[Literal["png", "jpeg", "webp"]] = None,
+        quality: Optional[Literal["standard", "low", "medium", "high", "auto"]] = None,
+        size: Optional[str] = None,
     ) -> ModelResponse:
         """Async version of __call__. Args:
         prompt:
@@ -577,6 +667,18 @@ class OpenAIImageTextToImage(
             Format in which images are returned.
         n:
             The number of images to generate.
+        background:
+            Background mode for the edited image.
+        input_fidelity:
+            How strongly the edit should preserve details from input images.
+        output_compression:
+            Compression level from 0 to 100 for JPEG or WebP output.
+        output_format:
+            Format of the generated image.
+        quality:
+            Quality of the generated image.
+        size:
+            Size of the generated image.
         """
         generation_params = dotdict(prompt=prompt, n=n, model=self.model_id)
 
@@ -584,9 +686,19 @@ class OpenAIImageTextToImage(
             if response_format == "base64":
                 response_format = "b64_json"
             generation_params.response_format = response_format
+        for name, value in (
+            ("background", background),
+            ("input_fidelity", input_fidelity),
+            ("output_compression", output_compression),
+            ("output_format", output_format),
+            ("quality", quality),
+            ("size", size),
+        ):
+            if value is not None:
+                generation_params[name] = value
 
-        inputs = self._prepare_inputs(image, mask)
-        response = await self._agenerate(**generation_params, **inputs)
+        files = await self._aprepare_files(image, mask)
+        response = await self._agenerate(**generation_params, files=files)
         return response
 
 

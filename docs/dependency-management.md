@@ -37,9 +37,9 @@ hide:
 
 ### Image Text To Image
 
-| Provider    | Dependency        | Auth Env           |
-|-------------|-------------------|--------------------|
-| OpenAI      | `msgflux[openai]` | `OPENAI_API_KEY`   |
+| Provider | Dependency | Auth Env         |
+|----------|------------|------------------|
+| OpenAI   | `msgflux`  | `OPENAI_API_KEY` |
 
 ### Moderation
 

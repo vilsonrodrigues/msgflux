@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from types import SimpleNamespace
 from unittest.mock import patch
 
 import httpx2
@@ -10,7 +9,6 @@ import msgspec
 import pytest
 
 from msgflux.models.http_transport import HTTPTransport
-from tests.models._chat_transport import mock_openai_sdk_clients
 
 
 def _image_payload(*, data=None, usage=True) -> dict:
@@ -224,35 +222,3 @@ def test_openai_image_generation_does_not_serialize_transport(monkeypatch):
     )
 
     assert "http_transport" not in model.serialize()["state"]
-
-
-def test_openai_image_edit_remains_sdk_backed(monkeypatch):
-    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
-
-    from msgflux.models.providers.openai import OpenAIImageTextToImage
-
-    sdk_response = SimpleNamespace(
-        created=1_780_000_001,
-        background=None,
-        data=[SimpleNamespace(url=None, b64_json="edited-image")],
-        output_format="png",
-        quality="high",
-        size="1024x1024",
-        usage=None,
-    )
-    with mock_openai_sdk_clients() as (sync_factory, _):
-        sync_factory.return_value.images.edit.return_value = sdk_response
-        model = OpenAIImageTextToImage(model_id="gpt-image-1")
-        response = model._generate(
-            model="gpt-image-1",
-            prompt="Add a blue circle",
-            image=[b"source-image"],
-        )
-
-    assert response.consume() == "edited-image"
-    assert response.metadata.usage is None
-    sync_factory.return_value.images.edit.assert_called_once_with(
-        model="gpt-image-1",
-        prompt="Add a blue circle",
-        image=[b"source-image"],
-    )
