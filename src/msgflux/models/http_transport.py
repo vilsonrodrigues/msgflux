@@ -35,6 +35,7 @@ class HTTPTransport:
         self._async_client = async_client
         self._owns_client = client is None
         self._owns_async_client = async_client is None
+        self._async_client_loop = None
         self.timeout = timeout
         self.max_retries = max_retries
         self.max_retry_delay = max_retry_delay
@@ -230,8 +231,13 @@ class HTTPTransport:
 
     async def aclose(self) -> None:
         if self._async_client is not None and self._owns_async_client:
+            if self._async_client_loop is not asyncio.get_running_loop():
+                self._async_client = None
+                self._async_client_loop = None
+                return
             await self._async_client.aclose()
             self._async_client = None
+            self._async_client_loop = None
 
     @staticmethod
     def _request_kwargs(
@@ -274,7 +280,10 @@ class HTTPTransport:
         return self._client
 
     def _get_async_client(self):
-        if self._async_client is None:
+        current_loop = asyncio.get_running_loop()
+        if self._async_client is None or (
+            self._owns_async_client and self._async_client_loop is not current_loop
+        ):
             self._async_client = httpx2.AsyncClient(
                 timeout=self._timeout(),
                 limits=httpx2.Limits(
@@ -283,6 +292,7 @@ class HTTPTransport:
                 ),
                 verify=self._verify_ssl(),
             )
+            self._async_client_loop = current_loop
         return self._async_client
 
     def _timeout(self) -> float | None:

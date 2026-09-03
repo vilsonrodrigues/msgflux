@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 import httpx2
 import msgspec
 import pytest
@@ -145,3 +147,20 @@ async def test_http_transport_supports_async_json_requests():
     await transport.aclose()
     assert client.is_closed is False
     await client.aclose()
+
+
+def test_owned_async_client_is_recreated_for_a_new_event_loop():
+    transport = HTTPTransport()
+    clients = []
+
+    async def capture_client():
+        client = transport._get_async_client()
+        clients.append(client)
+        await client.aclose()
+
+    asyncio.run(capture_client())
+    asyncio.run(capture_client())
+
+    assert clients[0] is not clients[1]
+    asyncio.run(transport.aclose())
+    assert transport._async_client is None
