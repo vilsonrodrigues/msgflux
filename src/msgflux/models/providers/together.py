@@ -48,7 +48,7 @@ class TogetherChatCompletion(_BaseTogether, OpenAICompatibleChatCompletion):
 
 
 @register_model
-class TogetherTextEmbedder(OpenAITextEmbedder, _BaseTogether):
+class TogetherTextEmbedder(_BaseTogether, OpenAITextEmbedder):
     """Together Text Embedder."""
 
 

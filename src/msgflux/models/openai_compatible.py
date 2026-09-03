@@ -27,6 +27,7 @@ from msgflux.models.chat_capabilities import (
 )
 from msgflux.models.chat_transport import HTTPChatTransport
 from msgflux.models.compaction import ContextTokenEstimate, ModelCompaction
+from msgflux.models.http_transport import HTTPTransport
 from msgflux.models.model_credentials import (
     BearerTokenCredentialResolver,
     ModelCredentialResolver,
@@ -189,6 +190,18 @@ class OpenAICompatibleModel(BaseModel):
             )
         return key
 
+    def _set_credential_resolver(
+        self,
+        credential_resolver: ModelCredentialResolver | None,
+    ) -> None:
+        if credential_resolver is None:
+            return
+        if not isinstance(credential_resolver, ModelCredentialResolver):
+            raise TypeError(
+                "`credential_resolver` must be a ModelCredentialResolver instance"
+            )
+        self.credential_resolver = credential_resolver
+
     @property
     def profile(self):
         """Get model profile from registry.
@@ -197,6 +210,50 @@ class OpenAICompatibleModel(BaseModel):
             ModelProfile if found, None otherwise
         """
         return get_model_profile(self.model_id, provider_id=self.provider)
+
+
+class OpenAICompatibleHTTPModel(OpenAICompatibleModel):
+    """Shared direct-HTTP runtime for OpenAI-compatible model endpoints."""
+
+    http_transport: HTTPTransport | type[HTTPTransport] = HTTPTransport
+    usage_codec: UsageCodec = default_usage_codec
+
+    def _initialize(self) -> None:
+        selected_transport = self.http_transport
+        self.http_transport = (
+            selected_transport()
+            if isinstance(selected_transport, type)
+            else selected_transport
+        )
+        if not isinstance(self.http_transport, HTTPTransport):
+            raise TypeError(
+                "`http_transport` must be an HTTPTransport instance or class"
+            )
+        self._initialize_runtime()
+
+    def _request_json(self, endpoint: str, payload: Mapping[str, Any]) -> Any:
+        response = self.http_transport.request(self, endpoint, json=dict(payload))
+        return response.json()
+
+    async def _arequest_json(
+        self,
+        endpoint: str,
+        payload: Mapping[str, Any],
+    ) -> Any:
+        response = await self.http_transport.arequest(
+            self,
+            endpoint,
+            json=dict(payload),
+        )
+        return response.json()
+
+    def close(self) -> None:
+        """Close synchronous resources owned by the HTTP transport."""
+        self.http_transport.close()
+
+    async def aclose(self) -> None:
+        """Close asynchronous resources owned by the HTTP transport."""
+        await self.http_transport.aclose()
 
 
 class OpenAICompatibleChatCompletion(OpenAICompatibleModel, ChatCompletionModel):
@@ -507,12 +564,7 @@ class OpenAICompatibleChatCompletion(OpenAICompatibleModel, ChatCompletionModel)
             raise TypeError(
                 "`chat_transport` must be a ChatTransport instance or class"
             )
-        if credential_resolver is not None:
-            if not isinstance(credential_resolver, ModelCredentialResolver):
-                raise TypeError(
-                    "`credential_resolver` must be a ModelCredentialResolver instance"
-                )
-            self.credential_resolver = credential_resolver
+        self._set_credential_resolver(credential_resolver)
         selected_api_mode = api_mode or self.capabilities.default_api_mode
         if selected_api_mode not in self.capabilities.supported_api_modes:
             raise ValueError(

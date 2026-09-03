@@ -15,6 +15,7 @@ class BaseModel(BaseClient):
         "_native_client",
         "_native_aclient",
         "chat_transport",
+        "http_transport",
         "credential_resolver",
         "api_adapter",
         "api_mode_capabilities",

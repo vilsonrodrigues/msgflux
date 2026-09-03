@@ -423,5 +423,5 @@ class OllamaChatCompletion(_BaseOllama, OpenAICompatibleChatCompletion):
 
 
 @register_model
-class OllamaTextEmbedder(OpenAITextEmbedder, _BaseOllama):
+class OllamaTextEmbedder(_BaseOllama, OpenAITextEmbedder):
     """Ollama Text Embedder."""

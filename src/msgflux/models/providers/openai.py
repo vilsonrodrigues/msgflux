@@ -10,8 +10,11 @@ from msgflux.models.chat_capabilities import (
     ChatProviderCapabilities,
 )
 from msgflux.models.chat_context import OpenAIResponsesContextAdapter
+from msgflux.models.http_transport import HTTPTransport
+from msgflux.models.model_credentials import ModelCredentialResolver
 from msgflux.models.openai_compatible import (
     OpenAIChatCompletionsAPI,
+    OpenAICompatibleHTTPModel,
     OpenAIResponsesAPI,
 )
 from msgflux.models.openai_compatible import (
@@ -791,10 +794,11 @@ class OpenAISpeechToText(OpenAISDKModel, SpeechToTextModel):
 
 
 @register_model
-class OpenAITextEmbedder(OpenAISDKModel, TextEmbedderModel):
+class OpenAITextEmbedder(OpenAICompatibleHTTPModel, TextEmbedderModel):
     """OpenAI Text Embedder."""
 
     batch_support: bool = True
+    endpoint = "/embeddings"
 
     def __init__(
         self,
@@ -805,6 +809,8 @@ class OpenAITextEmbedder(OpenAISDKModel, TextEmbedderModel):
         enable_cache: Optional[bool] = False,
         cache_size: Optional[int] = 128,
         retry: Optional[Any] = None,
+        http_transport: Optional[Union[HTTPTransport, type[HTTPTransport]]] = None,
+        credential_resolver: Optional[ModelCredentialResolver] = None,
     ):
         """Args:
         model_id:
@@ -819,6 +825,10 @@ class OpenAITextEmbedder(OpenAISDKModel, TextEmbedderModel):
             Maximum number of responses to cache (default: 128).
         retry:
             Retry config. A tenacity decorator, False to disable, or None for default.
+        http_transport:
+            Direct HTTP transport. Instances may inject custom sync and async clients.
+        credential_resolver:
+            Request-time authentication resolver.
         """
         super().__init__()
         self.model_id = model_id
@@ -827,22 +837,28 @@ class OpenAITextEmbedder(OpenAISDKModel, TextEmbedderModel):
         self.enable_cache = enable_cache
         self.cache_size = cache_size
         self.retry = retry
+        if http_transport is not None:
+            self.http_transport = http_transport
+        self._set_credential_resolver(credential_resolver)
         self._initialize()
-        self._get_api_key()
 
     def _execute_model(self, **kwargs):
-        model_output = self.client.embeddings.create(
-            **kwargs,
-            **self.sampling_run_params,
+        params = {**kwargs, **self.sampling_run_params}
+        return dotdict(
+            self._request_json(
+                self.endpoint,
+                {name: value for name, value in params.items() if value is not None},
+            )
         )
-        return model_output
 
     async def _aexecute_model(self, **kwargs):
-        model_output = await self.aclient.embeddings.create(
-            **kwargs,
-            **self.sampling_run_params,
+        params = {**kwargs, **self.sampling_run_params}
+        return dotdict(
+            await self._arequest_json(
+                self.endpoint,
+                {name: value for name, value in params.items() if value is not None},
+            )
         )
-        return model_output
 
     def _generate(self, **kwargs):
         # Check cache if enabled
@@ -856,7 +872,9 @@ class OpenAITextEmbedder(OpenAISDKModel, TextEmbedderModel):
         response.set_response_type("text_embedding")
         model_output = self._execute_model(**kwargs)
         embeddings = [item.embedding for item in model_output.data]
-        metadata = dotdict({"usage": model_output.usage.to_dict()})
+        metadata = dotdict(
+            {"usage": self.usage_codec.normalize(model_output.get("usage"))}
+        )
         response.add(embeddings)
         response.set_metadata(metadata)
 
@@ -879,7 +897,9 @@ class OpenAITextEmbedder(OpenAISDKModel, TextEmbedderModel):
         response.set_response_type("text_embedding")
         model_output = await self._aexecute_model(**kwargs)
         embeddings = [item.embedding for item in model_output.data]
-        metadata = dotdict({"usage": model_output.usage.to_dict()})
+        metadata = dotdict(
+            {"usage": self.usage_codec.normalize(model_output.get("usage"))}
+        )
         response.add(embeddings)
         response.set_metadata(metadata)
 

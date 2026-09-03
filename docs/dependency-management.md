@@ -64,10 +64,10 @@ hide:
 | Provider    | Dependency        | Auth Env           |
 |-------------|-------------------|--------------------|
 | JinaAI      | `msgflux`          | `JINAAI_API_KEY`   |
-| Ollama      | `msgflux[openai]` |                    |
-| OpenAI      | `msgflux[openai]` | `OPENAI_API_KEY`   |
-| Together    | `msgflux[openai]` | `TOGETHER_API_KEY` |
-| vLLM        | `msgflux[openai]` |                    |
+| Ollama      | `msgflux`         |                    |
+| OpenAI      | `msgflux`         | `OPENAI_API_KEY`   |
+| Together    | `msgflux`         | `TOGETHER_API_KEY` |
+| vLLM        | `msgflux`         |                    |
 
 ### Text Reranker
 

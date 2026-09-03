@@ -43,6 +43,7 @@ class TestBaseModel:
         assert "processor" in model.to_ignore
         assert "client" in model.to_ignore
         assert "chat_transport" in model.to_ignore
+        assert "http_transport" in model.to_ignore
         assert "credential_resolver" in model.to_ignore
 
     def test_instance_type(self):
