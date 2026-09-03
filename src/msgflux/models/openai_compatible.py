@@ -17,9 +17,7 @@ from msgflux.generation.control_flow import ToolFlowControl
 from msgflux.models.base import BaseModel
 from msgflux.models.cache import ResponseCache, generate_cache_key
 from msgflux.models.chat_api import (
-    BearerTokenCredentialResolver,
     ChatAPIAdapter,
-    ChatCredentialResolver,
     ChatTransport,
     PreparedChatRequest,
 )
@@ -29,6 +27,10 @@ from msgflux.models.chat_capabilities import (
 )
 from msgflux.models.chat_transport import HTTPChatTransport
 from msgflux.models.compaction import ContextTokenEstimate, ModelCompaction
+from msgflux.models.model_credentials import (
+    BearerTokenCredentialResolver,
+    ModelCredentialResolver,
+)
 from msgflux.models.profiles import get_model_profile
 from msgflux.models.reasoning import (
     OpenAICompatibleReasoningCodec,
@@ -153,6 +155,13 @@ class OpenAIResponsesAPI(ChatAPIAdapter):
 
 class OpenAICompatibleModel(BaseModel):
     provider: str = "openai"
+    credential_resolver: ModelCredentialResolver = BearerTokenCredentialResolver()
+
+    @staticmethod
+    def _raise_if_aborted() -> None:
+        abort_signal = get_execution_context().get("abort_signal")
+        if abort_signal is not None:
+            abort_signal.raise_if_aborted()
 
     def _initialize_runtime(self):
         """Initialize state shared by HTTP and SDK-backed models."""
@@ -204,7 +213,6 @@ class OpenAICompatibleChatCompletion(OpenAICompatibleModel, ChatCompletionModel)
         default_reasoning_codec=OpenAICompatibleReasoningCodec(),
     )
     chat_transport: ChatTransport | type[ChatTransport] = HTTPChatTransport
-    credential_resolver: ChatCredentialResolver = BearerTokenCredentialResolver()
     usage_codec: UsageCodec = default_usage_codec
 
     def _initialize(self):
@@ -378,7 +386,7 @@ class OpenAICompatibleChatCompletion(OpenAICompatibleModel, ChatCompletionModel)
         ] = None,
         reasoning_codec: Optional[ReasoningCodec] = None,
         chat_transport: Optional[Union[ChatTransport, type[ChatTransport]]] = None,
-        credential_resolver: Optional[ChatCredentialResolver] = None,
+        credential_resolver: Optional[ModelCredentialResolver] = None,
         **extra_body_kwargs: Any,
     ):
         """Args:
@@ -500,9 +508,9 @@ class OpenAICompatibleChatCompletion(OpenAICompatibleModel, ChatCompletionModel)
                 "`chat_transport` must be a ChatTransport instance or class"
             )
         if credential_resolver is not None:
-            if not isinstance(credential_resolver, ChatCredentialResolver):
+            if not isinstance(credential_resolver, ModelCredentialResolver):
                 raise TypeError(
-                    "`credential_resolver` must be a ChatCredentialResolver instance"
+                    "`credential_resolver` must be a ModelCredentialResolver instance"
                 )
             self.credential_resolver = credential_resolver
         selected_api_mode = api_mode or self.capabilities.default_api_mode
@@ -762,12 +770,6 @@ class OpenAICompatibleChatCompletion(OpenAICompatibleModel, ChatCompletionModel)
     @staticmethod
     def _stream_add_reasoning_chunk(stream_response, chunk):
         stream_response.add_reasoning(chunk)
-
-    @staticmethod
-    def _raise_if_aborted() -> None:
-        abort_signal = get_execution_context().get("abort_signal")
-        if abort_signal is not None:
-            abort_signal.raise_if_aborted()
 
     def _execute_model(self, **kwargs):
         self._raise_if_aborted()

@@ -12,19 +12,35 @@ if TYPE_CHECKING:
     )
     from msgflux.models.compaction import ContextTokenEstimate, ModelCompaction
     from msgflux.models.model import Model
+    from msgflux.models.model_credentials import (
+        BearerTokenCredentialResolver,
+        ModelCredentialResolver,
+        ResolvedModelCredentials,
+    )
 
 __all__ = [
+    "BearerTokenCredentialResolver",
     "ChatAPIModeCapabilities",
     "ChatContextAdapter",
     "ChatProviderCapabilities",
     "ContextTokenEstimate",
     "Model",
     "ModelCompaction",
+    "ModelCredentialResolver",
     "OpenAIResponsesContextAdapter",
+    "ResolvedModelCredentials",
 ]
 
 
 def __getattr__(name: str):
+    if name in {
+        "BearerTokenCredentialResolver",
+        "ModelCredentialResolver",
+        "ResolvedModelCredentials",
+    }:
+        value = getattr(import_module("msgflux.models.model_credentials"), name)
+        globals()[name] = value
+        return value
     if name in {"ChatAPIModeCapabilities", "ChatProviderCapabilities"}:
         value = getattr(import_module("msgflux.models.chat_capabilities"), name)
         globals()[name] = value

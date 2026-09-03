@@ -344,7 +344,7 @@ The design line is:
   body and headers without containing resolved credentials
 - `ChatTransport` sends the prepared request; it does not interpret messages
   or provider responses
-- `ChatCredentialResolver` resolves one atomic set of request headers and base
+- `ModelCredentialResolver` resolves one atomic set of request headers and base
   URL immediately before each transport attempt
 - `ChatProviderCapabilities` validates provider-wide parameter behavior and
   the declared API modes
@@ -363,12 +363,13 @@ generation schemas, flow controls, and tool execution.
 These modules keep those concerns localized:
 
 - common lifecycle behavior stays in `models/openai_compatible.py`
+- provider-neutral HTTP lifecycle, retries, cancellation, and structured errors
+  stay in `models/http_transport.py`
 - wire-protocol selection stays behind `ChatAPIAdapter`
 - provider and mode capabilities stay in `models/chat_capabilities.py`
 - optional token-count and compaction protocol conversion stays in
   `models/chat_context.py`
-- direct JSON/SSE transport, including Responses input-token counting and
-  native compaction, stays in `models/chat_transport.py`
+- chat JSON/SSE decoding stays in `models/chat_transport.py`
 - SDK-backed non-chat initialization stays in `models/openai_sdk.py`
 - OpenAI-only capabilities stay in `models/providers/openai.py`
 - final runtime validation still points back to msgFlux contracts

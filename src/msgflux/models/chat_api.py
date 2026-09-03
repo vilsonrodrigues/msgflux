@@ -7,6 +7,13 @@ from typing import Any
 import msgspec
 
 from msgflux.core.dotdict import dotdict
+from msgflux.models.model_credentials import (
+    BearerTokenCredentialResolver as _BearerTokenCredentialResolver,
+)
+from msgflux.models.model_credentials import (
+    ModelCredentialResolver,
+    ResolvedModelCredentials,
+)
 
 
 class PreparedChatRequest(msgspec.Struct, frozen=True):
@@ -43,33 +50,11 @@ class PreparedChatRequest(msgspec.Struct, frozen=True):
         return dict(extra_headers) if extra_headers is not None else {}
 
 
-class ResolvedChatCredentials(msgspec.Struct, frozen=True):
-    """Secret request material produced immediately before transport."""
-
-    headers: dict[str, str] = msgspec.field(default_factory=dict)
-    base_url: str | None = None
-
-    def __repr__(self) -> str:
-        return f"{self.__class__.__name__}()"
-
-
-class ChatCredentialResolver:
-    """Resolve request authentication without exposing its storage format."""
-
-    def resolve(self, owner: Any) -> ResolvedChatCredentials:
-        raise NotImplementedError
-
-    async def aresolve(self, owner: Any) -> ResolvedChatCredentials:
-        return self.resolve(owner)
-
-
-class BearerTokenCredentialResolver(ChatCredentialResolver):
-    """Resolve the existing provider API key as a Bearer token."""
-
-    def resolve(self, owner: Any) -> ResolvedChatCredentials:
-        return ResolvedChatCredentials(
-            headers={"Authorization": f"Bearer {owner._get_api_key()}"}
-        )
+# Compatibility names for the original chat-specific public API. New model
+# transports use the provider-neutral names from ``model_credentials``.
+BearerTokenCredentialResolver = _BearerTokenCredentialResolver
+ResolvedChatCredentials = ResolvedModelCredentials
+ChatCredentialResolver = ModelCredentialResolver
 
 
 class ChatAPIAdapter:

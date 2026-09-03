@@ -2364,7 +2364,7 @@ class or an instance through `chat_transport=`.
 
 The transport receives a `PreparedChatRequest`. Protocol-specific envelope and
 response conversion remain in `ChatAPIAdapter`, while authentication remains in
-`ChatCredentialResolver`. This keeps alternative networking code independent
+`ModelCredentialResolver`. This keeps alternative networking code independent
 from conversation history, tools, reasoning, caching, and model output.
 
 ### 18.5 **Adding another API protocol**
@@ -2495,7 +2495,7 @@ Injected clients remain owned by the caller. Call `model.close()` and
 `await model.aclose()` to release clients created by the model.
 
 Authentication is resolved immediately before each request through
-`ChatCredentialResolver`. The default resolver calls the provider's
+`ModelCredentialResolver`. The default resolver calls the provider's
 `_get_api_key()` and produces a Bearer header. Providers with refreshable or
 file-backed credentials can supply another resolver without changing their API
 adapter or transport.
@@ -2507,18 +2507,18 @@ with the endpoint from a previous attempt:
 ```python
 from os import getenv
 
-from msgflux.models.chat_api import (
-    ChatCredentialResolver,
-    ResolvedChatCredentials,
+from msgflux.models import (
+    ModelCredentialResolver,
+    ResolvedModelCredentials,
 )
 
 
-class SubscriptionCredentials(ChatCredentialResolver):
+class SubscriptionCredentials(ModelCredentialResolver):
     def resolve(self, owner):
         token = getenv("MY_SUBSCRIPTION_TOKEN")
         if not token:
             raise ValueError("Please set `MY_SUBSCRIPTION_TOKEN`")
-        return ResolvedChatCredentials(
+        return ResolvedModelCredentials(
             base_url="https://subscription.example.com/backend-api/codex",
             headers={"Authorization": f"Bearer {token}"},
         )
@@ -2533,7 +2533,7 @@ model = MyProviderChatCompletion(
 Override `aresolve()` when token refresh requires asynchronous I/O. The async
 transport calls it directly; the default implementation delegates to
 `resolve()`. Resolvers and resolved request material are excluded from model
-serialization, and `ResolvedChatCredentials` does not expose its URL or headers
+serialization, and `ResolvedModelCredentials` does not expose its URL or headers
 in `repr()`.
 
 ### 18.7 **Inspecting provider HTTP errors**
