@@ -15,7 +15,11 @@ from typing import Any
 import httpx2
 
 from msgflux.exceptions import ModelProviderHTTPError
-from msgflux.models.chat_api import ChatTransport, PreparedChatRequest
+from msgflux.models.chat_api import (
+    ChatTransport,
+    PreparedChatRequest,
+    ResolvedChatCredentials,
+)
 
 _RETRYABLE_STATUS_CODES = {408, 409, 425, 429, *range(500, 600)}
 
@@ -73,10 +77,11 @@ class HTTPChatTransport(ChatTransport):
         for attempt in range(attempts + 1):
             owner._raise_if_aborted()
             try:
+                credentials = owner.credential_resolver.resolve(owner)
                 response = client.request(
                     request.method,
-                    self._url(owner, request),
-                    headers=self._headers(owner, request),
+                    self._url(owner, request, credentials),
+                    headers=self._headers(request, credentials),
                     json=request.json,
                 )
                 if response.status_code not in _RETRYABLE_STATUS_CODES:
@@ -100,10 +105,11 @@ class HTTPChatTransport(ChatTransport):
         for attempt in range(attempts + 1):
             owner._raise_if_aborted()
             try:
+                credentials = await owner.credential_resolver.aresolve(owner)
                 response = await client.request(
                     request.method,
-                    self._url(owner, request),
-                    headers=await self._aheaders(owner, request),
+                    self._url(owner, request, credentials),
+                    headers=self._headers(request, credentials),
                     json=request.json,
                 )
                 if response.status_code not in _RETRYABLE_STATUS_CODES:
@@ -130,10 +136,11 @@ class HTTPChatTransport(ChatTransport):
             emitted = False
             owner._raise_if_aborted()
             try:
+                credentials = owner.credential_resolver.resolve(owner)
                 with self._get_client().stream(
                     request.method,
-                    self._url(owner, request),
-                    headers=self._headers(owner, request),
+                    self._url(owner, request, credentials),
+                    headers=self._headers(request, credentials),
                     json=request.json,
                 ) as response:
                     if response.status_code in _RETRYABLE_STATUS_CODES:
@@ -164,10 +171,11 @@ class HTTPChatTransport(ChatTransport):
             emitted = False
             owner._raise_if_aborted()
             try:
+                credentials = await owner.credential_resolver.aresolve(owner)
                 async with self._get_async_client().stream(
                     request.method,
-                    self._url(owner, request),
-                    headers=await self._aheaders(owner, request),
+                    self._url(owner, request, credentials),
+                    headers=self._headers(request, credentials),
                     json=request.json,
                 ) as response:
                     if response.status_code in _RETRYABLE_STATUS_CODES:
@@ -190,26 +198,24 @@ class HTTPChatTransport(ChatTransport):
                     raise
                 await self._await(owner, self._retry_delay(attempt))
 
-    def _headers(self, owner: Any, request: PreparedChatRequest) -> dict[str, str]:
-        credentials = owner.credential_resolver.resolve(owner)
-        return _merge_headers(
-            {"accept": "application/json", "content-type": "application/json"},
-            request.headers,
-            credentials.headers,
-        )
-
-    async def _aheaders(
-        self, owner: Any, request: PreparedChatRequest
+    @staticmethod
+    def _headers(
+        request: PreparedChatRequest,
+        credentials: ResolvedChatCredentials,
     ) -> dict[str, str]:
-        credentials = await owner.credential_resolver.aresolve(owner)
         return _merge_headers(
             {"accept": "application/json", "content-type": "application/json"},
             request.headers,
             credentials.headers,
         )
 
-    def _url(self, owner: Any, request: PreparedChatRequest) -> str:
-        base_url = owner.sampling_params.get("base_url")
+    @staticmethod
+    def _url(
+        owner: Any,
+        request: PreparedChatRequest,
+        credentials: ResolvedChatCredentials,
+    ) -> str:
+        base_url = credentials.base_url or owner.sampling_params.get("base_url")
         if not base_url:
             base_url = "https://api.openai.com/v1"
         return f"{str(base_url).rstrip('/')}/{request.endpoint.lstrip('/')}"

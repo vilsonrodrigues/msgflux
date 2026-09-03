@@ -2486,8 +2486,43 @@ Authentication is resolved immediately before each request through
 `ChatCredentialResolver`. The default resolver calls the provider's
 `_get_api_key()` and produces a Bearer header. Providers with refreshable or
 file-backed credentials can supply another resolver without changing their API
-adapter or transport. Resolved credentials are excluded from model
-serialization.
+adapter or transport.
+
+The resolver may return both headers and a request-specific base URL. They are
+resolved together for every attempt, so a refreshed identity cannot be paired
+with the endpoint from a previous attempt:
+
+```python
+from os import getenv
+
+from msgflux.models.chat_api import (
+    ChatCredentialResolver,
+    ResolvedChatCredentials,
+)
+
+
+class SubscriptionCredentials(ChatCredentialResolver):
+    def resolve(self, owner):
+        token = getenv("MY_SUBSCRIPTION_TOKEN")
+        if not token:
+            raise ValueError("Please set `MY_SUBSCRIPTION_TOKEN`")
+        return ResolvedChatCredentials(
+            base_url="https://subscription.example.com/backend-api/codex",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+
+model = MyProviderChatCompletion(
+    "model-name",
+    credential_resolver=SubscriptionCredentials(),
+)
+```
+
+Override `aresolve()` when token refresh requires asynchronous I/O. The async
+transport calls it directly; the default implementation delegates to
+`resolve()`. Resolvers and resolved request material are excluded from model
+serialization, and `ResolvedChatCredentials` does not expose its URL or headers
+in `repr()`.
 
 ### 18.7 **Inspecting provider HTTP errors**
 

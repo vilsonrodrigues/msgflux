@@ -344,7 +344,8 @@ The design line is:
   body and headers without containing resolved credentials
 - `ChatTransport` sends the prepared request; it does not interpret messages
   or provider responses
-- `ChatCredentialResolver` resolves authentication immediately before sending
+- `ChatCredentialResolver` resolves one atomic set of request headers and base
+  URL immediately before each transport attempt
 - `ChatProviderCapabilities` validates provider-wide parameter behavior and
   the declared API modes
 - `ChatAPIModeCapabilities` binds each mode to its adapter, reasoning codec,

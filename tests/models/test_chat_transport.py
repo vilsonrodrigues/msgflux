@@ -32,6 +32,28 @@ class _RotatingCredentials(ChatCredentialResolver):
         )
 
 
+class _EndpointCredentials(ChatCredentialResolver):
+    def resolve(self, owner):
+        return ResolvedChatCredentials(
+            base_url="https://subscription.example.com/backend-api/codex",
+            headers={"Authorization": "Bearer subscription-token"},
+        )
+
+
+class _AsyncCredentials(ChatCredentialResolver):
+    def __init__(self):
+        self.calls = 0
+
+    def resolve(self, owner):
+        raise AssertionError("async requests must use aresolve")
+
+    async def aresolve(self, owner):
+        self.calls += 1
+        return ResolvedChatCredentials(
+            headers={"Authorization": f"Bearer async-token-{self.calls}"}
+        )
+
+
 class _Owner:
     def __init__(self, credentials=None):
         self.api_adapter = _Adapter()
@@ -104,11 +126,32 @@ def test_direct_transport_retries_retryable_status_before_returning():
 
     client = httpx2.Client(transport=httpx2.MockTransport(handler))
     transport = HTTPChatTransport(client=client, max_retries=1)
+    credentials = _RotatingCredentials()
 
-    response = transport.create(_Owner(), _request())
+    response = transport.create(_Owner(credentials), _request())
 
     assert response.output == []
     assert calls == 2
+    assert credentials.calls == 2
+    client.close()
+
+
+def test_direct_transport_uses_request_time_credential_endpoint():
+    captured = []
+
+    def handler(request):
+        captured.append(request)
+        return httpx2.Response(200, json={"output": []})
+
+    client = httpx2.Client(transport=httpx2.MockTransport(handler))
+    transport = HTTPChatTransport(client=client)
+
+    transport.create(_Owner(_EndpointCredentials()), _request())
+
+    assert captured[0].url == (
+        "https://subscription.example.com/backend-api/codex/responses"
+    )
+    assert captured[0].headers["authorization"] == "Bearer subscription-token"
     client.close()
 
 
@@ -215,7 +258,7 @@ async def test_direct_transport_supports_async_json_and_credentials():
         return httpx2.Response(200, json={"output": [], "usage": {"input_tokens": 2}})
 
     client = httpx2.AsyncClient(transport=httpx2.MockTransport(handler))
-    credentials = _RotatingCredentials()
+    credentials = _AsyncCredentials()
     owner = _Owner(credentials)
     transport = HTTPChatTransport(async_client=client)
 
@@ -223,7 +266,7 @@ async def test_direct_transport_supports_async_json_and_credentials():
 
     assert isinstance(response, Mapping)
     assert response.usage.input_tokens == 2
-    assert captured[0].headers["authorization"] == "Bearer token-1"
+    assert captured[0].headers["authorization"] == "Bearer async-token-1"
     assert credentials.calls == 1
     await transport.aclose(owner)
     assert client.is_closed is False

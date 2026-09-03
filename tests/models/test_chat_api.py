@@ -212,7 +212,9 @@ def test_prepared_request_expands_sdk_extensions_for_direct_http():
 
 def test_resolved_credentials_do_not_expose_headers_in_repr():
     credentials = ResolvedChatCredentials(
-        headers={"Authorization": "Bearer secret-token"}
+        headers={"Authorization": "Bearer secret-token"},
+        base_url="https://secret-account.example.com",
     )
 
     assert "secret-token" not in repr(credentials)
+    assert "secret-account" not in repr(credentials)
