@@ -24,7 +24,11 @@ class UsageCodec:
         "eval_count",
     )
     total_token_fields = ("total_tokens", "total_token_count")
-    input_detail_fields = ("input_tokens_details", "prompt_tokens_details")
+    input_detail_fields = (
+        "input_tokens_details",
+        "input_token_details",
+        "prompt_tokens_details",
+    )
     output_detail_fields = ("output_tokens_details", "completion_tokens_details")
 
     def normalize(self, usage: Any) -> dotdict | None:
@@ -59,6 +63,7 @@ class UsageCodec:
                 "input_tokens": input_tokens or 0,
                 "output_tokens": output_tokens or 0,
                 "total_tokens": total_tokens or 0,
+                "duration_seconds": self._first_int(raw, ("seconds",)) or 0,
                 "cache_hit_percentage": self._cache_hit_percentage(
                     input_tokens,
                     cached_tokens,

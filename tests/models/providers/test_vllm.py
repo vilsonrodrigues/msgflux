@@ -258,16 +258,8 @@ class TestVLLMSpeechToText:
         monkeypatch.setenv("VLLM_API_KEY", "test-key-12345")
         monkeypatch.setenv("VLLM_BASE_URL", "http://localhost:8000/v1")
 
-    @pytest.fixture
-    def mock_openai_client(self):
-        """Mock OpenAI client."""
-        with mock_openai_sdk_clients() as clients:
-            yield clients
-
-    def test_speech_to_text_initialization(self, mock_openai_client):
+    def test_speech_to_text_initialization(self):
         """Test VLLMSpeechToText initialization."""
-        pytest.importorskip("openai")
-
         from msgflux.models.providers.vllm import VLLMSpeechToText
 
         model = VLLMSpeechToText(model_id="whisper-large")

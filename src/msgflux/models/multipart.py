@@ -6,6 +6,8 @@ import mimetypes
 from collections.abc import Mapping, Sequence
 from typing import Any, TypeAlias
 
+import msgspec
+
 from msgflux.utils.encode import aencode_data_to_bytes, encode_data_to_bytes
 
 MultipartFile: TypeAlias = tuple[str, bytes, str]
@@ -52,4 +54,6 @@ def _buffer_to_part(buffer, default_filename: str) -> MultipartFile:
 
 
 def _form_value(value: Any) -> str:
+    if isinstance(value, Mapping):
+        return msgspec.json.encode(value).decode()
     return str(value).lower() if isinstance(value, bool) else str(value)

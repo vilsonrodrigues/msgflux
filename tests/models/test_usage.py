@@ -65,6 +65,22 @@ def test_usage_codec_preserves_image_token_details():
     assert usage.output_tokens_details.image_tokens == 20
 
 
+def test_usage_codec_normalizes_transcription_details_and_duration():
+    token_usage = UsageCodec().normalize(
+        {
+            "input_tokens": 14,
+            "input_token_details": {"audio_tokens": 12, "text_tokens": 2},
+            "output_tokens": 3,
+            "total_tokens": 17,
+        }
+    )
+    duration_usage = UsageCodec().normalize({"type": "duration", "seconds": 9})
+
+    assert token_usage.input_tokens_details.audio_tokens == 12
+    assert token_usage.input_tokens_details.text_tokens == 2
+    assert duration_usage.duration_seconds == 9
+
+
 def test_usage_codec_normalizes_anthropic_and_google_aliases():
     anthropic = UsageCodec().normalize(
         {

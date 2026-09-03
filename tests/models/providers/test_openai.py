@@ -2431,16 +2431,8 @@ class TestOpenAISpeechToText:
         """Setup environment variables for tests."""
         monkeypatch.setenv("OPENAI_API_KEY", "test-key-12345")
 
-    @pytest.fixture
-    def mock_openai_client(self):
-        """Mock OpenAI client."""
-        with mock_openai_sdk_clients() as clients:
-            yield clients
-
-    def test_speech_to_text_initialization(self, mock_openai_client):
+    def test_speech_to_text_initialization(self):
         """Test OpenAISpeechToText initialization."""
-        pytest.importorskip("openai")
-
         from msgflux.models.providers.openai import OpenAISpeechToText
 
         model = OpenAISpeechToText(model_id="whisper-1")
@@ -2449,10 +2441,8 @@ class TestOpenAISpeechToText:
         assert model.provider == "openai"
         assert model.model_type == "speech_to_text"
 
-    def test_speech_to_text_with_temperature(self, mock_openai_client):
+    def test_speech_to_text_with_temperature(self):
         """Test OpenAISpeechToText with temperature parameter."""
-        pytest.importorskip("openai")
-
         from msgflux.models.providers.openai import OpenAISpeechToText
 
         model = OpenAISpeechToText(
@@ -2463,20 +2453,17 @@ class TestOpenAISpeechToText:
         assert model.sampling_run_params["temperature"] == 0.5
 
     @pytest.mark.asyncio
-    async def test_speech_to_text_acall_stream_uses_async_detached(
-        self, mock_openai_client
-    ):
+    async def test_speech_to_text_acall_stream_uses_async_detached(self):
         """STT async streaming should use F.adetached, not the global Executor."""
-        pytest.importorskip("openai")
-
         from msgflux.models.providers.openai import OpenAISpeechToText
 
         model = OpenAISpeechToText(model_id="gpt-4o-transcribe")
 
         with (
             patch(
-                "msgflux.models.providers.openai.encode_data_to_bytes",
-                return_value=b"audio",
+                "msgflux.models.providers.openai.aprepare_multipart_file",
+                new_callable=AsyncMock,
+                return_value=("audio.wav", b"audio", "audio/x-wav"),
             ),
             patch(
                 "msgflux.models.providers.openai.F.adetached",

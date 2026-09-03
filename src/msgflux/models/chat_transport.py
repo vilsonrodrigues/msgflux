@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Iterable, Iterator
-from json import JSONDecodeError, loads
+from collections.abc import AsyncIterator, Iterator
 from typing import Any
 
 from msgflux.models.chat_api import ChatTransport, PreparedChatRequest
 from msgflux.models.http_transport import HTTPTransport, merge_headers
+from msgflux.models.sse import aiter_sse_json, iter_sse_json
 
 
 class HTTPChatTransport(ChatTransport):
@@ -67,7 +67,7 @@ class HTTPChatTransport(ChatTransport):
             method=request.method,
             headers=self._headers(request),
             json=request.json,
-            iterate=lambda response: _iter_sse_json(response.iter_lines()),
+            iterate=lambda response: iter_sse_json(response.iter_lines()),
         ):
             yield owner.api_adapter.decode_stream_event(payload)
 
@@ -82,7 +82,7 @@ class HTTPChatTransport(ChatTransport):
             method=request.method,
             headers=self._headers(request),
             json=request.json,
-            iterate=lambda response: _aiter_sse_json(response.aiter_lines()),
+            iterate=lambda response: aiter_sse_json(response.aiter_lines()),
         ):
             yield owner.api_adapter.decode_stream_event(payload)
 
@@ -92,69 +92,3 @@ class HTTPChatTransport(ChatTransport):
             {"accept": "application/json", "content-type": "application/json"},
             request.headers,
         )
-
-
-def _iter_sse_data(lines: Iterable[str]) -> Iterator[str]:
-    data_lines: list[str] = []
-    for raw_line in lines:
-        line = raw_line.rstrip("\r")
-        if not line:
-            if data_lines:
-                yield "\n".join(data_lines)
-                data_lines.clear()
-            continue
-        if line.startswith(":"):
-            continue
-        field, separator, value = line.partition(":")
-        if field == "data":
-            data_lines.append(
-                value[1:] if separator and value.startswith(" ") else value
-            )
-    if data_lines:
-        yield "\n".join(data_lines)
-
-
-async def _aiter_sse_data(lines: AsyncIterator[str]) -> AsyncIterator[str]:
-    data_lines: list[str] = []
-    async for raw_line in lines:
-        line = raw_line.rstrip("\r")
-        if not line:
-            if data_lines:
-                yield "\n".join(data_lines)
-                data_lines.clear()
-            continue
-        if line.startswith(":"):
-            continue
-        field, separator, value = line.partition(":")
-        if field == "data":
-            data_lines.append(
-                value[1:] if separator and value.startswith(" ") else value
-            )
-    if data_lines:
-        yield "\n".join(data_lines)
-
-
-def _iter_sse_json(lines: Iterable[str]) -> Iterator[dict[str, Any]]:
-    for data in _iter_sse_data(lines):
-        if data.strip() == "[DONE]":
-            return
-        yield _decode_sse_json(data)
-
-
-async def _aiter_sse_json(
-    lines: AsyncIterator[str],
-) -> AsyncIterator[dict[str, Any]]:
-    async for data in _aiter_sse_data(lines):
-        if data.strip() == "[DONE]":
-            return
-        yield _decode_sse_json(data)
-
-
-def _decode_sse_json(data: str) -> dict[str, Any]:
-    try:
-        payload = loads(data)
-    except JSONDecodeError as exc:
-        raise ValueError("Provider returned invalid SSE JSON") from exc
-    if not isinstance(payload, dict):
-        raise ValueError("Provider SSE data must be a JSON object")
-    return payload

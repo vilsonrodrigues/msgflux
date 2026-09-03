@@ -32,6 +32,7 @@ from msgflux.models.reasoning import (
 )
 from msgflux.models.registry import register_model
 from msgflux.models.response import ModelResponse, ModelStreamResponse
+from msgflux.models.sse import aiter_sse_json, iter_sse_json
 from msgflux.models.types import (
     ImageTextToImageModel,
     ModerationModel,
@@ -41,7 +42,6 @@ from msgflux.models.types import (
     TextToSpeechModel,
 )
 from msgflux.models.usage import default_usage_codec
-from msgflux.utils.encode import encode_data_to_bytes
 
 
 @register_model
@@ -703,8 +703,10 @@ class OpenAIImageTextToImage(
 
 
 @register_model
-class OpenAISpeechToText(OpenAISDKModel, SpeechToTextModel):
+class OpenAISpeechToText(OpenAICompatibleHTTPModel, SpeechToTextModel):
     """OpenAI Speech to Text."""
+
+    endpoint = "/audio/transcriptions"
 
     def __init__(
         self,
@@ -713,6 +715,8 @@ class OpenAISpeechToText(OpenAISDKModel, SpeechToTextModel):
         temperature: Optional[float] = 0.0,
         base_url: Optional[str] = None,
         retry: Optional[Any] = None,
+        http_transport: Optional[Union[HTTPTransport, type[HTTPTransport]]] = None,
+        credential_resolver: Optional[ModelCredentialResolver] = None,
     ):
         """Args:
         model_id:
@@ -723,103 +727,123 @@ class OpenAISpeechToText(OpenAISDKModel, SpeechToTextModel):
             URL to model provider.
         retry:
             Retry config. A tenacity decorator, False to disable, or None for default.
+        http_transport:
+            Direct HTTP transport. Instances may inject custom sync and async clients.
+        credential_resolver:
+            Request-time authentication resolver.
         """
         super().__init__()
         self.model_id = model_id
         self.sampling_params = {"base_url": base_url or self._get_base_url()}
         self.sampling_run_params = {"temperature": temperature}
         self.retry = retry
+        if http_transport is not None:
+            self.http_transport = http_transport
+        self._set_credential_resolver(credential_resolver)
         self._initialize()
-        self._get_api_key()
 
-    def _execute_model(self, **kwargs):
-        model_output = self.client.audio.transcriptions.create(
-            **kwargs, **self.sampling_run_params
+    def _execute_model(self, *, file, response_format, **kwargs):
+        response = self.http_transport.request(
+            self,
+            self.endpoint,
+            data=prepare_multipart_data(
+                {
+                    **kwargs,
+                    **self.sampling_run_params,
+                    "response_format": response_format,
+                }
+            ),
+            files=[("file", file)],
         )
-        return model_output
+        return self._decode_response(response, response_format)
 
-    async def _aexecute_model(self, **kwargs):
-        model_output = await self.aclient.audio.transcriptions.create(
-            **kwargs, **self.sampling_run_params
+    async def _aexecute_model(self, *, file, response_format, **kwargs):
+        response = await self.http_transport.arequest(
+            self,
+            self.endpoint,
+            data=prepare_multipart_data(
+                {
+                    **kwargs,
+                    **self.sampling_run_params,
+                    "response_format": response_format,
+                }
+            ),
+            files=[("file", file)],
         )
-        return model_output
+        return self._decode_response(response, response_format)
 
-    def _generate(self, **kwargs):
+    @staticmethod
+    def _decode_response(response, response_format):
+        if response_format in {"text", "srt", "vtt"}:
+            return response.text
+        return dotdict(response.json())
+
+    def _process_transcript(self, model_output, response_format):
         response = ModelResponse()
-
-        model_output = self._execute_model(**kwargs)
-
         response.set_response_type("transcript")
-
-        transcript = {}
-
         if isinstance(model_output, str):
-            transcript["text"] = model_output
+            transcript = {"text": model_output}
+            usage = None
+            details = {"response_format": response_format}
         else:
-            if model_output.text:
-                transcript["text"] = model_output.text
-            words = getattr(model_output, "words", None)
-            if words:
-                transcript["words"] = [
-                    {"word": w.word, "start": w.start, "end": w.end} for w in words
-                ]
-            segments = getattr(model_output, "segments", None)
-            if segments:
-                transcript["segments"] = [
-                    {"id": seg.id, "start": seg.start, "end": seg.end, "text": seg.text}
-                    for seg in segments
-                ]
-
+            transcript = dict(model_output)
+            raw_usage = transcript.pop("usage", None)
+            usage = self.usage_codec.normalize(raw_usage)
+            details = {
+                "response_format": response_format,
+                "language": transcript.get("language"),
+                "duration": transcript.get("duration"),
+            }
         response.add(transcript)
-
+        response.set_metadata(dotdict(usage=usage, details=details))
         return response
 
-    async def _agenerate(self, **kwargs):
-        response = ModelResponse()
+    def _generate(self, *, response_format, **kwargs):
+        return self._process_transcript(
+            self._execute_model(response_format=response_format, **kwargs),
+            response_format,
+        )
 
-        model_output = await self._aexecute_model(**kwargs)
+    async def _agenerate(self, *, response_format, **kwargs):
+        return self._process_transcript(
+            await self._aexecute_model(response_format=response_format, **kwargs),
+            response_format,
+        )
 
-        response.set_response_type("transcript")
+    def _stream_model(self, *, file, **kwargs):
+        return self.http_transport.stream(
+            self,
+            self.endpoint,
+            data=prepare_multipart_data({**kwargs, **self.sampling_run_params}),
+            files=[("file", file)],
+            iterate=lambda response: iter_sse_json(response.iter_lines()),
+        )
 
-        transcript = {}
-
-        if isinstance(model_output, str):
-            transcript["text"] = model_output
-        else:
-            if model_output.text:
-                transcript["text"] = model_output.text
-            words = getattr(model_output, "words", None)
-            if words:
-                transcript["words"] = [
-                    {"word": w.word, "start": w.start, "end": w.end} for w in words
-                ]
-            segments = getattr(model_output, "segments", None)
-            if segments:
-                transcript["segments"] = [
-                    {"id": seg.id, "start": seg.start, "end": seg.end, "text": seg.text}
-                    for seg in segments
-                ]
-                transcript["segments"] = segments
-
-        response.add(transcript)
-
-        return response
+    def _astream_model(self, *, file, **kwargs):
+        return self.http_transport.astream(
+            self,
+            self.endpoint,
+            data=prepare_multipart_data({**kwargs, **self.sampling_run_params}),
+            files=[("file", file)],
+            iterate=lambda response: aiter_sse_json(response.aiter_lines()),
+        )
 
     def _stream_generate(self, **kwargs):
         stream_response = kwargs.pop("stream_response")
         stream_response.set_response_type("transcript")
 
         try:
-            model_output = self._execute_model(**kwargs)
-
-            for event in model_output:
-                if event.type == "transcript.text.delta":
-                    chunk = event.delta
+            for event in self._stream_model(**kwargs):
+                if event.get("type") == "transcript.text.delta":
+                    chunk = event.get("delta")
                     if chunk:
                         stream_response.add(chunk)
-                        if not stream_response.first_chunk_event.is_set():
-                            stream_response.first_chunk_event.set()
-                elif event.type == "transcript.text.done":
+                elif event.get("type") == "transcript.text.done":
+                    self._set_stream_metadata(
+                        stream_response,
+                        event,
+                        response_format=kwargs.get("response_format"),
+                    )
                     break
         except Exception as exc:
             stream_response.finish(error=exc, status="failed")
@@ -833,16 +857,17 @@ class OpenAISpeechToText(OpenAISDKModel, SpeechToTextModel):
         stream_response.set_response_type("transcript")
 
         try:
-            model_output = await self._aexecute_model(**kwargs)
-
-            async for event in model_output:
-                if event.type == "transcript.text.delta":
-                    chunk = event.delta
+            async for event in self._astream_model(**kwargs):
+                if event.get("type") == "transcript.text.delta":
+                    chunk = event.get("delta")
                     if chunk:
                         stream_response.add(chunk)
-                        if not stream_response.first_chunk_event.is_set():
-                            stream_response.first_chunk_event.set()
-                elif event.type == "transcript.text.done":
+                elif event.get("type") == "transcript.text.done":
+                    self._set_stream_metadata(
+                        stream_response,
+                        event,
+                        response_format=kwargs.get("response_format"),
+                    )
                     break
         except Exception as exc:
             stream_response.finish(error=exc, status="failed")
@@ -851,17 +876,29 @@ class OpenAISpeechToText(OpenAISDKModel, SpeechToTextModel):
 
         return stream_response
 
+    def _set_stream_metadata(self, stream_response, event, *, response_format):
+        stream_response.set_metadata(
+            dotdict(
+                usage=self.usage_codec.normalize(event.get("usage")),
+                details={"response_format": response_format},
+            )
+        )
+
     def __call__(
         self,
-        data: str,
+        data: Union[bytes, str],
         *,
         stream: Optional[bool] = False,
         response_format: Optional[
-            Literal["json", "text", "srt", "verbose_json", "vtt"]
+            Literal["json", "text", "srt", "verbose_json", "vtt", "diarized_json"]
         ] = "text",
         timestamp_granularities: Optional[List[str]] = None,
         prompt: Optional[str] = None,
         language: Optional[str] = None,
+        include: Optional[List[str]] = None,
+        keywords: Optional[List[str]] = None,
+        languages: Optional[List[str]] = None,
+        chunking_strategy: Optional[Union[str, Dict[str, Any]]] = None,
     ) -> Union[ModelResponse, ModelStreamResponse]:
         """Args:
         data:
@@ -884,8 +921,16 @@ class OpenAISpeechToText(OpenAISDKModel, SpeechToTextModel):
         language:
             The language of the input audio. Supplying the input language in
             ISO-639-1 (e.g. en) format will improve accuracy and latency.
+        include:
+            Additional response fields, such as token log probabilities.
+        keywords:
+            Words or phrases that should guide supported transcription models.
+        languages:
+            Candidate input languages for supported transcription models.
+        chunking_strategy:
+            Server-side audio chunking strategy, such as `auto` or VAD options.
         """
-        file = encode_data_to_bytes(data)
+        file = prepare_multipart_file(data, default_filename="audio.wav")
         params = {
             "file": file,
             "language": language,
@@ -893,6 +938,10 @@ class OpenAISpeechToText(OpenAISDKModel, SpeechToTextModel):
             "timestamp_granularities": timestamp_granularities,
             "prompt": prompt,
             "model": self.model_id,
+            "include": include,
+            "keywords": keywords,
+            "languages": languages,
+            "chunking_strategy": chunking_strategy,
         }
         if stream:
             stream_response = ModelStreamResponse(mode="sync")
@@ -907,15 +956,19 @@ class OpenAISpeechToText(OpenAISDKModel, SpeechToTextModel):
 
     async def acall(
         self,
-        data: str,
+        data: Union[bytes, str],
         *,
         stream: Optional[bool] = False,
         response_format: Optional[
-            Literal["json", "text", "srt", "verbose_json", "vtt"]
+            Literal["json", "text", "srt", "verbose_json", "vtt", "diarized_json"]
         ] = "text",
         timestamp_granularities: Optional[List[str]] = None,
         prompt: Optional[str] = None,
         language: Optional[str] = None,
+        include: Optional[List[str]] = None,
+        keywords: Optional[List[str]] = None,
+        languages: Optional[List[str]] = None,
+        chunking_strategy: Optional[Union[str, Dict[str, Any]]] = None,
     ) -> Union[ModelResponse, ModelStreamResponse]:
         """Async version of __call__. Args:
         data:
@@ -938,8 +991,16 @@ class OpenAISpeechToText(OpenAISDKModel, SpeechToTextModel):
         language:
             The language of the input audio. Supplying the input language in
             ISO-639-1 (e.g. en) format will improve accuracy and latency.
+        include:
+            Additional response fields, such as token log probabilities.
+        keywords:
+            Words or phrases that should guide supported transcription models.
+        languages:
+            Candidate input languages for supported transcription models.
+        chunking_strategy:
+            Server-side audio chunking strategy, such as `auto` or VAD options.
         """
-        file = encode_data_to_bytes(data)
+        file = await aprepare_multipart_file(data, default_filename="audio.wav")
         params = {
             "file": file,
             "language": language,
@@ -947,6 +1008,10 @@ class OpenAISpeechToText(OpenAISDKModel, SpeechToTextModel):
             "timestamp_granularities": timestamp_granularities,
             "prompt": prompt,
             "model": self.model_id,
+            "include": include,
+            "keywords": keywords,
+            "languages": languages,
+            "chunking_strategy": chunking_strategy,
         }
         if stream:
             stream_response = ModelStreamResponse(mode="async")

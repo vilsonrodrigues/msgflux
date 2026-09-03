@@ -49,10 +49,10 @@ hide:
 
 ### Speech To Text
 
-| Provider    | Dependency        | Auth Env           |
-|-------------|-------------------|--------------------|
-| OpenAI      | `msgflux[openai]` | `OPENAI_API_KEY`   |
-| vLLM        | `msgflux[openai]` |                    |
+| Provider | Dependency | Auth Env         |
+|----------|------------|------------------|
+| OpenAI   | `msgflux`  | `OPENAI_API_KEY` |
+| vLLM     | `msgflux`  |                  |
 
 ### Text Classifier
 
