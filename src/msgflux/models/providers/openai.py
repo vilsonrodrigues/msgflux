@@ -1,5 +1,5 @@
 import tempfile
-from contextlib import asynccontextmanager, contextmanager
+from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional, Union
 
 import msgflux.nn.functional as F
@@ -25,7 +25,6 @@ from msgflux.models.openai_compatible import (
 from msgflux.models.openai_compatible import (
     OpenAICompatibleChatCompletion as _OpenAICompatibleChatCompletion,
 )
-from msgflux.models.openai_sdk import OpenAISDKModel
 from msgflux.models.reasoning import (
     OpenAIReasoningCodec,
     OpenAIResponsesReasoningCodec,
@@ -79,8 +78,10 @@ class OpenAIChatCompletion(_OpenAICompatibleChatCompletion):
 
 
 @register_model
-class OpenAITextToSpeech(OpenAISDKModel, TextToSpeechModel):
+class OpenAITextToSpeech(OpenAICompatibleHTTPModel, TextToSpeechModel):
     """OpenAI Text to Speech."""
+
+    endpoint = "/audio/speech"
 
     def __init__(
         self,
@@ -90,6 +91,8 @@ class OpenAITextToSpeech(OpenAISDKModel, TextToSpeechModel):
         stream_chunk_size: int = 1024,
         base_url: Optional[str] = None,
         retry: Optional[Any] = None,
+        http_transport: Optional[Union[HTTPTransport, type[HTTPTransport]]] = None,
+        credential_resolver: Optional[ModelCredentialResolver] = None,
     ):
         """Args:
         model_id:
@@ -105,6 +108,10 @@ class OpenAITextToSpeech(OpenAISDKModel, TextToSpeechModel):
             URL to model provider.
         retry:
             Retry config. A tenacity decorator, False to disable, or None for default.
+        http_transport:
+            Direct HTTP transport. Instances may inject custom sync and async clients.
+        credential_resolver:
+            Request-time authentication resolver.
         """
         super().__init__()
         if not isinstance(stream_chunk_size, int) or stream_chunk_size <= 0:
@@ -117,50 +124,70 @@ class OpenAITextToSpeech(OpenAISDKModel, TextToSpeechModel):
             "speed": speed,
         }
         self.retry = retry
+        if http_transport is not None:
+            self.http_transport = http_transport
+        self._set_credential_resolver(credential_resolver)
         self._initialize()
-        self._get_api_key()
 
-    @contextmanager
     def _execute_model(self, **kwargs):
-        with self.client.audio.speech.with_streaming_response.create(
-            model=self.model_id, **kwargs, **self.sampling_run_params
-        ) as model_output:
-            yield model_output
+        return self.http_transport.stream(
+            self,
+            self.endpoint,
+            json={"model": self.model_id, **kwargs, **self.sampling_run_params},
+            iterate=lambda response: response.iter_bytes(
+                chunk_size=self.stream_chunk_size
+            ),
+        )
 
-    @asynccontextmanager
-    async def _aexecute_model(self, **kwargs):
-        async with self.aclient.audio.speech.with_streaming_response.create(
-            model=self.model_id, **kwargs, **self.sampling_run_params
-        ) as model_output:
-            yield model_output
+    def _aexecute_model(self, **kwargs):
+        return self.http_transport.astream(
+            self,
+            self.endpoint,
+            json={"model": self.model_id, **kwargs, **self.sampling_run_params},
+            iterate=lambda response: response.aiter_bytes(
+                chunk_size=self.stream_chunk_size
+            ),
+        )
 
     def _generate(self, **kwargs):
         response = ModelResponse()
 
-        with self._execute_model(**kwargs) as model_output:
+        temp_file_path = None
+        try:
             with tempfile.NamedTemporaryFile(
                 suffix=f".{kwargs.get('response_format')}", delete=False
             ) as temp_file:
                 temp_file_path = temp_file.name
-                model_output.stream_to_file(temp_file_path)
+                for chunk in self._execute_model(**kwargs):
+                    temp_file.write(chunk)
+        except BaseException:
+            if temp_file_path is not None:
+                Path(temp_file_path).unlink(missing_ok=True)
+            raise
 
-            response.set_response_type("audio_generation")
-            response.add(temp_file_path)
+        response.set_response_type("audio_generation")
+        response.add(temp_file_path)
 
         return response
 
     async def _agenerate(self, **kwargs):
         response = ModelResponse()
 
-        async with self._aexecute_model(**kwargs) as model_output:
+        temp_file_path = None
+        try:
             with tempfile.NamedTemporaryFile(
                 suffix=f".{kwargs.get('response_format')}", delete=False
             ) as temp_file:
                 temp_file_path = temp_file.name
-                await model_output.stream_to_file(temp_file_path)
+                async for chunk in self._aexecute_model(**kwargs):
+                    temp_file.write(chunk)
+        except BaseException:
+            if temp_file_path is not None:
+                Path(temp_file_path).unlink(missing_ok=True)
+            raise
 
-            response.set_response_type("audio_generation")
-            response.add(temp_file_path)
+        response.set_response_type("audio_generation")
+        response.add(temp_file_path)
 
         return response
 
@@ -169,11 +196,8 @@ class OpenAITextToSpeech(OpenAISDKModel, TextToSpeechModel):
         stream_response.set_response_type("audio_generation")
 
         try:
-            with self._execute_model(**kwargs) as model_output:
-                for chunk in model_output.iter_bytes(chunk_size=self.stream_chunk_size):
-                    stream_response.add(chunk)
-                    if not stream_response.first_chunk_event.is_set():
-                        stream_response.first_chunk_event.set()
+            for chunk in self._execute_model(**kwargs):
+                stream_response.add(chunk)
         except Exception as exc:
             stream_response.finish(error=exc, status="failed")
         else:
@@ -184,13 +208,8 @@ class OpenAITextToSpeech(OpenAISDKModel, TextToSpeechModel):
         stream_response.set_response_type("audio_generation")
 
         try:
-            async with self._aexecute_model(**kwargs) as model_output:
-                async for chunk in model_output.iter_bytes(
-                    chunk_size=self.stream_chunk_size
-                ):
-                    stream_response.add(chunk)
-                    if not stream_response.first_chunk_event.is_set():
-                        stream_response.first_chunk_event.set()
+            async for chunk in self._aexecute_model(**kwargs):
+                stream_response.add(chunk)
         except Exception as exc:
             stream_response.finish(error=exc, status="failed")
         else:

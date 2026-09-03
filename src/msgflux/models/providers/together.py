@@ -53,5 +53,5 @@ class TogetherTextEmbedder(_BaseTogether, OpenAITextEmbedder):
 
 
 @register_model
-class TogetherTextToSpeech(OpenAITextToSpeech, _BaseTogether):
+class TogetherTextToSpeech(_BaseTogether, OpenAITextToSpeech):
     """Together Text to Speech."""

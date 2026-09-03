@@ -81,8 +81,8 @@ hide:
 
 | Provider    | Dependency        | Auth Env           |
 |-------------|-------------------|--------------------|
-| OpenAI      | `msgflux[openai]` | `OPENAI_API_KEY`   |
-| Together    | `msgflux[openai]` | `TOGETHER_API_KEY` |
+| OpenAI      | `msgflux`         | `OPENAI_API_KEY`   |
+| Together    | `msgflux`         | `TOGETHER_API_KEY` |
 
 ## Parsers
 

@@ -2252,16 +2252,8 @@ class TestOpenAITextToSpeech:
         """Setup environment variables for tests."""
         monkeypatch.setenv("OPENAI_API_KEY", "test-key-12345")
 
-    @pytest.fixture
-    def mock_openai_client(self):
-        """Mock OpenAI client."""
-        with mock_openai_sdk_clients() as clients:
-            yield clients
-
-    def test_text_to_speech_initialization(self, mock_openai_client):
+    def test_text_to_speech_initialization(self):
         """Test OpenAITextToSpeech initialization."""
-        pytest.importorskip("openai")
-
         from msgflux.models.providers.openai import OpenAITextToSpeech
 
         model = OpenAITextToSpeech(model_id="tts-1")
@@ -2271,10 +2263,8 @@ class TestOpenAITextToSpeech:
         assert model.model_type == "text_to_speech"
         assert model.stream_chunk_size == 1024
 
-    def test_text_to_speech_with_voice_and_speed(self, mock_openai_client):
+    def test_text_to_speech_with_voice_and_speed(self):
         """Test OpenAITextToSpeech with voice and speed parameters."""
-        pytest.importorskip("openai")
-
         from msgflux.models.providers.openai import OpenAITextToSpeech
 
         model = OpenAITextToSpeech(
@@ -2286,10 +2276,8 @@ class TestOpenAITextToSpeech:
         assert model.sampling_run_params["voice"] == "nova"
         assert model.sampling_run_params["speed"] == 1.5
 
-    def test_text_to_speech_with_stream_chunk_size(self, mock_openai_client):
+    def test_text_to_speech_with_stream_chunk_size(self):
         """Test OpenAITextToSpeech with custom stream chunk size."""
-        pytest.importorskip("openai")
-
         from msgflux.models.providers.openai import OpenAITextToSpeech
 
         model = OpenAITextToSpeech(
@@ -2300,12 +2288,8 @@ class TestOpenAITextToSpeech:
         assert model.stream_chunk_size == 512
 
     @pytest.mark.parametrize("stream_chunk_size", [0, -1, 1.5, "1024"])
-    def test_text_to_speech_rejects_invalid_stream_chunk_size(
-        self, mock_openai_client, stream_chunk_size
-    ):
+    def test_text_to_speech_rejects_invalid_stream_chunk_size(self, stream_chunk_size):
         """TTS stream chunk size must be a positive integer."""
-        pytest.importorskip("openai")
-
         from msgflux.models.providers.openai import OpenAITextToSpeech
 
         with pytest.raises(ValueError, match="positive integer"):
@@ -2314,33 +2298,17 @@ class TestOpenAITextToSpeech:
                 stream_chunk_size=stream_chunk_size,
             )
 
-    def test_text_to_speech_stream_uses_configured_chunk_size(self, mock_openai_client):
-        """TTS streaming should pass the configured chunk size to iter_bytes."""
-        pytest.importorskip("openai")
-
+    def test_text_to_speech_streams_transport_chunks(self):
+        """TTS streaming should forward transport bytes to the response."""
         from msgflux.models.providers.openai import OpenAITextToSpeech
         from msgflux.models.response import ModelStreamResponse
 
-        class FakeModelOutput:
-            def __init__(self):
-                self.chunk_size = None
-
-            def iter_bytes(self, *, chunk_size):
-                self.chunk_size = chunk_size
-                yield b"audio"
-
-        fake_output = FakeModelOutput()
-
-        @contextmanager
         def fake_execute_model(**kwargs):
-            yield fake_output
+            yield b"audio"
 
-        model = OpenAITextToSpeech(
-            model_id="tts-1",
-            stream_chunk_size=512,
-        )
+        model = OpenAITextToSpeech(model_id="tts-1", stream_chunk_size=512)
         model._execute_model = fake_execute_model
-        stream_response = ModelStreamResponse()
+        stream_response = ModelStreamResponse(mode="sync")
 
         model._stream_generate(
             input="hello",
@@ -2348,16 +2316,11 @@ class TestOpenAITextToSpeech:
             stream_response=stream_response,
         )
 
-        assert fake_output.chunk_size == 512
         assert stream_response.data == b"audio"
 
     @pytest.mark.asyncio
-    async def test_text_to_speech_acall_stream_uses_async_detached(
-        self, mock_openai_client
-    ):
+    async def test_text_to_speech_acall_stream_uses_async_detached(self):
         """TTS async streaming should use F.adetached, not the global Executor."""
-        pytest.importorskip("openai")
-
         from msgflux.models.providers.openai import OpenAITextToSpeech
 
         model = OpenAITextToSpeech(model_id="tts-1")
