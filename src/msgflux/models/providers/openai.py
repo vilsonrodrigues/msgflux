@@ -2,6 +2,8 @@ import tempfile
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional, Union
 
+import msgspec
+
 import msgflux.nn.functional as F
 from msgflux.core.dotdict import dotdict
 from msgflux.models.cache import generate_cache_key
@@ -10,6 +12,10 @@ from msgflux.models.chat_capabilities import (
     ChatProviderCapabilities,
 )
 from msgflux.models.chat_context import OpenAIResponsesContextAdapter
+from msgflux.models.chat_extensions import (
+    ChatRequestContext,
+    ChatSpeedExtension,
+)
 from msgflux.models.http_transport import HTTPTransport
 from msgflux.models.model_credentials import ModelCredentialResolver
 from msgflux.models.multipart import (
@@ -43,11 +49,40 @@ from msgflux.models.types import (
 from msgflux.models.usage import default_usage_codec
 
 
+class OpenAIServiceTierExtension(ChatSpeedExtension):
+    """Map canonical speed preferences to OpenAI service tiers."""
+
+    def accepts(self, owner: Any, value: Any) -> bool:
+        if value == "fast":
+            return True
+        if value != "ultrafast":
+            return False
+        model_id = owner.model_id.rsplit("/", maxsplit=1)[-1]
+        return model_id in {"gpt-5.6", "gpt-5.6-sol"} or model_id.startswith(
+            "gpt-5.6-sol-20"
+        )
+
+    def prepare_request(self, owner, request, context: ChatRequestContext):
+        speed = owner.chat_settings.get("speed")
+        if speed is None or context.operation == "token_count":
+            return request
+        params = dict(request.params)
+        extra_body = dict(params.get("extra_body") or {})
+        extra_body.pop("service_tier", None)
+        if extra_body:
+            params["extra_body"] = extra_body
+        else:
+            params.pop("extra_body", None)
+        params["service_tier"] = speed
+        return msgspec.structs.replace(request, params=params)
+
+
 @register_model
 class OpenAIChatCompletion(_OpenAICompatibleChatCompletion):
     """OpenAI Chat Completions provider."""
 
     provider = "openai"
+    chat_extensions = (OpenAIServiceTierExtension(),)
     capabilities = ChatProviderCapabilities(
         default_api_mode="responses",
         api_modes=(
@@ -57,6 +92,7 @@ class OpenAIChatCompletion(_OpenAICompatibleChatCompletion):
                 reasoning_codec=OpenAIResponsesReasoningCodec(),
                 reasoning_summary=True,
                 encrypted_reasoning=True,
+                request_reasoning_effort=True,
                 context_adapter=OpenAIResponsesContextAdapter(),
                 hosted_tool_search_model_families=(
                     "gpt-5.6",
@@ -68,6 +104,7 @@ class OpenAIChatCompletion(_OpenAICompatibleChatCompletion):
             ChatAPIModeCapabilities(
                 name="chat_completions",
                 adapter=OpenAIChatCompletionsAPI(),
+                request_reasoning_effort=True,
             ),
         ),
         default_reasoning_codec=OpenAIReasoningCodec(),

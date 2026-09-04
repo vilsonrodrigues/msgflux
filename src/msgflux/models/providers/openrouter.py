@@ -1,6 +1,9 @@
 from os import getenv
 from typing import Any, Dict
 
+import msgspec
+
+from msgflux.models.chat_extensions import ChatRequestContext, ChatSpeedExtension
 from msgflux.models.openai_compatible import OpenAICompatibleChatCompletion
 from msgflux.models.reasoning import OpenRouterReasoningCodec
 from msgflux.models.registry import register_model
@@ -28,9 +31,59 @@ class _BaseOpenRouter:
         return key
 
 
+class OpenRouterSpeedExtension(ChatSpeedExtension):
+    """Map speed preferences to OpenRouter fast mode or Nitro routing."""
+
+    def accepts(self, owner: Any, value: Any) -> bool:
+        if value == "ultrafast":
+            return False
+        if value == "nitro":
+            return self._can_apply_nitro(owner.model_id)
+        if value == "fast":
+            return self._is_claude(owner.model_id) or self._can_apply_nitro(
+                owner.model_id
+            )
+        return False
+
+    def prepare_request(self, owner, request, context: ChatRequestContext):
+        speed = owner.chat_settings.get("speed")
+        if speed is None or context.operation == "token_count":
+            return request
+        params = dict(request.params)
+        extra_body = dict(params.get("extra_body") or {})
+        extra_body.pop("speed", None)
+        if extra_body:
+            params["extra_body"] = extra_body
+        else:
+            params.pop("extra_body", None)
+
+        if speed == "fast" and self._is_claude(params.get("model", owner.model_id)):
+            params["speed"] = "fast"
+        else:
+            params["model"] = self._with_nitro(params.get("model", owner.model_id))
+        return msgspec.structs.replace(request, params=params)
+
+    @staticmethod
+    def _is_claude(model_id: str) -> bool:
+        return "anthropic/claude" in model_id.lower()
+
+    @staticmethod
+    def _can_apply_nitro(model_id: str) -> bool:
+        model_name = model_id.rsplit("/", maxsplit=1)[-1]
+        return ":" not in model_name or model_name.endswith(":nitro")
+
+    @staticmethod
+    def _with_nitro(model_id: str) -> str:
+        if model_id.endswith(":nitro"):
+            return model_id
+        return f"{model_id}:nitro"
+
+
 @register_model
 class OpenRouterChatCompletion(_BaseOpenRouter, OpenAICompatibleChatCompletion):
     """OpenRouter Chat Completion."""
+
+    chat_extensions = (OpenRouterSpeedExtension(),)
 
     capabilities = OpenAICompatibleChatCompletion.capabilities.replace(
         default_reasoning_codec=OpenRouterReasoningCodec(),

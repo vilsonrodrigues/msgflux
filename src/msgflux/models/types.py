@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import warnings
 from typing import TYPE_CHECKING, Any, Mapping
 
 import msgspec
 
+from msgflux.models.chat_extensions import validate_chat_speed
 from msgflux.models.compaction import ContextTokenEstimate, ModelCompaction
 
 if TYPE_CHECKING:
@@ -11,11 +13,49 @@ if TYPE_CHECKING:
     from msgflux.tools.catalog import ToolCatalogView
 
 
+def validate_reasoning_effort(reasoning_effort: str | None) -> None:
+    """Validate the provider-independent request-level effort value."""
+    if reasoning_effort is not None and (
+        not isinstance(reasoning_effort, str) or not reasoning_effort.strip()
+    ):
+        raise TypeError("`reasoning_effort` must be a non-empty string or None")
+
+
 class ChatCompletionModel:
     model_type = "chat_completion"
 
     _encoder: msgspec.json.Encoder = msgspec.json.Encoder()
     _decoders: dict[type, msgspec.json.Decoder] = {}
+
+    def supports_reasoning_effort(self) -> bool:
+        """Return whether request-level reasoning effort can be configured."""
+        return False
+
+    def set_speed(self, speed: str | None) -> ChatCompletionModel:
+        """Set a provider-neutral request speed when supported by the client."""
+        validate_chat_speed(speed)
+        if speed is not None:
+            provider = getattr(self, "provider", self.__class__.__name__)
+            warnings.warn(
+                f"Provider `{provider}` does not support `speed={speed!r}`; the "
+                "setting was ignored.",
+                UserWarning,
+                stacklevel=2,
+            )
+        return self
+
+    def set_reasoning_effort(self, reasoning_effort: str | None) -> ChatCompletionModel:
+        """Set request-level reasoning effort when supported by the client."""
+        validate_reasoning_effort(reasoning_effort)
+        if reasoning_effort is not None:
+            provider = getattr(self, "provider", self.__class__.__name__)
+            warnings.warn(
+                f"Provider `{provider}` does not support request-level "
+                "`reasoning_effort`; the setting was ignored.",
+                UserWarning,
+                stacklevel=2,
+            )
+        return self
 
     def supports_native_compaction(self) -> bool:
         """Return whether this provider/API exposes a native compact operation."""

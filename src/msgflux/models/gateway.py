@@ -1,11 +1,14 @@
+import warnings
 from datetime import datetime, time, timezone
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
 from msgflux.exceptions import ModelRouterError
 from msgflux.logger import logger
 from msgflux.models.base import BaseModel
+from msgflux.models.chat_extensions import validate_chat_speed
 from msgflux.models.model import Model
 from msgflux.models.response import ModelResponse, ModelStreamResponse
+from msgflux.models.types import validate_reasoning_effort
 from msgflux.utils.time import utc_now
 
 if TYPE_CHECKING:
@@ -453,6 +456,71 @@ class ModelGateway:
         """Return the configured capability description for one deployment."""
         self.validate_model_name(model_name)
         return self._model_descriptions[model_name]
+
+    def set_reasoning_effort(
+        self,
+        reasoning_effort: str | None,
+        *,
+        model_name: str | None = None,
+    ) -> "ModelGateway":
+        """Update request-level reasoning effort on one or every deployment.
+
+        Args:
+            reasoning_effort:
+                Provider-specific effort level, or None to remove the setting.
+            model_name:
+                Optional deployment alias. When omitted, updates every model so
+                fallback preserves the same requested effort.
+        """
+        validate_reasoning_effort(reasoning_effort)
+        if model_name is None:
+            targets = self.models
+        else:
+            self.validate_model_name(model_name)
+            targets = [self.models[self._model_name_to_index[model_name]]]
+
+        for model in targets:
+            setter = getattr(model, "set_reasoning_effort", None)
+            if callable(setter):
+                setter(reasoning_effort)
+                continue
+            if reasoning_effort is not None:
+                warnings.warn(
+                    f"Model `{model.model_id}` from provider `{model.provider}` "
+                    "does not support request-level `reasoning_effort`; the "
+                    "setting was ignored.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+        return self
+
+    def set_speed(
+        self,
+        speed: str | None,
+        *,
+        model_name: str | None = None,
+    ) -> "ModelGateway":
+        """Update provider-neutral request speed on one or every deployment."""
+        validate_chat_speed(speed)
+        if model_name is None:
+            targets = self.models
+        else:
+            self.validate_model_name(model_name)
+            targets = [self.models[self._model_name_to_index[model_name]]]
+
+        for model in targets:
+            setter = getattr(model, "set_speed", None)
+            if callable(setter):
+                setter(speed)
+                continue
+            if speed is not None:
+                warnings.warn(
+                    f"Model `{model.model_id}` from provider `{model.provider}` "
+                    f"does not support `speed={speed!r}`; the setting was ignored.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+        return self
 
     @property
     def model_descriptions(self) -> Dict[str, Optional[str]]:

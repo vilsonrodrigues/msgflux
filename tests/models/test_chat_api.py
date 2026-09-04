@@ -14,6 +14,7 @@ from msgflux.models.chat_api import (
     PreparedChatRequest,
     ResolvedChatCredentials,
 )
+from msgflux.models.chat_extensions import ChatModelExtension
 from msgflux.models.openai_compatible import (
     OpenAICompatibleChatCompletion,
     OpenAIResponsesAPI,
@@ -67,7 +68,7 @@ class RecordingTransport(ChatTransport):
         return {"raw": request.params, "endpoint": request.endpoint}
 
 
-def _build_recording_model():
+def _build_recording_model(**model_kwargs):
     adapter = RecordingAPI()
     transport = RecordingTransport(adapter.calls)
 
@@ -83,7 +84,7 @@ def _build_recording_model():
         def _get_api_key(self):
             return "test"
 
-    model = RecordingChatCompletion(model_id="test-model")
+    model = RecordingChatCompletion(model_id="test-model", **model_kwargs)
     return model, adapter
 
 
@@ -108,6 +109,112 @@ def test_custom_api_adapter_owns_the_protocol_boundary():
         "process",
         "stream",
     ]
+
+
+def test_chat_extension_receives_context_after_api_preparation():
+    class RecordingExtension(ChatModelExtension):
+        name = "recording"
+
+        def __init__(self):
+            self.calls = []
+
+        def prepare_request(self, owner, request, context):
+            self.calls.append((request.params.copy(), context))
+            return msgspec.structs.replace(
+                request,
+                params={**request.params, "extended": True},
+            )
+
+    extension = RecordingExtension()
+    model, _adapter = _build_recording_model(chat_extensions=[extension])
+
+    result = model._execute_model(model=model.model_id, input=[])
+
+    prepared, context = extension.calls[0]
+    assert prepared["prepared"] is True
+    assert context.operation == "generate"
+    assert context.api_mode == "recording"
+    assert result["raw"]["extended"] is True
+
+
+def test_chat_extension_configuration_is_owned_by_model():
+    class HeaderExtension(ChatModelExtension):
+        name = "request_header"
+
+        def prepare_request(self, owner, request, context):
+            config = owner.get_chat_extension_config(self.name, {})
+            params = dict(request.params)
+            params["extra_headers"] = {"X-Request-Label": config["label"]}
+            return msgspec.structs.replace(request, params=params)
+
+    model, _adapter = _build_recording_model(chat_extensions=[HeaderExtension()])
+
+    result = model.configure_chat_extension(
+        "request_header", label="audit"
+    )._execute_model(model=model.model_id, input=[])
+
+    assert model.get_chat_extension_config("request_header") == {"label": "audit"}
+    assert result["raw"]["extra_headers"] == {"X-Request-Label": "audit"}
+
+    returned_config = model.get_chat_extension_config("request_header")
+    returned_config["label"] = "mutated"
+    assert model.get_chat_extension_config("request_header")["label"] == "audit"
+
+
+def test_chat_extension_registration_replacement_and_removal():
+    class FirstExtension(ChatModelExtension):
+        name = "custom"
+
+    class ReplacementExtension(ChatModelExtension):
+        name = "custom"
+
+    model, _adapter = _build_recording_model(enable_cache=True)
+    first = FirstExtension()
+    replacement = ReplacementExtension()
+
+    model._response_cache.set("existing", object())
+    model.register_chat_extension(first)
+
+    assert model.get_chat_extension("custom") is first
+    assert model._response_cache.cache_info()["currsize"] == 0
+
+    with pytest.raises(ValueError, match="already registered"):
+        model.register_chat_extension(replacement)
+
+    model.register_chat_extension(replacement, replace=True)
+    model.configure_chat_extension("custom", enabled=True)
+    model.remove_chat_extension("custom")
+
+    assert all(extension.name != "custom" for extension in model.chat_extensions)
+    assert "custom" not in model.chat_settings
+    with pytest.raises(KeyError, match="not registered"):
+        model.get_chat_extension("custom")
+
+
+def test_chat_extension_init_rejects_duplicate_names():
+    class DuplicateExtension(ChatModelExtension):
+        name = "duplicate"
+
+    with pytest.raises(ValueError, match="Duplicate chat extension name"):
+        _build_recording_model(
+            chat_extensions=[DuplicateExtension(), DuplicateExtension()]
+        )
+
+
+@pytest.mark.parametrize("extension", [object(), "extension"])
+def test_chat_extension_init_requires_extension_instances(extension):
+    with pytest.raises(TypeError, match="ChatModelExtension instances"):
+        _build_recording_model(chat_extensions=[extension])
+
+
+@pytest.mark.parametrize("name", [None, "", "   "])
+def test_chat_extension_init_requires_non_empty_names(name):
+    extension = ChatModelExtension()
+    if name is not None:
+        extension.name = name
+
+    with pytest.raises(ValueError, match="non-empty strings"):
+        _build_recording_model(chat_extensions=[extension])
 
 
 @pytest.mark.asyncio
@@ -144,12 +251,18 @@ def test_chat_runtime_does_not_create_sdk_clients():
 
 def test_chat_runtime_strategies_are_not_serialized():
     model, _ = _build_recording_model()
+    extension = ChatModelExtension()
+    extension.name = "runtime_only"
+    model.register_chat_extension(extension)
+    model.configure_chat_extension("runtime_only", enabled=True)
 
     state = model.serialize()["state"]
 
     assert "api_adapter" not in state
     assert "api_mode_capabilities" not in state
     assert "reasoning_codec" not in state
+    assert "chat_extensions" not in state
+    assert state["chat_settings"]["runtime_only"] == {"enabled": True}
     msgspec.json.encode(model.serialize())
 
 

@@ -1,11 +1,12 @@
 """Shared runtime for OpenAI-compatible language-model APIs."""
 
 import base64
+import warnings
 from copy import copy, deepcopy
 from functools import partial
 from inspect import isawaitable
 from os import getenv
-from typing import Any, Dict, List, Literal, Mapping, Optional, Union
+from typing import Any, Dict, List, Literal, Mapping, Optional, Sequence, Union
 
 import msgspec
 
@@ -25,6 +26,12 @@ from msgflux.models.chat_capabilities import (
     ChatAPIModeCapabilities,
     ChatProviderCapabilities,
 )
+from msgflux.models.chat_extensions import (
+    ChatModelExtension,
+    ChatRequestContext,
+    ChatRequestOperation,
+    validate_chat_speed,
+)
 from msgflux.models.chat_transport import HTTPChatTransport
 from msgflux.models.compaction import ContextTokenEstimate, ModelCompaction
 from msgflux.models.http_transport import HTTPTransport
@@ -40,7 +47,7 @@ from msgflux.models.reasoning import (
 from msgflux.models.response import ModelResponse, ModelStreamResponse
 from msgflux.models.timing import ModelRequestTimer
 from msgflux.models.tool_call_agg import ToolCallAggregator
-from msgflux.models.types import ChatCompletionModel
+from msgflux.models.types import ChatCompletionModel, validate_reasoning_effort
 from msgflux.models.usage import UsageCodec, default_usage_codec
 from msgflux.runtime.context import get_execution_context
 from msgflux.tools.catalog import ToolCatalogEntry, ToolCatalogView
@@ -167,6 +174,12 @@ class OpenAICompatibleModel(BaseModel):
     def _initialize_runtime(self):
         """Initialize state shared by OpenAI-compatible model runtimes."""
         self.current_key_index = 0
+        if "chat_settings" not in self.__dict__:
+            self.chat_settings = {}
+        if "chat_extensions" not in self.__dict__ and hasattr(
+            type(self), "chat_extensions"
+        ):
+            self.chat_extensions = self._compose_chat_extensions()
         cache_size = getattr(self, "cache_size", 128)
         enable_cache = getattr(self, "enable_cache", None)
         self._response_cache = (
@@ -265,11 +278,14 @@ class OpenAICompatibleChatCompletion(OpenAICompatibleModel, ChatCompletionModel)
             ChatAPIModeCapabilities(
                 name="chat_completions",
                 adapter=OpenAIChatCompletionsAPI(),
+                request_reasoning_effort=True,
             ),
         ),
         default_reasoning_codec=OpenAICompatibleReasoningCodec(),
     )
+    to_ignore = [*OpenAICompatibleModel.to_ignore, "chat_extensions"]
     chat_transport: ChatTransport | type[ChatTransport] = HTTPChatTransport
+    chat_extensions: tuple[ChatModelExtension, ...] = ()
     usage_codec: UsageCodec = default_usage_codec
 
     def _initialize(self):
@@ -285,6 +301,163 @@ class OpenAICompatibleChatCompletion(OpenAICompatibleModel, ChatCompletionModel)
             model_id == family or model_id.startswith(f"{family}-20")
             for family in families
         )
+
+    def supports_reasoning_effort(self) -> bool:
+        """Return whether the active API mode accepts request-level effort."""
+        return self.api_mode_capabilities.request_reasoning_effort
+
+    def set_reasoning_effort(
+        self, reasoning_effort: str | None
+    ) -> "OpenAICompatibleChatCompletion":
+        """Update the reasoning effort used at the top of future requests."""
+        validate_reasoning_effort(reasoning_effort)
+        if not self.supports_reasoning_effort():
+            if reasoning_effort is not None:
+                warnings.warn(
+                    f"Provider `{self.provider}` with `api_mode={self.api_mode!r}` "
+                    "does not support request-level `reasoning_effort`; the "
+                    "setting was ignored.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+            return self
+
+        if reasoning_effort is None:
+            self.sampling_run_params.pop("reasoning_effort", None)
+            return self
+
+        if self.sampling_run_params.pop("reasoning_max_tokens", None) is not None:
+            self.reasoning_max_tokens = None
+        self.sampling_run_params["reasoning_effort"] = reasoning_effort.strip()
+        return self
+
+    @staticmethod
+    def _validate_chat_extension(extension: ChatModelExtension) -> None:
+        if not isinstance(extension, ChatModelExtension):
+            raise TypeError("Chat extensions must be ChatModelExtension instances")
+        name = getattr(extension, "name", None)
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError("Chat extension names must be non-empty strings")
+
+    def _compose_chat_extensions(
+        self,
+        additions: Optional[Sequence[ChatModelExtension]] = None,
+    ) -> tuple[ChatModelExtension, ...]:
+        extensions = [*type(self).chat_extensions, *(additions or ())]
+        names = set()
+        for extension in extensions:
+            self._validate_chat_extension(extension)
+            if extension.name in names:
+                raise ValueError(f"Duplicate chat extension name: `{extension.name}`")
+            names.add(extension.name)
+        return tuple(extensions)
+
+    def get_chat_extension(self, name: str) -> ChatModelExtension:
+        """Return a registered chat extension by its stable name."""
+        for extension in self.chat_extensions:
+            if extension.name == name:
+                return extension
+        raise KeyError(f"Chat extension `{name}` is not registered")
+
+    def get_chat_extension_config(self, name: str, default: Any = None) -> Any:
+        """Return the model-owned configuration for one extension."""
+        return deepcopy(self.chat_settings.get(name, default))
+
+    def register_chat_extension(
+        self,
+        extension: ChatModelExtension,
+        *,
+        replace: bool = False,
+    ) -> "OpenAICompatibleChatCompletion":
+        """Register a request extension on this model instance."""
+        self._validate_chat_extension(extension)
+        extensions = list(self.chat_extensions)
+        matching_index = next(
+            (
+                index
+                for index, current in enumerate(extensions)
+                if current.name == extension.name
+            ),
+            None,
+        )
+        if matching_index is not None:
+            if not replace:
+                raise ValueError(
+                    f"Chat extension `{extension.name}` is already registered"
+                )
+            extensions[matching_index] = extension
+        else:
+            extensions.append(extension)
+        self.chat_extensions = tuple(extensions)
+        self._clear_chat_response_cache()
+        return self
+
+    def remove_chat_extension(self, name: str) -> "OpenAICompatibleChatCompletion":
+        """Remove a request extension and its model-owned configuration."""
+        self.get_chat_extension(name)
+        self.chat_extensions = tuple(
+            extension for extension in self.chat_extensions if extension.name != name
+        )
+        self.chat_settings.pop(name, None)
+        self._clear_chat_response_cache()
+        return self
+
+    def configure_chat_extension(
+        self,
+        name: str,
+        **changes: Any,
+    ) -> "OpenAICompatibleChatCompletion":
+        """Update model-owned configuration through an extension's contract."""
+        extension = self.get_chat_extension(name)
+        current = deepcopy(self.chat_settings.get(name))
+        configured = extension.configure(self, current, changes)
+        if configured is None:
+            self.chat_settings.pop(name, None)
+        else:
+            self.chat_settings[name] = deepcopy(configured)
+        return self
+
+    def _clear_chat_response_cache(self) -> None:
+        response_cache = getattr(self, "_response_cache", None)
+        if response_cache is not None:
+            response_cache.cache_clear()
+
+    def set_speed(self, speed: str | None) -> "OpenAICompatibleChatCompletion":
+        """Update the provider-neutral speed used by future requests."""
+        validate_chat_speed(speed)
+        try:
+            self.get_chat_extension("speed")
+        except KeyError:
+            if speed is None:
+                self.chat_settings.pop("speed", None)
+                return self
+            warnings.warn(
+                f"Provider `{self.provider}` does not support `speed={speed!r}` "
+                f"for model `{self.model_id}`; the setting was ignored.",
+                UserWarning,
+                stacklevel=2,
+            )
+            return self
+        return self.configure_chat_extension("speed", value=speed)
+
+    def _apply_chat_extensions(
+        self,
+        request: PreparedChatRequest,
+        *,
+        operation: ChatRequestOperation,
+    ) -> PreparedChatRequest:
+        context = ChatRequestContext(
+            operation=operation,
+            api_mode=self.api_mode,
+        )
+        for extension in self.chat_extensions:
+            request = extension.prepare_request(self, request, context)
+            if not isinstance(request, PreparedChatRequest):
+                raise TypeError(
+                    f"Chat extension `{extension.name}` must return a "
+                    "PreparedChatRequest"
+                )
+        return request
 
     def supports_native_compaction(self) -> bool:
         return self.api_mode_capabilities.context_adapter is not None
@@ -309,6 +482,7 @@ class OpenAICompatibleChatCompletion(OpenAICompatibleModel, ChatCompletionModel)
             system_prompt=system_prompt,
             tool_catalog=tool_catalog,
         )
+        request = self._apply_chat_extensions(request, operation="token_count")
         payload = self.chat_transport.create(self, request)
         return adapter.decode_token_count(self, payload)
 
@@ -332,6 +506,7 @@ class OpenAICompatibleChatCompletion(OpenAICompatibleModel, ChatCompletionModel)
             system_prompt=system_prompt,
             tool_catalog=tool_catalog,
         )
+        request = self._apply_chat_extensions(request, operation="token_count")
         payload = await self.chat_transport.acreate(self, request)
         return adapter.decode_token_count(self, payload)
 
@@ -354,6 +529,7 @@ class OpenAICompatibleChatCompletion(OpenAICompatibleModel, ChatCompletionModel)
             messages,
             system_prompt=system_prompt,
         )
+        request = self._apply_chat_extensions(request, operation="compact")
         payload = self.chat_transport.create(self, request)
         return adapter.decode_compaction(self, payload)
 
@@ -376,6 +552,7 @@ class OpenAICompatibleChatCompletion(OpenAICompatibleModel, ChatCompletionModel)
             messages,
             system_prompt=system_prompt,
         )
+        request = self._apply_chat_extensions(request, operation="compact")
         payload = await self.chat_transport.acreate(self, request)
         return adapter.decode_compaction(self, payload)
 
@@ -414,6 +591,7 @@ class OpenAICompatibleChatCompletion(OpenAICompatibleModel, ChatCompletionModel)
         *,
         max_tokens: Optional[int] = None,
         reasoning_effort: Optional[str] = None,
+        speed: Optional[Literal["fast", "ultrafast", "nitro"]] = None,
         prompt_cache_retention: Optional[Literal["in_memory", "24h"]] = None,
         enable_thinking: Optional[Union[bool, Literal["low", "medium", "high"]]] = None,
         return_reasoning: Optional[bool] = True,
@@ -443,6 +621,7 @@ class OpenAICompatibleChatCompletion(OpenAICompatibleModel, ChatCompletionModel)
         ] = None,
         reasoning_codec: Optional[ReasoningCodec] = None,
         chat_transport: Optional[Union[ChatTransport, type[ChatTransport]]] = None,
+        chat_extensions: Optional[Sequence[ChatModelExtension]] = None,
         credential_resolver: Optional[ModelCredentialResolver] = None,
         **extra_body_kwargs: Any,
     ):
@@ -460,6 +639,9 @@ class OpenAICompatibleChatCompletion(OpenAICompatibleModel, ChatCompletionModel)
             and fewer tokens used on reasoning in a response.
             Supported values depend on the model. GPT-5.6 accepts
             "none", "low", "medium", "high", "xhigh", and "max".
+        speed:
+            Provider-neutral request speed. Providers translate supported
+            values such as "fast", "ultrafast", or "nitro" to their wire API.
         prompt_cache_retention:
             OpenAI-only prompt cache retention policy.
             Allowed values are "in_memory" and "24h".
@@ -545,6 +727,9 @@ class OpenAICompatibleChatCompletion(OpenAICompatibleModel, ChatCompletionModel)
             Transport used to send prepared protocol requests. Transport classes
             are instantiated per model; instances may be supplied to inject
             custom HTTP clients.
+        chat_extensions:
+            Request extensions appended to the provider's built-in extensions.
+            Extension names must be unique.
         credential_resolver:
             Request-time authentication resolver. The default resolves the
             provider API key as a Bearer token.
@@ -635,8 +820,6 @@ class OpenAICompatibleChatCompletion(OpenAICompatibleModel, ChatCompletionModel)
             sampling_run_params["extra_body"] = merged_extra_body
         if audio:
             sampling_run_params["audio"] = audio
-        if reasoning_effort:
-            sampling_run_params["reasoning_effort"] = reasoning_effort
         if self.capabilities.reasoning_max_tokens and reasoning_max_tokens is not None:
             if reasoning_effort is not None:
                 raise ValueError(
@@ -650,6 +833,10 @@ class OpenAICompatibleChatCompletion(OpenAICompatibleModel, ChatCompletionModel)
         ):
             sampling_run_params["prompt_cache_retention"] = prompt_cache_retention
         self.sampling_run_params = sampling_run_params
+        self.chat_extensions = self._compose_chat_extensions(chat_extensions)
+        self.chat_settings: Dict[str, Any] = {}
+        self.set_reasoning_effort(reasoning_effort)
+        self.set_speed(speed)
         self.enable_thinking = enable_thinking
         self.parallel_tool_calls = parallel_tool_calls
         self.reasoning_in_tool_call = reasoning_in_tool_call
@@ -674,6 +861,12 @@ class OpenAICompatibleChatCompletion(OpenAICompatibleModel, ChatCompletionModel)
             "model_id": self.model_id,
             "api_mode": self.api_mode,
         }
+        requested_speed = self.chat_settings.get("speed")
+        if requested_speed is not None:
+            model_metadata["requested_speed"] = requested_speed
+        effective_speed = self._get_effective_speed_metadata(model_output)
+        if effective_speed is not None:
+            model_metadata["effective_speed"] = effective_speed
         reasoning_effort = self._get_reasoning_effort_metadata()
         if reasoning_effort is not None:
             model_metadata["reasoning_effort"] = reasoning_effort
@@ -682,6 +875,29 @@ class OpenAICompatibleChatCompletion(OpenAICompatibleModel, ChatCompletionModel)
         if usage is not None:
             metadata.usage = usage
         return metadata
+
+    @staticmethod
+    def _get_effective_speed_metadata(model_output) -> str | None:
+        if model_output is None:
+            return None
+        if isinstance(model_output, Mapping):
+            service_tier = model_output.get("service_tier")
+            usage = model_output.get("usage")
+        else:
+            service_tier = getattr(model_output, "service_tier", None)
+            usage = getattr(model_output, "usage", None)
+        if isinstance(service_tier, str):
+            return service_tier
+        if isinstance(usage, Mapping):
+            speed = usage.get("speed")
+        else:
+            speed = getattr(usage, "speed", None)
+        return speed if isinstance(speed, str) else None
+
+    def _merge_effective_speed_metadata(self, metadata, model_output) -> None:
+        effective_speed = self._get_effective_speed_metadata(model_output)
+        if effective_speed is not None:
+            metadata.model.effective_speed = effective_speed
 
     def _get_reasoning_effort_metadata(self) -> str | None:
         """Return the reasoning effort actually represented by this transport."""
@@ -827,6 +1043,7 @@ class OpenAICompatibleChatCompletion(OpenAICompatibleModel, ChatCompletionModel)
         self._raise_if_aborted()
         params = {**self.sampling_run_params, **kwargs}
         request = self.api_adapter.prepare_request(self, params)
+        request = self._apply_chat_extensions(request, operation="generate")
         model_output = self.chat_transport.create(self, request)
         self._raise_if_aborted()
         return model_output
@@ -835,6 +1052,7 @@ class OpenAICompatibleChatCompletion(OpenAICompatibleModel, ChatCompletionModel)
         self._raise_if_aborted()
         params = {**self.sampling_run_params, **kwargs}
         request = self.api_adapter.prepare_request(self, params)
+        request = self._apply_chat_extensions(request, operation="generate")
         model_output = await self.chat_transport.acreate(
             self,
             request,
@@ -860,7 +1078,8 @@ class OpenAICompatibleChatCompletion(OpenAICompatibleModel, ChatCompletionModel)
         # and response caching. The request only contains the stable system prompt
         # plus tool schemas so provider-side prompt caches can prefill that prefix.
         params = {**self.sampling_run_params, **generation_params}
-        return self.api_adapter.prepare_request(self, params)
+        request = self.api_adapter.prepare_request(self, params)
+        return self._apply_chat_extensions(request, operation="warmup")
 
     def warmup_system_prompt(
         self,
@@ -1270,7 +1489,11 @@ class OpenAICompatibleChatCompletion(OpenAICompatibleModel, ChatCompletionModel)
 
     def _check_cache(self, **kwargs):
         if self.enable_cache and self._response_cache:
-            cache_key = generate_cache_key(**kwargs)
+            cache_key = generate_cache_key(
+                **kwargs,
+                _sampling_run_params=self.sampling_run_params,
+                _chat_settings=self.chat_settings,
+            )
             hit, cached_response = self._response_cache.get(cache_key)
             if hit:
                 return cached_response
@@ -1278,7 +1501,11 @@ class OpenAICompatibleChatCompletion(OpenAICompatibleModel, ChatCompletionModel)
 
     def _store_cache(self, response, **kwargs):
         if self.enable_cache and self._response_cache:
-            cache_key = generate_cache_key(**kwargs)
+            cache_key = generate_cache_key(
+                **kwargs,
+                _sampling_run_params=self.sampling_run_params,
+                _chat_settings=self.chat_settings,
+            )
             self._response_cache.set(cache_key, response)
 
     def _prepare_generate_kwargs(self, kwargs):
@@ -1416,6 +1643,7 @@ class OpenAICompatibleChatCompletion(OpenAICompatibleModel, ChatCompletionModel)
 
             self._raise_if_aborted()
             for chunk in model_output:
+                self._merge_effective_speed_metadata(metadata, chunk)
                 usage = self.usage_codec.normalize(getattr(chunk, "usage", None))
                 if usage is not None:
                     metadata.usage = usage
@@ -1538,6 +1766,7 @@ class OpenAICompatibleChatCompletion(OpenAICompatibleModel, ChatCompletionModel)
 
             self._raise_if_aborted()
             async for chunk in model_output:
+                self._merge_effective_speed_metadata(metadata, chunk)
                 usage = self.usage_codec.normalize(getattr(chunk, "usage", None))
                 if usage is not None:
                     metadata.usage = usage
@@ -1855,6 +2084,7 @@ class OpenAICompatibleChatCompletion(OpenAICompatibleModel, ChatCompletionModel)
             "response.failed",
         }:
             response = self._response_value(event, "response")
+            self._merge_effective_speed_metadata(state["metadata"], response)
             state["finish_reason"] = self._response_value(response, "status")
             if event_type == "response.failed":
                 state["terminal_status"] = "failed"

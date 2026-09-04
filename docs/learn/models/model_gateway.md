@@ -209,6 +209,47 @@ print(gateway.model_type)
 Use `gateway.validate_model_name(alias)` before storing or forwarding a
 user-selected alias. Unknown aliases raise instead of silently falling back.
 
+### 2.1 **Updating Reasoning Effort**
+
+`set_reasoning_effort()` proxies request-level configuration to the models
+behind the Gateway. By default it updates every deployment so a fallback keeps
+the requested behavior:
+
+```python
+gateway.set_reasoning_effort("high")
+response = gateway(messages="Compare two recovery strategies.")
+```
+
+Target one deployment by its public alias when the configuration should not be
+shared:
+
+```python
+gateway.set_reasoning_effort("low", model_name="fast")
+```
+
+Pass `None` to remove the explicit setting. A deployment whose provider or API
+mode does not support request-level reasoning effort emits a warning and is left
+unchanged.
+
+### 2.2 **Updating Request Speed**
+
+`set_speed()` uses the same proxy behavior. Without an alias, every fallback
+deployment receives the canonical preference and translates it independently:
+
+```python
+gateway.set_speed("fast")
+```
+
+Target one deployment when its provider offers a distinct tier:
+
+```python
+gateway.set_speed("ultrafast", model_name="deep")
+```
+
+Supported values are `"fast"`, `"ultrafast"`, and `"nitro"`. Pass `None` to
+remove the preference. Unsupported combinations emit a warning without failing
+the Gateway.
+
 ## 3. **Serialization**
 
 `serialize()` persists every normalized model together with `model_name`,

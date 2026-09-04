@@ -60,6 +60,7 @@ Chat completion models are stateless - they don't maintain conversation history 
         stop=["\n\n"],                 # Stop sequences (up to 4)
         # --- Reasoning ---
         reasoning_effort="medium",     # Values depend on the selected model
+        speed="fast",                  # "fast", "ultrafast", or "nitro"
         enable_thinking=True,          # Enable extended model reasoning
         return_reasoning=True,         # Include reasoning content in response
         reasoning_max_tokens=4096,     # OpenRouter only: max tokens reserved for reasoning/thinking
@@ -280,6 +281,109 @@ See the provider references for the exact server/model capabilities:
 [Groq Responses reasoning](https://console.groq.com/docs/responses-api#reasoning),
 [Groq Chat reasoning](https://console.groq.com/docs/reasoning#accessing-reasoning-content),
 and [vLLM reasoning outputs](https://docs.vllm.ai/en/stable/features/reasoning_outputs/).
+
+### 1.4 **Request Speed**
+
+`speed` expresses a provider-neutral preference for a faster request path. The
+active `ChatModelExtension` translates it after the API adapter has prepared the
+request and before the transport sends it:
+
+| msgFlux | OpenAI | OpenRouter |
+|---|---|---|
+| `speed="fast"` | `service_tier="fast"` | `speed="fast"` for Claude; otherwise route through `:nitro` |
+| `speed="ultrafast"` | `service_tier="ultrafast"` for supported models | warning and ignore |
+| `speed="nitro"` | warning and ignore | append the `:nitro` routing variant |
+| `speed=None` | no explicit tier | no explicit speed routing |
+
+```python
+import msgflux as mf
+
+model = mf.Model.chat_completion(
+    "openai/gpt-5.6-sol",
+    speed="fast",
+)
+
+response = model("Summarize why connection pooling reduces latency.")
+
+model.set_speed("ultrafast")
+faster_response = model("Now give a one-sentence summary.")
+
+model.set_speed(None)
+```
+
+The setting affects future requests and is serialized with the model. Unsupported
+provider/model combinations emit a warning and keep the previous setting. In
+OpenRouter, explicit `nitro` cannot be combined with another model suffix such
+as `:free`; msgFlux warns and ignores that update.
+
+The requested and effective values are kept separately because providers may
+report a different tier after routing:
+
+```python
+print(response.metadata.model.get("requested_speed"))
+print(response.metadata.model.get("effective_speed"))
+```
+
+### 1.5 **Custom Chat Extensions**
+
+`chat_extensions` adds request transformations after the active API adapter has
+prepared its wire request and before the transport sends it. Provider extensions
+remain first in the pipeline, and extension names must be unique:
+
+```python
+import msgspec
+import msgflux as mf
+from msgflux.models import ChatModelExtension
+
+
+class RequestLabelExtension(ChatModelExtension):
+    name = "request_label"
+
+    def prepare_request(self, owner, request, context):
+        config = owner.get_chat_extension_config(self.name, {})
+        if not config:
+            return request
+
+        params = dict(request.params)
+        headers = dict(params.get("extra_headers") or {})
+        headers["X-Request-Label"] = config["label"]
+        params["extra_headers"] = headers
+        return msgspec.structs.replace(request, params=params)
+
+
+model = mf.Model.chat_completion(
+    "openai/gpt-5.6-luna",
+    chat_extensions=[RequestLabelExtension()],
+)
+model.configure_chat_extension("request_label", label="inventory-audit")
+
+response = model("Explain why SKU-1842 reservations overlapped.")
+```
+
+The `ChatRequestContext` received by `prepare_request()` identifies the
+`operation` (`"generate"`, `"warmup"`, `"compact"`, or `"token_count"`) and
+the active `api_mode`. An extension can therefore avoid adding generation-only
+fields to token-count requests.
+
+Extensions can also be changed after initialization:
+
+```python
+extension = RequestLabelExtension()
+runtime_model = mf.Model.chat_completion("openai/gpt-5.6-luna")
+
+runtime_model.register_chat_extension(extension)
+runtime_model.configure_chat_extension("request_label", label="retry-audit")
+runtime_model.remove_chat_extension("request_label")
+```
+
+Registering an existing name raises by default. Pass `replace=True` to replace
+that extension while preserving its position in the request pipeline. Removing
+an extension also removes its stored configuration.
+
+Extension objects are runtime behavior and are not serialized. Their model-owned
+configuration is serialized, so an application can register the same custom
+extension after restoring a model. Built-in provider extensions are restored
+automatically from the provider class.
 
 ## 2. **System Prompt**
 
@@ -1271,6 +1375,31 @@ independently. The Agent only stores the canonical interaction items.
 
 `reasoning_effort` is the primary knob. Higher effort means the model spends more tokens on internal reasoning, which typically improves answer quality on hard problems.
 
+The value supplied at initialization is the request-level default. Update that
+default between calls with `set_reasoning_effort()`:
+
+```python
+import msgflux as mf
+
+model = mf.Model.chat_completion(
+    "openai/gpt-5.6-luna",
+    reasoning_effort="low",
+)
+
+quick = model("Name the capital of France.")
+
+model.set_reasoning_effort("high")
+careful = model("Prove that there are infinitely many prime numbers.")
+
+model.set_reasoning_effort(None)  # Remove the explicit request-level setting.
+```
+
+The setter affects future requests and returns the model, so it can be chained.
+Effort names remain model-dependent. If the active provider/API mode does not
+support request-level effort, msgFlux emits a warning and leaves the model
+unchanged. This setter changes the parameter at the top of each request; it does
+not insert a configuration update into an existing conversation.
+
 ???+ example
 
     === "Low Effort — Quick Tasks"
@@ -1949,6 +2078,7 @@ model = mf.Model.chat_completion(
     "openai/gpt-5.6-luna",
     api_mode="responses",
     reasoning_effort="medium",
+    speed="fast",
 )
 response = model("Summarize the incident.")
 
@@ -1958,11 +2088,14 @@ print(response.metadata.model)
 #     "model_id": "gpt-5.6-luna",
 #     "api_mode": "responses",
 #     "reasoning_effort": "medium",
+#     "requested_speed": "fast",
+#     "effective_speed": "priority",
 # }
 ```
 
 `reasoning_effort` is present only when that LM transport uses the setting.
-The other three fields are always produced by OpenAI-compatible chat LMs. An
+Speed fields are present only when requested or reported by the provider. The
+other three fields are always produced by OpenAI-compatible chat LMs. An
 Agent can persist this small audit record with the generated timeline item
 without reconstructing provider details itself.
 

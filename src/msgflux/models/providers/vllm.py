@@ -62,11 +62,13 @@ class VLLMChatCompletion(_BaseVLLM, OpenAICompatibleChatCompletion):
             ChatAPIModeCapabilities(
                 name="chat_completions",
                 adapter=OpenAIChatCompletionsAPI(),
+                request_reasoning_effort=True,
             ),
             ChatAPIModeCapabilities(
                 name="responses",
                 adapter=OpenAIResponsesAPI(),
                 reasoning_codec=TextResponsesReasoningCodec(),
+                request_reasoning_effort=True,
             ),
         ),
         default_reasoning_codec=OpenAICompatibleReasoningCodec(),

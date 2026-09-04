@@ -28,6 +28,8 @@ class MockModel(BaseModel):
         self.provider = provider
         self.should_fail = should_fail
         self.call_count = 0
+        self.reasoning_effort = None
+        self.speed = None
 
     def _initialize(self):
         pass
@@ -47,6 +49,14 @@ class MockModel(BaseModel):
         response = ModelResponse()
         response.add(f"Async response from {self.model_id}")
         return response
+
+    def set_reasoning_effort(self, reasoning_effort):
+        self.reasoning_effort = reasoning_effort
+        return self
+
+    def set_speed(self, speed):
+        self.speed = speed
+        return self
 
     def serialize(self):
         return {
@@ -165,6 +175,59 @@ class TestModelGatewayInitialization:
     def test_gateway_rejects_non_boolean_fallback(self):
         with pytest.raises(TypeError, match="`fallback` must be a bool"):
             ModelGateway(models=[_deployment("model-1")], fallback="yes")
+
+    def test_set_reasoning_effort_updates_every_fallback_model(self):
+        gateway = ModelGateway(models=[_deployment("fast"), _deployment("strong")])
+
+        result = gateway.set_reasoning_effort("high")
+
+        assert result is gateway
+        assert [model.reasoning_effort for model in gateway.models] == [
+            "high",
+            "high",
+        ]
+
+    def test_set_reasoning_effort_can_target_one_deployment(self):
+        gateway = ModelGateway(models=[_deployment("fast"), _deployment("strong")])
+
+        gateway.set_reasoning_effort("low", model_name="fast")
+
+        assert gateway.models[0].reasoning_effort == "low"
+        assert gateway.models[1].reasoning_effort is None
+
+    def test_set_speed_updates_every_fallback_model(self):
+        gateway = ModelGateway(models=[_deployment("fast"), _deployment("strong")])
+
+        result = gateway.set_speed("fast")
+
+        assert result is gateway
+        assert [model.speed for model in gateway.models] == ["fast", "fast"]
+
+    def test_set_speed_can_target_one_deployment(self):
+        gateway = ModelGateway(models=[_deployment("fast"), _deployment("strong")])
+
+        gateway.set_speed("ultrafast", model_name="strong")
+
+        assert gateway.models[0].speed is None
+        assert gateway.models[1].speed == "ultrafast"
+
+    @pytest.mark.parametrize("speed", ["slow", "priority", "", 1, True])
+    def test_set_speed_rejects_invalid_values(self, speed):
+        gateway = ModelGateway(models=[_deployment("fast"), _deployment("strong")])
+
+        with pytest.raises((TypeError, ValueError)):
+            gateway.set_speed(speed)
+
+        assert all(model.speed is None for model in gateway.models)
+
+    @pytest.mark.parametrize("reasoning_effort", ["", "   ", 1, True])
+    def test_set_reasoning_effort_rejects_invalid_values(self, reasoning_effort):
+        gateway = ModelGateway(models=[_deployment("fast"), _deployment("strong")])
+
+        with pytest.raises(TypeError, match="non-empty string or None"):
+            gateway.set_reasoning_effort(reasoning_effort)
+
+        assert all(model.reasoning_effort is None for model in gateway.models)
 
     def test_gateway_initialization_with_time_constraints(self):
         """Test ModelGateway with time constraints inside deployments."""

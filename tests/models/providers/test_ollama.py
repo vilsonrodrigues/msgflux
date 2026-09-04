@@ -307,9 +307,22 @@ def test_openai_compatible_chat_keeps_thinking_request_control():
 def test_ollama_does_not_audit_discarded_reasoning_effort(mock_native_clients):
     from msgflux.models.providers.ollama import OllamaChatCompletion
 
-    model = OllamaChatCompletion(
-        model_id="gpt-oss:20b",
-        reasoning_effort="medium",
-    )
+    with pytest.warns(UserWarning, match="does not support.*reasoning_effort"):
+        model = OllamaChatCompletion(
+            model_id="gpt-oss:20b",
+            reasoning_effort="medium",
+        )
 
     assert "reasoning_effort" not in model._build_response_metadata(None).model
+
+
+def test_ollama_warns_and_ignores_runtime_reasoning_effort(mock_native_clients):
+    from msgflux.models.providers.ollama import OllamaChatCompletion
+
+    model = OllamaChatCompletion(model_id="gpt-oss:20b")
+
+    with pytest.warns(UserWarning, match="does not support.*reasoning_effort"):
+        result = model.set_reasoning_effort("high")
+
+    assert result is model
+    assert "reasoning_effort" not in model.sampling_run_params

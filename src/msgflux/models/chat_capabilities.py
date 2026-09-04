@@ -17,6 +17,7 @@ class ChatAPIModeCapabilities(msgspec.Struct, frozen=True, kw_only=True):
     reasoning_codec: ReasoningCodec | None = None
     reasoning_summary: bool = False
     encrypted_reasoning: bool = False
+    request_reasoning_effort: bool = False
     context_adapter: ChatContextAdapter | None = None
     hosted_tool_search_model_families: tuple[str, ...] = ()
 

@@ -134,6 +134,7 @@ class TestOpenAIChatCompletion:
         model = OpenAIChatCompletion(
             model_id="gpt-5.6-luna",
             context_length=400_000,
+            speed="fast",
         )
         messages = ChatMessages([{"role": "user", "content": "Hello"}])
 
@@ -170,6 +171,7 @@ class TestOpenAIChatCompletion:
             model_id="gpt-5.6-luna",
             max_tokens=999,
             reasoning_effort="high",
+            speed="fast",
             store=False,
         )
 
@@ -188,6 +190,7 @@ class TestOpenAIChatCompletion:
             "model": "gpt-5.6-luna",
             "input": [{"type": "message", "role": "user", "content": "Long history"}],
             "instructions": "Preserve facts.",
+            "service_tier": "fast",
         }
         assert "store" not in kwargs
         assert "reasoning" not in kwargs
@@ -483,6 +486,38 @@ class TestOpenAIChatCompletion:
         stored_response = next(iter(model._response_cache._cache.values()))
         assert stored_response.metadata.timing.source == "provider"
 
+    def test_changing_speed_uses_a_distinct_response_cache_key(
+        self, mock_openai_client
+    ):
+        from msgflux.models.providers.openai import OpenAIChatCompletion
+
+        mock_client, _ = mock_openai_client
+        mock_client.return_value.responses.create.return_value = SimpleNamespace(
+            id="resp_cached",
+            status="completed",
+            incomplete_details=None,
+            service_tier="priority",
+            usage=None,
+            output=[
+                {
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [{"type": "output_text", "text": "Cached."}],
+                }
+            ],
+        )
+        model = OpenAIChatCompletion(
+            model_id="gpt-6-astra",
+            enable_cache=True,
+        )
+
+        model("Repeat")
+        model.set_speed("fast")
+        model("Repeat")
+        model("Repeat")
+
+        assert mock_client.return_value.responses.create.call_count == 2
+
     def test_responses_stream_reports_ttft_for_first_text_delta(
         self, mock_openai_client
     ):
@@ -508,11 +543,15 @@ class TestOpenAIChatCompletion:
                 },
                 {
                     "type": "response.completed",
-                    "response": {"id": "resp_stream", "status": "completed"},
+                    "response": {
+                        "id": "resp_stream",
+                        "status": "completed",
+                        "service_tier": "priority",
+                    },
                 },
             ]
         )
-        model = OpenAIChatCompletion(model_id="gpt-5.6-luna")
+        model = OpenAIChatCompletion(model_id="gpt-5.6-luna", speed="fast")
         stream_response = ModelStreamResponse()
 
         model._stream_responses_generate(
@@ -528,6 +567,8 @@ class TestOpenAIChatCompletion:
             "latency_ms": 8.0,
             "ttft_ms": 3.0,
         }
+        assert stream_response.metadata.model.requested_speed == "fast"
+        assert stream_response.metadata.model.effective_speed == "priority"
 
     def test_responses_stream_omits_ttft_for_empty_protocol_events(
         self, mock_openai_client
@@ -1304,6 +1345,138 @@ class TestOpenAIChatCompletion:
         assert model.enable_thinking is True
         assert model.return_reasoning is True
 
+    def test_set_reasoning_effort_updates_future_requests_and_metadata(
+        self, mock_openai_client
+    ):
+        from msgflux.models.providers.openai import OpenAIChatCompletion
+
+        model = OpenAIChatCompletion(
+            model_id="gpt-6-astra",
+            reasoning_effort="medium",
+        )
+
+        result = model.set_reasoning_effort(" max ")
+        params = model._adapt_responses_params(
+            {**model.sampling_run_params, "model": model.model_id, "input": []}
+        )
+
+        assert result is model
+        assert params["reasoning"]["effort"] == "max"
+        assert model._build_response_metadata(None).model.reasoning_effort == "max"
+
+        model.set_reasoning_effort(None)
+
+        assert "reasoning_effort" not in model.sampling_run_params
+        assert "reasoning_effort" not in model._build_response_metadata(None).model
+
+    @pytest.mark.parametrize(
+        ("model_id", "speed"),
+        [("gpt-6-astra", "fast"), ("gpt-5.6-sol", "ultrafast")],
+    )
+    def test_speed_extension_maps_to_openai_service_tier(
+        self, mock_openai_client, model_id, speed
+    ):
+        from msgflux.models.providers.openai import OpenAIChatCompletion
+
+        mock_client, _ = mock_openai_client
+        model = OpenAIChatCompletion(model_id=model_id, speed=speed)
+
+        model._execute_model(model=model.model_id, input=[])
+
+        request = mock_client.return_value.responses.create.call_args.kwargs
+        assert request["service_tier"] == speed
+        assert model.chat_settings == {"speed": speed}
+
+    def test_speed_extension_supports_chat_completions(self, mock_openai_client):
+        from msgflux.models.providers.openai import OpenAIChatCompletion
+
+        mock_client, _ = mock_openai_client
+        model = OpenAIChatCompletion(
+            model_id="gpt-5.6-sol",
+            api_mode="chat_completions",
+            speed="fast",
+        )
+
+        model._execute_model(model=model.model_id, messages=[])
+
+        request = mock_client.return_value.chat.completions.create.call_args.kwargs
+        assert request["service_tier"] == "fast"
+
+    def test_init_appends_custom_extension_after_provider_extensions(
+        self, mock_openai_client
+    ):
+        from msgflux.models import ChatModelExtension
+        from msgflux.models.providers.openai import OpenAIChatCompletion
+
+        class CustomExtension(ChatModelExtension):
+            name = "custom"
+
+        custom = CustomExtension()
+        model = OpenAIChatCompletion(
+            model_id="gpt-6-astra",
+            chat_extensions=[custom],
+        )
+
+        assert [extension.name for extension in model.chat_extensions] == [
+            "speed",
+            "custom",
+        ]
+        assert model.get_chat_extension("custom") is custom
+
+    def test_openai_warns_and_ignores_nitro_speed(self, mock_openai_client):
+        from msgflux.models.providers.openai import OpenAIChatCompletion
+
+        with pytest.warns(UserWarning, match="does not support.*nitro"):
+            model = OpenAIChatCompletion(model_id="gpt-6-astra", speed="nitro")
+
+        assert model.chat_settings == {}
+
+    def test_openai_warns_for_unsupported_ultrafast_model(self, mock_openai_client):
+        from msgflux.models.providers.openai import OpenAIChatCompletion
+
+        with pytest.warns(UserWarning, match="does not support.*ultrafast"):
+            model = OpenAIChatCompletion(
+                model_id="gpt-6-astra",
+                speed="ultrafast",
+            )
+
+        assert model.chat_settings == {}
+
+    def test_response_metadata_records_requested_and_effective_speed(
+        self, mock_openai_client
+    ):
+        from msgflux.models.providers.openai import OpenAIChatCompletion
+
+        model = OpenAIChatCompletion(model_id="gpt-6-astra", speed="fast")
+
+        metadata = model._build_response_metadata(
+            SimpleNamespace(service_tier="priority", usage=None)
+        )
+
+        assert metadata.model.requested_speed == "fast"
+        assert metadata.model.effective_speed == "priority"
+
+    def test_requested_speed_is_serialized_with_model_state(self, mock_openai_client):
+        from msgflux.models.providers.openai import OpenAIChatCompletion
+
+        model = OpenAIChatCompletion(model_id="gpt-6-astra", speed="fast")
+
+        state = model.serialize()["state"]
+
+        assert state["chat_settings"] == {"speed": "fast"}
+        msgspec.json.encode(state)
+
+    @pytest.mark.parametrize("reasoning_effort", ["", "   ", 1, True])
+    def test_set_reasoning_effort_rejects_invalid_values(
+        self, mock_openai_client, reasoning_effort
+    ):
+        from msgflux.models.providers.openai import OpenAIChatCompletion
+
+        model = OpenAIChatCompletion(model_id="gpt-6-astra")
+
+        with pytest.raises(TypeError, match="non-empty string or None"):
+            model.set_reasoning_effort(reasoning_effort)
+
     def test_chat_completion_with_prompt_cache_retention(self, mock_openai_client):
         """Test OpenAIChatCompletion with OpenAI-only prompt cache retention."""
 
@@ -1587,6 +1760,7 @@ class TestOpenAIChatCompletion:
             yield SimpleNamespace(
                 # OpenRouter includes usage on a final chunk that can still
                 # contain a choice, so usage cannot live in an ``elif`` branch.
+                service_tier="priority",
                 choices=[
                     SimpleNamespace(
                         delta=SimpleNamespace(
@@ -1611,7 +1785,11 @@ class TestOpenAIChatCompletion:
             return_value=text_stream()
         )
 
-        model = OpenAIChatCompletion(model_id="gpt-4", api_mode="chat_completions")
+        model = OpenAIChatCompletion(
+            model_id="gpt-4",
+            api_mode="chat_completions",
+            speed="fast",
+        )
         response = await model.acall(
             messages=[{"role": "user", "content": "Say hello"}],
             stream=True,
@@ -1622,6 +1800,8 @@ class TestOpenAIChatCompletion:
             chunks.append(chunk)
 
         assert chunks == ["Hello", " world"]
+        assert response.metadata.model.requested_speed == "fast"
+        assert response.metadata.model.effective_speed == "priority"
         assert response.response_type == "text_generation"
         assert response.data == "Hello world"
         assert response.metadata.usage["total_tokens"] == 5
@@ -1633,6 +1813,8 @@ class TestOpenAIChatCompletion:
             "provider": "openai",
             "model_id": "gpt-4",
             "api_mode": "chat_completions",
+            "requested_speed": "fast",
+            "effective_speed": "priority",
         }
 
     def test_prepare_generate_kwargs_lowers_dict_schema(self, mock_openai_client):

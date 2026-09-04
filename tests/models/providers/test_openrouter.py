@@ -67,6 +67,91 @@ class TestOpenRouterChatCompletion:
 
         assert adapted["extra_body"]["reasoning"]["max_tokens"] == 2000
 
+    def test_set_reasoning_effort_replaces_reasoning_token_budget(
+        self, mock_openai_client
+    ):
+        from msgflux.models.providers.openrouter import OpenRouterChatCompletion
+
+        model = OpenRouterChatCompletion(
+            model_id="openai/gpt-oss-120b",
+            reasoning_max_tokens=2000,
+        )
+
+        model.set_reasoning_effort("high")
+
+        assert model.reasoning_max_tokens is None
+        assert "reasoning_max_tokens" not in model.sampling_run_params
+        assert model.sampling_run_params["reasoning_effort"] == "high"
+
+    def test_fast_speed_uses_native_openrouter_speed_for_claude(
+        self, mock_openai_client
+    ):
+        from msgflux.models.providers.openrouter import OpenRouterChatCompletion
+
+        mock_client, _ = mock_openai_client
+        model = OpenRouterChatCompletion(
+            model_id="anthropic/claude-opus-4.6",
+            speed="fast",
+        )
+
+        model._execute_model(model=model.model_id, messages=[])
+
+        request = mock_client.return_value.chat.completions.create.call_args.kwargs
+        assert request["model"] == "anthropic/claude-opus-4.6"
+        assert request["speed"] == "fast"
+
+    @pytest.mark.parametrize("speed", ["fast", "nitro"])
+    def test_openrouter_routes_non_claude_speed_through_nitro(
+        self, mock_openai_client, speed
+    ):
+        from msgflux.models.providers.openrouter import OpenRouterChatCompletion
+
+        mock_client, _ = mock_openai_client
+        model = OpenRouterChatCompletion(
+            model_id="openai/gpt-oss-120b",
+            speed=speed,
+        )
+
+        model._execute_model(model=model.model_id, messages=[])
+
+        request = mock_client.return_value.chat.completions.create.call_args.kwargs
+        assert request["model"] == "openai/gpt-oss-120b:nitro"
+        assert "speed" not in request
+
+    @pytest.mark.parametrize(
+        ("model_id", "speed"),
+        [
+            ("openai/gpt-oss-120b:free", "nitro"),
+            ("openai/gpt-oss-120b", "ultrafast"),
+        ],
+    )
+    def test_openrouter_warns_for_incompatible_speed(
+        self, mock_openai_client, model_id, speed
+    ):
+        from msgflux.models.providers.openrouter import OpenRouterChatCompletion
+
+        with pytest.warns(UserWarning, match="does not support"):
+            model = OpenRouterChatCompletion(model_id=model_id, speed=speed)
+
+        assert model.chat_settings == {}
+
+    def test_openrouter_metadata_reads_effective_speed_from_usage(
+        self, mock_openai_client
+    ):
+        from msgflux.models.providers.openrouter import OpenRouterChatCompletion
+
+        model = OpenRouterChatCompletion(
+            model_id="anthropic/claude-opus-4.6",
+            speed="fast",
+        )
+
+        metadata = model._build_response_metadata(
+            SimpleNamespace(usage=SimpleNamespace(speed="fast"))
+        )
+
+        assert metadata.model.requested_speed == "fast"
+        assert metadata.model.effective_speed == "fast"
+
     def test_adapt_params_accepts_requests_without_tool_keys(self, mock_openai_client):
 
         from msgflux.models.providers.openrouter import OpenRouterChatCompletion
