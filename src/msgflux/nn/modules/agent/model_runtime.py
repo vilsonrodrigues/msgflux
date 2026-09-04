@@ -45,6 +45,7 @@ if TYPE_CHECKING:
     pass
 from msgflux.nn.modules.agent.context import (
     ToolFilter,
+    _BeforeRunEndHookError,
     _require_lifecycle_payload,
 )
 
@@ -637,19 +638,22 @@ class AgentModelRuntimeMixin:
         response = self._prepare_response(
             raw_response, response_type, messages, message, vars, reasoning
         )
-        run_end = self._run_run_end_hook(
-            "before_run_end",
-            self._run_end_context(
-                outcome="completed",
-                messages=messages,
-                vars=vars,
-                scope=scope,
-                output=response,
-            ),
-        )
+        try:
+            run_end = self._run_run_end_hook(
+                "before_run_end",
+                self._run_end_context(
+                    outcome="completed",
+                    messages=messages,
+                    vars=vars,
+                    scope=scope,
+                    output=response,
+                ),
+            )
+        except Exception as error:
+            raise _BeforeRunEndHookError(error) from error
         self._finalize_chat_turn(run_end.messages, raw_response)
         self._checkpoint_save(run_end.messages, vars, status="completed")
-        run_end = self._run_run_end_hook("after_run_end", run_end)
+        run_end = self._run_after_run_end_hook(run_end)
         return run_end.output
 
     async def _aprocess_model_response(
@@ -735,19 +739,22 @@ class AgentModelRuntimeMixin:
         response = self._prepare_response(
             raw_response, response_type, messages, message, vars, reasoning
         )
-        run_end = await self._arun_run_end_hook(
-            "before_run_end",
-            self._run_end_context(
-                outcome="completed",
-                messages=messages,
-                vars=vars,
-                scope=scope,
-                output=response,
-            ),
-        )
+        try:
+            run_end = await self._arun_run_end_hook(
+                "before_run_end",
+                self._run_end_context(
+                    outcome="completed",
+                    messages=messages,
+                    vars=vars,
+                    scope=scope,
+                    output=response,
+                ),
+            )
+        except Exception as error:
+            raise _BeforeRunEndHookError(error) from error
         self._finalize_chat_turn(run_end.messages, raw_response)
         await self._acheckpoint_save(run_end.messages, vars, status="completed")
-        run_end = await self._arun_run_end_hook("after_run_end", run_end)
+        run_end = await self._arun_after_run_end_hook(run_end)
         return run_end.output
 
     # --- Tool Processing ---

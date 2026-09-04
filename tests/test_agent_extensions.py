@@ -1,4 +1,5 @@
 import asyncio
+import threading
 from dataclasses import replace
 
 import msgspec
@@ -527,6 +528,42 @@ async def test_async_extension_removal_waits_for_active_run_cleanup():
 
 
 @pytest.mark.asyncio
+async def test_async_extension_removal_wakes_safely_from_worker_thread():
+    started = threading.Event()
+    release = threading.Event()
+    cleaned = asyncio.Event()
+
+    class ThreadedCleanupExtension(AgentExtension):
+        def __init__(self):
+            super().__init__("threaded_cleanup")
+
+        def block(self, ctx):
+            started.set()
+            release.wait(timeout=2)
+            return ctx
+
+        def hooks(self):
+            return (Hook(event="transform_system_prompt", handler=self.block),)
+
+        async def aon_remove(self, agent):
+            cleaned.set()
+
+    agent = Agent(name="agent", model=_RecordingModel())
+    handle = agent.register_extension("threaded_cleanup", ThreadedCleanupExtension())
+    run = asyncio.create_task(asyncio.to_thread(agent, "first"))
+    assert await asyncio.to_thread(started.wait, 1)
+
+    removal = asyncio.create_task(handle.aremove())
+    await asyncio.sleep(0)
+    assert not cleaned.is_set()
+
+    release.set()
+    assert await run == "ok"
+    await asyncio.wait_for(removal, timeout=1)
+    assert cleaned.is_set()
+
+
+@pytest.mark.asyncio
 async def test_abort_cancels_async_extension_hook():
     started = asyncio.Event()
     cancelled = asyncio.Event()
@@ -776,6 +813,70 @@ def test_run_end_hooks_wrap_final_checkpoint():
     assert trace == ["before", "checkpoint", "after"]
 
 
+def test_after_run_end_failure_preserves_committed_run_and_output():
+    trace = []
+
+    class RecordingStore(InMemoryCheckpointStore):
+        def save_state(self, namespace, thread_id, run_id, state):
+            trace.append(("checkpoint", state["status"]))
+            return super().save_state(namespace, thread_id, run_id, state)
+
+    def fail_after(ctx):
+        trace.append(("after", ctx.outcome))
+        raise RuntimeError("observer failed")
+
+    store = RecordingStore()
+    history = ChatMessages()
+    agent = Agent(
+        name="agent",
+        model=_RecordingModel(),
+        checkpoint_store=store,
+        hooks=[Hook(event="after_run_end", handler=fail_after)],
+    )
+    scope = ExecutionScope(thread_id="thread", namespace="agent", run_id="run")
+
+    with pytest.warns(RuntimeWarning, match="after_run_end hook failed"):
+        result = agent("hello", messages=history, scope=scope)
+
+    assert result == "ok"
+    assert trace == [("checkpoint", "completed"), ("after", "completed")]
+    assert store.load_state("agent", "thread", "run")["status"] == "completed"
+    assert history.turns[-1]["status"] == "completed"
+
+
+@pytest.mark.asyncio
+async def test_async_after_run_end_failure_preserves_committed_run_and_output():
+    calls = []
+
+    async def fail_after(ctx):
+        calls.append(ctx.outcome)
+        raise RuntimeError("observer failed")
+
+    store = InMemoryCheckpointStore()
+    history = ChatMessages()
+    agent = Agent(
+        name="agent",
+        model=_RecordingModel(),
+        checkpoint_store=store,
+        hooks=[Hook(event="after_run_end", handler=fail_after)],
+    )
+    scope = ExecutionScope(
+        thread_id="async_thread",
+        namespace="agent",
+        run_id="async_run",
+    )
+
+    with pytest.warns(RuntimeWarning, match="after_run_end hook failed"):
+        result = await agent.acall("hello", messages=history, scope=scope)
+
+    assert result == "ok"
+    assert calls == ["completed"]
+    assert store.load_state("agent", "async_thread", "async_run")["status"] == (
+        "completed"
+    )
+    assert history.turns[-1]["status"] == "completed"
+
+
 def test_run_end_hooks_receive_failed_outcome_around_checkpoint():
     trace = []
 
@@ -816,6 +917,81 @@ def test_run_end_hooks_receive_failed_outcome_around_checkpoint():
         ("checkpoint", "failed"),
         ("after", "failed"),
     ]
+
+
+def test_before_run_end_failure_is_settled_without_repeating_hook():
+    calls = []
+    store = InMemoryCheckpointStore()
+
+    def fail_before(ctx):
+        calls.append(("before", ctx.outcome))
+        raise RuntimeError("cannot finalize")
+
+    def record_after(ctx):
+        calls.append(("after", ctx.outcome))
+        return ctx
+
+    history = ChatMessages()
+    agent = Agent(
+        name="agent",
+        model=_RecordingModel(),
+        checkpoint_store=store,
+        hooks=[
+            Hook(event="before_run_end", handler=fail_before),
+            Hook(event="after_run_end", handler=record_after),
+        ],
+    )
+    scope = ExecutionScope(
+        thread_id="before_failure_thread",
+        namespace="agent",
+        run_id="before_failure_run",
+    )
+
+    with pytest.raises(RuntimeError, match="cannot finalize"):
+        agent("hello", messages=history, scope=scope)
+
+    assert calls == [("before", "completed"), ("after", "failed")]
+    assert (
+        store.load_state("agent", "before_failure_thread", "before_failure_run")[
+            "status"
+        ]
+        == "failed"
+    )
+    assert history.turns[-1]["status"] == "failed"
+
+
+def test_after_run_end_failure_cannot_replace_original_run_error():
+    class FailingModel:
+        model_type = "chat_completion"
+
+        def __call__(self, **_kwargs):
+            raise ValueError("model failed")
+
+    def fail_after(_ctx):
+        raise RuntimeError("observer failed")
+
+    store = InMemoryCheckpointStore()
+    agent = Agent(
+        name="agent",
+        model=FailingModel(),
+        checkpoint_store=store,
+        hooks=[Hook(event="after_run_end", handler=fail_after)],
+    )
+    scope = ExecutionScope(
+        thread_id="failed_thread",
+        namespace="agent",
+        run_id="failed_run",
+    )
+
+    with (
+        pytest.warns(RuntimeWarning, match="after_run_end hook failed"),
+        pytest.raises(ValueError, match="model failed"),
+    ):
+        agent("hello", messages=ChatMessages(), scope=scope)
+
+    assert store.load_state("agent", "failed_thread", "failed_run")["status"] == (
+        "failed"
+    )
 
 
 @pytest.mark.asyncio

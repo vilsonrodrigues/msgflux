@@ -8,7 +8,7 @@ from msgflux.data.stores import InMemoryCheckpointStore, SQLiteCheckpointStore
 from msgflux.exceptions import AbortRequestedError, TaskInterruptRequestedError
 from msgflux.models.response import ModelResponse, ModelStreamResponse
 from msgflux.models.tool_call_agg import ToolCallAggregator
-from msgflux.nn.hooks import BeforeResume, Hook
+from msgflux.nn.hooks import BeforeResume, Guard, Hook
 from msgflux.nn.modules.agent import Agent
 from msgflux.runtime import AbortSignal
 from msgflux.runtime.context import ExecutionScope
@@ -89,6 +89,68 @@ def test_agent_saves_completed_checkpoint():
             if item.get("role") == "assistant" and item.get("content") == "42"
         ]
     ) == [{"type": "message", "role": "assistant", "content": "42"}]
+
+
+def test_guard_response_completes_turn_and_checkpoint():
+    store = InMemoryCheckpointStore()
+    history = ChatMessages()
+    agent = _make_agent(
+        checkpoint_store=store,
+        hooks=[
+            Guard(
+                validator=lambda _data: {"safe": False},
+                on="pre",
+                message="Blocked.",
+            )
+        ],
+    )
+    agent.generator.forward = Mock(side_effect=AssertionError("model called"))
+    scope = ExecutionScope(
+        thread_id="guard_thread",
+        namespace="test_agent",
+        run_id="guard_run",
+    )
+
+    assert agent("unsafe", messages=history, scope=scope) == "Blocked."
+
+    state = store.load_state("test_agent", "guard_thread", "guard_run")
+    assert state["status"] == "completed"
+    assert history.get_active_turn() is None
+    assert history.turns[-1]["status"] == "completed"
+    assert history.to_chatml()[-1] == {"role": "assistant", "content": "Blocked."}
+
+
+@pytest.mark.asyncio
+async def test_async_guard_response_completes_turn_and_checkpoint():
+    store = InMemoryCheckpointStore()
+    history = ChatMessages()
+    agent = _make_agent(
+        checkpoint_store=store,
+        hooks=[
+            Guard(
+                validator=lambda _data: {"safe": False},
+                on="pre",
+                message="Blocked.",
+            )
+        ],
+    )
+    agent.generator.aforward = AsyncMock(side_effect=AssertionError("model called"))
+    scope = ExecutionScope(
+        thread_id="guard_thread_async",
+        namespace="test_agent",
+        run_id="guard_run_async",
+    )
+
+    assert await agent.acall("unsafe", messages=history, scope=scope) == "Blocked."
+
+    state = store.load_state(
+        "test_agent",
+        "guard_thread_async",
+        "guard_run_async",
+    )
+    assert state["status"] == "completed"
+    assert history.get_active_turn() is None
+    assert history.turns[-1]["status"] == "completed"
 
 
 def test_agent_persists_only_minimal_usage_on_each_model_response():
@@ -783,6 +845,61 @@ def test_agent_stream_updates_the_caller_chat_messages_when_finished():
 
     assert messages.to_chatml()[-1]["content"] == "visible"
     assert messages.turns[-1]["status"] == "completed"
+
+
+def test_agent_rejects_reusing_history_owned_by_unfinished_stream():
+    agent = _make_agent(config={"stream": True})
+    stream_response = ModelStreamResponse(mode="sync")
+    stream_response.set_response_type("text_generation")
+    agent.generator.forward = Mock(return_value=stream_response)
+    messages = ChatMessages(thread_id="user_42", namespace="test_agent")
+
+    result = agent(
+        "First request",
+        messages=messages,
+        scope=ExecutionScope(thread_id="user_42", run_id="run_stream_owner"),
+    )
+
+    with pytest.raises(RuntimeError, match="unfinished Agent stream"):
+        agent(
+            "Second request",
+            messages=messages,
+            scope=ExecutionScope(thread_id="user_42", run_id="run_concurrent"),
+        )
+
+    result.add("first answer")
+    result.finish()
+    assert messages.to_chatml() == [
+        {"role": "user", "content": "First request"},
+        {"role": "assistant", "content": "first answer"},
+    ]
+
+
+def test_stream_finalizer_never_overwrites_externally_changed_history():
+    store = InMemoryCheckpointStore()
+    agent = _make_agent(checkpoint_store=store, config={"stream": True})
+    stream_response = ModelStreamResponse(mode="sync")
+    stream_response.set_response_type("text_generation")
+    agent.generator.forward = Mock(return_value=stream_response)
+    messages = ChatMessages(thread_id="user_42", namespace="test_agent")
+
+    result = agent(
+        "Stream request",
+        messages=messages,
+        scope=ExecutionScope(thread_id="user_42", run_id="run_stream_conflict"),
+    )
+    messages.add_system("External update")
+    result.add("stream answer")
+
+    with pytest.raises(RuntimeError, match="changed while its Agent stream was active"):
+        result.finish()
+
+    assert messages.to_chatml()[-1] == {
+        "role": "system",
+        "content": "External update",
+    }
+    state = store.load_state("test_agent", "user_42", "run_stream_conflict")
+    assert state["status"] == "completed"
 
 
 def test_agent_stream_finalizer_saves_sqlite_checkpoint_from_worker(tmp_path):

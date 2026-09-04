@@ -263,6 +263,10 @@ class ToolBucketHandle(ToolLibraryHandle):
             tool_name,
         )
 
+    def get_tool_call_id(self) -> str | None:
+        """Return the parent model call id carried by this scoped handle."""
+        return self._tool_call_id
+
     def with_runtime(
         self,
         *,

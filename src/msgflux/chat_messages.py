@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from threading import RLock
 from typing import TYPE_CHECKING, Any, Iterable, Iterator, List, Literal, Mapping
 
 from msgflux._private.chat_items import legacy_item_id, new_item_id
@@ -38,6 +39,8 @@ class ChatMessages:
         namespace: str | None = None,
     ):
         self._items: List[dict[str, Any]] = []
+        self._runtime_lock = RLock()
+        self._stream_owner: str | None = None
         self.metadata: dict[str, Any] = {}
         self.thread_id: str | None = (
             thread_id if thread_id is not None else _CURRENT_THREAD_ID.get()
@@ -165,6 +168,32 @@ class ChatMessages:
         )
         copied.metadata = deepcopy(self.metadata)
         return copied
+
+    def __deepcopy__(self, memo: dict[int, Any]) -> ChatMessages:
+        copied = self.copy()
+        memo[id(self)] = copied
+        return copied
+
+    def _ensure_stream_available(self) -> None:
+        with self._runtime_lock:
+            if self._stream_owner is not None:
+                raise RuntimeError(
+                    "ChatMessages is owned by an unfinished Agent stream "
+                    f"(`{self._stream_owner}`). Finish or abort that stream before "
+                    "starting another run with the same history."
+                )
+
+    def _claim_stream(self, run_id: str) -> None:
+        if not isinstance(run_id, str) or not run_id:
+            raise ValueError("A streaming ChatMessages owner requires a run id")
+        with self._runtime_lock:
+            self._ensure_stream_available()
+            self._stream_owner = run_id
+
+    def _release_stream(self, run_id: str) -> None:
+        with self._runtime_lock:
+            if self._stream_owner == run_id:
+                self._stream_owner = None
 
     thread_context = staticmethod(thread_context)
     get_thread_context = staticmethod(get_thread_context)

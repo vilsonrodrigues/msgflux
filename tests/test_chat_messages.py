@@ -1,3 +1,5 @@
+from copy import deepcopy
+
 from msgflux.chat_messages import ChatMessages
 from msgflux.models.reasoning import OpenRouterReasoningCodec
 from msgflux.runtime import AbortSignal
@@ -16,6 +18,15 @@ def test_default_execution_scope_is_available():
 
     assert scope.thread_id is None
     assert scope.namespace == DEFAULT_NAMESPACE
+
+
+def test_chat_messages_deepcopy_does_not_copy_runtime_stream_lock():
+    messages = ChatMessages([{"role": "user", "content": "hello"}])
+
+    copied = deepcopy(messages)
+
+    assert copied is not messages
+    assert copied.to_items() == messages.to_items()
 
 
 def test_execution_context_accepts_scope_and_explicit_overrides():

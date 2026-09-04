@@ -5,6 +5,7 @@ from typing import Any, List, Mapping, Optional
 from msgflux.runtime.context import (
     ExecutionScope,
     get_execution_context,
+    new_run_id,
     new_thread_id,
 )
 from msgflux.tools.handles import ToolBucketHandle
@@ -58,7 +59,13 @@ class AgentTool(ToolBucket, ToolLibraryOperator):
         self._validate_agent(name, handle)
         model_preference = self._resolve_model_preference(name, model, handle)
         namespace = handle.get_execution_namespace(name)
-        runtime_arguments = {"scope": scope or self._build_scope(namespace)}
+        runtime_arguments = {
+            "scope": scope
+            or self._build_scope(
+                namespace,
+                tool_call_id=handle.get_tool_call_id(),
+            )
+        }
         if model_preference is not None:
             runtime_arguments["model_preference"] = model_preference
         return handle(
@@ -79,7 +86,13 @@ class AgentTool(ToolBucket, ToolLibraryOperator):
         self._validate_agent(name, handle)
         model_preference = self._resolve_model_preference(name, model, handle)
         namespace = handle.get_execution_namespace(name)
-        runtime_arguments = {"scope": scope or self._build_scope(namespace)}
+        runtime_arguments = {
+            "scope": scope
+            or self._build_scope(
+                namespace,
+                tool_call_id=handle.get_tool_call_id(),
+            )
+        }
         if model_preference is not None:
             runtime_arguments["model_preference"] = model_preference
         return await handle.acall(
@@ -114,26 +127,35 @@ class AgentTool(ToolBucket, ToolLibraryOperator):
             raise ValueError(f"Unknown model `{model}`. Available models: {choices}.")
         return model
 
-    def _build_scope(self, agent_name: str) -> ExecutionScope:
+    def _build_scope(
+        self,
+        agent_name: str,
+        *,
+        tool_call_id: str | None,
+    ) -> ExecutionScope:
         context = get_execution_context()
         parent_scope = context["scope"]
         thread_id = context.get("thread_id")
         task_handle = context.get("task_handle")
-        run_id = getattr(task_handle, "task_id", None) or context.get("run_id")
-        parent_run_id = context.get("parent_run_id")
-        if parent_run_id is None and context.get("run_id") != run_id:
-            parent_run_id = context.get("run_id")
+        current_run_id = context.get("run_id")
+        task_id = getattr(task_handle, "task_id", None)
+        if isinstance(task_id, str):
+            run_id = task_id
+        elif isinstance(current_run_id, str) and isinstance(tool_call_id, str):
+            run_id = f"{current_run_id}:{tool_call_id}:{agent_name}"
+        else:
+            run_id = new_run_id()
+        parent_run_id = (
+            context.get("parent_run_id") if isinstance(task_id, str) else current_run_id
+        )
+        root_run_id = context.get("root_run_id") or current_run_id
 
         return parent_scope.with_overrides(
             namespace=agent_name,
             thread_id=thread_id if isinstance(thread_id, str) else new_thread_id(),
-            run_id=run_id if isinstance(run_id, str) else None,
+            run_id=run_id,
             parent_run_id=parent_run_id if isinstance(parent_run_id, str) else None,
-            root_run_id=(
-                context.get("root_run_id")
-                if isinstance(context.get("root_run_id"), str)
-                else None
-            ),
+            root_run_id=root_run_id if isinstance(root_run_id, str) else None,
         )
 
     def _build_description(self) -> str:

@@ -82,6 +82,15 @@ _DEFAULT_AGENT_ANNOTATIONS = {"task": str, "return": str}
 ToolFilterValue = Union[str, List[str]]
 ToolFilter = Dict[str, ToolFilterValue]
 
+
+class _BeforeRunEndHookError(Exception):
+    """Identify a failed pre-commit hook so it is not executed twice."""
+
+    def __init__(self, error: Exception):
+        super().__init__(str(error))
+        self.error = error
+
+
 _CURRENT_AGENT_CONTEXT = contextvars.ContextVar(
     "msgflux_current_agent_context",
     default=None,

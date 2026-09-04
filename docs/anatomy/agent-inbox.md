@@ -79,10 +79,13 @@ thread_id = generated thd_<uuid>
 run_id = generated run_<uuid>
 ```
 
-When an inbox is owned by an agent, the agent binds it to the effective
-execution scope before model execution. In practice, that means the namespace
-usually becomes the agent module name, while `thread_id` and `run_id` come
-from the active `ExecutionScope` or inherited runtime context.
+When an inbox is owned by an agent, the agent resolves a scoped inbox view
+before model execution. The view shares the configured store, but owns its
+namespace, `thread_id`, and `run_id`. A concurrent run or nested agent can
+therefore resolve another view without rebinding the inbox already being used
+by its parent. The namespace usually becomes the agent module name, while
+`thread_id` and `run_id` come from the active `ExecutionScope` or inherited
+runtime context.
 
 `thread_id` is the conversation identity for the agent that owns the inbox.
 `run_id` is narrower: it identifies one resumable execution inside that

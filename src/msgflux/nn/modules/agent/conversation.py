@@ -81,6 +81,27 @@ class AgentConversationMixin:
             return inherited
         return getattr(self, "agent_inbox", None)
 
+    def _get_scoped_agent_inbox(self, scope: ExecutionScope):
+        inherited = get_execution_context().get("agent_inbox")
+        namespace = self.get_module_name()
+        if inherited is not None:
+            return inherited.fork(
+                owner=namespace,
+                namespace=namespace,
+                thread_id=scope.thread_id,
+                run_id=scope.run_id,
+            )
+        inbox = getattr(self, "agent_inbox", None)
+        if inbox is None:
+            return None
+        inbox.bind_scope(scope, namespace=namespace)
+        return inbox.fork(
+            owner=namespace,
+            namespace=namespace,
+            thread_id=scope.thread_id,
+            run_id=scope.run_id,
+        )
+
     def set_agent_inbox(self, agent_inbox: AgentInbox) -> None:
         self.agent_inbox = agent_inbox
         self.tool_library.set_agent_inbox(agent_inbox)
@@ -408,6 +429,7 @@ class AgentConversationMixin:
         messages: ChatMessages,
         turn_id: str,
     ) -> None:
+        messages._ensure_stream_available()
         active_turn = messages.get_active_turn()
         if active_turn is not None:
             if active_turn.get("turn_id") == turn_id:
@@ -598,6 +620,12 @@ class AgentConversationMixin:
         if not isinstance(messages, ChatMessages):
             return
 
+        active_turn = messages.get_active_turn()
+        if active_turn is None or not isinstance(active_turn.get("turn_id"), str):
+            raise RuntimeError("Cannot attach a stream without an active Agent turn")
+        run_id = active_turn["turn_id"]
+        messages._claim_stream(run_id)
+        source_state = messages._to_state()
         stream_messages = messages.copy()
 
         def finalize_stream(final_state) -> None:
@@ -629,7 +657,16 @@ class AgentConversationMixin:
                     )
                 self._checkpoint_save(stream_messages, vars, status="failed")
             finally:
-                messages._hydrate_state(stream_messages._to_state())
+                try:
+                    if messages._to_state() != source_state:
+                        raise RuntimeError(
+                            "ChatMessages changed while its Agent stream was active; "
+                            "the completed stream was checkpointed but was not allowed "
+                            "to overwrite the newer in-memory history."
+                        )
+                    messages._hydrate_state(stream_messages._to_state())
+                finally:
+                    messages._release_stream(run_id)
 
         model_response.add_finalizer(finalize_stream)
 

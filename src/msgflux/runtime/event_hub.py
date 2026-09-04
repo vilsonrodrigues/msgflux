@@ -356,7 +356,7 @@ class EventHub:
         elif event_type in {"run.end", "run.error", "run.interrupted"}:
             state.runs.pop(run_key, None)
             for tool_key in tuple(state.tools):
-                if tool_key[0] == event.run_id:
+                if tool_key[:2] == run_key:
                     state.tools.pop(tool_key, None)
 
     def _reset(self) -> None:

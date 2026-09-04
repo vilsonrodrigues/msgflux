@@ -24,7 +24,7 @@ from msgflux.exceptions import (
     _GuardInterrupt,
 )
 from msgflux.models.gateway import ModelGateway
-from msgflux.models.response import ModelStreamResponse
+from msgflux.models.response import ModelResponse, ModelStreamResponse
 from msgflux.models.types import ChatCompletionModel
 from msgflux.nn.extensions.base import (
     AgentExtension,
@@ -519,12 +519,7 @@ class Agent(
         self._update_agent_context(inputs)
         effective_checkpoint_store = self._get_effective_checkpoint_store()
         effective_task_store = self._get_effective_task_store()
-        effective_inbox = self._get_effective_agent_inbox()
-        if effective_inbox is not None:
-            effective_inbox.bind_scope(
-                inputs.get("scope"),
-                namespace=self.get_module_name(),
-            )
+        effective_inbox = self._get_scoped_agent_inbox(inputs.get("scope"))
         with execution_context(
             scope=inputs.get("scope"),
             checkpoint_store=effective_checkpoint_store,
@@ -537,7 +532,7 @@ class Agent(
                     **inputs,
                 )
             except _GuardInterrupt as e:
-                return self._define_response_mode(e.response, message)
+                model_response = self._guard_model_response(e.response)
             except (AbortRequestedError, TaskInterruptRequestedError) as exc:
                 self._settle_terminal_run(inputs, "interrupted", exc)
                 self._raise_interrupted_from_abort(inputs, exc)
@@ -557,8 +552,10 @@ class Agent(
                 self._settle_terminal_run(inputs, "interrupted", exc)
                 self._raise_interrupted_from_abort(inputs, exc)
             except Exception as exc:
-                self._settle_terminal_run(inputs, "failed", exc)
-                raise
+                settled_error = self._settle_processing_error(inputs, exc)
+                if settled_error is exc:
+                    raise
+                raise settled_error from exc
             return response
 
     async def aforward(
@@ -599,12 +596,7 @@ class Agent(
         self._update_agent_context(inputs)
         effective_checkpoint_store = self._get_effective_checkpoint_store()
         effective_task_store = self._get_effective_task_store()
-        effective_inbox = self._get_effective_agent_inbox()
-        if effective_inbox is not None:
-            effective_inbox.bind_scope(
-                inputs.get("scope"),
-                namespace=self.get_module_name(),
-            )
+        effective_inbox = self._get_scoped_agent_inbox(inputs.get("scope"))
         with execution_context(
             scope=inputs.get("scope"),
             checkpoint_store=effective_checkpoint_store,
@@ -617,7 +609,7 @@ class Agent(
                     **inputs,
                 )
             except _GuardInterrupt as e:
-                return self._define_response_mode(e.response, message)
+                model_response = self._guard_model_response(e.response)
             except (AbortRequestedError, TaskInterruptRequestedError) as exc:
                 await self._asettle_terminal_run(inputs, "interrupted", exc)
                 self._raise_interrupted_from_abort(inputs, exc)
@@ -637,8 +629,17 @@ class Agent(
                 await self._asettle_terminal_run(inputs, "interrupted", exc)
                 self._raise_interrupted_from_abort(inputs, exc)
             except Exception as exc:
-                await self._asettle_terminal_run(inputs, "failed", exc)
-                raise
+                settled_error = await self._asettle_processing_error(inputs, exc)
+                if settled_error is exc:
+                    raise
+                raise settled_error from exc
             return response
+
+    @staticmethod
+    def _guard_model_response(response: str) -> ModelResponse:
+        model_response = ModelResponse()
+        model_response.set_response_type("text_generation")
+        model_response.add(response)
+        return model_response
 
     # --- Extensions ---

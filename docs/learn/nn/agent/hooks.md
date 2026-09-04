@@ -60,6 +60,13 @@ compaction call and its execution events. The hook controls the decision, while
 the Model remains responsible for counting tokens and producing the compacted
 view. See [Conversation Compaction](compaction.md).
 
+`before_run_end` participates in the terminal commit and may still turn a
+successful run into a failure. `after_run_end` runs after that commit. If its
+handler raises, the committed output and outcome remain primary and the hook
+failure produces a runtime warning. The run is not executed or checkpointed a
+second time. A completed turn therefore cannot be silently rewritten as failed
+by an observational hook.
+
 Import typed payloads from `msgflux.nn.hooks`. Dataclass replacement keeps a
 handler explicit and preserves fields added to the contract later:
 

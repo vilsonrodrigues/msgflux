@@ -217,6 +217,14 @@ Turn events are `start`, `pause`, `resume`, `complete`, `fail`, and
 events, not additional persisted state. This means a failed or paused turn can
 resume without duplicating its messages.
 
+An unfinished `ModelStreamResponse` temporarily owns the `ChatMessages`
+instance supplied to that run. Finish or abort the stream before starting a
+second run with the same object. msgFlux rejects overlapping use instead of
+allowing an older stream finalizer to overwrite newer messages. If application
+code mutates the history directly while the stream is open, the completed
+stream can still be saved to its own checkpoint, but it will not replace the
+newer in-memory timeline.
+
 Every occurrence has a stable `item_id`, even when two items have identical
 content. Use that identity to create an append-only branch at an exact history
 boundary. For example, fork immediately after the first completed turn:

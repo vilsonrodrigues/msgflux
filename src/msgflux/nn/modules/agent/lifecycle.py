@@ -1,7 +1,9 @@
 # ruff: noqa: A002
 
 import asyncio
-from contextlib import contextmanager
+import warnings
+from contextlib import contextmanager, nullcontext
+from threading import RLock
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -43,6 +45,7 @@ if TYPE_CHECKING:
 from msgflux.nn.modules.agent.context import (
     _CURRENT_AGENT_CONTEXT,
     _agent_context,
+    _BeforeRunEndHookError,
     _require_lifecycle_payload,
 )
 
@@ -51,6 +54,7 @@ class AgentLifecycleMixin:
     """Agent extension, lifecycle-hook, event-stream, and watch behavior."""
 
     def _initialize_extensions(self) -> None:
+        self._extension_lock = RLock()
         self.extensions = ModuleDict()
         self._extension_hook_handles: dict[str, list[Any]] = {}
         self._extension_library_handles: dict[str, Any] = {}
@@ -77,6 +81,14 @@ class AgentLifecycleMixin:
         extension: AgentExtension,
     ) -> AgentExtensionHandle:
         """Install a named extension and return its ownership handle."""
+        with self._extension_lock:
+            return self._register_extension(name, extension)
+
+    def _register_extension(
+        self,
+        name: str,
+        extension: AgentExtension,
+    ) -> AgentExtensionHandle:
         self._validate_extension_registration(name, extension)
         extension_hooks = tuple(extension.hooks())
         extension_tools = tuple(extension.tools())
@@ -170,44 +182,54 @@ class AgentLifecycleMixin:
 
     def has_extension(self, name: str) -> bool:
         """Return whether an extension is enabled for new runs."""
-        return name in self.extensions
+        with self._extension_lock:
+            return name in self.extensions
 
     def has_extension_capability(self, capability: str) -> bool:
         """Return whether the current run exposes an extension capability."""
         if not isinstance(capability, str) or not capability.strip():
             raise ValueError("`capability` must be a non-empty string")
         snapshot = _get_extension_snapshot(self)
-        names = snapshot if snapshot is not None else frozenset(self.extensions)
-        return any(
-            capability in self._extension_capabilities.get(name, ()) for name in names
-        )
+        with self._extension_lock:
+            names = snapshot if snapshot is not None else frozenset(self.extensions)
+            return any(
+                capability in self._extension_capabilities.get(name, ())
+                for name in names
+            )
 
     def remove_extension(self, name: str) -> None:
         """Disable an extension for new runs and remove it when no run uses it."""
-        if name not in self.extensions:
-            return
-        extension = self.extensions[name]
-        del self.extensions[name]
-        self._pending_extensions[name] = extension
-        if self._extension_refcounts.get(name, 0) == 0:
+        with self._extension_lock:
+            if name not in self.extensions:
+                return
+            extension = self.extensions[name]
+            del self.extensions[name]
+            self._pending_extensions[name] = extension
+            cleanup_now = self._extension_refcounts.get(name, 0) == 0
+        if cleanup_now:
             self._cleanup_extension(name)
 
     async def aremove_extension(self, name: str) -> None:
         """Async removal, using async cleanup when no active run retains it."""
-        if name not in self.extensions:
-            return
-        extension = self.extensions[name]
-        del self.extensions[name]
-        self._pending_extensions[name] = extension
+        loop = asyncio.get_running_loop()
         ready = asyncio.Event()
-        self._extension_async_cleanup_waiters[name] = ready
-        if self._extension_refcounts.get(name, 0) == 0:
+        with self._extension_lock:
+            if name not in self.extensions:
+                return
+            extension = self.extensions[name]
+            del self.extensions[name]
+            self._pending_extensions[name] = extension
+            self._extension_async_cleanup_waiters[name] = (loop, ready)
+            cleanup_now = self._extension_refcounts.get(name, 0) == 0
+        if cleanup_now:
             ready.set()
         try:
             await ready.wait()
         except asyncio.CancelledError:
-            self._extension_async_cleanup_waiters.pop(name, None)
-            if self._extension_refcounts.get(name, 0) == 0:
+            with self._extension_lock:
+                self._extension_async_cleanup_waiters.pop(name, None)
+                cleanup_now = self._extension_refcounts.get(name, 0) == 0
+            if cleanup_now:
                 self._cleanup_extension(name)
             raise
         self._cleanup_extension_contributions(name)
@@ -242,30 +264,44 @@ class AgentLifecycleMixin:
         snapshot = _get_extension_snapshot(self)
         if snapshot is not None:
             return name in snapshot
-        return name in self.extensions
+        with self._extension_lock:
+            return name in self.extensions
 
     @contextmanager
     def _extension_run_snapshot(self):
         current = _get_extension_snapshot(self)
-        if current is not None:
-            yield current
-            return
-        names = frozenset(self.extensions)
-        for name in names:
-            self._extension_refcounts[name] = self._extension_refcounts.get(name, 0) + 1
+        with self._extension_lock:
+            names = current if current is not None else frozenset(self.extensions)
+            for name in names:
+                self._extension_refcounts[name] = (
+                    self._extension_refcounts.get(name, 0) + 1
+                )
+        snapshot_context = (
+            _extension_snapshot(self, names)
+            if current is None
+            else nullcontext(current)
+        )
         try:
-            with _extension_snapshot(self, names):
+            with snapshot_context:
                 yield names
         finally:
-            for name in names:
-                count = self._extension_refcounts.get(name, 1) - 1
-                self._extension_refcounts[name] = count
-                if count == 0 and name in self._pending_extensions:
+            wakeups = []
+            cleanups = []
+            with self._extension_lock:
+                for name in names:
+                    count = self._extension_refcounts.get(name, 1) - 1
+                    self._extension_refcounts[name] = count
+                    if count != 0 or name not in self._pending_extensions:
+                        continue
                     waiter = self._extension_async_cleanup_waiters.get(name)
                     if waiter is not None:
-                        waiter.set()
+                        wakeups.append(waiter)
                     else:
-                        self._cleanup_extension(name)
+                        cleanups.append(name)
+            for loop, waiter in wakeups:
+                loop.call_soon_threadsafe(waiter.set)
+            for name in cleanups:
+                self._cleanup_extension(name)
 
     def _call_impl_with_hooks(self, *args, **kwargs):
         with self._extension_run_snapshot():
@@ -357,22 +393,50 @@ class AgentLifecycleMixin:
         transformed = await self._arun_lifecycle_hooks(event, context)
         return _require_lifecycle_payload(event, transformed, RunEndContext)
 
+    def _run_after_run_end_hook(self, context: RunEndContext) -> RunEndContext:
+        try:
+            return self._run_run_end_hook("after_run_end", context)
+        except Exception as hook_error:
+            warnings.warn(
+                f"after_run_end hook failed after {context.outcome} run commit: "
+                f"{hook_error}",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+            return context
+
+    async def _arun_after_run_end_hook(
+        self,
+        context: RunEndContext,
+    ) -> RunEndContext:
+        try:
+            return await self._arun_run_end_hook("after_run_end", context)
+        except Exception as hook_error:
+            warnings.warn(
+                f"after_run_end hook failed after {context.outcome} run commit: "
+                f"{hook_error}",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+            return context
+
     def _settle_terminal_run(
         self,
         inputs: Mapping[str, Any],
         outcome: Literal["failed", "interrupted", "paused"],
         error: BaseException,
+        *,
+        run_before_hook: bool = True,
     ) -> RunEndContext:
-        run_end = self._run_run_end_hook(
-            "before_run_end",
-            self._run_end_context(
-                outcome=outcome,
-                messages=inputs.get("messages"),
-                vars=inputs.get("vars", {}),
-                scope=inputs.get("scope"),
-                error=error,
-            ),
+        run_end = self._run_end_context(
+            outcome=outcome,
+            messages=inputs.get("messages"),
+            vars=inputs.get("vars", {}),
+            scope=inputs.get("scope"),
+            error=error,
         )
+        if run_before_hook:
+            run_end = self._run_run_end_hook("before_run_end", run_end)
         settled_inputs = {**inputs, "messages": run_end.messages}
         if outcome == "interrupted":
             self._checkpoint_interrupted(settled_inputs, error)
@@ -389,24 +453,25 @@ class AgentLifecycleMixin:
             )
         else:
             self._checkpoint_save_on_error(settled_inputs)
-        return self._run_run_end_hook("after_run_end", run_end)
+        return self._run_after_run_end_hook(run_end)
 
     async def _asettle_terminal_run(
         self,
         inputs: Mapping[str, Any],
         outcome: Literal["failed", "interrupted", "paused"],
         error: BaseException,
+        *,
+        run_before_hook: bool = True,
     ) -> RunEndContext:
-        run_end = await self._arun_run_end_hook(
-            "before_run_end",
-            self._run_end_context(
-                outcome=outcome,
-                messages=inputs.get("messages"),
-                vars=inputs.get("vars", {}),
-                scope=inputs.get("scope"),
-                error=error,
-            ),
+        run_end = self._run_end_context(
+            outcome=outcome,
+            messages=inputs.get("messages"),
+            vars=inputs.get("vars", {}),
+            scope=inputs.get("scope"),
+            error=error,
         )
+        if run_before_hook:
+            run_end = await self._arun_run_end_hook("before_run_end", run_end)
         settled_inputs = {**inputs, "messages": run_end.messages}
         if outcome == "interrupted":
             await self._acheckpoint_interrupted(settled_inputs, error)
@@ -423,7 +488,39 @@ class AgentLifecycleMixin:
             )
         else:
             await self._acheckpoint_save_on_error(settled_inputs)
-        return await self._arun_run_end_hook("after_run_end", run_end)
+        return await self._arun_after_run_end_hook(run_end)
+
+    def _settle_processing_error(
+        self,
+        inputs: Mapping[str, Any],
+        error: Exception,
+    ) -> Exception:
+        if not isinstance(error, _BeforeRunEndHookError):
+            self._settle_terminal_run(inputs, "failed", error)
+            return error
+        self._settle_terminal_run(
+            inputs,
+            "failed",
+            error.error,
+            run_before_hook=False,
+        )
+        return error.error
+
+    async def _asettle_processing_error(
+        self,
+        inputs: Mapping[str, Any],
+        error: Exception,
+    ) -> Exception:
+        if not isinstance(error, _BeforeRunEndHookError):
+            await self._asettle_terminal_run(inputs, "failed", error)
+            return error
+        await self._asettle_terminal_run(
+            inputs,
+            "failed",
+            error.error,
+            run_before_hook=False,
+        )
+        return error.error
 
     async def _atransform_module_output(self, output: Any) -> Any:
         if isinstance(output, ModelStreamResponse):

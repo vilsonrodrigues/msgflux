@@ -12,6 +12,7 @@ from msgflux.runtime.agent_inbox import (
     InMemoryAgentInboxStore,
     SQLiteAgentInboxStore,
 )
+from msgflux.runtime.context import ExecutionScope, execution_context
 
 
 def _memory_inbox(**kwargs):
@@ -90,6 +91,59 @@ def test_agent_creates_default_memory_store_for_inbox():
     agent = Agent(name="assistant", model=model)
 
     assert isinstance(agent.agent_inbox.store, InMemoryAgentInboxStore)
+
+
+def test_agent_scopes_inbox_without_mutating_an_inherited_parent_view():
+    model = Mock()
+    model.model_type = "chat_completion"
+    parent = Agent(name="parent", model=model)
+    child = Agent(name="child", model=model)
+    parent_scope = ExecutionScope(
+        namespace="parent",
+        thread_id="shared_thread",
+        run_id="parent_run",
+    )
+    child_scope = ExecutionScope(
+        namespace="child",
+        thread_id="shared_thread",
+        run_id="child_run",
+        parent_run_id="parent_run",
+        root_run_id="parent_run",
+    )
+    parent_inbox = parent._get_scoped_agent_inbox(parent_scope)
+
+    with execution_context(scope=parent_scope, agent_inbox=parent_inbox):
+        child_inbox = child._get_scoped_agent_inbox(child_scope)
+
+    assert child_inbox is not parent_inbox
+    assert (parent_inbox.namespace, parent_inbox.thread_id, parent_inbox.run_id) == (
+        "parent",
+        "shared_thread",
+        "parent_run",
+    )
+    assert (child_inbox.namespace, child_inbox.thread_id, child_inbox.run_id) == (
+        "child",
+        "shared_thread",
+        "child_run",
+    )
+
+
+def test_concurrent_agent_inbox_views_keep_their_run_identity():
+    model = Mock()
+    model.model_type = "chat_completion"
+    agent = Agent(name="assistant", model=model)
+    first = agent._get_scoped_agent_inbox(
+        ExecutionScope(thread_id="thread_a", run_id="run_a")
+    )
+    second = agent._get_scoped_agent_inbox(
+        ExecutionScope(thread_id="thread_b", run_id="run_b")
+    )
+
+    first.publish({"source": "test", "status": "first"})
+    second.publish({"source": "test", "status": "second"})
+
+    assert [item.status for item in first.drain()] == ["first"]
+    assert [item.status for item in second.drain()] == ["second"]
 
 
 def test_agent_inbox_renders_incoming_user_message():

@@ -483,6 +483,21 @@ async def test_stream_events_and_watch_receive_one_copy_of_each_event():
 
 
 @pytest.mark.asyncio
+async def test_after_run_end_observer_failure_keeps_completed_stream_event():
+    def fail_after(_ctx):
+        raise RuntimeError("observer failed")
+
+    agent, _ = make_agent(hooks=[Hook(event="after_run_end", handler=fail_after)])
+
+    with pytest.warns(RuntimeWarning, match="after_run_end hook failed"):
+        events = [event async for event in agent.stream_events("hi")]
+
+    assert events[-1].type == EventType.RUN_END
+    assert events[-1].data["outcome"] == "completed"
+    assert EventType.RUN_ERROR not in [event.type for event in events]
+
+
+@pytest.mark.asyncio
 async def test_watch_snapshot_loads_durable_messages_after_run_completion():
     store = InMemoryCheckpointStore()
     agent, _ = make_agent()
@@ -722,6 +737,11 @@ async def test_foreground_agent_tool_events_include_nested_source_identity():
 
     events = [event async for event in root.stream_events("Delegate the review")]
 
+    root_start = next(
+        event
+        for event in events
+        if event.type == EventType.RUN_START and event.source_path[-1] == "agent:root"
+    )
     nested_start = next(
         event
         for event in events
@@ -736,8 +756,10 @@ async def test_foreground_agent_tool_events_include_nested_source_identity():
     )
     assert nested_start.source_path[-1] == "agent:reviewer"
     assert nested_start.data["namespace"] == "reviewer"
-    assert nested_start.data["root_run_id"] == nested_start.run_id
-    assert "parent_run_id" not in nested_start.data
+    assert nested_start.run_id != root_start.run_id
+    assert nested_start.run_id == f"{root_start.run_id}:call_reviewer:reviewer"
+    assert nested_start.data["root_run_id"] == root_start.run_id
+    assert nested_start.data["parent_run_id"] == root_start.run_id
     assert "agent:root" in child_request.source_path
     model_responses = [
         event for event in events if event.type == EventType.MODEL_RESPONSE
