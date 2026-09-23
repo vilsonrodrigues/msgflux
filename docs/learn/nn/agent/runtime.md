@@ -2758,7 +2758,7 @@ async with await backend.open("project") as binding:
         environment=environment,
         permissions=PermissionSet(
             ["process.execute"],
-            [binding.filesystem.permission("/", "process.workspace")],
+            [binding.filesystem.permission("/", "process.workspace.read")],
         ),
     )
     with execution_context(scope=scope):
@@ -2770,12 +2770,22 @@ This runs an actual process in an ephemeral container and returns the same
 approval policy and `ToolOutputOffloadExtension` normally. File tools still need
 their own exact filesystem grants.
 
-`process.workspace` is an explicit **whole-workspace read/write/delete grant**
-for shell processes, not an alias for `filesystem.read`. The adapter refuses a
-mount when only individual file permissions are provided. Relative Bash paths
-start at the configured virtual cwd, mapped into `/workspace`; shell absolute
-paths refer to the container, while file-tool paths remain virtual workspace
-paths. The daemon mount path must refer to this same local machine.
+`process.workspace.read` mounts the whole workspace read-only for shell
+processes. To permit Bash to create, edit, or delete files, replace that grant
+with `binding.filesystem.permission("/", "process.workspace.read_write")`.
+The executor selects the mount mode from the live host-owned `ExecutionScope`
+for each invocation, so the host can change permissions between tool calls
+without adding a model-visible Bash argument. If both grants are present,
+`read_write` takes precedence. The former `process.workspace` grant is not
+accepted. Neither grant is an alias for `filesystem.read`: individual file
+grants do not authorize a Docker mount, and file tools still require their own
+permissions. Approval of a Bash call is separate from the mount grant; a
+write-enabled Bash command may change many files without a per-file diff.
+
+Relative Bash paths start at the configured virtual cwd, mapped into
+`/workspace`; shell absolute paths refer to the container, while file-tool
+paths remain virtual workspace paths. The daemon mount path must refer to this
+same local machine.
 
 Each command has a private container with network disabled, a read-only image
 root, capabilities dropped, no-new-privileges, a non-root host UID/GID, PID and

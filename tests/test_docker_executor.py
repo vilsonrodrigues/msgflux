@@ -67,7 +67,7 @@ def docker_scope(tmp_path):
     scope = ExecutionScope(
         environment=environment,
         permissions=PermissionSet(
-            ["process.execute"], [fs.permission("/", "process.workspace")]
+            ["process.execute"], [fs.permission("/", "process.workspace.read_write")]
         ),
     )
     return scope, root
@@ -117,27 +117,61 @@ async def test_real_container_requires_workspace_grant_and_is_removed(
             "pathlib.Path('permitted.txt').write_text('from container')",
         )
     )
-    denied = replace(
-        scope,
-        permissions=PermissionSet(
-            ["process.execute"],
-            [filesystem.permission("/permitted.txt", "filesystem.write")],
-        ),
-    )
-    assert not _container_exists(executor, container_name)
-    with (
-        execution_context(scope=denied),
-        pytest.raises(PermissionError, match="whole-workspace"),
+    for resource_grants in (
+        (),
+        (filesystem.permission("/permitted.txt", "filesystem.write"),),
+        (filesystem.permission("/", "process.workspace"),),
     ):
-        await scope.environment.arun(request)
-    assert not _container_exists(executor, container_name)
-    assert not (root / "permitted.txt").exists()
+        denied = replace(
+            scope,
+            permissions=PermissionSet(["process.execute"], resource_grants),
+        )
+        assert not _container_exists(executor, container_name)
+        with (
+            execution_context(scope=denied),
+            pytest.raises(PermissionError, match="whole-workspace"),
+        ):
+            await scope.environment.arun(request)
+        assert not _container_exists(executor, container_name)
+        assert not (root / "permitted.txt").exists()
 
     with execution_context(scope=scope):
         result = await scope.environment.arun(request)
     assert result.returncode == 0, result.stderr
     assert (root / "permitted.txt").read_text() == "from container"
     assert not _container_exists(executor, container_name)
+
+
+@pytest.mark.asyncio
+async def test_real_container_read_only_grant_and_live_upgrade(docker_scope):
+    scope, root = docker_scope
+    (root / "existing.txt").write_text("host data")
+    read_only = replace(
+        scope,
+        permissions=PermissionSet(
+            ["process.execute"],
+            [scope.environment.filesystem.permission("/", "process.workspace.read")],
+        ),
+    )
+    request = ProcessRequest(
+        (
+            "python",
+            "-c",
+            "import pathlib; "
+            "assert pathlib.Path('existing.txt').read_text() == 'host data'; "
+            "pathlib.Path('created.txt').write_text('new data')",
+        )
+    )
+    with execution_context(scope=read_only):
+        result = await scope.environment.arun(request)
+    assert result.returncode != 0
+    assert b"Read-only file system" in result.stderr
+    assert not (root / "created.txt").exists()
+
+    with execution_context(scope=scope):
+        result = await scope.environment.arun(request)
+    assert result.returncode == 0, result.stderr
+    assert (root / "created.txt").read_text() == "new data"
 
 
 @pytest.mark.asyncio
@@ -199,11 +233,16 @@ async def test_real_container_failure_cleanup(docker_scope, mode, monkeypatch):
     assert not _container_exists(executor, container_name)
 
 
-def test_limits_and_exact_workspace_grant(tmp_path, monkeypatch):
+def test_limits_and_workspace_mount_modes(tmp_path, monkeypatch):
     monkeypatch.setattr("shutil.which", lambda value: "/usr/bin/docker")
     fs = LocalWorkspace("unit", tmp_path)
     executor = DockerProcessExecutor(fs, image="trusted")
     assert executor.supports_workspace(fs)
+    request = ProcessRequest(("true",))
+    read_mount = executor._command(request, "read", read_only=True)
+    write_mount = executor._command(request, "write", read_only=False)
+    assert read_mount[read_mount.index("--mount") + 1].endswith(",readonly")
+    assert not write_mount[write_mount.index("--mount") + 1].endswith(",readonly")
     with pytest.raises(ValueError):
         DockerLimits(memory_bytes=0)
 
@@ -245,7 +284,7 @@ async def test_real_backend_bash_output_can_be_offloaded(tmp_path):
             environment=environment,
             permissions=PermissionSet(
                 ["process.execute"],
-                [binding.filesystem.permission("/", "process.workspace")],
+                [binding.filesystem.permission("/", "process.workspace.read_write")],
             ),
         )
         with execution_context(scope=scope):

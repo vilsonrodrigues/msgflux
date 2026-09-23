@@ -31,9 +31,10 @@ class DockerLimits(msgspec.Struct, frozen=True, kw_only=True):
 class DockerProcessExecutor(ProcessExecutor):
     """Linux/local-daemon executor with network disabled and an explicit mount.
 
-    Requires process.execute and the exact workspace:/ grant process.workspace.
-    That grant authorizes all mounted files, including writes and deletion;
-    individual filesystem grants are NOT interpreted as a recursive grant.
+    Requires process.execute and an exact workspace:/ process.workspace.read
+    or process.workspace.read_write grant. The latter authorizes all mounted
+    files, including writes and deletion; individual filesystem grants are
+    NOT interpreted as recursive grants.
     Images are never pulled implicitly. Use a host-pinned, trusted image ID.
     """
 
@@ -77,7 +78,7 @@ class DockerProcessExecutor(ProcessExecutor):
     def supports_workspace(self, filesystem):
         return filesystem is self.filesystem
 
-    def _command(self, request, name):
+    def _command(self, request, name, *, read_only: bool):
         root = "/" + "/".join(self.filesystem._root_parts)
         if root == "/" or "," in root or "\n" in root:
             raise ValueError("Unsafe workspace mount root")
@@ -114,7 +115,10 @@ class DockerProcessExecutor(ProcessExecutor):
             "--tmpfs",
             f"/tmp:rw,nosuid,nodev,noexec,size={limits.tmp_bytes}",  # noqa: S108
             "--mount",
-            f"type=bind,src={root},dst=/workspace,bind-recursive=disabled,bind-propagation=rprivate",
+            (
+                f"type=bind,src={root},dst=/workspace,bind-recursive=disabled,"
+                f"bind-propagation=rprivate{',readonly' if read_only else ''}"
+            ),
             "--workdir",
             "/workspace" + request.cwd.rstrip("/"),
             "--entrypoint",
@@ -189,14 +193,20 @@ class DockerProcessExecutor(ProcessExecutor):
         self.capabilities.require(requirements)
         if not self.supports_workspace(filesystem):
             raise PermissionError("Executor belongs to another workspace")
-        if permissions.missing(("process.execute",)) or permissions.missing_resources(
-            (filesystem.permission("/", "process.workspace"),)
-        ):
+        if permissions.missing(("process.execute",)):
+            raise PermissionError("Process execution grant required")
+        read_write = filesystem.permission("/", "process.workspace.read_write")
+        read = filesystem.permission("/", "process.workspace.read")
+        if not permissions.missing_resources((read_write,)):
+            read_only = False
+        elif not permissions.missing_resources((read,)):
+            read_only = True
+        else:
             raise PermissionError("Explicit whole-workspace process grant required")
         if abort_signal is not None:
             abort_signal.raise_if_aborted()
         name = "msgflux-" + uuid4().hex
-        command = self._command(request, name)
+        command = self._command(request, name, read_only=read_only)
         process = None
         failure = None
         creation = asyncio.create_task(self._create(command))
