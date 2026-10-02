@@ -46,6 +46,14 @@ from msgflux.tools.runtime import ToolIntent, ToolOutcome
 from msgflux.tools.types import ToolBucket, ToolLibraryOperator
 
 
+def _tool_event_result(value):
+    """Snapshot JSON-shaped result data without changing the tool's return value."""
+    try:
+        return msgspec.to_builtins(value)
+    except (TypeError, ValueError, RecursionError):
+        return str(value)
+
+
 class _ToolBackgroundScheduler:
     """Adapt the durable task dispatcher to the canonical dispatch contract."""
 
@@ -803,7 +811,7 @@ class ToolLibraryExecutionMixin:
             EventType.TOOL_END,
             {
                 **event_data,
-                "result": outcome.result,
+                "result": _tool_event_result(outcome.result),
                 "error": str(outcome.error) if outcome.error is not None else None,
             },
         )
@@ -859,7 +867,7 @@ class ToolLibraryExecutionMixin:
             EventType.TOOL_END,
             {
                 **event_data,
-                "result": outcome.result,
+                "result": _tool_event_result(outcome.result),
                 "error": str(outcome.error) if outcome.error is not None else None,
             },
         )

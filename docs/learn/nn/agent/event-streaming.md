@@ -271,6 +271,16 @@ them. All following events remain correlatable through `run_id` and
 | `run.end` | The run completed and reports its outcome |
 | `run.error` | Execution failed; the iterator raises after this event |
 
+`tool.start` and `tool.end` share the same `tool_call_id`, so clients can pair
+the validated call with its settled outcome. A successful `tool.end` includes
+`result`; a failed one includes `error`. The result in the event is a snapshot
+converted with `msgspec.to_builtins()` when possible, with a string fallback
+for values that cannot be converted. This conversion applies only to the event
+payload; the normal tool execution return path continues with `outcome.result`.
+For example, a tool may return a `ShellResult` instance while event consumers
+see its built-in mapping and can render command statuses, stdout, and stderr
+without a custom encoder.
+
 ## Tool Discovery
 
 Portable `tool_search` calls emit the usual `tool.start` and `tool.end` events.
@@ -308,6 +318,7 @@ association with the search. Both ordinary and streamed model responses expose
 these execution events. Streamed providers preserve their order relative to
 assistant deltas. Direct model consumers can inspect `ModelResponse.events` or
 iterate `ModelStreamResponse.consume_events()` to observe native discovery.
+
 
 ## Model Metrics
 
