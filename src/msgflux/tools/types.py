@@ -546,7 +546,18 @@ class ToolBackground(ToolLibraryOperator):
     ) -> None:
         for tool in tools:
             tool_name = definition_factory(tool).name
-            if tool_name in library.library and cls.is_reserved_definition(
-                library.get_tool_definition(tool_name)
-            ):
+            if not library.registry.has(tool_name):
+                continue
+            definition = library.get_tool_definition(tool_name)
+            if not cls.is_reserved_definition(definition):
+                continue
+            if tool_name in library.library:
                 library._remove_registered_tool(tool_name)
+                continue
+            bucket_name = ToolBucket.find_capturing_bucket(
+                tool_name,
+                library.library,
+                library.get_tool_definition,
+            )
+            if bucket_name is not None:
+                library._remove_from_bucket(bucket_name, tool_name)

@@ -912,7 +912,8 @@ class OpenAICompatibleChatCompletion(OpenAICompatibleModel, ChatCompletionModel)
         self.retry = retry
         self.warmup_max_tokens = warmup_max_tokens or 1
         self._initialize()
-        self._get_api_key()
+        if credential_resolver is None:
+            self._get_api_key()
 
     def _adapt_params(self, params: Dict[str, Any]) -> Dict[str, Any]:
         params.pop("provider_tools", None)

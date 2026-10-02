@@ -757,7 +757,9 @@ class BackgroundTaskDispatcher:
             EventType.TASK_START,
             {
                 "task_id": task.task_id,
+                "tool_call_id": tool_id,
                 "tool_name": tool_name,
+                "arguments": dict(visible_params),
                 "status": task.status,
             },
         )

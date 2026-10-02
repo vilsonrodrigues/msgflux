@@ -2830,7 +2830,10 @@ Authentication is resolved immediately before each request through
 `ModelCredentialResolver`. The default resolver calls the provider's
 `_get_api_key()` and produces a Bearer header. Providers with refreshable or
 file-backed credentials can supply another resolver without changing their API
-adapter or transport.
+adapter or transport. When an explicit resolver is supplied, construction does
+not require the provider's API-key environment variable; credentials are resolved
+by that resolver at request time. Without a custom resolver, missing environment
+credentials still fail during construction.
 
 The resolver may return both headers and a request-specific base URL. They are
 resolved together for every attempt, so a refreshed identity cannot be paired

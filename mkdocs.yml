@@ -132,6 +132,7 @@ nav:
     - anatomy/index.md
     - anatomy/tool-library.md
   - Learn:
+    - Vulcano coding: learn/coding.md
     - ✧ Models:
       - learn/models/model.md
       - learn/models/model_gateway.md

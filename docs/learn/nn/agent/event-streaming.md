@@ -262,7 +262,7 @@ them. All following events remain correlatable through `run_id` and
 | `tool.update` | Intermediate tool progress |
 | `tool.end` | Tool execution completed or failed |
 | `tools.updated` | Deferred tool schemas were loaded locally or discovered through the provider |
-| `task.start` | A background task was dispatched |
+| `task.start` | A background task was dispatched; tool dispatch includes `tool_call_id` and public `arguments` for the launch card |
 | `task.update` | Background task status or progress changed |
 | `task.end` | A background task completed, failed, paused, or was interrupted |
 | `compaction.start` | Context compaction started after the threshold policy approved it |

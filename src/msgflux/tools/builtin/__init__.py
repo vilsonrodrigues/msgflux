@@ -60,6 +60,7 @@ __all__ = [
     "TaskOutputTool",
     "TaskStatusTool",
     "TaskWaitTool",
+    "TaskTool",
     "ToolSearchTool",
     "WeatherTool",
     "WebFetchTool",
@@ -71,3 +72,5 @@ __all__ = [
     "format_task_activity_entry",
     "truncate_activity_text",
 ]
+
+from msgflux.tools.builtin.task_bucket import TaskTool

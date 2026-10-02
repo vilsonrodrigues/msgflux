@@ -40,6 +40,9 @@ dependencies = [
     "uvloop>=0.21.0 ; sys_platform != 'win32'",
 ]
 
+[project.scripts]
+vulcano = "msgflux.coding.cli:main"
+
 [tool.hatch.version]
 path = "src/msgflux/version.py"
 
@@ -79,6 +82,7 @@ Documentation = "https://github.com/msgflux/msgflux"
 Repository = "https://github.com/msgflux/msgflux"
 
 [project.optional-dependencies]
+coding = ["textual>=6.0.0"]
 openai = []
 plot = [
     "code2mermaid>=0.3.0",
