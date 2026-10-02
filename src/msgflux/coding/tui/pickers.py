@@ -2,6 +2,7 @@
 
 from rich.text import Text
 from textual.app import ComposeResult
+from textual.binding import Binding
 from textual.containers import Vertical
 from textual.screen import ModalScreen
 from textual.widgets import Input, OptionList, Static
@@ -19,7 +20,11 @@ class CodingPicker(ModalScreen[str | None]):
     #picker-filter { height: 3; }
     #picker-options { height: 1fr; }
     """
-    BINDINGS = [("escape", "dismiss_picker", "Cancel")]
+    BINDINGS = [
+        ("escape", "dismiss_picker", "Cancel"),
+        Binding("down", "next_option", "Next", priority=True),
+        Binding("up", "previous_option", "Previous", priority=True),
+    ]
 
     def __init__(self, title: str, entries: tuple[tuple[str, str], ...]):
         super().__init__()
@@ -61,5 +66,8 @@ class CodingPicker(ModalScreen[str | None]):
     def action_dismiss_picker(self):
         self.dismiss(None)
 
-    def key_down(self):
-        self.query_one(OptionList).focus()
+    def action_next_option(self):
+        self.query_one(OptionList).action_cursor_down()
+
+    def action_previous_option(self):
+        self.query_one(OptionList).action_cursor_up()

@@ -129,8 +129,19 @@ async def test_cli_builds_agent_from_profile_and_thread_store(tmp_path, monkeypa
     )
     seen = {}
 
+    from types import SimpleNamespace
+
+    async def fake_stream(self, prompt):
+        yield SimpleNamespace(type="message.end", data={"content": "verified"})
+
+    monkeypatch.setattr("msgflux.coding.cli.CodingSession.stream", fake_stream)
+
     async def fake_run(self):
         seen["thread"] = self.coding_session.thread_id
+        assert not (state / "threads").exists()
+        assert self.coding_session.agent is None
+        async for _event in self.coding_session.stream("inspect project"):
+            pass
         seen["tools"] = self.coding_session.agent.tool_library.get_tool_names()
 
     monkeypatch.setattr(CodingApp, "run_async", fake_run)

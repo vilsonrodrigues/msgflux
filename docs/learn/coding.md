@@ -22,13 +22,17 @@ uv run --env-file /path/to/.env --extra coding vulcano \
 The first command permits local edits and commands. The second disables Bash
 and file mutation tools. Add `--review-edits` to review file tool changes in
 interactive sessions; Bash commands are not covered by file-edit reviews.
-The command opens the project as a local workspace and stores each new
-conversation in `~/.msgflux/threads/<thread_id>/`. That directory contains
+The command opens the project as a local workspace and stores each conversation
+in `~/.msgflux/threads/<thread_id>/`. That directory contains
 `checkpoints.sqlite3`, `metadata.json`, and, when edit review is enabled,
-`approvals.sqlite3`. The current thread ID appears in the left sidebar. Pass
-`--thread THREAD_ID` to continue that thread. `--state-dir` changes the root.
-Threads from the earlier shared `~/.msgflux/coding/checkpoints.sqlite3` remain
-readable through `--thread`; they are not moved automatically.
+`approvals.sqlite3`. A new interactive session starts as a draft: it receives a
+thread ID, but creates no thread directory, model, or workspace until the first
+prompt is sent. Opening an existing thread validates its checkpoint history
+before replacing the current session. The current thread ID appears in the
+left sidebar. Pass `--thread THREAD_ID` to continue that thread. `--state-dir`
+changes the root. Threads from the earlier shared
+`~/.msgflux/coding/checkpoints.sqlite3` remain readable through `--thread`; they
+are not moved automatically.
 
 ## Configure a profile and account
 
@@ -83,7 +87,7 @@ auth file. It does not create or refresh credentials.
 Use `--config PATH` to load another TOML file, or `-c` for one typed setting,
 for example `-c 'default_profile="research"'`. CLI flags take precedence.
 The `active` and `deferred` lists accept `workspace`, `process`, `agents`, or
-built-in tool names. A deferred tool is registered for `tool_search` to load
+built-in tool names, including `web_search` and `web_fetch`. A deferred tool is registered for `tool_search` to load
 on demand. Native OpenAI shell and apply-patch tools cannot be deferred. The
 local executor runs Bash directly on the host with bounded output, deadlines,
 and cancellation cleanup.
@@ -128,8 +132,8 @@ Local execution is not sandboxed: commands inherit the host environment and
 can access files outside the project. File tools use absolute host paths and
 broad live read/write capabilities, including newly created files. The POSIX
 file adapter rejects symlinks, hard links and mount crossings; Bash has normal
-host filesystem access. The sidebar scans only the project and skips common
-generated directories. Read-only subagents have no Bash or editing tools;
+host filesystem access. The UI lists saved sessions scoped to the current
+project. Read-only subagents have no Bash or editing tools;
 that tool policy does not provide OS isolation. State must be outside the
 project. Session discovery is scoped to the current project.
 
@@ -137,7 +141,10 @@ project. Session discovery is scoped to the current project.
 
 ```mermaid
 flowchart TD
-    CLI["vulcano CLI: load config, profile and selected account"] --> State["Open thread directory and checkpoint store"]
+    CLI["vulcano CLI: load config, profile and selected account"] --> Select{"Session mode"}
+    Select -->|new session| Draft["Create draft session and thread ID"]
+    Draft --> UI["Mount Textual UI"]
+    Select -->|existing thread| State["Open thread directory and checkpoint store"]
     State --> Workspace["Open durable AgentWorkspace binding and registry"]
     Workspace --> Scope["Inject workspace with freshly selected permissions"]
     Scope --> Tools["Resolve workspace and other capabilities into tools"]
@@ -145,9 +152,14 @@ flowchart TD
     Agent --> Library["Agent._set_tools creates ToolLibrary and registers each tool"]
     Library --> Extensions["Agent installs prompt and feedback extensions"]
     Extensions --> Session["Create CodingSession with thread ID and scope factory"]
-    Session --> UI["Mount Textual UI or run one noninteractive prompt"]
-    UI --> Prompt["On prompt: create scoped run and call Agent.stream_events"]
-    Prompt --> Catalog["Build tool catalog for model request"]
+    Session --> Validate["Validate existing history before UI or prompt"]
+    Validate --> UI
+    UI --> Prompt["Submit prompt"]
+    Prompt --> Run["Create scoped run and call Agent.stream_events"]
+    Prompt -. draft only .-> Activate["Create durable resources on first prompt"]
+    Activate --> State
+    Session --> Run
+    Run --> Catalog["Build tool catalog for model request"]
     Catalog --> Model["Send prompt and visible tool schemas to model"]
 ```
 
@@ -161,7 +173,7 @@ adapter maps file paths directly to the host. An embedded
 `CodingSession` receives the caller's agent, so its available tools depend on
 what the caller passed to `Agent(tools=...)`.
 Each tool class declares its public name and argument annotations. Its
-`filesystem` input is marked as a hidden runtime input and is supplied from
+`workspace` input is marked as a hidden runtime input and is supplied from
 the execution scope when the tool runs, rather than by the model.
 
 New sessions name the agent `main`. Existing prototype threads retain their
@@ -170,11 +182,32 @@ versioned in `msgflux.coding.prompts` and is assembled for the session mode. Pro
 not copy it into `~/.msgflux`; prompt variants and explicit replacement or
 append files can be added without migrating user configuration.
 
-Use the multiline editor to write a prompt, then press **Ctrl+Enter** or select
-**Send**. Press **Escape** to cancel an active run. **F2** toggles the left
-sidebar; **F3** toggles the right panel region when the terminal is wide
-enough. **F4** copies selected text, or the visible conversation when no text
-is selected, using the terminal clipboard protocol.
+Press **Enter** to send a prompt and **Alt+Enter** or **Shift+Enter** to insert
+a newline. There is no Send button. When the prompt begins with `/`, matching
+slash commands appear above the composer; use the arrow keys to move through
+suggestions and **Tab** to complete one. **Ctrl+K** opens the command picker.
+Press **Escape** to cancel an active run. **F2** toggles the left sidebar and
+**F3** toggles the right panel region when the terminal is wide enough.
+
+Use `/copy` to copy a text selection, or the full visible conversation when
+there is no selection. `/copy all` always selects the conversation, and
+`/copy last` selects the latest assistant response. For example:
+
+```text
+/copy selection
+/copy all
+/copy last
+/copy all --file /tmp/conversation.txt
+```
+
+The `--file PATH` option sends the export to a new file with private
+permissions and refuses to overwrite an existing file; it takes the place of
+clipboard delivery. You can still choose `selection`, `all`, or `last` as the
+source. Copying first tries an available native system clipboard helper. Otherwise the
+terminal receives an OSC 52 clipboard request, whose acceptance cannot be
+confirmed; the UI says so and points to `--file` as an explicit fallback.
+**F4** also copies the current selection or, when there is none, the visible
+conversation.
 
 ## Embed the session
 
@@ -215,8 +248,9 @@ retain for continuation; `session.cancel()` requests cooperative cancellation.
 ## Add a panel
 
 `CodingExtensions` registers panels and commands without importing Textual in
-the registry itself. The UI can mount registered panel factories in either
-sidebar:
+the registry itself. Its public package re-exports the registry and declaration
+records from separate modules. The UI can mount registered panel factories in
+either sidebar:
 
 ```python
 from textual.widgets import Static
@@ -241,6 +275,11 @@ Registration returns an idempotent removal handle. A batch registered with
 The current app mounts panels at startup; changing the registry does not
 replace widgets already on screen.
 Extension handlers run as trusted local Python code; only load code you trust.
+
+The left sidebar focuses on sessions; it no longer displays a workspace file
+listing. Tool lifecycle entries in the transcript pair each tool call with its
+result and render structured results in readable form. Shell calls show each
+command's status, exit code, standard output, and standard error when present.
 
 To add a command, register a callable that accepts the text after its name:
 
@@ -309,8 +348,9 @@ and unresolved command evidence are checked by the existing runtime.
 
 ## Slash commands
 
-Enter a command in the composer and press **Ctrl+Enter**. **Tab** completes a
-unique command prefix; **Ctrl+K** opens a searchable command palette.
+Enter a command in the composer and press **Enter**. Matching commands appear
+above it; **Up/Down** moves the selection and **Tab** completes the selected
+command. **Ctrl+K** opens a searchable command palette.
 
 | Command | Action |
 | --- | --- |
@@ -321,6 +361,7 @@ unique command prefix; **Ctrl+K** opens a searchable command palette.
 | `/runs` | List saved runs and their status. |
 | `/continue [run-id]` | Explicitly continue the latest unfinished run. |
 | `/sidebar` | Toggle the workspace sidebar. |
+| `/copy [selection\|all\|last] [--file PATH]` | Copy selected text or export it to a new file. |
 | `/quit` | Exit the TUI. |
 
 Commands execute in the host and never enter the Agent's conversation. Builtin

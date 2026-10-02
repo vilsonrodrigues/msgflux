@@ -54,7 +54,7 @@ async def test_coding_app_streams_prompt_and_keeps_sidebars_available():
         composer = app.query_one("#composer", TextArea)
         composer.load_text("inspect [bold red]project[/]")
         assert composer.text == "inspect [bold red]project[/]"
-        await pilot.press("ctrl+enter")
+        await pilot.press("enter")
         await pilot.pause(0.1)
 
         assert session.prompts == ["inspect [bold red]project[/]"]
@@ -68,7 +68,7 @@ async def test_coding_app_streams_prompt_and_keeps_sidebars_available():
             "Assistant: Hello there [bold red]unsafe[/]"
         )
         assert len(tool_rows) == 1
-        assert "Tool: read_file · tool.start" in tool_rows[0].content
+        assert "Tool: read_file · running" in tool_rows[0].content
         assert "[link=https://bad]payload[/link]" in tool_rows[0].content
         assert app.query_one("#workspace-path").content == "/project"
         assert app.query_one("#left-sidebar").display
@@ -100,7 +100,7 @@ async def test_coding_app_restores_user_and_assistant_history():
         assert [row.content for row in rows] == [
             "User: Earlier question",
             "Assistant: Earlier answer",
-            "Tool result (): internal tool output",
+            "Tool: unknown · completed\ninternal tool output",
         ]
 
 
@@ -117,7 +117,7 @@ async def test_coding_app_cancel_requests_session_cancellation():
 
     async with app.run_test() as pilot:
         app.query_one("#composer", TextArea).load_text("wait")
-        await pilot.press("ctrl+enter")
+        await pilot.press("enter")
         await pilot.pause(0.05)
         assert app._run_active
         await pilot.press("escape")
@@ -187,7 +187,7 @@ async def test_approval_review_decision_resumes_paused_run(button_id, approved):
 
     async with app.run_test(size=(110, 40)) as pilot:
         app.query_one("#composer", TextArea).load_text("change file")
-        await pilot.press("ctrl+enter")
+        await pilot.press("enter")
         await pilot.pause(0.1)
 
         card = app.query_one(".approval-card")
@@ -225,7 +225,7 @@ async def test_pause_without_controller_keeps_paused_status_and_single_notice():
 
     async with app.run_test() as pilot:
         app.query_one("#composer", TextArea).load_text("needs approval")
-        await pilot.press("ctrl+enter")
+        await pilot.press("enter")
         await pilot.pause(0.1)
         notices = [
             row for row in app.query(".approval-card") if isinstance(row, Static)
@@ -259,11 +259,11 @@ async def test_registered_slash_commands_receive_arguments_without_agent_call():
     async with app.run_test() as pilot:
         composer = app.query_one("#composer", TextArea)
         composer.load_text("/sync hello world")
-        await pilot.press("ctrl+enter")
+        await pilot.press("enter")
         await pilot.pause(0.1)
 
         composer.load_text("/async another argument")
-        await pilot.press("ctrl+enter")
+        await pilot.press("enter")
         await pilot.pause(0.1)
 
         assert seen == [("sync", "hello world"), ("async", "another argument")]
@@ -273,7 +273,7 @@ async def test_registered_slash_commands_receive_arguments_without_agent_call():
 
 
 @pytest.mark.asyncio
-async def test_workspace_file_list_uses_session_authorized_paths():
+async def test_sidebar_does_not_enumerate_workspace_or_show_send_button():
     class WorkspaceSession(FakeSession):
         def __init__(self):
             super().__init__()
@@ -287,9 +287,9 @@ async def test_workspace_file_list_uses_session_authorized_paths():
     app = CodingApp(session)
 
     async with app.run_test() as _pilot:
-        listing = app.query_one("#workspace-files Static")
-        assert session.requested_limit == 500
-        assert listing.content == "/README.md\n/src/[bold]literal.py"
+        assert session.requested_limit is None
+        assert not app.query("#workspace-files")
+        assert not app.query("#send")
 
 
 @pytest.mark.asyncio
@@ -314,7 +314,12 @@ async def test_commentary_is_rendered_separately_from_final_answer():
 
 
 @pytest.mark.asyncio
-async def test_f4_copies_displayed_error_and_conversation():
+async def test_f4_copies_displayed_error_and_conversation(monkeypatch):
+    from unittest.mock import AsyncMock
+
+    monkeypatch.setattr(
+        "msgflux.coding.tui.app.copy_system_clipboard", AsyncMock(return_value=False)
+    )
     app = CodingApp(FakeSession(), workspace_root="/project")
     async with app.run_test(size=(100, 35)) as pilot:
         await app._append_transcript("Assistant: hello", classes="assistant-message")
@@ -378,15 +383,16 @@ async def test_tui_displays_real_bash_commands_in_both_dispatch_modes(
                 for event in events:
                     await app._render_event(event, assistant_started=False)
                 cards = list(app.query_one("#transcript").query(".tool-card"))
-                start_card = next(
-                    card
-                    for card in cards
-                    if ("task.start" if background else "tool.start") in card.content
-                )
-                assert command in start_card.content
+                assert len(cards) == 1
+                card = cards[0]
+                assert command in card.content
                 if background:
-                    assert task_id in start_card.content
-                    assert "Tool: bash(run_in_background=true)" in start_card.content
+                    assert task_id in card.content
+                    assert "Tool: bash (background)" in card.content
+                else:
+                    assert "completed" in card.content
+                    assert "bash-visible" in card.content
+                    assert "ShellResult(" not in card.content
     finally:
         await workspace.aclose()
         registry.close()

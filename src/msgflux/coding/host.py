@@ -4,6 +4,7 @@ import asyncio
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 
+from msgflux.coding.draft import DraftCodingSession
 from msgflux.coding.storage import ThreadStorage, validate_thread_id
 from msgflux.runtime.context import new_thread_id
 
@@ -13,6 +14,7 @@ class CodingHost:
 
     The factory returns ``(session, approval_controller, async_close)``. Failed
     factory calls must release resources they acquired. History is never copied.
+    With ``lazy_new=True``, new conversations open resources on the first prompt.
     """
 
     def __init__(
@@ -22,11 +24,13 @@ class CodingHost:
         factory: Callable[..., Awaitable],
         *,
         existing_thread: Callable[[str], bool] | None = None,
+        lazy_new: bool = True,
     ):
         self.storage = storage
         self.workspace = str(Path(workspace).resolve())
         self._factory = factory
         self._existing_thread = existing_thread
+        self._lazy_new = lazy_new
         self._close = None
         self._lock = asyncio.Lock()
         self.cleanup_error = None
@@ -57,7 +61,12 @@ class CodingHost:
         self._require_idle_tasks()
         if thread_id is None:
             thread_id = new_thread_id()
-            self.storage.create_thread(thread_id, workspace=self.workspace)
+            if self._lazy_new:
+                session = DraftCodingSession(thread_id, self._activate)
+                controller, close = None, None
+            else:
+                self.storage.create_thread(thread_id, workspace=self.workspace)
+                session, controller, close = await self._factory(thread_id)
         else:
             validate_thread_id(thread_id)
             try:
@@ -82,7 +91,7 @@ class CodingHost:
                 not checkpoint.is_file() or checkpoint.is_symlink()
             ):
                 raise ValueError("The thread has no valid checkpoint database")
-        session, controller, close = await self._factory(thread_id)
+            session, controller, close = await self._factory(thread_id)
         previous_close = self._close
         self.session, self.approval_controller, self._close = session, controller, close
         self.cleanup_error = None
@@ -93,6 +102,15 @@ class CodingHost:
                 self.cleanup_error = error
                 self._pending_closes.append(previous_close)
         return session, controller
+
+    async def _activate(self, draft):
+        async with self._lock:
+            if self.session is not draft:
+                raise RuntimeError("This draft is no longer the current session")
+            self.storage.create_thread(draft.thread_id, workspace=self.workspace)
+            session, controller, close = await self._factory(draft.thread_id)
+            self.approval_controller, self._close = controller, close
+            return session
 
     async def aclose(self):
         async with self._lock:

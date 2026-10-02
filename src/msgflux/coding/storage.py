@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import os
 import re
-from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
@@ -13,6 +12,7 @@ import msgspec
 from msgflux.data.stores.providers.sqlite import SQLiteCheckpointStore
 from msgflux.runtime.approvals.providers.sqlite import SQLiteApprovalStore
 from msgflux.runtime.context import new_thread_id
+from msgflux.utils.time import utc_now_isoformat
 
 _THREAD_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,127}\Z", re.ASCII)
 
@@ -34,10 +34,6 @@ def validate_thread_id(thread_id: str) -> str:
             "thread_id must contain 1-128 ASCII letters, digits, underscores or hyphens"
         )
     return thread_id
-
-
-def _now() -> str:
-    return datetime.now(UTC).isoformat()
 
 
 class ThreadStorage:
@@ -71,7 +67,7 @@ class ThreadStorage:
         metadata_path = directory / "metadata.json"
         if metadata_path.exists():
             return self.read_metadata(thread_id)
-        now = _now()
+        now = utc_now_isoformat()
         metadata = ThreadMetadata(thread_id, now, now, workspace)
         self._write_metadata(metadata_path, metadata)
         return metadata
@@ -130,7 +126,7 @@ class ThreadStorage:
         metadata = self.read_metadata(thread_id)
         updated = msgspec.structs.replace(
             metadata,
-            updated_at=_now(),
+            updated_at=utc_now_isoformat(),
             title=metadata.title if title is None else title[:160],
         )
         path = self.thread_dir(thread_id) / "metadata.json"

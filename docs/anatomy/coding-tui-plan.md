@@ -381,3 +381,86 @@ with unresolved command evidence cannot start a new coding turn.
   integration complement deterministic model responses and Textual Pilot.
 - Deferred: background task recovery controls and arbitrary checkpoint rewind/
   branching. `/resume` reopens saved threads; `/runs` lists their saved turns.
+
+## Terminal interaction review (2026-10-02)
+
+Baseline committed as `d85939d8`. Address the review in a separate increment.
+
+1. Move extension records/registry out of `extensions/__init__.py`; introduce
+   declarative builtin command registration in `coding/tui/commands.py`.
+2. Update `tui/app.py` composer: Enter submits, Shift/Alt+Enter inserts a line,
+   remove Send button and filesystem sidebar, place selectable slash suggestions
+   above the composer, navigate all entries with arrows, preserve picker keys.
+3. Add a clipboard module: prefer native platform clipboard when available,
+   terminal OSC52 fallback with honest feedback, explicit `/copy --file PATH`
+   export, selected text/right-click and keyboard copy.
+4. Normalize structured tool results before `tool.end` publication in the shared
+   ToolLibrary pipeline without changing tool returns. Use existing msgspec
+   conversion for dataclasses and Structs. Test sync and async paths.
+5. Render tool lifecycle in one card keyed by run/source/call ID, pair durable
+   history calls/results, and render shell stdout/stderr/status as readable text.
+6. Update coding/event documentation and tests: real key events, all command
+   options including quit, selection/right-click, native clipboard failure and
+   file fallback, paired/interleaved tools, structured event results, and resume.
+
+Risks: terminal clipboard protocols cannot acknowledge copy; do not claim native
+clipboard success after a failed helper. Enter must not hijack modal inputs or
+approval buttons. A selected slash command must never reach the model. Tool
+results must retain 0/false/empty values, not be selected by truthiness. Output
+conversion must not replace the original result supplied to hooks or callers.
+Run focused Coding/runtime tests, Ruff/MkDocs and offline regression after source
+is frozen. Whole-user-turn collapsing remains a subsequent UI enhancement.
+
+### Review: timestamps and unused conversations
+
+- Reuse `utils.time.utc_now_isoformat` in `coding/storage.py`.
+- Add an in-memory draft session (`coding/draft.py`), selected by the CLI host.
+  Opening the TUI, inspecting history and running local slash commands do not
+  instantiate models, workspaces or thread databases for a new conversation.
+- Activate the existing durable session factory on the first prompt; retain
+  immediate validation when reopening an existing thread.
+- Verify unopened drafts, draft replacement, first-prompt persistence and approval
+  controller activation using SQLite and a fake model. Document lazy creation.
+
+### Review validation
+
+- Coding/UI plus structured tool events: 119 tests passed.
+- Offline regression: 3,859 passed, 33 skipped, two existing warnings.
+- Mandatory checkpoint/approval/durability gate: 148 passed.
+- Ruff lint and format check passed (648 Python files); strict MkDocs passed.
+- A final command metadata adjustment returns `/copy` to Ready after export;
+  its keyboard-driven regression is included in the focused UI tests.
+- No provider requests or paid model calls were needed. Real SQLite stores,
+  local Bash execution, subprocess crash recovery and Textual Pilot cover the
+  relevant integration boundaries. Native clipboard acknowledgement is mocked;
+  OSC52 delivery still depends on the user's terminal, with explicit file export.
+
+### Next review topic: tool extensions and CLI selection
+
+Proposal, pending the ongoing coding review:
+
+- Document custom class tools supplied through `AgentExtension.tools()` and
+  preserve the extension's existing lifecycle, hooks and registration ownership.
+- Extend `CodingExtensions` with a tool catalog, so optional tools can be
+  discovered and selected by profile rather than requiring edits to the builtin
+  resolver's concrete map. Load extension declarations before resolving tools.
+- Keep `profiles.<name>.tools.active` and `deferred` authoritative for selection
+  and loading mode. Registering a tool makes it available for selection; it does
+  not automatically enable it. Builtins and extension tools share name validation.
+- Consider `--tools workspace,my_tool` and
+  `--deferred-tools web_fetch,web_search` as per-run selection overrides. Define
+  precedence and overlap behavior explicitly before implementation; do not mutate
+  the user's TOML file. Read-only and executor requirements still apply.
+- Include executable examples for plain AgentExtension use, CodingExtensions
+  registration, TOML selection and CLI selection. Test discovery, duplicate names,
+  selected loading mode, profile/CLI precedence, lifecycle and permission checks.
+
+These extension and CLI APIs are not implemented yet.
+
+### Estudo de extensões e seleção pela CLI
+
+O estudo foi concluído em `coding-extensions-study.md`, com referências oficiais
+pinadas de Pi v1 e Tau e plano incremental de registro por `CodingExtensions` e
+seleção por flags. Pi é a referência principal de API e UX; Tau serve de apoio
+para decisões de implementação em Python. As APIs novas permanecem propostas,
+sem implementação durante a revisão corrente da TUI.

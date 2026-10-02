@@ -4,7 +4,7 @@ from dataclasses import replace
 from unittest.mock import AsyncMock, Mock
 
 import pytest
-from textual.widgets import Static, TextArea
+from textual.widgets import OptionList, Static, TextArea
 
 from msgflux.coding.approval import CodingApprovalController
 from msgflux.coding.extensions import CodingExtensions
@@ -96,7 +96,12 @@ def make_host(tmp_path, *, protected=False):
 
         return session, controller, close
 
-    return CodingHost(storage, str(project), factory), calls, models, closed
+    return (
+        CodingHost(storage, str(project), factory, lazy_new=False),
+        calls,
+        models,
+        closed,
+    )
 
 
 async def command(app, text):
@@ -136,6 +141,10 @@ async def test_sqlite_reopen_restores_tools_without_reexecution_and_new_prompt_u
             assert "first answer" in restored
             assert "lookup" in restored
             assert "verified: cobalt" in restored
+            cards = list(app.query(".tool-card"))
+            assert len(cards) == 1
+            assert "lookup" in cards[0].content
+            assert "verified: cobalt" in cards[0].content
             assert not calls_after_restart
             assert new_models[-1].call_count == 0
             await command(app, "/help")
@@ -237,7 +246,8 @@ async def test_slash_completion_palette_and_reserved_extension_names(tmp_path):
             composer = app.query_one("#composer", TextArea)
             composer.load_text("/res")
             await pilot.pause()
-            assert "/resume" in str(app.query_one("#command-hints", Static).content)
+            hints = app.query_one("#command-hints", OptionList)
+            assert hints.get_option_at_index(0).id == "resume"
             await pilot.press("tab")
             await pilot.pause()
             assert composer.text == "/resume "

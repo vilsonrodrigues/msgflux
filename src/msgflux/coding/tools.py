@@ -14,11 +14,12 @@ from msgflux.tools.builtin import (
     GrepTool,
     LsTool,
     ReadFileTool,
+    SendUserMessageTool,
     TaskTool,
+    WebFetchTool,
     WebSearchTool,
     WriteTool,
 )
-from msgflux.tools.builtin.send_user_message import send_user_message
 
 
 def resolve_tools(  # noqa: C901
@@ -74,6 +75,7 @@ def resolve_tools(  # noqa: C901
         "edit": EditTool,
         "write": WriteTool,
         "web_search": WebSearchTool,
+        "web_fetch": WebFetchTool,
     }
     resolved = []
     seen = set()
@@ -111,7 +113,7 @@ def resolve_tools(  # noqa: C901
         resolved.append(TaskTool())
     capabilities = getattr(model, "api_mode_capabilities", None)
     if interactive and not getattr(capabilities, "assistant_commentary", False):
-        resolved.append(send_user_message)
+        resolved.append(SendUserMessageTool())
     return resolved
 
 

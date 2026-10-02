@@ -89,7 +89,7 @@ def test_progress_tool_is_interactive_and_capability_driven():
     tools = resolve_tools(
         selection, model=model, allow_edits=False, has_executor=False, interactive=True
     )
-    assert tools[-1].__name__ == "send_user_message"
+    assert tools[-1].name == "send_user_message"
     model.api_mode_capabilities = SimpleNamespace(assistant_commentary=True)
     assert (
         len(
@@ -116,3 +116,22 @@ def test_progress_tool_is_interactive_and_capability_driven():
         )
         == 1
     )
+
+
+@pytest.mark.parametrize("deferred", [False, True])
+def test_web_fetch_is_available_in_profile_and_tool_catalog(deferred):
+    from msgflux.tools.builtin import WebFetchTool
+
+    selection = (
+        ToolSelection(deferred=("web_fetch",))
+        if deferred
+        else ToolSelection(active=("web_fetch",))
+    )
+    tools = resolve_tools(
+        selection, model=_Model(), allow_edits=False, has_executor=False
+    )
+    assert len(tools) == 1
+    assert isinstance(tools[0], WebFetchTool)
+    library = ToolLibrary("coding-web-fetch", tools)
+    assert library.get_tool_definition("web_fetch").loading.deferred is deferred
+    assert ("tool_search" in library.get_tool_names()) is deferred
