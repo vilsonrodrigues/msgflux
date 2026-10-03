@@ -64,6 +64,47 @@ def load_config(path: Path, overrides: tuple[str, ...] = ()) -> CodingConfig:
     return config
 
 
+def select_tools(
+    profile_selection: ToolSelection,
+    *,
+    active: str | None = None,
+    deferred: str | None = None,
+) -> ToolSelection:
+    """Return the profile selection or replace it with CLI tool lists.
+
+    Supplying either list replaces both lists. CSV values are trimmed around
+    each tool name; an empty whole argument means an empty list.
+    """
+    if active is None and deferred is None:
+        return profile_selection
+
+    selection = ToolSelection(
+        active=_parse_tool_csv(active),
+        deferred=_parse_tool_csv(deferred),
+    )
+    _validate_tool_selection(selection, "CLI tool selection")
+    return selection
+
+
+def _parse_tool_csv(value: str | None) -> tuple[str, ...]:
+    if value is None or not value.strip():
+        return ()
+    items = tuple(item.strip() for item in value.split(","))
+    if any(not item for item in items):
+        raise ValueError("Tool lists cannot contain empty entries")
+    return items
+
+
+def _validate_tool_selection(selection: ToolSelection, context: str) -> None:
+    active, deferred = selection.active, selection.deferred
+    if any(not item for item in (*active, *deferred)):
+        raise ValueError(f"{context} has an empty tool name")
+    if len(set(active)) != len(active) or len(set(deferred)) != len(deferred):
+        raise ValueError(f"{context} has duplicate tools")
+    if set(active) & set(deferred):
+        raise ValueError(f"{context} has active and deferred tools in common")
+
+
 def _validate_config(config: CodingConfig) -> None:  # noqa: C901
     if not config.default_profile:
         raise ValueError("default_profile must be non-empty")
@@ -73,15 +114,7 @@ def _validate_config(config: CodingConfig) -> None:  # noqa: C901
     for name, profile in config.profiles.items():
         if not name:
             raise ValueError("Profile names must be non-empty")
-        active, deferred = profile.tools.active, profile.tools.deferred
-        if any(not item for item in (*active, *deferred)):
-            raise ValueError(f"Profile {name!r} has an empty tool name")
-        if len(set(active)) != len(active) or len(set(deferred)) != len(deferred):
-            raise ValueError(f"Profile {name!r} has duplicate tools")
-        if set(active) & set(deferred):
-            raise ValueError(
-                f"Profile {name!r} has active and deferred tools in common"
-            )
+        _validate_tool_selection(profile.tools, f"Profile {name!r}")
         if profile.model is not None and "/" not in profile.model:
             raise ValueError(f"Profile {name!r} model must be provider/model-id")
     for provider, account in config.active_accounts.items():
@@ -102,4 +135,5 @@ __all__ = [
     "SubagentConfig",
     "ToolSelection",
     "load_config",
+    "select_tools",
 ]

@@ -86,11 +86,36 @@ auth file. It does not create or refresh credentials.
 
 Use `--config PATH` to load another TOML file, or `-c` for one typed setting,
 for example `-c 'default_profile="research"'`. CLI flags take precedence.
-The `active` and `deferred` lists accept `workspace`, `process`, `agents`, or
-built-in tool names, including `web_search` and `web_fetch`. A deferred tool is registered for `tool_search` to load
-on demand. Native OpenAI shell and apply-patch tools cannot be deferred. The
-local executor runs Bash directly on the host with bounded output, deadlines,
-and cancellation cleanup.
+The `active` and `deferred` lists accept `workspace`, `process`, `agents`, built-in
+names, and names registered by a coding extension. A deferred tool is registered
+for `tool_search` to load on demand. Native OpenAI shell and apply-patch tools
+cannot be deferred. The local executor runs Bash directly on the host with
+bounded output, deadlines, and cancellation cleanup.
+
+### Select tools
+
+A profile selects both built-in and extension tools by name:
+
+```toml
+[profiles.lite.tools]
+active = ["workspace", "summarize"]
+deferred = ["web_search"]
+```
+
+If either `--tools` or `--deferred-tools` is supplied, the CLI replaces both
+profile lists. The omitted list becomes empty, and an explicitly empty value
+such as `--tools ''` selects no optional tools. For example, this activates only
+`read` and defers `web_search`, regardless of the profile:
+
+```bash
+uv run --extra coding vulcano --workspace /path/to/project \
+  --extension my_vulcano:register --tools read --deferred-tools web_search
+```
+
+The `task` tool appears automatically when background execution is available.
+`tool_search` appears when deferred tools are selected, and interactive runs can
+also receive a progress communication tool depending on the model provider.
+These harness tools are derived from the selected tools and runtime mode.
 
 ### Workspace tools and background tasks
 
@@ -294,26 +319,61 @@ extensions.register_command(
 
 The example displays `hello` in the transcript. Slash commands registered on
 the app run locally and are not sent to the agent. Synchronous handlers run
-outside the UI loop; asynchronous handlers are awaited. The left sidebar also
-lists up to 500 files accessible through the session's live workspace grants.
+outside the UI loop; asynchronous handlers are awaited.
 
 For the CLI, put registration in an importable Python module and pass its entry
-point explicitly:
+point explicitly. Tool factories are synchronous, take no arguments, and return
+a fresh tool instance for each session. A class can provide its static `name`;
+functions need an explicit `name`. Registration stores the factory without
+instantiating it. The selected factory runs when session resources are opened: on the first
+prompt for a new draft, or when reopening an existing session. Optional `close()` or `aclose()` methods on created tools
+are used for session cleanup.
 
 ```python
 # my_vulcano.py
-def register(extensions):
-    extensions.register_command("echo", lambda text: text)
+from msgflux.coding.extensions import CodingExtensions
+from msgflux.runtime import AgentWorkspace
+from msgflux.tools import Hidden
+
+
+class SummarizeTool:
+    name = "summarize"
+    tool_config = {"runtime_inputs": ["workspace"]}
+
+    def __call__(
+        self, path: str, *, workspace: Hidden[AgentWorkspace] = None
+    ) -> str:
+        """Read a file and return a short summary."""
+        text = workspace.read_text(path)
+        return text[:500]
+
+
+def register(c: CodingExtensions):
+    c.register_tool(SummarizeTool, description="Summarize a workspace file")
+    c.register_command("echo", lambda text: text)
 ```
+
+The `runtime_inputs` declaration injects `workspace` on each call, while
+`Hidden[AgentWorkspace]` excludes it from the model-facing schema. The workspace
+enforces the session grants. A factory may also be a zero-argument function that closes
+around configuration, provided it returns a fresh tool instance.
 
 ```bash
 uv run --extra coding vulcano --model openai/gpt-4.1-mini \
   --workspace /path/to/project \
-  --extension my_vulcano:register
+  --extension my_vulcano:register --tools workspace,summarize
 ```
 
-The CLI imports `my_vulcano` and calls `register` before mounting the UI. Use
-this only for Python modules you trust.
+The CLI imports `my_vulcano` and calls `register` before resolving the selected
+tools, in both the TUI and `--print` modes. Each entry point's declarations are
+registered atomically: if its function raises, that entry point contributes no
+partial registrations. Loading extension metadata does not create tool
+instances. Embedded hosts can use `extensions.load(register)` for the same
+behavior. The callback receives the host registry itself, so removal handles
+remain connected to it; removing a declaration affects future sessions.
+Extension modules are trusted local Python code; CLI registration
+and selected tools are available in noninteractive mode without importing the
+Textual UI.
 
 For subsequent task recovery UI and customization work, see
 the [architecture plan](../anatomy/coding-tui-plan.md).

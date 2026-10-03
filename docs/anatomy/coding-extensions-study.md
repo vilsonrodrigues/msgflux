@@ -1,7 +1,8 @@
 # Vulcano: extensões, registro de tools e seleção pela CLI
 
-Estudo em 2026-10-02. Este documento propõe a próxima implementação; as APIs
-marcadas como propostas ainda não existem. A revisão corrente da TUI permanece
+Estudo em 2026-10-02. O registro de tools por CodingExtensions e a seleção pela CLI foram
+implementados nesta branch após aprovação do plano. A ponte de AgentExtensions
+para o harness continua uma proposta posterior. A revisão corrente da TUI permanece
 no worktree `/tmp/msgflux-coding-resume`, branch `feat/coding-resume`.
 
 **Referência principal: Pi v1.** Seu contrato de extensão, montagem do harness e
@@ -121,7 +122,7 @@ arquivos do projeto, instalador de plugins, flags arbitrárias de extensões,
 reload ou troca da seleção durante uma execução. Esses itens têm contratos
 próprios e não são requisitos para registrar e selecionar tools.
 
-## API proposta de CodingExtensions
+## API de CodingExtensions
 
 ```python
 # meu_pacote/vulcano.py
@@ -137,11 +138,11 @@ class UppercaseTool:
 
 
 def register(c: CodingExtensions):
-    c.register_tool(UppercaseTool)  # API proposta
+    c.register_tool(UppercaseTool)
     c.register_command("hello", lambda args: f"Hello {args}")
 ```
 
-Contrato proposto:
+Contrato implementado:
 
 ```python
 register_tool(factory, *, name=None, description="") -> RegistrationHandle
@@ -187,7 +188,7 @@ vulcano --extension meu_pacote.vulcano:register \
   --deferred-tools web_fetch
 ```
 
-**Precedência recomendada:** sem flags de tools, usar as duas listas do perfil.
+**Precedência implementada:** sem flags de tools, usar as duas listas do perfil.
 Se qualquer flag `--tools` ou `--deferred-tools` estiver presente, o par de listas
 CLI substitui a seleção de tools do perfil inteira; a lista não fornecida fica
 vazia. Assim `--tools read` seleciona somente `read`, sem herdar tools deferred
@@ -259,9 +260,8 @@ ponte como pronta.
 6. `docs/learn/coding.md` e `docs/learn/nn/agent/extensions.md`: exemplos de
    classes, registro por extensão, perfis, CLI, deferred e ciclo de vida.
 
-Esse PR depende das correções atuais de coding, ainda sem commit. Deve ser
-construído após estabilizar essa revisão, mantendo a base de workspace e o
-provider já mergeados em main.
+Essa implementação está sobre os commits das correções de coding e a main
+atualizada, mantendo a base de workspace e o provider já mergeados.
 
 ### Etapa B: AgentExtensions no harness
 
@@ -294,6 +294,6 @@ necessária para que extensões `register(c)` adicionem tools selecionáveis.
   deixar declarações parciais. Política inicial: falhar o carregamento solicitado
   explicitamente com origem e mensagem claras.
 
-Validação prevista: testes focados de coding e ToolLibrary, Ruff, MkDocs strict e
+Validação: testes focados de coding e ToolLibrary, Ruff, MkDocs strict e
 regressão offline após congelar o código. Testes de integração usam factories
 observáveis, SQLite e workspace local; não precisam de chamadas pagas a modelos.

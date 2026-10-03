@@ -106,8 +106,45 @@ class CustomerActions(nn.AgentExtension):
 ```
 
 The Agent registers the tool in its existing `ToolLibrary`, preserving the
-normal schema, injection, telemetry, tool events, and abort behavior.
+normal schema, injection, telemetry, tool events, and abort behavior. For tools
+that need per-session state or resources, return a new instance from each
+extension instance. The Agent owns and cleans up tool resources through the
+existing `close()`/`aclose()` lifecycle.
 
+A tool can be returned as a class instance and configured as deferred using
+its normal `tool_config`:
+
+```python
+from msgflux.tools.config import tool_config
+
+
+@tool_config(defer_loading=True)
+class CustomerLookup:
+    name = "customer_lookup"
+
+    def __init__(self, client):
+        self.client = client
+
+    async def __call__(self, customer_id: str) -> dict:
+        """Look up one customer by id."""
+        return await self.client.get_customer(customer_id)
+
+
+class CustomerActions(nn.AgentExtension):
+    def __init__(self, client):
+        super().__init__("customer_actions")
+        self.client = client
+
+    def tools(self):
+        return (CustomerLookup(self.client),)
+```
+
+`tool_config` controls the tool's regular ToolLibrary behavior. An
+`AgentExtension` installs the tools returned by `tools()` when the extension is
+registered. The coding host's `CodingExtensions.register_tool` API is a separate
+factory registry that supports selecting extension tools by name and creating
+fresh instances for each coding session; it does not activate an
+`AgentExtension` or its hooks.
 ## Register And Remove
 
 Registration returns an ownership handle:

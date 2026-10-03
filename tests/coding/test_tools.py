@@ -135,3 +135,139 @@ def test_web_fetch_is_available_in_profile_and_tool_catalog(deferred):
     library = ToolLibrary("coding-web-fetch", tools)
     assert library.get_tool_definition("web_fetch").loading.deferred is deferred
     assert ("tool_search" in library.get_tool_names()) is deferred
+
+
+def test_custom_factories_are_lazy_and_config_is_copied_per_selection():
+    from msgflux.coding.extensions.records import ToolFactorySpec
+
+    calls = []
+
+    class CustomTool:
+        name = "custom"
+        tool_config = {"defer_loading": True, "setting": {"value": 1}}
+
+        def __init__(self):
+            calls.append("created")
+
+    specs = (ToolFactorySpec(name="custom", factory=CustomTool),)
+    active = resolve_tools(
+        ToolSelection(active=("read",)),
+        model=_Model(),
+        allow_edits=False,
+        has_executor=False,
+        tool_factories=specs,
+    )
+    assert calls == []
+    custom = resolve_tools(
+        ToolSelection(active=("custom",)),
+        model=_Model(),
+        allow_edits=False,
+        has_executor=False,
+        tool_factories=specs,
+    )[0]
+    assert calls == ["created"]
+    assert custom.tool_config == {"defer_loading": False, "setting": {"value": 1}}
+    assert CustomTool.tool_config["defer_loading"] is True
+    assert active[0].name == "read"
+
+
+def test_factory_collisions_and_unknown_names_fail_before_instantiation():
+    from msgflux.coding.extensions.records import ToolFactorySpec
+
+    calls = []
+
+    def factory():
+        calls.append(True)
+        return object()
+
+    collision = (ToolFactorySpec(name="bash", factory=factory),)
+    with pytest.raises(ValueError, match="collide"):
+        resolve_tools(
+            ToolSelection(),
+            model=_Model(),
+            allow_edits=False,
+            has_executor=False,
+            tool_factories=collision,
+        )
+    spec = (ToolFactorySpec(name="custom", factory=factory),)
+    with pytest.raises(ValueError, match="Available names"):
+        resolve_tools(
+            ToolSelection(active=("missing",)),
+            model=_Model(),
+            allow_edits=False,
+            has_executor=False,
+            tool_factories=spec,
+        )
+    assert calls == []
+
+
+def test_group_expansion_rejects_cross_mode_duplicate_before_instantiation():
+    with pytest.raises(ValueError, match="both active and deferred"):
+        resolve_tools(
+            ToolSelection(active=("workspace",), deferred=("read",)),
+            model=_Model(),
+            allow_edits=False,
+            has_executor=False,
+        )
+
+
+def test_factory_description_is_applied_to_selected_tool_config():
+    from msgflux.coding.extensions.records import ToolFactorySpec
+
+    class CustomTool:
+        name = "custom"
+        description = "Class description"
+        tool_config = {"setting": True}
+
+    tools = resolve_tools(
+        ToolSelection(active=("custom",)),
+        model=_Model(),
+        allow_edits=False,
+        has_executor=False,
+        tool_factories=(
+            ToolFactorySpec("custom", CustomTool, "Registered description"),
+        ),
+    )
+    assert tools[0].tool_config["description"] == "Registered description"
+
+
+def test_agents_group_includes_subagent_instance_without_calling_it():
+    calls = []
+
+    class Subagent:
+        tool_config = {}
+
+        def get_module_name(self):
+            return "researcher"
+
+        def __call__(self, *args, **kwargs):
+            calls.append(True)
+
+    subagent = Subagent()
+    tools = resolve_tools(
+        ToolSelection(active=("agents",)),
+        model=_Model(),
+        allow_edits=False,
+        has_executor=False,
+        agents=(subagent,),
+    )
+    assert tools[1] is subagent
+    assert tools[1].tool_config["allow_background"] is True
+    assert calls == []
+
+
+def test_function_tool_factory_result_uses_function_name():
+    from msgflux.coding.extensions.records import ToolFactorySpec
+
+    def fn_tool() -> str:
+        """Run function tool."""
+        return "ok"
+
+    tools = resolve_tools(
+        ToolSelection(active=("fn_tool",)),
+        model=_Model(),
+        allow_edits=False,
+        has_executor=False,
+        tool_factories=(ToolFactorySpec("fn_tool", lambda: fn_tool),),
+    )
+    assert tools[0] is fn_tool

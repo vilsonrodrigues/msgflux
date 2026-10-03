@@ -455,12 +455,29 @@ Proposal, pending the ongoing coding review:
   registration, TOML selection and CLI selection. Test discovery, duplicate names,
   selected loading mode, profile/CLI precedence, lifecycle and permission checks.
 
-These extension and CLI APIs are not implemented yet.
+These extension and CLI APIs were proposed here and implemented below.
 
 ### Estudo de extensões e seleção pela CLI
 
 O estudo foi concluído em `coding-extensions-study.md`, com referências oficiais
 pinadas de Pi v1 e Tau e plano incremental de registro por `CodingExtensions` e
 seleção por flags. Pi é a referência principal de API e UX; Tau serve de apoio
-para decisões de implementação em Python. As APIs novas permanecem propostas,
-sem implementação durante a revisão corrente da TUI.
+para decisões de implementação em Python. A implementação segue na seção abaixo.
+
+### Implementação: tools por extensão e seleção CLI
+
+- `CodingExtensions.register_tool` registra classes/factories sem instanciar.
+- `--tools` e `--deferred-tools` selecionam builtins e contribuições de extensão
+  usando o mesmo resolver; flags substituem a seleção do perfil nesta execução.
+- Metadados são carregados em TUI e print, e lote parcial não é publicado.
+- Instâncias selecionadas são por sessão; configuração da classe não é mutada.
+- Recursos retornados por factories entram no fechamento sync/async da sessão,
+  incluindo erro parcial. Factory que falha antes de retornar cuida dos próprios
+  recursos. Erro de cleanup não substitui o erro original de construção.
+- Apenas active/deferred; queued inbox, codemode e novos backends ficam para depois.
+- Testes focados cobrem registro, CLI, SQLite, workspace injetado, recursos,
+  schemas e sessões distintas.
+- Validação: suíte offline com 3.888 testes passando (33 skips e dois warnings
+  existentes), 148 testes de durabilidade e MkDocs strict. Após o ajuste final
+  dos handles de registro, os 137 testes de coding passaram novamente. Ruff
+  check/format e git diff --check passaram.

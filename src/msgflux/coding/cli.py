@@ -18,13 +18,13 @@ import msgspec
 
 from msgflux.coding.accounts import AccountStorage
 from msgflux.coding.approval import CodingApprovalController
-from msgflux.coding.config import ToolSelection, load_config
+from msgflux.coding.config import ToolSelection, load_config, select_tools
 from msgflux.coding.extensions import CodingExtensions
 from msgflux.coding.host import CodingHost
 from msgflux.coding.prompts import system_prompt
 from msgflux.coding.session import CodingSession
 from msgflux.coding.storage import ThreadStorage
-from msgflux.coding.tools import resolve_tools
+from msgflux.coding.tools import resolve_tools, validate_tool_selection
 from msgflux.coding.workspace import open_coding_workspace
 from msgflux.data.stores.providers.sqlite import SQLiteCheckpointStore
 from msgflux.models import Model
@@ -40,6 +40,16 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run the msgFlux coding TUI")
     parser.add_argument("--model", help="Override the configured default model")
     parser.add_argument("--profile", help="Coding profile from config.toml")
+    parser.add_argument(
+        "--tools",
+        metavar="NAMES",
+        help="Comma-separated active tools; tool flags replace profile tool selection",
+    )
+    parser.add_argument(
+        "--deferred-tools",
+        metavar="NAMES",
+        help="Comma-separated deferred tools; omitted tool list is empty on override",
+    )
     parser.add_argument("--reasoning-effort", help="Override reasoning effort")
     parser.add_argument(
         "--account",
@@ -115,8 +125,28 @@ def _load_extensions(specs: list[str]) -> CodingExtensions:
         register = getattr(importlib.import_module(module_name), function_name)
         if not callable(register):
             raise TypeError(f"Extension entry point {spec!r} is not callable")
-        register(extensions)
+        try:
+            extensions.load(register)
+        except Exception as error:
+            error.add_note(f"Coding extension entry point: {spec}")
+            raise
     return extensions
+
+
+def _session_tool_factories(specs, resources):
+    """Track only constructed extension tools for the session's cleanup path."""
+
+    def tracked_factory(spec):
+        def create():
+            tool = spec.factory()
+            resources.append(tool)
+            return tool
+
+        return create
+
+    return tuple(
+        msgspec.structs.replace(spec, factory=tracked_factory(spec)) for spec in specs
+    )
 
 
 def _account_command(argv: list[str]) -> None:
@@ -304,6 +334,11 @@ async def _run(args: argparse.Namespace) -> None:  # noqa: C901
             active_accounts[provider] = alias
         config = msgspec.structs.replace(config, active_accounts=active_accounts)
     profile = config.profile(args.profile)
+    selection = select_tools(
+        profile.tools, active=args.tools, deferred=args.deferred_tools
+    )
+    extensions = _load_extensions(args.extension)
+    validate_tool_selection(selection, tool_factories=extensions.tools())
     model_path = args.model or profile.model or config.default_model
     if model_path is None:
         raise ValueError("Set default_model in config.toml or pass --model")
@@ -329,13 +364,21 @@ async def _run(args: argparse.Namespace) -> None:  # noqa: C901
         )
         store = registry = workspace = approval_store = model = None
         subagents = ()
+        custom_tools = []
 
         async def close():
             models = [model] if model is not None else []
             for subagent in subagents:
                 models.extend(subagent.model.models)
             await _close_resources(
-                [*models, approval_store, workspace, registry, store]
+                [
+                    *reversed(custom_tools),
+                    *models,
+                    approval_store,
+                    workspace,
+                    registry,
+                    store,
+                ]
             )
 
         try:
@@ -360,11 +403,14 @@ async def _run(args: argparse.Namespace) -> None:  # noqa: C901
             model = _make_model(model_path, effort, config, accounts)
             subagents = (
                 _make_subagents(config, accounts, store)
-                if "agents" in (*profile.tools.active, *profile.tools.deferred)
+                if "agents" in (*selection.active, *selection.deferred)
                 else ()
             )
             tools = resolve_tools(
-                profile.tools,
+                selection,
+                tool_factories=_session_tool_factories(
+                    extensions.tools(), custom_tools
+                ),
                 model=model,
                 allow_edits=not args.read_only,
                 has_executor=workspace.supports_execution and not args.read_only,
@@ -398,8 +444,11 @@ async def _run(args: argparse.Namespace) -> None:  # noqa: C901
             await session.snapshot()
             controller = _approval_controller(agent, approval_policy)
             return session, controller, close
-        except BaseException:
-            await close()
+        except BaseException as error:
+            try:
+                await close()
+            except Exception as cleanup_error:
+                error.add_note(f"Session cleanup also failed: {cleanup_error}")
             raise
 
     host = CodingHost(
@@ -445,7 +494,7 @@ async def _run(args: argparse.Namespace) -> None:  # noqa: C901
                 session,
                 workspace=str(root),
                 approval_controller=approval_controller,
-                extensions=_load_extensions(args.extension),
+                extensions=extensions,
                 host=host,
                 open_session_picker=args.resume == "",
             ).run_async()

@@ -3,7 +3,47 @@
 import pytest
 import msgspec
 
-from msgflux.coding.config import load_config
+from msgflux.coding.config import ToolSelection, load_config, select_tools
+
+
+def test_select_tools_preserves_profile_when_no_cli_values():
+    profile = ToolSelection(active=("workspace",), deferred=("web_search",))
+    assert select_tools(profile) is profile
+
+
+@pytest.mark.parametrize(
+    "kwargs, expected",
+    [
+        (
+            {"active": " workspace, agents "},
+            ToolSelection(active=("workspace", "agents")),
+        ),
+        ({"deferred": " web_search "}, ToolSelection(deferred=("web_search",))),
+        (
+            {"active": "workspace", "deferred": "web_search"},
+            ToolSelection(active=("workspace",), deferred=("web_search",)),
+        ),
+        ({"active": ""}, ToolSelection()),
+        ({"deferred": "   "}, ToolSelection()),
+    ],
+)
+def test_select_tools_replaces_both_profile_lists(kwargs, expected):
+    profile = ToolSelection(active=("from_profile",), deferred=("also_profile",))
+    assert select_tools(profile, **kwargs) == expected
+
+
+@pytest.mark.parametrize(
+    "kwargs, message",
+    [
+        ({"active": "workspace,,agents"}, "empty entries"),
+        ({"deferred": "workspace,"}, "empty entries"),
+        ({"active": "workspace,workspace"}, "duplicate tools"),
+        ({"active": "workspace", "deferred": "workspace"}, "active and deferred"),
+    ],
+)
+def test_select_tools_rejects_invalid_lists(kwargs, message):
+    with pytest.raises(ValueError, match=message):
+        select_tools(ToolSelection(), **kwargs)
 
 
 def test_load_user_profiles_and_subagent_models(tmp_path):

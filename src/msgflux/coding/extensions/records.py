@@ -1,4 +1,4 @@
-"""Toolkit-independent extension declarations and registration handles."""
+"""Toolkit-independent coding extension declarations and registration handles."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ import msgspec
 
 PanelSide = Literal["left", "right"]
 PanelFactory = Callable[[], Any]
+ToolFactory = Callable[[], Any]
 # Callback signature: ``handler(argument_text: str) -> Any``.
 CommandHandler = Callable[[str], Any]
 
@@ -26,6 +27,12 @@ class CommandSpec(msgspec.Struct, frozen=True):
     description: str = ""
     accepts_arguments: bool = True
     preserve_status: bool = False
+
+
+class ToolFactorySpec(msgspec.Struct, frozen=True):
+    name: str
+    factory: ToolFactory
+    description: str = ""
 
 
 class RegistrationHandle:

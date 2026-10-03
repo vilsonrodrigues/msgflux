@@ -1,9 +1,19 @@
 import pytest
 
+
+def _make_object():
+    return object()
+
+
+def _required_factory(value):
+    return value
+
+
 from msgflux.coding.extensions import (
     CodingExtensions,
     CommandSpec,
     PanelSpec,
+    ToolFactorySpec,
 )
 
 
@@ -82,3 +92,119 @@ def test_stale_handle_cannot_remove_later_registration():
     first.unregister()
     assert extensions.commands()[0].handler is second_handler
     assert second.active
+
+
+def test_register_tool_does_not_instantiate_class_and_infers_name():
+    calls = 0
+
+    class ExampleTool:
+        name = "example"
+
+        def __init__(self):
+            nonlocal calls
+            calls += 1
+
+    extensions = CodingExtensions()
+    handle = extensions.register_tool(ExampleTool, description="Example tool")
+
+    assert calls == 0
+    assert extensions.tools() == (
+        ToolFactorySpec("example", ExampleTool, "Example tool"),
+    )
+    handle.unregister()
+    assert extensions.tools() == ()
+
+
+def test_tool_registration_handle_cannot_remove_replacement():
+    extensions = CodingExtensions()
+    first = extensions.register_tool(_make_object, name="example")
+    first.unregister()
+    factory = _make_object
+    second = extensions.register_tool(factory, name="example")
+
+    first.unregister()
+    assert extensions.tools()[0].factory is factory
+    assert second.active
+
+
+def test_register_many_is_atomic_across_panels_commands_and_tools():
+    extensions = CodingExtensions()
+    extensions.register_tool(_make_object, name="taken")
+
+    with pytest.raises(ValueError, match="Duplicate tool id"):
+        extensions.register_many(
+            panels=(PanelSpec("new", "New", object),),
+            commands=(CommandSpec("new-command", lambda: None),),
+            tools=(
+                # First new tool must not be installed when the second collides.
+                ToolFactorySpec("fresh", _make_object),
+                ToolFactorySpec("taken", _make_object),
+            ),
+        )
+
+    assert extensions.panels() == ()
+    assert extensions.commands() == ()
+    assert [tool.name for tool in extensions.tools()] == ["taken"]
+
+
+def test_tool_factory_validation_rejects_invalid_names_and_callable_instances():
+    extensions = CodingExtensions()
+    with pytest.raises(ValueError, match="Invalid tool name"):
+        extensions.register_tool(_make_object, name="not valid")
+
+    class CallableFactory:
+        def __call__(self):
+            return object()
+
+    with pytest.raises(TypeError, match="callable instances"):
+        extensions.register_tool(CallableFactory(), name="example")
+
+    with pytest.raises(TypeError, match="zero arguments"):
+        extensions.register_tool(_required_factory, name="example")
+
+
+def test_load_rolls_back_failed_extension_without_removing_existing_entries():
+    extensions = CodingExtensions()
+    existing = extensions.register_command("existing", lambda: "existing")
+    partial_handles = []
+
+    def register(coding_extensions):
+        partial_handles.append(
+            coding_extensions.register_command("partial", lambda: "partial")
+        )
+        coding_extensions.register_tool(_make_object, name="partial_tool")
+        raise RuntimeError("entry point failed")
+
+    with pytest.raises(RuntimeError, match="entry point failed"):
+        extensions.load(register)
+
+    assert [command.id for command in extensions.commands()] == ["existing"]
+    assert extensions.tools() == ()
+    assert existing.active
+    assert partial_handles[0].active
+    partial_handles[0].unregister()
+    assert [command.id for command in extensions.commands()] == ["existing"]
+
+
+def test_load_handles_unregister_from_the_same_registry():
+    extensions = CodingExtensions()
+    handles = []
+
+    def register(coding_extensions):
+        handles.append(coding_extensions.register_command("loaded", lambda: "loaded"))
+
+    assert extensions.load(register) is None
+    assert [command.id for command in extensions.commands()] == ["loaded"]
+    handles[0].unregister()
+    assert extensions.commands() == ()
+
+
+def test_load_rejects_async_callback_and_rolls_back():
+    extensions = CodingExtensions()
+
+    async def register(coding_extensions):
+        coding_extensions.register_command("async", lambda: "async")
+
+    with pytest.raises(TypeError, match="must be synchronous"):
+        extensions.load(register)
+    assert extensions.commands() == ()
