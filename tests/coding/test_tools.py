@@ -137,67 +137,290 @@ def test_web_fetch_is_available_in_profile_and_tool_catalog(deferred):
     assert ("tool_search" in library.get_tool_names()) is deferred
 
 
-def test_custom_factories_are_lazy_and_config_is_copied_per_selection():
-    from msgflux.coding.extensions.records import ToolFactorySpec
+@pytest.mark.parametrize("deferred", [False, True])
+def test_custom_function_compiles_schema_and_context_without_mutating_source(deferred):
+    from msgflux.coding.extensions.records import ToolSpec
 
     calls = []
 
-    class CustomTool:
-        name = "custom"
-        tool_config = {"defer_loading": True, "setting": {"value": 1}}
+    def lookup(query: str) -> str:
+        """Look up a value using the current workspace."""
+        calls.append(query)
+        return query
+
+    lookup.tool_config = {
+        "runtime_inputs": ("workspace",),
+        "nested": {"value": 1},
+    }
+    original_config = {
+        "runtime_inputs": ("workspace",),
+        "nested": {"value": 1},
+    }
+    selection = (
+        ToolSelection(deferred=("lookup",))
+        if deferred
+        else ToolSelection(active=("lookup",))
+    )
+
+    definition = resolve_tools(
+        selection,
+        model=_Model(),
+        allow_edits=False,
+        has_executor=False,
+        tool_specs=(ToolSpec("lookup", lookup),),
+    )[0]
+
+    assert definition.name == "lookup"
+    assert definition.input_schema["properties"]["query"]["type"] == "string"
+    assert definition.context.bindings[0].source == "workspace"
+    assert definition.loading.deferred is deferred
+    assert definition.declaration["defer_loading"] is deferred
+    assert definition.executor.tool_config["defer_loading"] is deferred
+    assert lookup.tool_config == original_config
+    assert calls == []
+    library = ToolLibrary("coding-custom", [definition])
+    if deferred:
+        assert library.get_tool_json_schemas()[0]["function"]["name"] == "tool_search"
+        from msgflux.chat_messages import ChatMessages
+
+        messages = ChatMessages(thread_id="custom_tool_thread")
+        assert library.get_handle().load_tools(messages, ["lookup"]) == ["lookup"]
+        assert [
+            schema["function"]["name"]
+            for schema in library.get_tool_catalog_view(messages).portable_schemas()
+        ] == ["lookup"]
+    else:
+        assert (
+            library.get_tool_definition("lookup").input_schema
+            == definition.input_schema
+        )
+        assert [
+            schema["function"]["name"] for schema in library.get_tool_json_schemas()
+        ] == ["lookup"]
+
+
+@pytest.mark.parametrize("deferred", [False, True])
+def test_custom_object_compiles_schema_and_preserves_its_config(deferred):
+    from msgflux.coding.extensions.records import ToolSpec
+
+    class ObjectTool:
+        name = "object_tool"
+        tool_config = {
+            "runtime_inputs": ("workspace",),
+            "nested": {"value": 2},
+        }
+
+        def __call__(self, path: str) -> str:
+            """Read a path using the current workspace."""
+            return path
+
+    tool = ObjectTool()
+    original_config = {
+        "runtime_inputs": ("workspace",),
+        "nested": {"value": 2},
+    }
+    selection = (
+        ToolSelection(deferred=("object_tool",))
+        if deferred
+        else ToolSelection(active=("object_tool",))
+    )
+
+    definition = resolve_tools(
+        selection,
+        model=_Model(),
+        allow_edits=False,
+        has_executor=False,
+        tool_specs=(ToolSpec("object_tool", tool),),
+    )[0]
+
+    assert definition.name == "object_tool"
+    assert definition.input_schema["properties"]["path"]["type"] == "string"
+    assert definition.context.bindings[0].source == "workspace"
+    assert definition.loading.deferred is deferred
+    assert definition.declaration["defer_loading"] is deferred
+    assert definition.executor.tool_config["defer_loading"] is deferred
+    assert tool.tool_config == original_config
+
+
+@pytest.mark.parametrize("deferred", [False, True])
+def test_nn_tool_instance_is_compiled_without_mutating_its_buffers(deferred):
+    from msgflux.coding.extensions.records import ToolSpec
+    from msgflux.nn.modules.tool.implementations import LocalTool
+
+    def lookup(item: str) -> str:
+        """Look up one item."""
+        return item
+
+    original_config = {
+        "runtime_inputs": ("workspace",),
+        "nested": {"value": 3},
+    }
+    tool = LocalTool(
+        name="local_lookup",
+        description="Look up one item.",
+        annotations={"item": str},
+        tool_config=dict(original_config),
+        impl=lookup,
+    )
+    selection = (
+        ToolSelection(deferred=("local_lookup",))
+        if deferred
+        else ToolSelection(active=("local_lookup",))
+    )
+
+    definition = resolve_tools(
+        selection,
+        model=_Model(),
+        allow_edits=False,
+        has_executor=False,
+        tool_specs=(ToolSpec("local_lookup", tool),),
+    )[0]
+
+    assert definition.name == "local_lookup"
+    assert definition.executor is not tool
+    assert definition.input_schema["properties"]["item"]["type"] == "string"
+    assert definition.context.bindings[0].source == "workspace"
+    assert definition.loading.deferred is deferred
+    assert tool.tool_config == original_config
+
+
+@pytest.mark.parametrize("deferred", [False, True])
+def test_class_tools_are_lazy_and_created_instances_are_reported_before_compile(
+    deferred,
+):
+    from msgflux.coding.extensions.records import ToolSpec
+
+    class ToolClass:
+        name = "class_tool"
+        tool_config = {"defer_loading": True}
+        created = []
 
         def __init__(self):
-            calls.append("created")
+            self.created.append(self)
+            self.tool_config = {
+                **self.tool_config,
+                "runtime_inputs": ("workspace",),
+            }
 
-    specs = (ToolFactorySpec(name="custom", factory=CustomTool),)
-    active = resolve_tools(
+        def __call__(self, value: int) -> str:
+            """Use a value with workspace context."""
+            return str(value)
+
+    spec = ToolSpec("class_tool", ToolClass)
+    unused = resolve_tools(
         ToolSelection(active=("read",)),
         model=_Model(),
         allow_edits=False,
         has_executor=False,
-        tool_factories=specs,
+        tool_specs=(spec,),
     )
-    assert calls == []
-    custom = resolve_tools(
-        ToolSelection(active=("custom",)),
+    assert ToolClass.created == []
+    assert unused[0].name == "read"
+
+    created = []
+    definition = resolve_tools(
+        (
+            ToolSelection(deferred=("class_tool",))
+            if deferred
+            else ToolSelection(active=("class_tool",))
+        ),
         model=_Model(),
         allow_edits=False,
         has_executor=False,
-        tool_factories=specs,
+        tool_specs=(spec,),
+        on_tool_created=created.append,
     )[0]
-    assert calls == ["created"]
-    assert custom.tool_config == {"defer_loading": False, "setting": {"value": 1}}
-    assert CustomTool.tool_config["defer_loading"] is True
-    assert active[0].name == "read"
+    assert definition.name == "class_tool"
+    assert definition.input_schema["properties"]["value"]["type"] == "integer"
+    assert definition.context.bindings[0].source == "workspace"
+    assert definition.loading.deferred is deferred
+    assert definition.declaration["defer_loading"] is deferred
+    assert definition.executor.tool_config["defer_loading"] is deferred
+    assert created == ToolClass.created
+    library = ToolLibrary(f"class-tool-{deferred}", [definition])
+    assert ("tool_search" in library.get_tool_names()) is deferred
 
 
-def test_factory_collisions_and_unknown_names_fail_before_instantiation():
-    from msgflux.coding.extensions.records import ToolFactorySpec
+def test_class_created_callback_runs_before_definition_compile_failure(monkeypatch):
+    from msgflux.coding.extensions.records import ToolSpec
+    from msgflux.nn.modules.tool.library import ToolLibrary
 
-    calls = []
+    class InvalidTool:
+        name = "invalid_tool"
 
-    def factory():
-        calls.append(True)
-        return object()
+        def __call__(self, value):
+            """This missing parameter annotation makes compilation fail."""
 
-    collision = (ToolFactorySpec(name="bash", factory=factory),)
+    created = []
+
+    def fail_compilation(_tool):
+        raise RuntimeError("compile failed")
+
+    monkeypatch.setattr(
+        ToolLibrary,
+        "inspect_tool_definition",
+        staticmethod(fail_compilation),
+    )
+    with pytest.raises(RuntimeError, match="compile failed"):
+        resolve_tools(
+            ToolSelection(active=("invalid_tool",)),
+            model=_Model(),
+            allow_edits=False,
+            has_executor=False,
+            tool_specs=(ToolSpec("invalid_tool", InvalidTool),),
+            on_tool_created=created.append,
+        )
+    assert len(created) == 1
+    assert isinstance(created[0], InvalidTool)
+
+
+def test_tool_specs_validate_collisions_and_unknown_names_without_compiling():
+    from msgflux.coding.extensions.records import ToolSpec
+
+    class BashToolSpec:
+        name = "bash"
+
+        def __call__(self):
+            """Conflicting definition."""
+
     with pytest.raises(ValueError, match="collide"):
         resolve_tools(
             ToolSelection(),
             model=_Model(),
             allow_edits=False,
             has_executor=False,
-            tool_factories=collision,
+            tool_specs=(ToolSpec("bash", BashToolSpec),),
         )
-    spec = (ToolFactorySpec(name="custom", factory=factory),)
     with pytest.raises(ValueError, match="Available names"):
         resolve_tools(
             ToolSelection(active=("missing",)),
             model=_Model(),
             allow_edits=False,
             has_executor=False,
-            tool_factories=spec,
+            tool_specs=(ToolSpec("custom", BashToolSpec),),
         )
+
+
+def test_async_function_tool_is_registered_without_invoking_its_body():
+    from msgflux.coding.extensions.records import ToolSpec
+
+    calls = []
+
+    async def async_lookup(query: str) -> str:
+        """Look up a value asynchronously."""
+        calls.append(query)
+        return query
+
+    definition = resolve_tools(
+        ToolSelection(active=("async_lookup",)),
+        model=_Model(),
+        allow_edits=False,
+        has_executor=False,
+        tool_specs=(ToolSpec("async_lookup", async_lookup),),
+    )[0]
+
+    assert definition.name == "async_lookup"
+    assert definition.input_schema["properties"]["query"]["type"] == "string"
     assert calls == []
 
 
@@ -209,26 +432,6 @@ def test_group_expansion_rejects_cross_mode_duplicate_before_instantiation():
             allow_edits=False,
             has_executor=False,
         )
-
-
-def test_factory_description_is_applied_to_selected_tool_config():
-    from msgflux.coding.extensions.records import ToolFactorySpec
-
-    class CustomTool:
-        name = "custom"
-        description = "Class description"
-        tool_config = {"setting": True}
-
-    tools = resolve_tools(
-        ToolSelection(active=("custom",)),
-        model=_Model(),
-        allow_edits=False,
-        has_executor=False,
-        tool_factories=(
-            ToolFactorySpec("custom", CustomTool, "Registered description"),
-        ),
-    )
-    assert tools[0].tool_config["description"] == "Registered description"
 
 
 def test_agents_group_includes_subagent_instance_without_calling_it():
@@ -256,18 +459,42 @@ def test_agents_group_includes_subagent_instance_without_calling_it():
     assert calls == []
 
 
-def test_function_tool_factory_result_uses_function_name():
-    from msgflux.coding.extensions.records import ToolFactorySpec
+def test_function_tool_spec_uses_its_compiled_name():
+    from msgflux.coding.extensions.records import ToolSpec
 
     def fn_tool() -> str:
         """Run function tool."""
         return "ok"
 
-    tools = resolve_tools(
+    definition = resolve_tools(
         ToolSelection(active=("fn_tool",)),
         model=_Model(),
         allow_edits=False,
         has_executor=False,
-        tool_factories=(ToolFactorySpec("fn_tool", lambda: fn_tool),),
+        tool_specs=(ToolSpec("fn_tool", fn_tool),),
+    )[0]
+    assert definition.name == "fn_tool"
+    assert definition.executor.impl is fn_tool
+
+
+@pytest.mark.parametrize("instance", [False, True])
+def test_tool_without_name_uses_class_name_consistently(instance):
+    from msgflux.coding.extensions import CodingExtensions
+
+    class Echo:
+        def __call__(self, text: str) -> str:
+            """Echo the supplied text."""
+            return text
+
+    extensions = CodingExtensions()
+    extensions.register_tool(Echo() if instance else Echo)
+    definitions = resolve_tools(
+        ToolSelection(active=("Echo",)),
+        model=_Model(),
+        allow_edits=False,
+        has_executor=False,
+        tool_specs=extensions.tools(),
     )
-    assert tools[0] is fn_tool
+    library = ToolLibrary("unnamed", definitions)
+    response = library([("echo-call", "Echo", {"text": "hello"})])
+    assert response.tool_calls[0].result == "hello"

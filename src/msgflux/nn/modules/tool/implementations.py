@@ -312,6 +312,7 @@ def _inspect_tool_declaration(impl: Callable) -> ToolDeclaration:  # noqa: C901
             or getattr(impl, "name", None)
             or getattr(impl, "__name__", None)
             or getattr(original_class, "__name__", None)
+            or type(impl).__name__
         )
         display_name = configured_display_name or getattr(impl, "display_name", None)
         usage_guidance = configured_usage_guidance or getattr(

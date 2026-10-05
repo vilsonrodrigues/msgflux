@@ -4,11 +4,21 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from copy import deepcopy
-from inspect import isawaitable
+from inspect import isclass
 from typing import Any
 
+import msgspec
+
 from msgflux.coding.config import ToolSelection
-from msgflux.coding.extensions.records import ToolFactorySpec
+from msgflux.coding.extensions.records import ToolSpec
+from msgflux.core.dotdict import dotdict
+from msgflux.nn.modules.tool.implementations import (
+    Tool,
+    _convert_declaration_to_local_tool,
+    _declaration_from_tool,
+)
+from msgflux.nn.modules.tool.library import ToolLibrary
+from msgflux.nn.modules.tool.runtime import ToolDefinition
 from msgflux.tools.builtin import (
     AgentTool,
     ApplyPatchTool,
@@ -24,6 +34,7 @@ from msgflux.tools.builtin import (
     WebSearchTool,
     WriteTool,
 )
+from msgflux.tools.specs import LoadingSpec
 
 _GROUPS = {"workspace", "process", "agents"}
 _MANAGED_NAMES = {"agent", "task", "tool_search", "send_user_message"}
@@ -55,10 +66,10 @@ def _tool_name(tool: Any) -> str | None:
 
 
 def validate_tool_selection(
-    selection: ToolSelection, *, tool_factories: tuple[ToolFactorySpec, ...] = ()
+    selection: ToolSelection, *, tool_specs: tuple[ToolSpec, ...] = ()
 ) -> None:
     """Validate names and registry collisions without constructing tools."""
-    custom_names = [spec.name for spec in tool_factories]
+    custom_names = [spec.name for spec in tool_specs]
     reserved = _GROUPS | _MANAGED_NAMES | set(_builtin_factories(vision=False))
     collisions = sorted(set(custom_names) & reserved)
     if collisions:
@@ -85,17 +96,19 @@ def resolve_tools(  # noqa: C901
     has_executor: bool,
     agents: tuple = (),
     interactive: bool = False,
-    tool_factories: tuple[ToolFactorySpec, ...] = (),
+    tool_specs: tuple[ToolSpec, ...] = (),
+    on_tool_created: Callable[[Any], Any] | None = None,
 ) -> list:
     """Resolve selected tools, constructing only selected tools for this session.
 
     ``workspace`` is an abstract capability: listing/search tools are useful
     without a shell; edit tools appear only with explicit write permission.
-    Custom factories must be synchronous and return an instance whose declared
-    ``name`` matches the registered name.
+    Classes are instantiated only when selected. Registered instances remain
+    caller-owned, while created class instances are reported to the optional
+    ownership callback before compilation.
     """
-    validate_tool_selection(selection, tool_factories=tool_factories)
-    custom = {spec.name: spec for spec in tool_factories}
+    validate_tool_selection(selection, tool_specs=tool_specs)
+    custom = {spec.name: spec for spec in tool_specs}
     requested = (*selection.active, *selection.deferred)
     if "process" in requested and not has_executor:
         raise ValueError("The process capability requires a workspace executor")
@@ -134,9 +147,37 @@ def resolve_tools(  # noqa: C901
     )
 
     def construct(name: str) -> Any:
-        if name in custom:
-            return custom[name].factory()
         return builtins[name]()
+
+    def compile_custom(name: str, *, deferred: bool) -> ToolDefinition:
+        spec = custom[name]
+        source = spec.tool
+        if isclass(source):
+            source = source()
+            if on_tool_created is not None:
+                on_tool_created(source)
+        if isinstance(source, Tool):
+            # ToolLibrary's direct nn.Tool path mutates its input tool_config
+            # buffer. Compile an equivalent fresh LocalTool to preserve caller
+            # ownership and keep active/deferred variants independent.
+            declaration = _declaration_from_tool(source)
+            source = _convert_declaration_to_local_tool(declaration)
+        definition = ToolLibrary.inspect_tool_definition(source)
+        if definition.name != spec.name:
+            raise ValueError(
+                f"Tool spec name {spec.name!r} does not match compiled tool "
+                f"name {definition.name!r}"
+            )
+        declaration_config = deepcopy(dict(definition.declaration))
+        declaration_config["defer_loading"] = deferred
+        executor_config = deepcopy(getattr(definition.executor, "tool_config", {}))
+        executor_config["defer_loading"] = deferred
+        definition.executor.register_buffer("tool_config", dotdict(executor_config))
+        return msgspec.structs.replace(
+            definition,
+            loading=LoadingSpec(deferred=deferred),
+            declaration=declaration_config,
+        )
 
     def group_factories(name: str) -> list[tuple[str, Callable[[], Any]]]:
         if name == "workspace":
@@ -180,7 +221,16 @@ def resolve_tools(  # noqa: C901
         entries = (
             group_factories(name)
             if name in _GROUPS
-            else [(name, lambda name=name: construct(name))]
+            else [
+                (
+                    name,
+                    lambda name=name, deferred=deferred: (
+                        compile_custom(name, deferred=deferred)
+                        if name in custom
+                        else construct(name)
+                    ),
+                )
+            ]
         )
         for logical_name, factory in entries:
             previous_mode = modes.get(logical_name)
@@ -207,25 +257,20 @@ def resolve_tools(  # noqa: C901
     has_background = False
     for logical_name, deferred, factory in plan:
         tool = factory()
-        if isawaitable(tool):
-            close = getattr(tool, "close", None)
-            if callable(close):
-                close()
-            raise TypeError("Tool factories must be synchronous")
+        if isinstance(tool, ToolDefinition):
+            resolved.append(tool)
+            continue
         tool_name = _tool_name(tool)
         if tool_name != logical_name:
             raise ValueError(
                 f"Tool factory for {logical_name!r} returned tool named {tool_name!r}"
             )
         config = deepcopy(getattr(tool, "tool_config", {}))
-        spec = custom.get(logical_name)
-        if spec is not None and spec.description:
-            config["description"] = spec.description
         if logical_name == "bash" or logical_name in background_names:
             config["allow_background"] = True
             has_background = True
         config["defer_loading"] = bool(deferred)
-        tool.tool_config = config
+        tool.tool_config = dotdict(config)
         resolved.append(tool)
     if has_background:
         resolved.append(TaskTool())

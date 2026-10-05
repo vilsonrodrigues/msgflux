@@ -1,11 +1,11 @@
 import pytest
 
 
-def _make_object():
+def make_object():
     return object()
 
 
-def _required_factory(value):
+def required_factory(value):
     return value
 
 
@@ -13,7 +13,7 @@ from msgflux.coding.extensions import (
     CodingExtensions,
     CommandSpec,
     PanelSpec,
-    ToolFactorySpec,
+    ToolSpec,
 )
 
 
@@ -105,31 +105,29 @@ def test_register_tool_does_not_instantiate_class_and_infers_name():
             calls += 1
 
     extensions = CodingExtensions()
-    handle = extensions.register_tool(ExampleTool, description="Example tool")
+    handle = extensions.register_tool(ExampleTool)
 
     assert calls == 0
-    assert extensions.tools() == (
-        ToolFactorySpec("example", ExampleTool, "Example tool"),
-    )
+    assert extensions.tools() == (ToolSpec("example", ExampleTool),)
     handle.unregister()
     assert extensions.tools() == ()
 
 
 def test_tool_registration_handle_cannot_remove_replacement():
     extensions = CodingExtensions()
-    first = extensions.register_tool(_make_object, name="example")
+    first = extensions.register_tool(make_object)
     first.unregister()
-    factory = _make_object
-    second = extensions.register_tool(factory, name="example")
+    tool = make_object
+    second = extensions.register_tool(tool)
 
     first.unregister()
-    assert extensions.tools()[0].factory is factory
+    assert extensions.tools()[0].tool is tool
     assert second.active
 
 
 def test_register_many_is_atomic_across_panels_commands_and_tools():
     extensions = CodingExtensions()
-    extensions.register_tool(_make_object, name="taken")
+    extensions.register_tool(make_object)
 
     with pytest.raises(ValueError, match="Duplicate tool id"):
         extensions.register_many(
@@ -137,30 +135,99 @@ def test_register_many_is_atomic_across_panels_commands_and_tools():
             commands=(CommandSpec("new-command", lambda: None),),
             tools=(
                 # First new tool must not be installed when the second collides.
-                ToolFactorySpec("fresh", _make_object),
-                ToolFactorySpec("taken", _make_object),
+                ToolSpec("fresh", make_object),
+                ToolSpec("make_object", make_object),
             ),
         )
 
     assert extensions.panels() == ()
     assert extensions.commands() == ()
-    assert [tool.name for tool in extensions.tools()] == ["taken"]
+    assert [tool.name for tool in extensions.tools()] == ["make_object"]
 
 
-def test_tool_factory_validation_rejects_invalid_names_and_callable_instances():
+def test_tool_registration_accepts_functions_async_and_callable_instances():
     extensions = CodingExtensions()
-    with pytest.raises(ValueError, match="Invalid tool name"):
-        extensions.register_tool(_make_object, name="not valid")
+
+    calls = 0
+
+    def sync_tool():
+        nonlocal calls
+        calls += 1
+
+    async def async_tool():
+        nonlocal calls
+        calls += 1
 
     class CallableFactory:
         def __call__(self):
-            return object()
+            return "result"
 
-    with pytest.raises(TypeError, match="callable instances"):
-        extensions.register_tool(CallableFactory(), name="example")
+    instance = CallableFactory()
+    sync_handle = extensions.register_tool(sync_tool)
+    async_handle = extensions.register_tool(async_tool)
+    instance_handle = extensions.register_tool(instance)
+
+    assert calls == 0
+    assert [spec.tool for spec in extensions.tools()] == [
+        sync_tool,
+        async_tool,
+        instance,
+    ]
+    assert [spec.name for spec in extensions.tools()] == [
+        "sync_tool",
+        "async_tool",
+        "CallableFactory",
+    ]
+    sync_handle.unregister()
+    async_handle.unregister()
+    instance_handle.unregister()
+
+
+def test_tool_name_uses_config_override_before_callable_name_and_checks_regex():
+    from msgflux.tools.config import tool_config
+
+    @tool_config(name_override="configured_name")
+    def original_name():
+        return None
+
+    extensions = CodingExtensions()
+    extensions.register_tool(original_name)
+    assert extensions.tools()[0].name == "configured_name"
+
+    class ModuleStyleTool:
+        def get_module_name(self):
+            return "module_style"
+
+        def __call__(self):
+            return None
+
+    extensions.register_tool(ModuleStyleTool())
+    assert extensions.tools()[1].name == "module_style"
+
+    class InvalidName:
+        name = "not valid"
+
+        def __call__(self):
+            return None
+
+    with pytest.raises(ValueError, match="Invalid tool name"):
+        extensions.register_tool(InvalidName())
+
+
+def test_tool_class_must_be_zero_argument_and_is_not_instantiated():
+    calls = 0
+
+    class RequiresArgument:
+        def __init__(self, required):
+            nonlocal calls
+            calls += 1
+
+        def __call__(self):
+            return None
 
     with pytest.raises(TypeError, match="zero arguments"):
-        extensions.register_tool(_required_factory, name="example")
+        CodingExtensions().register_tool(RequiresArgument)
+    assert calls == 0
 
 
 def test_load_rolls_back_failed_extension_without_removing_existing_entries():
@@ -172,7 +239,7 @@ def test_load_rolls_back_failed_extension_without_removing_existing_entries():
         partial_handles.append(
             coding_extensions.register_command("partial", lambda: "partial")
         )
-        coding_extensions.register_tool(_make_object, name="partial_tool")
+        coding_extensions.register_tool(make_object)
         raise RuntimeError("entry point failed")
 
     with pytest.raises(RuntimeError, match="entry point failed"):

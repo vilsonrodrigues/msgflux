@@ -9,7 +9,6 @@ import msgspec
 
 PanelSide = Literal["left", "right"]
 PanelFactory = Callable[[], Any]
-ToolFactory = Callable[[], Any]
 # Callback signature: ``handler(argument_text: str) -> Any``.
 CommandHandler = Callable[[str], Any]
 
@@ -29,10 +28,9 @@ class CommandSpec(msgspec.Struct, frozen=True):
     preserve_status: bool = False
 
 
-class ToolFactorySpec(msgspec.Struct, frozen=True):
+class ToolSpec(msgspec.Struct, frozen=True):
     name: str
-    factory: ToolFactory
-    description: str = ""
+    tool: Any
 
 
 class RegistrationHandle:

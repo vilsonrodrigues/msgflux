@@ -1,4 +1,4 @@
-"""Instance-local registration for coding panels, commands, and tool factories."""
+"""Instance-local registration for coding panels, commands, and tools."""
 
 from __future__ import annotations
 
@@ -14,8 +14,7 @@ from msgflux.coding.extensions.records import (
     PanelSide,
     PanelSpec,
     RegistrationHandle,
-    ToolFactory,
-    ToolFactorySpec,
+    ToolSpec,
 )
 
 _TOOL_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_-]*$")
@@ -27,35 +26,27 @@ class CodingExtensions:
     def __init__(self) -> None:
         self._panels: dict[str, tuple[PanelSpec, object]] = {}
         self._commands: dict[str, tuple[CommandSpec, object]] = {}
-        self._tools: dict[str, tuple[ToolFactorySpec, object]] = {}
+        self._tools: dict[str, tuple[ToolSpec, object]] = {}
 
     @staticmethod
-    def _validate(spec: PanelSpec | CommandSpec | ToolFactorySpec) -> None:
-        if isinstance(spec, ToolFactorySpec):
+    def _validate(spec: PanelSpec | CommandSpec | ToolSpec) -> None:
+        if isinstance(spec, ToolSpec):
             CodingExtensions._validate_tool(spec)
             return
 
         CodingExtensions._validate_ui(spec)
 
     @staticmethod
-    def _validate_tool(spec: ToolFactorySpec) -> None:
+    def _validate_tool(spec: ToolSpec) -> None:
         if not isinstance(spec.name, str) or not _TOOL_NAME.fullmatch(spec.name):
             raise ValueError(f"Invalid tool name: {spec.name!r}.")
-        if not callable(spec.factory):
-            raise TypeError("Tool factory must be callable.")
-        if inspect.iscoroutinefunction(spec.factory):
-            raise TypeError("Tool factory must be synchronous.")
-        if not isinstance(spec.factory, type) and not inspect.isfunction(spec.factory):
-            raise TypeError(
-                "Tool factory must be a class or function; "
-                "callable instances are ambiguous."
-            )
-        try:
-            inspect.signature(spec.factory).bind()
-        except (TypeError, ValueError) as exc:
-            raise TypeError("Tool factory must accept zero arguments.") from exc
-        if not isinstance(spec.description, str):
-            raise TypeError("Tool description must be a string.")
+        if not callable(spec.tool):
+            raise TypeError("Tool must be callable.")
+        if isinstance(spec.tool, type):
+            try:
+                inspect.signature(spec.tool).bind()
+            except (TypeError, ValueError) as exc:
+                raise TypeError("Tool class must accept zero arguments.") from exc
 
     @staticmethod
     def _validate_ui(spec: PanelSpec | CommandSpec) -> None:
@@ -121,33 +112,45 @@ class CodingExtensions:
 
     def register_tool(
         self,
-        factory: ToolFactory,
-        *,
-        name: str | None = None,
-        description: str = "",
+        tool: Any,
     ) -> RegistrationHandle:
-        """Register a zero-argument tool factory without creating its tool."""
-        if name is None:
-            if not isinstance(factory, type):
-                raise ValueError(
-                    "Tool factories that are not classes require an explicit name."
-                )
-            try:
-                name = inspect.getattr_static(factory, "name")
-            except AttributeError as exc:
-                raise ValueError(
-                    "Tool class must define a static 'name' or name must be provided."
-                ) from exc
-        return self.register_many(tools=(ToolFactorySpec(name, factory, description),))[
-            0
-        ]
+        """Register a tool definition without creating or invoking it."""
+        name = self._tool_name(tool)
+        return self.register_many(tools=(ToolSpec(name, tool),))[0]
+
+    @staticmethod
+    def _tool_name(tool: Any) -> str:
+        config = getattr(tool, "tool_config", None)
+        if config is not None:
+            if isinstance(config, dict):
+                overridden = config.get("name_overridden")
+            else:
+                overridden = getattr(config, "name_overridden", None)
+            if overridden:
+                return overridden
+
+        name = getattr(tool, "name", None)
+        if name:
+            return name
+
+        name = getattr(tool, "__name__", None)
+        if name:
+            return name
+
+        get_module_name = getattr(tool, "get_module_name", None)
+        if callable(get_module_name):
+            name = get_module_name()
+            if name:
+                return name
+
+        return type(tool).__name__
 
     def register_many(
         self,
         *,
         panels: Iterable[PanelSpec] = (),
         commands: Iterable[CommandSpec] = (),
-        tools: Iterable[ToolFactorySpec] = (),
+        tools: Iterable[ToolSpec] = (),
     ) -> tuple[RegistrationHandle, ...]:
         """Register a batch atomically, rejecting invalid or duplicate names."""
         panel_specs, command_specs, tool_specs = (
@@ -185,7 +188,7 @@ class CodingExtensions:
     def _check_ids(specs: tuple[Any, ...], target: dict[str, Any], kind: str) -> None:
         seen: set[str] = set()
         for spec in specs:
-            key = spec.name if isinstance(spec, ToolFactorySpec) else spec.id
+            key = spec.name if isinstance(spec, ToolSpec) else spec.id
             if key in seen or key in target:
                 raise ValueError(f"Duplicate {kind} id: {key!r}.")
             seen.add(key)
@@ -207,6 +210,6 @@ class CodingExtensions:
         """Return command specifications in registration order."""
         return tuple(entry[0] for entry in self._commands.values())
 
-    def tools(self) -> tuple[ToolFactorySpec, ...]:
-        """Return tool factory specifications in registration order."""
+    def tools(self) -> tuple[ToolSpec, ...]:
+        """Return registered tool definitions in registration order."""
         return tuple(entry[0] for entry in self._tools.values())

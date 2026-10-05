@@ -142,29 +142,26 @@ def register(c: CodingExtensions):
     c.register_command("hello", lambda args: f"Hello {args}")
 ```
 
-Contrato implementado:
+Contrato implementado (simplificado em 2026-10-04):
 
 ```python
-register_tool(factory, *, name=None, description="") -> RegistrationHandle
+register_tool(tool) -> RegistrationHandle
 ```
 
-- Para uma classe, inferir `name` de seu atributo estático `name`.
-- Para factories sem esse atributo, exigir `name` explícito.
-- A fábrica não recebe parâmetros: dependências de execução usam a injeção
-  declarada já existente, como `Hidden[AgentWorkspace]`. Factories com
-  configuração podem ser closures; não adicionar outro resolvedor de DI.
-- Registro não chama a fábrica. Ela deve retornar uma nova tool por sessão,
-  com nome compilado igual ao registrado. Configuração e recursos da tool não
-  devem ser compartilhados entre sessões.
-- Guardar specs em `msgspec.Struct`, em `extensions/records.py`; o código do
-  registro fica em `extensions/registry.py`; `__init__.py` apenas reexporta.
-- O handle remove a declaração para composições futuras. Isso não remove uma
-  tool de uma execução já aberta; remoção runtime tem ownership próprio.
-- Copiar `tool_config` da instância e definir explicitamente `defer_loading`
-  conforme o perfil/CLI antes da compilação. `active` também precisa forçar
-  `False`, mesmo quando a classe declarou `True` por padrão.
-- Recursos de instâncias selecionadas devem integrar o fechamento da sessão,
-  incluindo falha parcial de construção, seguindo `close`/`aclose` existentes.
+- Aceitar função sync/async, classe ou instância callable. Não repetir nome ou
+  descrição em parâmetros do registro: usar os metadados nativos da tool.
+- Registro não executa funções nem constrói classes. Classes selecionadas são
+  construídas por sessão; funções e objetos fornecidos pertencem ao chamador.
+- Compilar pelo caminho existente da ToolLibrary, preservando schema, descrição
+  e injeção declarada, como `Hidden[AgentWorkspace]` com `runtime_inputs`.
+- Guardar `ToolSpec` em `msgspec.Struct` em `extensions/records.py`; registro em
+  `registry.py`; `__init__.py` apenas reexporta.
+- O handle remove a declaração para composições futuras, preservando ownership
+  e rollback do callback de registro.
+- O perfil/CLI determina active/deferred sem mutar a função, objeto ou classe
+  registrada. Manter loading, declaração e configuração do executor coerentes.
+- Somente instâncias construídas pelo host entram no fechamento da sessão,
+  inclusive em falha parcial. Objetos fornecidos continuam caller-owned.
 
 ### Perfil
 
@@ -275,8 +272,8 @@ necessária para que extensões `register(c)` adicionem tools selecionáveis.
 - O mesmo entry point pode registrar tools, comandos e painéis; print usa suas
   tools sem importar Textual. O registro só acontece uma vez por host.
 - Nomes inexistentes e colisões entre módulos, builtins e groups falham cedo,
-  antes de abrir recursos de sessão. Nome retornado pela factory é validado.
-- Duas threads criam instâncias distintas. Selecionar a mesma classe como active
+  antes de abrir recursos de sessão. Nome da definição compilada é validado.
+- Duas threads criam instâncias distintas de classes registradas. Selecionar a mesma classe como active
   e deferred em hosts diferentes não modifica atributos compartilhados.
 - Perfil, CLI parcial, CLI com ambas as listas, listas vazias e `-c` seguem a
   precedência documentada. Mudança de modo não pode duplicar tool.
@@ -287,7 +284,7 @@ necessária para que extensões `register(c)` adicionem tools selecionáveis.
   executa acesso ao host por fora do workspace não recebe isolamento só por ter
   sido registrada; seleção de nome não substitui autorização.
 - Background, TaskTool e commentary mantêm o comportamento atual.
-- Falha de uma factory fecha recursos anteriores; trocar de sessão e fechar a
+- Falha ao construir uma classe fecha recursos anteriores; trocar de sessão e fechar a
   aplicação fecha recursos selecionados. Cleanup de AgentExtension continua
   usando o lifecycle do Agent.
 - Rollback da função `register(c)` deve desfazer seu lote caso ela falhe, para não
@@ -297,3 +294,34 @@ necessária para que extensões `register(c)` adicionem tools selecionáveis.
 Validação: testes focados de coding e ToolLibrary, Ruff, MkDocs strict e
 regressão offline após congelar o código. Testes de integração usam factories
 observáveis, SQLite e workspace local; não precisam de chamadas pagas a modelos.
+
+## Ajuste aprovado: registrar a própria tool
+
+Após a recuperação da worktree em 2026-10-03, substituir a API de factories
+por `register_tool(tool)`: função, classe ou instância callable, sem repetir
+name/description no registro. Nome, descrição e schema seguem as declarações
+nativas da biblioteca. Apenas active/deferred continuam disponíveis.
+
+Ordem e arquivos:
+
+1. `coding/extensions/{records,registry,__init__}.py`: ToolSpec com origem,
+   inferência do nome sem construir classes; preservar handles e rollback.
+2. `coding/tools.py`: construir classes selecionadas por sessão, compilar
+   via ToolLibrary, aplicar loading na definição sem mutar a origem.
+   `nn/modules/tool/implementations.py`: usar o nome do tipo como fallback
+   para instâncias sem `name`, preservando o nome nativo de classes já
+   materializadas pelo host. Validar função, classe e objeto por integração.
+3. `coding/cli.py`: rastrear somente instâncias construídas pelo host para
+   cleanup. Funções e instâncias fornecidas pertencem ao chamador.
+4. Atualizar testes de registro/resolver/integração e exemplos em
+   `docs/learn/coding.md` e `docs/learn/nn/agent/extensions.md`.
+
+Riscos: nome dinâmico criado só no construtor não serve à seleção antecipada;
+instâncias compartilhadas mantêm estado e lifecycle do chamador; schema e
+loading devem continuar coerentes nas definições compiladas. Verificar
+funções sync/async, classes lazy, objetos configurados, workspace injetado,
+deferred discovery/call, isolamento de configurações e cleanup em erro.
+
+Erro DNS relatado: reproduzir separadamente com gpt-6-luna e web_fetch
+deferred, identificando se a origem é o provider, parser ou página alvo.
+Não atribuir falha de rede ao loading sem evidência.

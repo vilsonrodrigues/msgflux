@@ -322,12 +322,7 @@ the app run locally and are not sent to the agent. Synchronous handlers run
 outside the UI loop; asynchronous handlers are awaited.
 
 For the CLI, put registration in an importable Python module and pass its entry
-point explicitly. Tool factories are synchronous, take no arguments, and return
-a fresh tool instance for each session. A class can provide its static `name`;
-functions need an explicit `name`. Registration stores the factory without
-instantiating it. The selected factory runs when session resources are opened: on the first
-prompt for a new draft, or when reopening an existing session. Optional `close()` or `aclose()` methods on created tools
-are used for session cleanup.
+point explicitly. Register the callable that should handle tool calls:
 
 ```python
 # my_vulcano.py
@@ -349,14 +344,22 @@ class SummarizeTool:
 
 
 def register(c: CodingExtensions):
-    c.register_tool(SummarizeTool, description="Summarize a workspace file")
+    c.register_tool(SummarizeTool)
     c.register_command("echo", lambda text: text)
 ```
 
 The `runtime_inputs` declaration injects `workspace` on each call, while
 `Hidden[AgentWorkspace]` excludes it from the model-facing schema. The workspace
-enforces the session grants. A factory may also be a zero-argument function that closes
-around configuration, provided it returns a fresh tool instance.
+enforces the session grants.
+
+Tool names come from `tool_config.name_overridden`, `name`, `__name__`,
+`get_module_name()`, or the callable's type name, in that order. Classes must
+have a zero-argument constructor and are instantiated once per session. A
+function is the tool itself; registering it does not call it, and the runtime
+invokes it for each tool call. Async functions work the same way. A callable
+instance is also accepted and remains caller-owned: the host shares that
+instance and does not close it during session cleanup. The host manages cleanup
+for class instances it creates.
 
 ```bash
 uv run --extra coding vulcano --model openai/gpt-4.1-mini \

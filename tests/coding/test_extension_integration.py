@@ -153,7 +153,10 @@ async def test_session_switch_creates_distinct_tools_and_preserves_lazy_drafts(
         assert not built
         assert not (state / "threads").exists()
         [event async for event in self.coding_session.stream("first")]
-        assert built[0].tool_config["defer_loading"] is False
+        assert built[0].tool_config["defer_loading"] is True
+        assert not self.host.session.agent.tool_library.get_tool_definition(
+            "echo_tool"
+        ).loading.deferred
         await self.host.select()
         assert closed == built
         assert len(built) == 1
@@ -200,12 +203,19 @@ async def test_failed_factory_closes_previously_created_async_tool(
         async def aclose(self):
             closed.append(self)
 
-    def fail():
-        raise RuntimeError("factory unavailable")
+    class BrokenTool:
+        name = "broken"
+
+        def __init__(self):
+            raise RuntimeError("factory unavailable")
+
+        def __call__(self) -> str:
+            """Return a marker."""
+            return "unreachable"
 
     def register(c):
         c.register_tool(Resource)
-        c.register_tool(fail, name="broken")
+        c.register_tool(BrokenTool)
 
     entry = _install(monkeypatch, register)
     args = _parser().parse_args(

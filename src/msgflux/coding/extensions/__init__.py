@@ -5,7 +5,7 @@ from msgflux.coding.extensions.records import (
     PanelSide,
     PanelSpec,
     RegistrationHandle,
-    ToolFactorySpec,
+    ToolSpec,
 )
 from msgflux.coding.extensions.registry import CodingExtensions
 
@@ -15,5 +15,5 @@ __all__ = [
     "PanelSpec",
     "PanelSide",
     "RegistrationHandle",
-    "ToolFactorySpec",
+    "ToolSpec",
 ]

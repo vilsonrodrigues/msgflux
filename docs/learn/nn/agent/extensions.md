@@ -141,9 +141,11 @@ class CustomerActions(nn.AgentExtension):
 
 `tool_config` controls the tool's regular ToolLibrary behavior. An
 `AgentExtension` installs the tools returned by `tools()` when the extension is
-registered. The coding host's `CodingExtensions.register_tool` API is a separate
-factory registry that supports selecting extension tools by name and creating
-fresh instances for each coding session; it does not activate an
+registered. The coding host's `CodingExtensions.register_tool(tool)` accepts
+the tool callable itself: functions are invoked for each tool call, classes are
+constructed once per session, and supplied callable instances remain owned by
+the caller and are shared without host cleanup. This coding registry selects
+tools by their configured or inferred name; it does not activate an
 `AgentExtension` or its hooks.
 ## Register And Remove
 

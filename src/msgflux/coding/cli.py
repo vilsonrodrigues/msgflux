@@ -133,22 +133,6 @@ def _load_extensions(specs: list[str]) -> CodingExtensions:
     return extensions
 
 
-def _session_tool_factories(specs, resources):
-    """Track only constructed extension tools for the session's cleanup path."""
-
-    def tracked_factory(spec):
-        def create():
-            tool = spec.factory()
-            resources.append(tool)
-            return tool
-
-        return create
-
-    return tuple(
-        msgspec.structs.replace(spec, factory=tracked_factory(spec)) for spec in specs
-    )
-
-
 def _account_command(argv: list[str]) -> None:
     parser = argparse.ArgumentParser(prog="vulcano account")
     parser.add_argument("--state-dir", type=Path, default=Path.home() / ".msgflux")
@@ -338,7 +322,7 @@ async def _run(args: argparse.Namespace) -> None:  # noqa: C901
         profile.tools, active=args.tools, deferred=args.deferred_tools
     )
     extensions = _load_extensions(args.extension)
-    validate_tool_selection(selection, tool_factories=extensions.tools())
+    validate_tool_selection(selection, tool_specs=extensions.tools())
     model_path = args.model or profile.model or config.default_model
     if model_path is None:
         raise ValueError("Set default_model in config.toml or pass --model")
@@ -408,9 +392,8 @@ async def _run(args: argparse.Namespace) -> None:  # noqa: C901
             )
             tools = resolve_tools(
                 selection,
-                tool_factories=_session_tool_factories(
-                    extensions.tools(), custom_tools
-                ),
+                tool_specs=extensions.tools(),
+                on_tool_created=custom_tools.append,
                 model=model,
                 allow_edits=not args.read_only,
                 has_executor=workspace.supports_execution and not args.read_only,
