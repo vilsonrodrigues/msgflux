@@ -46,12 +46,11 @@ async def _run(args):
         connector=connect,
     )
     try:
-        session, controller = await host.select(args.thread)
+        session, _ = await host.select(args.thread)
         app = CodingApp(
             session,
             host=host,
             workspace=session.workspace_root or host.workspace,
-            approval_controller=controller,
             observe_immediately=not host.is_new,
         )
         await app.run_async()
