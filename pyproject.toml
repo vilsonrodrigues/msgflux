@@ -75,6 +75,7 @@ doc = [
 
 [project.scripts]
 msgflux-service = "msgflux.runtime.service.local.cli:main"
+vulcano = "msgflux.coding.remote_cli:main"
 
 [project.urls]
 Homepage = "https://github.com/msgflux/msgflux"
@@ -82,6 +83,7 @@ Documentation = "https://github.com/msgflux/msgflux"
 Repository = "https://github.com/msgflux/msgflux"
 
 [project.optional-dependencies]
+coding = ["textual>=6.0.0"]
 openai = []
 plot = [
     "code2mermaid>=0.3.0",

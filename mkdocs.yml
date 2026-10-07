@@ -175,6 +175,7 @@ nav:
         - learn/nn/agent/service-http.md
         - learn/nn/agent/service-local.md
         - learn/nn/agent/coding-session.md
+        - learn/coding-remote.md
         - learn/nn/agent/prompt-cache.md
         - learn/nn/agent/reasoning.md
         - learn/nn/agent/debug.md
