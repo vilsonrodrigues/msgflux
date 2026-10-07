@@ -14,9 +14,12 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.widget import Widget
-from textual.widgets import Footer, Header, OptionList, Static, TextArea
+from textual.widgets import Button, Footer, Header, OptionList, Static, TextArea
 from textual.widgets.option_list import Option
 
+from msgflux.coding.tui.approval import ApprovalCard
+from msgflux.coding.tui.approval import field as approval_field
+from msgflux.coding.tui.approval import identity as approval_identity
 from msgflux.coding.tui.clipboard import (
     copy_system_clipboard,
     export_text,
@@ -53,7 +56,9 @@ class CodingApp(App[None]):
     #command-hints { height: 8; border: none; display: none; }
     #status { height: 1; padding: 0 1; color: $text-muted; }
     .tool-card { border: round $warning; margin: 1 0; padding: 0 1; }
-    .approval-card { border: round $warning; margin: 1 0; padding: 1; }
+    .approval-card { height: auto; border: round $warning; margin: 1 0; padding: 1; }
+    .approval-card Horizontal { height: 3; }
+    .approval-card Button { width: auto; min-width: 12; }
     .error { color: $error; }
     """
     BINDINGS = [
@@ -114,6 +119,12 @@ class CodingApp(App[None]):
         self._tool_cards = {}
         self._task_cards = {}
         self._selected_transcript_text = ""
+        self._paused_run_id: str | None = None
+        self._approval_cards: dict[tuple[str, str], ApprovalCard] = {}
+        self._approval_refresh_tasks: dict[str, asyncio.Task[None]] = {}
+        self._approval_tasks: set[asyncio.Task[None]] = set()
+        self._session_generation = 0
+        self._resume_buttons: dict[str, Button] = {}
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -165,11 +176,16 @@ class CodingApp(App[None]):
 
     async def _observe_session(self) -> None:
         delay = 0.25
+        connected_before = False
         while True:
             try:
+                if connected_before:
+                    self._session_generation += 1
+                    self._approval_refresh_tasks.clear()
                 async with self.coding_session.watch() as watcher:
                     await self._replace_from_snapshot(watcher.snapshot)
                     self._observer_ready.set()
+                    connected_before = True
                     delay = 0.25
                     async for event in watcher:
                         await self._render_remote_event(event)
@@ -180,29 +196,38 @@ class CodingApp(App[None]):
             self._observer_ready.clear()
             await asyncio.sleep(delay)
             delay = min(delay * 2, 5.0)
-            reconnect = getattr(self.host, "reconnect", None)
-            if callable(reconnect):
-                try:
-                    replacement = await reconnect()
-                    if replacement is not None:
-                        self.coding_session = replacement
-                except asyncio.CancelledError:
-                    raise
-                except Exception as exc:
-                    self.query_one("#status", Static).update(
-                        f"Backend unavailable: {exc}"
-                    )
+            await self._reconnect_host()
+
+    async def _reconnect_host(self) -> None:
+        reconnect = getattr(self.host, "reconnect", None)
+        if not callable(reconnect):
+            return
+        try:
+            replacement = await reconnect()
+            if replacement is not None:
+                self.coding_session = replacement
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            self.query_one("#status", Static).update(f"Backend unavailable: {exc}")
 
     async def _replace_from_snapshot(self, snapshot: Any) -> None:  # noqa: C901
+        snapshot_value = (
+            snapshot.get
+            if isinstance(snapshot, Mapping)
+            else lambda key, default=None: getattr(snapshot, key, default)
+        )
         transcript = self.query_one("#transcript", VerticalScroll)
         await transcript.remove_children()
+        self._approval_cards.clear()
+        self._resume_buttons.clear()
         self._assistant_widget = self._commentary_widget = None
         self._assistant_text = self._commentary_text = ""
         self._tool_cards.clear()
         self._task_cards.clear()
         self._active_run_id = None
         self._run_active = False
-        for item in getattr(snapshot, "messages", None) or ():
+        for item in snapshot_value("messages") or ():
             if not isinstance(item, Mapping):
                 continue
             role = item.get("role")
@@ -227,7 +252,7 @@ class CodingApp(App[None]):
                     f"{role.title()}: {_plain_content(content)}",
                     classes=f"{role}-message",
                 )
-        for run in getattr(snapshot, "active_runs", ()):
+        for run in snapshot_value("active_runs", ()):
             if not isinstance(run, Mapping):
                 continue
             source_path = run.get("source_path", ())
@@ -243,6 +268,25 @@ class CodingApp(App[None]):
                 self._assistant_widget = await self._append_transcript(
                     f"Assistant: {self._assistant_text}", classes="assistant-message"
                 )
+        self._paused_run_id = None
+        snapshot_approvals = snapshot_value("approvals", ()) or ()
+        approval_run_ids = set()
+        for record in snapshot_approvals:
+            binding = approval_field(record, "binding", {}) or {}
+            run_id = approval_field(binding, "run_id") or approval_field(
+                record, "run_id"
+            )
+            if run_id:
+                approval_run_ids.add(str(run_id))
+        if not self._active_run_id and approval_run_ids:
+            self._paused_run_id = next(iter(approval_run_ids))
+        for run_id in approval_run_ids:
+            self._schedule_approval_refresh(run_id, self._session_generation)
+        if self._paused_run_id:
+            self.query_one("#status", Static).update(
+                f"Run paused · approval review required · {self._paused_run_id}"
+            )
+            await self._update_resume_button(self._paused_run_id)
         self.query_one("#status", Static).update(
             f"Working…  (Esc to cancel) · {self._active_run_id}"
             if self._active_run_id
@@ -257,12 +301,18 @@ class CodingApp(App[None]):
         if isinstance(event, Mapping):
             source_path = event.get("source_path", source_path)
         is_root_event = len(source_path) <= 1 and not data.get("parent_run_id")
+        generation = self._session_generation
+        if is_root_event and run_id and kind == "tool.approval_resolved":
+            self._schedule_approval_refresh(run_id, generation)
         if (
             kind in {"run.started", "run.start", "run.resume"}
             and run_id
             and is_root_event
         ):
             self._active_run_id, self._run_active = run_id, True
+            if kind == "run.resume":
+                self._paused_run_id = None
+                await self._update_resume_button(run_id)
         # Child tool/task events remain useful; child messages must not appear as
         # the foreground assistant response.
         if (
@@ -278,6 +328,8 @@ class CodingApp(App[None]):
         terminal = {"run.end", "run.error", "run.interrupted", "run.paused"}
         if kind in terminal and is_root_event and run_id == self._active_run_id:
             self._active_run_id, self._run_active = None, False
+            if kind == "run.paused":
+                self._paused_run_id = run_id
             outcome = str(data.get("outcome", ""))
             failed = "error" in kind or outcome in {"failed", "error"}
             self.query_one("#status", Static).update(
@@ -305,7 +357,13 @@ class CodingApp(App[None]):
     async def on_unmount(self) -> None:
         tasks = [
             t
-            for t in (self._observer_task, self._admission_task, *self._command_tasks)
+            for t in (
+                self._observer_task,
+                self._admission_task,
+                *self._command_tasks,
+                *self._approval_tasks,
+                *self._approval_refresh_tasks.values(),
+            )
             if t is not None and not t.done()
         ]
         for task in tasks:
@@ -360,6 +418,15 @@ class CodingApp(App[None]):
             task = asyncio.create_task(self._steer_prompt(self._active_run_id, prompt))
             self._command_tasks.add(task)
             task.add_done_callback(self._command_tasks.discard)
+            return
+        if self._paused_run_id and (
+            self._run_reviews(self._paused_run_id)
+            or self._paused_run_id in self._approval_refresh_tasks
+        ):
+            self.query_one("#status", Static).update(
+                "Resume the paused run before starting another run"
+            )
+            composer.load_text(prompt)
             return
         await self._append_transcript(f"You: {prompt}", classes="user-message")
         request_id = uuid.uuid4().hex
@@ -549,6 +616,8 @@ class CodingApp(App[None]):
         if self.host is None:
             raise ValueError("This app has no session host")
         old = self._observer_task
+        self._session_generation += 1
+        self._approval_refresh_tasks.clear()
         if old is not None:
             old.cancel()
             await asyncio.gather(old, return_exceptions=True)
@@ -563,6 +632,9 @@ class CodingApp(App[None]):
         self.query_one("#workspace-path", Static).update(self.workspace)
         self.query_one("#session-list", Static).update(str(session.thread_id))
         self._waiting_for_approval = False
+        self._paused_run_id = None
+        self._approval_cards.clear()
+        self._resume_buttons.clear()
         self._tool_cards.clear()
         self._task_cards.clear()
         await self._refresh_sessions()
@@ -676,10 +748,225 @@ class CodingApp(App[None]):
 
     async def _handle_pause_event(self, event: Any, data: Mapping[str, Any]) -> None:
         run_id = _event_run_id(event, data)
-        await self._append_transcript(
-            f"Run {run_id or '(unknown)'} is paused pending service-side approval.",
-            classes="approval-card",
+        kind, _ = _event_parts(event)
+        if (
+            run_id
+            and run_id == self._active_run_id
+            and kind == "tool.approval_required"
+        ):
+            self._paused_run_id = run_id
+            self._schedule_approval_refresh(run_id, self._session_generation)
+        elif run_id and kind == "run.paused" and self._paused_run_id != run_id:
+            self._paused_run_id = run_id
+            reason = data.get("reason")
+            message = f"Run {run_id} is paused" + (f": {reason}" if reason else ".")
+            await self._append_transcript(message, classes="approval-card")
+
+    def _schedule_approval_refresh(self, run_id: str, generation: int) -> None:
+        previous = self._approval_refresh_tasks.get(run_id)
+        if previous is not None and not previous.done():
+            return
+        task = asyncio.create_task(self._refresh_approvals(run_id, generation))
+        self._approval_refresh_tasks[run_id] = task
+        self._approval_tasks.add(task)
+        task.add_done_callback(
+            lambda done: (
+                self._approval_refresh_tasks.pop(run_id, None)
+                if self._approval_refresh_tasks.get(run_id) is done
+                else None
+            )
         )
+        task.add_done_callback(self._approval_tasks.discard)
+
+    async def _refresh_approvals(self, run_id: str, generation: int) -> None:
+        # A pause delta can arrive before the checkpoint and journal transaction
+        # are visible. Retry briefly while the server settles that admission.
+        for attempt in range(8):
+            if await self._refresh_approval_attempt(
+                run_id, generation, final_attempt=attempt == 7
+            ):
+                return
+            if attempt < 7:
+                await asyncio.sleep(0.15 * (attempt + 1))
+        if generation == self._session_generation:
+            await self._append_transcript(
+                "Run is paused without reviewable approvals. Refresh the session "
+                "to check server state.",
+                classes="error",
+            )
+
+    async def _refresh_approval_attempt(
+        self, run_id: str, generation: int, *, final_attempt: bool
+    ) -> bool:
+        if generation != self._session_generation:
+            return True
+        try:
+            reviews = await self.coding_session.approval_reviews(run_id)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            if generation != self._session_generation:
+                return True
+            if final_attempt:
+                await self._append_transcript(
+                    f"Approval status unavailable: {exc}. Refresh the session "
+                    "to check server state.",
+                    classes="error",
+                )
+                return True
+            return False
+        if generation != self._session_generation:
+            return True
+        for review in reviews:
+            await self._upsert_approval(run_id, review, generation=generation)
+        if reviews:
+            await self._update_resume_button(run_id)
+            return True
+        return False
+
+    async def _upsert_approval(
+        self, run_id: str, review: Any, *, generation: int | None = None
+    ) -> None:
+        if generation is None:
+            generation = self._session_generation
+        if generation != self._session_generation:
+            return
+        request_id = str(approval_field(review, "request_id", ""))
+        if not request_id:
+            return
+        key = (run_id, request_id)
+        card = self._approval_cards.get(key)
+        if card is None:
+            card = ApprovalCard(run_id, review)
+            self._approval_cards[key] = card
+            await self.query_one("#transcript", VerticalScroll).mount(card)
+            if generation != self._session_generation:
+                if self._approval_cards.get(key) is card:
+                    self._approval_cards.pop(key)
+                if card.is_mounted:
+                    await card.remove()
+                return
+        card.update_review(review)
+        await self._update_resume_button(run_id)
+
+    def _run_reviews(self, run_id: str) -> list[ApprovalCard]:
+        return [
+            card
+            for (candidate, _), card in self._approval_cards.items()
+            if candidate == run_id
+        ]
+
+    async def _update_resume_button(self, run_id: str) -> None:
+        cards = self._run_reviews(run_id)
+        resolved = (
+            bool(cards)
+            and all(card.status.lower() in {"approved", "denied"} for card in cards)
+            and self._paused_run_id == run_id
+        )
+        safe = approval_identity(run_id)
+        button = self._resume_buttons.get(run_id)
+        if button is None and cards:
+            button = Button("Resume run", id=f"resume-{safe}", disabled=not resolved)
+            self._resume_buttons[run_id] = button
+            generation = self._session_generation
+            await self.query_one("#transcript", VerticalScroll).mount(button)
+            if generation != self._session_generation and button.is_mounted:
+                await button.remove()
+        elif button is not None:
+            button.disabled = not resolved
+
+    async def on_button_pressed(self, event) -> None:
+        button_id = event.button.id or ""
+        if button_id.startswith("approve-") or button_id.startswith("deny-"):
+            request_id = button_id.split("-", 1)[1]
+            card = next(
+                (
+                    item
+                    for (_, rid), item in self._approval_cards.items()
+                    if approval_identity(rid) == request_id
+                ),
+                None,
+            )
+            if card is not None:
+                if not card.busy:
+                    card.set_busy(busy=True)
+                    task = asyncio.create_task(
+                        self._decide_approval(
+                            card, approved=button_id.startswith("approve-")
+                        )
+                    )
+                    self._approval_tasks.add(task)
+                    task.add_done_callback(self._approval_tasks.discard)
+            return
+        if button_id.startswith("resume-"):
+            run_id = next(
+                (
+                    rid
+                    for rid in self._resume_buttons
+                    if approval_identity(rid) == button_id[len("resume-") :]
+                ),
+                None,
+            )
+            if run_id is not None:
+                button = event.button
+                button.disabled = True
+                task = asyncio.create_task(self._resume_approved_run(run_id))
+                self._approval_tasks.add(task)
+                task.add_done_callback(self._approval_tasks.discard)
+
+    async def _decide_approval(self, card: ApprovalCard, *, approved: bool) -> None:
+        if self._approval_cards.get((card.run_id, card.request_id)) is not card:
+            return
+        generation = self._session_generation
+        run_id, request_id, revision = card.run_id, card.request_id, card.revision
+        try:
+            result = await self.coding_session.decide_approval(
+                run_id, request_id, approved=approved, expected_revision=revision
+            )
+        except Exception as exc:
+            if generation == self._session_generation:
+                card.set_busy(busy=False)
+                await self._append_transcript(
+                    f"Decision result is unknown: {exc}. Refresh approval status "
+                    f"before retrying; reuse revision {revision}.",
+                    classes="error",
+                )
+                self._schedule_approval_refresh(run_id, generation)
+            return
+        if generation != self._session_generation:
+            return
+        card.set_busy(busy=False)
+        await self._upsert_approval(run_id, result, generation=generation)
+
+    async def _resume_approved_run(self, run_id: str) -> None:
+        if (
+            not self._run_reviews(run_id)
+            or not all(
+                card.status.lower() in {"approved", "denied"}
+                for card in self._run_reviews(run_id)
+            )
+            or self._paused_run_id != run_id
+        ):
+            return
+        generation = self._session_generation
+        try:
+            await self.coding_session.resume(run_id)
+        except Exception as exc:
+            if generation == self._session_generation:
+                button = self._resume_buttons.get(run_id)
+                if button is not None:
+                    button.disabled = False
+                await self._append_transcript(
+                    f"Unable to resume run: {exc}. Refresh the session "
+                    "to check server state.",
+                    classes="error",
+                )
+            return
+        if generation == self._session_generation:
+            self._paused_run_id = None
+            await self._update_resume_button(run_id)
+            if self._active_run_id == run_id:
+                self.query_one("#status", Static).update(f"Run resumed · {run_id}")
 
     async def _render_tool_event(self, event, kind, data):
         call_id = data.get("tool_call_id")

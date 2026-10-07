@@ -44,6 +44,13 @@ reasoning_effort = "medium"
 [profiles.lite.tools]
 active = ["workspace"]
 deferred = ["web_fetch"]
+
+# Optional server-owned approval rules. Use concrete tool names.
+[profiles.review]
+approvals = ["apply_patch"]
+
+[profiles.review.tools]
+active = ["workspace"]
 ```
 
 Workspace tools are resolved using the provider's existing capabilities. Bash
@@ -59,6 +66,25 @@ owner. The original experimental branch retains the earlier CLI extension,
 account, and subagent work; this remote entry point does not yet expose all of
 those controls. Profiles requesting configured subagents require a host factory
 that supplies them.
+
+`approvals` is an optional list of concrete tool names owned by the backend
+configuration. Each name must resolve to an available executable foreground
+tool in the selected profile. For example, the `review` profile above pauses
+before `apply_patch` runs and stores its approval journal at
+`threads/<thread-id>/approvals.sqlite3`. The read-only profile keeps its
+workspace permission ceiling and does not enable the profile's approval policy.
+The local service acts as the trusted reviewer under the stable `local-user`
+principal; no frontend flag chooses that identity. Approval review shows the
+prepared change and tool call through the service API; it does not expose raw
+tool arguments. After every pending request has a decision, explicitly resume
+the run. Recording a decision does not resume execution automatically.
+
+With no `approvals` entry, tools keep their existing execution behavior and the
+backend does not create an approval journal.
+
+Start the review profile with `uv run vulcano --profile review`. Restart the
+backend after changing its configuration; an existing daemon keeps the policy
+it loaded at startup.
 
 Applications can supply another trusted service factory:
 
@@ -98,17 +124,19 @@ rediscovers it without resending the prompt. An uncertain admission displays its
 request ID for reconciliation rather than automatically retrying the POST.
 
 `/continue` requests the service's existing recovery path. It does not bypass
-worker-quiescence or command receipt checks. Service-side approvals are shown
-as pending; recording approval decisions from this remote frontend remains a
-later integration. It never accesses local approval/checkpoint stores to decide
-on behalf of the backend.
+worker-quiescence or command receipt checks. Approval cards show the server's
+verified diff and offer **Approve** and **Deny**. **Resume run** becomes available
+after every request in the batch is resolved. Reopening a paused conversation
+fetches its reviews again from the service. The frontend never reads local
+approval or checkpoint stores to make a decision.
 
 ## Integration Checks
 
 ```bash
 uv run pytest -q tests/coding/test_remote_host.py \
   tests/coding/test_remote_backend.py tests/coding/test_remote_tui.py \
-  tests/coding/test_remote_socket.py
+  tests/coding/test_remote_socket.py tests/coding/test_remote_approvals.py \
+  tests/coding/test_remote_approval_socket.py
 MSGFLUX_LIVE_CODING=1 uv run pytest -q tests/coding/test_remote_live.py
 ```
 
