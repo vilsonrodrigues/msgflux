@@ -17,6 +17,7 @@ class ToolSelection(msgspec.Struct, frozen=True, forbid_unknown_fields=True):
 
 class CodingProfile(msgspec.Struct, frozen=True, forbid_unknown_fields=True):
     tools: ToolSelection = ToolSelection()
+    approvals: tuple[str, ...] = ()
     model: str | None = None
     reasoning_effort: str | None = None
 
@@ -115,6 +116,10 @@ def _validate_config(config: CodingConfig) -> None:  # noqa: C901
         if not name:
             raise ValueError("Profile names must be non-empty")
         _validate_tool_selection(profile.tools, f"Profile {name!r}")
+        if any(not item for item in profile.approvals):
+            raise ValueError(f"Profile {name!r} has an empty approval tool name")
+        if len(set(profile.approvals)) != len(profile.approvals):
+            raise ValueError(f"Profile {name!r} has duplicate approval tools")
         if profile.model is not None and "/" not in profile.model:
             raise ValueError(f"Profile {name!r} model must be provider/model-id")
     for provider, account in config.active_accounts.items():

@@ -18,7 +18,12 @@ from msgflux.coding.workspace import open_coding_workspace
 from msgflux.data.stores import SQLiteCheckpointStore
 from msgflux.models import Model
 from msgflux.nn import Agent
-from msgflux.runtime import AgentInbox, SQLiteAgentInboxStore
+from msgflux.runtime import (
+    AgentApprovals,
+    AgentInbox,
+    SQLiteAgentInboxStore,
+    SQLiteApprovalStore,
+)
 from msgflux.runtime.service import AgentService, AgentSession, SQLiteServiceStore
 from msgflux.tasks import SQLiteTaskStore
 
@@ -56,6 +61,35 @@ async def _stop_background(agent, tasks):
         await asyncio.gather(*futures, return_exceptions=True)
 
 
+def _configure_approvals(agent, profile, folder, *, read_only):
+    names = profile.approvals if not read_only else ()
+    if not names:
+        return None, None
+
+    library = agent.tool_library
+    missing = sorted(set(names) - set(library.get_tool_names()))
+    if missing:
+        raise ValueError(f"Approval tool is not available in profile {missing[0]!r}")
+    for name in names:
+        definition = library.get_tool_definition(name)
+        if (
+            definition.dispatch.name != "foreground"
+            or definition.feedback.name == "call_as_response"
+        ):
+            raise ValueError(
+                f"Approval tool {name!r} must be executable and foreground"
+            )
+
+    store = SQLiteApprovalStore(folder / "approvals.sqlite3")
+    policy = AgentApprovals(
+        store,
+        dict.fromkeys(names, "coding-profile-v1"),
+        "coding-profile-v1",
+    )
+    agent.approvals = policy
+    return store, policy
+
+
 async def _create_session(thread, *, state_dir, config, accounts, profile, read_only):
     model_path = profile.model or config.default_model or "openai-codex/gpt-6-luna"
     effort = profile.reasoning_effort or config.reasoning_effort or "medium"
@@ -66,14 +100,16 @@ async def _create_session(thread, *, state_dir, config, accounts, profile, read_
     folder = state_dir / "threads" / thread.thread_id
     folder.mkdir(parents=True, exist_ok=True)
     checkpoint_path = folder / "checkpoints.sqlite3"
-    model = workspace = registry = checkpoints = tasks = inbox_store = agent = None
+    model = workspace = registry = None
+    checkpoints = tasks = inbox_store = None
+    approvals = agent = None
 
     async def close():
         try:
             await _stop_background(agent, tasks)
         finally:
             await _close_resources(
-                (model, workspace, registry, checkpoints, tasks, inbox_store)
+                (model, workspace, registry, checkpoints, tasks, inbox_store, approvals)
             )
 
     try:
@@ -115,9 +151,21 @@ async def _create_session(thread, *, state_dir, config, accounts, profile, read_
             agent_inbox=inbox,
             config={"stream": True},
         )
+        approvals, approval_policy = _configure_approvals(
+            agent, profile, folder, read_only=read_only
+        )
         agent.tool_library.set_task_store(tasks)
         agent.register_extension("coding_checkpoints", CodingCheckpointExtension())
-        return AgentSession(agent, task_store=tasks, agent_inbox=inbox, on_close=close)
+        return AgentSession(
+            agent,
+            task_store=tasks,
+            agent_inbox=inbox,
+            scope_factory=(lambda scope: scope.with_overrides(principal="local-user"))
+            if approval_policy is not None
+            else None,
+            approval_reviewer="local-user" if approval_policy is not None else None,
+            on_close=close,
+        )
     except BaseException:
         await close()
         raise
