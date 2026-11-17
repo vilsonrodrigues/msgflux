@@ -1,0 +1,26 @@
+Fix summarize_orders(events) in reconcile.py using only the Python standard library.
+
+Contract:
+* events is a list. Ignore non-dict rows and invalid envelopes. An envelope requires
+  id: a nonempty string after stripping; revision: a nonnegative int (bool is invalid);
+  status: exactly "paid" or "cancelled". Group by the stripped id.
+* Select exactly one winner per id: highest revision; ties use the last occurrence.
+  Select BEFORE validating the paid payload. A malformed winner suppresses earlier rows.
+* A cancelled winner contributes nothing and needs no paid payload.
+* A paid winner needs a nonempty stripped customer string; quantity must be a positive
+  int (bool and float invalid); unit_price must be a string accepted by Decimal,
+  finite and nonnegative. Invalid payloads are ignored, with no fallback to older rows.
+* Round each quantity * unit_price to cents with ROUND_HALF_UP BEFORE summing by customer.
+* Return a list sorted by customer ascending, each entry exactly:
+  {"customer": str, "order_count": int, "total": str with exactly two decimal places}.
+  Zero-price paid orders count. Ignore malformed rows rather than raising.
+* Input magnitudes are bounded: absolute integer values <= 1000, finite unit_price
+  magnitude <= 1000000, and at most six decimal places. Arbitrarily large exponents
+  and integers are outside this task; do not implement support for them.
+* Do not mutate the input. The function must be deterministic and perform no I/O.
+
+Inspect the existing implementation and tests, fix it, and run the tests. You may add
+regression tests; keep existing tests unchanged. Modify only reconcile.py and new files
+under tests/. Work only inside this workspace, do not inspect directories outside it.
+Use whichever available tools are most effective. Finish with a concise change and
+validation summary. Tests used for final scoring are not present in this workspace.

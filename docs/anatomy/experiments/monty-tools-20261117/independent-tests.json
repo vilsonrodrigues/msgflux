@@ -1,0 +1,74 @@
+[
+  {
+    "run": "r1-additive",
+    "returncode": 0,
+    "tests": 22,
+    "scope_ok": true,
+    "forbidden_files": [],
+    "generated_file_count": 8
+  },
+  {
+    "run": "r1-bucket",
+    "returncode": 0,
+    "tests": 11,
+    "scope_ok": true,
+    "forbidden_files": [],
+    "generated_file_count": 10
+  },
+  {
+    "run": "r1-direct",
+    "returncode": 0,
+    "tests": 28,
+    "scope_ok": true,
+    "forbidden_files": [],
+    "generated_file_count": 6
+  },
+  {
+    "run": "r2-additive",
+    "returncode": 0,
+    "tests": 36,
+    "scope_ok": true,
+    "forbidden_files": [],
+    "generated_file_count": 13
+  },
+  {
+    "run": "r2-bucket",
+    "returncode": 0,
+    "tests": 21,
+    "scope_ok": true,
+    "forbidden_files": [],
+    "generated_file_count": 6
+  },
+  {
+    "run": "r2-direct",
+    "returncode": 0,
+    "tests": 21,
+    "scope_ok": true,
+    "forbidden_files": [],
+    "generated_file_count": 8
+  },
+  {
+    "run": "r3-additive",
+    "returncode": 0,
+    "tests": 12,
+    "scope_ok": true,
+    "forbidden_files": [],
+    "generated_file_count": 8
+  },
+  {
+    "run": "r3-bucket",
+    "returncode": 0,
+    "tests": 32,
+    "scope_ok": true,
+    "forbidden_files": [],
+    "generated_file_count": 10
+  },
+  {
+    "run": "r3-direct",
+    "returncode": 0,
+    "tests": 31,
+    "scope_ok": true,
+    "forbidden_files": [],
+    "generated_file_count": 13
+  }
+]
