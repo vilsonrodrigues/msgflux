@@ -378,3 +378,41 @@ during cleanup still propagates.
 Tool buckets, argument restoration, runtime injection, abort checks, and
 execution telemetry remain part of the library core because every extension
 must preserve those invariants.
+
+## Scope Nested Tool Calls
+
+An operator's injected `ToolLibraryHandle` retains its messages, vars and
+activity recorder when calling another tool. Its `get_tool_call_id()` identifies
+the outer invocation. When an operator calls the same tool more than once,
+create a copied handle with a distinct id for each nested invocation:
+
+```python
+from msgflux.tools import Hidden, ToolLibraryOperator
+
+
+class CompareProducts(ToolLibraryOperator):
+    """Compare two exact products through the registered multiply tool."""
+
+    name = "compare_products"
+
+    async def acall(self, *, handle: Hidden) -> list[int]:
+        parent_id = handle.get_tool_call_id()
+        results = []
+        for index, (a, b) in enumerate([(2, 3), (4, 5)]):
+            nested = handle.with_call_id(f"{parent_id}:{index}")
+            results.append(await nested.acall("multiply", a=a, b=b))
+        return results
+
+    def __call__(self, *, handle: Hidden) -> list[int]:
+        parent_id = handle.get_tool_call_id()
+        return [
+            handle.with_call_id(f"{parent_id}:{index}")("multiply", a=a, b=b)
+            for index, (a, b) in enumerate([(2, 3), (4, 5)])
+        ]
+```
+
+Register the operator alongside the `multiply` callable. Copied handles retain
+the same authority and runtime inputs; assigning an id does not grant approval
+or bypass policies. `ToolBucketHandle` supports the same method while retaining
+its captured-tool boundary. The [Monty tools](monty.md) use this mechanism for
+repeated calls inside a Python snippet.

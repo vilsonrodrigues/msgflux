@@ -4,6 +4,7 @@ from msgflux.tools.builtin.agent_skills import SkillSearchTool, SkillTool
 from msgflux.tools.builtin.agent_tool import AgentTool
 from msgflux.tools.builtin.apply_patch import ApplyPatchTool
 from msgflux.tools.builtin.context_scope import close_context_scope, open_context_scope
+from msgflux.tools.builtin.monty import MontyTool, MontyToolBucket
 from msgflux.tools.builtin.send_parent_message import SendParentMessageTool
 from msgflux.tools.builtin.send_user_message import SendUserMessageTool
 from msgflux.tools.builtin.task_bucket import TaskTool
@@ -50,6 +51,8 @@ __all__ = [
     "ReadFileTool",
     "BashTool",
     "AgentTool",
+    "MontyTool",
+    "MontyToolBucket",
     "close_context_scope",
     "open_context_scope",
     "SendParentMessageTool",

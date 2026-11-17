@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import copy
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Mapping
 
 from msgflux.runtime.agent_inbox import ToolNotificationHandle
@@ -25,7 +26,15 @@ class ToolLibraryHandle:
         tool_call_id: str | None = None,
         agent_inbox: AgentInbox | None = None,
         task_store: Any = None,
+        message: Any = None,
+        messages: Any = None,
+        vars: Mapping[str, Any] | None = None,  # noqa: A002
+        activity_recorder: Any = None,
     ):
+        self._message = message
+        self._messages = messages
+        self._vars = vars
+        self._activity_recorder = activity_recorder
         self._library = library
         self._tool_name = tool_name
         self._tool_call_id = tool_call_id
@@ -64,7 +73,23 @@ class ToolLibraryHandle:
             tool_call_id=tool_call_id,
             agent_inbox=agent_inbox if agent_inbox is not None else self._agent_inbox,
             task_store=task_store if task_store is not None else self._task_store,
+            message=message,
+            messages=messages,
+            vars=vars,
+            activity_recorder=activity_recorder,
         )
+
+    def get_tool_call_id(self) -> str | None:
+        """Return the model invocation id carried by this scoped handle."""
+        return self._tool_call_id
+
+    def with_call_id(self, tool_call_id: str) -> ToolLibraryHandle:
+        """Copy this handle with a distinct parent identity for a nested call."""
+        if not isinstance(tool_call_id, str) or not tool_call_id.strip():
+            raise ValueError("`tool_call_id` must be a non-empty string")
+        scoped = copy(self)
+        scoped._tool_call_id = tool_call_id
+        return scoped
 
     def add(self, tool: Callable) -> str:
         return self._library.add(tool)
@@ -147,7 +172,15 @@ class ToolLibraryHandle:
         /,
         **arguments: Any,
     ) -> Any:
-        return self._library.run(tool, arguments)
+        return self._library.run(
+            tool,
+            arguments,
+            message=self._message,
+            messages=self._messages,
+            vars=self._vars,
+            parent_tool_call_id=self._tool_call_id,
+            activity_recorder=self._activity_recorder,
+        )
 
     async def acall(
         self,
@@ -155,7 +188,15 @@ class ToolLibraryHandle:
         /,
         **arguments: Any,
     ) -> Any:
-        return await self._library.arun(tool, arguments)
+        return await self._library.arun(
+            tool,
+            arguments,
+            message=self._message,
+            messages=self._messages,
+            vars=self._vars,
+            parent_tool_call_id=self._tool_call_id,
+            activity_recorder=self._activity_recorder,
+        )
 
     def get_task_future(self, task_id: str) -> Any | None:
         return self._library.get_background_dispatcher().get_task_future(task_id)
@@ -361,10 +402,6 @@ class ToolBucketHandle(ToolLibraryHandle):
             self._bucket_name,
             tool_name,
         )
-
-    def get_tool_call_id(self) -> str | None:
-        """Return the parent model call id carried by this scoped handle."""
-        return self._tool_call_id
 
     def with_runtime(
         self,

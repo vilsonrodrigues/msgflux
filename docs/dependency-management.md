@@ -15,6 +15,14 @@ query tools. `LsTool`, `ReadFileTool`, `WriteTool`, `EditTool` and `DeleteTool`
 need no extra dependency. All filesystem access still goes through the live
 authorized workspace; installing the extra does not grant filesystem access.
 
+## Monty Python Tools
+
+Install `msgflux[monty]` for `MontyTool` and `MontyToolBucket`. The optional
+`pydantic-monty` package supplies the Python client and interpreter binary; no
+API key is needed. Importing other built-in tools does not require it. See
+[Monty Python](learn/nn/agent/tools/monty.md) for composition, persistent variables
+and execution limits.
+
 ## Models
 
 ### Chat Completion

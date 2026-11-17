@@ -99,6 +99,9 @@ service = [
     "tomlkit>=0.15.2",
     "uvicorn>=0.35,<1",
 ]
+monty = [
+    "pydantic-monty>=1.6.0,<2",
+]
 
 [tool.ruff]
 target-version = "py311"

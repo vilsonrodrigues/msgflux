@@ -480,7 +480,11 @@ class ToolBackground(ToolLibraryOperator):
         definitions = (
             library.registry.definitions()
             if include_deferred
-            else (library.get_tool_definition(name) for name in library.library)
+            else (
+                item
+                for item in library.registry.definitions()
+                if not item.loading.deferred
+            )
         )
         for definition in definitions:
             if cls.is_reserved_definition(definition):

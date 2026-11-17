@@ -83,6 +83,14 @@ the notice was queued; the parent consumes it at its normal inbox boundaries.
 It does not restart a completed parent. A closed parent inbox rejects the
 message. Calling the tool without a delegated execution raises an error.
 
+## Monty Python
+
+[`MontyTool` and `MontyToolBucket`](monty.md) execute Python to combine tools and
+process their results. The additive tool keeps other schemas visible; the
+bucket exposes captured tools through `tools.list()`, `tools.describe()` and
+Python calls. JSON-compatible variables persist across calls in the same
+session. Install `msgflux[monty]` to use either composition.
+
 ## Workspace tools
 
 `ReadFileTool`, `WriteTool`, `EditTool`, `DeleteTool` and `ApplyPatchTool`

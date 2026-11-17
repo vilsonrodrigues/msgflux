@@ -5,10 +5,11 @@ sees only the bucket schema. At runtime, a scoped handle redirects the chosen
 call through `ToolLibrary`, preserving local/MCP wrappers, retries, runtime
 injection, errors, and telemetry.
 
-This is the common routing primitive behind two built-ins:
+This is the common routing primitive behind these built-ins:
 
 | Built-in | Captures | Public surface |
 |----------|----------|----------------|
+| [`MontyToolBucket`](monty.md) | Ordinary tools, agents and task controls | `monty(code, reset=False)` |
 | [`AgentTool`](agent-tool.md) | Agents with `tool_kind="agent"` | `agent(name, message)` |
 | [`ToolSearchTool`](tool-search.md) | Tools with `defer_loading=True` | `tool_search(...)` |
 
